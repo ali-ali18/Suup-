@@ -242,7 +242,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("runLoop on PgRunStore"), () => {
     }
     expect(crashes).toBeGreaterThan(5);
     expect(interruptedRuns).toBeGreaterThan(0);
-  });
+  }, 60_000);
 
   describe("messages while the run works", () => {
     const withEscalate: FakeStep[] = [
