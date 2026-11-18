@@ -237,7 +237,27 @@ Um problema pode estar em cinco lugares: modelo, harness, ferramenta, servidor o
 4. Os eventos mostram o modelo decidindo mal? Rodar o replay gravado e a mesma tarefa em outro provedor. Se outro provedor acerta, é o modelo; se todos erram igual, são as instruções ou o contexto montado pelo harness.
 5. O modelo decidiu bem e o resultado saiu errado mesmo assim (parou cedo, perdeu o plano, repetiu passo)? É o harness, e o replay vira teste de regressão.
 
-O inspetor e a origem da falha entram na fase 1 (pela CLI). O replay gravado entra na fase 1. O id de rastreio de ponta a ponta e as verificações de saúde entram na fase 2, junto com o servidor e o app.
+**Separando o modelo do harness**
+
+Esta é a separação mais difícil, porque um modelo fraco e um harness que monta mal o contexto produzem o mesmo sintoma. Cinco verificações, da mais barata para a mais cara:
+
+| Verificação | Como | Conclusão |
+|---|---|---|
+| O que o modelo viu | Abrir a requisição gravada do turno em que errou | A informação necessária não estava no contexto: harness. Estava e foi ignorada: modelo ou instruções |
+| Motivo de parada | Conferir o `stop_reason` gravado | Resposta cortada por limite de tokens ou filtro do provedor não é decisão do modelo; é configuração ou adaptador |
+| Repetição | Reenviar a mesma requisição 10 vezes | Erra às vezes: variação do modelo. Erra sempre: instruções ou contexto |
+| Troca de modelo | Reenviar a mesma requisição para outros modelos | Só um erra: é o modelo. Todos erram: é o que foi enviado |
+| Avaliação em matriz | Rodar o conjunto de avaliação em cada modelo configurado | Mostra quais tipos de tarefa cada modelo aguenta |
+
+Para isso funcionar, o harness precisa de:
+
+- **Versão do modelo gravada em cada resposta**, incluindo a versão que o provedor devolve, e não só o nome pedido. Provedores atualizam modelos sem avisar.
+- **Histórico de avaliação por modelo.** A avaliação roda em agenda, e não só quando o código muda. Queda de nota sem mudança de código indica que o modelo mudou.
+- **Testes de conformidade dos adaptadores.** O mesmo conjunto pequeno roda contra cada adaptador: chamada de ferramenta de ida e volta, chamadas em paralelo, argumentos aninhados, resposta longa, erro de limite de taxa. Um defeito de tradução no adaptador parece defeito do modelo, e este teste é o que os distingue.
+- **Qualificação de modelo.** Antes de um modelo poder ser atribuído a um bot, ele passa por um teste mínimo: usa `plan`, gera argumentos válidos, chama `finish` em vez de parar no meio, escala quando a tarefa é impossível. Modelo reprovado pode ser usado, mas o app avisa.
+- **Métricas por modelo:** taxa de conclusão, taxa de argumentos inválidos, taxa de recusa pelo revisor, turnos por execução, custo por execução.
+
+O inspetor e a origem da falha entram na fase 1 (pela CLI). As cinco verificações acima, os testes de conformidade e a qualificação de modelo também entram na fase 1. O replay gravado entra na fase 1. O id de rastreio de ponta a ponta e as verificações de saúde entram na fase 2, junto com o servidor e o app.
 
 ## 5. Modelo de dados
 
@@ -312,7 +332,7 @@ Objetivo: provar o núcleo sem interface. Entra uma tarefa de vários passos pel
 
 1. **Base do repositório:** monorepo, TypeScript, lint, testes, Docker Compose com Postgres.
 2. **Banco:** tabelas `bots`, `runs`, `run_events`; migrações.
-3. **Provedores:** tipos internos, adaptador Anthropic, adaptador compatível com OpenAI, um provedor falso e determinístico para testes.
+3. **Provedores:** tipos internos, adaptador Anthropic, adaptador compatível com OpenAI, um provedor falso e determinístico para testes; gravação integral de requisição, resposta, versão do modelo e motivo de parada; testes de conformidade por adaptador.
 4. **Registro de ferramentas:** definição, validação de entrada, formato de erro, truncamento de saída.
 5. **Máquina dos bots:** imagem Docker, executor de comandos com limite de tempo, ferramentas de arquivo restritas à pasta do bot.
 6. **Loop:** as regras da seção 4.1, com `plan`, `finish`, `escalate`, limites e detecção de repetição.
@@ -320,7 +340,7 @@ Objetivo: provar o núcleo sem interface. Entra uma tarefa de vários passos pel
 8. **Contexto:** reinjeção de objetivo e plano, truncamento, compactação.
 9. **Retomada:** reconstrução a partir de `run_events`.
 10. **CLI:** criar execução, acompanhar ao vivo, responder a `escalate`, listar e retomar; inspecionar os eventos crus de uma execução e reexecutá-la em modo replay com as respostas gravadas.
-11. **Avaliação:** 12 a 15 tarefas com verificador automático, cobrindo código com testes, pesquisa com fontes, transformação de arquivos, tarefa longa de muitos passos e tarefa impossível (o correto é escalar, não inventar).
+11. **Avaliação:** 12 a 15 tarefas com verificador automático, cobrindo código com testes, pesquisa com fontes, transformação de arquivos, tarefa longa de muitos passos e tarefa impossível (o correto é escalar, não inventar). Roda em matriz por modelo, guarda histórico de notas e inclui o teste de qualificação de modelo e o comando de reenviar uma requisição gravada N vezes ou para outro modelo.
 
 Testes do loop usam o provedor falso, para cobrir sem custo os casos difíceis: resposta sem ferramenta com plano aberto, `finish` sem evidência, chamada repetida, queda no meio de uma ferramenta.
 
