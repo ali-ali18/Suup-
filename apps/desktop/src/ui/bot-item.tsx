@@ -1,4 +1,5 @@
-import type { ChipKind, Reaction } from "../data/derive.js";
+import type { AvatarStateId } from "@suup/avatar";
+import type { ChipKind } from "../data/derive.js";
 import { Avatar } from "./avatar.js";
 import { Counter } from "./primitives.js";
 import { StatusChip } from "./status-chip.js";
@@ -10,7 +11,7 @@ export interface BotItemProps {
   seed: string;
   active: boolean;
   chip: ChipKind | null;
-  reaction: Reaction;
+  state: AvatarStateId;
   unread: number;
   onSelect(): void;
 }
@@ -25,7 +26,7 @@ export function BotItem(p: BotItemProps) {
       onClick={p.onSelect}
       data-testid="bot-item"
     >
-      <Avatar avatar={p.avatar} seed={p.seed} size="md" reaction={p.reaction} />
+      <Avatar avatar={p.avatar} seed={p.seed} size="md" state={p.state} />
       <span className="ui-bot__text">
         <span className="ui-bot__name">{p.name}</span>
         <span className="ui-bot__sub">{p.subtitle}</span>

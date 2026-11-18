@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { MASCOTS } from "../../lib/mascots.js";
 import type { Connection } from "../../lib/platform.js";
 import { Avatar } from "../../ui/avatar.js";
 import { Pill, TextField } from "../../ui/primitives.js";
@@ -30,7 +29,7 @@ export function ConnectScreen({
         }}
       >
         <div className="connect__brand">
-          <Avatar avatar={`mascot:${MASCOTS[0].id}`} seed="suup" size="lg" />
+          <Avatar avatar="mascot:blob" seed="suup" size="lg" />
           <h1 className="connect__title">Conectar ao Suup</h1>
           <p className="muted small">Informe o endereço do servidor e o token de acesso.</p>
         </div>

@@ -163,7 +163,7 @@ function ChatForBot({ botId }: { botId: string }) {
   );
   const phrase =
     active === undefined ? "Pensando" : workingPhrase(active, actions, planOf(active, events));
-  const color = bot === undefined ? "cinza" : effectiveColor(bot.avatar, bot.color, bot.id);
+  const color = bot === undefined ? "cinza" : effectiveColor(bot.color, bot.id);
 
   const send = useCallback(
     async (text: string) => {
@@ -239,7 +239,7 @@ function ChatForBot({ botId }: { botId: string }) {
               color={bot.color}
               seed={bot.id}
               size="sm"
-              reaction={display.reaction}
+              state={display.avatar}
             />
             <span className="bot-chip__text">
               <strong>{bot.name}</strong>

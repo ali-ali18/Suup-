@@ -22,6 +22,7 @@
   "devDependencies": {
     "@playwright/test": "1.63.0",
     "@suup/api": "workspace:*",
+    "@suup/avatar": "workspace:*",
     "@suup/core": "workspace:*",
     "@suup/db": "workspace:*",
     "@suup/runtime": "workspace:*",

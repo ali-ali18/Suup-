@@ -46,10 +46,12 @@ test.describe("connect and chat", () => {
       "data-phrase",
       "Rodando o comando sleep 3; echo primeiro",
     );
-    // While it works, the bot's face in the sidebar is three dots.
+    // While it works, the bot's face in the sidebar is the engine's "thinking"/"working" state.
     const entry = page.locator('[data-testid="bot-item"][data-bot="Fluxo"]');
     await expect(entry).toHaveAttribute("data-working", "true");
-    await expect(entry.getByTestId("bot-dots")).toBeVisible();
+    const face = entry.locator("[data-mascot]");
+    await expect(face).toHaveAttribute("data-state", /^(thinking|working)$/);
+    await expect(face).toHaveAttribute("data-mode", "animated");
     // The card of the running tool: one row, with a spinner.
     const running = page.locator('[data-testid="action-card"][data-state="running"]');
     await expect(running).toContainText("Terminal");
@@ -81,14 +83,14 @@ test.describe("connect and chat", () => {
     expect(flat.preBorder).toBe("0px");
     expect(flat.font).toContain("JetBrains Mono");
     expect(flat.cardBackground).toBe("rgb(30, 30, 30)");
-    // The mascot comes back when the bot stops; the indicator goes.
+    // The face leaves the working state when the bot stops (a happy moment, then rest); the indicator goes.
     await expect(
       page.getByTestId("message-bot").filter({ hasText: "Terminei as cinco ações." }),
     ).toBeVisible({ timeout: 90_000 });
     await expect(page.getByTestId("working-indicator")).toHaveCount(0);
     await expect(entry).toHaveAttribute("data-working", "false");
-    await expect(entry.getByTestId("bot-dots")).toHaveCount(0);
-    await expect(entry.locator("svg[data-mascot]")).toBeVisible();
+    await expect(entry.locator("[data-mascot] svg")).toBeVisible();
+    await expect(entry.locator("[data-mascot]")).toHaveAttribute("data-state", /^(done|idle)$/);
     // Five finished cards: the latest three stay, the two older ones fold into "Mais 2 ações".
     await expect(page.getByTestId("action-card")).toHaveCount(3);
     const fold = page.getByTestId("action-fold");

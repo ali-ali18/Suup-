@@ -6,6 +6,7 @@ import {
   createAvatarRuntime,
   createCharacter,
   createFrameLoop,
+  createTicker,
   type FrameScheduler,
   renderStill,
   SHAPE_IDS,
@@ -158,5 +159,49 @@ describe("frame loop", () => {
     expect(frames.length).toBeGreaterThan(0);
     loop.stop();
     expect(pending).toBeNull();
+  });
+});
+
+describe("runtime in the shared ticker", () => {
+  it("tickerEntry hands every ticker frame to the host as render data", () => {
+    let ts = 1000;
+    const pending: { cb: ((ts: number) => void) | null } = { cb: null };
+    const ticker = createTicker({
+      now: () => ts,
+      raf(cb) {
+        pending.cb = cb;
+        return 1;
+      },
+      caf: () => {
+        pending.cb = null;
+      },
+      setTimer: () => 1,
+      clearTimer: () => {},
+      isHidden: () => false,
+      onVisibilityChange: () => () => {},
+      onPointerMove: () => () => {},
+      onPointerLeave: () => () => {},
+      observeVisible: () => () => {},
+    });
+    const runtime = createAvatarRuntime(createCharacter({ id: "tk" }));
+    const seen: AvatarRenderData[] = [];
+    const handle = ticker.register({
+      ...runtime.tickerEntry((data) => seen.push(data)),
+      follow: "off",
+      getCenter: () => null,
+    });
+    // Registering applies the resting pose at once.
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.body).toMatch(/^M/);
+    handle.interact(() => runtime.setState("thinking"));
+    for (let i = 0; i < 20; i++) {
+      ts += 17;
+      const cb = pending.cb;
+      pending.cb = null;
+      cb?.(ts);
+    }
+    expect(seen.length).toBeGreaterThan(1);
+    handle.unregister();
+    runtime.dispose();
   });
 });

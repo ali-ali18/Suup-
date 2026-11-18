@@ -27,6 +27,7 @@ rt.dispose();
 | `createCharacter({ id, shape?, color? })` | Dados puros do personagem. `color` aceita id da paleta ou CSS. Valores invalidos caem no padrao do `id`. |
 | `renderStill(character, state?, { size? })` | String `<svg>` da pose de repouso do estado (so o rosto muda; sem animacao nem indicador). |
 | `createAvatarRuntime(character, opts?)` | `{ setState, setGaze, poke, blink, setReducedMotion, frame(timeMs), isSettled, nextWakeMs, frameIntervalMs, dispose }`. |
+| `runtime.tickerEntry(onData)` | `{ engine, apply }` para `ticker.register({ ...entry, follow, getCenter, element })`: o runtime anda no ticker compartilhado e cada quadro chega a `onData` como `AvatarRenderData`. Mude estado e olhar pelo runtime dentro de `handle.interact(...)`. Não misture com `frame()` no mesmo runtime. |
 | `createFrameLoop(runtime, schedule, onFrame)` | Laco simples de um avatar com agendador injetado (`schedule(cb) => cancel`). |
 | `createTicker(env)` | Laco compartilhado para muitos avatares (dorme quando tudo assenta, pausa fora da tela ou aba oculta). Ambiente injetado (`TickerEnv`). |
 | `SHAPE_IDS`, `AVATAR_COLORS`, `AVATAR_STATES`, `STATE_MAP` | Catalogos para seletores e documentacao. |

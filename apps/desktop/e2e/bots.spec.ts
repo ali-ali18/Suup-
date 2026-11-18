@@ -37,7 +37,7 @@ test.describe("bots, sidebar, palette, memory", () => {
     await expect(page.getByTestId("chat")).toHaveAttribute("data-bot", "Pepê");
     await expect(botItem(page, "Pepê")).toBeVisible();
     const created = (await world.api.bots.list()).find((b) => b.name === "Pepê");
-    expect(created).toMatchObject({ avatar: "mascot:gota", color: "azul", personality: "" });
+    expect(created).toMatchObject({ avatar: "mascot:teardrop", color: "azul", personality: "" });
     const hint = page.getByTestId("personality-hint");
     await expect(hint).toBeVisible();
     // The hint opens "Editar bot" on the second step; the suggestion fills description and personality.
@@ -189,9 +189,9 @@ test.describe("bots, sidebar, palette, memory", () => {
   });
 
   test("the user's bubble takes the colour of the conversation's bot", async ({ page }) => {
-    await freshBot(world, "Azulado", { color: "azul", avatar: "mascot:cunha" });
-    await freshBot(world, "Rosado", { color: "rosa", avatar: "mascot:folha" });
-    await freshBot(world, "Branquinho", { color: "branco", avatar: "mascot:esfera" });
+    await freshBot(world, "Azulado", { color: "azul", avatar: "mascot:wedge" });
+    await freshBot(world, "Rosado", { color: "rosa", avatar: "mascot:leaf" });
+    await freshBot(world, "Branquinho", { color: "branco", avatar: "mascot:blob" });
     await openApp(page, world);
     const expected: [string, string, string][] = [
       ["Azulado", "rgb(16, 132, 254)", "rgb(11, 11, 12)"],

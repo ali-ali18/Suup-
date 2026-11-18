@@ -1,4 +1,6 @@
 import type { PlanStep, Run, RunEvent, RunStatus } from "@suup/api";
+import type { AvatarStateId } from "@suup/avatar";
+import { avatarStateOf } from "../lib/avatar-state.js";
 
 // What the screen shows, derived from what the server said (run status + the run's events), per
 // docs/FRONTEND.md sections 4, 5 and 11. No business rule lives here: it only chooses words and
@@ -33,6 +35,8 @@ export interface RunDisplay {
   chip: ChipKind | null;
   label: string;
   reaction: Reaction;
+  /** O estado do avatar do bot (`avatarStateOf`). */
+  avatar: AvatarStateId;
   /** The run is in the foreground: working, waiting for the user, or paused. */
   active: boolean;
   /** The tool being used right now (`working`), for the label. */
@@ -132,13 +136,21 @@ export function deriveRunDisplay(
   run: Pick<Run, "status" | "paused" | "startedAt"> | null,
   events: readonly RunEvent[] = [],
 ): RunDisplay {
+  const display = displayOfRun(run, events);
+  return { ...display, avatar: avatarStateOf(run, display.tool !== undefined) };
+}
+
+function displayOfRun(
+  run: Pick<Run, "status" | "paused" | "startedAt"> | null,
+  events: readonly RunEvent[],
+): Omit<RunDisplay, "avatar"> {
   if (run === null) return { chip: null, label: "", reaction: "idle", active: false };
   const display = (
     chip: ChipKind | null,
     reaction: Reaction,
     active: boolean,
-    extra: Partial<RunDisplay> = {},
-  ): RunDisplay => ({
+    extra: Partial<Omit<RunDisplay, "avatar">> = {},
+  ): Omit<RunDisplay, "avatar"> => ({
     chip,
     label: chip === null ? "" : CHIP_LABEL[chip],
     reaction,

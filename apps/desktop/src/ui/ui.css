@@ -261,46 +261,10 @@
   height: 100%;
   display: block;
 }
-.ui-mascot__dots {
-  display: inline-flex;
-}
 .ui-avatar__emoji {
   font-size: 1.1em;
   line-height: 1;
 }
-@keyframes ui-bob {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-2px);
-  }
-}
-@keyframes ui-shake {
-  0%,
-  100% {
-    transform: rotate(0);
-  }
-  25% {
-    transform: rotate(-6deg);
-  }
-  75% {
-    transform: rotate(6deg);
-  }
-}
-.ui-mascot[data-reaction="thinking"] svg,
-.ui-mascot[data-reaction="working"] svg {
-  animation: ui-bob 1.2s ease-in-out infinite;
-}
-.ui-mascot[data-reaction="scolded"] svg {
-  animation: ui-shake 0.6s ease-in-out 2;
-}
-.ui-mascot[data-reaction="paused"],
-.ui-mascot[data-reaction="failed"] {
-  opacity: 0.6;
-}
-
 /* ---- Bots list item --------------------------------------------------------------------------- */
 .ui-bot {
   display: flex;

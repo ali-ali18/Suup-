@@ -50,7 +50,7 @@ function BotEntry({
     .filter(Boolean)
     .join(", ");
   const label = status === "" ? bot.name : `${bot.name} — ${status}`;
-  // While the bot works, its face is replaced by three dots (the mascot comes back when it stops).
+  // Enquanto o bot trabalha o rosto vira o indicador de pontos (`data-working`, `data-state`).
   const working = ["working", "thinking", "resuming", "queued"].includes(display.chip ?? "");
   const size = variant === "tile" ? "tile" : variant === "row" ? "md" : "lg";
   const openMenu = (e: React.MouseEvent) => {
@@ -89,8 +89,7 @@ function BotEntry({
             color={bot.color}
             seed={bot.id}
             size={size}
-            reaction={display.reaction}
-            working={working}
+            state={display.avatar}
           />
           {badge !== undefined && (
             <span

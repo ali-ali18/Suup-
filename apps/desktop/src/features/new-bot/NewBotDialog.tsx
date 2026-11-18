@@ -1,15 +1,9 @@
 import { BOT_COLORS, BOT_PALETTE, type BotColor, type ModelInfo, type ToolInfo } from "@suup/api";
+import type { ShapeId } from "@suup/avatar";
 import { useEffect, useMemo, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { useUi } from "../../app/ui-store.js";
-import {
-  avatarOf,
-  colorVars,
-  effectiveColor,
-  MASCOTS,
-  type MascotId,
-  mascotValue,
-} from "../../lib/mascots.js";
+import { avatarOf, colorVars, effectiveColor, mascotValue, SHAPES } from "../../lib/mascots.js";
 import { Avatar } from "../../ui/avatar.js";
 import { Mascot } from "../../ui/mascot.js";
 import { Dialog, Pill, Tag, TextField } from "../../ui/primitives.js";
@@ -42,9 +36,9 @@ export function NewBotDialog() {
 
   const [step, setStep] = useState<1 | 2>(editId === null ? 1 : startStep);
   const [name, setName] = useState(editing?.name ?? "");
-  const [mascot, setMascot] = useState<MascotId>(() => {
+  const [mascot, setMascot] = useState<ShapeId>(() => {
     const spec = avatarOf(editing?.avatar ?? null, editing?.id ?? "new");
-    return spec.kind === "mascot" && spec.id !== undefined ? spec.id : MASCOTS[0].id;
+    return spec.kind === "mascot" && spec.id !== undefined ? spec.id : "blob";
   });
   const [color, setColor] = useState<BotColor | null>(editing?.color ?? null);
   const [description, setDescription] = useState(editing?.description ?? "");
@@ -86,7 +80,7 @@ export function NewBotDialog() {
     };
   }, [api]);
 
-  const shownColor = effectiveColor(`mascot:${mascot}`, color, "new");
+  const shownColor = effectiveColor(color, editing?.id ?? "new");
   const nameOk = name.trim() !== "";
   const usable = useMemo(
     () => models.filter((m) => m.available || m.id === editing?.modelId),
@@ -122,7 +116,8 @@ export function NewBotDialog() {
         modelId,
         allowedTools: selectedTools,
         avatar: mascotValue(mascot),
-        color,
+        // A cor mostrada vale: sem escolha, o bot guarda a que a prévia mostrou.
+        color: shownColor,
       };
       const bot =
         editing === undefined
@@ -183,7 +178,12 @@ export function NewBotDialog() {
           style={colorVars(shownColor) as React.CSSProperties}
         >
           <div className="newbot__preview" data-testid="newbot-preview" data-color={shownColor}>
-            <Avatar avatar={mascotValue(mascot)} color={color} seed="new" size="xl" />
+            <Avatar
+              avatar={mascotValue(mascot)}
+              color={shownColor}
+              seed={editing?.id ?? "new"}
+              size="xl"
+            />
           </div>
           <TextField
             label="Dê um nome ao seu bot"
@@ -194,7 +194,7 @@ export function NewBotDialog() {
             onEnter={() => nameOk && modelId !== "" && void save()}
           />
           <div role="radiogroup" aria-label="Mascote" className="newbot__grid">
-            {MASCOTS.map((m) => (
+            {SHAPES.map((m) => (
               <button
                 key={m.id}
                 type="button"
@@ -204,7 +204,7 @@ export function NewBotDialog() {
                 className={`newbot__mascot${mascot === m.id ? " newbot__mascot--on" : ""}`}
                 onClick={() => setMascot(m.id)}
               >
-                <Mascot shape={m.id} color={shownColor} size="md" />
+                <Mascot shape={m.id} color={shownColor} size="md" still />
               </button>
             ))}
           </div>

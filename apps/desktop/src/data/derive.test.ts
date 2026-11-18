@@ -112,6 +112,25 @@ describe("deriveRunDisplay (FRONTEND.md sections 4 and 11)", () => {
     if (expected.chip === null) expect(display.label).toBe("");
   });
 
+  it("the avatar's state follows the run: tools working, a question asking, an approval waiting", () => {
+    const state = (
+      run: Parameters<typeof makeRun>[0],
+      events: ReturnType<typeof makeEvent>[] = [],
+    ) => deriveRunDisplay(makeRun(run), events).avatar;
+    expect(deriveRunDisplay(null).avatar).toBe("idle");
+    expect(state({ status: "running" })).toBe("thinking");
+    expect(state({ status: "running" }, [call(1, "c1", "shell")])).toBe("working");
+    expect(state({ status: "running" }, [call(1, "c1", "shell"), result(2, "c1")])).toBe(
+      "thinking",
+    );
+    expect(state({ status: "running", paused: true })).toBe("paused");
+    expect(state({ status: "waiting_user" })).toBe("asking");
+    expect(state({ status: "waiting_approval" })).toBe("waiting");
+    expect(state({ status: "done" })).toBe("done");
+    expect(state({ status: "failed" })).toBe("failed");
+    expect(state({ status: "cancelled" })).toBe("idle");
+  });
+
   it("labels are the ones of the design, in Portuguese", () => {
     const labels = (
       ["done", "failed", "cancelled", "waiting_user", "waiting_approval"] as const

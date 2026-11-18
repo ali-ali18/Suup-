@@ -1,28 +1,29 @@
 import type { BotColor } from "@suup/api";
-import type { Reaction } from "../data/derive.js";
+import type { AvatarStateId } from "@suup/avatar";
 import { avatarOf, effectiveColor } from "../lib/mascots.js";
 import { Mascot, type MascotSize } from "./mascot.js";
 
 export interface AvatarProps {
-  /** `bot.avatar` (opaque), `bot.color` and a seed (the bot id) for bots that have none. */
+  /** `bot.avatar` (opaco), `bot.color` e uma semente (o id do bot) para o que o bot não tem. */
   avatar: string | null;
   color?: BotColor | null;
   seed: string;
   size?: MascotSize;
-  reaction?: Reaction;
-  /** The bot is working: its face is replaced by three dots. */
-  working?: boolean;
+  /** O que o bot está fazendo (ver `avatarStateOf`); o emoji não reage. */
+  state?: AvatarStateId;
+  /** Sempre imagem parada. */
+  still?: boolean;
   title?: string;
 }
 
-/** The bot's face: its mascot in its colour (or an emoji). */
+/** O rosto do bot: o mascote na cor dele (ou um emoji). */
 export function Avatar({
   avatar,
   color = null,
   seed,
   size = "md",
-  reaction = "idle",
-  working = false,
+  state = "idle",
+  still = false,
   title,
 }: AvatarProps) {
   const spec = avatarOf(avatar, seed);
@@ -34,10 +35,11 @@ export function Avatar({
       {spec.kind === "mascot" && spec.id !== undefined ? (
         <Mascot
           shape={spec.id}
-          color={effectiveColor(avatar, color, seed)}
-          state={working ? "working" : "idle"}
+          color={effectiveColor(color, seed)}
+          state={state}
           size={size}
-          reaction={reaction}
+          seed={seed}
+          still={still}
         />
       ) : (
         <span className="ui-avatar__emoji">{spec.text}</span>

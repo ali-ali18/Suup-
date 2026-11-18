@@ -1,10 +1,10 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
-import { apiSource } from "./vite.config.js";
+import { workspaceAliases } from "./vite.config.js";
 
 export default defineConfig({
   plugins: [react()],
-  resolve: { alias: { "@suup/api": apiSource } },
+  resolve: { alias: workspaceAliases },
   test: {
     name: "desktop",
     environment: "jsdom",

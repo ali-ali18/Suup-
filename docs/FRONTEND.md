@@ -25,10 +25,10 @@ Uma mensagem sua abre uma execução. Uma rotina e uma tarefa delegada por outro
 | `modelProvider`, `modelId` | texto | Qual modelo o bot usa |
 | `allowedTools` | lista de textos | Ferramentas liberadas |
 | `limits` | objeto | `maxTurns`, `maxCostUsd`, `maxDurationMs` |
-| `avatar` | texto ou vazio | Referência opaca que o app interpreta (emoji, id de arquivo...): o servidor só a guarda |
+| `avatar` | texto ou vazio | Referência opaca que o app interpreta (`mascot:<formato>` com um dos 25 formatos do motor de avatar, um emoji, id de arquivo...): o servidor só a guarda |
 | `isDefault` | verdadeiro/falso | O bot principal, o que recebe a mensagem quando nenhum é escolhido |
 | `pinned`, `groupName`, `sortOrder` | booleano, texto ou vazio, inteiro ou vazio | Onde o bot aparece na lista: fixado (blocos grandes no topo), sob um grupo nomeado, ou na lista padrão "Bots" |
-| `color` | id da paleta ou vazio | A cor do mascote e do balão do usuário (`laranja`, `azul`, `verde`, `roxo`, `rosa`, `amarelo`, `cinza`, `grafite`, `branco`); o servidor só guarda o id |
+| `color` | id da paleta ou vazio | A cor do mascote e do balão do usuário (`laranja`, `azul`, `verde`, `roxo`, `rosa`, `amarelo`, `cinza`, `grafite`, `branco`); o servidor só guarda o id; sem cor, o app escolhe uma pelo id do bot |
 | `createdAt`, `updatedAt` | data | |
 | `archivedAt` | data ou vazio | Bot arquivado não recebe trabalho novo |
 
@@ -240,18 +240,20 @@ Uma tela separada do chat, para quando algo dá errado. A API serve os mesmos c�
 
 ## 11. Momentos em que o avatar do bot pode reagir
 
-| Momento | De onde vem |
-|---|---|
-| Parado | Nenhuma execução ativa |
-| Pensando | Execução `running`, aguardando `model_response` |
-| Trabalhando | Entre `tool_call` e `tool_result`; variações por ferramenta |
-| Com dúvida | `waiting_user` |
-| Pedindo permissão | `waiting_approval` |
-| Concluiu | `finish_attempt` com `accepted: true` |
-| Levou bronca | `finish_attempt` recusado ou `review` com `reject` |
-| Falhou | `status` `failed` |
-| Pausado | `paused: true` (você pausou) ou, na fase 5, você assumiu a tela |
-| Teve uma ideia | Nova iniciativa (fase 4) |
+O rosto é desenhado pelo motor `@suup/avatar` (formatos, cores e estados no `README` do pacote); o app só escolhe o **estado** do motor a partir da execução, numa função pura (`apps/desktop/src/lib/avatar-state.ts`). A cor do rosto é a do bot (`BOT_PALETTE`); com "Movimento reduzido" ligado (no app ou no sistema) o rosto é uma imagem parada, com a cara do estado.
+
+| Momento | De onde vem | Estado do avatar |
+|---|---|---|
+| Parado | Nenhuma execução ativa (ou `cancelled`) | `idle` |
+| Pensando | Execução `queued` ou `running`, aguardando `model_response` | `thinking` |
+| Trabalhando | Entre `tool_call` e `tool_result`; variações por ferramenta | `working` |
+| Com dúvida | `waiting_user` | `asking` |
+| Pedindo permissão | `waiting_approval` | `waiting` |
+| Concluiu | `finish_attempt` com `accepted: true` (status `done`); aparece por alguns segundos e volta a `idle` | `done` |
+| Levou bronca | `finish_attempt` recusado ou `review` com `reject` | `thinking` |
+| Falhou | `status` `failed` | `failed` |
+| Pausado | `paused: true` (você pausou) ou, na fase 5, você assumiu a tela | `paused` |
+| Teve uma ideia | Nova iniciativa (fase 4) | ainda sem estado |
 
 ## 12. Onde a API real difere do que este guia dizia antes dela
 

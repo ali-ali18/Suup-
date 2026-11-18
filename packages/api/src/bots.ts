@@ -74,7 +74,7 @@ export const botSchema = z.object({
   groupName: z.string().nullable().default(null),
   /** Position inside its block (pinned, or its group); `null` sorts last. */
   sortOrder: z.number().int().nullable().default(null),
-  /** One of `BOT_COLORS`, or `null` for the mascot's own colour. */
+  /** One of `BOT_COLORS`, or `null`: the app then picks one from the bot's id. */
   color: botColorSchema.nullable().default(null),
   createdAt: isoDate,
   updatedAt: isoDate,

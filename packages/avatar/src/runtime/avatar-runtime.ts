@@ -13,6 +13,7 @@ import { createProjector } from "../render/project.js";
 import { stillFrame } from "../render/still.js";
 import { groupTransform, type ResolvedEyes, renderFrame, resolveEyes } from "../render/svg.js";
 import { type AvatarStateId, engineStateOf } from "../states.js";
+import type { AvatarEntryInput } from "./ticker.js";
 
 export type AvatarRuntimeOptions = {
   /** Still pose, no animation: `frame()` returns the same pose for a state whatever the time. */
@@ -71,6 +72,13 @@ export type AvatarRuntime = {
   nextWakeMs(): number;
   /** Minimum interval in ms the host should leave between frames (30 or 60 fps). */
   frameIntervalMs(): number;
+  /**
+   * Para registrar este avatar no ticker compartilhado (`ticker.register`): o motor deste runtime e
+   * um `apply` que entrega cada quadro como `AvatarRenderData`. Quem registra completa `follow` e
+   * `getCenter`. Mude estado e olhar pelo runtime, de dentro de `handle.interact(...)`, para o
+   * ticker acordar. Não use junto com `frame()` no mesmo runtime (cada um avança o motor).
+   */
+  tickerEntry(onData: (data: AvatarRenderData) => void): Pick<AvatarEntryInput, "engine" | "apply">;
   dispose(): void;
 };
 
@@ -158,6 +166,10 @@ export function createAvatarRuntime(
     isSettled: () => engine.isSettled(),
     nextWakeMs: () => engine.nextWakeMs(),
     frameIntervalMs: () => engine.frameIntervalMs(),
+    tickerEntry: (onData) => ({
+      engine,
+      apply: (frame) => onData(toData(frame, projector)),
+    }),
     dispose() {
       disposed = true;
       engine.dispose();
