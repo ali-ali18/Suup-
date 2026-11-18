@@ -146,4 +146,38 @@ describe("scripted provider", () => {
     expect(err).toBeInstanceOf(ProviderError);
     expect(err.kind).toBe("aborted");
   });
+
+  it("picks the script of a case by the text of the conversation, with its own review counter", async () => {
+    const { provider } = await make({
+      cases: [
+        {
+          whenObjectiveContains: "capital",
+          agent: [{ text: "Brasília" }],
+          review: [{ text: "r1" }, { text: "r2" }],
+        },
+        { whenObjectiveContains: "bissexto", agent: [{ text: "366" }], review: [{ text: "x1" }] },
+      ],
+    });
+    const a = await run(provider, agentRequest([user("Qual a capital?")]));
+    expect(a.blocks).toEqual([{ type: "text", text: "Brasília" }]);
+    const b = await run(provider, agentRequest([user("Ano bissexto?")]));
+    expect(b.blocks).toEqual([{ type: "text", text: "366" }]);
+    const verdict = { toolChoice: { name: "verdict" } } as const;
+    const r1 = await run(provider, agentRequest([user("capital")], verdict));
+    const x1 = await run(provider, agentRequest([user("bissexto")], verdict));
+    const r2 = await run(provider, agentRequest([user("capital")], verdict));
+    expect([r1, x1, r2].map((r) => r.blocks)).toEqual([
+      [{ type: "text", text: "r1" }],
+      [{ type: "text", text: "x1" }],
+      [{ type: "text", text: "r2" }],
+    ]);
+    const none = await run(provider, agentRequest([user("outra coisa")])).catch((e) => e);
+    expect(none).toBeInstanceOf(ProviderError);
+    expect(none.message).toContain("nenhum caso do roteiro corresponde");
+  });
+
+  it("refuses a script with neither agent nor cases", async () => {
+    const bad = await make({ review: [{ text: "x" }] });
+    expect(() => loadScript(bad.scriptPath)).toThrow(/"agent" ou de "cases"/);
+  });
 });

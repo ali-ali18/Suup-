@@ -48,13 +48,37 @@ const stepSchema = z.strictObject({
 
 export type ScriptStep = z.infer<typeof stepSchema>;
 
-const scriptSchema = z.strictObject({
-  agent: z.array(stepSchema),
+const sectionsShape = {
   review: z.exactOptional(z.array(stepSchema)),
   compaction: z.exactOptional(z.array(stepSchema)),
+};
+
+/** One script per task, chosen by the objective (see `ScriptFile.cases`). */
+const caseSchema = z.strictObject({
+  /** The case applies to requests whose conversation contains this text (the objective). */
+  whenObjectiveContains: z.string().min(1),
+  agent: z.array(stepSchema),
+  ...sectionsShape,
 });
 
-export type ScriptFile = z.infer<typeof scriptSchema>;
+const scriptSchema = z
+  .strictObject({
+    agent: z.exactOptional(z.array(stepSchema)),
+    ...sectionsShape,
+    /**
+     * Several scripts in one file, for a provider that serves many tasks (the evaluation suite):
+     * the first case whose `whenObjectiveContains` appears in the conversation answers. The
+     * top-level `agent`, `review` and `compaction` are then ignored.
+     */
+    cases: z.exactOptional(z.array(caseSchema).min(1)),
+  })
+  .refine((file) => file.agent !== undefined || file.cases !== undefined, {
+    message: 'o roteiro precisa de "agent" ou de "cases"',
+  });
+
+export type ScriptCase = z.infer<typeof caseSchema>;
+/** `agent` is `[]` for a file that only has `cases`. */
+export type ScriptFile = Omit<z.infer<typeof scriptSchema>, "agent"> & { agent: ScriptStep[] };
 
 /** Reads and validates a script. A bare array is the `agent` list. Throws a plain `Error`. */
 export function loadScript(path: string): ScriptFile {
@@ -71,7 +95,7 @@ export function loadScript(path: string): ScriptFile {
       .join("; ");
     throw new Error(`roteiro inválido em ${path}: ${issues}`);
   }
-  return parsed.data;
+  return { ...parsed.data, agent: parsed.data.agent ?? [] };
 }
 
 export interface ScriptedProviderOptions {
@@ -82,6 +106,13 @@ export interface ScriptedProviderOptions {
 }
 
 type Section = "agent" | "review" | "compaction";
+
+/** The text of the whole conversation, to find the case a request belongs to. */
+function conversationText(req: GenerateRequest): string {
+  return req.messages
+    .flatMap((m) => m.blocks.flatMap((b) => (b.type === "text" ? [b.text] : [])))
+    .join("\n");
+}
 
 /**
  * Which section of the script a request belongs to: the reviewer forces the `verdict` tool, the
@@ -104,12 +135,16 @@ function sectionOf(req: GenerateRequest): Section {
  * - `review` and `compaction`: consumed in order within the process; the last step repeats when
  *   the list runs out.
  *
+ * A file with `cases` holds one such script per task: the case whose `whenObjectiveContains` is in
+ * the conversation answers (the objective is in the first message and in the reviewer's request).
+ * A request that matches no case fails the call.
+ *
  * Running past the end of `agent` fails the call (non-retryable), which makes a script that is too
  * short show up as a provider failure instead of hanging.
  */
 export function createScriptedProvider(options: ScriptedProviderOptions): Provider {
   let script: ScriptFile | undefined;
-  const consumed = { review: 0, compaction: 0 };
+  const consumed = new Map<string, number>();
   const fakeOptions = {
     id: options.id,
     ...(options.textChunkSize === undefined ? {} : { textChunkSize: options.textChunkSize }),
@@ -131,12 +166,27 @@ export function createScriptedProvider(options: ScriptedProviderOptions): Provid
       try {
         const file = load();
         section = sectionOf(req);
+        let key = "";
+        let sections: Pick<ScriptFile, "agent" | "review" | "compaction"> = file;
+        if (file.cases !== undefined) {
+          const text = conversationText(req);
+          const found = file.cases.findIndex((c) => text.includes(c.whenObjectiveContains));
+          const chosen = file.cases[found];
+          if (chosen === undefined) {
+            throw new Error(
+              `nenhum caso do roteiro corresponde a este pedido (casos: ${file.cases.map((c) => JSON.stringify(c.whenObjectiveContains)).join(", ")})`,
+            );
+          }
+          key = `c${found}:`;
+          sections = chosen;
+        }
         if (section === "agent") {
           index = req.messages.filter((m) => m.role === "assistant").length;
-          step = file.agent[index];
+          step = sections.agent[index];
         } else {
-          const list = file[section] ?? [];
-          index = consumed[section]++;
+          const list = sections[section] ?? [];
+          index = consumed.get(`${key}${section}`) ?? 0;
+          consumed.set(`${key}${section}`, index + 1);
           step = list[Math.min(index, list.length - 1)];
         }
       } catch (error) {

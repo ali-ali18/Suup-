@@ -122,4 +122,5 @@ O arquivo de roteiro (`scriptPath`) é JSON:
 - **`review`** e **`compaction`**: consumidos em ordem dentro do processo; o último passo se repete quando a lista acaba.
 - Passar do fim de `agent` faz a chamada falhar (origem `provider`), em vez de travar.
 - Um arquivo que é só uma lista vale como `agent`.
+- **`cases`**: em vez de `agent`/`review`/`compaction` no topo, uma lista de casos `{ "whenObjectiveContains": "texto", "agent": [...], "review": [...] }`. O primeiro caso cujo texto aparece na conversa (o objetivo está na primeira mensagem e no pedido do revisor) responde, cada um com seus próprios passos e contadores. Serve para um mesmo "modelo" de teste responder a várias tarefas, como na avaliação ([AVALIACAO.md](AVALIACAO.md)); um pedido que não casa com nenhum caso falha a chamada.
 - O arquivo é lido na primeira chamada: um roteiro ausente ou inválido aparece como falha da execução, e `suup doctor` o confere.

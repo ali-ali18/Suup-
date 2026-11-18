@@ -2,6 +2,7 @@ import { GLOBAL_OPTIONS, type OptionSpec, parseCommandArgs } from "./args.js";
 import { botArchive, botCreate, botList, botShow } from "./commands/bot.js";
 import { dbMigrate } from "./commands/db.js";
 import { doctorCommand } from "./commands/doctor.js";
+import { evalCommand, evalHistory, evalList } from "./commands/eval.js";
 import { inspectCommand } from "./commands/inspect.js";
 import { sayCommand, stopCommand } from "./commands/messages.js";
 import { replayCommand } from "./commands/replay.js";
@@ -30,6 +31,9 @@ export const COMMANDS: readonly CommandSpec[] = [
   inspectCommand,
   replayCommand,
   resendCommand,
+  evalCommand,
+  evalList,
+  evalHistory,
 ];
 
 const GROUPS: Record<string, string> = {

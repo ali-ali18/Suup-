@@ -79,7 +79,7 @@ pnpm suup run "Crie o arquivo ola.txt com a frase Olá, mundo!" --bot ajudante \
   --criterion "o arquivo ola.txt existe e contém a frase"
 ```
 
-`pnpm suup` compila o que for preciso e roda a CLI (`pnpm suup <comando>`; a ajuda de cada um está em `pnpm suup <comando> --help`). Durante uma execução, o que você digitar vai ao bot como mensagem; Ctrl+C uma vez pausa no próximo ponto seguro (retome com `suup resume`), duas vezes aborta. Depois: `suup runs`, `suup show <id>` e, para entender uma falha, o roteiro de [docs/DIAGNOSTICO.md](docs/DIAGNOSTICO.md) (`inspect`, `replay`, `resend`).
+`pnpm suup` compila o que for preciso e roda a CLI (`pnpm suup <comando>`; a ajuda de cada um está em `pnpm suup <comando> --help`). Durante uma execução, o que você digitar vai ao bot como mensagem; Ctrl+C uma vez pausa no próximo ponto seguro (retome com `suup resume`), duas vezes aborta. Depois: `suup runs`, `suup show <id>` e, para entender uma falha, o roteiro de [docs/DIAGNOSTICO.md](docs/DIAGNOSTICO.md) (`inspect`, `replay`, `resend`). Para medir o harness e os modelos com tarefas verificadas automaticamente (matriz por modelo, qualificação, histórico, controle de custo), há o `suup eval`, descrito em [docs/AVALIACAO.md](docs/AVALIACAO.md).
 
 **Sem chave de API:** `examples/demo/` tem uma configuração com um provedor roteirizado (`scripted`: um arquivo JSON responde no lugar do modelo) e sandbox local. Com o Postgres no ar e `DATABASE_URL` definida (o `.env` serve), a partir da raiz do repositório:
 

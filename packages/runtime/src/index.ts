@@ -28,6 +28,7 @@ export {
 export {
   createScriptedProvider,
   loadScript,
+  type ScriptCase,
   type ScriptedProviderOptions,
   type ScriptFile,
   type ScriptStep,

@@ -82,7 +82,7 @@ async function checkProviders(ctx: Ctx, live: boolean): Promise<Check[]> {
         checks[checks.length - 1] = {
           component: `Provedor ${entry.id}`,
           ok: true,
-          detail: `scripted (NÃO é um modelo de verdade): roteiro ${entry.scriptPath} lido, ${script.agent.length} passos do agente`,
+          detail: `scripted (NÃO é um modelo de verdade): roteiro ${entry.scriptPath} lido, ${script.cases === undefined ? `${script.agent.length} passos do agente` : `${script.cases.length} casos (um roteiro por tarefa)`}`,
         };
       } catch (error) {
         checks[checks.length - 1] = {

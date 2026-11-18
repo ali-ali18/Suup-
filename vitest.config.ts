@@ -15,10 +15,14 @@ export default defineConfig({
         replacement: src("core", "testing/store-contract.ts"),
       },
       { find: /^@suup\/(core|providers|tools|db|sandbox|runtime)$/, replacement: src("$1") },
+      {
+        find: /^@suup\/evals$/,
+        replacement: fileURLToPath(new URL("./evals/src/index.ts", import.meta.url)),
+      },
     ],
   },
   test: {
-    include: ["packages/**/*.test.ts", "apps/**/*.test.ts"],
+    include: ["packages/**/*.test.ts", "apps/**/*.test.ts", "evals/**/*.test.ts"],
     exclude: ["**/node_modules/**", "**/dist/**"],
   },
 });
