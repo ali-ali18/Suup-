@@ -20,6 +20,7 @@ export interface RunRow {
   id: string;
   bot_id: string;
   parent_run_id: string | null;
+  conversation_id: string | null;
   origin: RunOrigin;
   objective: string;
   acceptance_criteria: unknown;
@@ -46,6 +47,7 @@ export function mapRun(row: RunRow): Run {
     id: row.id,
     botId: row.bot_id,
     parentRunId: row.parent_run_id,
+    conversationId: row.conversation_id,
     origin: row.origin,
     objective: row.objective,
     acceptanceCriteria: acceptanceCriteriaSchema.parse(row.acceptance_criteria),
@@ -73,6 +75,8 @@ export function mapRun(row: RunRow): Run {
 export interface CreateRunInput {
   botId: string;
   parentRunId?: string;
+  /** The conversation this run belongs to (a run opened by a message). */
+  conversationId?: string;
   origin: RunOrigin;
   objective: string;
   acceptanceCriteria?: string[];
@@ -88,10 +92,11 @@ export async function createRun(db: Db, input: CreateRunInput): Promise<Run> {
   const criteria = acceptanceCriteriaSchema.parse(input.acceptanceCriteria ?? []);
   const plan = planSchema.parse(input.plan ?? []);
   const [row] = await db.sql<RunRow[]>`
-    insert into runs (bot_id, parent_run_id, origin, objective, acceptance_criteria, plan, trace_id)
+    insert into runs (bot_id, parent_run_id, conversation_id, origin, objective, acceptance_criteria, plan, trace_id)
     values (
       ${input.botId},
       ${input.parentRunId ?? null},
+      ${input.conversationId ?? null},
       ${origin},
       ${input.objective},
       ${db.sql.json(criteria)},
@@ -110,6 +115,7 @@ export async function getRun(db: Db, id: string): Promise<Run | null> {
 
 export interface ListRunsOptions {
   botId?: string;
+  conversationId?: string;
   status?: RunStatus;
   limit: number;
 }
@@ -121,6 +127,7 @@ export async function listRuns(db: Db, opts: ListRunsOptions): Promise<Run[]> {
   const rows = await sql<RunRow[]>`
     select * from runs
     where ${opts.botId !== undefined ? sql`bot_id = ${opts.botId}` : sql`true`}
+      and ${opts.conversationId !== undefined ? sql`conversation_id = ${opts.conversationId}` : sql`true`}
       and ${opts.status !== undefined ? sql`status = ${statusSchema.parse(opts.status)}` : sql`true`}
     order by created_at desc, id
     limit ${limit}`;

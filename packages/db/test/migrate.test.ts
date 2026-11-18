@@ -14,13 +14,21 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("migrate"), () => {
 
   it("applies pending migrations, records them, and is idempotent", async () => {
     const first = await migrate(ctx.db);
-    expect(first).toEqual(["0001_init.sql", "0002_inbox_and_model_origin.sql"]);
+    expect(first).toEqual([
+      "0001_init.sql",
+      "0002_inbox_and_model_origin.sql",
+      "0003_conversations_and_memory.sql",
+    ]);
 
     const second = await migrate(ctx.db);
     expect(second).toEqual([]);
 
     const rows = await ctx.db.sql`select name, checksum from schema_migrations`;
-    expect(rows.map((r) => r.name)).toEqual(["0001_init.sql", "0002_inbox_and_model_origin.sql"]);
+    expect(rows.map((r) => r.name)).toEqual([
+      "0001_init.sql",
+      "0002_inbox_and_model_origin.sql",
+      "0003_conversations_and_memory.sql",
+    ]);
     expect(rows[0]?.checksum).toMatch(/^[0-9a-f]{64}$/);
 
     const tables = await ctx.db.sql<{ table_name: string }[]>`
@@ -28,6 +36,10 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("migrate"), () => {
       where table_schema = ${ctx.schema} order by table_name`;
     expect(tables.map((t) => t.table_name)).toEqual([
       "bots",
+      "conversation_members",
+      "conversations",
+      "memories",
+      "messages",
       "run_events",
       "run_inbox",
       "runs",
@@ -64,6 +76,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("migrate"), () => {
     expect(names.map((n) => n.name).sort()).toEqual([
       "0001_init.sql",
       "0002_inbox_and_model_origin.sql",
+      "0003_conversations_and_memory.sql",
       "0900_ok.sql",
     ]);
     const [t] = await ctx.db.sql<{ ok: string | null; rolled: string | null }[]>`
@@ -76,9 +89,13 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("migrate"), () => {
     const fresh = await ctx.db.sql`select 1`; // keep pool warm
     expect(fresh).toHaveLength(1);
     await ctx.db
-      .sql`drop table schema_migrations, run_inbox, run_events, runs, bots, extra_ok cascade`;
+      .sql`drop table schema_migrations, memories, messages, conversation_members, conversations, run_inbox, run_events, runs, bots, extra_ok cascade`;
     await ctx.db.sql`drop function set_updated_at(), run_events_append_only()`;
     const results = await Promise.all([migrate(ctx.db), migrate(ctx.db), migrate(ctx.db)]);
-    expect(results.flat()).toEqual(["0001_init.sql", "0002_inbox_and_model_origin.sql"]);
+    expect(results.flat()).toEqual([
+      "0001_init.sql",
+      "0002_inbox_and_model_origin.sql",
+      "0003_conversations_and_memory.sql",
+    ]);
   });
 });

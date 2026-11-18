@@ -46,6 +46,14 @@ export interface Bot {
   modelId: string;
   allowedTools: string[];
   limits: BotLimits;
+  /**
+   * Always present on bots read through this package. Declared optional only so the code that
+   * builds `Bot`/`Run` values by hand (fixtures in other packages) keeps compiling; tighten it
+   * once those are updated.
+   * Opaque reference (the app decides how to read it: emoji, file id, URL, ...). */
+  avatar?: string | null;
+  /** The "main" bot: receives messages when none is chosen. At most one active bot has it. */
+  isDefault?: boolean;
   createdAt: Date;
   updatedAt: Date;
   archivedAt: Date | null;
@@ -55,6 +63,8 @@ export interface Run {
   id: string;
   botId: string;
   parentRunId: string | null;
+  /** The conversation whose message opened this run; `null` for routine/delegated runs. */
+  conversationId?: string | null;
   origin: RunOrigin;
   objective: string;
   acceptanceCriteria: string[];
