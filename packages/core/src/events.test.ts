@@ -65,7 +65,7 @@ const samples: RunEventData[] = [
     type: "status_changed",
     payload: { from: "running", to: "failed", failure: { origin: "limit", detail: "d" } },
   },
-  { type: "compacted", payload: { summary: "s", droppedEvents: 3 } },
+  { type: "compacted", payload: { summary: "s", uptoSeq: 7, droppedMessages: 3 } },
 ];
 
 describe("parseRunEvent", () => {
@@ -79,7 +79,9 @@ describe("parseRunEvent", () => {
 
   it("rejects a bad payload", () => {
     expect(() => parseRunEvent("tool_call", { callId: 1 })).toThrow();
-    expect(() => parseRunEvent("compacted", { summary: "s", droppedEvents: -1 })).toThrow();
+    expect(() =>
+      parseRunEvent("compacted", { summary: "s", uptoSeq: 1, droppedMessages: -1 }),
+    ).toThrow();
     expect(() => parseRunEvent("status_changed", { from: "x", to: "done" })).toThrow();
   });
 

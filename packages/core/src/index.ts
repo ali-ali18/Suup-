@@ -9,6 +9,7 @@ export {
   runEventSchema,
   toolOutcomeSchema,
 } from "./events.js";
+export * from "./loop/index.js";
 export {
   type Block,
   blockSchema,

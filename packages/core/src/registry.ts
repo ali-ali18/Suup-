@@ -44,6 +44,13 @@ export interface InvokeOptions {
   ): Promise<BeforeExecuteResult>;
   /** Overrides the registry default for this call. */
   maxOutputChars?: number;
+  /**
+   * The id of the model's tool call. Names the spill file of a truncated output
+   * (`.suup/outputs/<runId>/<callId>-<tool>.txt`), so a resumed run can never overwrite an earlier
+   * file. Without it the registry falls back to an in-memory counter, which restarts with the
+   * process.
+   */
+  callId?: string;
 }
 
 export interface ToolRegistryOptions {
@@ -185,7 +192,7 @@ export class ToolRegistry {
     }
 
     const maxChars = opts.maxOutputChars ?? this.#maxOutputChars;
-    const clipped = await this.#truncate(raw.content, name, ctx, maxChars);
+    const clipped = await this.#truncate(raw.content, name, ctx, maxChars, opts.callId);
     const content = raw.untrusted === true ? wrapUntrusted(name, clipped.content) : clipped.content;
     const output: ToolOutput = { content };
     if (raw.isError === true) output.isError = true;
@@ -202,12 +209,19 @@ export class ToolRegistry {
     toolName: string,
     ctx: ToolContext,
     maxChars: number,
+    callId: string | undefined,
   ): Promise<{ content: string; truncated: boolean; savedTo?: string }> {
     if (content.length <= maxChars) return { content, truncated: false };
 
-    const n = (this.#outputCounters.get(ctx.runId) ?? 0) + 1;
-    this.#outputCounters.set(ctx.runId, n);
-    const path = `.suup/outputs/${ctx.runId.replace(/[^A-Za-z0-9_-]/g, "_")}/${n}-${toolName}.txt`;
+    let key: string;
+    if (callId !== undefined && callId !== "") {
+      key = sanitizePathPart(callId);
+    } else {
+      const n = (this.#outputCounters.get(ctx.runId) ?? 0) + 1;
+      this.#outputCounters.set(ctx.runId, n);
+      key = String(n);
+    }
+    const path = `.suup/outputs/${sanitizePathPart(ctx.runId)}/${key}-${toolName}.txt`;
 
     let saved = true;
     try {
@@ -306,6 +320,10 @@ function wrapUntrusted(toolName: string, content: string): string {
     neutralized,
     CLOSE_DELIMITER,
   ].join("\n");
+}
+
+function sanitizePathPart(value: string): string {
+  return value.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 100);
 }
 
 function abortedMessage(name: string): string {

@@ -11,7 +11,7 @@ export const planStepSchema = z.object({
 });
 export type PlanStep = z.infer<typeof planStepSchema>;
 
-const runStatusSchema = z.enum([
+export const runStatusSchema = z.enum([
   "queued",
   "running",
   "waiting_approval",
@@ -20,8 +20,41 @@ const runStatusSchema = z.enum([
   "failed",
   "cancelled",
 ]);
+export type RunStatus = z.infer<typeof runStatusSchema>;
 
-const failureOriginSchema = z.enum(["provider", "tool", "harness", "limit", "approval", "user"]);
+/**
+ * Where a failed run went wrong (section 4.13 of the plan): `provider` the infrastructure or API
+ * failed, `model` the model misbehaved (refused, kept stopping without finishing, looped), `tool`
+ * a tool failed, `harness` our own bug or a broken invariant, `limit` a configured limit was hit,
+ * `approval` an approval was denied, `user` the user ended it.
+ */
+export const FAILURE_ORIGINS = [
+  "provider",
+  "model",
+  "tool",
+  "harness",
+  "limit",
+  "approval",
+  "user",
+] as const;
+export const failureOriginSchema = z.enum(FAILURE_ORIGINS);
+export type FailureOrigin = z.infer<typeof failureOriginSchema>;
+
+/** What a finished run hands back. `evidence` is present when it ended through `finish`. */
+export const runResultSchema = z.object({
+  summary: z.string(),
+  evidence: z.exactOptional(z.array(z.object({ criterion: z.string(), evidence: z.string() }))),
+});
+export type RunResult = z.infer<typeof runResultSchema>;
+
+/**
+ * Which call a model event belongs to. The agent's own turns (the default) build the
+ * conversation; `review` and `compaction` calls are recorded in full for auditing but never
+ * become part of it.
+ */
+export const MODEL_CALL_PURPOSES = ["agent", "review", "compaction"] as const;
+export const modelCallPurposeSchema = z.enum(MODEL_CALL_PURPOSES);
+export type ModelCallPurpose = z.infer<typeof modelCallPurposeSchema>;
 
 export const toolOutcomeSchema = z.enum(TOOL_OUTCOMES);
 
@@ -50,6 +83,7 @@ export const runEventSchema = z.discriminatedUnion("type", [
       tools: z.array(toolSpecSchema),
       maxOutputTokens: z.number().int().positive(),
       temperature: z.exactOptional(z.number()),
+      purpose: z.exactOptional(modelCallPurposeSchema),
     }),
   }),
   z.object({
@@ -60,6 +94,7 @@ export const runEventSchema = z.discriminatedUnion("type", [
       usage: usageSchema,
       modelVersion: z.string(),
       durationMs: z.number().nonnegative(),
+      purpose: z.exactOptional(modelCallPurposeSchema),
     }),
   }),
   z.object({
@@ -70,6 +105,7 @@ export const runEventSchema = z.discriminatedUnion("type", [
       retryable: z.boolean(),
       /** 1-based attempt number at the loop level. */
       attempt: z.number().int().positive(),
+      purpose: z.exactOptional(modelCallPurposeSchema),
     }),
   }),
   z.object({
@@ -104,20 +140,38 @@ export const runEventSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("finish_attempt"),
     payload: z.object({
+      /** The `finish` call this attempt answers. */
+      callId: z.exactOptional(z.string()),
       summary: z.string(),
       /** Evidence per acceptance criterion. */
       evidence: z.array(z.object({ criterion: z.string(), evidence: z.string() })),
       accepted: z.boolean(),
       rejectionReasons: z.array(z.string()),
+      /** Not accepted, and the decision was handed to the user (the review kept rejecting). */
+      handedToUser: z.exactOptional(z.boolean()),
     }),
   }),
   z.object({
     type: z.literal("review"),
-    payload: z.object({ verdict: z.enum(["approve", "reject"]), notes: z.string() }),
+    payload: z.object({
+      verdict: z.enum(["approve", "reject"]),
+      notes: z.string(),
+      /**
+       * Set when the review did not really happen (reviewer unreachable, answer malformed): the
+       * verdict is then an approval by default and this says why.
+       */
+      warning: z.exactOptional(z.string()),
+    }),
   }),
   z.object({
     type: z.literal("escalated"),
-    payload: z.object({ question: z.string() }),
+    payload: z.object({
+      question: z.string(),
+      /** The `escalate` call this question came from. Absent for a review tie-break. */
+      callId: z.exactOptional(z.string()),
+      /** `review_tie_break`: the reviewer rejected too often and a human must decide. */
+      reason: z.exactOptional(z.enum(["review_tie_break"])),
+    }),
   }),
   z.object({
     type: z.literal("status_changed"),
@@ -125,11 +179,20 @@ export const runEventSchema = z.discriminatedUnion("type", [
       from: runStatusSchema,
       to: runStatusSchema,
       failure: z.exactOptional(z.object({ origin: failureOriginSchema, detail: z.string() })),
+      result: z.exactOptional(runResultSchema),
     }),
   }),
   z.object({
     type: z.literal("compacted"),
-    payload: z.object({ summary: z.string(), droppedEvents: z.number().int().nonnegative() }),
+    payload: z.object({
+      /** Replaces every message built from events up to and including `uptoSeq`. */
+      summary: z.string(),
+      uptoSeq: z.number().int().nonnegative(),
+      droppedMessages: z.number().int().nonnegative(),
+      /** The summarizing call failed and the oldest messages were dropped with a stub note. */
+      degraded: z.exactOptional(z.boolean()),
+      warning: z.exactOptional(z.string()),
+    }),
   }),
 ]);
 

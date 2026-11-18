@@ -277,6 +277,18 @@ describe("output truncation", () => {
     expect(second.savedTo).toBe(".suup/outputs/run-1/2-big.txt");
   });
 
+  it("names the spill file after the call id, so a resumed run cannot overwrite it", async () => {
+    const registry = new ToolRegistry({ maxOutputChars: 100 }).register(big);
+    const ctx = makeCtx();
+    const first = await registry.invoke("big", {}, ctx, { callId: "toolu_01/abc" });
+    expect(first.savedTo).toBe(".suup/outputs/run-1/toolu_01_abc-big.txt");
+    // A second registry (a restarted process) with the same counter state still picks other names.
+    const restarted = new ToolRegistry({ maxOutputChars: 100 }).register(big);
+    const second = await restarted.invoke("big", {}, ctx, { callId: "toolu_02" });
+    expect(second.savedTo).toBe(".suup/outputs/run-1/toolu_02-big.txt");
+    expect(await ctx.executor.readFile(first.savedTo as string)).toHaveLength(1000);
+  });
+
   it("truncates and says so when saving fails", async () => {
     const registry = new ToolRegistry({ maxOutputChars: 100 }).register(big);
     const ctx = makeCtx();
