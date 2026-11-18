@@ -228,6 +228,45 @@ describe("anthropic adapter", () => {
     expect(result.stopReason).toBe("tool_calls");
   });
 
+  it("drops a tool block that never got its stop event when cut by max_tokens", async () => {
+    const body =
+      start() +
+      sseEvent("content_block_start", {
+        type: "content_block_start",
+        index: 0,
+        content_block: { type: "tool_use", id: "t1", name: "now", input: {} },
+      }) +
+      sseEvent("content_block_delta", {
+        type: "content_block_delta",
+        index: 0,
+        delta: { type: "input_json_delta", partial_json: '{"a":' },
+      }) +
+      end("max_tokens");
+    const { provider } = make([{ body }]);
+    const result = await run(provider, baseRequest());
+    expect(result.blocks).toEqual([]);
+    expect(result.stopReason).toBe("max_tokens");
+  });
+
+  it("still fails when the truncated call is followed by another block", async () => {
+    const broken =
+      sseEvent("content_block_start", {
+        type: "content_block_start",
+        index: 0,
+        content_block: { type: "tool_use", id: "t1", name: "now", input: {} },
+      }) +
+      sseEvent("content_block_delta", {
+        type: "content_block_delta",
+        index: 0,
+        delta: { type: "input_json_delta", partial_json: '{"a":' },
+      }) +
+      sseEvent("content_block_stop", { type: "content_block_stop", index: 0 });
+    const { provider } = make([{ body: start() + broken + textBlock("x", 1) + end("max_tokens") }]);
+    const { error } = await drain(provider, baseRequest());
+    expect(error).toMatchObject({ kind: "unknown", retryable: false });
+    expect(error?.message).toContain("now");
+  });
+
   it("sums input, cache-read and cache-write tokens and keeps output cumulative", async () => {
     const body =
       start({

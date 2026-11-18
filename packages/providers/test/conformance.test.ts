@@ -18,6 +18,7 @@ import {
   type ErrorCase,
   expectedResult,
   fixtures,
+  SERVED_MODEL,
   scenarios,
   type WireFixture,
 } from "./wire-fixtures.js";
@@ -171,6 +172,41 @@ describe.each(fixtures)("conformance: $name", (fx) => {
       const error = await expectProviderError(run(provider, baseRequest()));
       expect(error).toMatchObject({ kind: "network", retryable: true });
       expect(error.message).toContain("timed out");
+    });
+
+    it("drops a tool call cut off by max tokens and keeps the text and complete calls", async () => {
+      const { provider, script } = make([
+        { body: fx.renderTruncated({ withText: true, withComplete: true }) },
+      ]);
+      const { events, error } = await drain(provider, baseRequest());
+      expect(error).toBeUndefined();
+      expect(events.filter((e) => e.type === "tool_call")).toEqual([
+        { type: "tool_call", id: "call_1", name: "get_weather", args: { city: "Lisbon" } },
+      ]);
+      const result = await run(
+        make([{ body: fx.renderTruncated({ withText: true, withComplete: true }) }]).provider,
+        baseRequest(),
+      );
+      expect(result).toEqual({
+        blocks: [
+          { type: "text", text: "Let me check." },
+          { type: "tool_call", id: "call_1", name: "get_weather", args: { city: "Lisbon" } },
+        ],
+        stopReason: "max_tokens",
+        usage: { inputTokens: 20, outputTokens: 256 },
+        modelVersion: SERVED_MODEL,
+      });
+      expect(script.calls).toHaveLength(1);
+    });
+
+    it("finishes with max_tokens when the only call is cut off", async () => {
+      const { provider } = make([
+        { body: fx.renderTruncated({ withText: false, withComplete: false }) },
+      ]);
+      const result = await run(provider, baseRequest());
+      expect(result.blocks).toEqual([]);
+      expect(result.stopReason).toBe("max_tokens");
+      expect(result.usage).toEqual({ inputTokens: 20, outputTokens: 256 });
     });
 
     it("fails with unknown (not retryable) and names the tool when arguments are not JSON", async () => {

@@ -278,10 +278,10 @@ export async function* parseChatStream(
   let callsEmitted = 0;
   let usage: { input: number; output: number; cached?: number } | undefined;
 
-  const flushToolCalls = function* (): Generator<ProviderEvent> {
+  const flushToolCalls = function* (reason: StopReason): Generator<ProviderEvent> {
     const ordered = [...slots.entries()].sort((a, b) => a[0] - b[0]);
     slots.clear();
-    for (const [index, slot] of ordered) {
+    for (const [position, [index, slot]] of ordered.entries()) {
       if (slot.name === "") {
         throw new ProviderError("unknown", "chat-completions: tool call without a function name", {
           retryable: false,
@@ -292,6 +292,8 @@ export async function* parseChatStream(
         try {
           args = JSON.parse(slot.args) as JsonValue;
         } catch {
+          // Cut off by the output limit mid-call: drop the incomplete last call silently.
+          if (reason === "max_tokens" && position === ordered.length - 1) continue;
           throw new ProviderError(
             "unknown",
             `chat-completions: tool call "${slot.name}" has invalid JSON arguments: ${truncate(slot.args, 200)}`,
@@ -388,13 +390,13 @@ export async function* parseChatStream(
     if (reason !== undefined && reason !== "" && !finished) {
       finished = true;
       finishReason = reason;
-      yield* flushToolCalls();
+      yield* flushToolCalls(mapChatFinishReason(reason));
     }
   }
 
   if (!finished) {
     if (!sawDone) throw prematureEnd(VENDOR, "no finish_reason and no [DONE]");
-    yield* flushToolCalls();
+    yield* flushToolCalls("other");
   }
 
   yield {

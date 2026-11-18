@@ -319,20 +319,33 @@ describe("openai-compatible adapter", () => {
       expect((await run(provider, baseRequest())).modelVersion).toBe("model-x");
     });
 
-    it("rejects malformed arguments for a truncated call and names the tool", async () => {
+    it("rejects malformed arguments for a call under a normal stop and names the tool", async () => {
       const body =
         chunk({
           tool_calls: [
             { index: 0, id: "c", function: { name: "get_weather", arguments: '{"city":' } },
           ],
         }) +
-        chunk({}, "length") +
+        chunk({}, "stop") +
         done;
       const { provider } = make([{ body }]);
       const { events, error } = await drain(provider, baseRequest());
       expect(error?.message).toContain("get_weather");
       expect(events).toEqual([]);
     });
+  });
+
+  it("still fails when the truncated call under max_tokens is not the last one", async () => {
+    const body =
+      chunk({
+        tool_calls: [{ index: 0, id: "a", function: { name: "now", arguments: '{"x":' } }],
+      }) +
+      chunk({ tool_calls: [{ index: 1, id: "b", function: { name: "now", arguments: "{}" } }] }) +
+      chunk({}, "length") +
+      done;
+    const { provider } = make([{ body }]);
+    const { error } = await drain(provider, baseRequest());
+    expect(error).toMatchObject({ kind: "unknown", retryable: false });
   });
 
   describe("errors", () => {

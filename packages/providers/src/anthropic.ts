@@ -262,6 +262,9 @@ export async function* parseAnthropicStream(
   let model: string | undefined;
   let stopReason: string | undefined;
   let complete = false;
+  // An incomplete tool call is only an error unless the output limit cut it off; that is
+  // known once the stop reason arrives, so the error is held back until then.
+  let broken: ProviderError | undefined;
 
   const mergeUsage = (raw: unknown) => {
     const record = asRecord(raw);
@@ -289,6 +292,7 @@ export async function* parseAnthropicStream(
         break;
       }
       case "content_block_start": {
+        if (broken !== undefined) throw broken; // the broken call was not the last one
         const block = asRecord(data.content_block) ?? {};
         switch (block.type) {
           case "text": {
@@ -342,7 +346,14 @@ export async function* parseAnthropicStream(
         const state = blocks.get(index);
         blocks.delete(index);
         if (state?.kind === "tool") {
-          yield { type: "tool_call", id: state.id, name: state.name, args: toolArgs(state) };
+          let args: JsonValue | undefined;
+          try {
+            args = toolArgs(state);
+          } catch (error) {
+            if (!(error instanceof ProviderError)) throw error;
+            broken = error;
+          }
+          if (args !== undefined) yield { type: "tool_call", id: state.id, name: state.name, args };
         } else if (state?.kind === "thinking") {
           yield {
             type: "provider_data",
@@ -380,6 +391,22 @@ export async function* parseAnthropicStream(
 
   if (!complete) throw prematureEnd(VENDOR, "no message_stop event");
 
+  // Tool blocks that never got their content_block_stop (cut off by the output limit).
+  for (const state of blocks.values()) {
+    if (state.kind !== "tool") continue;
+    if (broken !== undefined) throw broken;
+    try {
+      const args = toolArgs(state);
+      yield { type: "tool_call", id: state.id, name: state.name, args };
+    } catch (error) {
+      if (!(error instanceof ProviderError)) throw error;
+      broken = error;
+    }
+  }
+  const mapped = mapAnthropicStopReason(stopReason);
+  // Cut off by the output limit mid-call: drop the incomplete call, keep everything else.
+  if (broken !== undefined && mapped !== "max_tokens") throw broken;
+
   const cacheRead = usage.cache_read_input_tokens;
   yield {
     type: "usage",
@@ -392,7 +419,7 @@ export async function* parseAnthropicStream(
   };
   yield {
     type: "done",
-    stopReason: mapAnthropicStopReason(stopReason),
+    stopReason: mapped,
     modelVersion: model ?? requestedModel,
   };
 }

@@ -62,6 +62,12 @@ export interface WireFixture {
   render(r: AbstractResponse): string;
   /** A stream that carries one tool call whose arguments are not valid JSON. */
   renderBrokenToolArgs(name: string): string;
+  /**
+   * Text "Let me check.", a complete call (call_1, get_weather {city:"Lisbon"}) and, when
+   * `withText`/`withComplete` are set, a last call whose arguments are cut off, then a
+   * max-tokens stop (usage 20 in / 256 out).
+   */
+  renderTruncated(opts: { withText: boolean; withComplete: boolean }): string;
   /** A stream that has produced the text "Hel" and then simply stops (no terminal event). */
   renderTextPrefix(): string;
   /** A stream that has produced no content yet (only the opening event) and stops. */
@@ -220,6 +226,38 @@ export const anthropicFixture: WireFixture = {
       usage: { output_tokens: 2 },
     }) +
     sseEvent("message_stop", { type: "message_stop" }),
+  renderTruncated({ withText, withComplete }) {
+    let out = anthropicStart(SERVED_MODEL, { input_tokens: 20, output_tokens: 1 });
+    let index = 0;
+    if (withText) {
+      out +=
+        sseEvent("content_block_start", {
+          type: "content_block_start",
+          index,
+          content_block: { type: "text", text: "" },
+        }) +
+        sseEvent("content_block_delta", {
+          type: "content_block_delta",
+          index,
+          delta: { type: "text_delta", text: "Let me check." },
+        }) +
+        sseEvent("content_block_stop", { type: "content_block_stop", index });
+      index++;
+    }
+    if (withComplete) {
+      out += anthropicToolBlock(index++, "call_1", "get_weather", ['{"city":', '"Lisbon"}']);
+    }
+    out += anthropicToolBlock(index, "call_2", "get_weather", ['{"city": "Po']);
+    return (
+      out +
+      sseEvent("message_delta", {
+        type: "message_delta",
+        delta: { stop_reason: "max_tokens" },
+        usage: { output_tokens: 256 },
+      }) +
+      sseEvent("message_stop", { type: "message_stop" })
+    );
+  },
   renderTextPrefix: () =>
     anthropicStart(SERVED_MODEL, { input_tokens: 1, output_tokens: 1 }) +
     sseEvent("content_block_start", {
@@ -398,6 +436,40 @@ export const openaiFixture: WireFixture = {
     chatChunk(SERVED_MODEL, { tool_calls: [{ index: 0, function: { arguments: "bon" } }] }) +
     chatChunk(SERVED_MODEL, {}, "tool_calls") +
     sseEvent(undefined, "[DONE]"),
+  renderTruncated({ withText, withComplete }) {
+    let out = chatChunk(SERVED_MODEL, { role: "assistant", content: "" });
+    if (withText) out += chatChunk(SERVED_MODEL, { content: "Let me check." });
+    let index = 0;
+    if (withComplete) {
+      out += chatChunk(SERVED_MODEL, {
+        tool_calls: [
+          {
+            index: index++,
+            id: "call_1",
+            type: "function",
+            function: { name: "get_weather", arguments: '{"city":"Lisbon"}' },
+          },
+        ],
+      });
+    }
+    out += chatChunk(SERVED_MODEL, {
+      tool_calls: [
+        {
+          index,
+          id: "call_2",
+          type: "function",
+          function: { name: "get_weather", arguments: '{"city": "Po' },
+        },
+      ],
+    });
+    out += chatChunk(SERVED_MODEL, {}, "length");
+    out += sseEvent(undefined, {
+      model: SERVED_MODEL,
+      choices: [],
+      usage: { prompt_tokens: 20, completion_tokens: 256 },
+    });
+    return out + sseEvent(undefined, "[DONE]");
+  },
   renderTextPrefix: () =>
     chatChunk(SERVED_MODEL, { role: "assistant", content: "" }) +
     chatChunk(SERVED_MODEL, { content: "Hel" }),
