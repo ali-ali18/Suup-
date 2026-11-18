@@ -30,8 +30,10 @@ function deferred<T = void>() {
 interface World {
   clock: FakeClock;
   store: InMemoryRunStore;
-  queue: InMemoryRunQueue;
+  queue: RunQueue;
   ends: RunEnd[];
+  /** Runs the worker gave back to the queue. */
+  queueReleases: string[];
   errors: { error: unknown; context: string }[];
   /** Providers by run id; a run without one gets a script that finishes at once. */
   providers: Map<string, Provider>;
@@ -46,7 +48,17 @@ interface World {
 function makeWorld(): World {
   const clock = new FakeClock();
   const store = new InMemoryRunStore({ clock: () => new Date(clock.now()) });
-  const queue = new InMemoryRunQueue(store);
+  const memoryQueue = new InMemoryRunQueue(store);
+  const queueReleases: string[] = [];
+  const queue: RunQueue = {
+    claimNext: (id) => memoryQueue.claimNext(id),
+    release: async (id) => {
+      queueReleases.push(id);
+      return memoryQueue.release(id);
+    },
+    requeueStale: (ms) => memoryQueue.requeueStale(ms),
+    fail: (id, f) => memoryQueue.fail(id, f),
+  };
   const registry = new ToolRegistry();
   for (const tool of testTools()) registry.register(tool);
   const executor = new MemoryExecutor();
@@ -58,6 +70,7 @@ function makeWorld(): World {
     store,
     queue,
     ends,
+    queueReleases,
     errors,
     providers,
     newRun(provider, objective = "Do the task.") {
@@ -635,5 +648,142 @@ describe("Worker: graceful stop", () => {
     expect(() => w.worker("w1", { leaseRenewMs: 1000, staleAfterMs: 1000 })).toThrow(
       /staleAfterMs/,
     );
+  });
+});
+
+/** A store whose `setStatus` runs `after` once the change is applied, before the loop goes on. */
+function afterSetStatus(
+  store: RunStore,
+  after: (change: Parameters<RunStore["setStatus"]>[1]) => Promise<void> | void,
+): RunStore {
+  return {
+    getRun: (id) => store.getRun(id),
+    listEvents: (id) => store.listEvents(id),
+    peekInbox: (id) => store.peekInbox(id),
+    appendEvent: (id, e) => store.appendEvent(id, e),
+    updatePlan: (id, p) => store.updatePlan(id, p),
+    addUsage: (id, u) => store.addUsage(id, u),
+    ackInbox: (id, ids) => store.ackInbox(id, ids),
+    heartbeat: (id) => store.heartbeat(id),
+    setStatus: async (id, change) => {
+      const applied = await store.setStatus(id, change);
+      await after(change);
+      return applied;
+    },
+  };
+}
+
+describe("Worker: the lease timer racing the end of a run", () => {
+  it("a heartbeat that fails because the run just finished does not turn it into lease_lost", async () => {
+    const w = makeWorld();
+    const runId = w.newRun(new FakeProvider([say("Done.")]));
+    // The renewal tick lands after the terminal status was written (which released the lease) and
+    // before the loop returns to the worker.
+    const worker = w.worker("w1", {}, (store) =>
+      afterSetStatus(store, async (change) => {
+        if (change.to === "done") await w.clock.advance(1000);
+      }),
+    );
+    worker.start();
+    await w.clock.flush(100);
+    expect(await statusOf(w, runId)).toBe("done");
+    expect(w.ends).toEqual([
+      expect.objectContaining({ runId, outcome: "settled", status: "done" }),
+    ]);
+    expect(w.errors).toEqual([]);
+    expect(w.store.leaseHolder(runId)).toBeNull();
+    await worker.stop();
+  });
+
+  it("same for a run that pauses for the user while an answer is already waiting (the pause requeues it)", async () => {
+    const w = makeWorld();
+    let post: (() => void) | undefined;
+    const runId = w.newRun(
+      new FakeProvider([
+        async () => {
+          post?.();
+          return use(call("c1", "escalate", { question: "Which?" }));
+        },
+        say("Done."),
+      ]),
+    );
+    post = () => w.store.postInbox(runId, { kind: "user_message", text: "Blue." });
+    const worker = w.worker("w1", {}, (store) =>
+      afterSetStatus(store, async (change) => {
+        if (change.to === "waiting_user") await w.clock.advance(1000);
+      }),
+    );
+    worker.start();
+    await w.clock.flush(100);
+    expect(w.ends[0]).toMatchObject({ runId, outcome: "settled", status: "waiting_user" });
+    expect(w.errors).toEqual([]);
+    // The run went back to the queue with its answer and finishes on the next claim.
+    await w.clock.advance(1000);
+    expect(await statusOf(w, runId)).toBe("done");
+    await worker.stop();
+  });
+
+  it("a lease lost mid-run is still reported as lease_lost, and the loop is stopped", async () => {
+    const w = makeWorld();
+    const runId = w.newRun(hangingAt(new FakeProvider([say("never")]), 0));
+    const worker = w.worker("w1");
+    worker.start();
+    await w.clock.flush(100);
+    w.store.releaseLease(runId, "w1");
+    w.store.claimNext("w2");
+    await w.clock.advance(1000);
+    expect(w.ends).toEqual([{ runId, outcome: "lease_lost" }]);
+    expect(w.queueReleases).toEqual([]);
+    await worker.stop();
+  });
+
+  it("a tick right after the run starts (lease valid) renews it and changes nothing", async () => {
+    const w = makeWorld();
+    const runId = w.newRun(new FakeProvider([say("Done.")]));
+    let ticked = false;
+    const worker = w.worker("w1", {}, (store) => ({
+      ...store,
+      getRun: async (id) => {
+        if (!ticked) {
+          ticked = true;
+          await w.clock.advance(1000);
+        }
+        return store.getRun(id);
+      },
+      listEvents: (id) => store.listEvents(id),
+      peekInbox: (id) => store.peekInbox(id),
+      appendEvent: (id, e) => store.appendEvent(id, e),
+      updatePlan: (id, p) => store.updatePlan(id, p),
+      addUsage: (id, u) => store.addUsage(id, u),
+      ackInbox: (id, ids) => store.ackInbox(id, ids),
+      heartbeat: (id) => store.heartbeat(id),
+      setStatus: (id, c) => store.setStatus(id, c),
+    }));
+    worker.start();
+    await w.clock.flush(100);
+    expect(await statusOf(w, runId)).toBe("done");
+    expect(w.ends).toEqual([expect.objectContaining({ outcome: "settled", status: "done" })]);
+    expect(w.errors).toEqual([]);
+    await worker.stop();
+  });
+
+  it("a stop that arrives just as the run writes its final status does not release a finished run", async () => {
+    const w = makeWorld();
+    const runId = w.newRun(new FakeProvider([say("Done.")]));
+    let stopping: Promise<void> | undefined;
+    const holder: { worker?: Worker } = {};
+    holder.worker = w.worker("w1", {}, (store) =>
+      afterSetStatus(store, (change) => {
+        if (change.to === "done") stopping = holder.worker?.stop({ graceMs: 0 });
+      }),
+    );
+    holder.worker.start();
+    await w.clock.flush(100);
+    await stopping;
+    expect(await statusOf(w, runId)).toBe("done");
+    expect(w.ends).toEqual([
+      expect.objectContaining({ runId, outcome: "settled", status: "done" }),
+    ]);
+    expect(w.queueReleases).toEqual([]);
   });
 });

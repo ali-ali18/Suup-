@@ -57,7 +57,7 @@ export const uniqueWorkerId = (): string => `worker-${randomUUID().slice(0, 8)}`
 /** Polls `check` until it is true; fails after `timeoutMs`. */
 export async function until(
   check: () => Promise<boolean> | boolean,
-  timeoutMs = 5000,
+  timeoutMs = 30_000,
   what = "condition",
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs;

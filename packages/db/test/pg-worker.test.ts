@@ -17,12 +17,15 @@ import { makeRun, uniqueWorkerId, until } from "./kit.js";
 /** Real clock, short intervals: the database is real, so time is too. */
 const FAST = {
   leaseRenewMs: 40,
-  staleAfterMs: 400,
+  // Generous against a slow runner: a worker that is merely slow (renewals 40ms apart, a stall of
+  // a second) must never look dead.
+  staleAfterMs: 2000,
   requeueEveryMs: 60,
   idleBackoff: { minMs: 10, maxMs: 40 },
 } as const;
 
-describe.skipIf(!DATABASE_URL)(dbSuiteName("Worker on PgRunQueue"), () => {
+// Every wait below is on a condition with a generous deadline, never on a fixed sleep.
+describe.skipIf(!DATABASE_URL)(dbSuiteName("Worker on PgRunQueue"), { timeout: 60_000 }, () => {
   const ctx = useIsolatedDb();
 
   const registry = new ToolRegistry();
@@ -97,9 +100,10 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("Worker on PgRunQueue"), () => {
       "all runs done",
     );
     expect(peak).toBe(2);
-    expect(kit.errors).toEqual([]);
+    await until(() => kit.ends.length >= 6, 30_000, "every run to be reported");
     await kit.stopAll();
-    expect(kit.ends.filter((e) => e.outcome === "settled")).toHaveLength(6);
+    expect(kit.errors).toEqual([]);
+    expect(kit.ends.map((e) => e.outcome)).toEqual(Array(6).fill("settled"));
   });
 
   it("a graceful stop mid-run hands the run back, and a second worker finishes it", async () => {
@@ -134,7 +138,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("Worker on PgRunQueue"), () => {
     const kit = build(providers);
     const worker = kit.make();
     worker.start();
-    await until(async () => (await statusOf(run.id)) === "done", 5000, "the stale run to finish");
+    await until(async () => (await statusOf(run.id)) === "done", 30_000, "the stale run to finish");
     expect((await getRun(ctx.db, run.id))?.startedAt).not.toBeNull();
     await kit.stopAll();
   });
@@ -147,7 +151,9 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("Worker on PgRunQueue"), () => {
         run.id,
         new FakeProvider([
           async () => {
-            await new Promise((r) => setTimeout(r, 1200)); // three times staleAfterMs
+            // Longer than the lease may go unrenewed: only the lease timer keeps the run alive.
+            const until0 = Date.now() + FAST.staleAfterMs * 1.5;
+            while (Date.now() < until0) await new Promise((r) => setTimeout(r, 20));
             return say("Finally.");
           },
         ]),
@@ -159,7 +165,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("Worker on PgRunQueue"), () => {
     a.start();
     await until(async () => (await getRun(ctx.db, run.id))?.status === "running");
     b.start();
-    await until(async () => (await statusOf(run.id)) === "done", 8000, "the long call to finish");
+    await until(async () => (await statusOf(run.id)) === "done", 30_000, "the long call to finish");
     // One worker ran it from start to end.
     expect(kit.ends.filter((e) => e.runId === run.id)).toHaveLength(1);
     expect(kit.ends[0]).toMatchObject({ outcome: "settled", status: "done" });
@@ -180,7 +186,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("Worker on PgRunQueue"), () => {
     const before = await eventTypes(run.id);
 
     await ctx.db.sql`update runs set locked_by = 'usurper' where id = ${run.id}`;
-    await until(() => kit.ends.some((e) => e.outcome === "lease_lost"), 5000, "lease_lost");
+    await until(() => kit.ends.some((e) => e.outcome === "lease_lost"), 30_000, "lease_lost");
     expect(await eventTypes(run.id)).toEqual(before);
     expect(await getRun(ctx.db, run.id)).toMatchObject({ status: "running", lockedBy: "usurper" });
 
@@ -217,11 +223,24 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("Worker on PgRunQueue"), () => {
       ],
     ]);
     const kit = build(providers);
-    const worker = kit.make();
+    const sweeps = { count: 0 };
+    const inner = new PgRunQueue(ctx.db);
+    const worker = kit.make({
+      queue: {
+        claimNext: (id) => inner.claimNext(id),
+        release: (id) => inner.release(id),
+        fail: (id, f) => inner.fail(id, f),
+        requeueStale: async (ms) => {
+          sweeps.count += 1;
+          return inner.requeueStale(ms);
+        },
+      },
+    });
     worker.start();
     await until(async () => (await statusOf(run.id)) === "waiting_user");
-    // Waiting is stable: nobody requeues it.
-    await new Promise((r) => setTimeout(r, 600));
+    // Waiting is stable: nobody requeues it. Wait for several sweeps to have happened, not for time.
+    const before = sweeps.count;
+    await until(() => sweeps.count >= before + 3, 30_000, "three stale sweeps");
     expect(await statusOf(run.id)).toBe("waiting_user");
 
     await postInbox(ctx.db, run.id, { kind: "user_message", text: "Blue." });

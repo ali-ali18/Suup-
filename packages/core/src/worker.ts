@@ -110,8 +110,13 @@ export interface WorkerOptions {
 interface ActiveRun {
   runId: string;
   abort: AbortController;
-  /** The lease is gone (or the run was claimed again by this worker): drop it silently. */
-  lost: boolean;
+  /**
+   * A lease renewal found the lease gone, or the run was claimed again by this very worker while
+   * this loop was still going (the loop is then a zombie and is aborted). Alone it proves nothing: a run that finishes (or
+   * pauses and is requeued) releases its own lease, so a tick landing between that write and the
+   * loop's return fails the same way. It is decided when the loop returns (see `#execute`).
+   */
+  leaseFailed: boolean;
   done: Promise<void>;
 }
 
@@ -269,7 +274,7 @@ export class Worker {
     if (previous !== undefined) {
       // The run was requeued as stale and claimed again by this very worker while the old loop
       // was still going. The old loop is a zombie: stop it before the new one starts.
-      previous.lost = true;
+      previous.leaseFailed = true;
       previous.abort.abort();
       await previous.done;
       if (this.#stopping) return this.#giveBack(runId);
@@ -277,7 +282,7 @@ export class Worker {
     const entry: ActiveRun = {
       runId,
       abort: new AbortController(),
-      lost: false,
+      leaseFailed: false,
       done: Promise.resolve(),
     };
     entry.done = this.#execute(entry).finally(() => {
@@ -303,15 +308,17 @@ export class Worker {
     let finished = false;
     let beating = false;
     const beat = () => {
-      if (finished || entry.lost || beating) return;
+      if (finished || entry.leaseFailed || beating) return;
       beating = true;
       deps.store
         .heartbeat(runId)
         .catch((error: unknown) => {
           if (finished) return;
           if (error instanceof LeaseLostError) {
-            // Someone else owns the run: stop the loop at once (it writes nothing more).
-            entry.lost = true;
+            // Maybe someone else owns the run: stop the loop at once (a loop that lost its lease
+            // writes nothing more). If the run was in fact just finishing, the loop returns its
+            // real status and `leaseFailed` is ignored.
+            entry.leaseFailed = true;
             entry.abort.abort();
           } else {
             // A hiccup: keep trying. If it lasts, the lease goes stale and the run is requeued.
@@ -333,14 +340,21 @@ export class Worker {
     } catch (error) {
       finished = true;
       timer.stop();
-      if (error instanceof LeaseLostError || entry.lost)
+      if (error instanceof LeaseLostError || entry.leaseFailed) {
         return this.#emit({ runId, outcome: "lease_lost" });
+      }
       return this.#finishFailed(entry, error);
     }
     finished = true;
     timer.stop();
 
-    if (entry.lost) return this.#emit({ runId, outcome: "lease_lost" });
+    // A loop that returns a status other than `running` completed its writes under the lease (a
+    // write after the lease was lost throws `LeaseLostError` instead), so a failed renewal that
+    // came with that status change must not relabel the run. Only an interrupted loop (`running`)
+    // with a failed renewal was really cut off.
+    if (status === "running" && entry.leaseFailed) {
+      return this.#emit({ runId, outcome: "lease_lost" });
+    }
     if (status === "running") {
       // Interrupted at a safe point: back to the queue, to be resumed from the log.
       await this.#giveBack(runId);
