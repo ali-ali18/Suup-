@@ -903,6 +903,73 @@ describe("runLoop: interruption", () => {
   });
 });
 
+describe("runLoop: soft stop (pauseSignal)", () => {
+  it("finishes the whole turn, tools included, and then returns running without another model call", async () => {
+    const pause = new AbortController();
+    const rig = createRig({
+      script: [
+        () => {
+          // Raised while the model call is in flight: the call is not cancelled.
+          pause.abort();
+          return use(call("c1", "echo", { text: "a" }), call("c2", "counter"));
+        },
+        say("never asked"),
+      ],
+    });
+    expect(await rig.run({ pauseSignal: pause.signal })).toBe("running");
+    expect(rig.provider.calls).toBe(1);
+    const events = await rig.events();
+    expect(
+      eventsOfType(events, "tool_result").map((e) => [e.payload.callId, e.payload.outcome]),
+    ).toEqual([
+      ["c1", "ok"],
+      ["c2", "ok"],
+    ]);
+    expect(eventsOfType(events, "model_error")).toEqual([]);
+    expect((await rig.record()).status).toBe("running");
+    expect(validateConversation(rebuildState(events).messages)).toEqual([]);
+
+    // Resuming (no pause) carries on from the log and finishes.
+    const resumed = createRig({ script: [say("Back.")] });
+    expect(await runLoop({ ...rig.deps(), provider: resumed.provider }, rig.runId)).toBe("done");
+    expect(problemsInRequests(resumed.provider)).toEqual([]);
+  });
+
+  it("does not make a model call at all when already raised before the first turn", async () => {
+    const pause = new AbortController();
+    pause.abort();
+    const rig = createRig({ script: [say("x")] });
+    expect(await rig.run({ pauseSignal: pause.signal })).toBe("running");
+    expect(rig.provider.calls).toBe(0);
+  });
+
+  it("lets a turn that finishes the run settle instead of pausing", async () => {
+    const pause = new AbortController();
+    const rig = createRig({
+      script: [
+        () => {
+          pause.abort();
+          return say("Just the answer.");
+        },
+      ],
+    });
+    expect(await rig.run({ pauseSignal: pause.signal })).toBe("done");
+  });
+
+  it("lets a turn that escalates settle as waiting_user", async () => {
+    const pause = new AbortController();
+    const rig = createRig({
+      script: [
+        () => {
+          pause.abort();
+          return use(call("e1", "escalate", { question: "Which one?" }));
+        },
+      ],
+    });
+    expect(await rig.run({ pauseSignal: pause.signal })).toBe("waiting_user");
+  });
+});
+
 describe("runLoop: repetition guard", () => {
   const same = (n: number) => Array.from({ length: n }, (_, i) => use(call(`c${i}`, "fixed")));
 

@@ -2,7 +2,7 @@ import type { FailureOrigin, RunQueue } from "@suup/core";
 import { type Db, withTransaction } from "./client.js";
 import { appendRunEvent } from "./events.js";
 import { releaseLeasedRun, requeueStaleRuns } from "./queue.js";
-import { claimNextRun, setRunStatus } from "./runs.js";
+import { claimNextRun, claimRun, setRunStatus } from "./runs.js";
 
 /** Claims remembered per queue object; older ones are forgotten (their runs are long finished). */
 const MAX_REMEMBERED = 10_000;
@@ -17,14 +17,20 @@ const MAX_REMEMBERED = 10_000;
  */
 export class PgRunQueue implements RunQueue {
   readonly #db: Db;
+  readonly #onlyRunId: string | undefined;
   readonly #claimedBy = new Map<string, string>();
 
-  constructor(db: Db) {
+  /** With `onlyRunId`, the queue only ever hands out that one run (when it is queued). */
+  constructor(db: Db, options: { onlyRunId?: string } = {}) {
     this.#db = db;
+    this.#onlyRunId = options.onlyRunId;
   }
 
   async claimNext(workerId: string): Promise<{ runId: string } | null> {
-    const run = await claimNextRun(this.#db, workerId);
+    const run =
+      this.#onlyRunId === undefined
+        ? await claimNextRun(this.#db, workerId)
+        : await claimRun(this.#db, this.#onlyRunId, workerId);
     if (run === null) return null;
     this.#claimedBy.delete(run.id);
     this.#claimedBy.set(run.id, workerId);

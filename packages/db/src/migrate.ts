@@ -100,3 +100,35 @@ export async function migrate(db: Db, dir: string = MIGRATIONS_DIR): Promise<str
     conn.release();
   }
 }
+
+export interface MigrationStatus {
+  /** Names applied, in order. Empty when the migrations table does not exist yet. */
+  applied: string[];
+  /** Files in the migrations directory that were not applied yet. */
+  pending: string[];
+  /** Applied names that have no file any more (the database is ahead of this code). */
+  unknown: string[];
+}
+
+/** Which migrations are applied and which are pending. Read-only; never creates anything. */
+export async function migrationStatus(
+  db: Db,
+  dir: string = MIGRATIONS_DIR,
+): Promise<MigrationStatus> {
+  const files = (await readdir(dir)).filter((n) => MIGRATION_FILE.test(n)).sort();
+  const [exists] = await db.sql<{ present: boolean }[]>`
+    select to_regclass('schema_migrations') is not null as present`;
+  const applied =
+    exists?.present === true
+      ? (await db.sql<{ name: string }[]>`select name from schema_migrations order by name`).map(
+          (r) => r.name,
+        )
+      : [];
+  const appliedSet = new Set(applied);
+  const fileSet = new Set(files);
+  return {
+    applied,
+    pending: files.filter((f) => !appliedSet.has(f)),
+    unknown: applied.filter((a) => !fileSet.has(a)),
+  };
+}

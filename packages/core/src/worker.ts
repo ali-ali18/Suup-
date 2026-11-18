@@ -138,6 +138,10 @@ export class Worker {
 
   readonly #active = new Map<string, ActiveRun>();
   readonly #stopSignal = new AbortController();
+  /** Raised by `stop`: the loops finish their current turn and pause at the next safe point. */
+  readonly #pause = new AbortController();
+  /** Raised by `abortNow`: cuts the grace period short. */
+  readonly #hurry = new AbortController();
   readonly #slotWaiters: (() => void)[] = [];
   #polling: Promise<void> | undefined;
   #requeueTimer: { stop(): void } | undefined;
@@ -193,14 +197,29 @@ export class Worker {
   }
 
   /**
-   * Shuts down: stops claiming, lets the runs in progress carry on for up to `graceMs` (they may
-   * finish or reach a wait by themselves), then interrupts the rest (each stops at its safe point
-   * and is given back to the queue), and resolves when every run has left the worker. Calling it
-   * again returns the same promise.
+   * Shuts down: stops claiming and asks every run in progress to pause (soft stop): each finishes
+   * its current turn (the model call and the tools it asked for) and stops at the next safe point,
+   * without starting another model call. A run may also finish or reach a wait by itself in that
+   * turn. Runs that have not reached a safe point after `graceMs` are interrupted (hard abort:
+   * the model call and the tool in flight are cancelled). Every run that did not settle is given
+   * back to the queue, and the promise resolves when all have left the worker. Calling it again
+   * returns the same promise.
    */
   stop(options: { graceMs?: number } = {}): Promise<void> {
     this.#stopped ??= this.#doStop(Math.max(0, options.graceMs ?? 0));
     return this.#stopped;
+  }
+
+  /**
+   * Hard abort, now: interrupts every run in progress without waiting for the grace period of a
+   * `stop` already under way (and stops the worker, if it was not stopping yet). Resolves like
+   * `stop`.
+   */
+  abortNow(): Promise<void> {
+    const stopped = this.stop();
+    this.#hurry.abort();
+    for (const run of this.#active.values()) run.abort.abort();
+    return stopped;
   }
 
   // --- polling ---------------------------------------------------------------------------
@@ -307,7 +326,10 @@ export class Worker {
 
     let status: RunStatus;
     try {
-      status = await runLoop(deps, runId, { signal: entry.abort.signal });
+      status = await runLoop(deps, runId, {
+        signal: entry.abort.signal,
+        pauseSignal: this.#pause.signal,
+      });
     } catch (error) {
       finished = true;
       timer.stop();
@@ -372,13 +394,15 @@ export class Worker {
   async #doStop(graceMs: number): Promise<void> {
     this.#stopping = true;
     this.#stopSignal.abort();
+    this.#pause.abort();
     this.#requeueTimer?.stop();
     this.#wakeSlotWaiters();
     // No new run starts from here on (a claim in flight is handed back by the poll loop).
     await this.#polling;
 
-    if (graceMs > 0 && this.#active.size > 0) {
+    if (graceMs > 0 && this.#active.size > 0 && !this.#hurry.signal.aborted) {
       const give = new AbortController();
+      this.#hurry.signal.addEventListener("abort", () => give.abort(), { once: true });
       const allDone = Promise.all([...this.#active.values()].map((r) => r.done));
       await Promise.race([allDone, this.#clock.sleep(graceMs, give.signal)]);
       give.abort();

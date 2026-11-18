@@ -1,6 +1,12 @@
 import { z } from "zod";
 import type { RunEventData, RunEventType } from "../events.js";
-import { type BotConfig, type LoopDeps, type ReviewerConfig, runLoop } from "../loop/loop.js";
+import {
+  type BotConfig,
+  type LoopDeps,
+  type ReviewerConfig,
+  type RunLoopOptions,
+  runLoop,
+} from "../loop/loop.js";
 import type {
   InboxItem,
   RunRecord,
@@ -137,7 +143,7 @@ export interface Rig {
   sleeps: number[];
   clock: { now: number; advance(ms: number): void };
   deps(overrides?: Partial<LoopDeps>): LoopDeps;
-  run(opts?: { signal?: AbortSignal }): Promise<RunStatus>;
+  run(opts?: RunLoopOptions): Promise<RunStatus>;
   events(): Promise<StoredEvent[]>;
   record(): Promise<RunRecord>;
 }

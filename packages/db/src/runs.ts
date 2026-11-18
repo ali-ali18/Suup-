@@ -149,6 +149,28 @@ export async function claimNextRun(db: Db, workerId: string): Promise<Run | null
   return row ? mapRun(row) : null;
 }
 
+/**
+ * Like `claimNextRun`, but for one given run: takes it only if it is `queued` (marks it running
+ * and leases it to `workerId`). Returns `null` if it is not queued (or does not exist). It is how
+ * a process that follows a single run (the CLI) works on that run without touching the rest of
+ * the queue.
+ */
+export async function claimRun(db: Db, runId: string, workerId: string): Promise<Run | null> {
+  const [row] = await db.sql<RunRow[]>`
+    update runs
+    set status = 'running',
+        locked_by = ${workerId},
+        locked_at = now(),
+        started_at = coalesce(started_at, now())
+    where id = (
+      select id from runs
+      where id = ${runId} and status = 'queued'
+      for update skip locked
+    )
+    returning *`;
+  return row ? mapRun(row) : null;
+}
+
 export interface RunFailure {
   origin: FailureOrigin;
   detail: string;

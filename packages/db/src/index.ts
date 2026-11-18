@@ -24,7 +24,13 @@ export {
   peekInboxEntries,
   postInbox,
 } from "./inbox.js";
-export { MIGRATIONS_DIR, MigrationChecksumError, migrate } from "./migrate.js";
+export {
+  MIGRATIONS_DIR,
+  MigrationChecksumError,
+  type MigrationStatus,
+  migrate,
+  migrationStatus,
+} from "./migrate.js";
 export { PgRunQueue } from "./pg-queue.js";
 export { PgRunStore, type PgRunStoreOptions } from "./pg-store.js";
 export {
@@ -37,6 +43,7 @@ export {
   addRunUsage,
   type CreateRunInput,
   claimNextRun,
+  claimRun,
   createRun,
   getRun,
   type ListRunsOptions,

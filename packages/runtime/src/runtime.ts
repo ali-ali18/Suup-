@@ -1,0 +1,453 @@
+import { isAbsolute, join, resolve } from "node:path";
+import {
+  type BotConfig,
+  type Executor,
+  type LoopDeps,
+  type Provider,
+  ProviderError,
+  type ReviewerConfig,
+  type RunEnd,
+  ToolRegistry,
+  Worker,
+} from "@suup/core";
+import {
+  type Bot,
+  createDb,
+  createRun as createRunRow,
+  type Db,
+  getBot,
+  getRun,
+  PgRunQueue,
+  PgRunStore,
+  type Run,
+} from "@suup/db";
+import { createProvider, type ProviderConfig } from "@suup/providers";
+import { DockerExecutor, ensureMachine, LocalExecutor } from "@suup/sandbox";
+import { registerBuiltinTools } from "@suup/tools";
+import {
+  DEFAULT_MAX_TURNS,
+  DEFAULT_WORKER,
+  type ModelEntry,
+  type ProviderEntry,
+  type RuntimeConfig,
+  resolveDatabaseUrl,
+} from "./config.js";
+import { ConfigError, RuntimeError } from "./errors.js";
+import { createScriptedProvider } from "./scripted-provider.js";
+
+type Env = Record<string, string | undefined>;
+
+export interface RuntimeOptions {
+  /** Environment variables (API keys, `DATABASE_URL`). Default `process.env`. */
+  env?: Env;
+  /** Relative paths of the configuration (sandbox root, scripts) start here. Default: cwd. */
+  baseDir?: string;
+  /** Passed to the network providers (tests). */
+  fetch?: typeof fetch;
+  /** Path of the docker CLI. Default: `SUUP_DOCKER_PATH` from the environment, else `docker`. */
+  dockerPath?: string;
+}
+
+export interface ResolvedModel {
+  model: ModelEntry;
+  /** The provider entry the model is configured on. */
+  provider: ProviderEntry;
+}
+
+/** Whether the API key of a provider is available (without building the provider). */
+export interface ProviderKeyStatus {
+  providerId: string;
+  /** `null` for providers that need no key (scripted, a local compatible server). */
+  envName: string | null;
+  ok: boolean;
+  reason: string;
+}
+
+export interface CreateWorkerOptions {
+  workerId?: string;
+  /** The worker only ever takes this run (used by the CLI to follow one run). */
+  onlyRunId?: string;
+  concurrency?: number;
+  idleBackoff?: { minMs?: number; maxMs?: number; factor?: number };
+  onRunEnd?(end: RunEnd): void;
+  onError?(error: unknown, context: string): void;
+}
+
+export interface Runtime {
+  readonly config: RuntimeConfig;
+  /** The database handle. Created at the first use; throws `ConfigError` without a URL. */
+  readonly db: Db;
+  readonly tools: ToolRegistry;
+  /** Provider by id. Never throws for a missing API key: see `getProvider`. */
+  getProvider(id: string): Provider;
+  keyStatus(providerId: string): ProviderKeyStatus;
+  resolveModel(modelId: string): ResolvedModel;
+  /** The bot's machine: its own subdirectory `bots/<botId>` of the shared machine. */
+  executorFor(botId: string): Promise<Executor>;
+  /** The shared machine's root, for health checks (docker: the machine is started if needed). */
+  sandboxRoot(): Promise<Executor>;
+  botConfig(bot: Bot): BotConfig;
+  reviewerConfig(): ReviewerConfig | undefined;
+  createRun(input: {
+    botId: string;
+    objective: string;
+    acceptanceCriteria?: string[];
+  }): Promise<Run>;
+  buildDeps(runId: string, workerId: string): Promise<LoopDeps>;
+  createWorker(options?: CreateWorkerOptions): Worker;
+  close(): Promise<void>;
+}
+
+/** What `DockerExecutor` needs from a machine, built from the `docker` sandbox settings. */
+export function dockerWorkspace(botId: string): string {
+  return `/workspace/bots/${botId}`;
+}
+
+const SAFE_BOT_ID = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
+
+/**
+ * Turns the configuration into a working system: the database, the providers, the tools, the
+ * machine of each bot and the pieces the loop and the worker need. The CLI sits on top of it now;
+ * the server and the evaluation runner will later.
+ *
+ * Nothing here reaches the network or Docker at creation: providers, the machine and the
+ * database connection are made at the first use.
+ */
+export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {}): Runtime {
+  const env = options.env ?? process.env;
+  const baseDir = resolve(options.baseDir ?? process.cwd());
+  const path = (p: string) => (isAbsolute(p) ? p : resolve(baseDir, p));
+
+  const dockerPath = options.dockerPath ?? env.SUUP_DOCKER_PATH;
+  const providerEntries = new Map(config.providers.map((p) => [p.id, p]));
+  const modelEntries = new Map(config.models.map((m) => [m.id, m]));
+
+  const tools = registerBuiltinTools(new ToolRegistry());
+
+  let db: Db | undefined;
+  const providers = new Map<string, Provider>();
+  const executors = new Map<string, Promise<Executor>>();
+  let machine: Promise<void> | undefined;
+
+  const entryOf = (id: string): ProviderEntry => {
+    const entry = providerEntries.get(id);
+    if (entry === undefined) {
+      throw new RuntimeError(
+        "unknown_provider",
+        `O provedor "${id}" não está em "providers" na configuração (configurados: ${[...providerEntries.keys()].join(", ")}).`,
+      );
+    }
+    return entry;
+  };
+
+  const keyStatus = (providerId: string): ProviderKeyStatus => {
+    const entry = entryOf(providerId);
+    if (entry.kind === "scripted") {
+      return { providerId, envName: null, ok: true, reason: "provedor de roteiro: não usa chave" };
+    }
+    const name = entry.apiKeyEnv;
+    if (name === undefined) {
+      return {
+        providerId,
+        envName: null,
+        ok: true,
+        reason: "sem apiKeyEnv: nenhuma chave será enviada (servidor local)",
+      };
+    }
+    const value = env[name];
+    if (value === undefined || value === "") {
+      return {
+        providerId,
+        envName: name,
+        ok: false,
+        reason: `a variável de ambiente ${name} não está definida`,
+      };
+    }
+    return { providerId, envName: name, ok: true, reason: `variável ${name} presente` };
+  };
+
+  const getProvider = (id: string): Provider => {
+    const cached = providers.get(id);
+    if (cached !== undefined) return cached;
+    const entry = entryOf(id);
+    let provider: Provider;
+    if (entry.kind === "scripted") {
+      provider = createScriptedProvider({
+        id: entry.id,
+        scriptPath: path(entry.scriptPath),
+        ...(entry.textChunkSize === undefined ? {} : { textChunkSize: entry.textChunkSize }),
+      });
+    } else {
+      const status = keyStatus(id);
+      if (!status.ok) {
+        // Not an error now: the run that first uses this provider fails with this message, as a
+        // provider failure, and the other providers keep working. Not cached, so a fixed
+        // environment is picked up.
+        return unavailableProvider(
+          id,
+          `${status.reason} (apiKeyEnv do provedor "${id}"). Defina a variável antes de usar este provedor.`,
+        );
+      }
+      const { kind, apiKeyEnv, ...rest } = entry;
+      const apiKey = apiKeyEnv === undefined ? "" : (env[apiKeyEnv] ?? "");
+      provider = createProvider({
+        kind,
+        ...rest,
+        apiKey,
+        ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+      } as ProviderConfig);
+    }
+    providers.set(id, provider);
+    return provider;
+  };
+
+  const resolveModel = (modelId: string): ResolvedModel => {
+    const model = modelEntries.get(modelId);
+    if (model === undefined) {
+      throw new RuntimeError(
+        "unknown_model",
+        `O modelo "${modelId}" não está em "models" na configuração (configurados: ${[...modelEntries.keys()].join(", ")}).`,
+      );
+    }
+    return { model, provider: entryOf(model.provider) };
+  };
+
+  const botConfig = (bot: Bot): BotConfig => {
+    let resolved: ResolvedModel;
+    try {
+      resolved = resolveModel(bot.modelId);
+    } catch (error) {
+      if (error instanceof RuntimeError && error.code === "unknown_model") {
+        throw new RuntimeError(
+          "unknown_model",
+          `O bot "${bot.name}" (${bot.id}) usa o modelo "${bot.modelId}", que não está em "models" na configuração (configurados: ${[...modelEntries.keys()].join(", ")}). Adicione-o à configuração ou crie outro bot.`,
+          { cause: error },
+        );
+      }
+      throw error;
+    }
+    if (resolved.model.provider !== bot.modelProvider) {
+      throw new RuntimeError(
+        "model_provider_mismatch",
+        `O bot "${bot.name}" (${bot.id}) foi criado com o modelo "${bot.modelId}" no provedor "${bot.modelProvider}", mas a configuração agora o coloca no provedor "${resolved.model.provider}". Ajuste a configuração ou crie outro bot.`,
+      );
+    }
+    const { model } = resolved;
+    const limits = bot.limits;
+    const maxCostUsd = limits.maxCostUsd ?? config.defaults?.maxCostUsd;
+    const maxDurationMs = limits.maxDurationMs ?? config.defaults?.maxDurationMs;
+    return {
+      id: bot.id,
+      name: bot.name,
+      personality: bot.personality,
+      model: {
+        id: model.id,
+        contextWindow: model.contextWindow,
+        maxOutputTokens: model.maxOutputTokens,
+        ...(model.pricing === undefined ? {} : { pricing: model.pricing }),
+      },
+      allowedTools: bot.allowedTools,
+      limits: {
+        maxTurns: limits.maxTurns ?? config.defaults?.maxTurns ?? DEFAULT_MAX_TURNS,
+        ...(maxCostUsd === undefined ? {} : { maxCostUsd }),
+        ...(maxDurationMs === undefined ? {} : { maxDurationMs }),
+      },
+    };
+  };
+
+  const reviewerConfig = (): ReviewerConfig | undefined => {
+    if (config.reviewer === undefined) return undefined;
+    const { model } = resolveModel(config.reviewer.model);
+    return {
+      provider: getProvider(model.provider),
+      model: {
+        id: model.id,
+        maxOutputTokens: model.maxOutputTokens,
+        ...(model.pricing === undefined ? {} : { pricing: model.pricing }),
+      },
+    };
+  };
+
+  const sandbox = config.sandbox;
+  const ensureMachineOnce = (): Promise<void> => {
+    if (sandbox.kind !== "docker") return Promise.resolve();
+    machine ??= ensureMachine({
+      name: sandbox.name,
+      image: sandbox.image,
+      volume: sandbox.volume,
+      ...(sandbox.memory === undefined ? {} : { memory: sandbox.memory }),
+      ...(sandbox.cpus === undefined ? {} : { cpus: sandbox.cpus }),
+      ...(dockerPath === undefined ? {} : { dockerPath }),
+    }).then(
+      () => undefined,
+      (error: unknown) => {
+        machine = undefined; // try again at the next use
+        throw new RuntimeError(
+          "sandbox_failed",
+          `Não foi possível preparar a máquina dos bots (contêiner "${sandbox.name}"): ${error instanceof Error ? error.message : String(error)}`,
+          { cause: error },
+        );
+      },
+    );
+    return machine;
+  };
+
+  const dockerExecutor = (workspace: string): DockerExecutor => {
+    if (sandbox.kind !== "docker") throw new Error("not a docker sandbox");
+    return new DockerExecutor({
+      container: sandbox.name,
+      workspace,
+      ...(dockerPath === undefined ? {} : { dockerPath }),
+    });
+  };
+
+  const makeExecutor = async (botId: string): Promise<Executor> => {
+    if (!SAFE_BOT_ID.test(botId)) {
+      throw new RuntimeError(
+        "invalid_bot_id",
+        `Identificador de bot inválido: ${JSON.stringify(botId)}.`,
+      );
+    }
+    if (sandbox.kind === "local") {
+      return new LocalExecutor({
+        root: join(path(sandbox.root), "bots", botId),
+        iUnderstandThisIsNotIsolated: true,
+      });
+    }
+    await ensureMachineOnce();
+    const made = await dockerExecutor("/workspace").exec(`mkdir -p bots/${botId}`);
+    if (made.exitCode !== 0) {
+      throw new RuntimeError(
+        "sandbox_failed",
+        `Não foi possível criar a pasta do bot ${botId} na máquina: ${made.stderr.trim() || `código de saída ${made.exitCode}`}`,
+      );
+    }
+    return dockerExecutor(dockerWorkspace(botId));
+  };
+
+  const buildDeps = async (runId: string, workerId: string): Promise<LoopDeps> => {
+    const handle = runtime.db;
+    const run = await getRun(handle, runId);
+    if (run === null) throw new RuntimeError("bot_not_found", `Execução ${runId} não encontrada.`);
+    const bot = await getBot(handle, run.botId);
+    if (bot === null) {
+      throw new RuntimeError(
+        "bot_not_found",
+        `O bot ${run.botId} da execução ${runId} não existe.`,
+      );
+    }
+    const cfg = botConfig(bot);
+    const reviewer = reviewerConfig();
+    return {
+      store: new PgRunStore(handle, { workerId }),
+      provider: getProvider(bot.modelProvider),
+      tools,
+      executor: await runtime.executorFor(bot.id),
+      bot: cfg,
+      ...(reviewer === undefined ? {} : { reviewer }),
+      now: () => new Date(),
+      sleep: (ms) => new Promise<void>((done) => setTimeout(done, ms)),
+    };
+  };
+
+  let workerCount = 0;
+  const runtime: Runtime = {
+    config,
+    get db(): Db {
+      if (db === undefined) {
+        const url = resolveDatabaseUrl(config, env);
+        if (url === undefined) {
+          throw new ConfigError(
+            'Nenhum banco de dados configurado: defina DATABASE_URL no ambiente ou "databaseUrl" no arquivo de configuração.',
+          );
+        }
+        db = createDb(url);
+      }
+      return db;
+    },
+    tools,
+    getProvider,
+    keyStatus,
+    resolveModel,
+    executorFor(botId) {
+      let made = executors.get(botId);
+      if (made === undefined) {
+        made = makeExecutor(botId);
+        executors.set(botId, made);
+        made.catch(() => executors.delete(botId));
+      }
+      return made;
+    },
+    async sandboxRoot() {
+      if (sandbox.kind === "local") {
+        return new LocalExecutor({ root: path(sandbox.root), iUnderstandThisIsNotIsolated: true });
+      }
+      await ensureMachineOnce();
+      return dockerExecutor("/workspace");
+    },
+    botConfig,
+    reviewerConfig,
+    async createRun(input) {
+      const bot = await getBot(runtime.db, input.botId);
+      if (bot === null) {
+        throw new RuntimeError("bot_not_found", `Bot ${input.botId} não encontrado.`);
+      }
+      if (bot.archivedAt !== null) {
+        throw new RuntimeError(
+          "bot_archived",
+          `O bot "${bot.name}" (${bot.id}) está arquivado: não é possível criar execuções para ele.`,
+        );
+      }
+      botConfig(bot); // refuses a bot whose model or provider the configuration lacks
+      return createRunRow(runtime.db, {
+        botId: bot.id,
+        origin: "user",
+        objective: input.objective,
+        ...(input.acceptanceCriteria === undefined
+          ? {}
+          : { acceptanceCriteria: input.acceptanceCriteria }),
+      });
+    },
+    buildDeps,
+    createWorker(opts = {}) {
+      const workerId = opts.workerId ?? `worker-${process.pid}-${++workerCount}`;
+      const settings = { ...DEFAULT_WORKER, ...config.worker };
+      return new Worker({
+        workerId,
+        queue: new PgRunQueue(
+          runtime.db,
+          opts.onlyRunId === undefined ? {} : { onlyRunId: opts.onlyRunId },
+        ),
+        buildDeps: (runId) => buildDeps(runId, workerId),
+        concurrency: opts.concurrency ?? settings.concurrency,
+        leaseRenewMs: settings.leaseRenewMs,
+        staleAfterMs: settings.staleAfterMs,
+        ...(opts.idleBackoff === undefined ? {} : { idleBackoff: opts.idleBackoff }),
+        ...(opts.onRunEnd === undefined ? {} : { onRunEnd: opts.onRunEnd }),
+        ...(opts.onError === undefined ? {} : { onError: opts.onError }),
+      });
+    },
+    async close() {
+      const open = db;
+      db = undefined;
+      if (open !== undefined) await open.close();
+    },
+  };
+  return runtime;
+}
+
+/**
+ * A provider that fails every call with `auth` and a message saying what is missing. Used when the
+ * API key's environment variable is not set: the run that uses it records the failure (origin
+ * `provider`) instead of the whole program refusing to start.
+ */
+function unavailableProvider(id: string, message: string): Provider {
+  return {
+    id,
+    capabilities: { promptCache: false, parallelTools: true, vision: false },
+    // biome-ignore lint/correctness/useYield: it only ever fails
+    async *generate() {
+      throw new ProviderError("auth", message, { retryable: false });
+    },
+  };
+}

@@ -111,6 +111,14 @@ export interface RunLoopOptions {
    * the caller (the worker): put the run back in the queue to resume it, or cancel it.
    */
   signal?: AbortSignal;
+  /**
+   * Soft stop. Once raised, the loop finishes the turn it is in (the model call and every tool
+   * call it asked for, none of them is cancelled) and, at the next safe point, returns `running`
+   * WITHOUT starting another model call. A run that finishes or pauses for the user during that
+   * last turn settles normally instead. Like `signal`, the run is left as it is: the caller puts
+   * it back in the queue to resume it later from the log.
+   */
+  pauseSignal?: AbortSignal;
 }
 
 /** Consecutive turns without a tool call (other than a rejected finish) before the run fails. */
@@ -196,6 +204,7 @@ class RunLoop {
   readonly #deps: LoopDeps;
   readonly #runId: string;
   readonly #signal: AbortSignal | undefined;
+  readonly #pauseSignal: AbortSignal | undefined;
   readonly #toolSignal: AbortSignal;
   #state: RunState = rebuildState([]);
   #run!: RunRecord;
@@ -204,6 +213,7 @@ class RunLoop {
     this.#deps = deps;
     this.#runId = runId;
     this.#signal = opts.signal;
+    this.#pauseSignal = opts.pauseSignal;
     this.#toolSignal = opts.signal ?? new AbortController().signal;
   }
 
@@ -420,6 +430,9 @@ class RunLoop {
 
       const settled = await this.#settle();
       if (settled !== undefined) return settled;
+
+      // Soft stop: this is the safe point after a whole turn. Nothing else is started.
+      if (this.#pauseSignal?.aborted) return "running";
 
       const inbox = await this.#deliverInbox();
       if (inbox !== undefined) return inbox;

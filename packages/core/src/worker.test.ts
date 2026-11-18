@@ -545,6 +545,59 @@ describe("Worker: graceful stop", () => {
     ]);
   });
 
+  it("soft stop: a run in a long turn finishes that turn (tools included) and is handed back without another model call", async () => {
+    const w = makeWorld();
+    const gate = deferred();
+    const provider = new FakeProvider([
+      async () => {
+        await gate.promise;
+        return use(call("c1", "write_note", { name: "a.txt", body: "1" }));
+      },
+      say("never asked while stopping"),
+    ]);
+    const runId = w.newRun(provider);
+    const first = w.worker("w1");
+    first.start();
+    await w.clock.flush();
+    expect(provider.calls).toBe(1);
+
+    let stopped = false;
+    const stopping = first.stop({ graceMs: 60_000 }).then(() => {
+      stopped = true;
+    });
+    await w.clock.advance(1000);
+    expect(stopped).toBe(false); // waiting for the safe point, not aborting
+    gate.resolve();
+    await w.clock.flush();
+    await stopping; // long before the grace period is over
+    expect(provider.calls).toBe(1);
+    expect(w.ends).toEqual([{ runId, outcome: "released" }]);
+    expect(await statusOf(w, runId)).toBe("queued");
+    const events = await w.store.listEvents(runId);
+    expect(eventsOfType(events, "tool_result").map((e) => e.payload.outcome)).toEqual(["ok"]);
+    expect(eventsOfType(events, "model_error")).toEqual([]);
+  });
+
+  it("abortNow cuts the grace period short and hard-aborts what is left", async () => {
+    const w = makeWorld();
+    const runId = w.newRun(hangingAt(twoStepRun(), 0));
+    const worker = w.worker("w1");
+    worker.start();
+    await w.clock.flush();
+
+    let stopped = false;
+    const stopping = worker.stop({ graceMs: 600_000 }).then(() => {
+      stopped = true;
+    });
+    await w.clock.advance(1000);
+    expect(stopped).toBe(false); // the hanging model call never reaches a safe point
+    const hurried = worker.abortNow();
+    await w.clock.flush();
+    await Promise.all([stopping, hurried]);
+    expect(w.ends).toEqual([{ runId, outcome: "released" }]);
+    expect(await statusOf(w, runId)).toBe("queued");
+  });
+
   it("stops claiming at once, and hands back a run claimed while stopping", async () => {
     const w = makeWorld();
     const claim = deferred<{ runId: string } | null>();
