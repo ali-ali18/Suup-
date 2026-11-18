@@ -176,13 +176,32 @@ Cada rotina tem: bot dono, gatilho (horário, intervalo, data única ou evento p
 
 O resultado de cada disparo é `notify` ou `silent`. Silêncio vai só para o diário.
 
-### 4.10 Conectores
+### 4.10 Webhooks
+
+**Entrada (eventos que disparam rotinas).** Entra na fase 4.
+
+- Cada rotina com gatilho por evento ganha um endereço próprio (`/hooks/<id aleatório>`) e um segredo. O bot cria o endereço; cadastrá-lo no serviço de origem passa por aprovação.
+- **Autenticação:** assinatura HMAC do corpo, no formato do serviço de origem (GitHub e outros têm cabeçalhos próprios), ou token no cabeçalho para serviços sem assinatura. Requisição sem assinatura válida é recusada e registrada.
+- **Recebimento rápido:** o servidor valida, grava o evento em `webhook_events` e responde `202` na hora. A execução é enfileirada depois, para a origem nunca esperar o modelo.
+- **Sem duplicatas:** cada evento é identificado pelo id de entrega da origem (ou pelo hash do corpo). Reenvio do mesmo evento não abre execução nova.
+- **Filtro antes do modelo:** a rotina declara uma condição simples sobre o corpo (por exemplo, `action == "opened"`). Evento que não passa no filtro é gravado e descartado sem gastar tokens.
+- **Agrupamento:** eventos da mesma rotina que chegam em rajada são entregues juntos numa única execução, dentro de uma janela curta.
+- **Corpo é dado não confiável:** o conteúdo do evento entra no contexto com o mesmo rótulo de conteúdo externo. Um webhook dispara a instrução da rotina; nunca define a instrução.
+- **Limites:** teto de tamanho do corpo e de eventos por minuto por endereço. Endereço que estoura o limite é pausado e o usuário é avisado.
+- **Reprocessamento:** eventos ficam guardados por um período e podem ser reenviados à rotina pelo app, o que serve para depurar.
+- **Eventos sem webhook:** para origens que não enviam eventos (caixa de e-mail, página de preço), a rotina usa consulta periódica e compara com o estado guardado.
+
+Requisito de infraestrutura: o servidor na VPS precisa de domínio e HTTPS públicos só para `/hooks/*`. O resto da API fica atrás do login.
+
+**Saída (o bot avisando outros sistemas).** Chamar um endereço externo é uma ação de nível "externa": passa pelo portão de aprovação como qualquer envio, e pode ser liberada por regra para um destino específico.
+
+### 4.11 Conectores
 
 - Protocolo MCP, que independe do provedor de modelo.
 - Autorização por conector, com escopo (por exemplo, somente leitura).
 - Um registro onde o bot procura e propõe instalar conectores novos; a instalação passa por aprovação.
 
-### 4.11 App e agente local
+### 4.12 App e agente local
 
 - App de desktop com interface web numa casca nativa. Mostra conversas, cartões de aprovação, formulário seguro, execuções em andamento e, na fase 5, a tela ao vivo.
 - O mesmo app contém o agente local: abre conexão de saída com o servidor e executa comandos aprovados no PC.
@@ -200,6 +219,7 @@ O resultado de cada disparo é `notify` ou `silent`. Silêncio vai só para o di
 | `memories` | camada, escopo (compartilhada ou bot), texto, vetor, origem |
 | `journal` | diário |
 | `routines`, `routine_state` | rotinas e o estado entre disparos |
+| `webhook_endpoints`, `webhook_events` | endereços por rotina (com segredo cifrado) e eventos recebidos |
 | `approvals` | pedidos, conteúdo exato, decisão |
 | `rules` | regras permanentes do usuário |
 | `secrets` | cofre, cifrado |
@@ -248,7 +268,7 @@ docs/
 | 1 | Núcleo, provedores, log de eventos, máquina com shell e arquivos, CLI | Conjunto de avaliação passa em dois provedores; execução interrompida retoma e termina |
 | 2 | Servidor, app de desktop, bots com conversa separada, memória | Um bot criado por descrição lembra de um fato dito em outra conversa |
 | 3 | Aprovações, cofre, conectores MCP | E-mail vira rascunho com cartão; segredo nunca aparece no log |
-| 4 | Rotinas, notificações, diário, delegação, sala de grupo | Monitor que avisa só quando a condição é atendida; bot principal encaminha e recebe de volta |
+| 4 | Rotinas (horário e webhook), notificações, diário, delegação, sala de grupo | Monitor que avisa só quando a condição é atendida; evento assinado dispara a rotina uma única vez, mesmo reenviado; bot principal encaminha e recebe de volta |
 | 5 | Navegador com tela por bot, ao vivo, passagem de controle | Bot navega num site com login, pausa para o usuário entrar e retoma |
 | 6 | Agente local nos PCs | Instala uma ferramenta no PC, com aprovação, e confere que funciona |
 | 7 | Páginas salvas, documentos, imagem, vídeo, voz, agentes de código externos | Gera um documento e uma página compartilhável; abre um PR por agente externo |
