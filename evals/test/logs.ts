@@ -118,12 +118,13 @@ export class Log {
     evidence: { criterion: string; evidence: string }[] = [],
     accepted = true,
     reasons: string[] = [],
+    summary = "pronto",
   ): this {
     const callId = `c${++this.#calls}`;
-    this.#push("tool_call", { callId, name: "finish", args: { summary: "pronto", evidence } });
+    this.#push("tool_call", { callId, name: "finish", args: { summary, evidence } });
     this.#push("finish_attempt", {
       callId,
-      summary: "pronto",
+      summary,
       evidence,
       accepted,
       rejectionReasons: reasons,
@@ -136,7 +137,7 @@ export class Log {
       truncated: false,
       durationMs: 1,
     });
-    return accepted ? this.status("done", "pronto") : this;
+    return accepted ? this.status("done", summary) : this;
   }
 
   status(to: string, summary?: string): this {

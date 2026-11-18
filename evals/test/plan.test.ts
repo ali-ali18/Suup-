@@ -1,6 +1,6 @@
 import { createRuntime, parseConfig, RuntimeError } from "@suup/runtime";
 import { describe, expect, it } from "vitest";
-import { evalTasks, planEval, qualificationTasks, runEval } from "../src/index.js";
+import { evalTasks, hardTasks, planEval, qualificationTasks, runEval } from "../src/index.js";
 
 // What the request is checked for before anything runs (no database involved).
 
@@ -125,5 +125,31 @@ describe("planEval", () => {
     const main = evalTasks.reduce((sum, t) => sum + t.limits.maxCostUsd, 0);
     const qualification = qualificationTasks.reduce((sum, t) => sum + t.limits.maxCostUsd, 0);
     expect(main + qualification).toBeLessThan(7.5);
+  });
+});
+
+describe("planEval on the hard set", () => {
+  it("plans one cell per hard task and model, with a worst case under US$ 6 per model", () => {
+    const plan = planEval({
+      runtime: runtime(),
+      models: ["paid"],
+      tasks: [...hardTasks],
+      budgetUsd: 6,
+    });
+    expect(plan.cells).toHaveLength(hardTasks.length);
+    expect(plan.worstCaseUsd).toBeCloseTo(
+      hardTasks.reduce((s, t) => s + t.limits.maxCostUsd, 0),
+      9,
+    );
+    expect(plan.worstCaseUsd).toBeLessThan(6);
+    expect(plan.cellsThatFit).toBe(hardTasks.length);
+    const capped = planEval({
+      runtime: runtime(),
+      models: ["paid"],
+      tasks: [...hardTasks],
+      budgetUsd: 6,
+      maxCostPerRunUsd: 0.25,
+    });
+    expect(capped.largestRunCapUsd).toBe(0.25);
   });
 });

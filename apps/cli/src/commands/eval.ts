@@ -9,6 +9,7 @@ import {
   type EvalTask,
   evalTasks,
   type HistoryEntry,
+  hardTasks,
   isQualified,
   isSkipped,
   planEval,
@@ -18,6 +19,7 @@ import {
   renderMarkdown,
   runEval,
   stamp,
+  taskSetOf,
 } from "@suup/evals";
 import { flag, str } from "../args.js";
 import { type CommandSpec, type Ctx, warnIfLocalSandbox } from "../context.js";
@@ -26,6 +28,13 @@ import { formatDateTime, formatDuration, formatInt, formatUsd } from "../format.
 import { renderTable } from "../table.js";
 
 const NAME = "eval";
+
+const SET_NAME: Record<string, string> = {
+  main: "principal",
+  qualification: "qualificação",
+  hard: "difícil",
+  mixed: "misto",
+};
 
 const pct = (value: number | null): string =>
   value === null
@@ -72,6 +81,13 @@ function selectTasks(ctx: Ctx): EvalTask[] {
   const ids = csv(str(ctx.args, "tasks"));
   const category = str(ctx.args, "category");
   const qualify = flag(ctx.args, "qualify");
+  const hard = flag(ctx.args, "hard");
+  if (hard && qualify) {
+    throw new UsageError(
+      "--hard e --qualify são conjuntos diferentes; escolha um (ou passe ids de tarefas com --tasks).",
+      NAME,
+    );
+  }
   if (qualify && (ids !== undefined || category !== undefined)) {
     throw new UsageError(
       "--qualify roda só as tarefas de qualificação; não combine com --tasks nem --category (para escolher tarefas de qualificação, passe os ids com --tasks).",
@@ -83,13 +99,22 @@ function selectTasks(ctx: Ctx): EvalTask[] {
   }
   if (qualify) return [...qualificationTasks];
   if (ids !== undefined) {
-    const all = [...evalTasks, ...qualificationTasks];
+    const all = [...evalTasks, ...qualificationTasks, ...hardTasks];
     const unknown = ids.filter((id) => !all.some((t) => t.id === id));
     if (unknown.length > 0) {
       throw new UsageError(
         `Tarefa desconhecida: ${unknown.join(", ")}. Veja as existentes com: suup eval list`,
         NAME,
       );
+    }
+    if (hard) {
+      const outside = ids.filter((id) => !hardTasks.some((t) => t.id === id));
+      if (outside.length > 0) {
+        throw new UsageError(
+          `Com --hard, só valem tarefas do conjunto difícil; fora dele: ${outside.join(", ")}. Veja: suup eval list`,
+          NAME,
+        );
+      }
     }
     return [...new Set(ids)].map((id) => all.find((t) => t.id === id) as EvalTask);
   }
@@ -100,8 +125,17 @@ function selectTasks(ctx: Ctx): EvalTask[] {
         NAME,
       );
     }
-    return evalTasks.filter((t) => t.category === category);
+    const pool = hard ? hardTasks : evalTasks;
+    const picked = pool.filter((t) => t.category === category);
+    if (picked.length === 0) {
+      throw new UsageError(
+        `Nenhuma tarefa da categoria ${category} no conjunto ${hard ? "difícil (--hard)" : "principal"}. Veja: suup eval list`,
+        NAME,
+      );
+    }
+    return picked;
   }
+  if (hard) return [...hardTasks];
   return [...evalTasks];
 }
 
@@ -138,6 +172,10 @@ export const evalCommand: CommandSpec = {
     qualify: {
       type: "boolean",
       help: "Roda o teste de qualificação de modelo (4 tarefas baratas), em vez do conjunto principal",
+    },
+    hard: {
+      type: "boolean",
+      help: "Roda o conjunto difícil (tarefas longas, de 25 a 60 turnos), em vez do principal; combine com --category ou --tasks para escolher dentro dele",
     },
     repeat: { type: "string", value: "N", help: "Repete cada célula N vezes (padrão 1)" },
     "budget-usd": {
@@ -176,6 +214,7 @@ export const evalCommand: CommandSpec = {
     "  suup eval list                                              as tarefas",
     "  suup eval --models model-x --budget-usd 3 --category code   uma categoria",
     "  suup eval --models model-x --qualify --budget-usd 1         qualificação de um modelo",
+    "  suup eval --models model-x --hard --budget-usd 6            o conjunto difícil (fora da execução padrão)",
   ],
   async run(ctx) {
     const { out } = ctx;
@@ -219,6 +258,7 @@ export const evalCommand: CommandSpec = {
     out.lines([
       "Plano da avaliação",
       `  Modelos:               ${plan.models.map((m) => m.id).join(", ")}`,
+      `  Conjunto:              ${SET_NAME[taskSetOf(plan.tasks.map((t) => t.id))] ?? "misto"}${taskSetOf(plan.tasks.map((t) => t.id)) === "hard" ? " (não é comparável com o histórico do conjunto principal)" : ""}`,
       `  Tarefas:               ${plan.tasks.length} (${plan.tasks.map((t) => t.id).join(", ")})`,
       `  Repetições:            ${plan.repeat}`,
       `  Células:               ${formatInt(plan.cells.length)} (tarefas × modelos × repetições)`,
@@ -420,6 +460,7 @@ export const evalList: CommandSpec = {
         [
           ...evalTasks.map((t) => ({ set: "main", t })),
           ...qualificationTasks.map((t) => ({ set: "qualification", t })),
+          ...hardTasks.map((t) => ({ set: "hard", t })),
         ].map(({ set, t }) => ({
           id: t.id,
           set,
@@ -449,10 +490,15 @@ export const evalList: CommandSpec = {
     ctx.out.line("");
     ctx.out.line(`Qualificação de modelo (${qualificationTasks.length} tarefas; use --qualify)`);
     ctx.out.lines(renderTable(header, qualificationTasks.map(row)));
+    ctx.out.line("");
+    ctx.out.line(
+      `Conjunto difícil (${hardTasks.length} tarefas longas; use --hard; fora da execução padrão e do histórico dela)`,
+    );
+    ctx.out.lines(renderTable(header, hardTasks.map(row)));
     const worst = (list: readonly EvalTask[]) => list.reduce((s, t) => s + t.limits.maxCostUsd, 0);
     ctx.out.line("");
     ctx.out.line(
-      `Pior caso por modelo (todas as execuções no teto): ${formatUsd(worst(evalTasks))} no conjunto principal, ${formatUsd(worst(qualificationTasks))} na qualificação. O custo real costuma ser uma fração disso.`,
+      `Pior caso por modelo (todas as execuções no teto): ${formatUsd(worst(evalTasks))} no conjunto principal, ${formatUsd(worst(qualificationTasks))} na qualificação, ${formatUsd(worst(hardTasks))} no conjunto difícil. O custo real costuma ser uma fração disso.`,
     );
     ctx.out.line("Veja o que cada tarefa mede em docs/AVALIACAO.md.");
     return EXIT_OK;
@@ -490,8 +536,10 @@ export const evalHistory: CommandSpec = {
     }
     const last = new Map<string, HistoryEntry>();
     const rows = entries.map((e) => {
-      const before = last.get(e.model);
-      last.set(e.model, e);
+      // A hard run is never compared with a default one: the change is against the same set only.
+      const key = `${e.model}|${e.set ?? e.suite}`;
+      const before = last.get(key);
+      last.set(key, e);
       const change =
         before === undefined
           ? "primeiro"
@@ -507,6 +555,7 @@ export const evalHistory: CommandSpec = {
         num(e.metrics.turnsPerRun),
         e.metrics.costPerRun === null ? "n/d" : formatUsd(e.metrics.costPerRun),
         e.qualified === null ? "—" : e.qualified ? "qualificado" : "REPROVADO",
+        SET_NAME[e.set ?? "legacy"] ?? "—",
       ];
     });
     ctx.out.lines(
@@ -522,6 +571,7 @@ export const evalHistory: CommandSpec = {
           "TURNOS",
           "CUSTO/EXEC",
           "QUALIFICAÇÃO",
+          "CONJUNTO",
         ],
         rows,
       ),

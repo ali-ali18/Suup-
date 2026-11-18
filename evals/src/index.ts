@@ -1,4 +1,5 @@
 export { stamp } from "./fmt.js";
+export { hardTasks } from "./hard/index.js";
 export {
   appendHistory,
   compareWithPrevious,
@@ -9,6 +10,8 @@ export {
   readHistory,
   recordHistory,
   suiteId,
+  type TaskSet,
+  taskSetOf,
 } from "./history.js";
 export { type EventMetrics, eventMetrics } from "./metrics.js";
 export { qualificationTasks } from "./qualify/index.js";
