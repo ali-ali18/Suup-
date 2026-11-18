@@ -2,7 +2,12 @@ import type { PlanStep, RunEventPayload, RunStatus } from "../events.js";
 import type { Block, JsonValue, Message, ToolCallBlock } from "../messages.js";
 import type { GenerateResult, StopReason } from "../provider.js";
 import { isControlTool } from "./control-tools.js";
-import { renderNotice, renderSummaryMessage, renderUserMessage } from "./prompts.js";
+import {
+  isReminderBlock,
+  renderNotice,
+  renderSummaryMessage,
+  renderUserMessage,
+} from "./prompts.js";
 import type { FailureOrigin, RunResult, StoredEvent } from "./store.js";
 
 /** A tool call the model asked for whose result is not recorded yet. */
@@ -320,9 +325,14 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
       const { uptoSeq, summary } = event.payload;
       const firstKept = state.messageSeqs.findIndex((seq) => seq > uptoSeq);
       const keepFrom = firstKept === -1 ? state.messages.length : firstKept;
+      // Thinking blocks are bound to the text before them, which the summary replaces: drop them
+      // from the kept messages instead of sending signatures the API would reject.
+      const kept = state.messages
+        .slice(keepFrom)
+        .map((m) => ({ ...m, blocks: m.blocks.filter((b) => !isThinkingData(b)) }));
       state.messages = [
         { role: "user", blocks: [{ type: "text", text: renderSummaryMessage(summary) }] },
-        ...state.messages.slice(keepFrom),
+        ...kept,
       ];
       state.messageSeqs = [uptoSeq, ...state.messageSeqs.slice(keepFrom)];
       if (keepFrom >= state.messages.length) state.userOpen = false;
@@ -331,10 +341,30 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
       break;
     }
 
-    case "model_request":
+    case "model_request": {
+      // The STATE REMINDER sent with an agent request becomes a permanent part of that user
+      // message, so later requests extend this one instead of rewriting it.
+      if (event.payload.purpose !== undefined) break;
+      const sent = event.payload.messages[event.payload.messages.length - 1];
+      const reminder = sent?.blocks[sent.blocks.length - 1];
+      const tail = state.messages[state.messages.length - 1];
+      if (reminder === undefined || !isReminderBlock(reminder) || tail?.role !== "user") break;
+      tail.blocks = tail.blocks.filter((b) => !isReminderBlock(b));
+      tail.blocks.push(structuredClone(reminder));
+      break;
+    }
+
     case "model_error":
       break;
   }
+}
+
+/** Opaque provider data holding a thinking block (visible or redacted). */
+function isThinkingData(block: Block): boolean {
+  if (block.type !== "provider_data") return false;
+  const data = block.data;
+  if (typeof data !== "object" || data === null || Array.isArray(data)) return false;
+  return data.type === "thinking" || data.type === "redacted_thinking";
 }
 
 function completeToolTurn(state: RunState): void {

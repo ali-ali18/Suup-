@@ -30,6 +30,7 @@ import {
   buildSystemPrompt,
   COMPACTION_SYSTEM,
   EMPTY_RESPONSE_NUDGE,
+  isReminderBlock,
   REVIEWER_SYSTEM,
   renderStateReminder,
   repetitionNudge,
@@ -555,6 +556,9 @@ class RunLoop {
     const messages = structuredClone(state.messages);
     const tail = messages[messages.length - 1];
     if (tail !== undefined && tail.role === "user") {
+      // A reminder already in the tail belongs to a request that was never answered (it failed
+      // and is being rebuilt, or the process died): replace it with the current one.
+      tail.blocks = tail.blocks.filter((b) => !isReminderBlock(b));
       tail.blocks.push({
         type: "text",
         text: renderStateReminder({

@@ -182,3 +182,83 @@ describe("estimateTokens", () => {
     expect(estimateTokens(state, 400)).toBe(Math.ceil((400 + "Goal".length) / 4));
   });
 });
+
+describe("rebuildState: reminders and thinking blocks", () => {
+  const reminder = {
+    type: "text" as const,
+    text: "[STATE REMINDER — added by the harness on every turn; it is not part of the user's message]\n\nObjective:\nGoal",
+  };
+  const request = (blocks: unknown[]): RunEventData =>
+    ({
+      type: "model_request",
+      payload: {
+        provider: "p",
+        model: "m",
+        system: "s",
+        messages: [{ role: "user", blocks }],
+        tools: [],
+        maxOutputTokens: 100,
+      },
+    }) as RunEventData;
+
+  it("keeps the reminder sent with an answered request in that user message", () => {
+    const state = rebuildState(
+      log(
+        started,
+        request([{ type: "text", text: "Goal" }, reminder]),
+        response([{ type: "text", text: "hi" }]),
+      ),
+    );
+    expect(state.messages[0]?.blocks).toEqual([{ type: "text", text: "Goal" }, reminder]);
+  });
+
+  it("holds a single reminder when the same turn was requested twice", () => {
+    const state = rebuildState(
+      log(
+        started,
+        request([{ type: "text", text: "Goal" }, reminder]),
+        request([{ type: "text", text: "Goal" }, reminder]),
+      ),
+    );
+    expect(
+      state.messages[0]?.blocks.filter(
+        (b) => b.type === "text" && b.text.startsWith("[STATE REMINDER"),
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("ignores requests made for review or compaction", () => {
+    const sideRequest = request([{ type: "text", text: "x" }, reminder]);
+    if (sideRequest.type === "model_request") sideRequest.payload.purpose = "review";
+    const state = rebuildState(log(started, sideRequest));
+    expect(state.messages[0]?.blocks).toEqual([{ type: "text", text: "Goal" }]);
+  });
+
+  it("drops thinking blocks from the messages kept after a compaction", () => {
+    const thinking = {
+      type: "provider_data" as const,
+      provider: "anthropic",
+      data: { type: "thinking", thinking: "", signature: "sig" },
+    };
+    const other = {
+      type: "provider_data" as const,
+      provider: "other",
+      data: { type: "something" },
+    };
+    const events = log(
+      started,
+      response([{ type: "text", text: "a" }, call("1")]),
+      toolCall("1"),
+      toolResult("1"),
+      response([thinking, other, { type: "text", text: "b" }]),
+    );
+    const upto = events[1]?.seq ?? 0;
+    events.push(
+      at({ type: "compacted", payload: { uptoSeq: upto, summary: "sum", droppedMessages: 1 } }),
+    );
+    const state = rebuildState(events);
+    const kept = JSON.stringify(state.messages);
+    expect(kept).not.toContain("sig");
+    expect(kept).toContain("something");
+  });
+});

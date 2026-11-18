@@ -1,4 +1,5 @@
 import type { Message } from "../messages.js";
+import { isReminderBlock } from "./prompts.js";
 
 /** Compact when the next request is estimated above this share of the context window. */
 export const COMPACTION_THRESHOLD = 0.7;
@@ -49,6 +50,7 @@ export function renderTranscript(messages: readonly Message[], maxChars: number)
     for (const block of message.blocks) {
       switch (block.type) {
         case "text":
+          if (isReminderBlock(block)) break; // stale by now; the current one is re-injected
           lines.push(`[${message.role}] ${clipMiddle(block.text, TEXT_CAP)}`);
           break;
         case "tool_call":

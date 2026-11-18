@@ -6,6 +6,15 @@ const USER_PREFIX = "[Message from the user, received while you were working]";
 const REMINDER_HEADER =
   "[STATE REMINDER — added by the harness on every turn; it is not part of the user's message]";
 
+/** True for the text block of a STATE REMINDER (see `renderStateReminder`). */
+export function isReminderBlock(block: { type: string; text?: string }): boolean {
+  return (
+    block.type === "text" &&
+    typeof block.text === "string" &&
+    block.text.startsWith(REMINDER_HEADER)
+  );
+}
+
 /** The system prompt: the harness rules plus who this bot is. */
 export function buildSystemPrompt(bot: { name: string; personality: string }): string {
   const identity = bot.personality.trim();
@@ -22,7 +31,7 @@ export function buildSystemPrompt(bot: { name: string; personality: string }): s
 
 ## Messages from the harness
 
-- The harness appends a STATE REMINDER to the end of the latest user turn: the objective, the acceptance criteria, your current plan and what is still open. It is regenerated every turn and is authoritative; if earlier conversation was summarized, trust it over your memory.
+- The harness ends every user turn with a STATE REMINDER: the objective, the acceptance criteria, your current plan and what is still open. Only the LAST reminder is current and authoritative (earlier ones are stale); if earlier conversation was summarized, trust it over your memory.
 - Messages starting with "${NOTICE_PREFIX}" come from the harness. Follow them.
 - Messages starting with "${USER_PREFIX}" are new instructions or information from the user. Adjust your plan if needed.
 
@@ -49,7 +58,9 @@ export function openSteps(plan: readonly PlanStep[]): PlanStep[] {
 
 /**
  * The text block appended to the last user message of every request. Rebuilt each turn from the
- * run's current state; it is never stored in the event log.
+ * run's current state. Once a request carrying it has been recorded, it stays in that message
+ * (see `applyEvent`): the conversation sent to the provider only ever grows at the end, which keeps
+ * the prompt cache valid and keeps thinking blocks (bound to the text before them) acceptable.
  */
 export function renderStateReminder(input: {
   objective: string;

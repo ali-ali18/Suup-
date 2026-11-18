@@ -1024,7 +1024,7 @@ describe("runLoop: repetition guard", () => {
 });
 
 describe("runLoop: state reminder", () => {
-  it("is the last block of every request, current, and never stored", async () => {
+  it("is the last block of every request, current, and kept in the history once sent", async () => {
     const rig = createRig({
       objective: "Ship the report.",
       criteria: ["report.md exists"],
@@ -1051,20 +1051,32 @@ describe("runLoop: state reminder", () => {
     expect(reminderOf(2)).toContain("All plan steps are closed");
     expect(reminderOf(2)).toContain("1. report.md exists");
 
-    // A turn's reminder is not left behind in the next request's history.
-    for (const request of rig.provider.requests) {
+    // Append-only: every request extends the previous one (plus the model's reply and the new
+    // user turn). Rewriting earlier turns would break the prompt cache and make providers reject
+    // thinking blocks, which are bound to the text before them.
+    const requests = rig.provider.requests;
+    for (let i = 1; i < requests.length; i++) {
+      const before = requests[i - 1]?.messages ?? [];
+      expect(requests[i]?.messages.slice(0, before.length)).toEqual(before);
+    }
+    // Each earlier user turn keeps the reminder it was sent with, so the history shows one per
+    // turn; only the last one is current.
+    for (const [i, request] of requests.entries()) {
       const mentions = request.messages.filter((m) => textOf(m).includes(REMINDER_MARK));
-      expect(mentions).toHaveLength(1);
+      expect(mentions).toHaveLength(i + 1);
     }
 
-    // Only model_request events (what was really sent) contain it; no other event, and nothing
-    // rebuilt from the events.
+    // Only model_request events carry it as sent; the other events do not, and what is rebuilt
+    // from the log has the reminders of the requests that were answered.
     const events = await rig.events();
     for (const event of events) {
       if (event.type === "model_request") continue;
       expect(JSON.stringify(event.payload)).not.toContain(REMINDER_MARK);
     }
-    expect(JSON.stringify(rebuildState(events).messages)).not.toContain(REMINDER_MARK);
+    const rebuilt = rebuildState(events).messages;
+    expect(rebuilt.filter((m) => textOf(m).includes(REMINDER_MARK))).toHaveLength(3);
+    const sent = requests.at(-1)?.messages ?? [];
+    expect(sent.slice(0, -1)).toEqual(rebuilt.slice(0, sent.length - 1));
   });
 
   it("the recorded request is exactly what the provider received", async () => {
