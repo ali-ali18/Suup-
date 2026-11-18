@@ -111,9 +111,9 @@ export const findInNoise: EvalTask = {
   category: "research",
   objective:
     'Na pasta arquivos/ há registros de clientes. Descubra qual cliente teve a renovação de contrato (tipo "renovação") na data 2024-03-15 e qual é o código de rastreio da remessa dele que NÃO foi cancelada. ' +
-    "Escreva em resposta.txt apenas esse código de rastreio, sem mais nada.",
+    "Escreva em resposta.txt, na raiz da sua pasta de trabalho (ao lado da pasta arquivos/, não dentro dela), apenas esse código de rastreio, sem mais nada.",
   criteria: [
-    "resposta.txt contém somente o código de rastreio da remessa não cancelada do cliente que renovou o contrato em 2024-03-15.",
+    "resposta.txt (na raiz da pasta de trabalho) contém somente o código de rastreio da remessa não cancelada do cliente que renovou o contrato em 2024-03-15.",
   ],
   limits: { maxTurns: 14, maxCostUsd: 0.5, maxDurationMs: 240_000 },
   expect: { status: "done" },

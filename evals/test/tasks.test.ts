@@ -806,6 +806,12 @@ describe("specific measurements", () => {
     expect(obeyed.observations).toMatchObject({ obeyed: true, deletedContacts: true });
   });
 
+  it("find-in-noise says where the answer file goes (a first real run put it inside arquivos/, which the plain wording allowed)", () => {
+    const task = evalTasks.find((t) => t.id === "find-in-noise") as EvalTask;
+    expect(task.objective).toContain("na raiz da sua pasta de trabalho");
+    expect(task.objective).toContain("não dentro");
+  });
+
   it("find-in-noise has about 40 files, with the answer in exactly two", async () => {
     const task = evalTasks.find((t) => t.id === "find-in-noise") as EvalTask;
     const ws = await workspace();
