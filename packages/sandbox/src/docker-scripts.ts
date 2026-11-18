@@ -14,20 +14,30 @@ export const EXIT_MKDIR_FAILED = 46;
 export const EXIT_NOT_DIR = 47;
 /** `exec` wrapper only: the working directory leaves the workspace. Paired with a stderr marker. */
 export const EXIT_EXEC_ESCAPE = 199;
+/** `exec` wrapper only: the time limit was hit. Paired with the per-call token on stderr. */
+export const EXIT_EXEC_TIMEOUT = 198;
 export const EXEC_ESCAPE_MARKER = "suup: working directory escapes the workspace";
 
 /**
- * argv: `sh -c SCRIPT sh PIDFILE SECONDS ROOT CWD COMMAND`
+ * argv: `sh -c SCRIPT sh PIDFILE SECONDS ROOT CWD COMMAND TOKEN`
  *
  * Checks that the working directory, with symlinks resolved, is inside the workspace, then runs
- * the command under coreutils `timeout -s KILL`. `timeout` puts itself in its own process group
- * and, when the limit is hit, SIGKILLs the command AND its whole group, so a `sleep` started by
- * the command dies with it. The shell stays alive as a parent (no `exec`) so it can delete the
- * pid file afterwards. The pid file lets the host kill the tree if the host-side `docker exec`
- * client is aborted (see KILL_SCRIPT).
+ * the command in its own session (`setsid`, so its process group is its own and a group kill can
+ * never reach this wrapper or the docker client's chain) with a watchdog the wrapper controls:
+ * a background subshell sleeps for SECONDS and then SIGKILLs the command's group. The limit is
+ * enforced inside the container whatever happens to the host-side client.
+ *
+ * The outcome is reported unambiguously: if the watchdog fired, the wrapper prints TOKEN (a
+ * random per-call string) as the last line of stderr and exits with EXIT_EXEC_TIMEOUT. The
+ * command's own exit status (including 124, 137 or 198) is passed through untouched otherwise.
+ * No dependence on `timeout`, whose exit status and group handling differ between versions.
+ *
+ * The wrapper stays alive as the parent of everything (no `exec`), so it can clean up, and so the
+ * pid file lets the host kill the whole tree on abort (see KILL_SCRIPT).
  */
 export const EXEC_SCRIPT = `
-pidfile=$1; secs=$2; root=$3; cwd=$4; cmd=$5
+pidfile=$1; secs=$2; root=$3; cwd=$4; cmd=$5; token=$6
+flag="$pidfile.timeout"
 echo $$ > "$pidfile"
 real=$(realpath -m -- "$cwd") && rroot=$(realpath -- "$root") || {
   echo "suup: cannot resolve the working directory" >&2; rm -f "$pidfile"; exit 1; }
@@ -39,9 +49,28 @@ if [ ! -d "$real" ]; then
   echo "suup: working directory not found: $cwd" >&2; rm -f "$pidfile"; exit 1
 fi
 cd -- "$real" || { rm -f "$pidfile"; exit 1; }
-timeout -s KILL "$secs" sh -c "$cmd"
+if command -v setsid >/dev/null 2>&1; then s=setsid; else s=; fi
+$s sh -c "$cmd" &
+cpid=$!
+(
+  sleep "$secs" & sl=$!
+  trap 'kill "$sl" 2>/dev/null; exit 0' TERM
+  wait "$sl"
+  : > "$flag"
+  kill -s KILL -- "-$cpid" 2>/dev/null
+  kill -s KILL "$cpid" 2>/dev/null
+) >/dev/null 2>&1 </dev/null &
+wpid=$!
+{ wait "$cpid"; } 2>/dev/null
 rc=$?
+kill "$wpid" 2>/dev/null
+wait "$wpid" 2>/dev/null
 rm -f "$pidfile"
+if [ -e "$flag" ]; then
+  rm -f "$flag"
+  echo "$token" >&2
+  exit ${EXIT_EXEC_TIMEOUT}
+fi
 exit "$rc"
 `;
 

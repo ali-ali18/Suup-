@@ -210,65 +210,71 @@ describe("DockerExecutor with a fake docker CLI", () => {
 // Against a real Docker daemon: only with SUUP_DOCKER_TESTS=1 and SUUP_SANDBOX_IMAGE=<image>.
 // ---------------------------------------------------------------------------------------------
 
-describe.skipIf(!REAL)("DockerExecutor with real Docker (SUUP_DOCKER_TESTS=1)", () => {
-  const image = IMAGE ?? "";
-  const suffix = `${process.pid}-${Date.now().toString(36)}`;
-  const name = `suup-test-${suffix}`;
-  const volume = `suup-test-vol-${suffix}`;
-  let base: DockerExecutor;
-  let counter = 0;
+// Say plainly, once per run, which mode this is (vitest shows stdout of the test file on failure).
+console.info(
+  REAL
+    ? `[sandbox tests] REAL Docker block ENABLED (image: ${IMAGE ?? "<SUUP_SANDBOX_IMAGE missing>"})`
+    : "[sandbox tests] real Docker block DISABLED: SUUP_DOCKER_TESTS is not 1",
+);
 
-  beforeAll(async () => {
-    if (image === "")
-      throw new Error("SUUP_DOCKER_TESTS=1 requires SUUP_SANDBOX_IMAGE (a built image tag)");
-    await ensureMachine({ name, image, volume, memory: "512m", cpus: 1, pidsLimit: 256 });
-    base = new DockerExecutor({ container: name, workspace: "/workspace", user: "bot" });
-  }, 120_000);
+describe.skipIf(!REAL)(
+  "DockerExecutor with REAL Docker (runs only with SUUP_DOCKER_TESTS=1)",
+  () => {
+    const image = IMAGE ?? "";
+    const suffix = `${process.pid}-${Date.now().toString(36)}`;
+    const name = `suup-test-${suffix}`;
+    const volume = `suup-test-vol-${suffix}`;
+    let base: DockerExecutor;
+    let counter = 0;
 
-  afterAll(async () => {
-    await removeMachine(name, { volume });
-  }, 60_000);
+    beforeAll(async () => {
+      if (image === "")
+        throw new Error("SUUP_DOCKER_TESTS=1 requires SUUP_SANDBOX_IMAGE (a built image tag)");
+      await ensureMachine({ name, image, volume, memory: "512m", cpus: 1, pidsLimit: 256 });
+      base = new DockerExecutor({ container: name, workspace: "/workspace", user: "bot" });
+    }, 120_000);
 
-  it("runs as the non-root bot user with dropped capabilities", async () => {
-    const who = await base.exec("id -un; id -u; grep CapEff /proc/self/status");
-    const [user = "", uid = "", cap = ""] = who.stdout.trim().split("\n");
-    expect(user).toBe("bot");
-    expect(Number(uid)).not.toBe(0);
-    expect(cap).toMatch(/0000000000000000$/);
-    expect((await base.exec("cat /proc/self/status | grep NoNewPrivs")).stdout).toMatch(/1\s*$/);
-  });
+    afterAll(async () => {
+      await removeMachine(name, { volume });
+    }, 60_000);
 
-  it("has the tools the bots rely on", async () => {
-    const r = await base.exec(
-      "for t in bash curl git jq rg python3 unzip zip ps timeout realpath find pgrep; do command -v $t >/dev/null || echo missing:$t; done",
-    );
-    expect(r.stdout.trim()).toBe("");
-  });
+    it("runs as the non-root bot user with dropped capabilities", async () => {
+      const who = await base.exec("id -un; id -u; grep CapEff /proc/self/status");
+      const [user = "", uid = "", cap = ""] = who.stdout.trim().split("\n");
+      expect(user).toBe("bot");
+      expect(Number(uid)).not.toBe(0);
+      expect(cap).toMatch(/0000000000000000$/);
+      expect((await base.exec("cat /proc/self/status | grep NoNewPrivs")).stdout).toMatch(/1\s*$/);
+    });
 
-  it("ensureMachine is idempotent against a real daemon", async () => {
-    expect(await ensureMachine({ name, image, volume })).toEqual({ created: false });
-  });
+    it("has the tools the bots rely on", async () => {
+      const r = await base.exec(
+        "for t in bash curl git jq rg python3 unzip zip ps timeout realpath find pgrep; do command -v $t >/dev/null || echo missing:$t; done",
+      );
+      expect(r.stdout.trim()).toBe("");
+    });
 
-  describeExecutorContract("DockerExecutor (real Docker)", async () => {
-    const dir = `t-${++counter}-${Math.random().toString(36).slice(2, 8)}`;
-    await base.exec(`mkdir -p /workspace/${dir}`);
-    const outsideDir = `/tmp/outside-${dir}`;
-    await base.exec(`mkdir -p ${outsideDir}`);
-    return {
-      executor: new DockerExecutor({
-        container: name,
-        workspace: `/workspace/${dir}`,
-        user: "bot",
-      }),
-      root: `/workspace/${dir}`,
-      outsideDir,
-      async dispose() {
-        await base.exec(`rm -rf /workspace/${dir} ${outsideDir}`);
-      },
-    };
-  });
-});
+    it("ensureMachine is idempotent against a real daemon", async () => {
+      expect(await ensureMachine({ name, image, volume })).toEqual({ created: false });
+    });
 
-describe.skipIf(REAL)("DockerExecutor with real Docker", () => {
-  it.skip("skipped: set SUUP_DOCKER_TESTS=1 and SUUP_SANDBOX_IMAGE=<image> to run against a real daemon", () => {});
-});
+    describeExecutorContract("DockerExecutor (real Docker)", async () => {
+      const dir = `t-${++counter}-${Math.random().toString(36).slice(2, 8)}`;
+      await base.exec(`mkdir -p /workspace/${dir}`);
+      const outsideDir = `/tmp/outside-${dir}`;
+      await base.exec(`mkdir -p ${outsideDir}`);
+      return {
+        executor: new DockerExecutor({
+          container: name,
+          workspace: `/workspace/${dir}`,
+          user: "bot",
+        }),
+        root: `/workspace/${dir}`,
+        outsideDir,
+        async dispose() {
+          await base.exec(`rm -rf /workspace/${dir} ${outsideDir}`);
+        },
+      };
+    });
+  },
+);

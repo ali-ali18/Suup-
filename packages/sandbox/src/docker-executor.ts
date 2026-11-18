@@ -13,6 +13,7 @@ import {
   EXEC_SCRIPT,
   EXIT_ESCAPE,
   EXIT_EXEC_ESCAPE,
+  EXIT_EXEC_TIMEOUT,
   EXIT_IS_DIR,
   EXIT_MKDIR_FAILED,
   EXIT_NOT_DIR,
@@ -62,14 +63,15 @@ export interface DockerExecutorOptions {
  * parameters by constant scripts (see docker-scripts.ts), so they are never parsed as shell code
  * except for the command itself, which is meant to be.
  *
- * Timeouts: the command runs under coreutils `timeout -s KILL`, INSIDE the container. It kills
- * the command and its process group no matter what happens to the host-side client. On the host
- * the `docker exec` client also has a watchdog (limit + 5 s) and an abort handler; both run a
- * second `docker exec` that walks the process tree recorded in a pid file and kills it, then kill
- * the local client. Killing only the client would leave the command running.
+ * Timeouts: a wrapper script INSIDE the container runs the command in its own session and arms a
+ * watchdog (sleep, then SIGKILL of the command's process group). It reports the outcome with a
+ * private exit code plus a random token on stderr, so it does not depend on `timeout`'s exit
+ * status. The limit holds even if the host-side client dies. On the host the `docker exec`
+ * client also has a watchdog (limit + 5 s) and an abort handler; both run a second `docker exec`
+ * that walks the process tree recorded in a pid file and kills it, then kill the local client.
+ * Killing only the client would leave the command running.
  *
- * Known limits: a process that escapes the group (`setsid`) survives a timeout; a timeout is
- * reported as `exitCode: null` only when exit status 137 coincides with the elapsed limit.
+ * Known limit: a process that escapes the group with its own `setsid` survives a timeout.
  */
 export class DockerExecutor implements Executor {
   readonly container: string;
@@ -100,6 +102,7 @@ export class DockerExecutor implements Executor {
     if (command.includes("\0")) throw new Error("command contains a NUL byte");
     const cwd = resolveWorkspacePath(this.workspace, opts.cwd ?? ".");
     const timeoutMs = opts.timeoutMs ?? DEFAULT_EXEC_TIMEOUT_MS;
+    const token = `suup-timeout-${randomBytes(16).toString("hex")}`;
     const pidfile = `/tmp/.suup-exec-${randomBytes(8).toString("hex")}.pid`;
 
     const args = ["exec", ...this.#userArgs()];
@@ -120,6 +123,7 @@ export class DockerExecutor implements Executor {
       this.workspace,
       cwd,
       command,
+      token,
     );
 
     const result = await runProcess(this.#docker, args, {
@@ -142,9 +146,15 @@ export class DockerExecutor implements Executor {
         "resolves through a symlink outside the workspace",
       );
     }
-    const killedByLimit =
-      result.timedOut || (result.exitCode === 137 && result.elapsedMs >= timeoutMs - 50);
-    if (killedByLimit) return { exitCode: null, stdout, stderr, timedOut: true };
+    // The wrapper reports a timeout with a private exit code AND a random token at the end of
+    // stderr, so a command that exits 124, 137 or 198 by itself is never mistaken for one.
+    const trimmed = stderr.trimEnd();
+    if (result.exitCode === EXIT_EXEC_TIMEOUT && trimmed.endsWith(token)) {
+      const rest = trimmed.slice(0, trimmed.length - token.length);
+      return { exitCode: null, stdout, stderr: rest, timedOut: true };
+    }
+    // Backstop: the host watchdog fired (the wrapper did not answer in time).
+    if (result.timedOut) return { exitCode: null, stdout, stderr, timedOut: true };
     if (result.aborted) return { exitCode: null, stdout, stderr, timedOut: false };
     return { exitCode: result.exitCode, stdout, stderr, timedOut: false };
   }

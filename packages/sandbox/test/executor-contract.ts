@@ -139,6 +139,38 @@ export function describeExecutorContract(name: string, factory: ContractFactory)
         expect(await isGone(pid)).toBe(true);
       });
 
+      it("does not report a timeout for commands that exit with 124, 137 or 198 by themselves", async () => {
+        for (const code of [124, 137, 198]) {
+          const r = await ex.exec(`echo out; exit ${code}`, { timeoutMs: 30_000 });
+          expect(r, `exit ${code}`).toEqual({
+            exitCode: code,
+            stdout: "out\n",
+            stderr: "",
+            timedOut: false,
+          });
+        }
+      });
+
+      it("does not report a timeout for a command that kills itself with SIGKILL", async () => {
+        const r = await ex.exec("echo before; kill -9 $$", { timeoutMs: 30_000 });
+        expect(r.timedOut).toBe(false);
+        expect(r.stdout).toBe("before\n");
+        expect([null, 137]).toContain(r.exitCode);
+      });
+
+      it("reports a timeout cleanly: no exit code, no private marker in stderr", async () => {
+        const r = await ex.exec("echo oops >&2; sleep 300", { timeoutMs: 600 });
+        expect(r.timedOut).toBe(true);
+        expect(r.exitCode).toBeNull();
+        expect(r.stderr).toBe("oops\n");
+      });
+
+      it("does not leave a watchdog running after a command that finishes in time", async () => {
+        await ex.exec("echo quick", { timeoutMs: 60_000 });
+        const r = await ex.exec("ps -eo args= | grep -c '[s]leep 60.000' || true");
+        expect(Number(r.stdout.trim())).toBe(0);
+      });
+
       it("keeps partial output of a command that timed out", async () => {
         const r = await ex.exec("echo started; sleep 300", { timeoutMs: 1500 });
         expect(r.timedOut).toBe(true);
