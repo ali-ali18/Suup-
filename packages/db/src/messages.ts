@@ -268,7 +268,8 @@ export interface MessageSearchHit {
 }
 
 /**
- * Full-text search (Portuguese: stemming and stop words, so "provas" finds "prova") over messages,
+ * Full-text search (Portuguese: stemming and stop words, so "provas" finds "prova"; accent-insensitive
+ * where the database has the `unaccent` extension, see migration 0007) over messages,
  * best match first, newest first among equals. `query` is parsed by `websearch_to_tsquery`, which
  * accepts any string (quotes, `or`, `-word`) and never raises a syntax error; a query with no
  * searchable terms (empty, only stop words or punctuation) returns `[]`.
@@ -283,7 +284,7 @@ export async function searchMessages(
   const botId = opts.botId && uuidSchema.parse(opts.botId);
   const { sql } = db;
   const rows = await sql<(MessageRow & { excerpt: string; rank: number })[]>`
-    with q as (select websearch_to_tsquery('portuguese', ${query}) as tsq)
+    with q as (select suup_search_query(${query}) as tsq)
     select ${sql(MESSAGE_COLUMNS.map((c) => `m.${c}`))},
       ts_rank(m.search, q.tsq) as rank,
       ts_headline('portuguese', m.text, q.tsq, ${SEARCH_HEADLINE_OPTIONS}) as excerpt

@@ -67,6 +67,66 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("the evaluation runner, end to end"),
     return found;
   };
 
+  it("isolates the evaluation from memory: no rules, profile or memory tools reach the model", async () => {
+    // What a real user told the system, sitting in the very database the evaluation runs on.
+    const { addMemory } = await import("@suup/db");
+    await addMemory(ctx.db, {
+      layer: "rule",
+      text: "REGRA-DO-USUARIO: responda sempre em inglês.",
+      createdBy: "user",
+    });
+    await addMemory(ctx.db, {
+      layer: "profile",
+      text: "FATO-DO-USUARIO: mora em Recife.",
+      createdBy: "user",
+    });
+    const p = await project({ alpha: solver("alpha-2026-11") });
+    const report = await evaluate(p, {
+      models: ["alpha-1"],
+      tasks: [task("simple-question")],
+      budgetUsd: 10,
+    });
+    const found = cell(report, "simple-question", "alpha-1");
+    expect(found.outcome).toBe("pass");
+
+    const events = await ctx.db.sql<{ type: string; payload: Record<string, unknown> }[]>`
+      select type, payload from run_events where run_id = ${found.runId as string} order by seq`;
+    // No `context_loaded` at all: nothing was loaded from the database.
+    expect(events.filter((e) => e.type === "context_loaded")).toEqual([]);
+
+    const first = events.find((e) => e.type === "model_request");
+    const request = first?.payload as {
+      system: string;
+      tools: { name: string }[];
+      messages: unknown;
+    };
+    expect(request.system).not.toContain("REGRA-DO-USUARIO");
+    expect(request.system).not.toContain("FATO-DO-USUARIO");
+    expect(request.system).not.toContain("Standing rules from the user");
+    expect(request.system).not.toContain("What you know about the user");
+    expect(request.system).not.toContain("Memory:");
+    expect(JSON.stringify(request.messages)).not.toContain("USUARIO");
+    const tools = request.tools.map((t) => t.name).sort();
+    for (const memoryTool of ["remember", "recall", "forget", "search_conversations"]) {
+      expect(tools).not.toContain(memoryTool);
+    }
+    // Exactly what a bot had before memory existed: the control tools and the seven built-ins.
+    expect(tools).toEqual(
+      [
+        "plan",
+        "finish",
+        "escalate",
+        "shell",
+        "read_file",
+        "write_file",
+        "edit_file",
+        "list_files",
+        "search_files",
+        "web_fetch",
+      ].sort(),
+    );
+  });
+
   it("runs a 2 task x 2 model matrix: metrics, failure origins, reports and history", async () => {
     const p = await project({
       alpha: solver("alpha-2026-11"),

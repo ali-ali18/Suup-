@@ -1,4 +1,10 @@
 export {
+  type BotLatestRun,
+  type BotSummary,
+  getBotSummary,
+  listBotSummaries,
+} from "./bot-summaries.js";
+export {
   archiveBot,
   type CreateBotInput,
   createBot,
@@ -9,11 +15,21 @@ export {
   type UpdateBotInput,
   updateBot,
 } from "./bots.js";
+export {
+  CHANGE_KINDS,
+  type Change,
+  type ChangeKind,
+  changeChannel,
+  changeLogBounds,
+  listChanges,
+  pruneChangeLog,
+} from "./change-feed.js";
 export { type CreateDbOptions, createDb, type Db, withTransaction } from "./client.js";
 export {
   ACTIVE_RUN_STATUSES,
   ConversationSendError,
   getActiveConversationRun,
+  listActiveConversationRuns,
   rolloverUnreadMessages,
   type SendConversationMessageResult,
   sendConversationMessage,
@@ -36,6 +52,7 @@ export {
   listConversations,
   MESSAGE_PREVIEW_LENGTH,
   type MessagePreview,
+  markConversationRead,
   removeMember,
 } from "./conversations.js";
 export {
@@ -107,11 +124,20 @@ export {
 export { PgRunQueue } from "./pg-queue.js";
 export { PgRunStore, type PgRunStoreOptions } from "./pg-store.js";
 export {
+  heartbeatRun,
   type RequeueStaleOptions,
+  type RunControlState,
   releaseLeasedRun,
   renewLease,
   requeueStaleRuns,
 } from "./queue.js";
+export {
+  cancelRun,
+  pauseRun,
+  RunControlError,
+  type RunControlErrorCode,
+  resumeRun,
+} from "./run-control.js";
 export {
   addRunUsage,
   type CreateRunInput,

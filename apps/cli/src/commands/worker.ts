@@ -13,7 +13,9 @@ function describeEnd(end: RunEnd): string {
     case "settled":
       return `Execução ${id}: ${statusPt(end.status)} em ${formatDuration(end.durationMs)}`;
     case "released":
-      return `Execução ${id}: pausada e devolvida à fila (retome com suup resume ${id})`;
+      return end.reason === "shutdown"
+        ? `Execução ${id}: pausada e devolvida à fila (retome com suup resume ${id})`
+        : `Execução ${id}: ${end.reason === "interrupt" ? "interrompida" : "pausada"} a pedido do usuário; fica parada até ser retomada (suup resume ${id} ou o app)`;
     case "failed":
       return `Execução ${id}: falhou fora do caminho do modelo e das ferramentas (origem harness): ${end.error instanceof Error ? end.error.message : String(end.error)}`;
     case "lease_lost":

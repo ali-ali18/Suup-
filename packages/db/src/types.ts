@@ -83,6 +83,14 @@ export interface Run {
   traceId: string | null;
   lockedBy: string | null;
   lockedAt: Date | null;
+  /**
+   * Set while the user has the run paused: no worker takes it from the queue until it is resumed.
+   * A run still `running` with this set is on its way to stopping (the worker obeys at the next
+   * safe point, or at once after an interrupt). Always present on runs read through this package.
+   */
+  pausedAt?: Date | null;
+  /** A hard interrupt was asked for and the worker holding the run has not obeyed it yet. */
+  interruptRequestedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
   startedAt: Date | null;

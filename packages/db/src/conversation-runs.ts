@@ -184,3 +184,21 @@ export async function rolloverUnreadMessages(db: Db, runId: string): Promise<Run
     return next;
   });
 }
+
+/**
+ * The foreground run of each of the given conversations, in one query (a list screen needs it for
+ * all of them at once). Conversations with no active run are absent from the map.
+ */
+export async function listActiveConversationRuns(
+  db: Db,
+  conversationIds: readonly string[],
+): Promise<Map<string, Run>> {
+  const ids = z.array(z.uuid()).parse([...conversationIds]);
+  if (ids.length === 0) return new Map();
+  const rows = await db.sql<RunRow[]>`
+    select * from runs
+    where conversation_id = any(${ids}::uuid[])
+      and origin = 'user'
+      and status = any(${ACTIVE_RUN_STATUSES as unknown as string[]}::text[])`;
+  return new Map(rows.map((row) => [row.conversation_id as string, mapRun(row)]));
+}

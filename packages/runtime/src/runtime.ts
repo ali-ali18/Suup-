@@ -1,3 +1,5 @@
+import { randomBytes } from "node:crypto";
+import { hostname } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import {
   type BotConfig,
@@ -76,8 +78,20 @@ export interface CreateWorkerOptions {
   onError?(error: unknown, context: string): void;
 }
 
+export interface BuildDepsOptions {
+  /**
+   * Runs the loop with no memory at all: no rules, profile or conversation history are loaded
+   * (so no `context_loaded` carries anything from the database) and the memory tools have no
+   * `MemoryService` behind them. For evaluations, which must measure the harness and the model,
+   * never what a real user once told the system. Default `false`.
+   */
+  isolated?: boolean;
+}
+
 export interface Runtime {
   readonly config: RuntimeConfig;
+  /** Directory relative paths of the configuration start from (sandbox root, scripts). */
+  readonly baseDir: string;
   /** The database handle. Created at the first use; throws `ConfigError` without a URL. */
   readonly db: Db;
   readonly tools: ToolRegistry;
@@ -96,7 +110,7 @@ export interface Runtime {
     objective: string;
     acceptanceCriteria?: string[];
   }): Promise<Run>;
-  buildDeps(runId: string, workerId: string): Promise<LoopDeps>;
+  buildDeps(runId: string, workerId: string, options?: BuildDepsOptions): Promise<LoopDeps>;
   createWorker(options?: CreateWorkerOptions): Worker;
   close(): Promise<void>;
 }
@@ -331,7 +345,11 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     return dockerExecutor(dockerWorkspace(botId));
   };
 
-  const buildDeps = async (runId: string, workerId: string): Promise<LoopDeps> => {
+  const buildDeps = async (
+    runId: string,
+    workerId: string,
+    buildOptions: BuildDepsOptions = {},
+  ): Promise<LoopDeps> => {
     const handle = runtime.db;
     const run = await getRun(handle, runId);
     if (run === null) throw new RuntimeError("bot_not_found", `Execução ${runId} não encontrada.`);
@@ -351,9 +369,15 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
       executor: await runtime.executorFor(bot.id),
       bot: cfg,
       ...(reviewer === undefined ? {} : { reviewer }),
-      loadRunContext: (id) =>
-        loadRunContext(handle, id, config.defaults?.historyChars ?? DEFAULT_HISTORY_CHARS),
-      memoryFor: (record) => createMemoryService(handle, { botId: record.botId, runId: record.id }),
+      // An isolated run (an evaluation) gets neither: nothing of the user's memory reaches it.
+      ...(buildOptions.isolated === true
+        ? {}
+        : {
+            loadRunContext: (id: string) =>
+              loadRunContext(handle, id, config.defaults?.historyChars ?? DEFAULT_HISTORY_CHARS),
+            memoryFor: (record: { botId: string; id: string }) =>
+              createMemoryService(handle, { botId: record.botId, runId: record.id }),
+          }),
       now: () => new Date(),
       sleep: (ms) => new Promise<void>((done) => setTimeout(done, ms)),
     };
@@ -362,6 +386,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
   let workerCount = 0;
   const runtime: Runtime = {
     config,
+    baseDir,
     get db(): Db {
       if (db === undefined) {
         const url = resolveDatabaseUrl(config, env);
@@ -419,7 +444,11 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     },
     buildDeps,
     createWorker(opts = {}) {
-      const workerId = opts.workerId ?? `worker-${process.pid}-${++workerCount}`;
+      // Unique across machines and containers: in two containers the pid can be the same (1, 7...),
+      // and a lease held by "the same worker" would be taken for one's own.
+      const workerId =
+        opts.workerId ??
+        `worker-${hostname()}-${process.pid}-${++workerCount}-${randomBytes(3).toString("hex")}`;
       const settings = { ...DEFAULT_WORKER, ...config.worker };
       return new Worker({
         workerId,
@@ -438,6 +467,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
         concurrency: opts.concurrency ?? settings.concurrency,
         leaseRenewMs: settings.leaseRenewMs,
         staleAfterMs: settings.staleAfterMs,
+        controlPollMs: settings.controlPollMs,
         ...(opts.idleBackoff === undefined ? {} : { idleBackoff: opts.idleBackoff }),
         ...(opts.onRunEnd === undefined ? {} : { onRunEnd: opts.onRunEnd }),
         ...(opts.onError === undefined ? {} : { onError: opts.onError }),

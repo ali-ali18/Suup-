@@ -1,0 +1,19 @@
+{
+  "name": "@suup/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@suup/core": "workspace:*",
+    "zod": "^4.6.7"
+  }
+}

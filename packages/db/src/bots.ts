@@ -3,7 +3,7 @@ import type { Db } from "./client.js";
 import { joinFragments } from "./sql-util.js";
 import { type Bot, type BotLimits, botLimitsSchema } from "./types.js";
 
-interface BotRow {
+export interface BotRow {
   id: string;
   name: string;
   description: string;

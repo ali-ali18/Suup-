@@ -275,3 +275,18 @@ describe("runtime: the machine of each bot", () => {
     }
   });
 });
+
+describe("runtime: workers", () => {
+  it("gives every worker an id that is unique across processes and containers", () => {
+    const runtime = createRuntime(configOf(), {
+      env: { DATABASE_URL: "postgres://suup@127.0.0.1:1/none" },
+    });
+    const ids = [runtime.createWorker(), runtime.createWorker(), runtime.createWorker()].map(
+      (w) => w.workerId,
+    );
+    expect(new Set(ids).size).toBe(3);
+    // Two containers can have the same pid; the id must not be the pid alone.
+    for (const id of ids) expect(id).toMatch(/^worker-.+-\d+-\d+-[0-9a-f]{6}$/);
+    expect(runtime.createWorker({ workerId: "mine" }).workerId).toBe("mine");
+  });
+});

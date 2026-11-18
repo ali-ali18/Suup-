@@ -67,8 +67,13 @@ export type RunEnd =
     }
   | {
       runId: string;
-      /** The loop was interrupted (the worker is stopping) and the run went back to the queue. */
+      /**
+       * The loop stopped without finishing and the run went back to the queue: the worker is
+       * stopping, or the user paused or interrupted the run (which stays paused until resumed).
+       */
       outcome: "released";
+      /** Why: `shutdown` (this worker is stopping), `pause` (a soft pause the user asked for), `interrupt` (a hard one). */
+      reason: "shutdown" | "pause" | "interrupt";
     }
   | {
       runId: string;
@@ -94,6 +99,13 @@ export interface WorkerOptions {
   concurrency?: number;
   /** How often the lease of each running run is renewed, independently of the loop. Default 10s. */
   leaseRenewMs?: number;
+  /**
+   * How often each running run is checked for a pause or interrupt asked for from outside (by the
+   * server, in another process). The check is the heartbeat itself, so the heartbeat tick runs at
+   * the shorter of this and `leaseRenewMs`. This is how long a hard interrupt takes to reach a
+   * run that sits in a long model or tool call. Default: `leaseRenewMs`.
+   */
+  controlPollMs?: number;
   /** A lease not renewed for this long is stale. Must exceed `leaseRenewMs`. Default 3x it. */
   staleAfterMs?: number;
   /** How often to look for stale runs. Default 30s. */
@@ -125,6 +137,8 @@ interface ActiveRun {
    * loop's return fails the same way. It is decided when the loop returns (see `#execute`).
    */
   leaseFailed: boolean;
+  /** The user's hard interrupt was seen on a heartbeat and the loop was aborted because of it. */
+  interruptedByUser: boolean;
   done: Promise<void>;
 }
 
@@ -142,6 +156,7 @@ export class Worker {
   readonly #buildDeps: (runId: string) => Promise<LoopDeps>;
   readonly #concurrency: number;
   readonly #leaseRenewMs: number;
+  readonly #beatEveryMs: number;
   readonly #staleAfterMs: number;
   readonly #requeueEveryMs: number;
   readonly #idle: { minMs: number; maxMs: number; factor: number };
@@ -169,6 +184,7 @@ export class Worker {
     this.#buildDeps = options.buildDeps;
     this.#concurrency = options.concurrency ?? 4;
     this.#leaseRenewMs = options.leaseRenewMs ?? 10_000;
+    this.#beatEveryMs = Math.min(this.#leaseRenewMs, options.controlPollMs ?? this.#leaseRenewMs);
     this.#staleAfterMs = options.staleAfterMs ?? this.#leaseRenewMs * 3;
     this.#requeueEveryMs = options.requeueEveryMs ?? 30_000;
     this.#idle = {
@@ -185,6 +201,7 @@ export class Worker {
       throw new RangeError("Worker: concurrency must be an integer of at least 1");
     }
     if (!(this.#leaseRenewMs > 0)) throw new RangeError("Worker: leaseRenewMs must be positive");
+    if (!(this.#beatEveryMs > 0)) throw new RangeError("Worker: controlPollMs must be positive");
     if (!(this.#staleAfterMs > this.#leaseRenewMs)) {
       throw new RangeError("Worker: staleAfterMs must be greater than leaseRenewMs");
     }
@@ -293,6 +310,7 @@ export class Worker {
       runId,
       abort: new AbortController(),
       leaseFailed: false,
+      interruptedByUser: false,
       done: Promise.resolve(),
     };
     entry.done = this.#execute(entry).finally(() => {
@@ -322,6 +340,15 @@ export class Worker {
       beating = true;
       deps.store
         .heartbeat(runId)
+        .then((control) => {
+          // The user asked, through the server, to cut this run short: abort the model call and
+          // the tool in flight. The loop returns `running` and the run goes back to the queue
+          // (paused, if that is what was asked; the database knows).
+          if (!finished && control?.interrupt === true && !entry.interruptedByUser) {
+            entry.interruptedByUser = true;
+            entry.abort.abort();
+          }
+        })
         .catch((error: unknown) => {
           if (finished) return;
           if (error instanceof LeaseLostError) {
@@ -339,7 +366,7 @@ export class Worker {
           beating = false;
         });
     };
-    const timer = this.#clock.every(this.#leaseRenewMs, beat);
+    const timer = this.#clock.every(this.#beatEveryMs, beat);
 
     let status: RunStatus;
     try {
@@ -368,7 +395,8 @@ export class Worker {
     if (status === "running") {
       // Interrupted at a safe point: back to the queue, to be resumed from the log.
       await this.#giveBack(runId);
-      return this.#emit({ runId, outcome: "released" });
+      const reason = entry.interruptedByUser ? "interrupt" : this.#stopping ? "shutdown" : "pause";
+      return this.#emit({ runId, outcome: "released", reason });
     }
     await this.#emit({
       runId,

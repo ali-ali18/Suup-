@@ -4,6 +4,8 @@ Este roteiro é a seção 4.13 do [plano](PLANO.md) escrita como comandos. A per
 
 Nos exemplos, `3f2a9c1d` é o começo do id de uma execução (a CLI aceita o início do id, com pelo menos 4 caracteres). Todos os comandos aceitam `--json`.
 
+**O mesmo roteiro pela API.** `inspect --request`, `replay`, `resend` e `doctor` existem também no servidor, com o mesmo código (é o Inspetor do app): `GET /v1/runs/{id}/requests/{seq}`, `POST /v1/runs/{id}/replay`, `POST /v1/runs/{id}/resend` (até 20 vezes) e `GET /v1/doctor` ([API.md](API.md)). A diferença: a API pede o id **inteiro** da execução e não grava o resultado do `resend` em `.suup/diagnostics/` (devolve-o na resposta).
+
 ## 1. `suup show`: a classificação já vem pronta
 
 ```sh

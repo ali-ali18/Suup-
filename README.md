@@ -2,7 +2,7 @@
 
 Assistente pessoal de uso geral, formado por uma equipe de bots que conversam, lembram, agem em um computador próprio e terminam o que começam.
 
-O plano de arquitetura e as fases de construção estão em [docs/PLANO.md](docs/PLANO.md). Já existem o núcleo (loop, worker, replay), o banco, os provedores, a máquina dos bots, as ferramentas, a montagem em tempo de execução (`@suup/runtime`) e a CLI `suup`; o servidor e o app ainda não.
+O plano de arquitetura e as fases de construção estão em [docs/PLANO.md](docs/PLANO.md). Já existem o núcleo (loop, worker, replay), o banco, os provedores, a máquina dos bots, as ferramentas, a montagem em tempo de execução (`@suup/runtime`), a CLI `suup`, conversas e memória, e o **servidor** (`@suup/server`: API HTTP e tempo real, com o contrato e o cliente tipado em `@suup/api`) com o empacotamento para uma VPS; o app de desktop ainda não.
 
 ## Desenvolvimento
 
@@ -96,6 +96,32 @@ Os arquivos do bot aparecem em `examples/demo/workspace/bots/<id>/`.
 
 O sandbox `local` roda os comandos dos bots direto no seu computador, **sem isolamento**, e a CLI avisa sempre que ele está em uso.
 
+### Servidor (API e tempo real)
+
+O app de desktop fala com o `suup server`, uma API HTTP com tempo real por Server-Sent Events (todos os endpoints em [docs/API.md](docs/API.md)). Ele exige um token (mínimo 32 caracteres), que vem **só** de uma variável de ambiente, e por padrão escuta apenas em `127.0.0.1`.
+
+```sh
+# 1. Um token novo, e o servidor com um worker embutido (um processo só, bom para experimentar)
+export SUUP_SERVER_TOKEN=$(pnpm --silent suup server --generate-token)
+pnpm suup server --with-worker               # http://127.0.0.1:8787
+
+# 2. Em outro terminal
+curl -s localhost:8787/health                                     # {"status":"ok"}
+curl -s -H "Authorization: Bearer $SUUP_SERVER_TOKEN" localhost:8787/v1/bots | jq
+```
+
+`suup server` (sem `--with-worker`) é só a API: as execuções precisam de `suup worker` em outro processo, e pausar, interromper e cancelar pela API funcionam entre os dois por meio do banco. Ao subir, o servidor acerta o que ficou pendente de execuções que terminaram sem aviso e cria o bot principal se não houver nenhum. As origens do app (Tauri) vão em `server.allowedOrigins` ([docs/CONFIGURACAO.md](docs/CONFIGURACAO.md)). **Fora do seu computador**, ponha um proxy com TLS na frente: o servidor fala HTTP puro.
+
+### Produção numa VPS
+
+`docker-compose.prod.yml` sobe Postgres, migrações, servidor, worker e a imagem da máquina dos bots, a partir de uma imagem só (`docker/server/Dockerfile`). O passo a passo (primeira implantação, token, TLS, o que o socket do Docker dá ao worker, backup, atualização, logs) está em [docs/IMPLANTACAO.md](docs/IMPLANTACAO.md).
+
+```sh
+cp .env.prod.example .env.prod && chmod 600 .env.prod            # preencha
+cp suup.config.prod.example.json suup.config.json                # ajuste
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+```
+
 ### Qualidade
 
 ```sh
@@ -105,7 +131,7 @@ pnpm typecheck   # tsc -b em todos os pacotes, mais os arquivos de teste
 pnpm test        # Vitest
 ```
 
-Os testes do pacote `@suup/db` usam um Postgres real: defina `DATABASE_URL` (o valor do `.env.example` serve para o banco do Compose) e eles rodam, cada arquivo em um schema próprio que é removido ao final. Sem `DATABASE_URL`, esses testes são pulados.
+Os testes que usam um Postgres real (`@suup/db`, `@suup/runtime`, `@suup/server`, a CLI e as avaliações) rodam quando `DATABASE_URL` está definida (o valor do `.env.example` serve para o banco do Compose), cada arquivo em um schema próprio que é removido ao final; sem ela, são pulados. Os testes de ponta a ponta do servidor sobem um servidor numa porta efêmera, um worker em outro objeto de runtime e usam o cliente real de `@suup/api`, com o provedor `scripted` e o sandbox `local`.
 
 ## Licença
 

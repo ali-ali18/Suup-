@@ -119,7 +119,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("Worker on PgRunQueue"), { timeout: 6
       async () => (await eventTypes(run.id)).filter((t) => t === "model_request").length === 2,
     );
     await first.stop({ graceMs: 0 });
-    expect(kit.ends).toEqual([{ runId: run.id, outcome: "released" }]);
+    expect(kit.ends).toEqual([{ runId: run.id, outcome: "released", reason: "shutdown" }]);
     expect(await getRun(ctx.db, run.id)).toMatchObject({ status: "queued", lockedBy: null });
 
     const second = kit.make();

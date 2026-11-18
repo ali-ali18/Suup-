@@ -1,6 +1,6 @@
 # Configuração
 
-Tudo o que a CLI (`suup`) precisa saber para funcionar vem de **um arquivo JSON** mais algumas variáveis de ambiente. O arquivo é validado ao ser lido; um erro aparece em português, com o caminho do campo (por exemplo `models[0].contextWindow: esperado número, recebido texto`) e todos os problemas de uma vez.
+Tudo o que a CLI (`suup`) e o servidor (`suup server`) precisam saber para funcionar vem de **um arquivo JSON** mais algumas variáveis de ambiente. O arquivo é validado ao ser lido; um erro aparece em português, com o caminho do campo (por exemplo `models[0].contextWindow: esperado número, recebido texto`) e todos os problemas de uma vez.
 
 Um ponto de partida está em [`suup.config.example.json`](../suup.config.example.json). Para experimentar sem nenhuma chave de API, veja a configuração de demonstração em [`examples/demo/`](../examples/demo/) (provedor roteirizado e sandbox local).
 
@@ -76,6 +76,21 @@ A máquina dos bots. Cada bot trabalha na própria subpasta `bots/<id do bot>` d
 | `concurrency` | 4 | Execuções ao mesmo tempo em um worker |
 | `leaseRenewMs` | 10000 | De quanto em quanto tempo o worker renova a posse de cada execução |
 | `staleAfterMs` | 30000 | Uma posse não renovada por este tempo vence, e a execução volta para a fila (precisa ser maior que `leaseRenewMs`) |
+| `controlPollMs` | 2000 | De quanto em quanto tempo o worker olha se o servidor pediu para **pausar, interromper ou cancelar** uma execução dele (a verificação é o próprio batimento, que passa a bater no menor entre este valor e `leaseRenewMs`). É o tempo que um "interromper agora" leva para chegar a uma execução parada numa chamada longa ao modelo |
+
+### `server` (opcional)
+
+O servidor da API e do tempo real (`suup server`; [API.md](API.md)). Todos os campos são opcionais.
+
+| Campo | Padrão | Significado |
+|---|---|---|
+| `host` | `127.0.0.1` | Interface em que escutar. **Escutar fora do próprio computador exige pedir aqui** (ou `--host`), e o servidor fala HTTP puro: ponha um proxy com TLS na frente ([IMPLANTACAO.md](IMPLANTACAO.md)) |
+| `port` | 8787 | Porta |
+| `allowedOrigins` | `[]` | Origens de navegador que podem chamar a API (CORS): esquema, host e porta, sem barra no fim (`http://localhost:1420`). Vazio: nenhuma. Do app de desktop (Tauri) acrescente `tauri://localhost`, `http://tauri.localhost` e `https://tauri.localhost` |
+| `tokenEnv` | `SUUP_SERVER_TOKEN` | O **NOME** da variável de ambiente que guarda o token do app (mínimo 32 caracteres; `suup server --generate-token` gera um). O token em si **nunca** vai no arquivo: um campo `token` é recusado |
+| `maxStreams` | 16 | Conexões de tempo real ao mesmo tempo; a seguinte leva `429` |
+| `maxBodyBytes` | 1048576 | Maior corpo de requisição aceito (`413` acima) |
+| `eventRetentionMinutes` | 360 | Por quanto tempo o diário de mudanças é guardado: a janela em que um cliente consegue retomar o stream de onde parou (fora dela, o servidor manda recarregar) |
 
 ### `defaults` (opcional)
 
@@ -96,6 +111,7 @@ Passar de um limite termina a execução como `failed` com origem `limit`.
 |---|---|
 | `DATABASE_URL` | URL do Postgres (vale mais que `databaseUrl`). `pnpm suup` lê também o arquivo `.env` |
 | `SUUP_CONFIG` | Caminho do arquivo de configuração (vale menos que `--config`) |
+| `SUUP_SERVER_TOKEN` | O token do servidor (o nome é o de `server.tokenEnv`) |
 | as de `apiKeyEnv` | As chaves de API dos provedores (nomes à sua escolha, por exemplo `ANTHROPIC_API_KEY`) |
 | `SUUP_DOCKER_PATH` | Caminho do executável `docker` (padrão: o do `PATH`) |
 | `SUUP_DEBUG` | Com qualquer valor, erros inesperados mostram a pilha |

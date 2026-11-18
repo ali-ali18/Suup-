@@ -25,7 +25,7 @@ export {
   runLoop,
   type ToolInvoker,
 } from "./loop.js";
-export { buildSystemPrompt, renderStateReminder } from "./prompts.js";
+export { buildSystemPrompt, MEMORY_TOOL_NAMES, renderStateReminder } from "./prompts.js";
 export {
   applyEvent,
   createRunState,
@@ -37,6 +37,7 @@ export {
   type InboxItem,
   type InboxItemInput,
   LeaseLostError,
+  type RunControl,
   type RunRecord,
   type RunStore,
   type StatusChange,

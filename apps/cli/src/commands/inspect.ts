@@ -1,10 +1,11 @@
 import { type Message, RUN_EVENT_TYPES } from "@suup/core";
+import { inspectModelRequest, type ModelRequestView } from "@suup/runtime";
 import { flag, list, str } from "../args.js";
 import type { CommandSpec, Ctx } from "../context.js";
-import { CommandError, EXIT_OK, UsageError } from "../errors.js";
+import { EXIT_OK, UsageError } from "../errors.js";
 import { formatClockMs, formatDuration, formatInt, indent, oneLine } from "../format.js";
 import { findRun, readEvents } from "../lookup.js";
-import { type RawEvent, summarizeEvent, typedEvent } from "../render.js";
+import { summarizeEvent } from "../render.js";
 
 const NAME = "inspect";
 
@@ -63,8 +64,10 @@ export const inspectCommand: CommandSpec = {
     }
     const db = ctx.runtime().db;
     const run = await findRun(db, ctx.args.positionals[0] as string);
+    if (requestSeq !== undefined) {
+      return showRequest(ctx, await inspectModelRequest(db, run.id, requestSeq));
+    }
     const events = await readEvents(db, run.id);
-    if (requestSeq !== undefined) return showRequest(ctx, run.id, events, requestSeq);
     const picked = events.filter(
       (e) =>
         (from === undefined || e.seq >= from) &&
@@ -122,42 +125,12 @@ function renderMessage(message: Message, index: number): string[] {
   return lines;
 }
 
-function showRequest(ctx: Ctx, runId: string, events: RawEvent[], seq: number): number {
-  const event = events.find((e) => e.seq === seq);
-  if (event === undefined) throw new CommandError(`A execução não tem o evento seq ${seq}.`);
-  const typed = typedEvent(event);
-  if (event.type !== "model_request" || typed?.type !== "model_request") {
-    const near = events
-      .filter((e) => e.type === "model_request")
-      .map((e) => e.seq)
-      .join(", ");
-    throw new CommandError(
-      `O evento ${seq} é "${event.type}", não um model_request. Pedidos ao modelo desta execução: seq ${near === "" ? "(nenhum)" : near}.`,
-    );
-  }
-  const req = typed.payload;
-  const purpose = req.purpose ?? "agent";
-  const turn = events.filter(
-    (e) =>
-      e.seq <= seq &&
-      e.type === "model_request" &&
-      ((typedEvent(e) as { payload: { purpose?: string } } | undefined)?.payload.purpose ??
-        "agent") === "agent",
-  ).length;
-  const response = events.find((e) => {
-    if (e.seq <= seq || e.type !== "model_response") return false;
-    const t = typedEvent(e);
-    return t?.type === "model_response" && (t.payload.purpose ?? "agent") === purpose;
-  });
+function showRequest(ctx: Ctx, view: ModelRequestView): number {
+  const { seq, request: req, response, turn, purpose, runId } = view;
   const full = flag(ctx.args, "full");
 
   if (ctx.json) {
-    ctx.out.data({
-      runId,
-      seq,
-      request: req,
-      response: response === undefined ? null : { seq: response.seq, ...response.payload },
-    });
+    ctx.out.data({ runId, seq, request: req, response });
     return EXIT_OK;
   }
   const out = ctx.out;
@@ -184,14 +157,12 @@ function showRequest(ctx: Ctx, runId: string, events: RawEvent[], seq: number): 
     }
   }
   out.line("");
-  const answer = response === undefined ? undefined : typedEvent(response);
-  if (response !== undefined && answer?.type === "model_response") {
-    const r = answer.payload;
+  if (response !== null) {
     out.line(`=== RESPOSTA GRAVADA (evento ${response.seq}) ===`);
     out.line(
-      `Parada: ${r.stopReason} · versão do modelo: ${r.modelVersion} · ${formatInt(r.usage.inputTokens)} tokens de entrada, ${formatInt(r.usage.outputTokens)} de saída · ${formatDuration(r.durationMs)}`,
+      `Parada: ${response.stopReason} · versão do modelo: ${response.modelVersion} · ${formatInt(response.usage.inputTokens)} tokens de entrada, ${formatInt(response.usage.outputTokens)} de saída · ${formatDuration(response.durationMs)}`,
     );
-    for (const b of r.blocks) {
+    for (const b of response.blocks) {
       if (b.type === "text") out.lines(indent(b.text, "  "));
       else if (b.type === "tool_call")
         out.line(`  → chamada ${b.name} (id ${b.id}): ${JSON.stringify(b.args)}`);

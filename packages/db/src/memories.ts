@@ -277,7 +277,7 @@ export async function searchMemories(
   if (layers?.length === 0) return [];
   const { sql } = db;
   const rows = await sql<(MemoryRow & { excerpt: string; rank: number })[]>`
-    with q as (select websearch_to_tsquery('portuguese', ${query}) as tsq)
+    with q as (select suup_search_query(${query}) as tsq)
     select ${sql(MEMORY_COLUMNS.map((c) => `m.${c}`))},
       ts_rank(m.search, q.tsq) as rank,
       ts_headline('portuguese', m.text, q.tsq, ${SEARCH_HEADLINE_OPTIONS}) as excerpt

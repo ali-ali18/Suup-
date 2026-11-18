@@ -11,7 +11,7 @@ Como o harness lembra: o que é guardado, quem guarda, o que entra em toda execu
 | Nota (`note`) | O que um bot aprendeu fazendo o trabalho dele | O bot (`remember`) ou você (`--bot`) | Só aquele bot | **Buscada**: o bot usa `recall` quando precisa |
 | Diário (`journal`) | O que o bot fez, quando e com que resultado | O sistema, ao fim de cada execução (sem chamar modelo) | Só aquele bot | **Buscada** (`recall`) |
 
-Além delas, o **texto integral das conversas** fica guardado e o bot o consulta com `search_conversations` (busca por palavras, em português: "provas" acha "prova").
+Além delas, o **texto integral das conversas** fica guardado e o bot o consulta com `search_conversations` (busca por palavras, em português: "provas" acha "prova"). A busca, de memória e de conversas, **ignora acentos** ("avaliacao" acha "avaliação") onde o PostgreSQL tem a extensão `unaccent`, que a imagem Docker tem; num PostgreSQL sem ela a busca funciona como antes, só que com acentos (`suup doctor` e `GET /v1/doctor` dizem qual é o caso). Escrever sem acento *e* no plural contra um texto singular acentuado pode não achar ("avaliacoes" não acha "avaliação"): o radical muda.
 
 Toda memória tem texto, camada, escopo, data, **autor** (`você` ou `bot`) e **origem** (a execução, a conversa e a mensagem de onde veio, quando veio de um bot). Uma regra ou um fato criado por um bot fica marcado como criado por ele, para você conferir.
 
@@ -52,6 +52,8 @@ suup memory search "palavras" [--bot <bot>] [--layer ...] [--messages]
 ```
 
 `suup memory list --json` traz tudo (texto completo, autor, origem). Esquecer é **arquivar**: nada é apagado, então dá para restaurar e auditar. O bot só esquece (`forget`) o que enxerga: as memórias compartilhadas e as dele.
+
+A mesma memória está na API (`/v1/memories`, [API.md](API.md)): listar, criar, editar, esquecer, restaurar e buscar; o app mostra a tela de memória por ela.
 
 `suup chat [--bot <bot>]` conversa com um bot no terminal; `suup chat --bot x --message "..."` envia uma mensagem, espera o turno terminar e mostra a resposta. `suup bot draft "<descrição>" --model <modelo> [--create]` propõe nome, descrição e personalidade de um bot a partir de uma descrição em texto livre.
 

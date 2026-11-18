@@ -1,4 +1,4 @@
-import { releaseRun } from "@suup/db";
+import { releaseRun, resumeRun } from "@suup/db";
 import { DEFAULT_WORKER } from "@suup/runtime";
 import { flag, list, str } from "../args.js";
 import { type CommandSpec, warnIfLocalSandbox } from "../context.js";
@@ -105,6 +105,11 @@ export const resumeCommand: CommandSpec = {
         break;
     }
 
+    if (run.pausedAt != null) {
+      // Paused through the server: no worker takes it until the pause is lifted.
+      await resumeRun(runtime.db, run.id);
+      run = await findRun(runtime.db, run.id);
+    }
     ctx.out.line(`Retomando a execução ${run.id} (${statusPt(run.status)})`);
     ctx.out.line(`Objetivo: ${run.objective}`);
     ctx.out.line("Plano:");

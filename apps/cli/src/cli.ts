@@ -18,6 +18,7 @@ import { replayCommand } from "./commands/replay.js";
 import { resendCommand } from "./commands/resend.js";
 import { resumeCommand, runCommand } from "./commands/run.js";
 import { runsCommand, showCommand } from "./commands/runs.js";
+import { serverCommand } from "./commands/server.js";
 import { workerCommand } from "./commands/worker.js";
 import { type CommandSpec, makeCtx } from "./context.js";
 import { CommandError, EXIT_FAILED, EXIT_OK, EXIT_USAGE, UsageError } from "./errors.js";
@@ -40,6 +41,7 @@ export const COMMANDS: readonly CommandSpec[] = [
   memorySearch,
   runCommand,
   workerCommand,
+  serverCommand,
   runsCommand,
   showCommand,
   sayCommand,

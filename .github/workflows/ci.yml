@@ -37,6 +37,20 @@ jobs:
       - run: pnpm typecheck
       - name: Build the bot machine image
         run: docker build --tag suup-sandbox:ci docker/sandbox
+      - name: Build the server image (not pushed)
+        run: docker build --file docker/server/Dockerfile --tag suup:ci .
+      - name: Smoke test the server image
+        run: |
+          docker run --rm suup:ci --help | head -n 3
+          docker run --rm suup:ci server --generate-token | grep -Eq '^[A-Za-z0-9_-]{43}$'
+      - name: Check the production compose file
+        run: >
+          POSTGRES_PASSWORD=ci SUUP_SERVER_TOKEN=0123456789012345678901234567890123456789 DOCKER_GID=999
+          docker compose -f docker-compose.prod.yml config --quiet
+      - name: Test the server end to end (real Postgres, real client)
+        run: pnpm vitest run packages/api packages/server apps/cli/test/server.test.ts
+        env:
+          DATABASE_URL: postgres://suup:suup@127.0.0.1:5432/suup
       - name: Test
         run: pnpm test
         env:

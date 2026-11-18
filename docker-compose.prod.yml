@@ -1,0 +1,122 @@
+# Produção numa VPS: Postgres, migrações, servidor da API, worker e a imagem da máquina dos bots.
+# Guia completo (primeira implantação, token, TLS, backup, atualização): docs/IMPLANTACAO.md
+#
+#   cp .env.prod.example .env.prod                       # preencha; chmod 600 .env.prod
+#   cp suup.config.prod.example.json suup.config.json    # ajuste modelos e limites
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+#
+# Não use este arquivo em desenvolvimento: lá é o docker-compose.yml (só o Postgres).
+
+name: suup-prod
+
+x-app: &app
+  image: suup:prod
+  build:
+    context: .
+    dockerfile: docker/server/Dockerfile
+  restart: unless-stopped
+  init: true
+  environment: &app-env
+    DATABASE_URL: postgres://${POSTGRES_USER:-suup}:${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env.prod}@db:5432/${POSTGRES_DB:-suup}
+    SUUP_CONFIG: /app/suup.config.json
+    SUUP_SERVER_TOKEN: ${SUUP_SERVER_TOKEN:?defina SUUP_SERVER_TOKEN no .env.prod (gere um com suup server --generate-token)}
+    # As chaves dos provedores: acrescente aqui cada variável que o suup.config.json cita em apiKeyEnv.
+    ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  # O log vai para a saída padrão; o Docker o guarda em arquivos, com rodízio para não encher o disco.
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "5"
+
+services:
+  db:
+    # A mesma família de imagem do docker-compose.yml de desenvolvimento (Postgres com pgvector).
+    image: pgvector/pgvector:0.8.1-pg18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-suup}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env.prod}
+      POSTGRES_DB: ${POSTGRES_DB:-suup}
+    # Sem `ports`: só os outros serviços deste arquivo alcançam o banco.
+    volumes:
+      - pgdata:/var/lib/postgresql
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/00-extensions.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # A imagem da máquina dos bots (docker/sandbox). Este serviço só a constrói e sai; quem cria e
+  # usa o contêiner da máquina é o worker (ensureMachine), com os limites e o endurecimento do código.
+  sandbox-image:
+    image: suup-sandbox:prod
+    build:
+      context: ./docker/sandbox
+    command: ["true"]
+    restart: "no"
+
+  # Aplica as migrações e sai. O servidor e o worker só sobem depois que ela termina bem.
+  migrate:
+    <<: *app
+    restart: "no"
+    command: ["db", "migrate"]
+    volumes:
+      - ./suup.config.json:/app/suup.config.json:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+
+  # A API e o tempo real. NÃO recebe o socket do Docker.
+  server:
+    <<: *app
+    command: ["server"]
+    ports:
+      # Só no próprio host: o proxy com TLS (docs/IMPLANTACAO.md) é quem fala com a internet.
+      - "127.0.0.1:${SUUP_PORT:-8787}:8787"
+    volumes:
+      - ./suup.config.json:/app/suup.config.json:ro
+    read_only: true
+    tmpfs: [/tmp]
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  # Roda as execuções. É o único serviço com o socket do Docker (veja a nota de segurança em
+  # docs/IMPLANTACAO.md: quem controla o socket controla o Docker do host).
+  worker:
+    <<: *app
+    command: ["worker"]
+    environment:
+      <<: *app-env
+      # A CLI do docker guarda configuração aqui; o sistema de arquivos do contêiner é só leitura.
+      DOCKER_CONFIG: /tmp/.docker
+    # O usuário `node` da imagem precisa estar no grupo dono do socket do host.
+    group_add: ["${DOCKER_GID:?defina DOCKER_GID no .env.prod (stat -c %g /var/run/docker.sock)}"]
+    volumes:
+      - ./suup.config.json:/app/suup.config.json:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    read_only: true
+    tmpfs: [/tmp]
+    # O worker não tem HTTP: sem o teste de /health da imagem.
+    healthcheck:
+      disable: true
+    # Dá tempo de o worker devolver as execuções à fila antes de o Docker matá-lo (ele espera 30 s).
+    stop_grace_period: 40s
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      sandbox-image:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata:

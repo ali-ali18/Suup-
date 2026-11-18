@@ -34,12 +34,16 @@ export interface Conversation {
   updatedAt: Date;
   lastMessageAt: Date | null;
   archivedAt: Date | null;
+  /** The user has read the conversation up to this message `seq` (0: nothing read yet). */
+  lastReadSeq: number;
 }
 
-/** A conversation with its members and a preview of its last message. */
+/** A conversation with its members, a preview of its last message and its unread count. */
 export interface ConversationView extends Conversation {
   members: ConversationMember[];
   lastMessage: MessagePreview | null;
+  /** Bot and system messages with a `seq` above `lastReadSeq` (the user's own never count). */
+  unreadCount: number;
 }
 
 export class ConversationNotFoundError extends Error {
@@ -65,6 +69,7 @@ export interface ConversationRow {
   updated_at: Date;
   last_message_at: Date | null;
   archived_at: Date | null;
+  last_read_seq: string;
 }
 
 interface MemberRow {
@@ -94,6 +99,7 @@ function mapConversation(row: ConversationRow): Conversation {
     updatedAt: row.updated_at,
     lastMessageAt: row.last_message_at,
     archivedAt: row.archived_at,
+    lastReadSeq: Number(row.last_read_seq),
   };
 }
 
@@ -116,6 +122,13 @@ async function toViews(db: Db, rows: ConversationRow[]): Promise<ConversationVie
     from messages
     where conversation_id = any(${ids}::uuid[])
     order by conversation_id, seq desc`;
+  const unread = await db.sql<{ conversation_id: string; n: string }[]>`
+    select m.conversation_id, count(*) as n
+    from messages m join conversations c on c.id = m.conversation_id
+    where m.conversation_id = any(${ids}::uuid[])
+      and m.author_kind <> 'user' and m.seq > c.last_read_seq
+    group by m.conversation_id`;
+  const unreadBy = new Map(unread.map((u) => [u.conversation_id, Number(u.n)]));
   const membersBy = new Map<string, ConversationMember[]>();
   for (const m of members) {
     const list = membersBy.get(m.conversation_id) ?? [];
@@ -137,6 +150,7 @@ async function toViews(db: Db, rows: ConversationRow[]): Promise<ConversationVie
     ...mapConversation(row),
     members: membersBy.get(row.id) ?? [],
     lastMessage: previewBy.get(row.id) ?? null,
+    unreadCount: unreadBy.get(row.id) ?? 0,
   }));
 }
 
@@ -317,5 +331,29 @@ export async function archiveConversation(
   const id = uuidSchema.parse(conversationId);
   await db.sql`
     update conversations set archived_at = coalesce(archived_at, now()) where id = ${id}`;
+  return viewOf(db, id);
+}
+
+/**
+ * Marks the conversation as read up to a message: `upToSeq` (clamped to the last message), or all
+ * of it when omitted. It never moves backwards (reading an old message does not "unread" the
+ * newer ones). Idempotent. `null` if the conversation does not exist.
+ */
+export async function markConversationRead(
+  db: Db,
+  conversationId: string,
+  upToSeq?: number,
+): Promise<ConversationView | null> {
+  const id = uuidSchema.parse(conversationId);
+  const upTo = upToSeq === undefined ? undefined : z.number().int().nonnegative().parse(upToSeq);
+  await db.sql`
+    update conversations c set last_read_seq = greatest(
+      c.last_read_seq,
+      least(
+        coalesce(${upTo ?? null}::bigint, 9223372036854775807),
+        coalesce((select max(seq) from messages where conversation_id = c.id), 0)
+      )
+    )
+    where c.id = ${id}`;
   return viewOf(db, id);
 }

@@ -126,4 +126,30 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("runtime with the database"), () => {
     expect(failed?.failureDetail).toContain("KEY_A");
     await runtime.close();
   });
+
+  it("builds the dependencies of a run with memory by default, and with none when isolated", async () => {
+    const { runtime } = await open();
+    const { addMemory } = await import("@suup/db");
+    await addMemory(runtime.db, { layer: "rule", text: "Regra do usuário.", createdBy: "user" });
+    const bot = await createBot(runtime.db, {
+      name: "Mem",
+      modelProvider: "script",
+      modelId: "model-s",
+    });
+    const run = await runtime.createRun({ botId: bot.id, objective: "x" });
+
+    const normal = await runtime.buildDeps(run.id, "w1");
+    expect(normal.loadRunContext).toBeTypeOf("function");
+    expect(normal.memoryFor).toBeTypeOf("function");
+    const snapshot = await normal.loadRunContext?.(run.id);
+    expect(snapshot?.rules.map((r) => r.text)).toEqual(["Regra do usuário."]);
+
+    // An evaluation never sees the user's memory: neither a context snapshot nor a memory service.
+    const isolated = await runtime.buildDeps(run.id, "w1", { isolated: true });
+    expect(isolated.loadRunContext).toBeUndefined();
+    expect(isolated.memoryFor).toBeUndefined();
+    expect(isolated.store).toBeDefined();
+    expect(isolated.tools).toBeDefined();
+    await runtime.close();
+  });
 });

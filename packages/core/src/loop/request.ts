@@ -5,18 +5,27 @@ import type { Message } from "../messages.js";
 import { validateConversation } from "../messages.js";
 import type { ToolSpec } from "../provider.js";
 import { CONTROL_TOOL_NAMES, controlToolSpecs } from "./control-tools.js";
-import { buildSystemPrompt, isReminderBlock, renderStateReminder } from "./prompts.js";
+import {
+  buildSystemPrompt,
+  isReminderBlock,
+  MEMORY_TOOL_NAMES,
+  renderStateReminder,
+} from "./prompts.js";
 import type { LoopContext } from "./run-context.js";
 
 export function fixedParts(ctx: LoopContext): { system: string; tools: ToolSpec[] } {
   const { bot, tools } = ctx.deps;
   const control = new Set<string>(CONTROL_TOOL_NAMES);
+  const offered = [
+    ...controlToolSpecs(),
+    ...tools.specs(bot.allowedTools).filter((spec) => !control.has(spec.name)),
+  ];
+  const memoryTools = offered.some((spec) =>
+    (MEMORY_TOOL_NAMES as readonly string[]).includes(spec.name),
+  );
   return {
-    system: buildSystemPrompt(bot, ctx.state.context ?? undefined),
-    tools: [
-      ...controlToolSpecs(),
-      ...tools.specs(bot.allowedTools).filter((spec) => !control.has(spec.name)),
-    ],
+    system: buildSystemPrompt(bot, ctx.state.context ?? undefined, { memoryTools }),
+    tools: offered,
   };
 }
 

@@ -103,6 +103,15 @@ export interface ListRunEventsOptions {
   afterSeq?: number;
   /** Default 500. */
   limit?: number;
+  /** Only events of these types. */
+  types?: readonly string[];
+  /**
+   * Leave out the heavy `model_request` payload (a request carries the whole conversation and the
+   * tool list, and can be megabytes): the event keeps its place and gets a small summary instead
+   * (`omitted: true`, `provider`, `model`, `purpose`, `messageCount`, `toolCount`). The database
+   * does the cutting, so the megabytes never leave it.
+   */
+  slim?: boolean;
 }
 
 /** Events of a run ordered by `seq`. */
@@ -121,9 +130,23 @@ export async function listRunEvents(
     .int()
     .positive()
     .parse(opts.limit ?? 500);
-  const rows = await db.sql<RunEventRow[]>`
-    select * from run_events
+  const { sql } = db;
+  const types = opts.types === undefined ? undefined : z.array(z.string()).parse([...opts.types]);
+  const payload =
+    opts.slim === true
+      ? sql`case when type = 'model_request' then jsonb_strip_nulls(jsonb_build_object(
+              'omitted', true,
+              'provider', payload -> 'provider',
+              'model', payload -> 'model',
+              'purpose', payload -> 'purpose',
+              'messageCount', jsonb_array_length(payload -> 'messages'),
+              'toolCount', jsonb_array_length(payload -> 'tools')
+            )) else payload end`
+      : sql`payload`;
+  const rows = await sql<RunEventRow[]>`
+    select id, run_id, seq, type, ${payload} as payload, created_at from run_events
     where run_id = ${runId} and seq > ${afterSeq}
+      and ${types === undefined ? sql`true` : sql`type = any(${types}::text[])`}
     order by seq
     limit ${limit}`;
   return rows.map(mapRunEvent);

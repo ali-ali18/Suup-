@@ -79,13 +79,14 @@ async function loop(ctx: LoopContext): Promise<RunStatus> {
     if (mid !== undefined) return mid;
 
     // ---- safe point: every result is recorded, no model call is in flight ----
-    await store.heartbeat(ctx.runId);
+    const control = await store.heartbeat(ctx.runId);
 
     const settled = await settle(ctx);
     if (settled !== undefined) return settled;
 
-    // Soft stop: this is the safe point after a whole turn. Nothing else is started.
-    if (ctx.pauseSignal?.aborted) return "running";
+    // Soft stop (the worker is shutting down, or the user paused the run): this is the safe point
+    // after a whole turn. Nothing else is started.
+    if (ctx.pauseSignal?.aborted || control?.pause === true) return "running";
 
     const inbox = await deliverInbox(ctx);
     if (inbox !== undefined) return inbox;

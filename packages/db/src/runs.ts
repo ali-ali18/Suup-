@@ -36,6 +36,8 @@ export interface RunRow {
   trace_id: string | null;
   locked_by: string | null;
   locked_at: Date | null;
+  paused_at: Date | null;
+  interrupt_requested_at: Date | null;
   created_at: Date;
   updated_at: Date;
   started_at: Date | null;
@@ -65,6 +67,8 @@ export function mapRun(row: RunRow): Run {
     traceId: row.trace_id,
     lockedBy: row.locked_by,
     lockedAt: row.locked_at,
+    pausedAt: row.paused_at,
+    interruptRequestedAt: row.interrupt_requested_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     startedAt: row.started_at,
@@ -117,6 +121,8 @@ export interface ListRunsOptions {
   botId?: string;
   conversationId?: string;
   status?: RunStatus;
+  /** Only runs created before this instant (to page backwards through a long list). */
+  before?: Date;
   limit: number;
 }
 
@@ -129,6 +135,7 @@ export async function listRuns(db: Db, opts: ListRunsOptions): Promise<Run[]> {
     where ${opts.botId !== undefined ? sql`bot_id = ${opts.botId}` : sql`true`}
       and ${opts.conversationId !== undefined ? sql`conversation_id = ${opts.conversationId}` : sql`true`}
       and ${opts.status !== undefined ? sql`status = ${statusSchema.parse(opts.status)}` : sql`true`}
+      and ${opts.before !== undefined ? sql`created_at < ${opts.before}` : sql`true`}
     order by created_at desc, id
     limit ${limit}`;
   return rows.map(mapRun);
@@ -137,6 +144,8 @@ export async function listRuns(db: Db, opts: ListRunsOptions): Promise<Run[]> {
 /**
  * Atomically takes the oldest queued run (`FOR UPDATE SKIP LOCKED`), marks it running and leases
  * it to `workerId`. `started_at` is only set the first time. Returns `null` if nothing is queued.
+ * A run the user paused (`paused_at`) is not taken, and a pending interrupt request is cleared:
+ * the new holder starts fresh.
  */
 export async function claimNextRun(db: Db, workerId: string): Promise<Run | null> {
   const [row] = await db.sql<RunRow[]>`
@@ -144,10 +153,11 @@ export async function claimNextRun(db: Db, workerId: string): Promise<Run | null
     set status = 'running',
         locked_by = ${workerId},
         locked_at = now(),
+        interrupt_requested_at = null,
         started_at = coalesce(started_at, now())
     where id = (
       select id from runs
-      where status = 'queued'
+      where status = 'queued' and paused_at is null
       order by created_at, id
       limit 1
       for update skip locked
@@ -168,10 +178,11 @@ export async function claimRun(db: Db, runId: string, workerId: string): Promise
     set status = 'running',
         locked_by = ${workerId},
         locked_at = now(),
+        interrupt_requested_at = null,
         started_at = coalesce(started_at, now())
     where id = (
       select id from runs
-      where id = ${runId} and status = 'queued'
+      where id = ${runId} and status = 'queued' and paused_at is null
       for update skip locked
     )
     returning *`;
@@ -201,7 +212,8 @@ export type SetRunStatusInput =
  * caller (`core`).
  *
  * Moving to `running` sets `started_at` if it was never set. Terminal statuses (done, failed,
- * cancelled) set `finished_at` and clear the lease. Any other
+ * cancelled) set `finished_at` and clear the lease. Leaving `queued`/`running` for any other status
+ * clears the pause and interrupt marks. Any other
  * target status clears `finished_at` (so retrying a failed run does not keep a stale end time)
  * and leaves the lease alone. Failure columns are written from `failure` and cleared otherwise.
  */
@@ -233,6 +245,11 @@ export async function setRunStatus(
     terminal ? sql`finished_at = now()` : sql`finished_at = null`,
   ];
   if (terminal) sets.push(sql`locked_by = null`, sql`locked_at = null`);
+  // A pause (and a pending interrupt) only make sense while the run is queued or running; any
+  // other status (finished, waiting for the user) ends them.
+  if (to !== "queued" && to !== "running") {
+    sets.push(sql`paused_at = null`, sql`interrupt_requested_at = null`);
+  }
   // Running for the first time starts the clock the duration limit is measured from; later
   // transitions to running (after a wait or a requeue) keep it.
   if (to === "running") sets.push(sql`started_at = coalesce(started_at, now())`);
@@ -294,7 +311,9 @@ export async function addRunUsage(
  */
 export async function releaseRun(db: Db, runId: string): Promise<Run | null> {
   const [row] = await db.sql<RunRow[]>`
-    update runs set status = 'queued', locked_by = null, locked_at = null
+    update runs set status = 'queued', locked_by = null, locked_at = null,
+      interrupt_requested_at = null,
+      paused_at = case when status in ('queued', 'running') then paused_at else null end
     where id = ${runId} and status not in ('done', 'failed', 'cancelled')
     returning *`;
   return row ? mapRun(row) : null;

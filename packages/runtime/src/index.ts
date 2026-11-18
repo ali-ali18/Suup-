@@ -1,8 +1,10 @@
+export { MEMORY_TOOL_NAMES } from "@suup/core";
 export {
   configPath,
   configSchema,
   DEFAULT_CONFIG_FILE,
   DEFAULT_MAX_TURNS,
+  DEFAULT_SERVER,
   DEFAULT_WORKER,
   describeIssues,
   type LoadConfigOptions,
@@ -14,6 +16,7 @@ export {
   type RuntimeConfig,
   resolveDatabaseUrl,
   type SandboxEntry,
+  type ServerConfig,
 } from "./config.js";
 export {
   type BotDraft,
@@ -28,6 +31,30 @@ export {
   type SendMessageResult,
   sendMessage,
 } from "./conversations.js";
+export {
+  type DoctorCheck,
+  describeOutcome,
+  explainReplay,
+  inspectModelRequest,
+  MAX_RESEND_TIMES,
+  type ModelRequestPayload,
+  type ModelRequestView,
+  type ModelResponsePayload,
+  outcomeKey,
+  type RawRunEvent,
+  type ReplayOutcome,
+  type ReplayView,
+  type ResendAttempt,
+  type ResendOptions,
+  type ResendResult,
+  type ResendSummary,
+  readRunEvents,
+  replayRecordedRun,
+  resendRecordedRequest,
+  runDoctorChecks,
+  summarizeAttempts,
+  typedRunEvent,
+} from "./diagnostics.js";
 export { ConfigError, RuntimeError, type RuntimeErrorCode } from "./errors.js";
 export { createMemoryService } from "./memory-service.js";
 export { DEFAULT_HISTORY_CHARS, loadRunContext } from "./run-context.js";
@@ -39,6 +66,7 @@ export {
   reconcileRunEffects,
 } from "./run-end.js";
 export {
+  type BuildDepsOptions,
   type CreateWorkerOptions,
   createRuntime,
   dockerWorkspace,
