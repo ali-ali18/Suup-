@@ -10,8 +10,9 @@
   "scripts": {
     "lint": "biome check .",
     "format": "biome format --write .",
-    "typecheck": "tsc -b",
-    "test": "vitest run"
+    "typecheck": "tsc -b && tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "db:migrate": "tsc -b packages/db && node --env-file-if-exists=.env packages/db/dist/migrate-cli.js"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.8",

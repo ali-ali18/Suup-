@@ -10,6 +10,21 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        # Same image as docker-compose.yml
+        image: pgvector/pgvector:0.8.1-pg18
+        env:
+          POSTGRES_USER: suup
+          POSTGRES_PASSWORD: suup
+          POSTGRES_DB: suup
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U suup -d suup"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -21,3 +36,5 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
+        env:
+          DATABASE_URL: postgres://suup:suup@127.0.0.1:5432/suup
