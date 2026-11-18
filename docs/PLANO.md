@@ -311,6 +311,40 @@ Aceitar o mesmo tipo de cartão várias vezes faz o bot propor uma regra permane
 - Toda execução por iniciativa é marcada com origem `proactive` no log, para dar para medir quanto ela custa e quanto é aceita.
 - Conteúdo externo nunca cria iniciativa por si só: um e-mail pode ser o assunto de uma iniciativa, mas não pode ditar a ação.
 
+### 4.15 Worker e mensagens durante a execução
+
+**Worker**
+
+Quem roda as execuções é um processo separado do servidor, o worker. O servidor só recebe mensagens, grava e enfileira; nunca chama o modelo.
+
+- O worker pega a próxima execução da fila (`runs` com `SKIP LOCKED`), marca a posse (`locked_by`, `locked_at`) e renova essa posse periodicamente enquanto trabalha.
+- Se o worker morre, a posse vence, a execução volta para a fila e outro worker a retoma a partir dos eventos gravados.
+- Um worker roda várias execuções ao mesmo tempo, até um teto configurável. Mais carga se resolve com mais workers, sem mudar código.
+- O agendador de rotinas é outro papel do mesmo processo: quando chega a hora, ele só cria a execução na fila.
+- Desligamento limpo: ao receber o sinal de parada, o worker deixa de pegar execuções novas, leva as atuais até o próximo ponto seguro e as devolve à fila.
+- Na fase 1 a CLI embute o worker no próprio processo. Na fase 2 ele vira um serviço à parte no Docker Compose.
+
+**Ponto seguro**
+
+Um ponto seguro é o momento entre um turno e outro: todos os resultados das ferramentas pedidas já foram gravados e a próxima chamada ao modelo ainda não começou. É o único lugar onde o loop aceita interferência externa. Nunca entre um pedido de ferramenta e o seu resultado, porque isso quebra o histórico que o modelo espera e deixa a ação num estado desconhecido.
+
+**Mensagem do usuário com o bot trabalhando**
+
+A mensagem é sempre gravada na hora e aparece no chat. O que varia é quando o loop a lê:
+
+| Situação | O que acontece |
+|---|---|
+| Execução em andamento (padrão) | A mensagem entra no próximo ponto seguro. O bot a lê junto com o plano e decide: ajusta o plano, responde e continua, ou abre outra execução se for assunto diferente |
+| Execução esperando o usuário (`escalate`) | A mensagem é a resposta, e a execução é retomada |
+| Execução esperando aprovação | A mensagem não aprova nada. Aprovação só pelo cartão |
+| Usuário pede para parar | Interrupção: a geração do modelo em curso é cancelada; ferramenta em curso é encerrada se for cancelável (um comando de shell) ou aguardada se não for (um envio já iniciado). O resultado é gravado como interrompido e a mensagem entra em seguida |
+| Execução em segundo plano de outra conversa | Não é afetada |
+
+- Cada conversa tem no máximo uma execução em primeiro plano. Execuções em segundo plano (rotinas, tarefas delegadas, trabalho longo) rodam em paralelo.
+- Várias mensagens enviadas em sequência são entregues juntas no mesmo ponto seguro.
+- A entrega da mensagem ao loop é um evento gravado, então dá para ver no inspetor em que turno o bot tomou conhecimento dela.
+- Mensagem de outro bot e disparo de webhook seguem a mesma regra do ponto seguro.
+
 ## 5. Modelo de dados
 
 | Tabela | Conteúdo |
