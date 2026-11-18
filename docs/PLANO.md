@@ -269,6 +269,48 @@ Para isso funcionar, o harness precisa de:
 
 O inspetor e a origem da falha entram na fase 1 (pela CLI). As cinco verificações acima, os testes de conformidade e a qualificação de modelo também entram na fase 1. O replay gravado entra na fase 1. O id de rastreio de ponta a ponta e as verificações de saúde entram na fase 2, junto com o servidor e o app.
 
+### 4.14 Iniciativa
+
+O bot não espera ser chamado: percebe o que pode resolver, adianta tudo o que não tem risco e deixa para o usuário só a decisão final. Entra na fase 4, porque é construída sobre rotinas e aprovações.
+
+**De onde vem o "perceber"**
+
+| Fonte | Exemplo |
+|---|---|
+| Revisão periódica: uma rotina interna de cada bot que olha agenda, caixa de entrada, diário e metas da memória | "A entrega vence domingo e quinta é feriado" |
+| Eventos de conectores e webhooks | Chegou um e-mail que pede resposta |
+| Pendências: ao fim de cada conversa e execução, o bot registra compromissos e itens em aberto | "Você disse que ia decidir o logo esta semana" |
+| Trabalho parado: execução esperando o usuário há muito tempo, plano não concluído | Lembrar ou retomar |
+
+**O que ele faz com o que percebeu**
+
+Cada achado vira uma **iniciativa**: o que foi notado, a evidência, a ação proposta e o risco. A regra é ir até o portão de aprovação e parar nele:
+
+- Tudo o que é leitura ou preparação é feito sem perguntar: pesquisar, comparar, redigir o rascunho, montar o documento, preparar o comando.
+- O passo que sai para o mundo ou não tem volta fica num cartão, já pronto para aceitar com um toque.
+- O cartão mostra o que foi notado, o que já foi feito e exatamente o que acontece ao aceitar.
+
+**Nível de autonomia**, ajustável por bot e por tipo de ação:
+
+| Nível | Comportamento |
+|---|---|
+| Desligado | Só age quando chamado |
+| Sugerir | Avisa o que notou, não prepara nada |
+| Preparar e pedir | Adianta o trabalho e deixa o cartão (padrão) |
+| Fazer e avisar | Executa e relata depois; só para ações que o usuário liberou por regra |
+
+Aceitar o mesmo tipo de cartão várias vezes faz o bot propor uma regra permanente ("sempre posso fazer isso?"). A regra só passa a valer com confirmação.
+
+**Freios**
+
+- Orçamento diário de tokens para trabalho por iniciativa própria, separado do trabalho pedido.
+- Teto de avisos por dia e horário de silêncio.
+- Iniciativa recusada não volta: "agora não" adia, "não" grava na memória para não propor de novo.
+- Sem duplicata: antes de criar uma iniciativa, o bot confere as abertas e as recentes.
+- Limiar de relevância: achado de pouco valor vai só para o diário.
+- Toda execução por iniciativa é marcada com origem `proactive` no log, para dar para medir quanto ela custa e quanto é aceita.
+- Conteúdo externo nunca cria iniciativa por si só: um e-mail pode ser o assunto de uma iniciativa, mas não pode ditar a ação.
+
 ## 5. Modelo de dados
 
 | Tabela | Conteúdo |
@@ -282,6 +324,7 @@ O inspetor e a origem da falha entram na fase 1 (pela CLI). As cinco verificaç�
 | `journal` | diário |
 | `routines`, `routine_state` | rotinas e o estado entre disparos |
 | `webhook_endpoints`, `webhook_events` | endereços por rotina (com segredo cifrado) e eventos recebidos |
+| `initiatives` | o que o bot notou, evidência, ação proposta, estado (aberta, aceita, adiada, recusada) |
 | `approvals` | pedidos, conteúdo exato, decisão |
 | `rules` | regras permanentes do usuário |
 | `secrets` | cofre, cifrado |
@@ -330,7 +373,7 @@ docs/
 | 1 | Núcleo, provedores, log de eventos, máquina com shell e arquivos, CLI | Conjunto de avaliação passa em dois provedores; execução interrompida retoma e termina |
 | 2 | Servidor, app de desktop, bots com conversa separada, memória | Um bot criado por descrição lembra de um fato dito em outra conversa |
 | 3 | Aprovações, cofre, conectores MCP | E-mail vira rascunho com cartão; segredo nunca aparece no log |
-| 4 | Rotinas (horário e webhook), notificações, diário, delegação, sala de grupo | Monitor que avisa só quando a condição é atendida; evento assinado dispara a rotina uma única vez, mesmo reenviado; bot principal encaminha e recebe de volta |
+| 4 | Rotinas (horário e webhook), iniciativa, notificações, diário, delegação, sala de grupo | Monitor que avisa só quando a condição é atendida; bot nota um prazo na agenda, prepara o material e deixa um cartão pronto para aceitar; evento assinado dispara a rotina uma única vez, mesmo reenviado; bot principal encaminha e recebe de volta |
 | 5 | Navegador com tela por bot, ao vivo, passagem de controle | Bot navega num site com login, pausa para o usuário entrar e retoma |
 | 6 | Agente local nos PCs | Instala uma ferramenta no PC, com aprovação, e confere que funciona |
 | 7 | Páginas salvas, documentos, imagem, vídeo, voz, agentes de código externos | Gera um documento e uma página compartilhável; abre um PR por agente externo |
