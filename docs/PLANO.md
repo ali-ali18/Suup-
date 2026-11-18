@@ -365,20 +365,23 @@ Há duas formas de um bot usar um modelo, e as assinaturas só servem para a seg
 | **Provedor** (o cérebro do bot) | O harness | Chave de API, por token |
 | **Agente delegado** (uma tarefa inteira entregue a outra ferramenta) | A ferramenta do fornecedor | A assinatura do usuário, pelo login oficial dela |
 
-Situação por fornecedor:
+Situação por fornecedor (lida nas fontes oficiais em 18/11/2026, salvo indicação):
 
-| Assinatura | Como provedor | Como agente delegado |
+| Assinatura | Como provedor (o harness controla o loop) | Pela ferramenta oficial do fornecedor |
 |---|---|---|
-| Claude (Pro, Max) | Proibido: os termos não permitem que um app de terceiros use o login da assinatura para chamar a API | Permitido para uso próprio: o usuário entra no Claude Code original e o harness o executa (`claude -p`); o uso sai do limite da assinatura |
-| ChatGPT (Plus, Pro) | Existe um caminho oficial ("Sign in with ChatGPT"), mas restrito a parceiros aprovados | Pelo Codex CLI com o login do usuário; é o caminho de menor risco |
-| GitHub Copilot | — | Permitido: há SDK oficial com login do GitHub, e ele roda o loop do Copilot |
-| Grok (SuperGrok) | Login oficial só para integrações que a xAI aprova | Não confirmado para app próprio |
-| Gemini | Proibido: o Google detecta e bane o uso do login do Gemini CLI em software de terceiros | Só com chave de API |
-| Cursor | Proibido usar a assinatura como API | Pelo Cursor CLI, com chave própria do Cursor |
+| Claude (Pro, Max) | Proibido: os termos não permitem que um app use o login da assinatura para chamar a API, nem que leia ou guarde o token | Permitido para o próprio usuário: entrar no Claude Code sem modificação e executá-lo (`claude -p` ou SDK de agentes); o uso sai do limite da assinatura. O OpenCode adotou este caminho na versão 2.2.3, de 30/10/2026 ("Use Claude Code in OpenCode") |
+| ChatGPT (Plus, Pro) | **Existe caminho oficial**: "Sign in with ChatGPT" entrega um token e o app chama a API Responses. O uso do plano está aberto a projetos de código aberto e a apps locais, mediante cadastro para obter um identificador de cliente; apps pagos ou hospedados entram em lista de espera | Pelo Codex CLI ou app-server com o login do usuário |
+| GitHub Copilot | Parceria formal só com o OpenCode (anunciada em 16/01/2026); nada diz que vale para outros apps | Não verificado nas fontes lidas |
+| Grok (SuperGrok, X Premium) | Login oficial só dentro do OpenCode (anunciado em 21/05/2026), com a promessa de "mais agentes de código aberto em breve" | Não verificado |
+| Gemini | Proibido, segundo o próprio Google, com detecção de uso do login do Gemini CLI em software de terceiros (fonte: discussão no GitHub; os demais sites não foram lidos) | Só com chave de API |
+| Cursor | Proibido usar a assinatura como API (fonte secundária, não lida diretamente) | Pelo Cursor CLI, com chave própria |
+
+O que não foi possível confirmar: se a Anthropic aprovou formalmente a integração do OpenCode, e como exatamente o OpenCode divide o trabalho com o Claude Code (quem roda o loop e como as ferramentas dele são expostas). As páginas da Anthropic não distinguem uso pessoal de uso por terceiros no texto sobre limites; a leitura de que um harness pessoal é permitido é interpretação, apoiada na frase de que nada impede o usuário de entrar no Claude Code sem modificação com a própria assinatura.
 
 Consequências para o desenho:
 
-- O cérebro de cada bot continua usando chave de API, pela camada de provedores. Nenhuma assinatura substitui isso de forma permitida e disponível hoje.
+- O cérebro de cada bot continua usando chave de API como padrão, pela camada de provedores.
+- **ChatGPT é a exceção promissora:** o caminho oficial entrega um token para a API Responses, então a assinatura pode servir de provedor comum, com o nosso loop, replay e retomada intactos. Exige um adaptador para a API Responses e o cadastro do app junto à OpenAI; o enquadramento de um app pessoal de código fechado não está claro, e publicar o Suup como código aberto resolveria isso.
 - As assinaturas entram como **agentes delegados**: uma ferramenta do harness (`delegate_agent`) que, pelo agente local no PC do usuário, executa a ferramenta oficial já logada, entrega uma tarefa com escopo e critérios de pronto, acompanha e devolve o resultado ao bot. É a "delegação externa" da fase 7, e depende do agente local da fase 6.
 - O harness nunca lê, copia nem reutiliza o token de login dessas ferramentas. Ele só as executa, sem modificá-las.
 - **Motor alternativo com o SDK de agentes do Claude (a avaliar na fase 6).** O OpenCode voltou a aceitar assinaturas do Claude no fim de outubro de 2026 por este caminho, segundo fontes secundárias: o SDK oficial aciona o Claude Code instalado na máquina, que faz o login e as chamadas ao modelo, enquanto o app fornece interface, ferramentas e subagentes. Isso é mais do que entregar uma tarefa fechada: o loop é do SDK, mas as ferramentas, as instruções e as permissões podem ser as nossas. Para o Suup seria um segundo "motor" de execução por bot, ao lado do loop próprio:
