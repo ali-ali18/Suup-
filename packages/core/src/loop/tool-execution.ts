@@ -1,0 +1,101 @@
+// Owns executing the tool calls of a response: dispatching control tools (plan, finish, escalate)
+// versus registry tools, the heartbeat and hard-interruption check between calls, and the
+// "interrupted" results that keep the conversation valid after an abort or a crash mid-call.
+import type { ToolInvocation } from "../registry.js";
+import type { ToolContext } from "../tool.js";
+import { handleEscalate, handlePlan } from "./control-calls.js";
+import { handleFinish } from "./finish.js";
+import { type ControlCall, ensureToolCall, INTERRUPTED_RESULT, recordResult } from "./recording.js";
+import type { LoopContext } from "./run-context.js";
+import type { PendingResponse } from "./state.js";
+import type { RunStatus } from "./store.js";
+
+export async function executeCalls(
+  ctx: LoopContext,
+  pending: PendingResponse,
+): Promise<RunStatus | undefined> {
+  const alone = pending.toolCalls.length === 1;
+  for (const call of pending.toolCalls) {
+    const open = ctx.state.pendingCalls.find((c) => c.id === call.id);
+    if (open === undefined) continue; // already has a result
+    const waiting = ctx.state.waiting;
+    if (waiting?.kind === "escalate" && waiting.callId === call.id) continue;
+
+    if (ctx.signal?.aborted) {
+      await abortRemaining(ctx);
+      return "running";
+    }
+    await ctx.deps.store.heartbeat(ctx.runId);
+
+    switch (call.name) {
+      case "plan":
+        await handlePlan(ctx, call);
+        break;
+      case "finish":
+        await handleFinish(ctx, call, alone);
+        break;
+      case "escalate":
+        await handleEscalate(ctx, call, alone);
+        break;
+      default:
+        await handleTool(ctx, call, open.started);
+    }
+  }
+  return undefined;
+}
+
+/** Gives every call that has no result yet an "interrupted" one, keeping the pairing valid. */
+async function abortRemaining(ctx: LoopContext): Promise<void> {
+  for (const call of [...ctx.state.pendingCalls]) {
+    await recordResult(ctx, call.id, {
+      outcome: "aborted",
+      isError: true,
+      content: call.started
+        ? `Tool "${call.name}": ${INTERRUPTED_RESULT}.`
+        : `Tool "${call.name}" was not run: the run was interrupted before this call started. Check the actual state before repeating the action, if it still applies.`,
+    });
+  }
+}
+
+async function handleTool(ctx: LoopContext, call: ControlCall, started: boolean): Promise<void> {
+  const { tools, bot, executor, now } = ctx.deps;
+  if (started) {
+    // The process died after logging the call and before logging its result: the action may or
+    // may not have happened. Say so, and let the model check.
+    await recordResult(ctx, call.id, {
+      outcome: "aborted",
+      isError: true,
+      content: `Tool "${call.name}": ${INTERRUPTED_RESULT}.`,
+    });
+    return;
+  }
+  await ensureToolCall(ctx, call);
+  const toolCtx: ToolContext = {
+    runId: ctx.runId,
+    botId: bot.id,
+    executor,
+    signal: ctx.toolSignal,
+    now: () => now(),
+  };
+  let invocation: ToolInvocation;
+  try {
+    invocation = await tools.invoke(call.name, call.args, toolCtx, {
+      allowed: bot.allowedTools,
+      callId: call.id,
+    });
+  } catch (error) {
+    await recordResult(ctx, call.id, {
+      outcome: "crashed",
+      isError: true,
+      content: `Tool "${call.name}" failed unexpectedly (${error instanceof Error ? error.message : String(error)}). Try a different approach.`,
+    });
+    return;
+  }
+  await recordResult(ctx, call.id, {
+    outcome: invocation.outcome,
+    isError: invocation.output.isError === true,
+    content: invocation.output.content,
+    truncated: invocation.truncated,
+    durationMs: invocation.durationMs,
+  });
+}
