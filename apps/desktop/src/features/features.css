@@ -226,6 +226,10 @@
 .bot-entry--row .bot-entry__main {
   padding-right: 36px;
 }
+.bot-entry--row .ui-avatar {
+  width: 46px;
+  height: 46px;
+}
 .bot-entry--tile .bot-entry__main {
   flex-direction: column;
   gap: var(--space-2);
