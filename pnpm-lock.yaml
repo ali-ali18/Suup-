@@ -23,7 +23,11 @@ importers:
 
   apps/cli: {}
 
-  packages/core: {}
+  packages/core:
+    dependencies:
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
 
   packages/db:
     dependencies:
@@ -34,11 +38,29 @@ importers:
         specifier: ^4.6.7
         version: 4.6.7
 
-  packages/providers: {}
+  packages/providers:
+    dependencies:
+      '@suup/core':
+        specifier: workspace:*
+        version: link:../core
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
 
-  packages/sandbox: {}
+  packages/sandbox:
+    dependencies:
+      '@suup/core':
+        specifier: workspace:*
+        version: link:../core
 
-  packages/tools: {}
+  packages/tools:
+    dependencies:
+      '@suup/core':
+        specifier: workspace:*
+        version: link:../core
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
 
 packages:
 
