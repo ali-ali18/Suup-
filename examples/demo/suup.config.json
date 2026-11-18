@@ -1,0 +1,16 @@
+{
+  "providers": [{ "id": "roteiro", "kind": "scripted", "scriptPath": "roteiro.json" }],
+  "models": [
+    {
+      "id": "model-x",
+      "provider": "roteiro",
+      "contextWindow": 100000,
+      "maxOutputTokens": 4096,
+      "pricing": { "inputPerMTok": 3, "outputPerMTok": 15 }
+    }
+  ],
+  "reviewer": { "model": "model-x" },
+  "sandbox": { "kind": "local", "root": "workspace" },
+  "worker": { "concurrency": 2, "leaseRenewMs": 5000, "staleAfterMs": 20000 },
+  "defaults": { "maxTurns": 20 }
+}

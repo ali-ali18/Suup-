@@ -11,5 +11,9 @@
   },
   "files": [
     "dist"
-  ]
+  ],
+  "dependencies": {
+    "@suup/core": "workspace:*",
+    "zod": "^4.6.7"
+  }
 }

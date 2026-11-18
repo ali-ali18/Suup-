@@ -1,0 +1,23 @@
+{
+  "name": "@suup/runtime",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@suup/core": "workspace:*",
+    "@suup/db": "workspace:*",
+    "@suup/providers": "workspace:*",
+    "@suup/sandbox": "workspace:*",
+    "@suup/tools": "workspace:*",
+    "zod": "^4.6.7"
+  }
+}

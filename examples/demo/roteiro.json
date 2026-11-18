@@ -1,0 +1,82 @@
+{
+  "agent": [
+    {
+      "text": "Vou planejar antes de agir.",
+      "calls": [
+        {
+          "name": "plan",
+          "args": {
+            "steps": [
+              { "id": "s1", "title": "Criar o arquivo ola.txt", "status": "in_progress" },
+              { "id": "s2", "title": "Conferir o conteúdo do arquivo", "status": "pending" }
+            ]
+          }
+        }
+      ],
+      "usage": { "inputTokens": 1200, "outputTokens": 90 }
+    },
+    {
+      "text": "Criando o arquivo.",
+      "calls": [
+        { "name": "write_file", "args": { "path": "ola.txt", "content": "Olá, mundo!\n" } }
+      ],
+      "usage": { "inputTokens": 1500, "outputTokens": 60 }
+    },
+    {
+      "calls": [
+        {
+          "name": "plan",
+          "args": {
+            "steps": [
+              { "id": "s1", "title": "Criar o arquivo ola.txt", "status": "done" },
+              { "id": "s2", "title": "Conferir o conteúdo do arquivo", "status": "in_progress" }
+            ]
+          }
+        },
+        { "name": "shell", "args": { "command": "cat ola.txt" } }
+      ],
+      "usage": { "inputTokens": 1700, "outputTokens": 70 }
+    },
+    {
+      "calls": [
+        {
+          "name": "plan",
+          "args": {
+            "steps": [
+              { "id": "s1", "title": "Criar o arquivo ola.txt", "status": "done" },
+              { "id": "s2", "title": "Conferir o conteúdo do arquivo", "status": "done" }
+            ]
+          }
+        }
+      ],
+      "usage": { "inputTokens": 1900, "outputTokens": 50 }
+    },
+    {
+      "text": "Tudo conferido, vou concluir.",
+      "calls": [
+        {
+          "name": "finish",
+          "args": {
+            "summary": "Criei ola.txt com a frase \"Olá, mundo!\" e conferi o conteúdo com cat.",
+            "evidence": [{ "criterion": "1", "evidence": "`cat ola.txt` imprimiu: Olá, mundo!" }]
+          }
+        }
+      ],
+      "usage": { "inputTokens": 2100, "outputTokens": 120 }
+    }
+  ],
+  "review": [
+    {
+      "calls": [
+        {
+          "name": "verdict",
+          "args": {
+            "verdict": "approve",
+            "notes": "A saída do cat confirma o conteúdo do arquivo."
+          }
+        }
+      ],
+      "usage": { "inputTokens": 800, "outputTokens": 40 }
+    }
+  ]
+}

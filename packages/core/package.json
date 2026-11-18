@@ -7,9 +7,20 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "default": "./dist/testing/index.js"
+    },
+    "./testing/store-contract": {
+      "types": "./dist/testing/store-contract.d.ts",
+      "default": "./dist/testing/store-contract.js"
     }
   },
   "files": [
     "dist"
-  ]
+  ],
+  "dependencies": {
+    "zod": "^4.6.7"
+  }
 }

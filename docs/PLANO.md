@@ -162,6 +162,15 @@ Toda memória tem origem (qual conversa a criou), é visível ao usuário e pode
 - Fase 5: cada bot ganha uma tela virtual com navegador. A tela é transmitida ao app, e o usuário pode assumir o controle e devolver.
 - O servidor fala com a máquina por um executor interno; a máquina não tem acesso ao banco nem ao cofre.
 
+**Área de trabalho da máquina (fase 5).** A tela de cada bot é um desktop de verdade, não só uma janela de navegador solta. Referência visual: a tela "Desktop" do Grok Bot.
+
+- **Aparência:** papel de parede de paisagem em estilo de pintura, com pinceladas borradas (encosta verde, mar, céu). A imagem é original do projeto, feita no mesmo espírito; não se copia a arte da referência.
+- **Barra superior:** fina e escura, com o identificador do bot à esquerda e data e hora à direita.
+- **Dock inferior:** centralizado, pequeno, com três atalhos: navegador, gerenciador de arquivos e terminal. São as mesmas três ferramentas que o bot usa (navegador, arquivos e shell), então o que o usuário vê na tela corresponde ao que o bot pode fazer.
+- **Sem mais nada:** nenhum ícone na área de trabalho, nenhum menu de aplicativos. Janelas abrem maximizadas.
+- **No app:** a tela aparece numa aba "Desktop", com o estado da conexão (conectado ou desconectado) e um botão central "Assumir controle". Enquanto o usuário controla, o bot fica pausado num ponto seguro; ao devolver, ele retoma.
+- **Implementação prevista:** servidor gráfico virtual por bot, um gerenciador de janelas leve com barra e dock, e transmissão da tela para o app. As peças exatas são decididas na fase 5.
+
 ### 4.8 Aprovações e cofre
 
 Cada ação passa por três filtros, em ordem:
@@ -310,6 +319,66 @@ Aceitar o mesmo tipo de cartão várias vezes faz o bot propor uma regra permane
 - Limiar de relevância: achado de pouco valor vai só para o diário.
 - Toda execução por iniciativa é marcada com origem `proactive` no log, para dar para medir quanto ela custa e quanto é aceita.
 - Conteúdo externo nunca cria iniciativa por si só: um e-mail pode ser o assunto de uma iniciativa, mas não pode ditar a ação.
+
+### 4.15 Worker e mensagens durante a execução
+
+**Worker**
+
+Quem roda as execuções é um processo separado do servidor, o worker. O servidor só recebe mensagens, grava e enfileira; nunca chama o modelo.
+
+- O worker pega a próxima execução da fila (`runs` com `SKIP LOCKED`), marca a posse (`locked_by`, `locked_at`) e renova essa posse periodicamente enquanto trabalha.
+- Se o worker morre, a posse vence, a execução volta para a fila e outro worker a retoma a partir dos eventos gravados.
+- Um worker roda várias execuções ao mesmo tempo, até um teto configurável. Mais carga se resolve com mais workers, sem mudar código.
+- O agendador de rotinas é outro papel do mesmo processo: quando chega a hora, ele só cria a execução na fila.
+- Desligamento limpo: ao receber o sinal de parada, o worker deixa de pegar execuções novas, leva as atuais até o próximo ponto seguro e as devolve à fila.
+- Na fase 1 a CLI embute o worker no próprio processo. Na fase 2 ele vira um serviço à parte no Docker Compose.
+
+**Ponto seguro**
+
+Um ponto seguro é o momento entre um turno e outro: todos os resultados das ferramentas pedidas já foram gravados e a próxima chamada ao modelo ainda não começou. É o único lugar onde o loop aceita interferência externa. Nunca entre um pedido de ferramenta e o seu resultado, porque isso quebra o histórico que o modelo espera e deixa a ação num estado desconhecido.
+
+**Mensagem do usuário com o bot trabalhando**
+
+A mensagem é sempre gravada na hora e aparece no chat. O que varia é quando o loop a lê:
+
+| Situação | O que acontece |
+|---|---|
+| Execução em andamento (padrão) | A mensagem entra no próximo ponto seguro. O bot a lê junto com o plano e decide: ajusta o plano, responde e continua, ou abre outra execução se for assunto diferente |
+| Execução esperando o usuário (`escalate`) | A mensagem é a resposta, e a execução é retomada |
+| Execução esperando aprovação | A mensagem não aprova nada. Aprovação só pelo cartão |
+| Usuário pede para parar | Interrupção: a geração do modelo em curso é cancelada; ferramenta em curso é encerrada se for cancelável (um comando de shell) ou aguardada se não for (um envio já iniciado). O resultado é gravado como interrompido e a mensagem entra em seguida |
+| Execução em segundo plano de outra conversa | Não é afetada |
+
+- Cada conversa tem no máximo uma execução em primeiro plano. Execuções em segundo plano (rotinas, tarefas delegadas, trabalho longo) rodam em paralelo.
+- Várias mensagens enviadas em sequência são entregues juntas no mesmo ponto seguro.
+- A entrega da mensagem ao loop é um evento gravado, então dá para ver no inspetor em que turno o bot tomou conhecimento dela.
+- Mensagem de outro bot e disparo de webhook seguem a mesma regra do ponto seguro.
+
+### 4.16 Assinaturas que o usuário já paga
+
+**Decisão (18/11/2026):** a única assinatura que o Suup usa é a do ChatGPT. Todos os outros fornecedores entram por chave de API, pela camada de provedores.
+
+O motivo é que só a OpenAI oferece um caminho oficial em que o app recebe um token e chama o modelo por conta própria. Assim a assinatura funciona como um provedor comum e o loop continua sendo o do Suup, com plano, conclusão com evidência, revisor, replay e retomada intactos. Nos demais fornecedores, usar a assinatura exigiria rodar a ferramenta deles, com o loop deles, ou violaria os termos.
+
+**O que o provedor ChatGPT exige**
+
+- Um adaptador para a API Responses da OpenAI (o adaptador atual, compatível com OpenAI, fala a API de chat completions).
+- O fluxo "Sign in with ChatGPT": registro do app para obter um identificador de cliente, login com PKCE e guarda do token no cofre.
+- Renovação do token e tratamento do fim da cota do plano como falha de origem `provider`.
+- Vale para assinantes Plus e Pro. O uso do plano está aberto a projetos de código aberto e a apps locais; apps pagos ou hospedados entram em lista de espera. O Suup será publicado como código aberto (decisão de 18/11/2026), o que o enquadra no caminho aberto; falta escolher a licença e fazer o cadastro.
+- Entra depois da fase 1, quando houver cofre (fase 3), porque o token não pode ficar em variável de ambiente.
+
+**Situação dos demais, para referência** (lida nas fontes oficiais em 18/11/2026; as regras mudaram várias vezes em 2026):
+
+| Assinatura | Por que não é usada |
+|---|---|
+| Claude (Pro, Max) | Os termos proíbem que um app use o login da assinatura para chamar a API ou guarde o token. O permitido é rodar o Claude Code sem modificação, o que entrega o loop a ele |
+| GitHub Copilot | Há SDK oficial com o login do usuário, mas ele trabalha por sessões do agente do Copilot; não ficou confirmado que exponha o modelo cru |
+| Grok (SuperGrok, X Premium) | Login oficial só dentro do OpenCode |
+| Gemini | Os termos do Gemini CLI tratam como violação usar o login dele em software de terceiros, com suspensão da conta |
+| Cursor | Chamar os endpoints privados viola os termos; os caminhos oficiais sempre rodam o agente do Cursor |
+
+A delegação de tarefas de programação a agentes externos continua prevista na fase 7, como estava, e é independente desta decisão.
 
 ## 5. Modelo de dados
 

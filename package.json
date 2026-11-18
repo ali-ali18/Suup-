@@ -2,6 +2,7 @@
   "name": "suup",
   "version": "0.0.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@10.28.0",
   "engines": {
@@ -10,8 +11,10 @@
   "scripts": {
     "lint": "biome check .",
     "format": "biome format --write .",
-    "typecheck": "tsc -b",
-    "test": "vitest run"
+    "typecheck": "tsc -b && tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "suup": "tsc -b apps/cli && node --env-file-if-exists=.env apps/cli/dist/bin.js",
+    "db:migrate": "tsc -b packages/db && node --env-file-if-exists=.env packages/db/dist/migrate-cli.js"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.8",

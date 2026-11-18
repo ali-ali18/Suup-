@@ -3,6 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "bin": {
+    "suup": "./dist/bin.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -11,5 +14,11 @@
   },
   "files": [
     "dist"
-  ]
+  ],
+  "dependencies": {
+    "@suup/core": "workspace:*",
+    "@suup/db": "workspace:*",
+    "@suup/evals": "workspace:*",
+    "@suup/runtime": "workspace:*"
+  }
 }

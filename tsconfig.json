@@ -6,6 +6,8 @@
     { "path": "packages/tools" },
     { "path": "packages/db" },
     { "path": "packages/sandbox" },
+    { "path": "packages/runtime" },
+    { "path": "evals" },
     { "path": "apps/cli" }
   ]
 }
