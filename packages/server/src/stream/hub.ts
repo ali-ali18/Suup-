@@ -15,6 +15,14 @@ export interface WireEvent {
   data: unknown;
   /** For `run.event`: the run, so the hub can leave it out for clients that did not ask for it. */
   runId?: string;
+  /**
+   * For snapshot events (a row's current state): which row (`kind:id`) and how new the state is
+   * (a number that only grows with the row's changes, e.g. its `updated_at`). The hub never sends a
+   * client a state older than one it already sent for the same row, which could otherwise happen
+   * when a replay (read later) and a buffered live frame (read earlier) meet.
+   */
+  key?: string;
+  version?: number;
 }
 
 /** The events one change (or several that were merged) produced, under the id of the last of them. */
@@ -101,8 +109,10 @@ interface Client {
   /** Changes with an id up to this one the client already has. */
   floor: number;
   /** Replaying: live frames wait here until the replay is done. */
-  buffer: string[] | null;
+  buffer: { text: string; event: WireEvent }[] | null;
   bufferBytes: number;
+  /** The newest version sent per snapshot row (see `WireEvent.version`). */
+  sent: Map<string, number>;
   closed: boolean;
 }
 
@@ -223,16 +233,28 @@ export class StreamHub<C extends ChangeRef = ChangeRef> {
         ) {
           continue;
         }
-        this.#send(client, frame(event.type, event.data, item.id));
+        // A replaying client checks freshness when its buffer is flushed (after the replay).
+        if (client.buffer === null && !this.#fresh(client, event)) continue;
+        this.#send(client, frame(event.type, event.data, item.id), event);
         if (client.closed) break;
       }
     }
   }
 
-  #send(client: Client, text: string): void {
+  /** False for a snapshot older than one this client already got (and records the newer one). */
+  #fresh(client: Client, event: WireEvent): boolean {
+    if (event.key === undefined || event.version === undefined) return true;
+    const seen = client.sent.get(event.key);
+    if (seen !== undefined && event.version < seen) return false;
+    if (client.sent.size > 20_000) client.sent.clear();
+    client.sent.set(event.key, event.version);
+    return true;
+  }
+
+  #send(client: Client, text: string, event: WireEvent): void {
     if (client.closed) return;
     if (client.buffer !== null) {
-      client.buffer.push(text);
+      client.buffer.push({ text, event });
       client.bufferBytes += text.length;
       if (client.bufferBytes > this.#maxPending) this.#drop(client, "slow_consumer");
       return;
@@ -295,6 +317,7 @@ export class StreamHub<C extends ChangeRef = ChangeRef> {
       floor: options.lastEventId ?? head,
       buffer: [],
       bufferBytes: 0,
+      sent: new Map(),
       closed: false,
     };
     // Registered before anything is awaited: from now on a live change is buffered, not lost.
@@ -333,7 +356,8 @@ export class StreamHub<C extends ChangeRef = ChangeRef> {
     if (client.closed) return;
     const buffered = client.buffer ?? [];
     client.buffer = null;
-    for (const text of buffered) {
+    for (const { text, event } of buffered) {
+      if (!this.#fresh(client, event)) continue;
       if (client.sink.pendingBytes + text.length > this.#maxPending)
         return this.#drop(client, "slow_consumer");
       client.sink.write(text);
@@ -356,6 +380,7 @@ export class StreamHub<C extends ChangeRef = ChangeRef> {
           if (client.closed) return;
           if (client.sink.pendingBytes > this.#maxPending)
             return this.#drop(client, "slow_consumer");
+          if (!this.#fresh(client, event)) continue;
           client.sink.write(frame(event.type, event.data, item.id));
         }
       }

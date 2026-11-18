@@ -170,6 +170,8 @@ export function useWorld(options: WorldOptions = {}): World {
   }, 60_000);
 
   afterAll(async () => {
+    for (const f of openFollows) f.close();
+    openFollows.clear();
     for (const cleanup of cleanups) {
       try {
         await cleanup();
@@ -181,6 +183,9 @@ export function useWorld(options: WorldOptions = {}): World {
 
   return world;
 }
+
+/** Every stream a test opened: closed before the servers, so nothing reconnects to a closed server. */
+const openFollows = new Set<{ close(): void }>();
 
 export interface Followed {
   readonly events: StreamEvent[];
@@ -208,7 +213,7 @@ export function follow(
     onEvent: (event) => events.push(event),
     onError: (error) => console.error("stream error:", error.message),
   });
-  return {
+  const followed: Followed = {
     events,
     sub,
     async waitFor(check, what, from = 0, timeoutMs = 60_000) {
@@ -226,4 +231,6 @@ export function follow(
     },
     close: () => sub.close(),
   };
+  openFollows.add(followed);
+  return followed;
 }

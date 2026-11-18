@@ -78,7 +78,16 @@ async function eventsOf(
     }
     case "run": {
       const run = await getRun(db, change.ref);
-      return run === null ? [] : [{ type: "run.updated", data: { run: toRunDto(run) } }];
+      return run === null
+        ? []
+        : [
+            {
+              type: "run.updated",
+              key: `run:${run.id}`,
+              version: run.updatedAt.getTime(),
+              data: { run: toRunDto(run) },
+            },
+          ];
     }
     case "message": {
       const message = await getMessage(db, change.ref);
@@ -97,19 +106,40 @@ async function eventsOf(
         change.op === "archived" || change.op === "restored" || change.op === "updated"
           ? change.op
           : "created";
-      return [{ type: "memory.changed", data: { change: kind, memory: toMemoryDto(memory) } }];
+      return [
+        {
+          type: "memory.changed",
+          key: `memory:${memory.id}`,
+          version: memory.updatedAt.getTime(),
+          data: { change: kind, memory: toMemoryDto(memory) },
+        },
+      ];
     }
     case "conversation": {
       const view = await getConversation(db, change.ref);
       if (view === null) return [];
       const active = (await listActiveConversationRuns(db, [view.id])).get(view.id) ?? null;
       return [
-        { type: "conversation.updated", data: { conversation: toConversationDto(view, active) } },
+        {
+          type: "conversation.updated",
+          key: `conversation:${view.id}`,
+          version: view.updatedAt.getTime(),
+          data: { conversation: toConversationDto(view, active) },
+        },
       ];
     }
     case "bot": {
       const summary = await getBotSummary(db, change.ref);
-      return summary === null ? [] : [{ type: "bot.updated", data: { bot: toBotDto(summary) } }];
+      return summary === null
+        ? []
+        : [
+            {
+              type: "bot.updated",
+              key: `bot:${summary.bot.id}`,
+              version: summary.bot.updatedAt.getTime(),
+              data: { bot: toBotDto(summary) },
+            },
+          ];
     }
   }
 }

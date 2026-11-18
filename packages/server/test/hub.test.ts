@@ -16,7 +16,7 @@ import {
 
 interface Change extends ChangeRef {
   run?: string;
-  type?: "run.event" | "message.created";
+  type?: "run.event" | "message.created" | "run.updated";
 }
 
 class FakeSource implements ChangeSource<Change> {
@@ -24,6 +24,10 @@ class FakeSource implements ChangeSource<Change> {
   prunedThrough = 0;
   /** Hold `read` until released: lets a test change the world in the middle of a replay. */
   gate: Promise<void> | undefined;
+  /** Hold only the next `read` (the replay's), not the live poll's. */
+  gateOnce: Promise<void> | undefined;
+  /** The version of the row at the moment a change is resolved (what the database would say). */
+  version = 1;
   reads = 0;
   failNext = false;
 
@@ -43,6 +47,9 @@ class FakeSource implements ChangeSource<Change> {
       this.failNext = false;
       throw new Error("database is down");
     }
+    const once = this.gateOnce;
+    this.gateOnce = undefined;
+    await once;
     await this.gate;
     return this.log.filter((c) => c.id > afterId).slice(0, limit);
   }
@@ -57,6 +64,13 @@ class FakeSource implements ChangeSource<Change> {
             events: [{ type: "run.event", runId: c.run ?? "", data: { n: c.id } }],
           });
         }
+      } else if (c.type === "run.updated") {
+        out.push({
+          id: c.id,
+          events: [
+            { type: "run.updated", key: "run:x", version: this.version, data: { v: this.version } },
+          ],
+        });
       } else {
         out.push({ id: c.id, events: [{ type: "message.created", data: { n: c.id } }] });
       }
@@ -366,6 +380,38 @@ describe("StreamHub", () => {
     expect(sink.chunks.slice(before)).toEqual([": ping\n\n"]);
     await clock.advance(30_000);
     expect(sink.chunks.filter((c) => c === ": ping\n\n")).toHaveLength(3);
+  });
+
+  it("never sends a state older than one it already sent for the same row (replay meets a buffered live frame)", async () => {
+    const { source, hub, notify } = setup();
+    await hub.start();
+    source.append({ type: "run.updated" }); // id 1
+    notify();
+    await flush();
+
+    let release!: () => void;
+    source.gateOnce = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const sink = new FakeSink();
+    const connecting = hub.connect({ sink, runs: [], lastEventId: 0 }); // replays id 1, held
+    await flush();
+    source.append({ type: "run.updated" }); // id 2: read live while the replay waits, at version 1
+    notify();
+    await flush();
+    source.version = 2; // the row moved on before the replay reads it
+    release();
+    await connecting;
+    await flush();
+    const states = [...sink.text.matchAll(/"v":(\d+)/g)].map((m) => Number(m[1]));
+    expect(states).toEqual([2]); // the replay's newer state; the older live frame is not sent after it
+    expect(states).toEqual([...states].sort((a, b) => a - b));
+    // The next change, newer, goes through.
+    source.version = 3;
+    source.append({ type: "run.updated" });
+    notify();
+    await flush();
+    expect([...sink.text.matchAll(/"v":(\d+)/g)].map((m) => Number(m[1]))).toEqual([2, 3]);
   });
 
   describe("back-pressure", () => {

@@ -315,9 +315,15 @@ describe.skipIf(!DATABASE_URL)(
       const statuses = f.events.flatMap((e) =>
         e.type === "run.updated" && e.data.run.id === sent.run.id ? [e.data.run.status] : [],
       );
-      expect(statuses[0]).toBe("queued");
+      // The hub sends the row's CURRENT state, so on a slow machine the first state seen may
+      // already be `running` (or later). What is guaranteed: a forward path that ends in `done`.
+      const rank: Record<string, number> = { queued: 0, running: 1, done: 2 };
+      expect(statuses.length).toBeGreaterThan(0);
+      expect(statuses.every((st) => st in rank)).toBe(true);
+      expect(statuses.map((st) => rank[st])).toEqual(
+        [...statuses.map((st) => rank[st] as number)].sort((a, b) => a - b),
+      );
       expect(statuses.at(-1)).toBe("done");
-      expect(statuses).toContain("running");
       // The conversation list changed too.
       expect(
         f.events.some(

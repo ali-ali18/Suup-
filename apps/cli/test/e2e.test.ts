@@ -6,6 +6,7 @@ import { DATABASE_URL, dbSuiteName, type Project, type Result, useProject } from
 // End to end through the real entry point (`main`): the real Postgres (one schema for this file),
 // the real runtime and worker, the `scripted` provider and the `local` sandbox in a temp dir.
 
+const RUN_ID_CREATED = /Execução criada: ([0-9a-f-]{36})/;
 const RUN_ID = /Execução ([0-9a-f-]{36}) criada/;
 
 const idOf = (r: Result): string => {
@@ -686,11 +687,17 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup, end to end"), () => {
     expect((await show(p, id)).status).toBe("queued");
     const human = await p.suup(["run", "Faça algo", "--bot", "ajudante", "--detach"]);
     expect(human.stdout).toContain("Um worker precisa processá-la: suup worker");
+    const secondId = RUN_ID_CREATED.exec(human.stdout)?.[1];
+    if (secondId === undefined) throw new Error(`no run id in:\n${human.stdout}`);
 
     const w = await p.suup(["worker"], {
       during: async (h) => {
         await h.waitFor("Worker ");
         await h.waitFor(`Execução ${id.slice(0, 8)}: concluída`);
+        // Ctrl+C is a soft stop: a run the worker has claimed but not started would go back to the
+        // queue. Both detached runs must be finished before the interrupt, or the last assertion
+        // depends on which one the worker got to first.
+        await h.waitFor(`Execução ${secondId.slice(0, 8)}: concluída`);
         h.interrupt();
       },
     });
