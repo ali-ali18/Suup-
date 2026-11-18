@@ -354,6 +354,35 @@ A mensagem é sempre gravada na hora e aparece no chat. O que varia é quando o 
 - A entrega da mensagem ao loop é um evento gravado, então dá para ver no inspetor em que turno o bot tomou conhecimento dela.
 - Mensagem de outro bot e disparo de webhook seguem a mesma regra do ponto seguro.
 
+### 4.16 Assinaturas que o usuário já paga
+
+Pesquisa feita em 18/11/2026. As regras mudaram várias vezes em 2026 e podem mudar de novo; conferir antes de implementar.
+
+Há duas formas de um bot usar um modelo, e as assinaturas só servem para a segunda:
+
+| Forma | Quem controla o loop | Como paga |
+|---|---|---|
+| **Provedor** (o cérebro do bot) | O harness | Chave de API, por token |
+| **Agente delegado** (uma tarefa inteira entregue a outra ferramenta) | A ferramenta do fornecedor | A assinatura do usuário, pelo login oficial dela |
+
+Situação por fornecedor:
+
+| Assinatura | Como provedor | Como agente delegado |
+|---|---|---|
+| Claude (Pro, Max) | Proibido: os termos não permitem que um app de terceiros use o login da assinatura para chamar a API | Permitido para uso próprio: o usuário entra no Claude Code original e o harness o executa (`claude -p`); o uso sai do limite da assinatura |
+| ChatGPT (Plus, Pro) | Existe um caminho oficial ("Sign in with ChatGPT"), mas restrito a parceiros aprovados | Pelo Codex CLI com o login do usuário; é o caminho de menor risco |
+| GitHub Copilot | — | Permitido: há SDK oficial com login do GitHub, e ele roda o loop do Copilot |
+| Grok (SuperGrok) | Login oficial só para integrações que a xAI aprova | Não confirmado para app próprio |
+| Gemini | Proibido: o Google detecta e bane o uso do login do Gemini CLI em software de terceiros | Só com chave de API |
+| Cursor | Proibido usar a assinatura como API | Pelo Cursor CLI, com chave própria do Cursor |
+
+Consequências para o desenho:
+
+- O cérebro de cada bot continua usando chave de API, pela camada de provedores. Nenhuma assinatura substitui isso de forma permitida e disponível hoje.
+- As assinaturas entram como **agentes delegados**: uma ferramenta do harness (`delegate_agent`) que, pelo agente local no PC do usuário, executa a ferramenta oficial já logada, entrega uma tarefa com escopo e critérios de pronto, acompanha e devolve o resultado ao bot. É a "delegação externa" da fase 7, e depende do agente local da fase 6.
+- O harness nunca lê, copia nem reutiliza o token de login dessas ferramentas. Ele só as executa, sem modificá-las.
+- Isso vale para uso pessoal de um único usuário. Se o projeto virar produto para outras pessoas, a regra muda: oferecer login de assinatura dentro do produto exige aprovação do fornecedor.
+
 ## 5. Modelo de dados
 
 | Tabela | Conteúdo |
