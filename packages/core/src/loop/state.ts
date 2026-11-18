@@ -159,7 +159,7 @@ export function createRunState(): RunState {
 }
 
 const MAX_TOOL_LOG = 400;
-const DIGEST_SNIPPET = 300;
+const DIGEST_SNIPPET = 1000;
 
 /**
  * Rebuilds a run's state from its events. This is the ONLY way the loop gets its conversation:

@@ -35,7 +35,7 @@ export interface ReviewerConfig {
 }
 
 export const DEFAULT_MAX_REJECTIONS = 2;
-export const DIGEST_MAX_CHARS = 8000;
+export const DIGEST_MAX_CHARS = 20000;
 
 /**
  * A compact account of what the assistant actually did: each tool call with its outcome and the

@@ -293,3 +293,23 @@ describe("rebuildState: exchanges with the user", () => {
     expect(rebuildState(events).userLog).toEqual([]);
   });
 });
+
+describe("rebuildState: tool log for the reviewer", () => {
+  it("keeps a result of up to 2000 characters whole (a procedure file the assistant read must be verifiable)", () => {
+    const text = `${"instrução ".repeat(160)}fim`; // ~1.4k characters
+    const state = rebuildState(
+      log(started, response([call("1")]), toolCall("1"), toolResult("1", text)),
+    );
+    expect(state.toolLog[0]?.head).toBe(text);
+    expect(state.toolLog[0]?.tail).toBe("");
+  });
+
+  it("keeps only the start and the end of a longer result", () => {
+    const text = "a".repeat(1500) + "b".repeat(1500);
+    const state = rebuildState(
+      log(started, response([call("1")]), toolCall("1"), toolResult("1", text)),
+    );
+    expect(state.toolLog[0]?.head).toBe("a".repeat(1000));
+    expect(state.toolLog[0]?.tail).toBe("b".repeat(1000));
+  });
+});
