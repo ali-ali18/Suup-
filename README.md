@@ -36,6 +36,25 @@ As migrações ficam em `packages/db/migrations/` (arquivos SQL aplicados em ord
 
 O banco escuta apenas em `127.0.0.1` (porta `5432` por padrão). A extensão `vector` é criada automaticamente na primeira inicialização.
 
+### Máquina dos bots (sandbox)
+
+A máquina dos bots é um contêiner Linux persistente, descrito em `docker/sandbox/Dockerfile`. O servidor fala com ela por `DockerExecutor` (`packages/sandbox`), que usa `docker exec`.
+
+```sh
+docker build --tag suup-sandbox:dev docker/sandbox
+```
+
+Em código, `ensureMachine({ name, image, volume })` cria (ou reaproveita) o contêiner e o volume do workspace, e `removeMachine(name)` o remove. Para desenvolvimento e testes existe também `LocalExecutor`, que roda direto no seu computador, dentro de uma pasta, **sem nenhum isolamento**: não use com comandos de origem desconhecida.
+
+Os testes do executor rodam sempre contra `LocalExecutor` e contra um `docker` falso. Para rodá-los também contra um contêiner de verdade (precisa do daemon do Docker):
+
+```sh
+docker build --tag suup-sandbox:dev docker/sandbox
+SUUP_DOCKER_TESTS=1 SUUP_SANDBOX_IMAGE=suup-sandbox:dev pnpm vitest run packages/sandbox
+```
+
+Sem `SUUP_DOCKER_TESTS=1`, esses testes são pulados. O CI faz o build da imagem e roda com a variável ligada.
+
 ### Qualidade
 
 ```sh
