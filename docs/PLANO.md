@@ -207,6 +207,38 @@ Requisito de infraestrutura: o servidor na VPS precisa de domínio e HTTPS públ
 - O mesmo app contém o agente local: abre conexão de saída com o servidor e executa comandos aprovados no PC.
 - Comunicação em tempo real por WebSocket, alimentado por `LISTEN/NOTIFY` do Postgres.
 
+### 4.13 Diagnóstico: de quem é o problema
+
+Um problema pode estar em cinco lugares: modelo, harness, ferramenta, servidor ou app. O desenho precisa permitir separar os cinco sem adivinhar.
+
+**Fronteiras que tornam a separação possível**
+
+- O núcleo (`core`) não conhece o app nem o servidor. Ele recebe uma execução, lê e grava eventos. Roda inteiro pela CLI.
+- O app nunca guarda estado próprio de execução. Ele só desenha o que está em `run_events` e `messages`.
+- Toda chamada ao provedor é gravada por inteiro: o que foi enviado e o que voltou.
+
+**Mecanismos**
+
+| Mecanismo | O que responde |
+|---|---|
+| Id de rastreio único, do clique no app até a chamada de ferramenta | Onde a requisição parou |
+| Inspetor de execução: linha do tempo dos eventos crus, fora da interface de chat | O evento existe e o app não mostrou (app), ou o evento nunca foi gravado (harness ou servidor) |
+| Reexecução pela CLI: mesma entrada, sem app nem servidor | Reproduz sem o app: o problema não é do app |
+| Replay gravado: reexecuta o loop usando as respostas do modelo que foram gravadas | Mesmo erro com as mesmas respostas: harness. Respostas ruins desde a origem: modelo ou instruções |
+| Origem da falha gravada em toda execução que não termina bem: `provider`, `tool`, `harness`, `limit`, `approval`, `user` | Classificação imediata, sem investigar |
+| Conjunto de avaliação rodando sem app | Linha de base do harness: se a avaliação passa e o app falha, o problema está acima do núcleo |
+| Verificações de saúde por componente: banco, fila, máquina dos bots, provedores, WebSocket | Infraestrutura fora do ar |
+
+**Roteiro de diagnóstico**
+
+1. Abrir a execução no inspetor. Os eventos estão corretos e a tela está errada? É o app.
+2. Não há eventos, ou a execução nem foi criada? É o servidor ou a fila; o id de rastreio mostra onde parou.
+3. Os eventos mostram erro de ferramenta? É a ferramenta ou a máquina dos bots.
+4. Os eventos mostram o modelo decidindo mal? Rodar o replay gravado e a mesma tarefa em outro provedor. Se outro provedor acerta, é o modelo; se todos erram igual, são as instruções ou o contexto montado pelo harness.
+5. O modelo decidiu bem e o resultado saiu errado mesmo assim (parou cedo, perdeu o plano, repetiu passo)? É o harness, e o replay vira teste de regressão.
+
+O inspetor e a origem da falha entram na fase 1 (pela CLI). O replay gravado entra na fase 1. O id de rastreio de ponta a ponta e as verificações de saúde entram na fase 2, junto com o servidor e o app.
+
 ## 5. Modelo de dados
 
 | Tabela | Conteúdo |
@@ -287,7 +319,7 @@ Objetivo: provar o núcleo sem interface. Entra uma tarefa de vários passos pel
 7. **Revisor:** validação de `finish`.
 8. **Contexto:** reinjeção de objetivo e plano, truncamento, compactação.
 9. **Retomada:** reconstrução a partir de `run_events`.
-10. **CLI:** criar execução, acompanhar ao vivo, responder a `escalate`, listar e retomar.
+10. **CLI:** criar execução, acompanhar ao vivo, responder a `escalate`, listar e retomar; inspecionar os eventos crus de uma execução e reexecutá-la em modo replay com as respostas gravadas.
 11. **Avaliação:** 12 a 15 tarefas com verificador automático, cobrindo código com testes, pesquisa com fontes, transformação de arquivos, tarefa longa de muitos passos e tarefa impossível (o correto é escalar, não inventar).
 
 Testes do loop usam o provedor falso, para cobrir sem custo os casos difíceis: resposta sem ferramenta com plano aberto, `finish` sem evidência, chamada repetida, queda no meio de uma ferramenta.
