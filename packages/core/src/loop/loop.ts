@@ -1186,10 +1186,13 @@ function textOf(pending: PendingResponse): string {
 export function computeCost(usage: Usage, pricing: ModelPricing | undefined): number {
   if (pricing === undefined) return 0;
   const cached = Math.min(usage.cachedInputTokens ?? 0, usage.inputTokens);
+  const written = Math.min(usage.cacheWriteInputTokens ?? 0, usage.inputTokens - cached);
   const cachedRate = pricing.cachedInputPerMTok ?? pricing.inputPerMTok;
+  const writeRate = pricing.cacheWriteInputPerMTok ?? pricing.inputPerMTok;
   return (
-    ((usage.inputTokens - cached) * pricing.inputPerMTok +
+    ((usage.inputTokens - cached - written) * pricing.inputPerMTok +
       cached * cachedRate +
+      written * writeRate +
       usage.outputTokens * pricing.outputPerMTok) /
     1_000_000
   );

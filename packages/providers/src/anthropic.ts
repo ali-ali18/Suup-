@@ -431,6 +431,7 @@ export async function* parseAnthropicStream(
   if (broken !== undefined && mapped !== "max_tokens") throw broken;
 
   const cacheRead = usage.cache_read_input_tokens;
+  const cacheWrite = usage.cache_creation_input_tokens;
   yield {
     type: "usage",
     // Anthropic reports cached and cache-write tokens separately from `input_tokens`; the
@@ -439,6 +440,7 @@ export async function* parseAnthropicStream(
       (usage.input_tokens ?? 0) + (cacheRead ?? 0) + (usage.cache_creation_input_tokens ?? 0),
     outputTokens: usage.output_tokens ?? 0,
     ...(cacheRead !== undefined ? { cachedInputTokens: cacheRead } : {}),
+    ...(cacheWrite !== undefined && cacheWrite > 0 ? { cacheWriteInputTokens: cacheWrite } : {}),
   };
   yield {
     type: "done",

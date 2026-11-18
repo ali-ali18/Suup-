@@ -279,7 +279,12 @@ describe("anthropic adapter", () => {
       end("end_turn", 77);
     const { provider } = make([{ body }]);
     const result = await run(provider, baseRequest());
-    expect(result.usage).toEqual({ inputTokens: 990, outputTokens: 77, cachedInputTokens: 900 });
+    expect(result.usage).toEqual({
+      inputTokens: 990,
+      outputTokens: 77,
+      cachedInputTokens: 900,
+      cacheWriteInputTokens: 40,
+    });
   });
 
   it("reports no cached tokens when the server does not send the field", async () => {

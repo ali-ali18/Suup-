@@ -21,7 +21,7 @@ import {
   use,
 } from "../testing/index.js";
 import { defineTool } from "../tool.js";
-import { runLoop } from "./loop.js";
+import { computeCost, runLoop } from "./loop.js";
 import { rebuildState } from "./state.js";
 import { LeaseLostError, type RunStore } from "./store.js";
 
@@ -1179,4 +1179,46 @@ describe("runLoop: lease lost", () => {
       expect(await rig.run()).toBe("done");
     });
   }
+});
+
+describe("computeCost", () => {
+  const pricing = {
+    inputPerMTok: 1,
+    outputPerMTok: 5,
+    cachedInputPerMTok: 0.1,
+    cacheWriteInputPerMTok: 1.25,
+  };
+
+  it("prices plain, cached and cache-written input tokens at their own rates", () => {
+    // 1M input: 600k read from the cache, 300k written to it, 100k plain; 200k output.
+    const cost = computeCost(
+      {
+        inputTokens: 1_000_000,
+        cachedInputTokens: 600_000,
+        cacheWriteInputTokens: 300_000,
+        outputTokens: 200_000,
+      },
+      pricing,
+    );
+    expect(cost).toBeCloseTo(0.06 + 0.375 + 0.1 + 1, 6);
+  });
+
+  it("charges cache writes at the plain input rate when no write price is configured", () => {
+    const { cacheWriteInputPerMTok: _omit, ...plain } = pricing;
+    const cost = computeCost(
+      { inputTokens: 1_000_000, cacheWriteInputTokens: 400_000, outputTokens: 0 },
+      plain,
+    );
+    expect(cost).toBeCloseTo(1, 6);
+  });
+
+  it("never charges more tokens than were sent, and is zero without pricing", () => {
+    expect(
+      computeCost(
+        { inputTokens: 100, cachedInputTokens: 80, cacheWriteInputTokens: 500, outputTokens: 0 },
+        { inputPerMTok: 1, outputPerMTok: 1, cacheWriteInputPerMTok: 2 },
+      ),
+    ).toBeCloseTo((20 * 2 + 80 * 1) / 1_000_000, 9);
+    expect(computeCost({ inputTokens: 5, outputTokens: 5 }, undefined)).toBe(0);
+  });
 });

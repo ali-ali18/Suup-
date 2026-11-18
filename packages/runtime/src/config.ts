@@ -78,6 +78,7 @@ const pricingSchema = z.strictObject({
   inputPerMTok: z.number().min(0),
   outputPerMTok: z.number().min(0),
   cachedInputPerMTok: z.exactOptional(z.number().min(0)),
+  cacheWriteInputPerMTok: z.exactOptional(z.number().min(0)),
 });
 
 const modelSchema = z.strictObject({

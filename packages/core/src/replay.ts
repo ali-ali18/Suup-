@@ -170,6 +170,9 @@ export class ReplayProvider implements Provider {
       ...(payload.usage.cachedInputTokens === undefined
         ? {}
         : { cachedInputTokens: payload.usage.cachedInputTokens }),
+      ...(payload.usage.cacheWriteInputTokens === undefined
+        ? {}
+        : { cacheWriteInputTokens: payload.usage.cacheWriteInputTokens }),
     };
     yield { type: "done", stopReason: payload.stopReason, modelVersion: payload.modelVersion };
   }

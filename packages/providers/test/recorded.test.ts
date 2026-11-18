@@ -80,11 +80,16 @@ describe("anthropic adapter against recorded real streams", () => {
     expect(result.stopReason).toBe("end");
   });
 
-  it("counts cache reads and cache writes as part of the whole prompt, and reports the cached part", async () => {
+  it("counts cache reads and cache writes as part of the whole prompt, and reports both parts", async () => {
     const { provider } = make(fixture("cache-read-and-creation.sse"));
     const result = await run(provider, baseRequest());
     // input_tokens 2 + cache_creation 173 + cache_read 626
-    expect(result.usage).toEqual({ inputTokens: 801, outputTokens: 110, cachedInputTokens: 626 });
+    expect(result.usage).toEqual({
+      inputTokens: 801,
+      outputTokens: 110,
+      cachedInputTokens: 626,
+      cacheWriteInputTokens: 173,
+    });
   });
 
   for (const [file, status, kind] of [

@@ -54,6 +54,8 @@ export const usageSchema = z.object({
   outputTokens: z.number().int().nonnegative(),
   /** Part of `inputTokens` served from the prompt cache. */
   cachedInputTokens: z.exactOptional(z.number().int().nonnegative()),
+  /** Part of `inputTokens` written to the prompt cache on this call (billed above the plain rate). */
+  cacheWriteInputTokens: z.exactOptional(z.number().int().nonnegative()),
 });
 export type Usage = z.infer<typeof usageSchema>;
 
@@ -73,7 +75,13 @@ export type ProviderEvent =
   | { type: "text_delta"; text: string }
   | { type: "tool_call"; id: string; name: string; args: JsonValue }
   | { type: "provider_data"; data: JsonValue }
-  | { type: "usage"; inputTokens: number; outputTokens: number; cachedInputTokens?: number }
+  | {
+      type: "usage";
+      inputTokens: number;
+      outputTokens: number;
+      cachedInputTokens?: number;
+      cacheWriteInputTokens?: number;
+    }
   | { type: "done"; stopReason: StopReason; modelVersion: string };
 
 export interface GenerateResult {
@@ -156,8 +164,9 @@ export async function collect(
 ): Promise<GenerateResult> {
   const blocks: Block[] = [];
   let text = "";
-  const usage = { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0 };
+  const usage = { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0, cacheWriteInputTokens: 0 };
   let sawCached = false;
+  let sawCacheWrite = false;
 
   const flushText = () => {
     if (text !== "") blocks.push({ type: "text", text });
@@ -184,6 +193,10 @@ export async function collect(
           usage.cachedInputTokens += event.cachedInputTokens;
           sawCached = true;
         }
+        if (event.cacheWriteInputTokens !== undefined) {
+          usage.cacheWriteInputTokens += event.cacheWriteInputTokens;
+          sawCacheWrite = true;
+        }
         break;
       case "done": {
         flushText();
@@ -194,6 +207,7 @@ export async function collect(
             inputTokens: usage.inputTokens,
             outputTokens: usage.outputTokens,
             ...(sawCached ? { cachedInputTokens: usage.cachedInputTokens } : {}),
+            ...(sawCacheWrite ? { cacheWriteInputTokens: usage.cacheWriteInputTokens } : {}),
           },
           modelVersion: event.modelVersion,
         };
