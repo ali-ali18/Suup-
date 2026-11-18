@@ -1,4 +1,10 @@
-import type { ContextItem, PlanStep, RunEventPayload, RunStatus } from "../events.js";
+import type {
+  ContextItem,
+  EscalateQuestion,
+  PlanStep,
+  RunEventPayload,
+  RunStatus,
+} from "../events.js";
 import type { Block, JsonValue, Message, ToolCallBlock } from "../messages.js";
 import type { GenerateResult, StopReason } from "../provider.js";
 import { isControlTool } from "./control-tools.js";
@@ -10,6 +16,18 @@ import {
   renderUserMessage,
 } from "./prompts.js";
 import type { FailureOrigin, RunResult, StoredEvent } from "./store.js";
+
+/** The question as the history keeps it: the text, then the choices that were offered (if any). */
+function withOptions(question: string, questions: readonly EscalateQuestion[] | undefined): string {
+  const offered = (questions ?? [])
+    .map((q, i) =>
+      q.options === undefined
+        ? undefined
+        : `${questions !== undefined && questions.length > 1 ? `${i + 1}. ` : ""}${q.multiple === true ? "pick several: " : ""}${q.options.map((o) => o.label).join(" | ")}`,
+    )
+    .filter((line) => line !== undefined);
+  return offered.length === 0 ? question : `${question}\nOptions offered:\n${offered.join("\n")}`;
+}
 
 /** A tool call the model asked for whose result is not recorded yet. */
 export interface PendingCall {
@@ -29,7 +47,7 @@ export interface PendingResponse {
 
 /** Why the run is paused waiting for a person. */
 export type Waiting =
-  | { kind: "escalate"; callId: string; question: string }
+  | { kind: "escalate"; callId: string; question: string; questions?: EscalateQuestion[] }
   | { kind: "review_tie_break"; question: string };
 
 export interface ToolLogEntry {
@@ -353,10 +371,17 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
       break;
 
     case "escalated":
-      logUser(state, "question", event.payload.question);
+      logUser(state, "question", withOptions(event.payload.question, event.payload.questions));
       state.waiting =
         event.payload.callId !== undefined
-          ? { kind: "escalate", callId: event.payload.callId, question: event.payload.question }
+          ? {
+              kind: "escalate",
+              callId: event.payload.callId,
+              question: event.payload.question,
+              ...(event.payload.questions === undefined
+                ? {}
+                : { questions: event.payload.questions }),
+            }
           : { kind: "review_tie_break", question: event.payload.question };
       break;
 

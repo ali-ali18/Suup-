@@ -224,6 +224,33 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("conversation engine"), () => {
       await runtime.close();
     });
 
+    it("a question with options reaches the message as a structured payload; the answer is plain text", async () => {
+      const options = [{ label: "Azul", description: "A cor do mar" }, { label: "Verde" }];
+      const runtime = await open({
+        agent: [
+          { calls: [call("escalate", { question: "Qual cor?", options })] },
+          { text: "Então vai de azul." },
+        ],
+      });
+      const bot = await newBot(runtime);
+      const first = await sendMessage(runtime, { botId: bot.id, text: "Escolha uma cor" });
+      const { conversationId } = first.message;
+      await work(runtime, first.run.id);
+      const [ask] = await botMessages(runtime, conversationId);
+      expect(ask?.text).toBe("Qual cor?");
+      expect(ask?.question).toEqual({ questions: [{ question: "Qual cor?", options }] });
+      // Stored with the message: reading it back gives the same thing.
+      expect((await getMessage(runtime.db, ask?.id ?? ""))?.question).toEqual({
+        questions: [{ question: "Qual cor?", options }],
+      });
+
+      const answer = await sendMessage(runtime, { conversationId, text: "Azul" });
+      expect(answer.message.question).toBeUndefined();
+      await work(runtime, first.run.id);
+      expect((await getRun(runtime.db, first.run.id))?.status).toBe("done");
+      await runtime.close();
+    });
+
     it("a message while a run waits for approval is stored and posted, and approves nothing", async () => {
       const runtime = await open({ agent: [] });
       const bot = await newBot(runtime);
@@ -289,6 +316,13 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("conversation engine"), () => {
         ["bot", "Posso?"],
         ["system", "A execução foi cancelada antes de terminar."],
       ]);
+
+      // A question without options still carries its (empty) structured side; other messages none.
+      const askMessage = trail[0];
+      expect(askMessage?.question).toEqual({ questions: [{ question: "Posso?" }] });
+      expect(
+        (await botMessages(runtime, done.sent.message.conversationId))[0]?.question,
+      ).toBeUndefined();
 
       // Redelivery: running the hook again, any number of times, adds nothing.
       for (const run of [done.sent.run, failed.sent.run, cancelled.sent.run]) {

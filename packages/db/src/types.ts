@@ -54,6 +54,14 @@ export interface Bot {
   avatar?: string | null;
   /** The "main" bot: receives messages when none is chosen. At most one active bot has it. */
   isDefault?: boolean;
+  /** Pinned at the top of the bots list. (Optional for the same reason as `avatar`.) */
+  pinned?: boolean;
+  /** The group the bot is listed under; `null` for the default list. */
+  groupName?: string | null;
+  /** Position inside its block (pinned, or its group); `null` sorts last. */
+  sortOrder?: number | null;
+  /** An id of the palette of `@suup/api` (the server validates it); `null` for the mascot's own. */
+  color?: string | null;
   createdAt: Date;
   updatedAt: Date;
   archivedAt: Date | null;

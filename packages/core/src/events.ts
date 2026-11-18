@@ -18,6 +18,40 @@ export const planStepSchema = z.object({
 export type PlanStep = z.infer<typeof planStepSchema>;
 
 /** One memory shown to the model: the id lets the user (and `forget`) refer to it. */
+/** A choice offered with a question (`escalate`). The answer is still plain text: the label, or free text. */
+export const escalateOptionSchema = z.object({
+  label: z.string().describe("Short text of the choice (a few words). It becomes the reply."),
+  description: z
+    .exactOptional(z.string())
+    .describe("Optional one-line explanation of what the choice means."),
+});
+export type EscalateOption = z.infer<typeof escalateOptionSchema>;
+
+/** One question of a questionnaire (`escalate`): free text, or a choice among discrete options. */
+export const escalateQuestionSchema = z.object({
+  question: z.string(),
+  /** 2 to 6 choices, only when the answers are genuinely discrete. */
+  options: z.exactOptional(z.array(escalateOptionSchema).min(2).max(6)),
+  /** The user may pick several options. */
+  multiple: z.exactOptional(z.boolean()),
+  /** The user may answer with something that is not in the list. */
+  allowOther: z.exactOptional(z.boolean()),
+});
+export type EscalateQuestion = z.infer<typeof escalateQuestionSchema>;
+
+/**
+ * The questionnaire an `escalated` event asks, in ONE shape: the event keeps a plain single
+ * question as just `question`, and anything richer as `questions`; this reads both.
+ */
+export function escalatedQuestions(payload: {
+  question: string;
+  questions?: readonly EscalateQuestion[] | undefined;
+}): EscalateQuestion[] {
+  return payload.questions === undefined
+    ? [{ question: payload.question }]
+    : [...payload.questions];
+}
+
 export const contextItemSchema = z.object({ id: z.string(), text: z.string() });
 export type ContextItem = z.infer<typeof contextItemSchema>;
 
@@ -207,6 +241,11 @@ export const runEventSchema = z.discriminatedUnion("type", [
     type: z.literal("escalated"),
     payload: z.object({
       question: z.string(),
+      /**
+       * What was asked, when it is more than one plain question (choices, several questions). Its
+       * text is `question`: the question itself, or the numbered list of them.
+       */
+      questions: z.exactOptional(z.array(escalateQuestionSchema).min(1).max(5)),
       /** The `escalate` call this question came from. Absent for a review tie-break. */
       callId: z.exactOptional(z.string()),
       /** `review_tie_break`: the reviewer rejected too often and a human must decide. */

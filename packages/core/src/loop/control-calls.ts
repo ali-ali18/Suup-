@@ -5,6 +5,7 @@ import {
   describePlan,
   escalateInputSchema,
   formatReasons,
+  normalizeEscalateInput,
   planInputSchema,
   renderArgIssues,
   validatePlan,
@@ -73,17 +74,21 @@ export async function handleEscalate(
     });
     return;
   }
-  if (parsed.data.question.trim() === "") {
+  const normalized = normalizeEscalateInput(parsed.data);
+  if (!normalized.ok) {
     await recordResult(ctx, call.id, {
       outcome: "invalid_args",
       isError: true,
-      content: "The question is empty. Call escalate again with one precise question.",
+      content: `${normalized.problem} Call escalate again with a valid question.`,
     });
     return;
   }
+  const { questions, text } = normalized;
+  // A plain question stays as it always was; anything richer is recorded as the questionnaire.
+  const plain = questions.length === 1 && questions[0]?.options === undefined;
   // No result is recorded: the user's answer will be it. The loop pauses at the next safe point.
   await record(ctx, {
     type: "escalated",
-    payload: { question: parsed.data.question, callId: call.id },
+    payload: { question: text, ...(plain ? {} : { questions }), callId: call.id },
   });
 }

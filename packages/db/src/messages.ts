@@ -7,6 +7,30 @@ export const MESSAGE_AUTHOR_KINDS = ["user", "bot", "system"] as const;
 export type MessageStatus = "sent" | "delivered";
 export const MESSAGE_STATUSES = ["sent", "delivered"] as const;
 
+/** A choice offered with a question. */
+export interface MessageQuestionOption {
+  label: string;
+  description?: string;
+}
+
+/** One question of what the bot asked. */
+export interface MessageQuestionItem {
+  question: string;
+  options?: MessageQuestionOption[];
+  multiple?: boolean;
+  allowOther?: boolean;
+}
+
+/**
+ * The structured side of a bot message that is a question (an `escalate`, or the reviewer's
+ * tie-break), in ONE shape: what was asked (one question, or a questionnaire) and, for the
+ * tie-break, why it was asked.
+ */
+export interface MessageQuestion {
+  questions: MessageQuestionItem[];
+  reason?: "review_tie_break";
+}
+
 export interface Message {
   id: string;
   conversationId: string;
@@ -24,6 +48,8 @@ export interface Message {
    */
   status: MessageStatus | null;
   createdAt: Date;
+  /** Present only on a bot message that asks the user something. */
+  question?: MessageQuestion;
 }
 
 export interface MessageRow {
@@ -36,6 +62,7 @@ export interface MessageRow {
   run_id: string | null;
   status: MessageStatus | null;
   created_at: Date;
+  question: MessageQuestion | null;
 }
 
 export function mapMessage(row: MessageRow): Message {
@@ -50,6 +77,7 @@ export function mapMessage(row: MessageRow): Message {
     runId: row.run_id,
     status: row.status,
     createdAt: row.created_at,
+    ...(row.question === null || row.question === undefined ? {} : { question: row.question }),
   };
 }
 
@@ -64,10 +92,36 @@ const MESSAGE_COLUMNS = [
   "run_id",
   "status",
   "created_at",
+  "question",
 ];
 
 const uuidSchema = z.uuid();
 const textSchema = z.string().refine((t) => t.trim().length > 0, "text must not be blank");
+
+const questionSchema = z.object({
+  questions: z
+    .array(
+      z.object({
+        question: z.string().min(1),
+        options: z.exactOptional(
+          z
+            .array(
+              z.object({
+                label: z.string().min(1),
+                description: z.exactOptional(z.string().min(1)),
+              }),
+            )
+            .min(2)
+            .max(6),
+        ),
+        multiple: z.exactOptional(z.boolean()),
+        allowOther: z.exactOptional(z.boolean()),
+      }),
+    )
+    .min(1)
+    .max(5),
+  reason: z.exactOptional(z.literal("review_tie_break")),
+});
 
 const appendSchema = z
   .object({
@@ -78,6 +132,7 @@ const appendSchema = z
     runId: z.exactOptional(uuidSchema),
     status: z.exactOptional(z.enum(MESSAGE_STATUSES)),
     dedupeKey: z.exactOptional(z.string().min(1).max(200)),
+    question: z.exactOptional(questionSchema),
   })
   .superRefine((m, ctx) => {
     if ((m.authorKind === "bot") !== (m.authorBotId !== undefined)) {
@@ -85,6 +140,13 @@ const appendSchema = z
         code: "custom",
         path: ["authorBotId"],
         message: "authorBotId is required when authorKind is 'bot', and not allowed otherwise",
+      });
+    }
+    if (m.question !== undefined && m.authorKind !== "bot") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["question"],
+        message: "question only applies to bot messages",
       });
     }
     if (m.status !== undefined && m.authorKind !== "user") {
@@ -111,6 +173,8 @@ export interface AppendMessageInput {
    * uses it for what it writes on its own, so a retry or another worker cannot write it twice.
    */
   dedupeKey?: string;
+  /** Bot messages only: the structured question (choices) this message asks. */
+  question?: MessageQuestion;
 }
 
 /**
@@ -157,7 +221,7 @@ export async function appendMessageOnce(
       }
     }
     const [row] = await tx.sql<MessageRow[]>`
-      insert into messages (conversation_id, seq, author_kind, author_bot_id, text, run_id, status, dedupe_key, created_at)
+      insert into messages (conversation_id, seq, author_kind, author_bot_id, text, run_id, status, dedupe_key, question, created_at)
       values (
         ${m.conversationId},
         (select coalesce(max(seq), 0) + 1 from messages where conversation_id = ${m.conversationId}),
@@ -167,6 +231,7 @@ export async function appendMessageOnce(
         ${m.runId ?? null},
         ${m.status ?? null},
         ${m.dedupeKey ?? null},
+        ${m.question === undefined ? null : tx.sql.json(m.question)},
         clock_timestamp()
       )
       returning ${tx.sql(MESSAGE_COLUMNS)}`;

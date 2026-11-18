@@ -27,6 +27,8 @@ Uma mensagem sua abre uma execução. Uma rotina e uma tarefa delegada por outro
 | `limits` | objeto | `maxTurns`, `maxCostUsd`, `maxDurationMs` |
 | `avatar` | texto ou vazio | Referência opaca que o app interpreta (emoji, id de arquivo...): o servidor só a guarda |
 | `isDefault` | verdadeiro/falso | O bot principal, o que recebe a mensagem quando nenhum é escolhido |
+| `pinned`, `groupName`, `sortOrder` | booleano, texto ou vazio, inteiro ou vazio | Onde o bot aparece na lista: fixado (blocos grandes no topo), sob um grupo nomeado, ou na lista padrão "Bots" |
+| `color` | id da paleta ou vazio | A cor do mascote e do balão do usuário (`laranja`, `azul`, `verde`, `roxo`, `rosa`, `amarelo`, `cinza`, `grafite`, `branco`); o servidor só guarda o id |
 | `createdAt`, `updatedAt` | data | |
 | `archivedAt` | data ou vazio | Bot arquivado não recebe trabalho novo |
 
@@ -104,7 +106,7 @@ Cada execução tem um log de eventos numerados (`seq`), só de acréscimo. É a
 | `nudge` | `reason`, `text` | Aviso discreto: "o Suup pediu ao bot que continuasse" |
 | `finish_attempt` | `summary`, `evidence`, `accepted`, `rejectionReasons` | Conclusão aceita, ou "conclusão recusada" com os motivos |
 | `review` | `verdict` (`approve` ou `reject`), `notes`, `warning?` | Selo do revisor |
-| `escalated` | `question`, `reason?` | Pergunta em destaque |
+| `escalated` | `question`, `questions?`, `reason?` | Pergunta em destaque. `questions` (1 a 5 itens `{ question, options?, multiple?, allowOther? }`) existe quando há escolhas ou várias perguntas; `options` só quando as respostas são discretas |
 | `status_changed` | `from`, `to`, `failure?`, `result?` | Mudança de estado |
 | `context_loaded` | `rules`, `profile`, `history`, `historyNote?` | Logo depois de `run_started`: o que a memória e a conversa deram à execução. Aviso discreto ("3 regras, 1 fato do perfil, 6 mensagens anteriores"); `rules` e `profile` têm `id` e `text` e aparecem na tela de memória |
 | `model_error` | `kind`, `message`, `retryable`, `attempt` | "Tentando de novo" ou erro |
@@ -161,7 +163,7 @@ Ainda não existem: novo cartão de aprovação (fase 3), notificação do siste
 ### Fase 2: conversas e memória (existe)
 
 - **Conversa:** `id`, `kind` (`direct` com um bot; `group` ainda não recebe mensagens), `members` (os bots; você está implícito), `title` (só em grupo), `lastMessageAt`, `lastMessage` (cortada em 200 caracteres), `unreadCount`, `lastReadSeq` e `activeRun` (a execução em primeiro plano). **Não lidas** = mensagens do bot e do sistema depois de `lastReadSeq`; as suas nunca contam. `POST /v1/conversations/{id}/read` marca como lida (até uma mensagem, ou tudo).
-- **Mensagem:** `id`, `seq`, `authorKind` (`user`, `bot` ou `system`: o aviso de falha ou cancelamento), `authorBotId`, `text`, `runId`, `status` (`sent` ou `delivered`, só nas suas enviadas com o bot trabalhando) e `createdAt`. Anexos ainda não existem (fase 7).
+- **Mensagem:** `id`, `seq`, `authorKind` (`user`, `bot` ou `system`: o aviso de falha ou cancelamento), `authorBotId`, `text`, `runId`, `status` (`sent` ou `delivered`, só nas suas enviadas com o bot trabalhando) e `createdAt`; `question` (`{ questions: [{ question, options?, multiple?, allowOther? }], reason? }`) só na mensagem do bot que pergunta algo: o cartão de pergunta se desenha a partir dela, e a resposta é texto comum (os rótulos escolhidos, uma linha por pergunta quando são várias, `→ (pulou)` para a que foi pulada).
 - **Sala de grupo (fase 4):** uma conversa com vários bots; cada um decide se responde.
 - **Memória**, em camadas, tudo visível e editável:
 

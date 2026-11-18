@@ -16,13 +16,11 @@
     "dist"
   ],
   "dependencies": {
+    "@suup/api": "workspace:*",
     "@suup/core": "workspace:*",
     "@suup/db": "workspace:*",
     "@suup/evals": "workspace:*",
     "@suup/runtime": "workspace:*",
     "@suup/server": "workspace:*"
-  },
-  "devDependencies": {
-    "@suup/api": "workspace:*"
   }
 }

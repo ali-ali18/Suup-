@@ -93,6 +93,10 @@ As ferramentas que se pode liberar a um bot. `200 { "items": [ToolInfo], "contro
 | `limits` | `{ maxTurns?, maxCostUsd?, maxDurationMs? }` | Sem o campo, vale o padrão da configuração |
 | `avatar` | texto ou `null` | Referência opaca que o app interpreta (emoji, id de arquivo...) |
 | `isDefault` | booleano | O bot principal: recebe as mensagens quando nenhum é escolhido |
+| `pinned` | booleano | Fixado no topo da lista do app |
+| `groupName` | texto ou `null` | O grupo sob o qual o bot aparece (1 a 60 caracteres, sem espaços nas pontas); `null` é a lista padrão ("Bots"). Os grupos não têm tabela: existem enquanto algum bot os usa |
+| `sortOrder` | inteiro ou `null` | Posição dentro do bloco (fixados, ou o grupo); `null` vem depois dos demais |
+| `color` | id da paleta ou `null` | A cor do mascote e do balão do usuário na conversa: `laranja`, `azul`, `verde`, `roxo`, `rosa`, `amarelo`, `cinza`, `grafite` ou `branco`. O servidor guarda **só** esses ids, nunca CSS (`BOT_PALETTE` no `@suup/api` traz a cor e a cor do texto sobre ela, com contraste de pelo menos 4,5:1). `avatar` continua sendo o formato do mascote (por exemplo `mascot:gota`), texto opaco que o app interpreta |
 | `createdAt`, `updatedAt`, `archivedAt` | data (a última ou `null`) | |
 | `latestRun` | `{ id, status, paused, objective, createdAt }` ou `null` | A execução mais recente do bot, de qualquer origem: é o indicador da lista |
 | `conversationId` | UUID ou `null` | A conversa direta do bot (só existe depois de aberta) |
@@ -102,8 +106,8 @@ As ferramentas que se pode liberar a um bot. `200 { "items": [ToolInfo], "contro
 |---|---|---|
 | `GET /v1/bots?includeArchived=true` | | `200 { items: [Bot] }`, o mais novo primeiro |
 | `GET /v1/bots/{id}` | | `200 Bot`; `404` |
-| `POST /v1/bots` | `{ name, modelId, description?, personality?, allowedTools?, limits?, avatar? }` | `201 Bot`; `400` (modelo ou ferramenta que não existem, nome vazio) |
-| `PATCH /v1/bots/{id}` | qualquer subconjunto dos campos acima, pelo menos um | `200 Bot`; `400`, `404` |
+| `POST /v1/bots` | `{ name, modelId, description?, personality?, allowedTools?, limits?, avatar?, pinned?, groupName?, sortOrder?, color? }` | `201 Bot`; `400` (modelo ou ferramenta que não existem, nome vazio, cor fora da paleta, grupo vazio ou com mais de 60 caracteres) |
+| `PATCH /v1/bots/{id}` | qualquer subconjunto dos campos acima, pelo menos um (é por aqui que o app fixa, agrupa e pinta: `{ pinned }`, `{ groupName }`, `{ color }`; `null` limpa `groupName`, `sortOrder` e `color`) | `200 Bot`; `400`, `404` |
 | `POST /v1/bots/{id}/archive` | | `200 Bot` (idempotente); `404` |
 | `POST /v1/bots/{id}/default` | | `200 Bot`; `404`; `409` se estiver arquivado |
 | `POST /v1/bots/{id}/conversation` | | `200 Conversation`: a conversa direta do bot, criada na primeira chamada; `404`; `409` se arquivado |
@@ -118,6 +122,8 @@ As ferramentas que se pode liberar a um bot. `200 { "items": [ToolInfo], "contro
 `Conversation`: `id`, `kind` (`direct` ou `group`; só a direta recebe mensagens por enquanto), `title`, `createdAt`, `updatedAt`, `lastMessageAt`, `archivedAt`, `members` (`[{ botId, name, avatar, joinedAt }]`), `lastMessage` (a última mensagem, cortada em 200 caracteres: `{ id, seq, authorKind, authorBotId, text, createdAt }` ou `null`), `lastReadSeq`, `unreadCount` e `activeRun` (a execução em primeiro plano, a que trabalha ou espera você, ou `null`).
 
 `Message`: `id`, `conversationId`, `seq` (1, 2, 3... sem buracos), `authorKind` (`user`, `bot`, `system`), `authorBotId`, `text`, `runId` (a execução que a sua mensagem abriu, ou que a do bot produziu), `status` (`sent` ou `delivered`, só em mensagem sua enviada com o bot trabalhando; senão `null`) e `createdAt`.
+
+A mensagem do bot que **é uma pergunta** (o `escalate` do bot, ou o desempate do revisor) traz também `question`, sempre no mesmo formato: `{ questions: [{ question, options?, multiple?, allowOther? }], reason? }`. `questions` tem de 1 a 5 itens (uma pergunta comum é um item só); `options` (`[{ label, description? }]`, de 2 a 6) existe só quando as respostas possíveis são discretas; `multiple` deixa escolher várias; `allowOther` deixa responder com algo fora da lista; `reason` é `"review_tie_break"` só no desempate. `text` é a pergunta (ou a lista numerada delas). O app desenha o cartão só com a mensagem. **A resposta é sempre texto comum**, enviado como qualquer mensagem: com uma pergunta, os rótulos escolhidos separados por `"; "` (ou o texto digitado); com várias, uma linha por pergunta, `1. <pergunta> → <rótulos>` ou `→ (pulou)`. `buildAnswerText` e `parseAnswerText` (no `@suup/api`) montam e leem esse texto, e o modelo o recebe como resultado do `escalate`. Nas demais mensagens o campo não existe.
 
 | Método e caminho | Corpo | Resposta |
 |---|---|---|

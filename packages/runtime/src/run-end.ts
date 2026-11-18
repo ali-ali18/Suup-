@@ -1,9 +1,15 @@
-import { type FailureOrigin, runResultSchema } from "@suup/core";
+import {
+  type EscalateQuestion,
+  escalatedQuestions,
+  type FailureOrigin,
+  runResultSchema,
+} from "@suup/core";
 import {
   addJournalMemory,
   appendMessageOnce,
   type Db,
   getRun,
+  type MessageQuestion,
   type Run,
   rolloverUnreadMessages,
 } from "@suup/db";
@@ -46,7 +52,12 @@ export function journalText(run: Run): string {
 async function outcomeMessage(
   db: Db,
   run: Run,
-): Promise<{ authorKind: "bot" | "system"; text: string; key: string } | null> {
+): Promise<{
+  authorKind: "bot" | "system";
+  text: string;
+  key: string;
+  question?: MessageQuestion;
+} | null> {
   switch (run.status) {
     case "done": {
       const parsed = runResultSchema.safeParse(run.result);
@@ -60,13 +71,31 @@ async function outcomeMessage(
     case "waiting_user": {
       // The latest question the run asked: its position in the log makes the key, so each
       // question is written once however often the pause is observed.
-      const [question] = await db.sql<{ seq: number; payload: { question?: string } }[]>`
+      const [question] = await db.sql<
+        {
+          seq: number;
+          payload: {
+            question?: string;
+            questions?: EscalateQuestion[];
+            reason?: "review_tie_break";
+          };
+        }[]
+      >`
         select seq, payload from run_events
         where run_id = ${run.id} and type = 'escalated'
         order by seq desc limit 1`;
       const text = question?.payload.question?.trim();
       if (question === undefined || text === undefined || text === "") return null;
-      return { authorKind: "bot", text, key: `run:${run.id}:question:${question.seq}` };
+      return {
+        authorKind: "bot",
+        text,
+        key: `run:${run.id}:question:${question.seq}`,
+        // The structured side, so the app draws the card from the message alone.
+        question: {
+          questions: escalatedQuestions({ question: text, questions: question.payload.questions }),
+          ...(question.payload.reason === undefined ? {} : { reason: question.payload.reason }),
+        },
+      };
     }
     case "failed": {
       const origin = (run.failureOrigin ?? "harness") as FailureOrigin;
@@ -125,6 +154,7 @@ export async function finishRun(db: Db, runId: string): Promise<RunEffects> {
         text: message.text,
         runId: run.id,
         dedupeKey: message.key,
+        ...(message.question === undefined ? {} : { question: message.question }),
       });
       effects.messageWritten = created;
     }

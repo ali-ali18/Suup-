@@ -2,6 +2,51 @@ import { z } from "zod";
 import { boolQuery, isoDate, list, uuid } from "./common.js";
 import { runStatusSchema } from "./runs.js";
 
+/**
+ * The closed palette a bot's mascot and conversation may be painted with. The server stores only
+ * these ids (never CSS). Every entry carries its colours, chosen so the contrast of each text colour
+ * on its fill is at least 4.5:1 (a test checks it; the app never computes colours):
+ * - `fill` / `onFill`: the mascot's body (and the send button) and what is drawn on it;
+ * - `userBubbleFill` / `userBubbleOnFill`: the user's bubble in a conversation with that bot. It
+ *   is the bot's colour, except for the white bot: its bubble is a neutral grey with light text.
+ */
+export const BOT_PALETTE = {
+  laranja: entry("laranja", "#ff6700", "#0b0b0c"),
+  azul: entry("azul", "#1084fe", "#0b0b0c"),
+  verde: entry("verde", "#00c972", "#0b0b0c"),
+  roxo: entry("roxo", "#9364f5", "#0b0b0c"),
+  rosa: entry("rosa", "#ff5c8a", "#0b0b0c"),
+  amarelo: entry("amarelo", "#ffc53d", "#0b0b0c"),
+  cinza: entry("cinza", "#8d8d92", "#0b0b0c"),
+  grafite: entry("grafite", "#3b3b3f", "#ffffff"),
+  branco: {
+    ...entry("branco", "#ffffff", "#0b0b0c"),
+    userBubbleFill: "#3a3a3c",
+    userBubbleOnFill: "#f5f5f5",
+  },
+} as const;
+
+function entry<Id extends string>(id: Id, fill: string, onFill: string) {
+  return { id, fill, onFill, userBubbleFill: fill, userBubbleOnFill: onFill } as {
+    id: Id;
+    fill: string;
+    onFill: string;
+    userBubbleFill: string;
+    userBubbleOnFill: string;
+  };
+}
+export const BOT_COLORS = Object.keys(BOT_PALETTE) as [
+  keyof typeof BOT_PALETTE,
+  ...(keyof typeof BOT_PALETTE)[],
+];
+export const botColorSchema = z.enum(BOT_COLORS);
+export type BotColor = z.infer<typeof botColorSchema>;
+
+const groupNameSchema = z
+  .string()
+  .transform((g) => g.trim())
+  .pipe(z.string().min(1).max(60));
+
 export const botLimitsSchema = z.looseObject({
   maxTurns: z.exactOptional(z.number().int().positive()),
   maxCostUsd: z.exactOptional(z.number().positive()),
@@ -23,6 +68,14 @@ export const botSchema = z.object({
   avatar: z.string().nullable(),
   /** The main bot: it receives the messages when none is chosen. */
   isDefault: z.boolean(),
+  /** Pinned at the top of the list. (The defaults let the client read an older server.) */
+  pinned: z.boolean().default(false),
+  /** The group the bot is listed under; `null` for the default list ("Bots"). */
+  groupName: z.string().nullable().default(null),
+  /** Position inside its block (pinned, or its group); `null` sorts last. */
+  sortOrder: z.number().int().nullable().default(null),
+  /** One of `BOT_COLORS`, or `null` for the mascot's own colour. */
+  color: botColorSchema.nullable().default(null),
   createdAt: isoDate,
   updatedAt: isoDate,
   archivedAt: isoDate.nullable(),
@@ -58,6 +111,10 @@ export const createBotBodySchema = z.object({
   allowedTools: z.exactOptional(z.array(z.string())),
   limits: z.exactOptional(botLimitsSchema),
   avatar: z.exactOptional(z.string().min(1).max(2048).nullable()),
+  pinned: z.exactOptional(z.boolean()),
+  groupName: z.exactOptional(groupNameSchema.nullable()),
+  sortOrder: z.exactOptional(z.number().int().nullable()),
+  color: z.exactOptional(botColorSchema.nullable()),
 });
 export type CreateBotBody = z.input<typeof createBotBodySchema>;
 

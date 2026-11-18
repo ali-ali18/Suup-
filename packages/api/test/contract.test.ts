@@ -10,6 +10,9 @@ import {
 import { describe, expect, it } from "vitest";
 import {
   addMemoryBodySchema,
+  BOT_COLORS,
+  BOT_PALETTE,
+  botColorSchema,
   FAILURE_ORIGINS,
   listMessagesQuerySchema,
   listRunsQuerySchema,
@@ -148,5 +151,47 @@ describe("stream events", () => {
       }).success,
     ).toBe(true);
     expect(streamEventSchema.safeParse({ type: "other", id: 1, data: {} }).success).toBe(false);
+  });
+});
+
+describe("bot palette", () => {
+  const luminance = (hex: string): number => {
+    const channel = (i: number) => {
+      const c = Number.parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16) / 255;
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    };
+    return 0.2126 * channel(0) + 0.7152 * channel(1) + 0.0722 * channel(2);
+  };
+  const contrast = (a: string, b: string): number => {
+    const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [number, number];
+    return (hi + 0.05) / (lo + 0.05);
+  };
+
+  it("every colour's text colour reads on it with at least 4.5:1", () => {
+    for (const [id, entry] of Object.entries(BOT_PALETTE)) {
+      expect(contrast(entry.fill, entry.onFill), id).toBeGreaterThanOrEqual(4.5);
+      expect(
+        contrast(entry.userBubbleFill, entry.userBubbleOnFill),
+        `${id} (user bubble)`,
+      ).toBeGreaterThanOrEqual(4.5);
+      expect(entry.id).toBe(id);
+    }
+  });
+
+  it("the user's bubble is the bot's colour, except for the white bot: a neutral grey with light text", () => {
+    for (const [id, entry] of Object.entries(BOT_PALETTE)) {
+      if (id === "branco") continue;
+      expect([entry.userBubbleFill, entry.userBubbleOnFill]).toEqual([entry.fill, entry.onFill]);
+    }
+    expect(BOT_PALETTE.branco.fill).toBe("#ffffff");
+    expect(BOT_PALETTE.branco.userBubbleFill).toBe("#3a3a3c");
+    expect(luminance(BOT_PALETTE.branco.userBubbleFill)).toBeLessThan(0.1);
+    expect(luminance(BOT_PALETTE.branco.userBubbleOnFill)).toBeGreaterThan(0.8);
+  });
+
+  it("the ids are the closed set the schema accepts", () => {
+    expect(botColorSchema.options).toEqual(Object.keys(BOT_PALETTE));
+    expect(botColorSchema.safeParse("vermelho-vivo; background:url(x)").success).toBe(false);
+    expect(BOT_COLORS).toContain("branco");
   });
 });

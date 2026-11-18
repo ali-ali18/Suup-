@@ -14,6 +14,10 @@ export interface BotRow {
   limits: unknown;
   avatar: string | null;
   is_default: boolean;
+  pinned: boolean;
+  group_name: string | null;
+  sort_order: number | null;
+  color: string | null;
   created_at: Date;
   updated_at: Date;
   archived_at: Date | null;
@@ -31,6 +35,10 @@ export function mapBot(row: BotRow): Bot {
     limits: botLimitsSchema.parse(row.limits),
     avatar: row.avatar,
     isDefault: row.is_default,
+    pinned: row.pinned,
+    groupName: row.group_name,
+    sortOrder: row.sort_order,
+    color: row.color,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     archivedAt: row.archived_at,
@@ -38,6 +46,13 @@ export function mapBot(row: BotRow): Bot {
 }
 
 const avatarSchema = z.string().min(1).max(2048).nullable();
+const groupSchema = z
+  .string()
+  .transform((g) => g.trim())
+  .pipe(z.string().min(1).max(60))
+  .nullable();
+const colorSchema = z.string().min(1).max(40).nullable();
+const orderSchema = z.number().int().nullable();
 
 export interface CreateBotInput {
   name: string;
@@ -49,6 +64,12 @@ export interface CreateBotInput {
   limits?: BotLimits;
   /** Opaque reference the app interprets; `null` (or omitted) for none. */
   avatar?: string | null;
+  pinned?: boolean;
+  /** `null` (or omitted): the default list. Trimmed, 1 to 60 characters. */
+  groupName?: string | null;
+  sortOrder?: number | null;
+  /** The id of a colour of the palette (checked by the caller, which knows the palette). */
+  color?: string | null;
 }
 
 export type UpdateBotInput = Partial<CreateBotInput>;
@@ -57,7 +78,7 @@ export async function createBot(db: Db, input: CreateBotInput): Promise<Bot> {
   const limits = botLimitsSchema.parse(input.limits ?? {});
   const avatar = avatarSchema.parse(input.avatar ?? null);
   const [row] = await db.sql<BotRow[]>`
-    insert into bots (name, description, personality, model_provider, model_id, allowed_tools, limits, avatar)
+    insert into bots (name, description, personality, model_provider, model_id, allowed_tools, limits, avatar, pinned, group_name, sort_order, color)
     values (
       ${input.name},
       ${input.description ?? ""},
@@ -66,7 +87,11 @@ export async function createBot(db: Db, input: CreateBotInput): Promise<Bot> {
       ${input.modelId},
       ${input.allowedTools ?? []}::text[],
       ${db.sql.json(limits)},
-      ${avatar}
+      ${avatar},
+      ${input.pinned ?? false},
+      ${groupSchema.parse(input.groupName ?? null)},
+      ${orderSchema.parse(input.sortOrder ?? null)},
+      ${colorSchema.parse(input.color ?? null)}
     )
     returning *`;
   if (!row) throw new Error("insert into bots returned no row");
@@ -103,6 +128,12 @@ export async function updateBot(db: Db, id: string, patch: UpdateBotInput): Prom
     sets.push(sql`limits = ${sql.json(botLimitsSchema.parse(patch.limits))}`);
   }
   if (patch.avatar !== undefined) sets.push(sql`avatar = ${avatarSchema.parse(patch.avatar)}`);
+  if (patch.pinned !== undefined) sets.push(sql`pinned = ${patch.pinned}`);
+  if (patch.groupName !== undefined)
+    sets.push(sql`group_name = ${groupSchema.parse(patch.groupName)}`);
+  if (patch.sortOrder !== undefined)
+    sets.push(sql`sort_order = ${orderSchema.parse(patch.sortOrder)}`);
+  if (patch.color !== undefined) sets.push(sql`color = ${colorSchema.parse(patch.color)}`);
   if (sets.length === 0) return getBot(db, id);
   const [row] = await sql<BotRow[]>`
     update bots set ${joinFragments(sql, sets)} where id = ${id} returning *`;

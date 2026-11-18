@@ -103,6 +103,10 @@ export const botRoutes: Route[] = [
         allowedTools: checkTools(runtime, body.allowedTools ?? []),
         ...(body.limits === undefined ? {} : { limits: body.limits }),
         ...(body.avatar === undefined ? {} : { avatar: body.avatar }),
+        ...(body.pinned === undefined ? {} : { pinned: body.pinned }),
+        ...(body.groupName === undefined ? {} : { groupName: body.groupName }),
+        ...(body.sortOrder === undefined ? {} : { sortOrder: body.sortOrder }),
+        ...(body.color === undefined ? {} : { color: body.color }),
       });
       const summary = await getBotSummary(runtime.db, bot.id);
       return {
@@ -133,6 +137,10 @@ export const botRoutes: Route[] = [
         patch.allowedTools = checkTools(runtime, body.allowedTools);
       if (body.limits !== undefined) patch.limits = body.limits;
       if (body.avatar !== undefined) patch.avatar = body.avatar;
+      if (body.pinned !== undefined) patch.pinned = body.pinned;
+      if (body.groupName !== undefined) patch.groupName = body.groupName;
+      if (body.sortOrder !== undefined) patch.sortOrder = body.sortOrder;
+      if (body.color !== undefined) patch.color = body.color;
       await updateBot(runtime.db, id, patch);
       const summary = await getBotSummary(runtime.db, id);
       if (summary === null) throw new HttpError("not_found", "Bot não encontrado.");

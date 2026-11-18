@@ -54,6 +54,10 @@ export function toBotDto(summary: BotSummary): Bot {
     limits: bot.limits,
     avatar: bot.avatar ?? null,
     isDefault: bot.isDefault === true,
+    pinned: bot.pinned === true,
+    groupName: bot.groupName ?? null,
+    sortOrder: bot.sortOrder ?? null,
+    color: bot.color === undefined ? null : (bot.color as Bot["color"]),
     createdAt: iso(bot.createdAt),
     updatedAt: iso(bot.updatedAt),
     archivedAt: isoOrNull(bot.archivedAt),
@@ -83,6 +87,7 @@ export function toMessageDto(message: MessageRow): Message {
     runId: message.runId,
     status: message.status,
     createdAt: iso(message.createdAt),
+    ...(message.question === undefined ? {} : { question: message.question }),
   };
 }
 

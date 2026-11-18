@@ -17,3 +17,8 @@ examples/demo/workspace/
 
 # Configuração local com modelos reais (nunca versionar)
 suup.config.json
+apps/desktop/screenshots/
+apps/desktop/test-results/
+apps/desktop/playwright-report/
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/gen/

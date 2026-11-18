@@ -1,4 +1,4 @@
-import { ApiError, type Bot, type Run, type StreamEvent } from "@suup/api";
+import { ApiError, type Bot, buildAnswerText, type Run, type StreamEvent } from "@suup/api";
 import { inspectModelRequest, replayRecordedRun, runDoctorChecks } from "@suup/runtime";
 import { describe, expect, it } from "vitest";
 import { DATABASE_URL, dbSuiteName, follow, until, useWorld } from "./world.js";
@@ -43,6 +43,49 @@ const SCRIPTS = {
         agent: [
           s({ calls: [{ name: "escalate", args: { question: "Qual cor você prefere?" } }] }),
           s({ text: "Azul, então." }),
+        ],
+      },
+      {
+        whenObjectiveContains: "CASE-OPTIONS",
+        agent: [
+          s({
+            calls: [
+              {
+                name: "escalate",
+                args: {
+                  question: "Qual cor você prefere?",
+                  options: [{ label: "Azul", description: "A cor do mar" }, { label: "Verde" }],
+                },
+              },
+            ],
+          }),
+          s({ text: "Escolhida: pronto." }),
+        ],
+      },
+      {
+        whenObjectiveContains: "CASE-QUESTIONNAIRE",
+        agent: [
+          s({
+            calls: [
+              {
+                name: "escalate",
+                args: {
+                  questions: [
+                    {
+                      question: "Qual banco?",
+                      options: [{ label: "Postgres" }, { label: "SQLite" }],
+                    },
+                    {
+                      question: "Quais extras?",
+                      options: [{ label: "Cache" }, { label: "Fila" }],
+                      multiple: true,
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+          s({ text: "Entendi as duas respostas." }),
         ],
       },
       {
@@ -496,6 +539,10 @@ describe.skipIf(!DATABASE_URL)(
       expect(question.event).toMatchObject({
         data: { message: { text: "Qual cor você prefere?", runId: first.run.id } },
       });
+      // An open question still says it is a question (no choices).
+      expect(
+        question.event.type === "message.created" && question.event.data.message.question,
+      ).toEqual({ questions: [{ question: "Qual cor você prefere?" }] });
       const waiting = await api.runs.get(first.run.id);
       expect(waiting.status).toBe("waiting_user");
       expect((await api.conversations.get(conversation.id)).activeRun).toMatchObject({
@@ -521,6 +568,132 @@ describe.skipIf(!DATABASE_URL)(
       );
       expect((await api.conversations.get(conversation.id)).activeRun).toBeNull();
       f.close();
+    });
+
+    it("a bot's appearance and place in the list: pin, group, order and colour (a closed palette)", async () => {
+      const { api } = w.started;
+      const bot = await api.bots.create({
+        name: "Colorido",
+        modelId: "model-x",
+        avatar: "mascot:gota",
+        color: "azul",
+        groupName: "  Estudos  ",
+        pinned: true,
+        sortOrder: 2,
+      });
+      expect(bot).toMatchObject({
+        avatar: "mascot:gota",
+        color: "azul",
+        groupName: "Estudos",
+        pinned: true,
+        sortOrder: 2,
+      });
+      const plain = await api.bots.create({ name: "Simples", modelId: "model-x" });
+      expect(plain).toMatchObject({ color: null, groupName: null, pinned: false, sortOrder: null });
+
+      const moved = await api.bots.update(bot.id, {
+        pinned: false,
+        groupName: "Trabalho",
+        color: "branco",
+      });
+      expect(moved).toMatchObject({ pinned: false, groupName: "Trabalho", color: "branco" });
+      const cleared = await api.bots.update(bot.id, {
+        groupName: null,
+        color: null,
+        sortOrder: null,
+      });
+      expect(cleared).toMatchObject({ groupName: null, color: null, sortOrder: null });
+      expect((await api.bots.list()).find((b) => b.id === bot.id)).toMatchObject({ pinned: false });
+
+      const code = (promise: Promise<unknown>) =>
+        promise.then(
+          () => "no error",
+          (error: unknown) => (error instanceof ApiError ? error.code : String(error)),
+        );
+      // The server never stores arbitrary CSS: only ids of the palette.
+      expect(
+        await code(api.bots.update(bot.id, { color: "red; background:url(x)" as never })),
+      ).toBe("invalid_request");
+      expect(await code(api.bots.update(bot.id, { groupName: "   " }))).toBe("invalid_request");
+      expect(await code(api.bots.update(bot.id, { groupName: "x".repeat(61) }))).toBe(
+        "invalid_request",
+      );
+    });
+
+    it("a question with options carries them on the message (REST and stream) and the answer is plain text", async () => {
+      const { api } = w.started;
+      const bot = await newBot("Opções");
+      const conversation = await api.bots.openConversation(bot.id);
+      const f = follow(api);
+      await f.waitFor((e) => e.type === "ready", "ready");
+      const first = await api.conversations.send(conversation.id, "CASE-OPTIONS escolha");
+      const options = [{ label: "Azul", description: "A cor do mar" }, { label: "Verde" }];
+      const streamed = await f.waitFor(
+        (e) =>
+          e.type === "message.created" &&
+          e.data.message.authorKind === "bot" &&
+          e.data.message.runId === first.run.id,
+        "the question",
+      );
+      expect(
+        streamed.event.type === "message.created" && streamed.event.data.message.question,
+      ).toEqual({
+        questions: [{ question: "Qual cor você prefere?", options }],
+      });
+      const page = await api.conversations.messages(conversation.id, { limit: 200 });
+      const ask = page.items.find((m) => m.runId === first.run.id && m.authorKind === "bot");
+      expect(ask?.question).toEqual({
+        questions: [{ question: "Qual cor você prefere?", options }],
+      });
+      expect(
+        page.items.filter((m) => m.authorKind === "user").every((m) => m.question === undefined),
+      ).toBe(true);
+      // Choosing an option is sending its label.
+      await api.conversations.send(conversation.id, "Azul");
+      await until(
+        async () => (await api.runs.get(first.run.id)).status === "done" || undefined,
+        "the run to finish",
+      );
+      f.close();
+    });
+
+    it("a questionnaire is one message with its questions; the answer text built by the shared helper reaches the model", async () => {
+      const { api } = w.started;
+      const bot = await newBot("Questionário");
+      const conversation = await api.bots.openConversation(bot.id);
+      const first = await api.conversations.send(conversation.id, "CASE-QUESTIONNAIRE pergunte");
+      const ask = await until(async () => {
+        const page = await api.conversations.messages(conversation.id, { limit: 50 });
+        return page.items.find((m) => m.authorKind === "bot" && m.question !== undefined);
+      }, "the questionnaire as a message");
+      expect(ask.text).toBe("1. Qual banco?\n2. Quais extras?");
+      expect(ask.question).toEqual({
+        questions: [
+          { question: "Qual banco?", options: [{ label: "Postgres" }, { label: "SQLite" }] },
+          {
+            question: "Quais extras?",
+            options: [{ label: "Cache" }, { label: "Fila" }],
+            multiple: true,
+          },
+        ],
+      });
+      const reply = buildAnswerText(ask.question?.questions ?? [], [
+        { chosen: ["Postgres"] },
+        { chosen: [], skipped: true },
+      ]);
+      expect(reply).toBe("1. Qual banco? → Postgres\n2. Quais extras? → (pulou)");
+      await api.conversations.send(conversation.id, reply);
+      await until(
+        async () => (await api.runs.get(first.run.id)).status === "done" || undefined,
+        "the run to finish",
+      );
+      // The model got the plain text as the result of its `escalate` call.
+      const events = (await api.runs.events(first.run.id, { limit: 1000 })).items;
+      const call = events.find((e) => e.type === "tool_call" && e.payload.name === "escalate");
+      const result = events.find(
+        (e) => e.type === "tool_result" && e.payload.callId === call?.payload.callId,
+      );
+      expect(result?.payload.content).toBe(reply);
     });
 
     it("memory: add, edit, forget, restore and search through the API, reflected in the next run's first request", async () => {

@@ -1,5 +1,10 @@
 import { z } from "zod";
-import type { PlanStep } from "../events.js";
+import {
+  type EscalateQuestion,
+  escalateOptionSchema,
+  escalateQuestionSchema,
+  type PlanStep,
+} from "../events.js";
 import type { JsonObject } from "../messages.js";
 import type { ToolSpec } from "../provider.js";
 import { openSteps, VERDICT_TOOL_DESCRIPTION } from "./prompts.js";
@@ -38,9 +43,17 @@ The harness rejects the finish, and tells you every reason at once, if: the summ
 
 If the task cannot be completed as asked, do not finish: use \`escalate\`.`;
 
-export const ESCALATE_DESCRIPTION = `Stop and ask the user ONE question. Use it when you are blocked (missing information or access), when the task is impossible or ambiguous in a way that matters, when a decision belongs to the user, or before something risky or irreversible that was not clearly authorized. Do not use it for things you can find out or decide yourself.
+export const ESCALATE_DESCRIPTION = `Stop and ask the user a question (or, rarely, a short questionnaire). Use it when you are blocked (missing information or access), when the task is impossible or ambiguous in a way that matters, when a decision belongs to the user, or before something risky or irreversible that was not clearly authorized. Do not use it for things you can find out or decide yourself.
 
-Make the question precise and answerable in a sentence or two: say what you need to know, what you already tried or found, the options you see, and what you would do by default. Include the context needed to answer without reading the whole history.
+Make each question precise and answerable in a sentence or two: say what you need to know, what you already tried or found, the options you see, and what you would do by default. Include the context needed to answer without reading the whole history: every question must be answerable on its own, without scrolling back.
+
+Two forms (use exactly one):
+- \`question\` (plus optional \`options\`): ONE question. This is the usual form.
+- \`questions\`: a questionnaire of 1 to 5 questions, each with its own \`question\`, optional \`options\`, \`multiple\` (the user may pick several) and \`allowOther\`. Use it ONLY when you need several independent answers at once and the choices are genuinely discrete; never ask more questions than you need, and never split one decision into several.
+
+Pass \`options\` (2 to 5 items for \`question\`, 2 to 6 per entry of \`questions\`; each a short \`label\` and an optional one-line \`description\`) ONLY when the possible answers are genuinely discrete, such as choosing between two approaches or confirming one of a few named alternatives. The user sees them as choices, but may always answer with free text, and may skip a question of a questionnaire. Leave \`options\` out for open questions, for missing information, and when you would have to invent choices.
+
+The reply comes back as plain text. For one question it is the chosen label(s) (separated by "; ") or what the user typed. For a questionnaire it is one line per question, \`1. <question> → <chosen labels, separated by "; ">\`, with \`→ (pulou)\` for a question the user skipped.
 
 Call it ALONE in its turn. The run pauses until the user replies; the reply comes back as this tool's result, and you continue from there.`;
 
@@ -74,8 +87,91 @@ export const finishInputSchema = z.object({
 });
 
 export const escalateInputSchema = z.object({
-  question: z.string().describe("The single, precise question for the user."),
+  question: z
+    .exactOptional(z.string())
+    .describe("A single, precise question for the user. Use this OR `questions`."),
+  options: z
+    .exactOptional(z.array(escalateOptionSchema).min(2).max(5))
+    .describe(
+      "Only with `question`: 2 to 5 choices, only when the answers are genuinely discrete. The user may still answer in free text.",
+    ),
+  questions: z
+    .exactOptional(z.array(escalateQuestionSchema).min(1).max(5))
+    .describe(
+      "A questionnaire of 1 to 5 questions, only when you need several independent answers at once. Use this OR `question`.",
+    ),
 });
+
+export type EscalateInput = z.infer<typeof escalateInputSchema>;
+
+/**
+ * Checks and normalises what the model asked: ONE questionnaire, or the reason it is not valid.
+ * Whitespace is trimmed; labels must be non-empty and distinct inside a question.
+ */
+export function normalizeEscalateInput(
+  input: EscalateInput,
+): { ok: true; questions: EscalateQuestion[]; text: string } | { ok: false; problem: string } {
+  const bad = (problem: string) => ({ ok: false as const, problem });
+  if (input.question !== undefined && input.questions !== undefined) {
+    return bad(
+      "Use either `question` (one question, with optional `options`) or `questions` (a questionnaire), not both.",
+    );
+  }
+  if (input.question === undefined && input.questions === undefined) {
+    return bad("Provide `question` (one question) or `questions` (a questionnaire).");
+  }
+  if (input.questions !== undefined && input.options !== undefined) {
+    return bad(
+      "`options` goes with `question`. In a questionnaire, put the options inside each entry of `questions`.",
+    );
+  }
+  const raw: EscalateQuestion[] = input.questions ?? [
+    {
+      question: input.question as string,
+      ...(input.options === undefined ? {} : { options: input.options }),
+    },
+  ];
+  const questions: EscalateQuestion[] = [];
+  for (const [index, q] of raw.entries()) {
+    const label = raw.length === 1 ? "The question" : `Question ${index + 1}`;
+    const text = q.question.trim();
+    if (text === "") {
+      return bad(`${label} is empty. Ask one precise question, or leave it out.`);
+    }
+    const options = q.options?.map((o) => ({
+      label: o.label.trim(),
+      ...(o.description === undefined || o.description.trim() === ""
+        ? {}
+        : { description: o.description.trim() }),
+    }));
+    if (options?.some((o) => o.label === "") === true) {
+      return bad(
+        `${label} has an option with an empty label. Give every option a short label, or leave options out.`,
+      );
+    }
+    if (new Set(options?.map((o) => o.label.toLowerCase())).size !== (options?.length ?? 0)) {
+      return bad(
+        `${label} has two options with the same label. Make the labels distinct, or leave options out.`,
+      );
+    }
+    if (options === undefined && (q.multiple === true || q.allowOther === true)) {
+      return bad(
+        `${label} sets \`multiple\` or \`allowOther\` without \`options\`. They only make sense with options.`,
+      );
+    }
+    questions.push({
+      question: text,
+      ...(options === undefined ? {} : { options }),
+      ...(q.multiple === true ? { multiple: true } : {}),
+      ...(q.allowOther === true ? { allowOther: true } : {}),
+    });
+  }
+  const text =
+    questions.length === 1
+      ? (questions[0] as EscalateQuestion).question
+      : questions.map((q, i) => `${i + 1}. ${q.question}`).join("\n");
+  return { ok: true, questions, text };
+}
 
 export const verdictInputSchema = z.object({
   verdict: z.enum(["approve", "reject"]),

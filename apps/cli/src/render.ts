@@ -1,4 +1,10 @@
-import { type PlanStep, type RunEventData, runEventSchema } from "@suup/core";
+import {
+  type EscalateQuestion,
+  escalatedQuestions,
+  type PlanStep,
+  type RunEventData,
+  runEventSchema,
+} from "@suup/core";
 import {
   firstLines,
   formatDuration,
@@ -10,6 +16,32 @@ import {
   outcomePt,
   statusPt,
 } from "./format.js";
+
+/**
+ * What the bot asked, for the terminal: the text and, for a question with choices, the numbered
+ * options (the answer is their numbers, separated by commas, or free text; Enter skips).
+ */
+export function renderQuestions(questions: readonly EscalateQuestion[]): string[] {
+  const lines: string[] = [];
+  const many = questions.length > 1;
+  questions.forEach((q, i) => {
+    lines.push(...indent(`${many ? `${i + 1}. ` : ""}${q.question}`, "    "));
+    if (q.options !== undefined) {
+      lines.push(
+        q.multiple === true
+          ? "      (pode escolher vários: números separados por vírgula, ou texto livre)"
+          : "      (escolha um número, ou responda com texto livre)",
+      );
+      q.options.forEach((o, j) => {
+        lines.push(
+          `      ${j + 1}) ${o.label}${o.description === undefined ? "" : ` — ${o.description}`}`,
+        );
+      });
+    }
+  });
+  if (many) lines.push("    (Enter pula uma pergunta)");
+  return lines;
+}
 
 /** An event as it comes out of the database, before any interpretation. */
 export interface RawEvent {
@@ -224,7 +256,7 @@ export function renderEvent(event: RawEvent, state: RenderState): string[] {
         e.payload.reason === "review_tie_break"
           ? "? O bot e o revisor não chegaram a um acordo e precisam da sua decisão:"
           : "? O bot precisa de você:",
-        ...indent(e.payload.question, "    "),
+        ...renderQuestions(escalatedQuestions(e.payload)),
       ];
     case "status_changed": {
       const { to, failure, result } = e.payload;

@@ -1,9 +1,11 @@
 import { createInterface } from "node:readline";
 import type { Readable } from "node:stream";
+import { escalatedQuestions } from "@suup/core";
 import { getRun, postInbox, type Run } from "@suup/db";
 import type { Ctx } from "./context.js";
 import { CommandError, EXIT_FAILED, EXIT_OK } from "./errors.js";
 import { readEvents } from "./lookup.js";
+import { needsQuestionnaire, Questionnaire } from "./questionnaire.js";
 import { primedRenderState, type RawEvent, renderEvent, renderFooter } from "./render.js";
 
 const POLL_MS = 120;
@@ -171,8 +173,20 @@ export async function followRunCore(
     }
   });
 
+  // A question with choices is answered one line per question; the answer becomes plain text.
+  let questionnaire: Questionnaire | undefined;
   const handleLine = async (line: string) => {
-    const text = line.trim();
+    let text = line.trim();
+    if (questionnaire !== undefined) {
+      const step = questionnaire.answer(line);
+      if (!step.done) {
+        if (step.message !== undefined) out.line(step.message);
+        out.raw(step.prompt);
+        return;
+      }
+      questionnaire = undefined;
+      text = step.text;
+    }
     if (text === "") return;
     try {
       const run = await getRun(db, runId);
@@ -210,11 +224,22 @@ export async function followRunCore(
         if (!interactive) break;
         if (!prompted) {
           await options.beforePrompt?.();
-          out.raw("Sua resposta> ");
+          const asked = (await readEvents(db, runId)).filter((e) => e.type === "escalated").at(-1);
+          const questions =
+            asked === undefined
+              ? []
+              : escalatedQuestions(asked.payload as Parameters<typeof escalatedQuestions>[0]);
+          if (needsQuestionnaire(questions)) {
+            questionnaire = new Questionnaire(questions);
+            out.raw(questionnaire.prompt());
+          } else {
+            out.raw("Sua resposta> ");
+          }
           prompted = true;
         }
       } else {
         prompted = false;
+        questionnaire = undefined;
       }
       await sleep(POLL_MS);
     }

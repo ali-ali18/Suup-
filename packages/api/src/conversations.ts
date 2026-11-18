@@ -2,6 +2,34 @@ import { z } from "zod";
 import { boolQuery, intQuery, isoDate, list, uuid } from "./common.js";
 import { runSchema } from "./runs.js";
 
+/** A choice offered with a question. The answer is still plain text: the label, or free text. */
+export const questionOptionSchema = z.object({
+  label: z.string(),
+  description: z.exactOptional(z.string()),
+});
+export type QuestionOption = z.infer<typeof questionOptionSchema>;
+
+/** One question of what the bot asked: free text, or a choice among options. */
+export const questionSchema = z.object({
+  question: z.string(),
+  /** 2 to 6 choices when the answers are discrete; absent for an open question. */
+  options: z.exactOptional(z.array(questionOptionSchema)),
+  /** The user may pick several options. */
+  multiple: z.exactOptional(z.boolean()),
+  /** The user may answer with something that is not in the list. */
+  allowOther: z.exactOptional(z.boolean()),
+});
+export type Question = z.infer<typeof questionSchema>;
+
+/** The structured side of a bot message that asks the user something: ONE shape for every case. */
+export const messageQuestionSchema = z.object({
+  /** What was asked: one question (the usual case) or a questionnaire of up to 5. */
+  questions: z.array(questionSchema).min(1),
+  /** `review_tie_break`: the reviewer rejected too often and the user must decide. */
+  reason: z.exactOptional(z.literal("review_tie_break")),
+});
+export type MessageQuestion = z.infer<typeof messageQuestionSchema>;
+
 export const messageSchema = z.object({
   id: uuid,
   conversationId: uuid,
@@ -18,6 +46,8 @@ export const messageSchema = z.object({
    */
   status: z.enum(["sent", "delivered"]).nullable(),
   createdAt: isoDate,
+  /** Only on the bot message that asks the user something (an `escalate`): see `MessageQuestion`. */
+  question: z.exactOptional(messageQuestionSchema),
 });
 export type Message = z.infer<typeof messageSchema>;
 

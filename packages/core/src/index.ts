@@ -1,6 +1,11 @@
 export {
   type ContextItem,
   contextItemSchema,
+  type EscalateOption,
+  type EscalateQuestion,
+  escalatedQuestions,
+  escalateOptionSchema,
+  escalateQuestionSchema,
   FAILURE_ORIGINS,
   type FailureOrigin,
   failureOriginSchema,
