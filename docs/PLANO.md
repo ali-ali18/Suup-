@@ -381,6 +381,13 @@ Consequências para o desenho:
 - O cérebro de cada bot continua usando chave de API, pela camada de provedores. Nenhuma assinatura substitui isso de forma permitida e disponível hoje.
 - As assinaturas entram como **agentes delegados**: uma ferramenta do harness (`delegate_agent`) que, pelo agente local no PC do usuário, executa a ferramenta oficial já logada, entrega uma tarefa com escopo e critérios de pronto, acompanha e devolve o resultado ao bot. É a "delegação externa" da fase 7, e depende do agente local da fase 6.
 - O harness nunca lê, copia nem reutiliza o token de login dessas ferramentas. Ele só as executa, sem modificá-las.
+- **Motor alternativo com o SDK de agentes do Claude (a avaliar na fase 6).** O OpenCode voltou a aceitar assinaturas do Claude no fim de outubro de 2026 por este caminho, segundo fontes secundárias: o SDK oficial aciona o Claude Code instalado na máquina, que faz o login e as chamadas ao modelo, enquanto o app fornece interface, ferramentas e subagentes. Isso é mais do que entregar uma tarefa fechada: o loop é do SDK, mas as ferramentas, as instruções e as permissões podem ser as nossas. Para o Suup seria um segundo "motor" de execução por bot, ao lado do loop próprio:
+  - as ferramentas do nosso registro são expostas ao SDK;
+  - o portão de aprovação entra pelo ponto de permissão do SDK;
+  - a regra de "só termina com `finish`" é aplicada pelo gancho de parada do SDK;
+  - os eventos do SDK são gravados no nosso log, para o inspetor continuar funcionando.
+  - O que se perde: o replay gravado e a retomada evento a evento, que dependem de o harness controlar cada chamada ao modelo.
+  - Só roda no PC do usuário, com o login dele, para uso pessoal. Antes de implementar, confirmar na documentação da Anthropic se esse uso continua permitido.
 - Isso vale para uso pessoal de um único usuário. Se o projeto virar produto para outras pessoas, a regra muda: oferecer login de assinatura dentro do produto exige aprovação do fornecedor.
 
 ## 5. Modelo de dados
