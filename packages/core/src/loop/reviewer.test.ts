@@ -217,6 +217,37 @@ describe("reviewer", () => {
     expect(reviews[0]?.payload).not.toHaveProperty("warning");
   });
 
+  it("shows the reviewer what the user was asked and answered (the digest alone has no control tools)", async () => {
+    const rig = createRig({
+      objective: "Total for last month, as the owner decides.",
+      script: [
+        use(call("c1", "escalate", { question: "Calendar month or last 30 days?" })),
+        use(finishCall("c2", "Done with the calendar month.")),
+      ],
+      reviewerScript: [verdict("approve", "ok")],
+    });
+    expect(await rig.run()).toBe("waiting_user");
+    rig.store.postInbox(rig.runId, { kind: "user_message", text: "Calendar month, April." });
+    expect(await rig.run()).toBe("done");
+    const text = textOf(rig.reviewerProvider?.requests[0]?.messages[0]);
+    expect(text).toContain("## Exchanges with the user");
+    expect(text).toContain('The assistant asked the user: "Calendar month or last 30 days?"');
+    expect(text).toContain('The user answered: "Calendar month, April."');
+    // ...and it is not part of the tool-call digest.
+    expect(text).not.toContain("#1 escalate");
+  });
+
+  it("says so when there was no exchange with the user", async () => {
+    const rig = createRig({
+      script: [use(finishCall("c1", "Done."))],
+      reviewerScript: [verdict("approve")],
+    });
+    await rig.run();
+    expect(textOf(rig.reviewerProvider?.requests[0]?.messages[0])).toContain(
+      "the user sent no messages",
+    );
+  });
+
   it("does not call the reviewer when the harness already rejected the finish", async () => {
     const rig = createRig({
       criteria: ["A"],

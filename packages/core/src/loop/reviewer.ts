@@ -3,12 +3,14 @@ import type { Block } from "../messages.js";
 import type { Provider } from "../provider.js";
 import { verdictInputSchema } from "./control-tools.js";
 import { formatPlan } from "./prompts.js";
-import type { ToolLogEntry } from "./state.js";
+import type { ToolLogEntry, UserExchange } from "./state.js";
 
 export interface ModelPricing {
   inputPerMTok: number;
   outputPerMTok: number;
   cachedInputPerMTok?: number;
+  /** Price of tokens written to the prompt cache; defaults to `inputPerMTok`. */
+  cacheWriteInputPerMTok?: number;
 }
 
 /** A second opinion on `finish`, from a separate call with a fresh context. */
@@ -68,6 +70,18 @@ export function buildReviewDigest(
   return [...header, ...kept].join("\n");
 }
 
+/** The questions the assistant asked the user and what the user said, for the reviewer. */
+export function buildUserExchangeDigest(log: readonly UserExchange[]): string {
+  if (log.length === 0)
+    return "(the assistant did not ask the user anything and the user sent no messages)";
+  const label = {
+    question: "The assistant asked the user",
+    answer: "The user answered",
+    message: "The user wrote",
+  } as const;
+  return log.map((e) => `- ${label[e.kind]}: ${JSON.stringify(e.text)}`).join("\n");
+}
+
 export function buildReviewMessage(input: {
   objective: string;
   acceptanceCriteria: readonly string[];
@@ -75,6 +89,7 @@ export function buildReviewMessage(input: {
   summary: string;
   evidence: readonly { criterion: string; evidence: string }[];
   digest: string;
+  userExchanges?: readonly UserExchange[];
 }): string {
   const criteria =
     input.acceptanceCriteria.length === 0
@@ -90,6 +105,7 @@ export function buildReviewMessage(input: {
     `## Final plan\n${input.plan.length === 0 ? "(no plan)" : formatPlan(input.plan)}`,
     `## The assistant's summary\n${input.summary}`,
     `## The assistant's evidence\n${evidence}`,
+    `## Exchanges with the user (these are real: the harness records them itself)\n${buildUserExchangeDigest(input.userExchanges ?? [])}`,
     `## What the assistant actually did (tool calls, outcome, start and end of each result)\n${input.digest}`,
     "Decide now and answer with the `verdict` tool.",
   ].join("\n\n");

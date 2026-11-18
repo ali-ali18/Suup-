@@ -1130,6 +1130,7 @@ class RunLoop {
                 summary: args.summary,
                 evidence: args.evidence,
                 digest: buildReviewDigest(this.#state.toolLog),
+                userExchanges: this.#state.userLog,
               }),
             },
           ],

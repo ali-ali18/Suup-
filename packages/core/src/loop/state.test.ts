@@ -262,3 +262,34 @@ describe("rebuildState: reminders and thinking blocks", () => {
     expect(kept).toContain("something");
   });
 });
+
+describe("rebuildState: exchanges with the user", () => {
+  it("records questions, answers to escalate and user messages in order", () => {
+    const events = log(
+      started,
+      response([{ type: "text", text: "asking" }, call("1", "escalate")]),
+      toolCall("1", "escalate"),
+      { type: "escalated", payload: { question: "Which month?", callId: "1" } },
+      toolResult("1", "April"),
+      response([{ type: "text", text: "ok" }]),
+      { type: "user_message", payload: { text: "also: be brief" } },
+    );
+    expect(rebuildState(events).userLog).toEqual([
+      { kind: "question", text: "Which month?" },
+      { kind: "answer", text: "April" },
+      { kind: "message", text: "also: be brief" },
+    ]);
+  });
+
+  it("does not record the result of other tools or a failed escalate", () => {
+    const events = log(
+      started,
+      response([call("1", "echo"), call("2", "escalate")]),
+      toolCall("1"),
+      toolResult("1", "result"),
+      toolCall("2", "escalate"),
+      toolResult("2", "escalate must be alone", true),
+    );
+    expect(rebuildState(events).userLog).toEqual([]);
+  });
+});

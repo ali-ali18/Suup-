@@ -45,6 +45,16 @@ export interface ToolLogEntry {
   tail: string;
 }
 
+/**
+ * One step of the conversation between the assistant and the user that the tool log does not
+ * show (the control tools are not in it): a question the assistant asked with `escalate`, the
+ * user's answer, or a message the user sent while the run was working.
+ */
+export interface UserExchange {
+  kind: "question" | "answer" | "message";
+  text: string;
+}
+
 export interface FinishAttemptRecord {
   accepted: boolean;
   reasons: string[];
@@ -100,6 +110,8 @@ export interface RunState {
   noProgressStreak: number;
   repeat: { signature: string | null; name: string; count: number; nudged: boolean };
   toolLog: ToolLogEntry[];
+  /** Questions to the user, their answers and their messages, in order. Shown to the reviewer. */
+  userLog: UserExchange[];
   /** Tokens (input + output) the provider reported for the latest response; null if unknown. */
   usageAnchor: number | null;
   /** Characters appended to the conversation since that response. */
@@ -138,6 +150,7 @@ export function createRunState(): RunState {
     noProgressStreak: 0,
     repeat: { signature: null, name: "", count: 0, nudged: false },
     toolLog: [],
+    userLog: [],
     usageAnchor: null,
     charsSince: 0,
     sideResponse: null,
@@ -242,6 +255,7 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
         failed: isError && (call.name === "finish" || call.name === "escalate"),
       });
       trackRepeat(state, call, content, isError);
+      if (call.name === "escalate" && !isError) logUser(state, "answer", content);
       if (!isControlTool(call.name)) logTool(state, call, event.payload, outcome);
       if (state.pendingCalls.length === 0) completeToolTurn(state);
       break;
@@ -254,6 +268,7 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
 
     case "user_message":
       if (event.payload.inboxId !== undefined) state.deliveredInbox.add(event.payload.inboxId);
+      logUser(state, "message", event.payload.text);
       appendUserBlock(
         state,
         { type: "text", text: renderUserMessage(event.payload.text) },
@@ -301,6 +316,7 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
       break;
 
     case "escalated":
+      logUser(state, "question", event.payload.question);
       state.waiting =
         event.payload.callId !== undefined
           ? { kind: "escalate", callId: event.payload.callId, question: event.payload.question }
@@ -394,6 +410,14 @@ function trackRepeat(state: RunState, call: PendingCall, content: string, isErro
   } else {
     state.repeat = { signature, name: call.name, count: 1, nudged: false };
   }
+}
+
+const MAX_USER_LOG = 40;
+const USER_LOG_CLIP = 1500;
+
+function logUser(state: RunState, kind: UserExchange["kind"], text: string): void {
+  state.userLog.push({ kind, text: clip(text.trim(), USER_LOG_CLIP) });
+  if (state.userLog.length > MAX_USER_LOG) state.userLog.shift();
 }
 
 function logTool(
