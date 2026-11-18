@@ -371,10 +371,22 @@ Situação por fornecedor (lida nas fontes oficiais em 18/11/2026, salvo indica�
 |---|---|---|
 | Claude (Pro, Max) | Proibido: os termos não permitem que um app use o login da assinatura para chamar a API, nem que leia ou guarde o token | Permitido para o próprio usuário: entrar no Claude Code sem modificação e executá-lo (`claude -p` ou SDK de agentes); o uso sai do limite da assinatura. O OpenCode adotou este caminho na versão 2.2.3, de 30/10/2026 ("Use Claude Code in OpenCode") |
 | ChatGPT (Plus, Pro) | **Existe caminho oficial**: "Sign in with ChatGPT" entrega um token e o app chama a API Responses. O uso do plano está aberto a projetos de código aberto e a apps locais, mediante cadastro para obter um identificador de cliente; apps pagos ou hospedados entram em lista de espera | Pelo Codex CLI ou app-server com o login do usuário |
-| GitHub Copilot | Parceria formal só com o OpenCode (anunciada em 16/01/2026); nada diz que vale para outros apps | Não verificado nas fontes lidas |
+| GitHub Copilot | Sem caminho documentado para chamadas diretas ao modelo | **Permitido e documentado**: o SDK oficial do Copilot aceita o login do GitHub do usuário (app OAuth ou token pessoal) e cobra da assinatura dele. O SDK trabalha por sessões do agente do Copilot; não ficou confirmado se expõe chamadas simples ao modelo |
 | Grok (SuperGrok, X Premium) | Login oficial só dentro do OpenCode (anunciado em 21/05/2026), com a promessa de "mais agentes de código aberto em breve" | Não verificado |
-| Gemini | Proibido, segundo o próprio Google, com detecção de uso do login do Gemini CLI em software de terceiros (fonte: discussão no GitHub; os demais sites não foram lidos) | Só com chave de API |
-| Cursor | Proibido usar a assinatura como API (fonte secundária, não lida diretamente) | Pelo Cursor CLI, com chave própria |
+| Gemini | Proibido: os termos do Gemini CLI citam como violação usar o login dele em software de terceiros, com suspensão ou encerramento da conta | Só com chave de API (AI Studio ou Vertex). Executar o CLI original com o login do usuário não é coberto pelos termos; tratar como risco alto |
+| Cursor | Proibido: a equipe do Cursor afirma que chamar os endpoints privados viola os termos, mesmo num proxy "pessoal e local", com risco de banimento | Permitido: Cursor CLI, SDK de agentes ou API de agentes na nuvem, com chave do Cursor. Todos rodam o agente do Cursor e não expõem o modelo cru |
+
+**Quem faz o trabalho em cada caso**
+
+| Assinatura | Quem roda o loop | O que do Suup continua valendo |
+|---|---|---|
+| ChatGPT | O Suup | Tudo: plano, `finish`, revisor, replay, retomada, ferramentas, aprovações |
+| Claude | O Claude Code | Ferramentas, aprovações e regras de término, se o motor alternativo for implementado; replay e retomada evento a evento não |
+| Copilot | O agente do Copilot | A confirmar; no mínimo, entrega de tarefa e acompanhamento |
+| Cursor | O agente do Cursor | Só entrega de tarefa e acompanhamento |
+| Gemini, Grok | — | Sem caminho por assinatura hoje |
+
+Com chave de API, em qualquer fornecedor, quem trabalha é sempre o Suup.
 
 O que não foi possível confirmar: se a Anthropic aprovou formalmente a integração do OpenCode, e como exatamente o OpenCode divide o trabalho com o Claude Code (quem roda o loop e como as ferramentas dele são expostas). As páginas da Anthropic não distinguem uso pessoal de uso por terceiros no texto sobre limites; a leitura de que um harness pessoal é permitido é interpretação, apoiada na frase de que nada impede o usuário de entrar no Claude Code sem modificação com a própria assinatura.
 
