@@ -1,4 +1,5 @@
 import type { RunEnd } from "@suup/core";
+import { reconcileRunEffects } from "@suup/runtime";
 import { posInt } from "../args.js";
 import { type CommandSpec, warnIfLocalSandbox } from "../context.js";
 import { EXIT_OK } from "../errors.js";
@@ -55,6 +56,13 @@ export const workerCommand: CommandSpec = {
           `worker: ${context}: ${error instanceof Error ? error.message : String(error)}`,
         ),
     });
+    // Runs that ended while no worker was looking (a crash) still owe the conversation and the diary.
+    const caught = await reconcileRunEffects(runtime.db);
+    if (caught.length > 0) {
+      ctx.out.line(
+        `Pendências de execuções que terminaram sem aviso: ${caught.length} acertada(s).`,
+      );
+    }
     worker.start();
     ctx.out.line(`Worker ${worker.workerId} pronto. Ctrl+C para parar com calma.`);
 

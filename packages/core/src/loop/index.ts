@@ -8,6 +8,7 @@ export {
   validateFinish,
   validatePlan,
 } from "./control-tools.js";
+export { historyMessages } from "./history.js";
 export {
   type BotConfig,
   computeCost,
@@ -19,6 +20,7 @@ export {
   REPEAT_FAIL_AT,
   REPEAT_NUDGE_AT,
   type ReviewerConfig,
+  type RunContextSnapshot,
   type RunLoopOptions,
   runLoop,
   type ToolInvoker,

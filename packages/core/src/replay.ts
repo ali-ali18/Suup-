@@ -1,7 +1,14 @@
 import type { PlanStep } from "./events.js";
 import { parseRunEvent, type RunEventData, type RunStatus } from "./events.js";
 import { CONTROL_TOOL_NAMES } from "./loop/control-tools.js";
-import { type BotConfig, type ReviewerConfig, runLoop, type ToolInvoker } from "./loop/loop.js";
+import {
+  type BotConfig,
+  type LoopDeps,
+  type ReviewerConfig,
+  type RunContextSnapshot,
+  runLoop,
+  type ToolInvoker,
+} from "./loop/loop.js";
 import { canonicalJson } from "./loop/state.js";
 import type { InboxItem, RunStore, StatusChange, UsageDelta } from "./loop/store.js";
 import {
@@ -455,13 +462,21 @@ export async function replayRun(
     ...(options.tools === undefined ? {} : { specs: options.tools }),
   });
 
-  const deps = {
+  // The context of the run is what the recording says it was, never what memory holds now.
+  const recordedContext = recorded.find((e) => e.type === "context_loaded");
+  const loadRunContext =
+    recordedContext?.type === "context_loaded"
+      ? async (): Promise<RunContextSnapshot> => structuredClone(recordedContext.payload)
+      : undefined;
+
+  const deps: LoopDeps = {
     store,
     provider,
     tools,
     executor: new NoMachine(),
     bot: options.bot,
     ...(reviewer === undefined ? {} : { reviewer }),
+    ...(loadRunContext === undefined ? {} : { loadRunContext }),
     now: clock,
     sleep: async () => {},
   };

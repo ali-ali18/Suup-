@@ -11,6 +11,14 @@ export {
 } from "./bots.js";
 export { type CreateDbOptions, createDb, type Db, withTransaction } from "./client.js";
 export {
+  ACTIVE_RUN_STATUSES,
+  ConversationSendError,
+  getActiveConversationRun,
+  rolloverUnreadMessages,
+  type SendConversationMessageResult,
+  sendConversationMessage,
+} from "./conversation-runs.js";
+export {
   addMember,
   archiveConversation,
   CONVERSATION_KINDS,
@@ -47,7 +55,9 @@ export {
   postInbox,
 } from "./inbox.js";
 export {
+  type AddJournalInput,
   type AddMemoryInput,
+  addJournalMemory,
   addMemory,
   archiveMemory,
   getMemory,
@@ -71,6 +81,7 @@ export {
 export {
   type AppendMessageInput,
   appendMessage,
+  appendMessageOnce,
   getMessage,
   HIGHLIGHT_END,
   HIGHLIGHT_START,

@@ -132,6 +132,20 @@ export function renderEvent(event: RawEvent, state: RenderState): string[] {
           : ["Critérios de pronto:", ...acceptanceCriteria.map((c, i) => `  ${i + 1}. ${c}`)]),
       ];
     }
+    case "context_loaded": {
+      const { rules, profile, history } = e.payload;
+      if (rules.length + profile.length + history.length === 0) return [];
+      const parts = [
+        rules.length > 0 ? `${rules.length} regra${rules.length === 1 ? "" : "s"}` : "",
+        profile.length > 0
+          ? `${profile.length} fato${profile.length === 1 ? "" : "s"} do perfil`
+          : "",
+        history.length > 0
+          ? `${history.length} mensagem${history.length === 1 ? "" : "s"} anterior${history.length === 1 ? "" : "es"} da conversa`
+          : "",
+      ].filter((part) => part !== "");
+      return [`· contexto carregado: ${parts.join(", ")}`];
+    }
     case "model_request": {
       const purpose = e.payload.purpose ?? "agent";
       if (purpose === "review") return [`· revisor (${e.payload.model}) conferindo a conclusão…`];
@@ -251,6 +265,8 @@ export function summarizeEvent(event: RawEvent): string {
   switch (e.type) {
     case "run_started":
       return `bot ${e.payload.botId.slice(0, 8)} objetivo=${JSON.stringify(oneLine(e.payload.objective, 70))}`;
+    case "context_loaded":
+      return `${e.payload.rules.length} regras · ${e.payload.profile.length} fatos do perfil · ${e.payload.history.length} mensagens de histórico${e.payload.historyNote === undefined ? "" : " (com aviso de mensagens omitidas)"}`;
     case "model_request": {
       const purpose = e.payload.purpose ?? "agent";
       return `${purpose} ${e.payload.provider}/${e.payload.model} · ${e.payload.messages.length} msgs · ${e.payload.tools.length} ferramentas`;

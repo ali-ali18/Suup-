@@ -17,6 +17,7 @@ import {
   verdict,
 } from "../testing/index.js";
 import { INTERRUPTED_RESULT, runLoop } from "./loop.js";
+import type { RunContextSnapshot } from "./run-context.js";
 import { rebuildState } from "./state.js";
 import type { StoredEvent } from "./store.js";
 
@@ -37,7 +38,12 @@ interface Scenario {
   answer?: string;
   /** Posted by the user while the model produces response number `atCall` (0-based). */
   midRun?: { atCall: number; text: string };
+  /** The run starts with this outside context (rules, profile, history). */
+  context?: RunContextSnapshot;
 }
+
+/** How many times each rig's `loadRunContext` was called, across every life of the run. */
+const contextLoads = new WeakMap<object, number>();
 
 const scenarios: Scenario[] = [
   {
@@ -111,6 +117,27 @@ const scenarios: Scenario[] = [
     ],
     reviewerScript: [verdict("reject", "Not convincing.")],
     answer: "Accept it.",
+  },
+  {
+    name: "a run that starts with rules, a profile and the history of the conversation",
+    context: {
+      rules: [{ id: "r1", text: "Always confirm before writing files." }],
+      profile: [{ id: "p1", text: "The user is called Marina." }],
+      history: [
+        { role: "user", blocks: [{ type: "text", text: "Earlier question." }] },
+        { role: "assistant", blocks: [{ type: "text", text: "Earlier answer." }] },
+      ],
+      historyNote: "Older messages were left out.",
+    },
+    script: [
+      use(planCall("c1", [step("s1", "in_progress")])),
+      use(call("c2", "echo", { text: "x" }), call("c3", "counter")),
+      use(call("c4", "escalate", { question: "Blue or red?" })),
+      use(planCall("c5", [step("s1", "done")])),
+      use(finishCall("c6", "Went with blue, Marina.")),
+    ],
+    midRun: { atCall: 1, text: "Keep it short." },
+    answer: "Blue.",
   },
   {
     name: "a compaction in the middle",
@@ -260,6 +287,23 @@ async function expectDeliveredOnce(rig: Rig, scenario: Scenario, label: string):
 }
 
 function makeRig(scenario: Scenario): Rig {
+  const rig = createRigFor(scenario);
+  const { context } = scenario;
+  if (context !== undefined) {
+    const original = rig.deps.bind(rig);
+    rig.deps = (overrides = {}) =>
+      original({
+        loadRunContext: async () => {
+          contextLoads.set(rig, (contextLoads.get(rig) ?? 0) + 1);
+          return structuredClone(context);
+        },
+        ...overrides,
+      });
+  }
+  return rig;
+}
+
+function createRigFor(scenario: Scenario): Rig {
   return createRig({
     script: scenario.script,
     ...(scenario.reviewerScript === undefined ? {} : { reviewerScript: scenario.reviewerScript }),
@@ -305,6 +349,12 @@ describe("resume: kill the process after every possible event", () => {
         const resumed = project(await rig.events(), scenario.midRun !== undefined);
 
         const label = `crash after ${n} events`;
+        if (scenario.context !== undefined) {
+          // Once the event is in the log nobody asks again; only a death between `run_started`
+          // and `context_loaded` (n = 1) makes the second life ask once more.
+          expect(contextLoads.get(rig), `${label}: context loads`).toBe(n === 1 ? 2 : 1);
+          expect(eventsOfType(await rig.events(), "context_loaded"), label).toHaveLength(1);
+        }
         await expectDeliveredOnce(rig, scenario, label);
         expect(resumed.length, label).toBe(baseProjection.length);
         let interrupted = 0;

@@ -33,6 +33,9 @@ import {
   resolveDatabaseUrl,
 } from "./config.js";
 import { ConfigError, RuntimeError } from "./errors.js";
+import { createMemoryService } from "./memory-service.js";
+import { DEFAULT_HISTORY_CHARS, loadRunContext } from "./run-context.js";
+import { finishRun } from "./run-end.js";
 import { createScriptedProvider } from "./scripted-provider.js";
 
 type Env = Record<string, string | undefined>;
@@ -348,6 +351,9 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
       executor: await runtime.executorFor(bot.id),
       bot: cfg,
       ...(reviewer === undefined ? {} : { reviewer }),
+      loadRunContext: (id) =>
+        loadRunContext(handle, id, config.defaults?.historyChars ?? DEFAULT_HISTORY_CHARS),
+      memoryFor: (record) => createMemoryService(handle, { botId: record.botId, runId: record.id }),
       now: () => new Date(),
       sleep: (ms) => new Promise<void>((done) => setTimeout(done, ms)),
     };
@@ -422,6 +428,13 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
           opts.onlyRunId === undefined ? {} : { onlyRunId: opts.onlyRunId },
         ),
         buildDeps: (runId) => buildDeps(runId, workerId),
+        // What must follow a run (the bot's message in the conversation, the journal) is derived
+        // from the stored run, so it also happens for a run another worker finished after a crash.
+        afterRun: async (end) => {
+          if (end.outcome === "settled" || end.outcome === "failed") {
+            await finishRun(runtime.db, end.runId);
+          }
+        },
         concurrency: opts.concurrency ?? settings.concurrency,
         leaseRenewMs: settings.leaseRenewMs,
         staleAfterMs: settings.staleAfterMs,

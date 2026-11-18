@@ -20,7 +20,13 @@ import { LeaseLostError, type RunStatus } from "./store.js";
 export { computeCost, MAX_MODEL_RETRIES } from "./model-call.js";
 export { INTERRUPTED_RESULT } from "./recording.js";
 export type { ModelPricing, ReviewerConfig } from "./reviewer.js";
-export type { BotConfig, LoopDeps, RunLoopOptions, ToolInvoker } from "./run-context.js";
+export type {
+  BotConfig,
+  LoopDeps,
+  RunContextSnapshot,
+  RunLoopOptions,
+  ToolInvoker,
+} from "./run-context.js";
 export { MAX_NO_PROGRESS_TURNS, REPEAT_FAIL_AT, REPEAT_NUDGE_AT } from "./safe-point.js";
 
 /**

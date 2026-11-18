@@ -70,12 +70,14 @@ async function handleTool(ctx: LoopContext, call: ControlCall, started: boolean)
     return;
   }
   await ensureToolCall(ctx, call);
+  const memory = ctx.deps.memoryFor?.(ctx.run);
   const toolCtx: ToolContext = {
     runId: ctx.runId,
     botId: bot.id,
     executor,
     signal: ctx.toolSignal,
     now: () => now(),
+    ...(memory === undefined ? {} : { memory }),
   };
   let invocation: ToolInvocation;
   try {

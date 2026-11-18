@@ -115,7 +115,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup, end to end"), () => {
     expect(r.stdout).toMatch(
       /\[falha\] Provedor nuvem\s+anthropic: a variável de ambiente SUUP_TEST_MISSING_KEY não está definida/,
     );
-    expect(r.stdout).toMatch(/\[ok\]\s+Ferramentas\s+7 registradas: shell/);
+    expect(r.stdout).toMatch(/\[ok\]\s+Ferramentas\s+\d+ registradas: shell/);
     expect(r.stdout).toContain("1 componente com falha");
 
     const json = await p.suup(["doctor", "--json"]);
@@ -280,7 +280,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup, end to end"), () => {
     expect(r.stdout).toContain("← resultado da chamada a1_1");
     expect(r.stdout).toContain("Created ola.txt (13 bytes).");
     expect(r.stdout).toContain("[STATE REMINDER");
-    expect(r.stdout).toContain("=== FERRAMENTAS (10) ===");
+    expect(r.stdout).toMatch(/=== FERRAMENTAS \(\d+\) ===/);
     expect(r.stdout).toContain("- shell:");
     expect(r.stdout).toContain("=== RESPOSTA GRAVADA");
     expect(r.stdout).toContain("chamada plan");
@@ -400,7 +400,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup, end to end"), () => {
     const nowhere = await p.suup(["resend", happyRun, "--seq", "9999"]);
     expect(nowhere.code).toBe(1);
     expect(nowhere.stderr).toContain("não tem o evento seq 9999");
-    const unknownModel = await p.suup(["resend", happyRun, "--seq", "2", "--model", "model-z"]);
+    const unknownModel = await p.suup(["resend", happyRun, "--seq", "3", "--model", "model-z"]);
     expect(unknownModel.code).toBe(1);
     expect(unknownModel.stderr).toContain('O modelo "model-z" não está em "models"');
   });

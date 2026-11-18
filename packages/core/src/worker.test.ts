@@ -110,6 +110,50 @@ function makeWorld(): World {
 
 const statusOf = async (w: World, runId: string) => (await w.store.getRun(runId)).status;
 
+describe("Worker: afterRun hook", () => {
+  it("is awaited after the run, before it leaves the worker, for every outcome", async () => {
+    const w = makeWorld();
+    const runId = w.newRun();
+    const gate = deferred();
+    const seen: string[] = [];
+    const worker = w.worker("w1", {
+      afterRun: async (end) => {
+        seen.push(`start ${end.outcome}`);
+        await gate.promise;
+        seen.push("end");
+      },
+    });
+    worker.start();
+    await w.clock.flush();
+    // The run is done, but the hook still holds the slot and `onRunEnd` has not fired.
+    expect(await statusOf(w, runId)).toBe("done");
+    expect(seen).toEqual(["start settled"]);
+    expect(worker.activeRunIds).toEqual([runId]);
+    expect(w.ends).toEqual([]);
+    gate.resolve();
+    await w.clock.flush();
+    expect(seen).toEqual(["start settled", "end"]);
+    expect(w.ends).toHaveLength(1);
+    await worker.stop();
+  });
+
+  it("a hook that throws is reported and breaks nothing", async () => {
+    const w = makeWorld();
+    const runId = w.newRun();
+    const worker = w.worker("w1", {
+      afterRun: async () => {
+        throw new Error("hook broke");
+      },
+    });
+    worker.start();
+    await w.clock.flush();
+    expect(await statusOf(w, runId)).toBe("done");
+    expect(w.ends).toHaveLength(1);
+    expect(w.errors.map((e) => e.context)).toEqual([`after run ${runId}`]);
+    await worker.stop();
+  });
+});
+
 describe("Worker: polling and concurrency", () => {
   it("runs a queued run to the end and reports it", async () => {
     const w = makeWorld();

@@ -116,6 +116,11 @@ const defaultsSchema = z.strictObject({
   maxTurns: z.exactOptional(positiveInt),
   maxCostUsd: z.exactOptional(z.number().positive()),
   maxDurationMs: z.exactOptional(positiveInt),
+  /**
+   * How many characters of the earlier messages of a conversation a run gets as history (whole
+   * messages, newest first). Older ones are found with `search_conversations`.
+   */
+  historyChars: z.exactOptional(positiveInt),
 });
 
 export const configSchema = z

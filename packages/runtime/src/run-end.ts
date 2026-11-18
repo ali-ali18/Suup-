@@ -1,0 +1,186 @@
+import { type FailureOrigin, runResultSchema } from "@suup/core";
+import {
+  addJournalMemory,
+  appendMessageOnce,
+  type Db,
+  getRun,
+  type Run,
+  rolloverUnreadMessages,
+} from "@suup/db";
+
+/** What a failure origin means, in plain Portuguese, for the message the user reads. */
+export const ORIGIN_TEXT_PT: Record<FailureOrigin, string> = {
+  provider: "o provedor do modelo falhou ou ficou indisponível",
+  model: "o modelo se recusou, desistiu ou entrou em laço",
+  tool: "uma ferramenta falhou",
+  harness: "houve um erro interno do sistema",
+  limit: "um limite configurado foi atingido (turnos, custo ou tempo)",
+  approval: "uma aprovação foi negada",
+  user: "foi encerrada a seu pedido",
+};
+
+const clip = (text: string, max: number): string => {
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length <= max ? flat : `${flat.slice(0, max - 1)}…`;
+};
+
+const isoDay = (date: Date): string => date.toISOString().slice(0, 10);
+
+/** The journal line of a finished run: when, what was asked, how it ended. No model involved. */
+export function journalText(run: Run): string {
+  const when = isoDay(run.finishedAt ?? run.updatedAt);
+  const objective = clip(run.objective, 200);
+  let outcome: string;
+  if (run.status === "done") {
+    const summary = runResultSchema.safeParse(run.result);
+    outcome = `concluída${summary.success && summary.data.summary.trim() !== "" ? `. Resumo: ${clip(summary.data.summary, 400)}` : "."}`;
+  } else if (run.status === "failed") {
+    outcome = `falhou (origem: ${run.failureOrigin ?? "desconhecida"}): ${clip(run.failureDetail ?? "sem detalhe", 200)}`;
+  } else {
+    outcome = "cancelada antes de terminar.";
+  }
+  return `${when} · Objetivo: "${objective}" · Resultado: ${outcome}`;
+}
+
+/** The message the user sees for the end (or the pause) of a conversation run; `null` for none. */
+async function outcomeMessage(
+  db: Db,
+  run: Run,
+): Promise<{ authorKind: "bot" | "system"; text: string; key: string } | null> {
+  switch (run.status) {
+    case "done": {
+      const parsed = runResultSchema.safeParse(run.result);
+      const summary = parsed.success ? parsed.data.summary.trim() : "";
+      return {
+        authorKind: "bot",
+        text: summary === "" ? "Concluí o que você pediu." : summary,
+        key: `run:${run.id}:done`,
+      };
+    }
+    case "waiting_user": {
+      // The latest question the run asked: its position in the log makes the key, so each
+      // question is written once however often the pause is observed.
+      const [question] = await db.sql<{ seq: number; payload: { question?: string } }[]>`
+        select seq, payload from run_events
+        where run_id = ${run.id} and type = 'escalated'
+        order by seq desc limit 1`;
+      const text = question?.payload.question?.trim();
+      if (question === undefined || text === undefined || text === "") return null;
+      return { authorKind: "bot", text, key: `run:${run.id}:question:${question.seq}` };
+    }
+    case "failed": {
+      const origin = (run.failureOrigin ?? "harness") as FailureOrigin;
+      return {
+        authorKind: "system",
+        text: `Não consegui concluir esta tarefa: ${ORIGIN_TEXT_PT[origin] ?? "houve uma falha"} (origem: ${origin}).${run.failureDetail === null ? "" : ` Detalhe: ${clip(run.failureDetail, 300)}`}`,
+        key: `run:${run.id}:failed`,
+      };
+    }
+    case "cancelled":
+      return {
+        authorKind: "system",
+        text: "A execução foi cancelada antes de terminar.",
+        key: `run:${run.id}:cancelled`,
+      };
+    default:
+      return null;
+  }
+}
+
+export interface RunEffects {
+  /** A bot or system message was written to the conversation now (not already there). */
+  messageWritten: boolean;
+  /** A journal entry was written now. */
+  journalWritten: boolean;
+  /** Messages the run never read became a new run. */
+  rolledOver: Run | null;
+}
+
+/**
+ * What must follow a run that ended or paused, derived only from the stored run and its event log
+ * (never from memory of this process), and idempotent: calling it again, from the same worker
+ * after a redelivery or from another one after a crash, writes nothing twice.
+ *
+ * - `done`, `failed`, `cancelled`: one `journal` memory for the bot (key: the run), and, for a
+ *   conversation run, the bot's side in the conversation (key: run + outcome): the final answer,
+ *   or a system message in Portuguese saying it failed or was cancelled.
+ * - `waiting_user`: the question the run asked, as a bot message (key: run + the position of the
+ *   `escalated` event, so each question is written once).
+ * - messages posted to a run that ended before reading them become the objective of a new run.
+ * - any other status: nothing.
+ */
+export async function finishRun(db: Db, runId: string): Promise<RunEffects> {
+  const effects: RunEffects = { messageWritten: false, journalWritten: false, rolledOver: null };
+  const run = await getRun(db, runId);
+  if (run === null) return effects;
+  const terminal = run.status === "done" || run.status === "failed" || run.status === "cancelled";
+
+  if (run.conversationId !== null && run.conversationId !== undefined) {
+    const message = await outcomeMessage(db, run);
+    if (message !== null) {
+      const { created } = await appendMessageOnce(db, {
+        conversationId: run.conversationId,
+        authorKind: message.authorKind,
+        ...(message.authorKind === "bot" ? { authorBotId: run.botId } : {}),
+        text: message.text,
+        runId: run.id,
+        dedupeKey: message.key,
+      });
+      effects.messageWritten = created;
+    }
+  }
+  if (terminal) {
+    const journal = await addJournalMemory(db, {
+      botId: run.botId,
+      text: journalText(run),
+      sourceRunId: run.id,
+      ...(run.conversationId == null ? {} : { sourceConversationId: run.conversationId }),
+    });
+    effects.journalWritten = journal !== null;
+    effects.rolledOver = await rolloverUnreadMessages(db, run.id);
+  }
+  return effects;
+}
+
+/**
+ * Applies `finishRun` to the runs whose effects may be missing: the process that finished them
+ * died before the worker hook ran. Looks at conversation runs paused for the user and at runs
+ * that ended in the last `sinceDays` days without their journal entry or outcome message.
+ * Cheap to call at every start of a worker. Returns the ids it touched.
+ */
+export async function reconcileRunEffects(
+  db: Db,
+  options: { sinceDays?: number; limit?: number } = {},
+): Promise<string[]> {
+  const days = options.sinceDays ?? 7;
+  const limit = options.limit ?? 200;
+  const rows = await db.sql<{ id: string }[]>`
+    select r.id from runs r
+    where (
+      r.status = 'waiting_user' and r.conversation_id is not null
+    ) or (
+      r.status in ('done', 'failed', 'cancelled')
+      and r.updated_at > now() - make_interval(days => ${days}::integer)
+      and (
+        not exists (
+          select 1 from memories m where m.source_run_id = r.id and m.layer = 'journal'
+        )
+        or (
+          r.conversation_id is not null
+          and not exists (
+            select 1 from messages g
+            where g.conversation_id = r.conversation_id
+              and g.dedupe_key = 'run:' || r.id::text || ':' || r.status
+          )
+        )
+        or exists (
+          select 1 from run_inbox i
+          where i.run_id = r.id and i.kind = 'user_message' and i.consumed_at is null
+        )
+      )
+    )
+    order by r.updated_at
+    limit ${limit}`;
+  for (const row of rows) await finishRun(db, row.id);
+  return rows.map((r) => r.id);
+}

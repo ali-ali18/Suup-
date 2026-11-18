@@ -1,16 +1,24 @@
 import type { Tool, ToolRegistry } from "@suup/core";
 import { editFileTool } from "./edit-file.js";
+import { forgetTool } from "./forget.js";
 import { listFilesTool } from "./list-files.js";
 import { readFileTool } from "./read-file.js";
+import { recallTool } from "./recall.js";
+import { rememberTool } from "./remember.js";
+import { searchConversationsTool } from "./search-conversations.js";
 import { searchFilesTool } from "./search-files.js";
 import { shellTool } from "./shell.js";
 import { webFetchTool } from "./web-fetch.js";
 import { writeFileTool } from "./write-file.js";
 
 export { editFileTool } from "./edit-file.js";
+export { forgetTool } from "./forget.js";
 export { decodeEntities, type HtmlText, htmlToText } from "./html-to-text.js";
 export { listFilesTool } from "./list-files.js";
 export { readFileTool } from "./read-file.js";
+export { recallTool } from "./recall.js";
+export { rememberTool } from "./remember.js";
+export { searchConversationsTool } from "./search-conversations.js";
 export { buildSearchCommand, searchFilesTool } from "./search-files.js";
 export { shellTool } from "./shell.js";
 export { shellJoin, shellQuote } from "./shell-quote.js";
@@ -28,12 +36,23 @@ export const builtinTools: readonly Tool<unknown>[] = [
   erase(webFetchTool),
 ];
 
+/**
+ * The memory tools (plan section 4.4, phase 2). They only work in a run whose context carries a
+ * `MemoryService`; without one each returns an error result saying memory is unavailable.
+ */
+export const memoryTools: readonly Tool<unknown>[] = [
+  erase(rememberTool),
+  erase(recallTool),
+  erase(forgetTool),
+  erase(searchConversationsTool),
+];
+
 function erase<I>(tool: Tool<I>): Tool<unknown> {
   return tool as Tool<unknown>;
 }
 
-/** Registers all built-in tools. Throws if one of the names is already taken. */
+/** Registers the built-in tools and the memory tools. Throws if one of the names is already taken. */
 export function registerBuiltinTools(registry: ToolRegistry): ToolRegistry {
-  for (const tool of builtinTools) registry.register(tool);
+  for (const tool of [...builtinTools, ...memoryTools]) registry.register(tool);
   return registry;
 }

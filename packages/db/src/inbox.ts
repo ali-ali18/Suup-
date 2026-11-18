@@ -3,7 +3,14 @@ import type { Db } from "./client.js";
 import { RunNotFoundError } from "./events.js";
 
 /** What can be posted to a run while it works. */
-export type InboxPost = { kind: "user_message"; text: string } | { kind: "stop" };
+export type InboxPost =
+  | {
+      kind: "user_message";
+      text: string;
+      /** The chat message this item carries; it becomes `delivered` when the loop reads the item. */
+      messageId?: string;
+    }
+  | { kind: "stop" };
 
 /** A posted item as stored. `id` is the identity column rendered as a string (it is a bigint). */
 export type InboxEntry = InboxPost & { id: string; createdAt: Date };
@@ -22,7 +29,11 @@ function mapEntry(row: InboxRow): InboxEntry {
 }
 
 const postSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("user_message"), text: z.string() }),
+  z.object({
+    kind: z.literal("user_message"),
+    text: z.string(),
+    messageId: z.exactOptional(z.uuid()),
+  }),
   z.object({ kind: z.literal("stop") }),
 ]);
 
@@ -51,8 +62,13 @@ export async function postInbox(db: Db, runId: string, item: InboxPost): Promise
       select status from runs where id = ${runId} for no key update`;
     if (run === undefined) throw new RunNotFoundError(runId);
     const [row] = await tx<InboxRow[]>`
-      insert into run_inbox (run_id, kind, text)
-      values (${runId}, ${post.kind}, ${post.kind === "user_message" ? post.text : null})
+      insert into run_inbox (run_id, kind, text, message_id)
+      values (
+        ${runId},
+        ${post.kind},
+        ${post.kind === "user_message" ? post.text : null},
+        ${post.kind === "user_message" ? (post.messageId ?? null) : null}
+      )
       returning id, kind, text, created_at`;
     if (row === undefined) throw new Error("insert into run_inbox returned no row");
     const requeued = run.status === "waiting_user";

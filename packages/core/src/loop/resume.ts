@@ -33,6 +33,8 @@ export async function startOrResume(ctx: LoopContext): Promise<RunStatus | undef
     });
   }
 
+  await ensureContext(ctx);
+
   // The log is the truth. If the process died after logging a status change but before the
   // store applied it, apply it now.
   // The store may also say `queued`: a run that was requeued (a stale lease, or a user's answer
@@ -108,4 +110,26 @@ async function resumeFromWaiting(ctx: LoopContext): Promise<RunStatus | undefine
   }
   const ok = await transition(ctx, "waiting_user", "running");
   return ok ? undefined : (await store.getRun(ctx.runId)).status;
+}
+
+/**
+ * Loads the run's outside context and records it, once. It is loaded only while nothing but
+ * `run_started` is in the log: a run that already went further (a run started before the context
+ * existed, or one resumed after the event was written) never loads it, so the conversation and the
+ * system prompt cannot change under a run that is under way.
+ */
+async function ensureContext(ctx: LoopContext): Promise<void> {
+  const load = ctx.deps.loadRunContext;
+  const { state } = ctx;
+  if (load === undefined || state.contextLoaded || state.lastSeq !== state.startSeq) return;
+  const snapshot = await load(ctx.runId);
+  await record(ctx, {
+    type: "context_loaded",
+    payload: {
+      rules: snapshot.rules,
+      profile: snapshot.profile,
+      history: snapshot.history,
+      ...(snapshot.historyNote === undefined ? {} : { historyNote: snapshot.historyNote }),
+    },
+  });
 }

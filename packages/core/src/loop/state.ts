@@ -1,7 +1,8 @@
-import type { PlanStep, RunEventPayload, RunStatus } from "../events.js";
+import type { ContextItem, PlanStep, RunEventPayload, RunStatus } from "../events.js";
 import type { Block, JsonValue, Message, ToolCallBlock } from "../messages.js";
 import type { GenerateResult, StopReason } from "../provider.js";
 import { isControlTool } from "./control-tools.js";
+import { historyMessages } from "./history.js";
 import {
   isReminderBlock,
   renderNotice,
@@ -88,6 +89,12 @@ export interface RunState {
   status: RunStatus | null;
   statusDetail: { failure?: { origin: FailureOrigin; detail: string }; result?: RunResult };
   started: boolean;
+  /** `seq` of `run_started` (0 until it is seen). */
+  startSeq: number;
+  /** The `context_loaded` event is in the log. */
+  contextLoaded: boolean;
+  /** The rules and profile of the run, for the system prompt; null without a `context_loaded`. */
+  context: { rules: ContextItem[]; profile: ContextItem[] } | null;
   lastSeq: number;
   /** Agent model responses seen. */
   responses: number;
@@ -135,6 +142,9 @@ export function createRunState(): RunState {
     status: null,
     statusDetail: {},
     started: false,
+    startSeq: 0,
+    contextLoaded: false,
+    context: null,
     lastSeq: 0,
     responses: 0,
     pending: null,
@@ -182,8 +192,35 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
   switch (event.type) {
     case "run_started":
       state.started = true;
+      state.startSeq = event.seq;
       appendUserBlock(state, { type: "text", text: event.payload.objective }, event.seq);
       break;
+
+    case "context_loaded": {
+      // Always right after `run_started`: the earlier turns of the conversation go BEFORE the
+      // objective, and the conversation only ever grows at the end after that.
+      state.contextLoaded = true;
+      state.context = {
+        rules: structuredClone(event.payload.rules),
+        profile: structuredClone(event.payload.profile),
+      };
+      const history = historyMessages(event.payload.history, event.payload.historyNote);
+      if (history.length === 0) break;
+      const seqs = history.map(() => state.startSeq);
+      const first = state.messages[0];
+      const last = history[history.length - 1];
+      if (first?.role === "user" && last?.role === "user") {
+        // The history ends with a user message that got no answer: it shares a turn with the objective.
+        last.blocks.push(...first.blocks);
+        seqs[seqs.length - 1] = state.messageSeqs[0] ?? state.startSeq;
+        state.messages = [...history, ...state.messages.slice(1)];
+        state.messageSeqs = [...seqs, ...state.messageSeqs.slice(1)];
+      } else {
+        state.messages = [...history, ...state.messages];
+        state.messageSeqs = [...seqs, ...state.messageSeqs];
+      }
+      break;
+    }
 
     case "model_response": {
       const purpose = event.payload.purpose;

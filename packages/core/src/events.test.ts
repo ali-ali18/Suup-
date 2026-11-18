@@ -7,6 +7,15 @@ const samples: RunEventData[] = [
     payload: { botId: "b", objective: "o", acceptanceCriteria: ["c"], origin: "user" },
   },
   {
+    type: "context_loaded",
+    payload: {
+      rules: [{ id: "r", text: "Always be brief." }],
+      profile: [{ id: "p", text: "Lives in Recife." }],
+      history: [{ role: "user", blocks: [{ type: "text", text: "hi" }] }],
+      historyNote: "Older messages were left out.",
+    },
+  },
+  {
     type: "model_request",
     payload: {
       provider: "p",

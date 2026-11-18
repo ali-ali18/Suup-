@@ -77,6 +77,7 @@ const appendSchema = z
     text: textSchema,
     runId: z.exactOptional(uuidSchema),
     status: z.exactOptional(z.enum(MESSAGE_STATUSES)),
+    dedupeKey: z.exactOptional(z.string().min(1).max(200)),
   })
   .superRefine((m, ctx) => {
     if ((m.authorKind === "bot") !== (m.authorBotId !== undefined)) {
@@ -104,6 +105,12 @@ export interface AppendMessageInput {
   runId?: string;
   /** User messages only; see `Message.status`. */
   status?: MessageStatus;
+  /**
+   * Makes the append idempotent per conversation: if a message with this key already exists it is
+   * returned and nothing is written (see `appendMessageOnce` to know which happened). The harness
+   * uses it for what it writes on its own, so a retry or another worker cannot write it twice.
+   */
+  dedupeKey?: string;
 }
 
 /**
@@ -116,6 +123,14 @@ export interface AppendMessageInput {
  * bot author that is not a member; a `ZodError` for malformed input.
  */
 export async function appendMessage(db: Db, input: AppendMessageInput): Promise<Message> {
+  return (await appendMessageOnce(db, input)).message;
+}
+
+/** Like `appendMessage`, and says whether the message was written now or already existed (`dedupeKey`). */
+export async function appendMessageOnce(
+  db: Db,
+  input: AppendMessageInput,
+): Promise<{ message: Message; created: boolean }> {
   const m = appendSchema.parse(input);
   return withTransaction(db, async (tx) => {
     const [conv] = await tx.sql<{ archived_at: Date | null }[]>`
@@ -123,6 +138,13 @@ export async function appendMessage(db: Db, input: AppendMessageInput): Promise<
     if (!conv) throw new ConversationNotFoundError(m.conversationId);
     if (conv.archived_at !== null) {
       throw new ConversationRuleError("Cannot add messages to an archived conversation");
+    }
+    if (m.dedupeKey !== undefined) {
+      // The conversation row is locked: no other writer can insert this key until we commit.
+      const [existing] = await tx.sql<MessageRow[]>`
+        select ${tx.sql(MESSAGE_COLUMNS)} from messages
+        where conversation_id = ${m.conversationId} and dedupe_key = ${m.dedupeKey}`;
+      if (existing) return { message: mapMessage(existing), created: false };
     }
     if (m.authorBotId !== undefined) {
       const [member] = await tx.sql<{ one: number }[]>`
@@ -135,7 +157,7 @@ export async function appendMessage(db: Db, input: AppendMessageInput): Promise<
       }
     }
     const [row] = await tx.sql<MessageRow[]>`
-      insert into messages (conversation_id, seq, author_kind, author_bot_id, text, run_id, status, created_at)
+      insert into messages (conversation_id, seq, author_kind, author_bot_id, text, run_id, status, dedupe_key, created_at)
       values (
         ${m.conversationId},
         (select coalesce(max(seq), 0) + 1 from messages where conversation_id = ${m.conversationId}),
@@ -144,13 +166,14 @@ export async function appendMessage(db: Db, input: AppendMessageInput): Promise<
         ${m.text},
         ${m.runId ?? null},
         ${m.status ?? null},
+        ${m.dedupeKey ?? null},
         clock_timestamp()
       )
       returning ${tx.sql(MESSAGE_COLUMNS)}`;
     if (!row) throw new Error("insert into messages returned no row");
     await tx.sql`
       update conversations set last_message_at = ${row.created_at} where id = ${m.conversationId}`;
-    return mapMessage(row);
+    return { message: mapMessage(row), created: true };
   });
 }
 

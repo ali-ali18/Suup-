@@ -12,7 +12,7 @@ export function fixedParts(ctx: LoopContext): { system: string; tools: ToolSpec[
   const { bot, tools } = ctx.deps;
   const control = new Set<string>(CONTROL_TOOL_NAMES);
   return {
-    system: buildSystemPrompt(bot),
+    system: buildSystemPrompt(bot, ctx.state.context ?? undefined),
     tools: [
       ...controlToolSpecs(),
       ...tools.specs(bot.allowedTools).filter((spec) => !control.has(spec.name)),

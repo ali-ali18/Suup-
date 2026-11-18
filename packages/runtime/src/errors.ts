@@ -19,7 +19,11 @@ export type RuntimeErrorCode =
   | "bot_not_found"
   | "bot_archived"
   | "invalid_bot_id"
-  | "sandbox_failed";
+  | "sandbox_failed"
+  | "empty_message"
+  | "conversation_not_found"
+  | "conversation_unsupported"
+  | "draft_failed";
 
 /**
  * Something the configuration or the registered data does not allow (a bot whose model is not in

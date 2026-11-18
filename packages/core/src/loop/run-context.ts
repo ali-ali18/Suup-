@@ -1,9 +1,11 @@
 // Owns the shared vocabulary of the loop: the public configuration types (`BotConfig`, `LoopDeps`,
 // `RunLoopOptions`, `ToolInvoker`), the `LoopContext` object every loop module receives instead of
 // a long parameter list, and the `Interrupted` signal used to unwind on a hard interruption.
+import type { ContextItem } from "../events.js";
+import type { Message } from "../messages.js";
 import type { Provider, ToolSpec } from "../provider.js";
 import type { InvokeOptions, ToolInvocation } from "../registry.js";
-import type { Executor, ToolContext } from "../tool.js";
+import type { Executor, MemoryService, ToolContext } from "../tool.js";
 import type { ModelPricing, ReviewerConfig } from "./reviewer.js";
 import type { RunState } from "./state.js";
 import type { RunRecord, RunStore } from "./store.js";
@@ -34,6 +36,21 @@ export interface ToolInvoker {
   ): Promise<ToolInvocation>;
 }
 
+/**
+ * What a run starts with that comes from outside the loop. It is read once, at the start of the
+ * run, and recorded as the `context_loaded` event (see `LoopDeps.loadRunContext`).
+ */
+export interface RunContextSnapshot {
+  /** The user's standing rules, in a stable order (they go into the system prompt). */
+  rules: ContextItem[];
+  /** What is known about the user, in a stable order (system prompt too). */
+  profile: ContextItem[];
+  /** Earlier turns of the same conversation, text only. Placed before the objective. */
+  history: Message[];
+  /** Told to the model with the history, e.g. that older messages were left out. */
+  historyNote?: string;
+}
+
 export interface LoopDeps {
   store: RunStore;
   provider: Provider;
@@ -42,6 +59,15 @@ export interface LoopDeps {
   bot: BotConfig;
   /** When absent, `finish` is validated by the harness only. */
   reviewer?: ReviewerConfig;
+  /**
+   * Loads the context of a run that starts (rules, profile, conversation history). Called at most
+   * once per run: the result is recorded as the `context_loaded` event right after `run_started`,
+   * and a resumed or replayed run reads that event instead of calling this again. Without it the
+   * run has no outside context.
+   */
+  loadRunContext?(runId: string): Promise<RunContextSnapshot>;
+  /** The memory the tools of this run may use. Without it the memory tools report an error. */
+  memoryFor?(run: RunRecord): MemoryService;
   now(): Date;
   sleep(ms: number): Promise<void>;
 }

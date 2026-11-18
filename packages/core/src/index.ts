@@ -1,4 +1,6 @@
 export {
+  type ContextItem,
+  contextItemSchema,
   FAILURE_ORIGINS,
   type FailureOrigin,
   failureOriginSchema,
@@ -99,6 +101,10 @@ export {
   type ExecResult,
   type Executor,
   type FileStat,
+  type MemoryLayerName,
+  MemoryRuleError,
+  type MemoryService,
+  type RecallLayerName,
   resolveWorkspacePath,
   type Tool,
   type ToolContext,

@@ -72,8 +72,30 @@ export async function appendRunEvent(
       )
       returning *`;
     if (!row) throw new Error("insert into run_events returned no row");
+    // An event that delivers inbox items (the loop read them) marks the chat messages they carry
+    // as delivered, in the same transaction: the log and the chat never disagree.
+    const delivered = deliveredInboxIds(type, body);
+    if (delivered.length > 0) {
+      await tx`
+        update messages set status = 'delivered'
+        where status = 'sent'
+          and id in (
+            select message_id from run_inbox
+            where run_id = ${runId} and id = any(${delivered}::bigint[]) and message_id is not null
+          )`;
+    }
     return mapRunEvent(row);
   });
+}
+
+/** The inbox item ids an event delivers: `user_message`, the answer to `escalate`, a cancellation. */
+function deliveredInboxIds(type: string, payload: EventPayload): string[] {
+  const ids: unknown[] = [];
+  if (type === "user_message") ids.push(payload.inboxId);
+  else if (type === "tool_result" || type === "status_changed") {
+    if (Array.isArray(payload.inboxIds)) ids.push(...payload.inboxIds);
+  }
+  return ids.filter((id): id is string => typeof id === "string" && /^\d+$/.test(id));
 }
 
 export interface ListRunEventsOptions {

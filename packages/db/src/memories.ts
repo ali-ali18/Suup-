@@ -152,6 +152,32 @@ export async function addMemory(db: Db, input: AddMemoryInput): Promise<Memory> 
   return mapMemory(row);
 }
 
+export interface AddJournalInput {
+  botId: string;
+  text: string;
+  /** The run the entry is about. It is the idempotency key: one entry per run. */
+  sourceRunId: string;
+  sourceConversationId?: string;
+}
+
+/**
+ * Writes the journal entry of a finished run, once: the run is the key (a unique index), so a
+ * second call for the same run (a resume, a redelivery, another worker) changes nothing and
+ * returns `null`. The entry belongs to the bot and is marked as written by the bot.
+ */
+export async function addJournalMemory(db: Db, input: AddJournalInput): Promise<Memory | null> {
+  const botId = uuidSchema.parse(input.botId);
+  const runId = uuidSchema.parse(input.sourceRunId);
+  const conversationId =
+    input.sourceConversationId === undefined ? null : uuidSchema.parse(input.sourceConversationId);
+  const [row] = await db.sql<MemoryRow[]>`
+    insert into memories (layer, scope, bot_id, text, source_conversation_id, source_run_id, created_by)
+    values ('journal', 'bot', ${botId}, ${textSchema.parse(input.text)}, ${conversationId}, ${runId}, 'bot')
+    on conflict (source_run_id) where layer = 'journal' and source_run_id is not null do nothing
+    returning ${db.sql(MEMORY_COLUMNS)}`;
+  return row ? mapMemory(row) : null;
+}
+
 export async function getMemory(db: Db, id: string): Promise<Memory | null> {
   const [row] = await db.sql<MemoryRow[]>`
     select ${db.sql(MEMORY_COLUMNS)} from memories where id = ${uuidSchema.parse(id)}`;

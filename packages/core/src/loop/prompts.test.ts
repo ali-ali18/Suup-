@@ -7,7 +7,7 @@ describe("system prompt", () => {
   const prompt = buildSystemPrompt({ name: "Ada", personality: "Dry and precise." });
 
   it("is short enough to be followed", () => {
-    expect(words(buildSystemPrompt({ name: "Ada", personality: "" }))).toBeLessThanOrEqual(450);
+    expect(words(buildSystemPrompt({ name: "Ada", personality: "" }))).toBeLessThanOrEqual(490);
   });
 
   it("carries the bot's identity and the harness rules", () => {

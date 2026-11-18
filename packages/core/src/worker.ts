@@ -101,6 +101,14 @@ export interface WorkerOptions {
   /** Wait between polls of an empty queue: starts at `minMs`, multiplied by `factor` up to `maxMs`. */
   idleBackoff?: { minMs?: number; maxMs?: number; factor?: number };
   clock?: WorkerClock;
+  /**
+   * Awaited after a run left the worker, whatever the outcome, while the run still counts as
+   * active (so `stop` waits for it). The runtime uses it for what must follow a run: the bot's
+   * message in the conversation and the journal. It must derive everything from the run's stored
+   * state and be idempotent: a run finished by another worker after a crash never reaches this
+   * worker's hook. A failure is reported through `onError`, never thrown.
+   */
+  afterRun?(end: RunEnd): Promise<void>;
   /** A run left the worker. Errors thrown by the hook are ignored. */
   onRunEnd?(end: RunEnd): void;
   /** Something went wrong in the background (a failed claim, a failed heartbeat...). */
@@ -139,6 +147,7 @@ export class Worker {
   readonly #idle: { minMs: number; maxMs: number; factor: number };
   readonly #clock: WorkerClock;
   readonly #onRunEnd: ((end: RunEnd) => void) | undefined;
+  readonly #afterRun: ((end: RunEnd) => Promise<void>) | undefined;
   readonly #onError: ((error: unknown, context: string) => void) | undefined;
 
   readonly #active = new Map<string, ActiveRun>();
@@ -169,6 +178,7 @@ export class Worker {
     };
     this.#clock = options.clock ?? systemClock;
     this.#onRunEnd = options.onRunEnd;
+    this.#afterRun = options.afterRun;
     this.#onError = options.onError;
 
     if (!Number.isInteger(this.#concurrency) || this.#concurrency < 1) {
@@ -360,7 +370,7 @@ export class Worker {
       await this.#giveBack(runId);
       return this.#emit({ runId, outcome: "released" });
     }
-    this.#emit({
+    await this.#emit({
       runId,
       outcome: "settled",
       status,
@@ -376,7 +386,7 @@ export class Worker {
       // The run stays as it is; the lease goes stale and another worker retries it.
       this.#report(failure, `marking run ${entry.runId} as failed`);
     }
-    this.#emit({ runId: entry.runId, outcome: "failed", error });
+    await this.#emit({ runId: entry.runId, outcome: "failed", error });
   }
 
   async #giveBack(runId: string): Promise<void> {
@@ -428,7 +438,12 @@ export class Worker {
 
   // --- hooks that must never throw ------------------------------------------------------------
 
-  #emit(end: RunEnd): void {
+  async #emit(end: RunEnd): Promise<void> {
+    try {
+      await this.#afterRun?.(end);
+    } catch (error) {
+      this.#report(error, `after run ${end.runId}`);
+    }
     try {
       this.#onRunEnd?.(end);
     } catch {

@@ -98,6 +98,7 @@ Cada execução tem um log de eventos numerados (`seq`), só de acréscimo. É a
 | `review` | `verdict` (`approve` ou `reject`), `notes`, `warning?` | Selo do revisor |
 | `escalated` | `question`, `reason?` | Pergunta em destaque |
 | `status_changed` | `from`, `to`, `failure?`, `result?` | Mudança de estado |
+| `context_loaded` | `rules`, `profile`, `history`, `historyNote?` | Logo depois de `run_started`: o que a memória e a conversa deram à execução. Aviso discreto ("3 regras, 1 fato do perfil, 6 mensagens anteriores"); `rules` e `profile` têm `id` e `text` e aparecem na tela de memória |
 | `model_error` | `kind`, `message`, `retryable`, `attempt` | "Tentando de novo" ou erro |
 | `compacted` | `summary`, `droppedMessages` | Aviso discreto: "histórico resumido" |
 | `model_request` | A requisição inteira enviada ao modelo | Só no inspetor de diagnóstico |
@@ -110,7 +111,7 @@ Observações:
 - `escalated` com `reason: "review_tie_break"` é o caso em que o revisor recusou duas vezes e o Suup pede que você decida.
 - Resultado de ferramenta pode ser grande ou cortado (`truncated`); mostrar recolhido por padrão.
 
-**Ferramentas que existem hoje**, para ícones e rótulos: `shell`, `read_file`, `write_file`, `edit_file`, `list_files`, `search_files`, `web_fetch`, mais as três de controle, `plan`, `finish` e `escalate`. Entram depois: memória (fase 2), conectores (fase 3), `delegate` e rotinas (fase 4), navegador (fase 5), dispositivos (fase 6).
+**Ferramentas que existem hoje**, para ícones e rótulos: `shell`, `read_file`, `write_file`, `edit_file`, `list_files`, `search_files`, `web_fetch`, mais as três de controle, `plan`, `finish` e `escalate`. Da fase 2: `remember`, `recall`, `forget` e `search_conversations` (memória; "salvo na memória" quando `remember` dá certo). Entram depois: conectores (fase 3), `delegate` e rotinas (fase 4), navegador (fase 5), dispositivos (fase 6).
 
 ## 6. O que você pode fazer numa execução (existe)
 

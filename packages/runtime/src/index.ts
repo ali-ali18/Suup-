@@ -15,7 +15,29 @@ export {
   resolveDatabaseUrl,
   type SandboxEntry,
 } from "./config.js";
+export {
+  type BotDraft,
+  botDraftSchema,
+  DEFAULT_BOT_DESCRIPTION,
+  DEFAULT_BOT_NAME,
+  DEFAULT_BOT_PERSONALITY,
+  draftBot,
+  type EnsureDefaultBotOptions,
+  ensureDefaultBot,
+  type SendMessageInput,
+  type SendMessageResult,
+  sendMessage,
+} from "./conversations.js";
 export { ConfigError, RuntimeError, type RuntimeErrorCode } from "./errors.js";
+export { createMemoryService } from "./memory-service.js";
+export { DEFAULT_HISTORY_CHARS, loadRunContext } from "./run-context.js";
+export {
+  finishRun,
+  journalText,
+  ORIGIN_TEXT_PT,
+  type RunEffects,
+  reconcileRunEffects,
+} from "./run-end.js";
 export {
   type CreateWorkerOptions,
   createRuntime,

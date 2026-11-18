@@ -17,6 +17,10 @@ export const planStepSchema = z.object({
 });
 export type PlanStep = z.infer<typeof planStepSchema>;
 
+/** One memory shown to the model: the id lets the user (and `forget`) refer to it. */
+export const contextItemSchema = z.object({ id: z.string(), text: z.string() });
+export type ContextItem = z.infer<typeof contextItemSchema>;
+
 export const runStatusSchema = z.enum([
   "queued",
   "running",
@@ -81,6 +85,23 @@ export const runEventSchema = z.discriminatedUnion("type", [
       objective: z.string(),
       acceptanceCriteria: z.array(z.string()),
       origin: runOriginSchema,
+    }),
+  }),
+  z.object({
+    /**
+     * What came from outside the loop and shapes this run: the user's standing rules, the shared
+     * profile and the earlier turns of the conversation. Loaded ONCE, right after `run_started`,
+     * and never again: resume and replay read it from here, so the cached prompt prefix and the
+     * conversation stay identical for the whole run.
+     */
+    type: z.literal("context_loaded"),
+    payload: z.object({
+      rules: z.array(contextItemSchema),
+      profile: z.array(contextItemSchema),
+      /** Earlier turns of the same conversation, plain text, as user/assistant messages. */
+      history: z.array(messageSchema),
+      /** Said alongside the history, e.g. that older messages were left out. */
+      historyNote: z.exactOptional(z.string()),
     }),
   }),
   z.object({

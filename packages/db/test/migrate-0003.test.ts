@@ -1,4 +1,4 @@
-import { cp, mkdtemp, rm } from "node:fs/promises";
+import { cp, mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -11,7 +11,12 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("migration 0003 on existing data"), (
   it("applies on top of 0001 + 0002 and keeps the rows that already exist", async () => {
     const dir = await mkdtemp(join(tmpdir(), "suup-migrations-"));
     await cp(MIGRATIONS_DIR, dir, { recursive: true });
-    await rm(join(dir, "0003_conversations_and_memory.sql"));
+    // Everything from 0003 on is held back (later migrations build on it).
+    const later = (await readdir(MIGRATIONS_DIR))
+      .filter((f) => f.endsWith(".sql"))
+      .sort()
+      .slice(2);
+    for (const file of later) await rm(join(dir, file));
     expect(await migrate(ctx.db, dir)).toEqual([
       "0001_init.sql",
       "0002_inbox_and_model_origin.sql",
@@ -22,7 +27,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("migration 0003 on existing data"), (
     await ctx.db.sql`
       insert into runs (bot_id, origin, objective) values (${bot?.id ?? ""}, 'user', 'old run')`;
 
-    expect(await migrate(ctx.db)).toEqual(["0003_conversations_and_memory.sql"]);
+    expect(await migrate(ctx.db)).toEqual(later);
 
     const [b] = await ctx.db.sql<{ avatar: string | null; is_default: boolean }[]>`
       select avatar, is_default from bots`;
