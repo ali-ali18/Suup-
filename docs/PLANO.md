@@ -365,7 +365,7 @@ O motivo é que só a OpenAI oferece um caminho oficial em que o app recebe um t
 - Um adaptador para a API Responses da OpenAI (o adaptador atual, compatível com OpenAI, fala a API de chat completions).
 - O fluxo "Sign in with ChatGPT": registro do app para obter um identificador de cliente, login com PKCE e guarda do token no cofre.
 - Renovação do token e tratamento do fim da cota do plano como falha de origem `provider`.
-- Vale para assinantes Plus e Pro. O uso do plano está aberto a projetos de código aberto e a apps locais; apps pagos ou hospedados entram em lista de espera. O enquadramento de um app pessoal de código fechado não está claro e precisa ser resolvido no cadastro; publicar o Suup como código aberto resolveria.
+- Vale para assinantes Plus e Pro. O uso do plano está aberto a projetos de código aberto e a apps locais; apps pagos ou hospedados entram em lista de espera. O Suup será publicado como código aberto (decisão de 18/11/2026), o que o enquadra no caminho aberto; falta escolher a licença e fazer o cadastro.
 - Entra depois da fase 1, quando houver cofre (fase 3), porque o token não pode ficar em variável de ambiente.
 
 **Situação dos demais, para referência** (lida nas fontes oficiais em 18/11/2026; as regras mudaram várias vezes em 2026):
