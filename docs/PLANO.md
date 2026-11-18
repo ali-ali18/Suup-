@@ -114,6 +114,16 @@ interface Provider {
 
 Cada ferramenta declara: nome, descrição, esquema de entrada (zod), nível de risco e executor. Erros voltam como texto com sugestão de correção, nunca como exceção que derruba o loop.
 
+**Regra de acoplamento.** O núcleo conhece só a interface `Tool`; nunca importa uma ferramenta concreta.
+
+- `core` define a interface e o registro. Os pacotes de ferramentas dependem de `core`; `core` não depende de nenhum deles. O sentido da dependência é verificado no CI.
+- Incluir uma ferramenta é criar um arquivo que implementa a interface e registrá-lo. Nenhuma linha do loop muda.
+- Tudo de que uma ferramenta precisa (pasta do bot, executor da máquina, cofre, id da execução) chega por um objeto de contexto passado na chamada. Ferramenta não acessa banco, provedor nem outra ferramenta diretamente.
+- Risco, aprovação, validação de entrada, truncamento de saída, limite de tempo e gravação de eventos são feitos pelo registro, em volta do executor. A ferramenta implementa só a ação.
+- Ferramentas de conectores MCP e ferramentas internas entram pelo mesmo registro e são indistinguíveis para o loop.
+- Remover ou desativar uma ferramenta não quebra nada: o bot simplesmente deixa de vê-la.
+- Cada ferramenta tem teste próprio, que roda sem modelo e sem loop.
+
 | Grupo | Ferramentas | Fase |
 |---|---|---|
 | Controle | `plan`, `finish`, `escalate` | 1 |
