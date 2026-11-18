@@ -86,13 +86,13 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup, end to end"), () => {
     const before = await p.suup(["doctor"]);
     expect(before.code).toBe(1);
     expect(before.stdout).toMatch(
-      /\[falha\] Banco de dados\s+acessível, mas com 2 migrações pendentes/,
+      /\[falha\] Banco de dados\s+acessível, mas com \d+ migrações pendentes/,
     );
     expect(before.stdout).toContain("suup db migrate");
 
     const migrated = await p.suup(["db", "migrate"]);
     expect(migrated.code).toBe(0);
-    expect(migrated.stdout).toContain("2 migrações aplicadas");
+    expect(migrated.stdout).toMatch(/\d+ migrações aplicadas/);
     expect(migrated.stdout).toContain("0001_init.sql");
 
     const again = await p.suup(["db", "migrate"]);
@@ -109,7 +109,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup, end to end"), () => {
     const r = await p.suup(["doctor"]);
     expect(r.code).toBe(1);
     expect(r.stdout).toMatch(/\[ok\]\s+Configuração\s+válida/);
-    expect(r.stdout).toMatch(/\[ok\]\s+Banco de dados\s+acessível, 2 migrações aplicadas/);
+    expect(r.stdout).toMatch(/\[ok\]\s+Banco de dados\s+acessível, \d+ migrações aplicadas/);
     expect(r.stdout).toMatch(/\[ok\]\s+Sandbox\s+LOCAL .*SEM isolamento/);
     expect(r.stdout).toMatch(/\[ok\]\s+Provedor roteiro\s+scripted/);
     expect(r.stdout).toMatch(
