@@ -356,54 +356,29 @@ A mensagem é sempre gravada na hora e aparece no chat. O que varia é quando o 
 
 ### 4.16 Assinaturas que o usuário já paga
 
-Pesquisa feita em 18/11/2026. As regras mudaram várias vezes em 2026 e podem mudar de novo; conferir antes de implementar.
+**Decisão (18/11/2026):** a única assinatura que o Suup usa é a do ChatGPT. Todos os outros fornecedores entram por chave de API, pela camada de provedores.
 
-Há duas formas de um bot usar um modelo, e as assinaturas só servem para a segunda:
+O motivo é que só a OpenAI oferece um caminho oficial em que o app recebe um token e chama o modelo por conta própria. Assim a assinatura funciona como um provedor comum e o loop continua sendo o do Suup, com plano, conclusão com evidência, revisor, replay e retomada intactos. Nos demais fornecedores, usar a assinatura exigiria rodar a ferramenta deles, com o loop deles, ou violaria os termos.
 
-| Forma | Quem controla o loop | Como paga |
-|---|---|---|
-| **Provedor** (o cérebro do bot) | O harness | Chave de API, por token |
-| **Agente delegado** (uma tarefa inteira entregue a outra ferramenta) | A ferramenta do fornecedor | A assinatura do usuário, pelo login oficial dela |
+**O que o provedor ChatGPT exige**
 
-Situação por fornecedor (lida nas fontes oficiais em 18/11/2026, salvo indicação):
+- Um adaptador para a API Responses da OpenAI (o adaptador atual, compatível com OpenAI, fala a API de chat completions).
+- O fluxo "Sign in with ChatGPT": registro do app para obter um identificador de cliente, login com PKCE e guarda do token no cofre.
+- Renovação do token e tratamento do fim da cota do plano como falha de origem `provider`.
+- Vale para assinantes Plus e Pro. O uso do plano está aberto a projetos de código aberto e a apps locais; apps pagos ou hospedados entram em lista de espera. O enquadramento de um app pessoal de código fechado não está claro e precisa ser resolvido no cadastro; publicar o Suup como código aberto resolveria.
+- Entra depois da fase 1, quando houver cofre (fase 3), porque o token não pode ficar em variável de ambiente.
 
-| Assinatura | Como provedor (o harness controla o loop) | Pela ferramenta oficial do fornecedor |
-|---|---|---|
-| Claude (Pro, Max) | Proibido: os termos não permitem que um app use o login da assinatura para chamar a API, nem que leia ou guarde o token | Permitido para o próprio usuário: entrar no Claude Code sem modificação e executá-lo (`claude -p` ou SDK de agentes); o uso sai do limite da assinatura. O OpenCode adotou este caminho na versão 2.2.3, de 30/10/2026 ("Use Claude Code in OpenCode") |
-| ChatGPT (Plus, Pro) | **Existe caminho oficial**: "Sign in with ChatGPT" entrega um token e o app chama a API Responses. O uso do plano está aberto a projetos de código aberto e a apps locais, mediante cadastro para obter um identificador de cliente; apps pagos ou hospedados entram em lista de espera | Pelo Codex CLI ou app-server com o login do usuário |
-| GitHub Copilot | Sem caminho documentado para chamadas diretas ao modelo | **Permitido e documentado**: o SDK oficial do Copilot aceita o login do GitHub do usuário (app OAuth ou token pessoal) e cobra da assinatura dele. O SDK trabalha por sessões do agente do Copilot; não ficou confirmado se expõe chamadas simples ao modelo |
-| Grok (SuperGrok, X Premium) | Login oficial só dentro do OpenCode (anunciado em 21/05/2026), com a promessa de "mais agentes de código aberto em breve" | Não verificado |
-| Gemini | Proibido: os termos do Gemini CLI citam como violação usar o login dele em software de terceiros, com suspensão ou encerramento da conta | Só com chave de API (AI Studio ou Vertex). Executar o CLI original com o login do usuário não é coberto pelos termos; tratar como risco alto |
-| Cursor | Proibido: a equipe do Cursor afirma que chamar os endpoints privados viola os termos, mesmo num proxy "pessoal e local", com risco de banimento | Permitido: Cursor CLI, SDK de agentes ou API de agentes na nuvem, com chave do Cursor. Todos rodam o agente do Cursor e não expõem o modelo cru |
+**Situação dos demais, para referência** (lida nas fontes oficiais em 18/11/2026; as regras mudaram várias vezes em 2026):
 
-**Quem faz o trabalho em cada caso**
+| Assinatura | Por que não é usada |
+|---|---|
+| Claude (Pro, Max) | Os termos proíbem que um app use o login da assinatura para chamar a API ou guarde o token. O permitido é rodar o Claude Code sem modificação, o que entrega o loop a ele |
+| GitHub Copilot | Há SDK oficial com o login do usuário, mas ele trabalha por sessões do agente do Copilot; não ficou confirmado que exponha o modelo cru |
+| Grok (SuperGrok, X Premium) | Login oficial só dentro do OpenCode |
+| Gemini | Os termos do Gemini CLI tratam como violação usar o login dele em software de terceiros, com suspensão da conta |
+| Cursor | Chamar os endpoints privados viola os termos; os caminhos oficiais sempre rodam o agente do Cursor |
 
-| Assinatura | Quem roda o loop | O que do Suup continua valendo |
-|---|---|---|
-| ChatGPT | O Suup | Tudo: plano, `finish`, revisor, replay, retomada, ferramentas, aprovações |
-| Claude | O Claude Code | Ferramentas, aprovações e regras de término, se o motor alternativo for implementado; replay e retomada evento a evento não |
-| Copilot | O agente do Copilot | A confirmar; no mínimo, entrega de tarefa e acompanhamento |
-| Cursor | O agente do Cursor | Só entrega de tarefa e acompanhamento |
-| Gemini, Grok | — | Sem caminho por assinatura hoje |
-
-Com chave de API, em qualquer fornecedor, quem trabalha é sempre o Suup.
-
-O que não foi possível confirmar: se a Anthropic aprovou formalmente a integração do OpenCode, e como exatamente o OpenCode divide o trabalho com o Claude Code (quem roda o loop e como as ferramentas dele são expostas). As páginas da Anthropic não distinguem uso pessoal de uso por terceiros no texto sobre limites; a leitura de que um harness pessoal é permitido é interpretação, apoiada na frase de que nada impede o usuário de entrar no Claude Code sem modificação com a própria assinatura.
-
-Consequências para o desenho:
-
-- O cérebro de cada bot continua usando chave de API como padrão, pela camada de provedores.
-- **ChatGPT é a exceção promissora:** o caminho oficial entrega um token para a API Responses, então a assinatura pode servir de provedor comum, com o nosso loop, replay e retomada intactos. Exige um adaptador para a API Responses e o cadastro do app junto à OpenAI; o enquadramento de um app pessoal de código fechado não está claro, e publicar o Suup como código aberto resolveria isso.
-- As assinaturas entram como **agentes delegados**: uma ferramenta do harness (`delegate_agent`) que, pelo agente local no PC do usuário, executa a ferramenta oficial já logada, entrega uma tarefa com escopo e critérios de pronto, acompanha e devolve o resultado ao bot. É a "delegação externa" da fase 7, e depende do agente local da fase 6.
-- O harness nunca lê, copia nem reutiliza o token de login dessas ferramentas. Ele só as executa, sem modificá-las.
-- **Motor alternativo com o SDK de agentes do Claude (a avaliar na fase 6).** O OpenCode voltou a aceitar assinaturas do Claude no fim de outubro de 2026 por este caminho, segundo fontes secundárias: o SDK oficial aciona o Claude Code instalado na máquina, que faz o login e as chamadas ao modelo, enquanto o app fornece interface, ferramentas e subagentes. Isso é mais do que entregar uma tarefa fechada: o loop é do SDK, mas as ferramentas, as instruções e as permissões podem ser as nossas. Para o Suup seria um segundo "motor" de execução por bot, ao lado do loop próprio:
-  - as ferramentas do nosso registro são expostas ao SDK;
-  - o portão de aprovação entra pelo ponto de permissão do SDK;
-  - a regra de "só termina com `finish`" é aplicada pelo gancho de parada do SDK;
-  - os eventos do SDK são gravados no nosso log, para o inspetor continuar funcionando.
-  - O que se perde: o replay gravado e a retomada evento a evento, que dependem de o harness controlar cada chamada ao modelo.
-  - Só roda no PC do usuário, com o login dele, para uso pessoal. Antes de implementar, confirmar na documentação da Anthropic se esse uso continua permitido.
-- Isso vale para uso pessoal de um único usuário. Se o projeto virar produto para outras pessoas, a regra muda: oferecer login de assinatura dentro do produto exige aprovação do fornecedor.
+A delegação de tarefas de programação a agentes externos continua prevista na fase 7, como estava, e é independente desta decisão.
 
 ## 5. Modelo de dados
 
