@@ -86,6 +86,7 @@ const modelSchema = z.strictObject({
   contextWindow: positiveInt,
   maxOutputTokens: positiveInt,
   pricing: z.exactOptional(pricingSchema),
+  supportsForcedToolChoice: z.exactOptional(z.boolean()),
 });
 
 const sandboxSchema = z.discriminatedUnion(

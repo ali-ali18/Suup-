@@ -264,6 +264,9 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
         id: model.id,
         maxOutputTokens: model.maxOutputTokens,
         ...(model.pricing === undefined ? {} : { pricing: model.pricing }),
+        ...(model.supportsForcedToolChoice === undefined
+          ? {}
+          : { supportsForcedToolChoice: model.supportsForcedToolChoice }),
       },
     };
   };

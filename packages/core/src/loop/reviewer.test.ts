@@ -179,6 +179,44 @@ describe("reviewer", () => {
     expect(error?.payload.purpose).toBe("review");
   });
 
+  it("does not force the verdict tool for a model configured as not supporting a forced choice", async () => {
+    const rig = createRig({
+      script: [use(finishCall("c1", "Done."))],
+      reviewerScript: [verdict("approve", "ok")],
+      reviewerForcedToolChoice: false,
+    });
+    expect(await rig.run()).toBe("done");
+    expect(rig.reviewerProvider?.requests[0]?.toolChoice).toBeUndefined();
+    expect(rig.reviewerProvider?.requests[0]?.tools.map((t) => t.name)).toEqual(["verdict"]);
+    const events = await rig.events();
+    const request = eventsOfType(events, "model_request").find(
+      (e) => e.payload.purpose === "review",
+    );
+    expect(request?.payload).not.toHaveProperty("toolChoice");
+    expect(eventsOfType(events, "review")[0]?.payload).toEqual({ verdict: "approve", notes: "ok" });
+  });
+
+  it("retries the review once without the forced choice when the API refuses it (HTTP 400)", async () => {
+    const rig = createRig({
+      script: [use(finishCall("c1", "Done.")), use(finishCall("c2", "Done again."))],
+      reviewerScript: [
+        new ProviderError("invalid_request", 'tool_choice: type "tool" is not supported', {
+          status: 400,
+        }),
+        verdict("reject", "evidence is thin"),
+        verdict("approve", "ok"),
+      ],
+    });
+    // The first review is rejected (after the fallback), the model then finishes again.
+    expect(await rig.run()).toBe("done");
+    const requests = rig.reviewerProvider?.requests ?? [];
+    expect(requests[0]?.toolChoice).toEqual({ name: "verdict" });
+    expect(requests[1]?.toolChoice).toBeUndefined();
+    const reviews = eventsOfType(await rig.events(), "review");
+    expect(reviews[0]?.payload.verdict).toBe("reject");
+    expect(reviews[0]?.payload).not.toHaveProperty("warning");
+  });
+
   it("does not call the reviewer when the harness already rejected the finish", async () => {
     const rig = createRig({
       criteria: ["A"],

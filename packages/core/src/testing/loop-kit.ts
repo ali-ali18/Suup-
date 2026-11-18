@@ -128,6 +128,8 @@ export interface RigOptions {
   bot?: Partial<BotConfig>;
   status?: RunStatus;
   maxRejections?: number;
+  /** Passed to the reviewer model config (undefined = default). */
+  reviewerForcedToolChoice?: boolean;
   tools?: Tool[];
 }
 
@@ -176,7 +178,13 @@ export function createRig(options: RigOptions): Rig {
       ? undefined
       : {
           provider: reviewerProvider,
-          model: { id: "reviewer-model", maxOutputTokens: 1024 },
+          model: {
+            id: "reviewer-model",
+            maxOutputTokens: 1024,
+            ...(options.reviewerForcedToolChoice === undefined
+              ? {}
+              : { supportsForcedToolChoice: options.reviewerForcedToolChoice }),
+          },
           ...(options.maxRejections === undefined ? {} : { maxRejections: options.maxRejections }),
         };
 

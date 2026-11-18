@@ -1107,7 +1107,8 @@ class RunLoop {
   ): Promise<{ verdict: "approve" | "reject"; notes: string; warning?: string }> {
     const reviewer = this.#deps.reviewer;
     if (reviewer === undefined) throw new Error("review requested without a reviewer");
-    const outcome = await this.#callModel({
+    const forced = reviewer.model.supportsForcedToolChoice !== false;
+    const reviewSpec: CallSpec = {
       purpose: "review",
       provider: reviewer.provider,
       model: reviewer.model,
@@ -1131,9 +1132,16 @@ class RunLoop {
         },
       ],
       tools: [verdictToolSpec()],
-      toolChoice: { name: "verdict" },
+      ...(forced ? { toolChoice: { name: "verdict" } } : {}),
       retries: 0,
-    });
+    };
+    let outcome = await this.#callModel(reviewSpec);
+    if (forced && outcome.kind === "error" && outcome.error.kind === "invalid_request") {
+      // The model may refuse a forced tool choice without the configuration saying so. Ask once
+      // more by instruction only instead of failing the review (the failure stays in the log).
+      const { toolChoice: _forced, ...unforced } = reviewSpec;
+      outcome = await this.#callModel(unforced);
+    }
 
     if (outcome.kind === "aborted") {
       await this.#result(call.id, {

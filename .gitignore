@@ -13,3 +13,6 @@ coverage/
 # Saídas locais da CLI (resultados de suup resend) e área de trabalho da demo
 .suup/
 examples/demo/workspace/
+
+# Configuração local com modelos reais (nunca versionar)
+suup.config.json

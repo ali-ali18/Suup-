@@ -14,7 +14,17 @@ export interface ModelPricing {
 /** A second opinion on `finish`, from a separate call with a fresh context. */
 export interface ReviewerConfig {
   provider: Provider;
-  model: { id: string; maxOutputTokens: number; pricing?: ModelPricing };
+  model: {
+    id: string;
+    maxOutputTokens: number;
+    pricing?: ModelPricing;
+    /**
+     * Whether the model accepts a forced `tool_choice`. Default true. Some models answer a forced
+     * choice with an HTTP 400; for those the reviewer asks for the verdict by instruction only
+     * (`auto`), which `parseVerdict` already tolerates.
+     */
+    supportsForcedToolChoice?: boolean;
+  };
   /**
    * How many times the reviewer may reject before a human is asked to break the tie.
    * Default 2.

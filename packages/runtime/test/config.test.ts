@@ -43,6 +43,42 @@ describe("configuration: valid files", () => {
     expect(config.databaseUrl).toBeUndefined();
   });
 
+  it("accepts supportsForcedToolChoice on a model and rejects a non-boolean", () => {
+    const base = {
+      providers: [{ id: "script", kind: "scripted", scriptPath: "s.json" }],
+    };
+    const ok = parseConfig(
+      rawConfig({
+        ...base,
+        models: [
+          {
+            id: "model-s",
+            provider: "script",
+            contextWindow: 10,
+            maxOutputTokens: 5,
+            supportsForcedToolChoice: false,
+          },
+        ],
+      }),
+    );
+    expect(ok.models[0]?.supportsForcedToolChoice).toBe(false);
+    const issues = issuesOf(
+      rawConfig({
+        ...base,
+        models: [
+          {
+            id: "model-s",
+            provider: "script",
+            contextWindow: 10,
+            maxOutputTokens: 5,
+            supportsForcedToolChoice: "no",
+          },
+        ],
+      }),
+    );
+    expect(issues.join("\n")).toContain("supportsForcedToolChoice");
+  });
+
   it("accepts adapter options per provider kind", () => {
     const config = parseConfig(
       rawConfig({

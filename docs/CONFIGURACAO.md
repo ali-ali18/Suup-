@@ -45,6 +45,7 @@ Opções comuns aos dois adaptadores de rede (as mesmas de `@suup/providers`): `
 | `contextWindow` | Tamanho da janela de contexto, em tokens (inteiro positivo). Dispara a compactação da conversa |
 | `maxOutputTokens` | Limite de tokens de saída por resposta (não pode passar de `contextWindow`) |
 | `pricing` (opcional) | `inputPerMTok`, `outputPerMTok`, `cachedInputPerMTok` (opcional): dólares por milhão de tokens. Sem `pricing`, o custo da execução fica em zero |
+| `supportsForcedToolChoice` (opcional, padrão `true`) | Se o modelo aceita que o pedido **force** uma ferramenta (`tool_choice`). O revisor força a ferramenta `verdict`; alguns modelos respondem a isso com erro HTTP 400. Com `false`, o revisor pede o veredito só por instrução (`auto`). Mesmo com `true`, se a API recusar a escolha forçada (`invalid_request`), o revisor repete a chamada uma vez sem forçar |
 
 Um bot guarda o provedor e o modelo com que foi criado. Se o modelo sair da configuração, ou passar a pertencer a outro provedor, criar execuções para esse bot falha com uma mensagem que cita o bot e o que falta.
 
