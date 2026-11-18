@@ -15,12 +15,25 @@ export const toolSpecSchema = z.object({
 });
 export type ToolSpec = z.infer<typeof toolSpecSchema>;
 
+/**
+ * Whether the model may, must, or must not skip calling tools:
+ * `auto` (default) the model decides; `required` it must call some tool; `{ name }` it must call
+ * that specific tool. Adapters whose vendor cannot express an option document their fallback.
+ */
+export const toolChoiceSchema = z.union([
+  z.enum(["auto", "required"]),
+  z.object({ name: z.string().min(1) }),
+]);
+export type ToolChoice = z.infer<typeof toolChoiceSchema>;
+
 export interface GenerateRequest {
   /** Model id as the provider knows it. */
   model: string;
   system: string;
   messages: Message[];
   tools: ToolSpec[];
+  /** Default `auto`. Ignored when `tools` is empty. */
+  toolChoice?: ToolChoice;
   maxOutputTokens: number;
   temperature?: number;
   /** Aborting must cancel the in-flight request; the stream then fails with kind "aborted". */

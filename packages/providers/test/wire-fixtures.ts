@@ -75,6 +75,8 @@ export interface WireFixture {
   httpError(kind: ErrorCase, echo?: string): WireError;
   /** Wire body expected for `conformanceRequest()` (the full tool round trip). */
   expectedRoundTripBody(): Record<string, unknown>;
+  /** The wire fields a forced tool choice adds to the body (`required` or a named tool). */
+  forcedToolChoiceWire(choice: "required" | { name: string }): Record<string, unknown>;
   /** Block whose echo/drop is checked, and a predicate on the request body. */
   echoData: Record<string, unknown>;
   bodyEchoes(body: Record<string, unknown>): boolean;
@@ -338,6 +340,9 @@ export const anthropicFixture: WireFixture = {
       },
     ],
   }),
+  forcedToolChoiceWire: (choice) => ({
+    tool_choice: choice === "required" ? { type: "any" } : { type: "tool", name: choice.name },
+  }),
   echoData: { type: "thinking", thinking: "hmm", signature: "sig-1" },
   bodyEchoes(body) {
     const messages = body.messages as { role: string; content: Record<string, unknown>[] }[];
@@ -575,6 +580,10 @@ export const openaiFixture: WireFixture = {
       { role: "tool", tool_call_id: "call_2", content: "Error: boom" },
       { role: "user", content: "Summarize please." },
     ],
+  }),
+  forcedToolChoiceWire: (choice) => ({
+    tool_choice:
+      choice === "required" ? "required" : { type: "function", function: { name: choice.name } },
   }),
   echoData: { reasoning_content: "hmm" },
   bodyEchoes(body) {

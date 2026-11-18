@@ -24,6 +24,17 @@ Adaptadores que implementam `Provider` (de `@suup/core`) sobre `fetch` e SSE pr�
 
 Específicos: Anthropic tem `anthropicVersion`, `betas`, `promptCache` (padrão `true`). O compatível tem `includeUsage` (padrão `true`, envia `stream_options.include_usage`), `maxTokensParam` (`max_tokens` ou `max_completion_tokens`) e `capabilities`.
 
+## Escolha de ferramenta (`GenerateRequest.toolChoice`)
+
+`auto` (padrão) não envia nada. `required` e `{ name }` viram o campo de cada fornecedor; sem ferramentas no pedido, nada é enviado.
+
+| | `required` | `{ name }` | Alternativa |
+|---|---|---|---|
+| Anthropic | `tool_choice: { type: "any" }` | `tool_choice: { type: "tool", name }` | A API recusa escolha forçada com raciocínio estendido; se `extraBody.thinking` o liga, o campo é omitido e o pedido se comporta como `auto`. |
+| Compatível | `tool_choice: "required"` | `tool_choice: { type: "function", function: { name } }` | Servidores que recusam o campo: `supportsToolChoice: false` o omite (vale `auto`). |
+
+Quem pede escolha forçada precisa tolerar uma resposta sem chamada de ferramenta (o loop trata revisor sem veredito como aprovação com aviso).
+
 ## Testes
 
 ```sh

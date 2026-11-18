@@ -104,6 +104,8 @@ export interface RunState {
    * died in between). A resumed loop uses it instead of paying for the call again.
    */
   sideResponse: SideResponse | null;
+  /** Ids of the inbox items the log already delivers (see `RunStore`). */
+  deliveredInbox: Set<string>;
 }
 
 export function createRunState(): RunState {
@@ -134,6 +136,7 @@ export function createRunState(): RunState {
     usageAnchor: null,
     charsSince: 0,
     sideResponse: null,
+    deliveredInbox: new Set(),
   };
 }
 
@@ -215,6 +218,7 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
       if (call === undefined) break;
       state.pendingCalls.splice(index, 1);
       const { content, isError, outcome } = event.payload;
+      for (const id of event.payload.inboxIds ?? []) state.deliveredInbox.add(id);
       appendUserBlock(
         state,
         {
@@ -244,6 +248,7 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
       break;
 
     case "user_message":
+      if (event.payload.inboxId !== undefined) state.deliveredInbox.add(event.payload.inboxId);
       appendUserBlock(
         state,
         { type: "text", text: renderUserMessage(event.payload.text) },
@@ -298,6 +303,7 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
       break;
 
     case "status_changed":
+      for (const id of event.payload.inboxIds ?? []) state.deliveredInbox.add(id);
       state.status = event.payload.to;
       state.statusDetail = {
         ...(event.payload.failure === undefined ? {} : { failure: event.payload.failure }),

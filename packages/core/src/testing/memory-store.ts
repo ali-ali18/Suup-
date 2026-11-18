@@ -1,14 +1,16 @@
 import { type PlanStep, type RunEventData, runEventSchema } from "../events.js";
-import type {
-  InboxItem,
-  RunOrigin,
-  RunRecord,
-  RunResult,
-  RunStatus,
-  RunStore,
-  StatusChange,
-  StoredEvent,
-  UsageDelta,
+import {
+  type InboxItem,
+  type InboxItemInput,
+  LeaseLostError,
+  type RunOrigin,
+  type RunRecord,
+  type RunResult,
+  type RunStatus,
+  type RunStore,
+  type StatusChange,
+  type StoredEvent,
+  type UsageDelta,
 } from "../loop/store.js";
 
 export interface CreateRunInput {
@@ -28,10 +30,12 @@ export interface InMemoryRunStoreOptions {
 interface Entry {
   record: RunRecord;
   events: StoredEvent[];
-  inbox: InboxItem[];
+  inbox: { item: InboxItem; acked: boolean }[];
   failure?: { origin: string; detail: string };
   result?: RunResult;
   heartbeats: number;
+  /** Who holds the run and when the lease was last renewed (epoch ms of the store's clock). */
+  lease: { workerId: string; at: number } | null;
 }
 
 /**
@@ -42,6 +46,7 @@ export class InMemoryRunStore implements RunStore {
   readonly #runs = new Map<string, Entry>();
   readonly #clock: () => Date;
   #nextId = 1;
+  #nextInboxId = 1;
 
   constructor(options: InMemoryRunStoreOptions = {}) {
     this.#clock = options.clock ?? (() => new Date());
@@ -67,13 +72,28 @@ export class InMemoryRunStore implements RunStore {
       createdAt: now,
       startedAt: now,
     };
-    this.#runs.set(id, { record, events: [], inbox: [], heartbeats: 0 });
+    this.#runs.set(id, { record, events: [], inbox: [], heartbeats: 0, lease: null });
     return structuredClone(record);
   }
 
-  /** Posts something to the run from outside, as the server would. */
-  postInbox(runId: string, item: InboxItem): void {
-    this.#entry(runId).inbox.push(structuredClone(item));
+  /** Posts something to the run from outside, as the server would. Returns the item's id. */
+  postInbox(runId: string, item: InboxItemInput): string {
+    const entry = this.#entry(runId);
+    const id = String(this.#nextInboxId++);
+    entry.inbox.push({ item: { ...structuredClone(item), id }, acked: false });
+    // Same as the database store: an item posted to a run that waits for the user makes it
+    // claimable again.
+    if (entry.record.status === "waiting_user") this.#requeue(entry);
+    return id;
+  }
+
+  /** Every item ever posted to the run, with whether it was acknowledged. For test assertions. */
+  inboxLog(runId: string): { id: string; kind: InboxItem["kind"]; acked: boolean }[] {
+    return this.#entry(runId).inbox.map((e) => ({
+      id: e.item.id,
+      kind: e.item.kind,
+      acked: e.acked,
+    }));
   }
 
   /** How many times the loop renewed its lease. */
@@ -114,6 +134,16 @@ export class InMemoryRunStore implements RunStore {
     else entry.failure = { ...change.failure };
     if (change.result === undefined) delete entry.result;
     else entry.result = structuredClone(change.result);
+    if (change.to === "done" || change.to === "failed" || change.to === "cancelled") {
+      entry.lease = null;
+    }
+    if (
+      change.requeueIfInbox === true &&
+      change.to === "waiting_user" &&
+      entry.inbox.some((e) => !e.acked)
+    ) {
+      this.#requeue(entry);
+    }
     return true;
   }
 
@@ -129,13 +159,112 @@ export class InMemoryRunStore implements RunStore {
     record.costUsd += usage.costUsd ?? 0;
   }
 
-  async drainInbox(runId: string): Promise<InboxItem[]> {
-    const entry = this.#entry(runId);
-    return entry.inbox.splice(0, entry.inbox.length);
+  async peekInbox(runId: string): Promise<InboxItem[]> {
+    return this.#entry(runId)
+      .inbox.filter((e) => !e.acked)
+      .map((e) => structuredClone(e.item));
+  }
+
+  async ackInbox(runId: string, ids: readonly string[]): Promise<void> {
+    const wanted = new Set(ids);
+    for (const e of this.#entry(runId).inbox) if (wanted.has(e.item.id)) e.acked = true;
   }
 
   async heartbeat(runId: string): Promise<void> {
     this.#entry(runId).heartbeats += 1;
+  }
+
+  #requeue(entry: Entry): void {
+    entry.record.status = "queued";
+    entry.lease = null;
+  }
+
+  // --- the queue, as the database has it (`runs` with `FOR UPDATE SKIP LOCKED`) ----------------
+
+  /** Takes the oldest queued run for `workerId`: status `running`, lease set. */
+  claimNext(workerId: string): RunRecord | null {
+    let oldest: Entry | undefined;
+    for (const entry of this.#runs.values()) {
+      if (entry.record.status !== "queued") continue;
+      if (oldest === undefined || entry.record.createdAt < oldest.record.createdAt) oldest = entry;
+    }
+    if (oldest === undefined) return null;
+    oldest.record.status = "running";
+    oldest.lease = { workerId, at: this.#clock().getTime() };
+    return structuredClone(oldest.record);
+  }
+
+  /** Gives a run the worker holds back to the queue. False if the worker does not hold it. */
+  releaseLease(runId: string, workerId: string): boolean {
+    const entry = this.#entry(runId);
+    if (entry.lease?.workerId !== workerId || entry.record.status !== "running") return false;
+    this.#requeue(entry);
+    return true;
+  }
+
+  /** Running runs whose lease was last renewed more than `olderThanMs` ago go back to the queue. */
+  requeueStale(olderThanMs: number): string[] {
+    const cutoff = this.#clock().getTime() - olderThanMs;
+    const out: string[] = [];
+    for (const [id, entry] of this.#runs) {
+      if (entry.record.status === "running" && entry.lease !== null && entry.lease.at < cutoff) {
+        this.#requeue(entry);
+        out.push(id);
+      }
+    }
+    return out;
+  }
+
+  /** Hands the lease on the run to `workerId`, as if it had claimed it. */
+  assignLease(runId: string, workerId: string): void {
+    this.#entry(runId).lease = { workerId, at: this.#clock().getTime() };
+  }
+
+  /** The worker holding the run, if any. */
+  leaseHolder(runId: string): string | null {
+    return this.#entry(runId).lease?.workerId ?? null;
+  }
+
+  /**
+   * The store as one worker sees it, fenced like the database store: every write, and
+   * `heartbeat`, throws `LeaseLostError` unless the run is leased to that worker.
+   */
+  forWorker(workerId: string): RunStore {
+    const check = (runId: string): Entry => {
+      const entry = this.#entry(runId);
+      if (entry.lease?.workerId !== workerId) throw new LeaseLostError(runId);
+      return entry;
+    };
+    return {
+      getRun: (runId) => this.getRun(runId),
+      listEvents: (runId) => this.listEvents(runId),
+      peekInbox: (runId) => this.peekInbox(runId),
+      appendEvent: async (runId, event) => {
+        check(runId);
+        return this.appendEvent(runId, event);
+      },
+      setStatus: async (runId, change) => {
+        check(runId);
+        return this.setStatus(runId, change);
+      },
+      updatePlan: async (runId, plan) => {
+        check(runId);
+        return this.updatePlan(runId, plan);
+      },
+      addUsage: async (runId, usage) => {
+        check(runId);
+        return this.addUsage(runId, usage);
+      },
+      ackInbox: async (runId, ids) => {
+        check(runId);
+        return this.ackInbox(runId, ids);
+      },
+      heartbeat: async (runId) => {
+        const entry = check(runId);
+        entry.lease = { workerId, at: this.#clock().getTime() };
+        entry.heartbeats += 1;
+      },
+    };
   }
 
   #entry(runId: string): Entry {

@@ -1,3 +1,4 @@
+import { LeaseLostError } from "@suup/core";
 import { z } from "zod";
 import type { Db } from "./client.js";
 import { type EventPayload, eventPayloadSchema, type RunEvent } from "./types.js";
@@ -22,6 +23,15 @@ function mapRunEvent(row: RunEventRow): RunEvent {
   };
 }
 
+export interface AppendRunEventOptions {
+  /**
+   * Fencing: append only while the run is leased to this worker; otherwise throw
+   * `LeaseLostError` and write nothing. The check and the insert are in the same transaction,
+   * under the same row lock.
+   */
+  leaseHolder?: string;
+}
+
 export class RunNotFoundError extends Error {
   constructor(readonly runId: string) {
     super(`Run ${runId} not found`);
@@ -33,18 +43,25 @@ export class RunNotFoundError extends Error {
  * Appends an event with the next `seq` (1, 2, 3, ... without gaps) for the run. Appends to the
  * same run are serialized by locking the run row (`FOR NO KEY UPDATE`, which does not block
  * foreign-key checks from other tables) inside the transaction, so concurrent callers queue up
- * instead of racing for the same `seq`. Throws `RunNotFoundError` for an unknown run.
+ * instead of racing for the same `seq`. Throws `RunNotFoundError` for an unknown run, and
+ * `LeaseLostError` when `opts.leaseHolder` is given and does not hold the lease.
  */
 export async function appendRunEvent(
   db: Db,
   runId: string,
   type: string,
   payload: EventPayload = {},
+  opts: AppendRunEventOptions = {},
 ): Promise<RunEvent> {
   const body = eventPayloadSchema.parse(payload);
   return db.sql.begin(async (tx) => {
-    const locked = await tx`select 1 from runs where id = ${runId} for no key update`;
-    if (locked.length === 0) throw new RunNotFoundError(runId);
+    const locked = await tx<{ locked_by: string | null }[]>`
+      select locked_by from runs where id = ${runId} for no key update`;
+    const lock = locked[0];
+    if (lock === undefined) throw new RunNotFoundError(runId);
+    if (opts.leaseHolder !== undefined && lock.locked_by !== opts.leaseHolder) {
+      throw new LeaseLostError(runId);
+    }
     const [row] = await tx<RunEventRow[]>`
       insert into run_events (run_id, seq, type, payload)
       values (

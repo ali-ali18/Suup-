@@ -35,6 +35,8 @@ interface Scenario {
   bot?: Parameters<typeof createRig>[0]["bot"];
   /** Posted when the run stops in waiting_user. */
   answer?: string;
+  /** Posted by the user while the model produces response number `atCall` (0-based). */
+  midRun?: { atCall: number; text: string };
 }
 
 const scenarios: Scenario[] = [
@@ -63,6 +65,29 @@ const scenarios: Scenario[] = [
       ),
     ],
     reviewerScript: [verdict("reject", "Show me the file was checked."), verdict("approve")],
+  },
+  {
+    name: "a user message arrives while the bot works",
+    script: [
+      use(planCall("c1", [step("s1", "in_progress")])),
+      use(call("c2", "echo", { text: "x" })),
+      use(call("c3", "counter")),
+      use(planCall("c4", [step("s1", "done")])),
+      use(finishCall("c5", "Done, and I took your note into account.")),
+    ],
+    midRun: { atCall: 1, text: "Also mention the date." },
+  },
+  {
+    name: "a user message while working, then an escalate answered by the user",
+    script: [
+      use(planCall("c1", [step("s1", "in_progress")])),
+      use(call("c2", "echo", { text: "x" })),
+      use(call("c3", "escalate", { question: "Which colour?" })),
+      use(planCall("c4", [step("s1", "done")])),
+      use(finishCall("c5", "Went with green.")),
+    ],
+    midRun: { atCall: 1, text: "Keep it short." },
+    answer: "Green.",
   },
   {
     name: "escalate, an answer, and a finish",
@@ -105,16 +130,22 @@ const scenarios: Scenario[] = [
 ];
 
 /** What a person would compare: the log without timings and without the (bulky) requests. */
-function project(events: readonly StoredEvent[]): unknown[] {
-  return events
-    .filter((e) => e.type !== "model_request")
-    .map((e) => {
-      const payload: Record<string, unknown> = { ...e.payload };
-      delete payload.durationMs;
-      // Positions shift when a request was logged twice (died before its response).
-      delete payload.uptoSeq;
-      return { type: e.type, ...payload };
-    });
+function project(events: readonly StoredEvent[], ignoreMidRunMessage = false): unknown[] {
+  return (
+    events
+      .filter((e) => e.type !== "model_request")
+      // A message posted during a model call that a crash then lost is already waiting when the
+      // next life starts, so it may be delivered one safe point earlier. When is not what is
+      // compared here: that it is delivered exactly once is checked separately.
+      .filter((e) => !(ignoreMidRunMessage && e.type === "user_message"))
+      .map((e) => {
+        const payload: Record<string, unknown> = { ...e.payload };
+        delete payload.durationMs;
+        // Positions shift when a request was logged twice (died before its response).
+        delete payload.uptoSeq;
+        return { type: e.type, ...payload };
+      })
+  );
 }
 
 const isInterrupted = (item: unknown): boolean =>
@@ -130,6 +161,27 @@ function countResponses(events: readonly StoredEvent[], who: "main" | "review"):
       e.type === "model_response" &&
       (who === "main" ? e.payload.purpose !== "review" : e.payload.purpose === "review"),
   ).length;
+}
+
+const posted = new WeakSet<object>();
+
+/** The scripted steps from `offset` on, with the mid-run user message posted once, on time. */
+function withMidRun(rig: Rig, scenario: Scenario, steps: FakeStep[], offset: number): FakeStep[] {
+  const { midRun } = scenario;
+  if (midRun === undefined) return steps;
+  return steps.map((original, i) =>
+    offset + i !== midRun.atCall
+      ? original
+      : async (req) => {
+          // A resumed life may replay this call; the user only wrote once.
+          if (!posted.has(rig.store)) {
+            posted.add(rig.store);
+            rig.store.postInbox(rig.runId, { kind: "user_message", text: midRun.text });
+          }
+          if (original instanceof Error) throw original;
+          return typeof original === "function" ? original(req) : original;
+        },
+  );
 }
 
 /** Runs (or resumes) the rig's run to the end, posting `answer` when it waits for the user. */
@@ -152,7 +204,11 @@ async function drive(rig: Rig, scenario: Scenario): Promise<string> {
           };
     const status = await runLoop(
       {
-        ...rig.deps({ provider: new FakeProvider(scenario.script.slice(mainDone)) }),
+        ...rig.deps({
+          provider: new FakeProvider(
+            withMidRun(rig, scenario, scenario.script.slice(mainDone), mainDone),
+          ),
+        }),
         ...(reviewer === undefined ? {} : { reviewer }),
       },
       rig.runId,
@@ -173,6 +229,36 @@ async function drive(rig: Rig, scenario: Scenario): Promise<string> {
   throw new Error("scenario did not settle");
 }
 
+/** Every inbox item was delivered by exactly one event and acknowledged; texts appear once. */
+async function expectDeliveredOnce(rig: Rig, scenario: Scenario, label: string): Promise<void> {
+  const events = await rig.events();
+  const seen = new Map<string, number>();
+  const count = (id: string) => seen.set(id, (seen.get(id) ?? 0) + 1);
+  for (const e of events) {
+    if (e.type === "user_message" && e.payload.inboxId !== undefined) count(e.payload.inboxId);
+    if (e.type === "tool_result") for (const id of e.payload.inboxIds ?? []) count(id);
+    if (e.type === "status_changed") for (const id of e.payload.inboxIds ?? []) count(id);
+  }
+  const log = rig.store.inboxLog(rig.runId);
+  expect(log.length, `${label}: items posted`).toBe(
+    (scenario.midRun === undefined ? 0 : 1) + (scenario.answer === undefined ? 0 : 1),
+  );
+  for (const item of log) {
+    expect(seen.get(item.id), `${label}: inbox item ${item.id} delivered`).toBe(1);
+    expect(item.acked, `${label}: inbox item ${item.id} acknowledged`).toBe(true);
+  }
+  expect(await rig.store.peekInbox(rig.runId), label).toEqual([]);
+  for (const text of [scenario.midRun?.text, scenario.answer]) {
+    if (text === undefined) continue;
+    const carriers = events.filter(
+      (e) =>
+        (e.type === "user_message" && e.payload.text === text) ||
+        (e.type === "tool_result" && e.payload.content === text),
+    );
+    expect(carriers, `${label}: "${text}" in the log`).toHaveLength(1);
+  }
+}
+
 function makeRig(scenario: Scenario): Rig {
   return createRig({
     script: scenario.script,
@@ -189,8 +275,9 @@ describe("resume: kill the process after every possible event", () => {
       const base = makeRig(scenario);
       const baseStatus = await drive(base, scenario);
       const baseEvents = await base.events();
-      const baseProjection = project(baseEvents);
+      const baseProjection = project(baseEvents, scenario.midRun !== undefined);
       expect(baseStatus).toBe("done");
+      await expectDeliveredOnce(base, scenario, "uninterrupted run");
 
       let interruptedRuns = 0;
       let crashes = 0;
@@ -199,7 +286,13 @@ describe("resume: kill the process after every possible event", () => {
 
         // First life: dies after `n` appended events.
         try {
-          await runLoop(rig.deps({ store: new CrashingStore(rig.store, n) }), rig.runId);
+          await runLoop(
+            rig.deps({
+              store: new CrashingStore(rig.store, n),
+              provider: new FakeProvider(withMidRun(rig, scenario, scenario.script, 0)),
+            }),
+            rig.runId,
+          );
         } catch (error) {
           if (!(error instanceof SimulatedCrash)) throw error;
           crashes += 1;
@@ -209,8 +302,10 @@ describe("resume: kill the process after every possible event", () => {
         const status = await drive(rig, scenario);
         expect(status, `status after a crash at event ${n}`).toBe("done");
 
-        const resumed = project(await rig.events());
+        const resumed = project(await rig.events(), scenario.midRun !== undefined);
+
         const label = `crash after ${n} events`;
+        await expectDeliveredOnce(rig, scenario, label);
         expect(resumed.length, label).toBe(baseProjection.length);
         let interrupted = 0;
         resumed.forEach((item, i) => {
@@ -250,6 +345,73 @@ describe("resume: kill the process after every possible event", () => {
       ) {
         expect(interruptedRuns).toBeGreaterThan(0);
       }
+    });
+  }
+
+  for (const scenario of scenarios.filter((sc) => sc.answer !== undefined)) {
+    it(`delivers the user's answer exactly once when the process dies at any point after it was posted: ${scenario.name}`, async () => {
+      const base = makeRig(scenario);
+      await drive(base, scenario);
+      const baseEvents = await base.events();
+      const baseProjection = project(baseEvents, scenario.midRun !== undefined);
+
+      // The run up to the first wait for the user, and the number of events at that point.
+      const reachWait = async (): Promise<Rig> => {
+        const rig = makeRig(scenario);
+        const status = await runLoop(
+          rig.deps({ provider: new FakeProvider(withMidRun(rig, scenario, scenario.script, 0)) }),
+          rig.runId,
+        );
+        expect(status).toBe("waiting_user");
+        return rig;
+      };
+      const waitingAt = (await (await reachWait()).events()).length;
+
+      let crashes = 0;
+      for (let m = 0; m <= baseEvents.length - waitingAt; m++) {
+        const rig = await reachWait();
+        const answer = scenario.answer as string;
+        rig.store.postInbox(rig.runId, { kind: "user_message", text: answer });
+        const events = await rig.events();
+        const mainDone = countResponses(events, "main");
+        const reviewDone = countResponses(events, "review");
+        const reviewer =
+          scenario.reviewerScript === undefined
+            ? undefined
+            : {
+                provider: new FakeProvider(scenario.reviewerScript.slice(reviewDone), {
+                  id: "reviewer",
+                }),
+                model: { id: "reviewer-model", maxOutputTokens: 1024 },
+                ...(scenario.maxRejections === undefined
+                  ? {}
+                  : { maxRejections: scenario.maxRejections }),
+              };
+        try {
+          await runLoop(
+            {
+              ...rig.deps({
+                store: new CrashingStore(rig.store, m),
+                provider: new FakeProvider(
+                  withMidRun(rig, scenario, scenario.script.slice(mainDone), mainDone),
+                ),
+              }),
+              ...(reviewer === undefined ? {} : { reviewer }),
+            },
+            rig.runId,
+          );
+        } catch (error) {
+          if (!(error instanceof SimulatedCrash)) throw error;
+          crashes += 1;
+        }
+        const label = `answer posted, then dying after ${m} more events`;
+        expect(await drive(rig, scenario), label).toBe("done");
+        await expectDeliveredOnce(rig, scenario, label);
+        const resumed = project(await rig.events(), scenario.midRun !== undefined);
+        expect(resumed.length, label).toBe(baseProjection.length);
+        expect(validateConversation(rebuildState(await rig.events()).messages), label).toEqual([]);
+      }
+      expect(crashes).toBeGreaterThan(3);
     });
   }
 

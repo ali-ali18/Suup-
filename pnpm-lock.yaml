@@ -31,6 +31,9 @@ importers:
 
   packages/db:
     dependencies:
+      '@suup/core':
+        specifier: workspace:*
+        version: link:../core
       postgres:
         specifier: ^4.1.1
         version: 4.1.1

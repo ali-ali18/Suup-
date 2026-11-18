@@ -384,6 +384,29 @@ describe("anthropic adapter", () => {
     });
   });
 
+  describe("tool choice fallback", () => {
+    const req = baseRequest({
+      tools: [{ name: "t", description: "d", inputSchema: { type: "object" } }],
+      toolChoice: { name: "t" },
+    });
+
+    it("drops a forced choice while extended thinking is enabled (the API would reject it)", async () => {
+      const { provider, script } = make([{ body: start() + textBlock("a") + end() }], {
+        extraBody: { thinking: { type: "enabled", budget_tokens: 1024 } },
+      });
+      await run(provider, req);
+      expect(script.calls[0]?.body).not.toHaveProperty("tool_choice");
+    });
+
+    it("keeps the forced choice when thinking is explicitly disabled", async () => {
+      const { provider, script } = make([{ body: start() + textBlock("a") + end() }], {
+        extraBody: { thinking: { type: "disabled" } },
+      });
+      await run(provider, req);
+      expect(script.calls[0]?.body).toMatchObject({ tool_choice: { type: "tool", name: "t" } });
+    });
+  });
+
   it("validates its config", () => {
     expect(() => createAnthropicProvider({ id: "", apiKey: "k" })).toThrow(
       /Invalid provider config/,

@@ -1,12 +1,24 @@
 export {
+  FAILURE_ORIGINS,
+  type FailureOrigin,
+  failureOriginSchema,
+  MODEL_CALL_PURPOSES,
+  type ModelCallPurpose,
   type PlanStep,
   parseRunEvent,
   planStepSchema,
   RUN_EVENT_TYPES,
+  RUN_ORIGINS,
   type RunEventData,
   type RunEventPayload,
   type RunEventType,
+  type RunOrigin,
+  type RunResult,
+  type RunStatus,
   runEventSchema,
+  runOriginSchema,
+  runResultSchema,
+  runStatusSchema,
   toolOutcomeSchema,
 } from "./events.js";
 export * from "./loop/index.js";
@@ -45,7 +57,9 @@ export {
   STOP_REASONS,
   type StopReason,
   stopReasonSchema,
+  type ToolChoice,
   type ToolSpec,
+  toolChoiceSchema,
   toolSpecSchema,
   type Usage,
   usageSchema,
@@ -63,6 +77,22 @@ export {
   type ToolRegistryOptions,
 } from "./registry.js";
 export {
+  type ComparableEvent,
+  type Divergence,
+  type RecordedEvent,
+  ReplayInvoker,
+  type ReplayInvokerOptions,
+  type ReplayMissing,
+  ReplayMissingError,
+  type ReplayOptions,
+  ReplayProvider,
+  type ReplayProviderOptions,
+  type ReplayReport,
+  type RequestChange,
+  type RequestDiff,
+  replayRun,
+} from "./replay.js";
+export {
   type DirEntry,
   defineTool,
   type ExecOptions,
@@ -76,3 +106,11 @@ export {
   type ToolRisk,
   WorkspaceEscapeError,
 } from "./tool.js";
+export {
+  type RunEnd,
+  type RunQueue,
+  systemClock,
+  Worker,
+  type WorkerClock,
+  type WorkerOptions,
+} from "./worker.js";

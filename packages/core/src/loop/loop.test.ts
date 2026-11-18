@@ -3,6 +3,7 @@ import { z } from "zod";
 import { validateConversation } from "../messages.js";
 import { ProviderError } from "../provider.js";
 import {
+  CrashingStore,
   call,
   createRig,
   eventsOfType,
@@ -13,6 +14,7 @@ import {
   problemsInRequests,
   REMINDER_MARK,
   type Rig,
+  SimulatedCrash,
   say,
   testTools,
   textOf,
@@ -21,6 +23,7 @@ import {
 import { defineTool } from "../tool.js";
 import { runLoop } from "./loop.js";
 import { rebuildState } from "./state.js";
+import { LeaseLostError, type RunStore } from "./store.js";
 
 /** Every request the provider got must be valid and carry the state reminder. */
 function expectCleanRequests(rig: Rig): void {
@@ -553,7 +556,11 @@ describe("runLoop: inbox", () => {
     expect(await rig.run()).toBe("cancelled");
     expect(rig.provider.calls).toBe(1);
     expect((await rig.record()).status).toBe("cancelled");
-    expect(lastStatus(await rig.events())).toEqual({ from: "running", to: "cancelled" });
+    expect(lastStatus(await rig.events())).toEqual({
+      from: "running",
+      to: "cancelled",
+      inboxIds: ["1"],
+    });
   });
 
   it("a user message resets the stalled counters", async () => {
@@ -1006,4 +1013,91 @@ describe("runLoop: state reminder", () => {
       expect(event.payload.model).toBe("model-x");
     });
   });
+});
+
+describe("runLoop: two-phase inbox", () => {
+  it("acknowledges items only after the events that deliver them", async () => {
+    const rig = createRig({ script: [use(call("c1", "echo", { text: "x" })), say("ok")] });
+    const id = rig.store.postInbox(rig.runId, { kind: "user_message", text: "hello" });
+    const order: string[] = [];
+    const store = rig.store;
+    const spy: RunStore = new Proxy(store, {
+      get(target, prop, receiver) {
+        const value = Reflect.get(target, prop, receiver) as unknown;
+        if (prop === "ackInbox") {
+          return async (runId: string, ids: readonly string[]) => {
+            order.push(
+              `ack ${ids.join(",")} after ${eventTypes(await target.listEvents(runId)).length} events`,
+            );
+            return target.ackInbox(runId, ids);
+          };
+        }
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    expect(await runLoop(rig.deps({ store: spy }), rig.runId)).toBe("done");
+    const events = await rig.events();
+    const delivered = eventsOfType(events, "user_message");
+    expect(delivered).toHaveLength(1);
+    expect(delivered[0]?.payload).toEqual({ text: "hello", inboxId: id });
+    // run_started, user_message: the ack came when both were in the log.
+    expect(order[0]).toBe(`ack ${id} after 2 events`);
+  });
+
+  it("a cancellation logged but not acknowledged before a crash is not lost or repeated", async () => {
+    const rig = createRig({ script: [say("never")] });
+    const id = rig.store.postInbox(rig.runId, { kind: "stop" });
+    // run_started, status_changed(cancelled): then the process dies before the ack.
+    await expect(
+      runLoop(rig.deps({ store: new CrashingStore(rig.store, 2) }), rig.runId),
+    ).rejects.toBeInstanceOf(SimulatedCrash);
+    expect(rig.store.inboxLog(rig.runId)).toEqual([{ id, kind: "stop", acked: false }]);
+
+    expect(await rig.run()).toBe("cancelled");
+    expect(rig.provider.calls).toBe(0);
+    expect(rig.store.inboxLog(rig.runId)).toEqual([{ id, kind: "stop", acked: true }]);
+    const changes = eventsOfType(await rig.events(), "status_changed");
+    expect(changes.map((e) => e.payload)).toEqual([
+      { from: "running", to: "cancelled", inboxIds: [id] },
+    ]);
+  });
+});
+
+describe("runLoop: lease lost", () => {
+  /** A store whose lease disappears after `lives` successful calls of `method`. */
+  const losing = (rig: Rig, method: "heartbeat" | "appendEvent", lives: number): RunStore => {
+    let left = lives;
+    return new Proxy(rig.store, {
+      get(target, prop, receiver) {
+        const value = Reflect.get(target, prop, receiver) as unknown;
+        if (prop === method) {
+          return async (...args: unknown[]) => {
+            if (left-- <= 0) throw new LeaseLostError(rig.runId);
+            return (value as (...a: unknown[]) => Promise<unknown>).apply(target, args);
+          };
+        }
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+  };
+
+  for (const method of ["heartbeat", "appendEvent"] as const) {
+    it(`stops without writing anything more when ${method} reports the lease lost`, async () => {
+      const rig = createRig({
+        script: [
+          use(call("c1", "echo", { text: "x" })),
+          use(call("c2", "echo", { text: "y" })),
+          say("ok"),
+        ],
+      });
+      const store = losing(rig, method, method === "heartbeat" ? 2 : 4);
+      await expect(runLoop(rig.deps({ store }), rig.runId)).rejects.toBeInstanceOf(LeaseLostError);
+      const after = await rig.events();
+      // No failure, no status, no "interrupted" result was written on the way out.
+      expect(eventsOfType(after, "status_changed")).toHaveLength(0);
+      expect((await rig.record()).status).toBe("running");
+      // Another worker can take over and finish from the log.
+      expect(await rig.run()).toBe("done");
+    });
+  }
 });

@@ -54,6 +54,13 @@ describe("reviewer", () => {
       (e) => e.payload.purpose === "review",
     );
     expect(reviewRequest?.payload.model).toBe("reviewer-model");
+    // The verdict is forced, on the wire request and in the log; agent turns leave it at auto.
+    expect(reviewRequest?.payload.toolChoice).toEqual({ name: "verdict" });
+    expect(rig.reviewerProvider?.requests[0]?.toolChoice).toEqual({ name: "verdict" });
+    for (const e of eventsOfType(events, "model_request")) {
+      if (e.payload.purpose === undefined) expect(e.payload).not.toHaveProperty("toolChoice");
+    }
+    expect(rig.provider.requests.every((r) => r.toolChoice === undefined)).toBe(true);
 
     // Fresh context: one message, no conversation history, only the verdict tool.
     const request = rig.reviewerProvider?.requests[0];

@@ -302,9 +302,13 @@ export class CrashingStore implements RunStore {
     this.#alive();
     return this.#inner.addUsage(runId, usage);
   }
-  async drainInbox(runId: string): Promise<InboxItem[]> {
+  async peekInbox(runId: string): Promise<InboxItem[]> {
     this.#alive();
-    return this.#inner.drainInbox(runId);
+    return this.#inner.peekInbox(runId);
+  }
+  async ackInbox(runId: string, ids: readonly string[]) {
+    this.#alive();
+    return this.#inner.ackInbox(runId, ids);
   }
   async heartbeat(runId: string) {
     this.#alive();

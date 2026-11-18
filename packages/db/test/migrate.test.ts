@@ -14,14 +14,13 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("migrate"), () => {
 
   it("applies pending migrations, records them, and is idempotent", async () => {
     const first = await migrate(ctx.db);
-    expect(first).toEqual(["0001_init.sql"]);
+    expect(first).toEqual(["0001_init.sql", "0002_inbox_and_model_origin.sql"]);
 
     const second = await migrate(ctx.db);
     expect(second).toEqual([]);
 
     const rows = await ctx.db.sql`select name, checksum from schema_migrations`;
-    expect(rows).toHaveLength(1);
-    expect(rows[0]?.name).toBe("0001_init.sql");
+    expect(rows.map((r) => r.name)).toEqual(["0001_init.sql", "0002_inbox_and_model_origin.sql"]);
     expect(rows[0]?.checksum).toMatch(/^[0-9a-f]{64}$/);
 
     const tables = await ctx.db.sql<{ table_name: string }[]>`
@@ -30,6 +29,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("migrate"), () => {
     expect(tables.map((t) => t.table_name)).toEqual([
       "bots",
       "run_events",
+      "run_inbox",
       "runs",
       "schema_migrations",
     ]);
@@ -52,16 +52,20 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("migrate"), () => {
   it("applies a new file added after the first run, each in its own transaction", async () => {
     const dir = await mkdtemp(join(tmpdir(), "suup-migrations-"));
     await cp(MIGRATIONS_DIR, dir, { recursive: true });
-    await writeFile(join(dir, "0002_ok.sql"), "create table extra_ok (id int);\n");
+    await writeFile(join(dir, "0900_ok.sql"), "create table extra_ok (id int);\n");
     await writeFile(
-      join(dir, "0003_broken.sql"),
+      join(dir, "0901_broken.sql"),
       "create table extra_rolled_back (id int);\nselect no_such_function();\n",
     );
 
-    await expect(migrate(ctx.db, dir)).rejects.toThrow(/0003_broken\.sql failed/);
+    await expect(migrate(ctx.db, dir)).rejects.toThrow(/0901_broken\.sql failed/);
 
     const names = await ctx.db.sql<{ name: string }[]>`select name from schema_migrations`;
-    expect(names.map((n) => n.name).sort()).toEqual(["0001_init.sql", "0002_ok.sql"]);
+    expect(names.map((n) => n.name).sort()).toEqual([
+      "0001_init.sql",
+      "0002_inbox_and_model_origin.sql",
+      "0900_ok.sql",
+    ]);
     const [t] = await ctx.db.sql<{ ok: string | null; rolled: string | null }[]>`
       select to_regclass('extra_ok')::text as ok, to_regclass('extra_rolled_back')::text as rolled`;
     expect(t?.ok).not.toBeNull();
@@ -71,9 +75,10 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("migrate"), () => {
   it("serializes concurrent migrators with the advisory lock", async () => {
     const fresh = await ctx.db.sql`select 1`; // keep pool warm
     expect(fresh).toHaveLength(1);
-    await ctx.db.sql`drop table schema_migrations, run_events, runs, bots, extra_ok cascade`;
+    await ctx.db
+      .sql`drop table schema_migrations, run_inbox, run_events, runs, bots, extra_ok cascade`;
     await ctx.db.sql`drop function set_updated_at(), run_events_append_only()`;
     const results = await Promise.all([migrate(ctx.db), migrate(ctx.db), migrate(ctx.db)]);
-    expect(results.flat()).toEqual(["0001_init.sql"]);
+    expect(results.flat()).toEqual(["0001_init.sql", "0002_inbox_and_model_origin.sql"]);
   });
 });

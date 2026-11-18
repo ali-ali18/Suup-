@@ -14,6 +14,7 @@
     "migrations"
   ],
   "dependencies": {
+    "@suup/core": "workspace:*",
     "postgres": "^4.1.1",
     "zod": "^4.6.7"
   }

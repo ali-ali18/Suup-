@@ -1,8 +1,13 @@
-import type { FailureOrigin, PlanStep, RunEventData, RunResult, RunStatus } from "../events.js";
+import type {
+  FailureOrigin,
+  PlanStep,
+  RunEventData,
+  RunOrigin,
+  RunResult,
+  RunStatus,
+} from "../events.js";
 
-export type { FailureOrigin, RunResult, RunStatus };
-
-export type RunOrigin = "user" | "routine" | "delegation" | "proactive";
+export type { FailureOrigin, RunOrigin, RunResult, RunStatus };
 
 /** The run as the store knows it. The conversation is NOT here: it is rebuilt from events. */
 export interface RunRecord {
@@ -27,8 +32,29 @@ export interface RunRecord {
 /** An event as stored: the data plus the position and time the store gave it. */
 export type StoredEvent = RunEventData & { seq: number; createdAt: Date };
 
-/** Something posted to a run from outside while it works. Each item is delivered once. */
-export type InboxItem = { kind: "user_message"; text: string } | { kind: "stop" };
+/** What the server posts to a run from outside while it works. */
+export type InboxItemInput = { kind: "user_message"; text: string } | { kind: "stop" };
+
+/**
+ * A posted item as the loop sees it. `id` is assigned by the store when the item is posted and
+ * stays the same however many times the item is peeked.
+ */
+export type InboxItem = InboxItemInput & { id: string };
+
+/**
+ * Thrown by a store when the worker no longer holds the lease on a run (it was presumed dead and
+ * another worker took the run over). `runLoop` lets it through untouched: the loop stops at once
+ * and writes nothing more, so two workers never write to the same run.
+ */
+export class LeaseLostError extends Error {
+  override readonly name = "LeaseLostError";
+  constructor(
+    readonly runId: string,
+    detail = "the lease on the run is no longer held by this worker",
+  ) {
+    super(`${detail} (run ${runId})`);
+  }
+}
 
 export interface UsageDelta {
   turns?: number;
@@ -45,6 +71,14 @@ export interface StatusChange {
   failure?: { origin: FailureOrigin; detail: string };
   /** Only with `to: "done"`. */
   result?: RunResult;
+  /**
+   * Only with `to: "waiting_user"`, set by the loop when it pauses for the user. If an inbox item
+   * is already pending (posted after the loop last looked, so the post did not see a waiting
+   * run), the store must not leave the run waiting for ever: it makes the run claimable again
+   * (status `queued`, lease cleared) instead. The item and the pause are then serialized by the
+   * store, whichever comes first. The change still reports `true`.
+   */
+  requeueIfInbox?: boolean;
 }
 
 /**
@@ -52,10 +86,14 @@ export interface StatusChange {
  *
  * Contract notes for implementers:
  * - `appendEvent` is append-only and assigns increasing `seq` values per run.
- * - `drainInbox` must be safe against a crash between returning items and the loop recording them
- *   as events: an implementation backed by a database should only treat an item as consumed once
- *   the matching `user_message` event exists (or hand unacknowledged items out again). The
- *   in-memory store simply removes them.
+ * - The inbox is two-phase. `peekInbox` returns the items not acknowledged yet, oldest first,
+ *   WITHOUT consuming them: peeking twice gives the same items with the same ids. The loop calls
+ *   `ackInbox` only after the events that deliver the items are recorded (`user_message`, the
+ *   answer to `escalate`, or the cancellation), and those events carry the item ids. A crash in
+ *   between therefore never loses an item, and the next loop sees the ids in the log, acks the
+ *   items and does not deliver them again. `ackInbox` is idempotent and ignores unknown ids.
+ * - `heartbeat` renews the worker's lease and throws `LeaseLostError` when it is no longer held.
+ *   A store that fences writes may throw it from any other method too.
  */
 export interface RunStore {
   getRun(runId: string): Promise<RunRecord>;
@@ -66,7 +104,10 @@ export interface RunStore {
   setStatus(runId: string, change: StatusChange): Promise<boolean>;
   updatePlan(runId: string, plan: PlanStep[]): Promise<void>;
   addUsage(runId: string, usage: UsageDelta): Promise<void>;
-  drainInbox(runId: string): Promise<InboxItem[]>;
-  /** Renews the worker's lease on the run. */
+  /** Items not acknowledged yet, oldest first. Does not consume them. */
+  peekInbox(runId: string): Promise<InboxItem[]>;
+  /** Marks items as delivered. Idempotent. Call it only after the delivering events exist. */
+  ackInbox(runId: string, ids: readonly string[]): Promise<void>;
+  /** Renews the worker's lease on the run; throws `LeaseLostError` if it is no longer held. */
   heartbeat(runId: string): Promise<void>;
 }

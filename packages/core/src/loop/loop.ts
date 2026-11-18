@@ -6,6 +6,7 @@ import {
   generateAndCollect,
   type Provider,
   ProviderError,
+  type ToolChoice,
   type ToolSpec,
   type Usage,
 } from "../provider.js";
@@ -51,13 +52,15 @@ import {
   type RunState,
   rebuildState,
 } from "./state.js";
-import type {
-  FailureOrigin,
-  RunRecord,
-  RunResult,
-  RunStatus,
-  RunStore,
-  StoredEvent,
+import {
+  type FailureOrigin,
+  type InboxItem,
+  LeaseLostError,
+  type RunRecord,
+  type RunResult,
+  type RunStatus,
+  type RunStore,
+  type StoredEvent,
 } from "./store.js";
 
 export type { ModelPricing, ReviewerConfig } from "./reviewer.js";
@@ -129,6 +132,21 @@ const NOT_ALONE_ESCALATE =
 export const INTERRUPTED_RESULT =
   "interrupted — the result is unknown; check the actual state before repeating this action";
 
+interface TransitionExtra {
+  failure?: { origin: FailureOrigin; detail: string };
+  result?: RunResult;
+  /** Inbox items this change delivers (a cancellation asked for through the inbox). */
+  inboxIds?: string[];
+  /** Pausing for the user: see `StatusChange.requeueIfInbox`. */
+  requeueIfInbox?: boolean;
+  /**
+   * Inbox items to acknowledge once the change is in the log and before it is applied. A change
+   * to a finished status releases the lease, after which the store may no longer be written to,
+   * so the acknowledgement has to come in between.
+   */
+  ackInboxIds?: string[];
+}
+
 class Interrupted extends Error {
   override readonly name = "Interrupted";
 }
@@ -145,6 +163,7 @@ interface CallSpec {
   system: string;
   messages: Message[];
   tools: ToolSpec[];
+  toolChoice?: ToolChoice;
   retries: number;
 }
 
@@ -193,6 +212,9 @@ class RunLoop {
       return await this.#main();
     } catch (error) {
       if (error instanceof Interrupted) return "running";
+      // The lease is gone: someone else owns the run now. Nothing more may be written (not even a
+      // failure), so the error goes straight to the caller, who drops the run.
+      if (error instanceof LeaseLostError) throw error;
       throw error;
     }
   }
@@ -205,11 +227,25 @@ class RunLoop {
   }
 
   /** Records the status change in the log first, then applies it to the store (compare-and-set). */
-  async #transition(
-    from: RunStatus,
-    to: RunStatus,
-    extra: { failure?: { origin: FailureOrigin; detail: string }; result?: RunResult } = {},
-  ): Promise<boolean> {
+  async #transition(from: RunStatus, to: RunStatus, extra: TransitionExtra = {}): Promise<boolean> {
+    // The log can be ahead of the store: a process that died after logging this very change but
+    // before applying it. The change is then only applied, never logged twice.
+    if (this.#state.status !== to) {
+      await this.#recordStatus(from, to, extra);
+    }
+    if (extra.ackInboxIds !== undefined && extra.ackInboxIds.length > 0) {
+      await this.#deps.store.ackInbox(this.#runId, extra.ackInboxIds);
+    }
+    return this.#deps.store.setStatus(this.#runId, {
+      from: [from],
+      to,
+      ...(extra.failure === undefined ? {} : { failure: extra.failure }),
+      ...(extra.result === undefined ? {} : { result: extra.result }),
+      ...(extra.requeueIfInbox === true ? { requeueIfInbox: true } : {}),
+    });
+  }
+
+  async #recordStatus(from: RunStatus, to: RunStatus, extra: TransitionExtra): Promise<void> {
     await this.#record({
       type: "status_changed",
       payload: {
@@ -217,21 +253,13 @@ class RunLoop {
         to,
         ...(extra.failure === undefined ? {} : { failure: extra.failure }),
         ...(extra.result === undefined ? {} : { result: extra.result }),
+        ...(extra.inboxIds === undefined ? {} : { inboxIds: extra.inboxIds }),
       },
-    });
-    return this.#deps.store.setStatus(this.#runId, {
-      from: [from],
-      to,
-      ...(extra.failure === undefined ? {} : { failure: extra.failure }),
-      ...(extra.result === undefined ? {} : { result: extra.result }),
     });
   }
 
   /** Ends the working phase with `to`; returns the status the run really has afterwards. */
-  async #end(
-    to: RunStatus,
-    extra: { failure?: { origin: FailureOrigin; detail: string }; result?: RunResult } = {},
-  ): Promise<RunStatus> {
+  async #end(to: RunStatus, extra: TransitionExtra = {}): Promise<RunStatus> {
     const applied = await this.#transition("running", to, extra);
     return applied ? to : (await this.#deps.store.getRun(this.#runId)).status;
   }
@@ -250,6 +278,8 @@ class RunLoop {
     const { store } = this.#deps;
     this.#state = rebuildState(await store.listEvents(this.#runId));
     this.#run = await store.getRun(this.#runId);
+    // A previous process may have died between recording an inbox delivery and acknowledging it.
+    await this.#freshInbox();
 
     const gate = this.#run.status;
     if (
@@ -275,9 +305,11 @@ class RunLoop {
 
     // The log is the truth. If the process died after logging a status change but before the
     // store applied it, apply it now.
+    // The store may also say `queued`: a run that was requeued (a stale lease, or a user's answer
+    // posted to a waiting run) and picked up again keeps the status its log last announced.
     const logged = this.#state.status;
     if (
-      this.#run.status === "running" &&
+      (this.#run.status === "running" || this.#run.status === "queued") &&
       (logged === "done" ||
         logged === "failed" ||
         logged === "cancelled" ||
@@ -285,7 +317,7 @@ class RunLoop {
     ) {
       const { failure, result } = this.#state.statusDetail;
       await store.setStatus(this.#runId, {
-        from: ["running"],
+        from: [this.#run.status],
         to: logged,
         ...(failure === undefined ? {} : { failure }),
         ...(result === undefined ? {} : { result }),
@@ -311,15 +343,18 @@ class RunLoop {
     const { store } = this.#deps;
     const waiting = this.#state.waiting;
     if (waiting !== null) {
-      const items = await store.drainInbox(this.#runId);
-      const texts = items.flatMap((i) => (i.kind === "user_message" ? [i.text] : []));
-      const stopped = items.some((i) => i.kind === "stop");
-      if (stopped) {
-        for (const text of texts) await this.#record({ type: "user_message", payload: { text } });
-        const ok = await this.#transition("waiting_user", "cancelled");
+      const items = await this.#freshInbox();
+      const messages = items.filter((i) => i.kind === "user_message");
+      const stops = items.filter((i) => i.kind === "stop");
+      if (stops.length > 0) {
+        for (const item of messages) await this.#recordUserMessage(item);
+        const ok = await this.#transition("waiting_user", "cancelled", {
+          inboxIds: stops.map((i) => i.id),
+          ackInboxIds: items.map((i) => i.id),
+        });
         return ok ? "cancelled" : (await store.getRun(this.#runId)).status;
       }
-      if (texts.length === 0) return "waiting_user";
+      if (messages.length === 0) return "waiting_user";
       if (waiting.kind === "escalate") {
         // The answer is the result of the pending escalate call.
         await this.#record({
@@ -327,18 +362,46 @@ class RunLoop {
           payload: {
             callId: waiting.callId,
             outcome: "ok",
-            content: texts.join("\n\n"),
+            content: messages.map((i) => (i.kind === "user_message" ? i.text : "")).join("\n\n"),
             isError: false,
             truncated: false,
             durationMs: 0,
+            inboxIds: messages.map((i) => i.id),
           },
         });
       } else {
-        for (const text of texts) await this.#record({ type: "user_message", payload: { text } });
+        for (const item of messages) await this.#recordUserMessage(item);
       }
+      await store.ackInbox(
+        this.#runId,
+        messages.map((i) => i.id),
+      );
     }
     const ok = await this.#transition("waiting_user", "running");
     return ok ? undefined : (await store.getRun(this.#runId)).status;
+  }
+
+  /**
+   * Items still in the inbox that the log does not deliver yet. Items the log already delivers
+   * (the process died before acknowledging them) are acknowledged here and left out.
+   */
+  async #freshInbox(): Promise<InboxItem[]> {
+    const { store } = this.#deps;
+    const items = await store.peekInbox(this.#runId);
+    const delivered = this.#state.deliveredInbox;
+    const stale = items.filter((i) => delivered.has(i.id));
+    if (stale.length > 0) {
+      await store.ackInbox(
+        this.#runId,
+        stale.map((i) => i.id),
+      );
+    }
+    return items.filter((i) => !delivered.has(i.id));
+  }
+
+  async #recordUserMessage(item: InboxItem): Promise<void> {
+    if (item.kind !== "user_message") return;
+    await this.#record({ type: "user_message", payload: { text: item.text, inboxId: item.id } });
   }
 
   // --- the loop --------------------------------------------------------------------------
@@ -358,7 +421,7 @@ class RunLoop {
       const settled = await this.#settle();
       if (settled !== undefined) return settled;
 
-      const inbox = await this.#drainInbox();
+      const inbox = await this.#deliverInbox();
       if (inbox !== undefined) return inbox;
 
       this.#run = await store.getRun(this.#runId);
@@ -387,20 +450,32 @@ class RunLoop {
       return this.#end("done", { result: { summary, evidence } });
     }
     if (state.waiting !== null) {
-      const ok = await this.#transition("running", "waiting_user");
+      const ok = await this.#transition("running", "waiting_user", { requeueIfInbox: true });
       return ok ? "waiting_user" : (await this.#deps.store.getRun(this.#runId)).status;
     }
     return undefined;
   }
 
-  async #drainInbox(): Promise<RunStatus | undefined> {
-    const items = await this.#deps.store.drainInbox(this.#runId);
-    let stop = false;
-    for (const item of items) {
-      if (item.kind === "stop") stop = true;
-      else await this.#record({ type: "user_message", payload: { text: item.text } });
+  /** Delivers what was posted while the run worked: user messages, or a request to stop. */
+  async #deliverInbox(): Promise<RunStatus | undefined> {
+    const { store } = this.#deps;
+    const items = await this.#freshInbox();
+    if (items.length === 0) return undefined;
+    for (const item of items) await this.#recordUserMessage(item);
+    const stops = items.filter((i) => i.kind === "stop");
+    if (stops.length > 0) {
+      // The cancellation is logged, then the items are acknowledged, then it is applied (it
+      // releases the lease, after which no write is allowed).
+      return this.#end("cancelled", {
+        inboxIds: stops.map((i) => i.id),
+        ackInboxIds: items.map((i) => i.id),
+      });
     }
-    if (stop) return this.#end("cancelled");
+    // Only now, with the delivering events in the log, may the store forget the items.
+    await store.ackInbox(
+      this.#runId,
+      items.map((i) => i.id),
+    );
     return undefined;
   }
 
@@ -533,6 +608,7 @@ class RunLoop {
       return { kind: "ok", result: reusable.result };
     }
     const purposeField = spec.purpose === "agent" ? {} : { purpose: spec.purpose };
+    const choiceField = spec.toolChoice === undefined ? {} : { toolChoice: spec.toolChoice };
     await this.#record({
       type: "model_request",
       payload: {
@@ -541,6 +617,7 @@ class RunLoop {
         system: spec.system,
         messages: spec.messages,
         tools: spec.tools,
+        ...choiceField,
         maxOutputTokens: spec.model.maxOutputTokens,
         ...purposeField,
       },
@@ -556,6 +633,7 @@ class RunLoop {
           system: spec.system,
           messages: spec.messages,
           tools: spec.tools,
+          ...choiceField,
           maxOutputTokens: spec.model.maxOutputTokens,
           ...(this.#signal === undefined ? {} : { signal: this.#signal }),
         });
@@ -1040,6 +1118,7 @@ class RunLoop {
         },
       ],
       tools: [verdictToolSpec()],
+      toolChoice: { name: "verdict" },
       retries: 0,
     });
 

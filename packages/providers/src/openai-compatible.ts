@@ -42,6 +42,12 @@ export interface OpenAICompatibleProviderConfig extends BaseProviderConfig {
   includeUsage?: boolean;
   /** Which field carries the output limit. Default "max_tokens". */
   maxTokensParam?: "max_tokens" | "max_completion_tokens";
+  /**
+   * Send `tool_choice` when the request asks for `required` or a named tool. Default true. Turn
+   * off for servers that reject the field (the request then behaves as `auto`, and the caller
+   * has to rely on instructions alone). `auto` is never sent: it is the API's default.
+   */
+  supportsToolChoice?: boolean;
   /** Overrides for the advertised capabilities (defaults: no cache, parallel tools, no vision). */
   capabilities?: Partial<ProviderCapabilities>;
 }
@@ -95,6 +101,17 @@ export function buildChatBody(req: GenerateRequest, config: OpenAICompatibleProv
     type: "function",
     function: { name: tool.name, description: tool.description, parameters: tool.inputSchema },
   }));
+  // `required` -> "required"; `{name}` -> {type:"function", function:{name}}.
+  const choice = req.toolChoice;
+  const toolChoice =
+    choice === undefined ||
+    choice === "auto" ||
+    tools.length === 0 ||
+    config.supportsToolChoice === false
+      ? undefined
+      : choice === "required"
+        ? "required"
+        : { type: "function", function: { name: choice.name } };
   return {
     ...config.extraBody,
     model: req.model,
@@ -103,6 +120,7 @@ export function buildChatBody(req: GenerateRequest, config: OpenAICompatibleProv
     [config.maxTokensParam ?? "max_tokens"]: req.maxOutputTokens,
     ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
     ...(tools.length > 0 ? { tools } : {}),
+    ...(toolChoice !== undefined ? { tool_choice: toolChoice } : {}),
     messages: toChatMessages(req, config.id),
   };
 }

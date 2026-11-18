@@ -10,6 +10,10 @@ export default defineConfig({
     // a previous build of `dist`.
     alias: [
       { find: /^@suup\/core\/testing$/, replacement: src("core", "testing/index.ts") },
+      {
+        find: /^@suup\/core\/testing\/store-contract$/,
+        replacement: src("core", "testing/store-contract.ts"),
+      },
       { find: /^@suup\/(core|providers|tools|db|sandbox)$/, replacement: src("$1") },
     ],
   },

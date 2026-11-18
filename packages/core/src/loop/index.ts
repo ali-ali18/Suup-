@@ -31,12 +31,13 @@ export {
   type RunState,
   rebuildState,
 } from "./state.js";
-export type {
-  InboxItem,
-  RunOrigin,
-  RunRecord,
-  RunStore,
-  StatusChange,
-  StoredEvent,
-  UsageDelta,
+export {
+  type InboxItem,
+  type InboxItemInput,
+  LeaseLostError,
+  type RunRecord,
+  type RunStore,
+  type StatusChange,
+  type StoredEvent,
+  type UsageDelta,
 } from "./store.js";

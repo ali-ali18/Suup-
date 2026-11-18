@@ -16,7 +16,7 @@ import {
   TERMINAL_RUN_STATUSES,
 } from "./types.js";
 
-interface RunRow {
+export interface RunRow {
   id: string;
   bot_id: string;
   parent_run_id: string | null;
@@ -171,7 +171,8 @@ export type SetRunStatusInput =
  * its status was not in `from`. It does not know which transitions are legal; that is up to the
  * caller (`core`).
  *
- * Terminal statuses (done, failed, cancelled) set `finished_at` and clear the lease. Any other
+ * Moving to `running` sets `started_at` if it was never set. Terminal statuses (done, failed,
+ * cancelled) set `finished_at` and clear the lease. Any other
  * target status clears `finished_at` (so retrying a failed run does not keep a stale end time)
  * and leaves the lease alone. Failure columns are written from `failure` and cleared otherwise.
  */
@@ -203,6 +204,9 @@ export async function setRunStatus(
     terminal ? sql`finished_at = now()` : sql`finished_at = null`,
   ];
   if (terminal) sets.push(sql`locked_by = null`, sql`locked_at = null`);
+  // Running for the first time starts the clock the duration limit is measured from; later
+  // transitions to running (after a wait or a requeue) keep it.
+  if (to === "running") sets.push(sql`started_at = coalesce(started_at, now())`);
   if (input.result !== undefined) sets.push(sql`result = ${sql.json(input.result)}`);
 
   const [row] = await sql<RunRow[]>`

@@ -27,6 +27,13 @@ describe("FakeProvider", () => {
     expect(fake.remaining).toBe(0);
   });
 
+  it("records the tool choice it was asked for", async () => {
+    const fake = new FakeProvider([{ blocks: [] }, { blocks: [] }]);
+    await collect(fake.generate(req()));
+    await collect(fake.generate(req({ toolChoice: { name: "verdict" } })));
+    expect(fake.requests.map((r) => r.toolChoice)).toEqual([undefined, { name: "verdict" }]);
+  });
+
   it("supports function steps and error steps", async () => {
     const fake = new FakeProvider([
       (r) => ({ blocks: [{ type: "text", text: `saw ${r.messages.length} message(s)` }] }),

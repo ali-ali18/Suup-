@@ -31,3 +31,14 @@ export function createDb(url: string, opts: CreateDbOptions = {}): Db {
     close: () => sql.end(),
   };
 }
+
+/**
+ * Runs `fn` in one transaction. Inside it, `tx` is a `Db` whose queries all go through that
+ * transaction, so the query functions of this package can be combined atomically. (`close` on it
+ * does nothing.)
+ */
+export function withTransaction<T>(db: Db, fn: (tx: Db) => Promise<T>): Promise<T> {
+  return db.sql.begin(
+    (sql) => fn({ sql: sql as unknown as Sql, close: async () => {} }) as Promise<T>,
+  ) as Promise<T>;
+}

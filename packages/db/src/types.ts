@@ -1,39 +1,26 @@
+// The vocabulary of a run (statuses, origins, failure origins, plan steps) belongs to `core`: it is
+// what the loop writes. The database only mirrors it in check constraints, and the tests keep the
+// two in step.
+import {
+  FAILURE_ORIGINS,
+  type FailureOrigin,
+  type PlanStep,
+  planStepSchema,
+  RUN_ORIGINS,
+  type RunOrigin,
+  type RunStatus,
+  runStatusSchema,
+} from "@suup/core";
 import { z } from "zod";
 
-export const RUN_STATUSES = [
-  "queued",
-  "running",
-  "waiting_approval",
-  "waiting_user",
-  "done",
-  "failed",
-  "cancelled",
-] as const;
-export type RunStatus = (typeof RUN_STATUSES)[number];
+export type { FailureOrigin, PlanStep, RunOrigin, RunStatus };
+export { FAILURE_ORIGINS, planStepSchema, RUN_ORIGINS };
 
-export const RUN_ORIGINS = ["user", "routine", "delegation", "proactive"] as const;
-export type RunOrigin = (typeof RUN_ORIGINS)[number];
-
-export const FAILURE_ORIGINS = [
-  "provider",
-  "tool",
-  "harness",
-  "limit",
-  "approval",
-  "user",
-] as const;
-export type FailureOrigin = (typeof FAILURE_ORIGINS)[number];
+export const RUN_STATUSES = runStatusSchema.options;
 
 /** Statuses in which a run is finished: `finished_at` is set and the lease is cleared. */
 export const TERMINAL_RUN_STATUSES = ["done", "failed", "cancelled"] as const;
 
-export const planStepSchema = z.object({
-  id: z.string(),
-  title: z.string(),
-  status: z.enum(["pending", "in_progress", "done", "dropped"]),
-  note: z.exactOptional(z.string()),
-});
-export type PlanStep = z.infer<typeof planStepSchema>;
 export const planSchema = z.array(planStepSchema);
 
 export const acceptanceCriteriaSchema = z.array(z.string());

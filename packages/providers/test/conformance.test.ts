@@ -111,6 +111,47 @@ describe.each(fixtures)("conformance: $name", (fx) => {
       expect(JSON.stringify(body)).not.toContain("must-not-leak");
     });
 
+    describe("tool choice", () => {
+      const sentBody = async (req: GenerateRequest) => {
+        const { provider, script } = make([{ body: okBody(fx) }]);
+        await run(provider, req);
+        return script.calls[0]?.body ?? {};
+      };
+      const withTools = (toolChoice?: GenerateRequest["toolChoice"]) =>
+        conformanceRequest().tools.length > 0
+          ? { ...conformanceRequest(), ...(toolChoice === undefined ? {} : { toolChoice }) }
+          : never();
+
+      it("sends nothing for the default and for auto", async () => {
+        const plain = await sentBody(withTools());
+        const auto = await sentBody(withTools("auto"));
+        expect(plain).not.toHaveProperty("tool_choice");
+        expect(auto).toEqual(plain);
+      });
+
+      it("maps required to the vendor's must-call-a-tool field", async () => {
+        const body = await sentBody(withTools("required"));
+        expect(body).toMatchObject(fx.forcedToolChoiceWire("required"));
+      });
+
+      it("maps a named tool to the vendor's must-call-this-tool field", async () => {
+        const body = await sentBody(withTools({ name: "get_weather" }));
+        expect(body).toMatchObject(fx.forcedToolChoiceWire({ name: "get_weather" }));
+      });
+
+      it("changes nothing else in the body", async () => {
+        const plain = await sentBody(withTools());
+        const forced = await sentBody(withTools({ name: "get_weather" }));
+        const { tool_choice: _ignored, ...rest } = forced;
+        expect(rest).toEqual(plain);
+      });
+
+      it("sends no tool choice when there are no tools", async () => {
+        const body = await sentBody(baseRequest({ toolChoice: "required" }));
+        expect(body).not.toHaveProperty("tool_choice");
+      });
+    });
+
     it("rejects an invalid conversation before calling fetch", async () => {
       const { provider, script } = make([{ body: okBody(fx) }]);
       const messages: Message[] = [

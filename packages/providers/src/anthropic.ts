@@ -113,6 +113,7 @@ export function buildAnthropicBody(
       if (lastBlock !== undefined) lastBlock.cache_control = CACHE;
     }
   }
+  const toolChoice = anthropicToolChoice(req, extraBody);
   const system =
     req.system === ""
       ? undefined
@@ -127,8 +128,30 @@ export function buildAnthropicBody(
     ...(system !== undefined ? { system } : {}),
     ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
     ...(tools.length > 0 ? { tools } : {}),
+    ...(toolChoice !== undefined ? { tool_choice: toolChoice } : {}),
     messages,
   };
+}
+
+/**
+ * Wire mapping of `GenerateRequest.toolChoice`: `required` -> `{type:"any"}`, `{name}` ->
+ * `{type:"tool", name}`; `auto` (the default) is left out, since it is the API's default too.
+ *
+ * Fallback: the API rejects a forced choice (`any`/`tool`) while extended thinking is on, so when
+ * `extraBody.thinking` enables it the field is omitted and the request behaves as `auto`. The
+ * caller must then cope with a response that has no tool call (the loop's reviewer already
+ * treats that as an approval with a warning).
+ */
+function anthropicToolChoice(
+  req: GenerateRequest,
+  extraBody: Record<string, unknown> | undefined,
+): Wire | undefined {
+  const choice = req.toolChoice;
+  if (choice === undefined || choice === "auto" || req.tools.length === 0) return undefined;
+  const thinking = asRecord(extraBody?.thinking);
+  if (thinking !== undefined && thinking.type !== "disabled") return undefined;
+  if (choice === "required") return { type: "any" };
+  return { type: "tool", name: choice.name };
 }
 
 function toAnthropicMessages(messages: readonly Message[], providerId: string) {

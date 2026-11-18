@@ -33,3 +33,4 @@ export {
   InMemoryRunStore,
   type InMemoryRunStoreOptions,
 } from "./memory-store.js";
+export { FakeClock, hangingAt, InMemoryRunQueue } from "./worker-kit.js";

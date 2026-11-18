@@ -1,6 +1,12 @@
 import { z } from "zod";
 import { blockSchema, messageSchema } from "./messages.js";
-import { PROVIDER_ERROR_KINDS, stopReasonSchema, toolSpecSchema, usageSchema } from "./provider.js";
+import {
+  PROVIDER_ERROR_KINDS,
+  stopReasonSchema,
+  toolChoiceSchema,
+  toolSpecSchema,
+  usageSchema,
+} from "./provider.js";
 import { TOOL_OUTCOMES } from "./registry.js";
 
 export const planStepSchema = z.object({
@@ -21,6 +27,11 @@ export const runStatusSchema = z.enum([
   "cancelled",
 ]);
 export type RunStatus = z.infer<typeof runStatusSchema>;
+
+/** What opened a run (section 4.1 of the plan). */
+export const RUN_ORIGINS = ["user", "routine", "delegation", "proactive"] as const;
+export const runOriginSchema = z.enum(RUN_ORIGINS);
+export type RunOrigin = z.infer<typeof runOriginSchema>;
 
 /**
  * Where a failed run went wrong (section 4.13 of the plan): `provider` the infrastructure or API
@@ -69,7 +80,7 @@ export const runEventSchema = z.discriminatedUnion("type", [
       botId: z.string(),
       objective: z.string(),
       acceptanceCriteria: z.array(z.string()),
-      origin: z.enum(["user", "routine", "delegation", "proactive"]),
+      origin: runOriginSchema,
     }),
   }),
   z.object({
@@ -81,6 +92,8 @@ export const runEventSchema = z.discriminatedUnion("type", [
       system: z.string(),
       messages: z.array(messageSchema),
       tools: z.array(toolSpecSchema),
+      /** Absent means `auto`. */
+      toolChoice: z.exactOptional(toolChoiceSchema),
       maxOutputTokens: z.number().int().positive(),
       temperature: z.exactOptional(z.number()),
       purpose: z.exactOptional(modelCallPurposeSchema),
@@ -121,6 +134,8 @@ export const runEventSchema = z.discriminatedUnion("type", [
       isError: z.boolean(),
       truncated: z.boolean(),
       durationMs: z.number().nonnegative(),
+      /** Set on the answer to an `escalate` call: the inbox items this result delivers. */
+      inboxIds: z.exactOptional(z.array(z.string())),
     }),
   }),
   z.object({
@@ -130,7 +145,11 @@ export const runEventSchema = z.discriminatedUnion("type", [
   z.object({
     /** A user message delivered to the loop at a safe point (between turns). */
     type: z.literal("user_message"),
-    payload: z.object({ text: z.string() }),
+    payload: z.object({
+      text: z.string(),
+      /** The inbox item this event delivers. A resumed loop never delivers the same id twice. */
+      inboxId: z.exactOptional(z.string()),
+    }),
   }),
   z.object({
     /** The harness telling the model to keep going (e.g. pending plan steps remain). */
@@ -180,6 +199,8 @@ export const runEventSchema = z.discriminatedUnion("type", [
       to: runStatusSchema,
       failure: z.exactOptional(z.object({ origin: failureOriginSchema, detail: z.string() })),
       result: z.exactOptional(runResultSchema),
+      /** Set when the change is a cancellation asked for through the inbox (the `stop` items). */
+      inboxIds: z.exactOptional(z.array(z.string())),
     }),
   }),
   z.object({

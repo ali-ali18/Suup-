@@ -1,5 +1,25 @@
 import { describe, expect, it } from "vitest";
 import { InMemoryRunStore } from "./index.js";
+import { describeRunStoreContract } from "./store-contract.js";
+
+describeRunStoreContract("InMemoryRunStore", () => {
+  const memory = new InMemoryRunStore();
+  const worker = "worker-1";
+  const store = memory.forWorker(worker);
+  return {
+    store,
+    createRun: async (input) => {
+      const run = memory.createRun(input);
+      memory.assignLease(run.id, worker);
+      return run.id;
+    },
+    post: async (runId, item) => memory.postInbox(runId, item),
+    statusOf: async (runId) => (await memory.getRun(runId)).status,
+    outcome: async (runId) => memory.outcome(runId),
+    takeLease: async (runId) => memory.assignLease(runId, "worker-2"),
+    leased: async (runId) => memory.leaseHolder(runId) !== null,
+  };
+});
 
 describe("InMemoryRunStore", () => {
   const make = () => {
@@ -40,15 +60,23 @@ describe("InMemoryRunStore", () => {
     expect(store.outcome(id).failure).toEqual({ origin: "model", detail: "d" });
   });
 
-  it("hands each inbox item out once", async () => {
+  it("peeks inbox items without consuming them, until they are acknowledged", async () => {
     const { store, id } = make();
-    store.postInbox(id, { kind: "user_message", text: "hi" });
-    store.postInbox(id, { kind: "stop" });
-    expect(await store.drainInbox(id)).toEqual([
-      { kind: "user_message", text: "hi" },
-      { kind: "stop" },
-    ]);
-    expect(await store.drainInbox(id)).toEqual([]);
+    const first = store.postInbox(id, { kind: "user_message", text: "hi" });
+    const second = store.postInbox(id, { kind: "stop" });
+    expect(first).not.toBe(second);
+    const items = [
+      { id: first, kind: "user_message", text: "hi" },
+      { id: second, kind: "stop" },
+    ];
+    expect(await store.peekInbox(id)).toEqual(items);
+    expect(await store.peekInbox(id)).toEqual(items);
+    await store.ackInbox(id, [first]);
+    await store.ackInbox(id, [first, "unknown"]); // idempotent, unknown ids ignored
+    expect(await store.peekInbox(id)).toEqual([items[1]]);
+    await store.ackInbox(id, [second]);
+    expect(await store.peekInbox(id)).toEqual([]);
+    expect(store.inboxLog(id).every((e) => e.acked)).toBe(true);
   });
 
   it("accumulates usage and counts heartbeats", async () => {

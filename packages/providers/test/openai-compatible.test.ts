@@ -112,6 +112,22 @@ describe("openai-compatible adapter", () => {
     ]);
   });
 
+  it("leaves tool_choice out when the server does not support it", async () => {
+    const script = scriptedFetch([{ body: "data: [DONE]\n\n" }]);
+    const provider = createOpenAICompatibleProvider({
+      id: "x",
+      apiKey: "k",
+      fetch: script.fetch,
+      supportsToolChoice: false,
+    });
+    await drain(provider, {
+      ...baseRequest(),
+      tools: [{ name: "t", description: "d", inputSchema: { type: "object" } }],
+      toolChoice: "required",
+    });
+    expect(script.calls[0]?.body).not.toHaveProperty("tool_choice");
+  });
+
   it("reports vendor capabilities that can be overridden", () => {
     const base = createOpenAICompatibleProvider({ id: "x", apiKey: "" });
     expect(base.capabilities).toEqual({ promptCache: false, parallelTools: true, vision: false });
