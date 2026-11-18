@@ -106,3 +106,7 @@ pnpm test        # Vitest
 ```
 
 Os testes do pacote `@suup/db` usam um Postgres real: defina `DATABASE_URL` (o valor do `.env.example` serve para o banco do Compose) e eles rodam, cada arquivo em um schema próprio que é removido ao final. Sem `DATABASE_URL`, esses testes são pulados.
+
+## Licença
+
+MIT. Veja [LICENSE](LICENSE).
