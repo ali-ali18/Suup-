@@ -162,6 +162,15 @@ Toda memória tem origem (qual conversa a criou), é visível ao usuário e pode
 - Fase 5: cada bot ganha uma tela virtual com navegador. A tela é transmitida ao app, e o usuário pode assumir o controle e devolver.
 - O servidor fala com a máquina por um executor interno; a máquina não tem acesso ao banco nem ao cofre.
 
+**Área de trabalho da máquina (fase 5).** A tela de cada bot é um desktop de verdade, não só uma janela de navegador solta. Referência visual: a tela "Desktop" do Grok Bot.
+
+- **Aparência:** papel de parede de paisagem em estilo de pintura, com pinceladas borradas (encosta verde, mar, céu). A imagem é original do projeto, feita no mesmo espírito; não se copia a arte da referência.
+- **Barra superior:** fina e escura, com o identificador do bot à esquerda e data e hora à direita.
+- **Dock inferior:** centralizado, pequeno, com três atalhos: navegador, gerenciador de arquivos e terminal. São as mesmas três ferramentas que o bot usa (navegador, arquivos e shell), então o que o usuário vê na tela corresponde ao que o bot pode fazer.
+- **Sem mais nada:** nenhum ícone na área de trabalho, nenhum menu de aplicativos. Janelas abrem maximizadas.
+- **No app:** a tela aparece numa aba "Desktop", com o estado da conexão (conectado ou desconectado) e um botão central "Assumir controle". Enquanto o usuário controla, o bot fica pausado num ponto seguro; ao devolver, ele retoma.
+- **Implementação prevista:** servidor gráfico virtual por bot, um gerenciador de janelas leve com barra e dock, e transmissão da tela para o app. As peças exatas são decididas na fase 5.
+
 ### 4.8 Aprovações e cofre
 
 Cada ação passa por três filtros, em ordem:
