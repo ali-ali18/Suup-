@@ -222,8 +222,8 @@ Requisito de infraestrutura: o servidor na VPS precisa de domínio e HTTPS públ
 
 ### 4.12 App e agente local
 
-- App de desktop com interface web numa casca nativa. Mostra conversas, cartões de aprovação, formulário seguro, execuções em andamento e, na fase 5, a tela ao vivo.
-- O mesmo app contém o agente local: abre conexão de saída com o servidor e executa comandos aprovados no PC.
+- App de desktop em Tauri: interface web na webview do sistema, com casca nativa leve. Mostra conversas, cartões de aprovação, formulário seguro, execuções em andamento e, na fase 5, a tela ao vivo.
+- O agente local é um processo Node à parte, empacotado junto com o app, que o inicia e supervisiona: abre conexão de saída com o servidor e executa comandos aprovados no PC. Assim ele reaproveita os pacotes do projeto e pode continuar rodando com a janela fechada.
 - Comunicação em tempo real por WebSocket, alimentado por `LISTEN/NOTIFY` do Postgres.
 
 ### 4.13 Diagnóstico: de quem é o problema
@@ -414,7 +414,7 @@ A fila de execuções é a própria tabela `runs`, consumida com `SELECT … FOR
 | Servidor | HTTP + WebSocket |
 | Testes | Vitest |
 | Isolamento | Docker |
-| Desktop (fase 2) | interface web em casca nativa (Tauri ou Electron, a decidir na fase 2) |
+| Desktop (fase 2) | Tauri (decisão de 18/11/2026), com interface em React e TypeScript. O agente local da fase 6 roda como processo Node separado, que o app inicia e supervisiona |
 | Navegador (fase 5) | Playwright sobre tela virtual |
 
 ## 7. Estrutura do repositório
