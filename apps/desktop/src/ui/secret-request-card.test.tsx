@@ -38,8 +38,12 @@ describe("the secure form", () => {
     expect(field().getAttribute("spellcheck")).toBe("false");
     expect(field().getAttribute("autocapitalize")).toBe("off");
     expect(field().hasAttribute("name")).toBe(false);
-    expect(screen.getByText("Ajudante pede o segredo GH_TOKEN")).toBeTruthy();
+    expect(screen.getByText("Ajudante pede um segredo")).toBeTruthy();
     expect(screen.getByText("Motivo dado pelo bot: para dar push")).toBeTruthy();
+    // Its NAME is the label of the field, and the footer promises what the vault does.
+    expect(screen.getByLabelText("GH_TOKEN")).toBe(field());
+    expect(screen.getByText("Guardado no cofre; o bot nunca vê o valor.")).toBeTruthy();
+    expect(screen.getByText("Segredos")).toBeTruthy();
   });
 
   it("the reveal button is off by default and only changes how the field is drawn", () => {
@@ -57,7 +61,7 @@ describe("the secure form", () => {
     expect(field().type).toBe("password");
   });
 
-  it("Guardar sends the value once and the field is empty the moment it is sent (before the answer)", async () => {
+  it("Enviar sends the value once and the field is empty the moment it is sent (before the answer)", async () => {
     let answer: (o: SecretOutcome<unknown>) => void = noop;
     const onSubmit = vi.fn(
       () =>
@@ -78,7 +82,7 @@ describe("the secure form", () => {
     answer(good);
     await waitFor(() =>
       expect(screen.getByTestId("secret-card").textContent).toContain(
-        "segredo GH_TOKEN disponível",
+        "Segredo GH_TOKEN disponível",
       ),
     );
   });
@@ -125,7 +129,20 @@ describe("the secure form", () => {
     expect(field().disabled).toBe(false);
   });
 
-  it("Recusar sends no value and the card becomes one line that says so", async () => {
+  it("Enviar waits until something is typed, learning only whether the field is empty", () => {
+    const { onSubmit } = show();
+    const send = screen.getByTestId("secret-save") as HTMLButtonElement;
+    expect(send.textContent).toBe("Enviar");
+    expect(send.disabled).toBe(true);
+    type(VALUE);
+    expect(send.disabled).toBe(false);
+    type("");
+    expect(send.disabled).toBe(true);
+    fireEvent.keyDown(field(), { key: "Enter" });
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("Agora não sends no value and the card becomes one line that says so", async () => {
     const { onSubmit, onDecline } = show();
     type(VALUE);
     fireEvent.click(screen.getByTestId("secret-decline"));
@@ -134,7 +151,7 @@ describe("the secure form", () => {
     expect(field().value).toBe("");
     await waitFor(() =>
       expect(screen.getByTestId("secret-card").textContent).toContain(
-        "você recusou o segredo GH_TOKEN",
+        "Você recusou o segredo GH_TOKEN",
       ),
     );
   });
@@ -152,9 +169,9 @@ describe("the secure form", () => {
 
 describe("a request already answered", () => {
   it.each([
-    ["provided", "segredo GH_TOKEN disponível"],
-    ["declined", "você recusou o segredo GH_TOKEN"],
-    ["closed", "pedido do segredo GH_TOKEN encerrado"],
+    ["provided", "Segredo GH_TOKEN disponível"],
+    ["declined", "Você recusou o segredo GH_TOKEN"],
+    ["closed", "Pedido do segredo GH_TOKEN encerrado"],
   ] as const)("%s is one line: '%s'", (state, line) => {
     show({ state });
     const card = screen.getByTestId("secret-card");

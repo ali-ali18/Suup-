@@ -1,5 +1,5 @@
 import { Lock } from "lucide-react";
-import { useId, useState } from "react";
+import { type ReactNode, useId, useState } from "react";
 import {
   type ArgField,
   collapsedText,
@@ -35,48 +35,91 @@ function Segments({ text }: { text: string }) {
   );
 }
 
+const CODE_KEY = /command|cmd|script|code|query|sql|json|patch|diff|regex|pattern/i;
+
+/** Monospace only for what is code: a command, a script, a query, or anything on several lines. */
+const isCodeLike = (field: ArgField): boolean =>
+  field.json || field.lines > 1 || (field.key !== null && CODE_KEY.test(field.key));
+
+/** One quiet row: its label at the left, its value after it, a hairline above. */
+export function ArgRow({
+  label,
+  children,
+  testId,
+}: {
+  label: string | null;
+  children: ReactNode;
+  testId?: string;
+}) {
+  return (
+    <div className="ui-args__field" data-testid={testId}>
+      {label !== null && <p className="ui-args__key">{label}</p>}
+      <div className="ui-args__body">{children}</div>
+    </div>
+  );
+}
+
 function FieldView({ field, collapse }: { field: ArgField; collapse: boolean }) {
   const [open, setOpen] = useState(false);
   const bodyId = useId();
   const folded = collapse && field.long && !open;
   const shown = folded ? collapsedText(field.text) : { head: field.text, hiddenLines: 0 };
   return (
-    <div className="ui-args__field" data-testid="arg-field" data-key={field.key ?? ""}>
-      {field.key !== null && <p className="ui-action__label ui-args__key">{field.key}</p>}
-      <pre id={bodyId} className="ui-action__pre ui-args__value" data-testid="arg-value">
-        <Segments text={shown.head} />
-        {folded ? "…" : ""}
-      </pre>
-      {collapse && field.long && (
-        <button
-          type="button"
-          className="ui-args__more"
-          aria-expanded={open}
-          aria-controls={bodyId}
-          onClick={() => setOpen(!open)}
-        >
-          {open
-            ? "Mostrar menos"
-            : shown.hiddenLines > 0
-              ? `Mostrar tudo (mais ${shown.hiddenLines} ${shown.hiddenLines === 1 ? "linha" : "linhas"})`
-              : "Mostrar tudo"}
-        </button>
-      )}
+    <div
+      className="ui-args__field"
+      data-testid="arg-field"
+      data-key={field.key ?? ""}
+      data-code={isCodeLike(field)}
+    >
+      {field.key !== null && <p className="ui-args__key">{field.key}</p>}
+      <div className="ui-args__body">
+        <pre id={bodyId} className="ui-args__value" data-testid="arg-value">
+          <Segments text={shown.head} />
+          {folded ? "…" : ""}
+        </pre>
+        {collapse && field.long && (
+          <button
+            type="button"
+            className="ui-args__more"
+            aria-expanded={open}
+            aria-controls={bodyId}
+            onClick={() => setOpen(!open)}
+          >
+            {open
+              ? "Mostrar menos"
+              : shown.hiddenLines > 0
+                ? `Mostrar tudo (mais ${shown.hiddenLines} ${shown.hiddenLines === 1 ? "linha" : "linhas"})`
+                : "Mostrar tudo"}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
 
 /**
- * The exact content of a call: each argument as it was sent, secrets as their placeholder, long
- * content collapsed (when `collapse`) with a button that shows all of it.
+ * The exact content of a call as quiet rows: each argument as it was sent (label, then value),
+ * secrets as their placeholder, long content collapsed (when `collapse`) with a button that shows
+ * all of it. `children` are extra rows before the arguments.
  */
-export function ArgsView({ args, collapse }: { args: unknown; collapse: boolean }) {
+export function ArgsView({
+  args,
+  collapse,
+  children,
+  testId = "approval-args",
+}: {
+  args: unknown;
+  collapse: boolean;
+  children?: ReactNode;
+  testId?: string;
+}) {
   const fields = formatArgs(args);
-  if (fields.length === 0) {
-    return <p className="ui-action__label">Esta ação não leva argumentos.</p>;
-  }
   return (
-    <div className="ui-args" data-testid="approval-args">
+    <div className="ui-args" data-testid={testId}>
+      {children}
+      {fields.length === 0 && (
+        <p className="ui-action__label ui-args__empty">Esta ação não leva argumentos.</p>
+      )}
       {fields.map((field, i) => (
         <FieldView key={field.key ?? `field-${i}`} field={field} collapse={collapse} />
       ))}

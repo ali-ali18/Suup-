@@ -151,6 +151,25 @@ describe("ActionCard", () => {
     expect(screen.queryByText("saída do comando")).toBeNull();
   });
 
+  it("the chevron is drawn (CSS shows it only on hover and focus); a card with no details is a plain row", () => {
+    const { container, rerender } = render(card());
+    expect(container.querySelector(".ui-action__chevron")).not.toBeNull();
+    rerender(
+      <ActionCard
+        icon={<span />}
+        kind="Segredos"
+        state="done"
+        stateLabel=""
+        summary="Segredo X disponível"
+        expanded={false}
+        onToggle={() => {}}
+      />,
+    );
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(container.querySelector(".ui-action__chevron")).toBeNull();
+    expect(screen.getByTestId("action-card").textContent).toBe("SegredosSegredo X disponível");
+  });
+
   it("clicking toggles; expanded shows a labelled region with the details in place", () => {
     const onToggle = vi.fn();
     const { rerender } = render(card({ onToggle }));

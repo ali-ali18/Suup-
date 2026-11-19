@@ -2,6 +2,8 @@
 
 Guia para desenhar o app de desktop. Cada item diz se **já existe** (fases 1 e 2, no repositório) ou em que **fase** entra. O que já existe tem os nomes exatos dos campos; o que é futuro pode mudar de nome, mas não de natureza.
 
+**Como desenhar** (cartões, tokens, estados, acessibilidade): [DESIGN.md](DESIGN.md) é o padrão obrigatório; este documento diz só *o que* o backend oferece.
+
 A **API de rede existe** (fase 2): HTTP e tempo real por Server-Sent Events, descritos em [API.md](API.md) e tipados no pacote `@suup/api`, que o app importa (esquemas, tipos, o cliente `createClient` e o `subscribe` do stream). Este documento diz *o que* cada tela precisa; o API.md diz *como* pedir. Onde a API real difere do que este guia prometia antes de ela existir, o texto abaixo já foi corrigido (a seção 12 resume as diferenças).
 
 ## 1. As três camadas de dados

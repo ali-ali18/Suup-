@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   alwaysSentence,
+  approvalTitle,
   expiryText,
   instructionLine,
   isConnectorTool,
@@ -8,6 +9,7 @@ import {
   matcherText,
   parseConnectorTool,
   ruleSentence,
+  toolCategory,
   toolTitle,
 } from "./approval-text.js";
 
@@ -141,9 +143,40 @@ describe("the instruction line of a card", () => {
   it("says what the bot wants, and for a connector that the content leaves the computer", () => {
     expect(instructionLine("Ajudante", "shell", null)).toContain("Ajudante quer rodar um comando");
     expect(instructionLine("Ajudante", "write_file", null)).toContain("escrever um arquivo");
+    expect(instructionLine("Ajudante", "shell", null)).not.toContain("Confira");
     expect(instructionLine("Ajudante", "conn_fake__write_thing", "fake")).toContain(
       "sai deste computador para um servidor externo",
     );
+  });
+});
+
+describe("the category and the title of a card", () => {
+  it("names the category by the tool, the connector, or a mail-like tool", () => {
+    expect(toolCategory("shell")).toEqual({ label: "Terminal", icon: "terminal" });
+    expect(toolCategory("write_file").label).toBe("Arquivo");
+    expect(toolCategory("web_fetch").label).toBe("Web");
+    expect(toolCategory("remember").label).toBe("Memória");
+    expect(toolCategory("conn_erp__criar_pedido")).toEqual({ label: "erp", icon: "connector" });
+    expect(toolCategory("conn_gmail__send_email")).toEqual({ label: "E-mail", icon: "mail" });
+    expect(toolCategory("send_mail").icon).toBe("mail");
+    expect(toolCategory("algo_novo")).toEqual({ label: "Aprovação", icon: "generic" });
+  });
+
+  it("writes a pt-BR title per known tool and falls back to the server's summary", () => {
+    expect(approvalTitle("write_file", { path: "a.txt" }, "Write a.txt (3 characters)")).toBe(
+      "Escrever a.txt",
+    );
+    expect(approvalTitle("shell", { command: "git push\nmais" }, "Shell: x")).toBe(
+      "Rodar git push",
+    );
+    expect(approvalTitle("web_fetch", { url: "https://a.b" }, "x")).toBe("Acessar https://a.b");
+    expect(approvalTitle("shell", {}, "x")).toBe("Rodar um comando");
+    expect(
+      approvalTitle("conn_fake__write_thing", {}, "x", [
+        { name: "fake", tools: [{ name: "conn_fake__write_thing", tool: "write_thing" }] },
+      ]),
+    ).toBe("Usar write_thing no conector fake");
+    expect(approvalTitle("tool_nova", {}, "Resumo do servidor")).toBe("Resumo do servidor");
   });
 });
 

@@ -23,6 +23,7 @@ export function SecretInput({
   autoFocus,
   ref,
   onEnter,
+  onEmptyChange,
   testId = "secret-input",
 }: {
   label: string;
@@ -33,11 +34,15 @@ export function SecretInput({
   ref?: Ref<SecretInputHandle>;
   /** Enter in the field (the form's submit). */
   onEnter?(): void;
+  /** Whether the field is empty, told on every change: a boolean, never the text. */
+  onEmptyChange?(empty: boolean): void;
   testId?: string;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [revealed, setRevealed] = useState(false);
   const id = useId();
+  const emptyRef = useRef(onEmptyChange);
+  emptyRef.current = onEmptyChange;
   useImperativeHandle(
     ref,
     () => ({
@@ -45,6 +50,7 @@ export function SecretInput({
       clear: () => {
         if (input.current !== null) input.current.value = "";
         setRevealed(false);
+        emptyRef.current?.(true);
       },
       focus: () => input.current?.focus(),
     }),
@@ -75,6 +81,7 @@ export function SecretInput({
           autoFocus={autoFocus}
           aria-invalid={error !== undefined ? true : undefined}
           aria-describedby={describedBy}
+          onChange={(e) => onEmptyChange?.(e.currentTarget.value === "")}
           onKeyDown={(e) => {
             if (e.key === "Enter" && onEnter !== undefined) {
               e.preventDefault();

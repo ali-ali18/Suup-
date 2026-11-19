@@ -45,9 +45,13 @@ test.describe("secret requests and the vault", () => {
     await send(page, "CASE-SECRET preciso do token");
     const form = page.getByTestId("secret-card");
     await expect(form).toHaveAttribute("data-state", "needs-action");
-    await expect(form).toContainText("Cofreiro pede o segredo E2E_TOKEN");
+    await expect(form).toContainText("Cofreiro pede um segredo");
     await expect(form).toContainText("para acessar a API de teste");
     const input = form.getByTestId("secret-input");
+    // The NAME is the label of the field, the reassurance is in the footer, and Enviar waits for text.
+    await expect(form.getByLabel("E2E_TOKEN")).toBeVisible();
+    await expect(form).toContainText("Guardado no cofre; o bot nunca vê o valor.");
+    await expect(form.getByTestId("secret-save")).toBeDisabled();
     // The field: password type, no completion, no spellcheck; the focus is on it; reveal is off.
     await expect(input).toBeFocused();
     await expect(input).toHaveAttribute("type", "password");
@@ -59,6 +63,7 @@ test.describe("secret requests and the vault", () => {
     await expect(botItem(page, "Cofreiro")).toHaveAttribute("data-chip", "doubt");
     await expect(page.getByTestId("pending-counter")).toHaveText("1");
     await input.fill(VALUE);
+    await expect(form.getByTestId("secret-save")).toBeEnabled();
     await reveal.click();
     await expect(input).toHaveAttribute("type", "text");
     await form.getByRole("button", { name: "Esconder o valor" }).click();
@@ -67,7 +72,7 @@ test.describe("secret requests and the vault", () => {
     expect(await page.content()).not.toContain(VALUE);
     await form.getByTestId("secret-save").click();
     // The chat shows only that the secret is available, and the bot goes on and uses it.
-    await expect(page.getByTestId("secret-card")).toContainText("segredo E2E_TOKEN disponível");
+    await expect(page.getByTestId("secret-card")).toContainText("Segredo E2E_TOKEN disponível");
     await expect(page.getByTestId("secret-card")).toHaveAttribute("data-state", "done");
     await expect(botMessage(page, "Recebi o segredo e usei.")).toBeVisible();
     const echo = page.getByTestId("action-card").filter({ hasText: "echo token-recebido" });
@@ -99,7 +104,7 @@ test.describe("secret requests and the vault", () => {
     // After a reload the card is one line, and still says only that.
     await page.reload();
     await botItem(page, "Cofreiro").click();
-    await expect(page.getByTestId("secret-card")).toContainText("segredo E2E_TOKEN disponível");
+    await expect(page.getByTestId("secret-card")).toContainText("Segredo E2E_TOKEN disponível");
     await expect(page.getByTestId("secret-input")).toHaveCount(0);
     expect(await page.content()).not.toContain(VALUE);
   });
@@ -120,7 +125,7 @@ test.describe("secret requests and the vault", () => {
     await expect(page.getByTestId("pending-secret")).toHaveCount(0);
     await botItem(page, "Recusador").click();
     await expect(page.getByTestId("secret-card")).toContainText(
-      "você recusou o segredo E2E_RECUSADO",
+      "Você recusou o segredo E2E_RECUSADO",
     );
     await expect(botMessage(page, "Sem o segredo, sigo de outro jeito.")).toBeVisible();
     expect((await world.api.vault.list()).some((s) => s.name === "E2E_RECUSADO")).toBe(false);
@@ -323,9 +328,9 @@ test.describe("connectors", () => {
     await send(page, "CASE-CONNECTOR crie uma coisa");
     const card = page.getByTestId("approval-card");
     await expect(card).toHaveAttribute("data-state", "needs-action");
-    await expect(card.getByTestId("approval-connector")).toHaveText(
-      "Conector fake · ferramenta write_thing",
-    );
+    await expect(card.getByTestId("approval-connector")).toContainText("fake");
+    await expect(card).toContainText("write_thing");
+    await expect(card.locator(".ui-decision__category")).toHaveText("fake");
     await expect(card).toContainText("sai deste computador para um servidor externo");
     // (The server keeps the arguments in a JSON column, which does not keep the order of the keys.)
     await expect(card.locator('[data-key="name"]').getByTestId("arg-value")).toHaveText("coisa");

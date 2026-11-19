@@ -2,6 +2,8 @@
 
 O app de desktop do Suup: uma interface web (React + Vite) dentro de uma casca Tauri 2. **O app só desenha o que o servidor informa** (`docs/PLANO.md` 4.13): nenhuma regra sobre execuções mora aqui, e nada é inventado onde o servidor ainda não tem o recurso.
 
+**Antes de mexer na interface, leia [`docs/DESIGN.md`](../../docs/DESIGN.md): o padrão obrigatório de cartões, tokens e acessibilidade.**
+
 ## Rodar em desenvolvimento
 
 Num terminal, o servidor com o worker (veja `docs/API.md` e `docs/IMPLANTACAO.md`; a origem do app precisa estar em `server.allowedOrigins`, por exemplo `http://localhost:1420`):
