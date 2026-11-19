@@ -253,3 +253,151 @@ Tudo abaixo é inferência, a ser confirmada pelo dono antes de virar tarefa.
 | Conteúdo de ferramenta no diário | O diário e as notas voltam no `recall` marcados como registro, nunca como instrução. | Anthropic (injeção): todo conteúdo que entra no contexto é não confiável. |
 | O que medir | Conjunto de perguntas sobre o histórico do Suup, sem dados pessoais no repositório, com as categorias do item 9; e um conjunto de envenenamento. Medir Recall@5, NDCG@5, acerto e tokens. | LongMemEval (métricas e categorias); Mem0 e Zep (custo de contexto completo). |
 | Edição pelo usuário | Manter. É o que a Claude app oferece por tópico; o Copilot não permite edição direta, e isso é um ponto fraco dele. | Claude app; Copilot (edição direta não disponível). |
+
+## Harnesses abertos: quando e como gravam memória (adendo de 19/11/2026)
+
+Lido em 19/11/2026. Todas as fontes são arquivos de código ou documentação de repositórios públicos, lidos em `raw.githubusercontent.com` no branch padrão. Estrelas e licença são as que a API do GitHub devolveu nesta data. Quando um fato vem só da documentação (`docs/` ou README), está dito; quando vem do código, está o arquivo e a linha ou a função.
+
+### Nomes do pedido: o que foi encontrado
+
+- **"Hermes"**: encontrado. `NousResearch/hermes-agent`, https://github.com/NousResearch/hermes-agent, 264.659 estrelas, MIT.
+- **"duskBot"**: encontrado. `DuskBotAI/duskbot`, https://github.com/DuskBotAI/duskbot, 450 estrelas. A API não identificou licença (NOASSERTION). O README diz: "source available under the PolyForm Noncommercial License". Não é open source no sentido da OSI: uso livre só para fins não comerciais.
+- **"openBot"**: não encontrado com esse nome. A busca `openbot personal agent memory` devolveu um projeto que só cita "OpenBot integration" (`Priyanshuofficial1/MrPS-bot`), sem relação. O mais próximo é o OpenClaw, abaixo; isso é uma hipótese minha, não confirmada pelo dono.
+- **"MausBot"**: não encontrado um harness com esse nome. Há repositórios pequenos com o nome (`nitkanikita21/MausBot`, `Lilciel0510/mausbot`, 1 estrela cada) sem relação aparente com agente de memória. **Não confirmado.**
+- **OpenClaw** (nomes antigos: Clawdbot e Moltbot): encontrado. `openclaw/openclaw`, https://github.com/openclaw/openclaw, 394.802 estrelas, MIT. A origem dos nomes antigos aparece no README de `cloudflare/moltworker`: "Run OpenClaw, (formerly Moltbot, formerly Clawdbot)".
+
+Outros projetos lidos: LangMem (`langchain-ai/langmem`, 1.776 estrelas, MIT); Letta Code (`letta-ai/letta-code`, 3.875, Apache-2.0; o README diz que é onde está o código atual do Letta); Mem0 OSS (`mem0ai/mem0`, 69.240, Apache-2.0); Agent Zero (`agent0ai/agent-zero`, 19.925, licença NOASSERTION); SillyTavern (`SillyTavern/SillyTavern`, 35.833, AGPL-3.0).
+
+Não pesquisados nesta rodada, sem fatos: Goose, Khoj, OpenHands (condenser), Cline (memory bank), Continue, Open Interpreter, Eliza OS, AutoGPT, Aider.
+
+### Tabela comparativa
+
+| projeto | quando grava | quem grava | o que grava | onde | como volta ao contexto | controle do usuário e segurança | fonte |
+|---|---|---|---|---|---|---|---|
+| Hermes Agent (MIT) | A cada 10 turnos do usuário (`nudge_interval`, padrão 10), após o turno | Fork do próprio agente em revisão de fundo, com ferramentas restritas. Por padrão usa o modelo principal | Fatos em duas lojas: USER.md (quem é o usuário) e MEMORY.md (ambiente e convenções). Limites de 1.375 e 2.200 caracteres | Markdown em `~/.hermes/memories/`; histórico de sessões em SQLite (FTS5) | No prompt do sistema, como snapshot congelado no início da sessão. Histórico por `session_search` | Escrita livre por padrão. Com `write_approval: true`, a escrita fica em fila (`/memory pending`). Varredura de padrões na escrita e na carga | `agent/agent_init.py`, `agent/turn_context.py`, `agent/background_review.py`, `tools/memory_tool.py`, documentação de memória |
+| OpenClaw (MIT) | Antes da compactação (limiar de tokens, padrão 4.000) e no "dreaming" (cron padrão `0 3 * * *`) | Flush: o próprio agente, num turno silencioso. Dreaming: modelo em três fases, que devolve decisões de operação | Flush: notas diárias `memory/YYYY-MM-DD.md`, só acréscimo. Dreaming: promoção para `MEMORY.md`, com registro em `DREAMS.md` | Markdown. Índice em SQLite (padrão) ou PostgreSQL. Busca híbrida (vetor e palavra) se houver provedor de embeddings | `MEMORY.md` e `USER.md` no bootstrap. Notas diárias por `memory_search`, fora do prompt | Fontes `untrusted` ou `system` são removidas antes da consolidação. Transcrições não têm segredo mascarado. Cópia anterior de cada reescrita fica no SQLite. `DREAMS.md` para revisão humana | `docs/concepts/memory.md`, `docs/concepts/dreaming.md`, `src/auto-reply/reply/memory-flush-plan.ts` |
+| DuskBot (PolyForm Noncommercial) | Captura quando a conversa fica quieta ou ao atingir 6 turnos. Arrumação a cada 10 minutos. Revisão noturna, um bot por noite | Modelo auxiliar sem ferramentas, em cada etapa ("You have no tools") | Notas em Markdown. Fatos sobre a pessoa vão para "About me". Só o que a própria pessoa disse | `.duskbot/workspaces/<bot>/` em Markdown; conversas em SQLite | Memória carregada em todo turno seguinte. "About me" vai para todos os bots. Notas antigas vão para arquivo morto quando a lista cresce | Texto de página, ferramenta, e-mail, webhook ou outro bot não vira memória sozinho. Seis expressões regulares detectam o que "parece instrução". O usuário vê, edita e esquece notas | `server/memory-upkeep.ts`, `server/memory-capture.ts`, `server/memory-trust.ts`, `server/memory-tidy.ts`, `server/memory-dream.ts`, `apps/site/pages/docs/memory.md` |
+| LangMem (MIT) | Duas formas: na conversa (o agente chama a ferramenta) e em segundo plano, após a conversa ficar quieta (`ReflectionExecutor`, com atraso `after_seconds`) | Na conversa: o próprio agente. Em segundo plano: gerenciador de memória, que usa modelo | Memórias extraídas, num namespace do store | LangGraph `BaseStore`: `InMemoryStore` nos exemplos, `AsyncPostgresStore` em produção | Ferramenta de busca (`create_search_memory_tool`) durante a conversa | Segurança não descrita nas páginas lidas. **Não verificado** | `README.md`, `docs/docs/guides/delayed_processing.md`, `src/langmem/reflection.py` |
+| Letta Code (Apache-2.0) | A cada 25 passos (padrão), na compactação, ou desligado | Reflexão do agente sobre a própria memória. Quem executa exatamente: **não verificado** | Blocos de memória em Markdown, que formam o prompt do sistema | Markdown no MemFS, versionado em git | Arquivos da raiz entram sempre no prompt. Subdiretórios (`deferred-memory`) são buscados sob demanda | Histórico em git. Comandos `/sleeptime`, `/palace` e `/memory-repository`. Dreaming automático desligado por padrão no Windows nativo | `src/reflection-settings.ts`, `src/cli/helpers/memory-reminder.ts`, `src/cli/app/reflection.ts`, `src/skills/builtin/maintaining-core-memory/SKILL.md`, `README.md` |
+| Mem0 OSS (Apache-2.0) | Quando a aplicação chama `add()`. A biblioteca não decide o momento | LLM de extração (`infer=True`), com prompt que escolhe ADD, UPDATE ou DELETE | Fatos curtos, com evento por mudança | Banco vetorial e SQLite de histórico (`history_db_path`) | Busca vetorial (`search()`), sob demanda | Histórico de eventos. Regra no prompt contra repetir o que o assistente disse. Tratamento de segredo **não verificado** | `mem0/memory/main.py`, `mem0/configs/prompts.py`, `README.md` |
+| Agent Zero (NOASSERTION) | Ao fim de cada ciclo do agente (`monologue_end`), em segundo plano. Consolidação a cada gravação | Modelo utilitário (`call_utility_model`, `background=True`). Consolidação decide merge, replace, keep, update ou skip | Fragmentos (preferências, fatos de projeto) e "soluções" em arquivo separado | FAISS, um índice por subpasta | Ferramenta `memory` com `load`. Recuperação automática: **não verificado** | Prompt proíbe guardar instruções da IA, pedidos pontuais e detalhes de execução. Painel para editar e apagar. Limiar de 0,75 para substituir | `plugins/_memory/extensions/python/monologue_end/_50_memorize_fragments.py`, `plugins/_memory/helpers/memory_consolidation.py`, `plugins/_memory/prompts/memory.memories_sum.sys.md`, `plugins/_memory/README.md` |
+| SillyTavern (AGPL-3.0) | A cada 10 mensagens desde o último resumo (`promptInterval`, padrão 10), ou por contagem de palavras | O modelo do chat, por `generateQuietPrompt`, ou outra fonte configurada | Um resumo cumulativo em texto livre | `mes.extra.memory`, dentro do arquivo do próprio chat | Sempre no prompt (`setExtensionPrompt`), com posição e profundidade configuráveis | Opção `memoryFrozen`, que impede gerar novo resumo | `public/scripts/extensions/memory/index.js` |
+
+### Fatos por projeto, com trechos
+
+#### Hermes Agent (NousResearch/hermes-agent, lido em 19/11/2026)
+
+- Gatilho: `agent/agent_init.py`, linha 1143, `agent._memory_nudge_interval = 10`. Linha 1177, `int(mem_config.get("nudge_interval", 10))`.
+- Contagem: `agent/turn_context.py`, função `_tick_memory_nudge`. Só conta se `"memory" in agent.valid_tool_names` e se `agent._memory_store` existir. Dispara quando `_turns_since_memory >= _memory_nudge_interval`. Docstring: "Advance the turn-based memory nudge counter; ``True`` when the review should fire."
+- Conflito de descrição: o módulo `agent/background_review.py` diz, na linha 1, "fork the agent to evaluate the turn. After every turn". Mas a condição de memória é o contador de turnos do usuário, segundo `agent/review_signals.py`: "user turns since the last memory review (``memory.nudge_interval``)".
+- Revisão ligada por padrão: `is_truthy_value(task.get("enabled"), default=True)`.
+- Prompt de revisão: "Review the conversation above and consider saving to memory if appropriate." Regra de fundamento: "Save only facts GROUNDED in this conversation — a user message or tool result you can point to." Ou seja, resultado de ferramenta conta como fundamento. É o oposto do que a inferência abaixo propõe para o Suup.
+- Ferramentas do fork: `review_toolsets = ["memory", "skills"] if memory_on and review_memory else ["skills"]`. Escrita de arquivo fica negada, segundo o comentário "Write tools stay denied".
+- Armazenamento: `tools/memory_tool.py`, cabeçalho: "Both enter the system prompt as a FROZEN snapshot at session start; mid-session writes hit disk but never change the prompt (prefix cache intact)."
+- Varredura: `tools/threat_patterns.py`: "Each pattern is ``(regex, pattern_id, scope)``". Na carga, `tools/memory_tool_store.py` troca a entrada suspeita por placeholder no snapshot, mas mantém o texto na lista: "live lists keep the raw text so the user can see and remove poisoned entries".
+- Escrita sem aprovação: documentação, seção "Controlling memory writes": "By default the agent saves memory freely — including from the background self-improvement review that runs after a turn."
+- Hooks para provedores externos (documentação, `website/docs/developer-guide/memory-provider-plugin.md`): `on_session_end(messages)`, "Final extraction/flush"; e `on_pre_compress(messages)`, "Save insights before discard". **Não verificado** se a memória embutida usa esses hooks.
+
+#### OpenClaw (openclaw/openclaw, lido em 19/11/2026)
+
+- Flush antes da compactação, `docs/concepts/memory.md`: "Before [compaction] summarizes your conversation, OpenClaw runs a silent turn that reminds the agent to save important context to durable memory." E: "This is on by default". Limiar: `DEFAULT_MEMORY_FLUSH_SOFT_TOKENS = 4_000`, reduzido quando a janela do modelo é pequena (`src/auto-reply/reply/memory-flush-plan.ts`).
+- Escrita restrita no flush: "During that flush, `write` appends only to the daily note."
+- Dreaming ligado por padrão: "Dreaming is enabled by default." Frequência padrão: `dreaming.frequency` = `0 3 * * *` (`docs/concepts/dreaming.md`). Fuso do cron **não verificado**.
+- Fases: "Dreaming runs three cooperative phases per sweep, in order: light -> REM -> deep." Só a fase deep grava em `MEMORY.md`.
+- Limiar de promoção, fase deep: "Ranks candidates with weighted scoring and threshold gates (`minScore`, `minRecallCount`, `minUniqueQueries` must all pass)."
+- O modelo devolve decisões, não prosa: "The model returns operation decisions, not replacement memory prose."
+- Proveniência: "Before building the consolidation prompt, `memory-core` removes candidates whose indexed provenance is `untrusted` or `system`. This is a structural taint gate, not a score penalty."
+- Lacuna: "Transcript text is not secret-masked before ingestion." Ingestão só de sessões interativas: "Only interactive sessions are eligible."
+- Leitura: notas diárias "are indexed for `memory_search` and `memory_get`, but are not injected into the bootstrap prompt on every turn."
+- Busca: "When an embedding provider is configured, `memory_search` uses hybrid search". E: "OpenClaw uses OpenAI embeddings by default." E: "SQLite remains the default."
+
+#### DuskBot (DuskBotAI/duskbot, lido em 19/11/2026)
+
+- Captura: `server/memory-capture.ts`, classe `CaptureBuffer`. Descarrega quando `entry.turns.length >= this.opts.maxTurns` (linha 317) ou quando a conversa fica quieta (`quietMs`, linha 321). `CAPTURE_MAX_TURNS = 6` em `server/memory-upkeep.ts`. Valor padrão de `quietMs` **não verificado**.
+- Arrumação: `TIDY_CHECK_MS = 10 * 60_000` e `timer = setInterval(scheduledTick, TIDY_CHECK_MS)` em `server/memory-upkeep.ts`. Não li o `tick` inteiro, só o intervalo.
+- Dono do sonho: comentário "The one bot that dreams tonight, if any: its ideas go into the person's brief." A frequência exata **não verificada**.
+- Regra de origem: `server/memory-upkeep.ts` descarta candidato quando `!statedInConversation(item.candidate, turns, false)`. E o cabeçalho de `server/memory-trust.ts`: "text that reached a turn from a web page, a tool, an email, a webhook or another bot never becomes always-loaded memory on its own, and nothing that reads as an instruction is kept at all."
+- Heurística: `statedInConversation` e `saidByPerson` (`server/memory-trust.ts`) comparam palavras; o trecho deve ter "at least three in five of its other words". É uma heurística de sobreposição, não comparação exata.
+- Regex: `THREATS`, em `server/memory-trust.ts`, é uma lista de seis expressões regulares para detectar texto que "parece instrução". Pela regra deste repositório, não copiar.
+- Modelo sem ferramentas: `server/memory-tidy.ts`: "You are the TIDY step of a memory system. You have no tools." E: "An empty list {"pairs": []} is the normal answer. Never invent a contradiction." `server/memory-dream.ts`: "You have no tools. Read only what is below."
+- Evidência para o sonho: `DREAM_MIN_CONVERSATIONS = 2`, `DREAM_MIN_CONFIDENCE = 0.7`, e o pedido ao modelo: "Give \"from\": the numbers of every conversation that shows it, at least two".
+- Mascaramento: `apps/site/pages/docs/memory.md`: "anything that looks like a password or a key is blanked out before a note is saved." Mecanismo **não verificado**.
+- Usuário: `apps/site/pages/docs/memory.md`: "old notes move to an archive by themselves when the list gets long." E: "bots don't learn from group chats. what they pick up comes from your own messages to them."
+
+#### LangMem (langchain-ai/langmem, lido em 19/11/2026)
+
+- README: "**Memory management tools** that agents can use to record and search information during active conversations "in the hot path"" e "**Background memory manager** that automatically extracts, consolidates, and updates agent knowledge".
+- `docs/docs/guides/delayed_processing.md`: "Processing memories on every message has drawbacks:" e, entre os problemas, "Unnecessary token consumption". O executor "Cancels old tasks when new messages arrive" e "Only processes after the specified delay". O exemplo usa `delay = 0.5` e comenta "In practice would choose longer (30-60 min)".
+- Aviso: "Local threads terminate between serverless function invocations." O `InMemoryStore` "keeps memories in process memory—they'll be lost on restart."
+
+#### Letta Code (letta-ai/letta-code, lido em 19/11/2026)
+
+- Gatilho: `src/reflection-settings.ts`: `export type ReflectionTrigger = "off" | "step-count" | "compaction-event";`. Padrão de passos: `const DEFAULT_STEP_COUNT = 25;` em `src/cli/helpers/memory-reminder.ts`. Texto para o usuário, `src/cli/app/reflection.ts`: "Every ${settings.stepCount} steps, ..." e "On compaction, ...".
+- Memória é o prompt: `maintaining-core-memory/SKILL.md`: "Treat each change as a revision of that prompt, not an append to a log". E: "The agent's system prompt is compiled from the Markdown files at the root of `$MEMORY_DIR`."
+- Git: README, "All context (including memory blocks) is tracked via git."
+- Windows: README, "Automatic client-side dreaming is disabled by default on native Windows, including when saved `/sleeptime` settings enable it."
+
+#### Mem0 OSS (mem0ai/mem0, lido em 19/11/2026)
+
+- `mem0/memory/main.py`, método `add`: "infer (bool, optional): If True (default), an LLM is used to extract key facts from". Eventos registrados em `"event": "ADD"`, `"UPDATE"` e `"DELETE"` (perto das linhas 2100 e 2132).
+- Histórico: `self.db = SQLiteManager(self.config.history_db_path)` (linha 500).
+- Prompt de extração, `mem0/configs/prompts.py`: "No Echo Extraction: When an assistant message restates, summarizes, or confirms information the user already provided in the same conversation, do NOT extract it again from the assistant's message."
+- README: "Mem0 uses `text-embedding-3-small` from OpenAI as the default embedding model."
+- **Não verificado**: o prompt de extração inteiro, e se há regra explícita contra segredos.
+
+#### Agent Zero (agent0ai/agent-zero, lido em 19/11/2026)
+
+- Gatilho: `plugins/_memory/extensions/python/monologue_end/_50_memorize_fragments.py`, chamada `task.start_task(self.memorize, loop_data, log_item)`, ou seja, em segundo plano.
+- Entrada: `msgs_text = self.agent.concat_messages(self.agent.history)`, com corte em `MAX_MSGS_CHARS = 80000` (fica o final). Chamada: `call_utility_model(..., background=True)`.
+- Prompt, `plugins/_memory/prompts/memory.memories_sum.sys.md`: "Do not memorize what the agent did in this session, commands it ran, files it created, test output, temporary paths, implementation minutiae, or cleanup-only facts." E: "Do not memorize AI's instructions or thoughts."
+- Consolidação, `plugins/_memory/helpers/memory_consolidation.py`: `class ConsolidationAction` com MERGE, REPLACE, KEEP_SEPARATE, UPDATE e SKIP. E: `replace_similarity_threshold: float = 0.75  # Threshold tuned for real cosine similarity scores`.
+- **Não verificado**: se resultados de ferramenta entram em `concat_messages`; o caminho de recuperação automática; a licença (o arquivo `LICENSE` não foi lido).
+
+#### SillyTavern (SillyTavern/SillyTavern, ramo `release`, lido em 19/11/2026)
+
+- Gatilho: `promptInterval: 10` (padrão). Condição: `if (messagesSinceLastSummary >= extension_settings.memory.promptInterval)`. Também existe um gatilho por palavras (`promptForceWords`).
+- Armazenamento: `getLatestMemoryFromChat` lê `mes.extra.memory`: "Get the latest memory summary from the chat."
+- Injeção: `setExtensionPrompt(MODULE_NAME, formatMemoryValue(value), extension_settings.memory.position, extension_settings.memory.depth, ...)`. O resumo entra no prompt sempre.
+- Controle: com `memoryFrozen` ligado, o código sai antes de gerar resumo (linha 434).
+
+### Inferências para o Suup
+
+Tudo abaixo é inferência minha, a partir dos fatos acima. Não é fato de fonte e não está decidido. Cada item diz o que deveria ser confirmado pelo dono.
+
+1. **Quando gravar.** Os projetos usam três gatilhos: contagem de turnos (Hermes a cada 10; Letta a cada 25 passos; DuskBot a cada 6 turnos), silêncio da conversa (DuskBot; LangMem, com atraso configurável) e antes de compactar (OpenClaw). O Suup já escreve o diário ao fim de cada execução, sem modelo (`docs/MEMORIA.md`, seção "O diário"). Inferência: manter esse gatilho para o diário. Para a consolidação de notas, usar silêncio da conversa (fim de conversa mais um atraso) e não contagem de turnos. Motivo: contagem de turnos pode disparar no meio de uma tarefa, e a execução é a unidade natural do Suup. A contagem de turnos pode ficar como teto de segurança, como o DuskBot faz com 6. O valor do atraso não foi verificado; deve ser escolhido pelo custo medido.
+
+2. **Antes de cortar histórico.** Se o Suup cortar ou resumir o histórico dentro de uma execução, vale o flush antes do corte, como no OpenClaw. Se não corta, o gatilho não se aplica hoje. **Não verifiquei** no código do Suup se há corte dentro da execução.
+
+3. **Quem grava.** Um modelo barato, sem ferramentas, que devolve operações estruturadas. OpenClaw: "operation decisions, not replacement memory prose". DuskBot: JSON com pares e "You have no tools". Inferência: o modelo só propõe; o código valida a saída contra um esquema e aplica. Os identificadores que o modelo cita são conferidos por comparação exata, sem regex.
+
+4. **O que o modelo vê.** Inferência: só as mensagens do usuário e as respostas finais do bot (o texto do `finish`). Não os resultados de ferramentas. Base: DuskBot não aceita texto de página, ferramenta, e-mail ou webhook como memória, e a pesquisa anterior registra que a Anthropic tira as saídas de ferramenta do revisor pelo mesmo motivo. Contraexemplos a evitar: Hermes aceita "a user message or tool result you can point to" como fundamento; Agent Zero passa o histórico inteiro ao modelo de resumo (se inclui ferramentas, não verificado). Para o Suup: toda memória candidata precisa citar uma mensagem do usuário.
+
+5. **Verificação de citação.** DuskBot descarta o que a pessoa não disse. Inferência: cada candidato traz um trecho da mensagem do usuário, e o código confere, por comparação exata do trecho (depois de normalizar espaços e caixa), que ele existe na mensagem. Não usar a sobreposição de palavras de DuskBot (`saidByPerson`), que é heurística, nem as expressões regulares de `THREATS`, pela regra do `CLAUDE.md`.
+
+6. **Escrita em rule e profile.** Continua pendente até o usuário confirmar, como já recomendado. Dois fatos reforçam: Hermes deixa a escrita livre por padrão, com `write_approval` como opção desligada; DuskBot mostra o que o bot aprendeu em "added by your bots" para remover depois. O padrão pendente do Suup é o mais restrito dos três. Inferência: manter pendente. A remoção posterior, como no DuskBot, seria complemento, não substituto.
+
+7. **Evidência antes de promover.** DuskBot exige citação em pelo menos duas conversas e confiança mínima de 0,7 para consolidar. OpenClaw exige que a nota tenha sido lembrada em consultas distintas (`minUniqueQueries`). Inferência: uma nota que aparece só numa execução fica provisória; para virar perfil, exige duas execuções distintas ou confirmação do usuário. O número 2 vem do DuskBot e não foi medido no Suup.
+
+8. **Segredo.** Hermes e DuskBot usam padrões para barrar injeção. OpenClaw admite que a transcrição não é mascarada antes da ingestão. Inferência: o Suup segue a regra do `CLAUDE.md` e a inferência já registrada em "Segredos nas escritas" (revisor modelo com pergunta fechada, e comparação exata com o cofre). Os três casos mostram que filtro sozinho não basta. Isso também confirma a inconsistência já registrada sobre `docs/MEMORIA.md`.
+
+9. **Trilha de eventos.** Mem0 registra ADD, UPDATE e DELETE num histórico. OpenClaw guarda a cópia anterior de cada reescrita de `MEMORY.md`. Inferência: cada mudança em rule e profile deveria virar um evento com autor, horário, origem e valor anterior. Isso permite desfazer e auditar, e complementa a regra de origem já recomendada.
+
+10. **Leitura.** Hermes e OpenClaw confirmam o desenho das quatro camadas: arquivos pequenos sempre no prompt, com teto de caracteres (no Hermes, 2.200 e 1.375), e o resto buscado. Não muda o plano; reforça o teto de tamanho já recomendado.
+
+11. **Licenças.** Copiar código do DuskBot (PolyForm Noncommercial) ou do SillyTavern (AGPL-3.0) traz restrições. Inferência: usar só as ideias, sem trechos copiados, salvo decisão do dono. Hermes, OpenClaw, LangMem e Mem0 são MIT ou Apache-2.0 (permissivas).
+
+12. **O que medir.** Acrescentar ao conjunto de medição já previsto: gatilho (fim de execução contra silêncio) e número de execuções até uma nota virar perfil. Medir também quantas notas viram perfil sem terem sido ditas pelo usuário.
+
+### O que não foi verificado
+
+- **DuskBot:** valor padrão de `quietMs`; frequência exata da revisão noturna (só o comentário "The one bot that dreams tonight"); se o mascaramento de senha usa regex.
+- **OpenClaw:** fuso do cron `0 3 * * *`; se o dreaming roda em outra ordem além de light, REM e deep.
+- **Hermes:** se a memória embutida usa `on_session_end` e `on_pre_compress`. Só estão documentados para provedores externos.
+- **Letta Code:** quem executa a reflexão e com qual modelo. Li só o disparo, a configuração e a documentação.
+- **Mem0:** provedor vetorial padrão no código; tratamento de segredo no prompt de extração.
+- **Agent Zero:** se resultados de ferramenta entram no histórico do resumo; caminho de recuperação automática; licença.
+- **SillyTavern:** fonte padrão do resumo; se o usuário edita o resumo pela interface.
+- **LangMem:** valor padrão do atraso; regras de segurança (não encontradas nas páginas lidas).
+- **Nomes do pedido:** "openBot" e "MausBot" não foram identificados. O OpenClaw é hipótese.
+- **Estrelas e licenças:** valores da API do GitHub em 19/11/2026. Licença do DuskBot e do Agent Zero é NOASSERTION; o arquivo `LICENSE` não foi lido.
+- **Não pesquisados nesta rodada:** Goose, Khoj, OpenHands, Cline, Continue, Open Interpreter, Eliza OS, AutoGPT, Aider.
