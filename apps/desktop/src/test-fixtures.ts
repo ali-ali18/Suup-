@@ -38,6 +38,7 @@ export function makeBot(over: Partial<Bot> = {}): Bot {
     groupName: null,
     sortOrder: null,
     color: null,
+    avatarStyle: "shapes",
     createdAt: iso(),
     updatedAt: iso(),
     archivedAt: null,

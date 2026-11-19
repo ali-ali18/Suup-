@@ -85,6 +85,7 @@ export function toBotDto(summary: BotSummary): Bot {
     groupName: bot.groupName ?? null,
     sortOrder: bot.sortOrder ?? null,
     color: bot.color === undefined ? null : (bot.color as Bot["color"]),
+    avatarStyle: bot.avatarStyle ?? "shapes",
     createdAt: iso(bot.createdAt),
     updatedAt: iso(bot.updatedAt),
     archivedAt: isoOrNull(bot.archivedAt),

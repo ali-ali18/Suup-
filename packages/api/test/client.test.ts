@@ -17,6 +17,7 @@ const bot = {
   groupName: null,
   sortOrder: null,
   color: null,
+  avatarStyle: "shapes",
   createdAt: "2026-11-18T20:00:00.000Z",
   updatedAt: "2026-11-18T20:00:00.000Z",
   archivedAt: null,
