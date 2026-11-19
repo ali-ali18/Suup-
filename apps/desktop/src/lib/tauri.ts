@@ -125,6 +125,7 @@ export function tauriLocal(): LocalServer {
     connection: () => invoke<Connection>("local_connection"),
     setApiKey: (key) => invoke("local_set_api_key", { key }),
     openLogs: () => invoke("local_open_logs"),
+    databaseUrl: () => invoke<string>("local_database_url"),
   };
 }
 

@@ -512,3 +512,18 @@ pub fn local_open_logs(app: AppHandle) -> Result<(), String> {
         .open_path(dir.to_string_lossy().to_string(), None::<&str>)
         .map_err(|e| e.to_string())
 }
+
+/// O endereço do banco do app (com a senha), para quem quer um backup ou levar os dados para uma VPS
+/// (docs/IMPLANTACAO.md). Só a pessoa, por um botão, e só neste computador (127.0.0.1).
+#[tauri::command]
+pub fn local_database_url(app: AppHandle) -> Result<String, String> {
+    let text = fs::read_to_string(data_dir(&app)?.join("ports.json"))
+        .map_err(|_| "o servidor local ainda não subiu nenhuma vez".to_string())?;
+    let ports: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+    let port = ports
+        .get("postgres")
+        .and_then(Value::as_u64)
+        .ok_or("o arquivo de portas está sem a do banco")?;
+    let password = read_secret(SECRET_PG)?.ok_or("a senha do banco não está no chaveiro")?;
+    Ok(format!("postgres://suup:{password}@127.0.0.1:{port}/suup"))
+}

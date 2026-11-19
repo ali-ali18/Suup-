@@ -351,7 +351,8 @@ pub fn run() {
             local::local_stop,
             local::local_connection,
             local::local_set_api_key,
-            local::local_open_logs
+            local::local_open_logs,
+            local::local_database_url
         ])
         .build(tauri::generate_context!())
         .expect("erro ao iniciar o Suup");

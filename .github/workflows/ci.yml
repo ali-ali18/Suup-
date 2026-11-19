@@ -96,5 +96,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # `tauri::generate_context!` embeds the built web app, so it must exist.
       - run: pnpm --filter @suup/desktop build
+      # The shell declares the Node runtime as an external binary and the server as resources, and
+      # the build script of Tauri checks they exist: prepare them first (apps/sidecar/scripts).
+      - run: pnpm --filter @suup/sidecar run bundle
       - name: cargo check (no bundle)
         run: cargo check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml

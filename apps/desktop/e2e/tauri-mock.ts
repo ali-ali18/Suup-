@@ -115,6 +115,7 @@ export async function installTauriMock(
           status = { ...status, hasApiKey: true };
         },
         local_open_logs: () => undefined,
+        local_database_url: () => "postgres://suup:senha-de-mentira@127.0.0.1:5999/suup",
         open_url: () => undefined,
         http_abort: () => undefined,
         http_fetch: async (a) => {

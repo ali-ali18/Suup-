@@ -1,6 +1,7 @@
-import { Activity, Box, FolderOpen, Key, Server, ShieldAlert } from "lucide-react";
+import { Activity, Box, Database, FolderOpen, Key, Server, ShieldAlert } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useServices } from "../../app/context.js";
+import { useUi } from "../../app/ui-store.js";
 import type { LocalServer, LocalState, LocalStatus } from "../../lib/platform.js";
 import { Dialog, FieldHint, Pill } from "../../ui/primitives.js";
 import { SecretInput, type SecretInputHandle } from "../../ui/secret-input.js";
@@ -117,6 +118,15 @@ export function ServerGroup() {
   const [keying, setKeying] = useState(false);
   const canSwitch = platform.local !== undefined || mode === "vps";
   const local = platform.local;
+  const toast = useUi((s) => s.toast);
+  const copyDatabaseUrl = async () => {
+    try {
+      await navigator.clipboard.writeText((await local?.databaseUrl()) ?? "");
+      toast("Endereço do banco copiado.", "info");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Não foi possível copiar o endereço.", "error");
+    }
+  };
   return (
     <>
       <SettingsGroup label="Servidor" testId="server-group">
@@ -175,6 +185,16 @@ export function ServerGroup() {
               control={
                 <RowAction onClick={() => setKeying(true)} data-testid="api-key-open">
                   {status.hasApiKey ? "Trocar" : "Definir"}
+                </RowAction>
+              }
+            />
+            <SettingsRow
+              icon={Database}
+              title="Banco de dados"
+              description="Para um backup ou para levar os dados a uma VPS (docs/IMPLANTACAO.md). O endereço leva a senha: guarde como guarda uma senha."
+              control={
+                <RowAction onClick={() => void copyDatabaseUrl()} data-testid="database-copy">
+                  Copiar endereço
                 </RowAction>
               }
             />

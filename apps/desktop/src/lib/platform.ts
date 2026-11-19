@@ -94,6 +94,8 @@ export interface LocalServer {
   setApiKey(key: string): Promise<void>;
   /** Opens the folder of the log files in the system's file manager. */
   openLogs(): Promise<void>;
+  /** The address of the app's own database, password included (to back it up or move it to a VPS). */
+  databaseUrl(): Promise<string>;
 }
 
 export interface Platform {
