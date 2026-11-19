@@ -4,7 +4,6 @@ import {
   type ConnectorToolEvent,
   type ConnectorToolReview,
 } from "@suup/api";
-import { History } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useServices } from "../../app/context.js";
 import {
@@ -15,9 +14,9 @@ import {
   EVENT_LABEL,
   type Section,
 } from "../../lib/tool-review.js";
-import { ActionCard } from "../../ui/action-card.js";
 import { Dialog, Pill, Tag } from "../../ui/primitives.js";
 import { formatWhen } from "./formatting.js";
+import { RowAction, SettingsGroup, SettingsRow } from "./parts.js";
 import { useTask } from "./use-task.js";
 
 // The review of a definition: what the server showed when you approved it next to what it shows now.
@@ -340,48 +339,53 @@ export function ToolHistory({ connector }: { connector: Connector }) {
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .slice(0, EVENTS_SHOWN);
   return (
-    <div data-testid="tool-history">
-      <ActionCard
-        testId="tool-history-card"
-        icon={<History size={14} />}
-        kind="Histórico das ferramentas"
-        state="done"
-        stateLabel=""
-        summary="Mudanças de definição e aprovações"
-        expanded={open}
-        onToggle={() => setOpen(!open)}
-      >
-        {error !== undefined && (
-          <p className="ui-field__error" role="alert">
-            {error}
-          </p>
+    <div className="sroot" data-testid="tool-history">
+      <SettingsGroup label="Histórico">
+        <SettingsRow
+          testId="tool-history-card"
+          title="Histórico das ferramentas"
+          description="Mudanças de definição e aprovações"
+          control={
+            <RowAction aria-expanded={open} onClick={() => setOpen(!open)}>
+              {open ? "Fechar" : "Ver"}
+            </RowAction>
+          }
+        />
+        {open && (
+          <div className="sfold">
+            {error !== undefined && (
+              <p className="ui-field__error" role="alert">
+                {error}
+              </p>
+            )}
+            {events === undefined && error === undefined ? (
+              <p className="sgroup__hint">Carregando…</p>
+            ) : recent.length === 0 ? (
+              <p className="sgroup__hint">Nada registrado ainda.</p>
+            ) : (
+              <ul className="history-list" data-testid="tool-history-list">
+                {recent.map((e) => (
+                  <li key={e.id} className="history-row" data-kind={e.kind}>
+                    <span className="muted small">{formatWhen(e.createdAt)}</span>
+                    <span>
+                      {EVENT_LABEL[e.kind]}
+                      {e.tool !== null && (
+                        <>
+                          {": "}
+                          <code>{e.tool}</code>
+                        </>
+                      )}
+                    </span>
+                    {e.detail !== null && e.detail !== "" && (
+                      <span className="muted small wrap">{e.detail}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         )}
-        {events === undefined && error === undefined ? (
-          <p className="ui-action__label">Carregando…</p>
-        ) : recent.length === 0 ? (
-          <p className="ui-action__label">Nada registrado ainda.</p>
-        ) : (
-          <ul className="history-list" data-testid="tool-history-list">
-            {recent.map((e) => (
-              <li key={e.id} className="history-row" data-kind={e.kind}>
-                <span className="muted small">{formatWhen(e.createdAt)}</span>
-                <span>
-                  {EVENT_LABEL[e.kind]}
-                  {e.tool !== null && (
-                    <>
-                      {": "}
-                      <code>{e.tool}</code>
-                    </>
-                  )}
-                </span>
-                {e.detail !== null && e.detail !== "" && (
-                  <span className="muted small wrap">{e.detail}</span>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </ActionCard>
+      </SettingsGroup>
     </div>
   );
 }

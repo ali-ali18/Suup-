@@ -5,7 +5,7 @@ import { useUi } from "../../app/ui-store.js";
 import { RULE_PRECEDENCE, ruleSentence } from "../../data/approval-text.js";
 import { orderedRules } from "../../data/reducers.js";
 import { Dialog, Pill } from "../../ui/primitives.js";
-import { PaneHead, type SectionProps, SettingsGroup, SettingsRow } from "./parts.js";
+import { PaneHead, RowAction, type SectionProps, SettingsGroup, SettingsRow } from "./parts.js";
 import { RuleDialog } from "./RuleDialog.js";
 import { useTask } from "./use-task.js";
 
@@ -55,49 +55,49 @@ export function PermissionsSettings({ title, titleId, onClose }: SectionProps) {
   ];
 
   const ruleLine = (rule: ApprovalRule): ReactNode => (
-    <li key={rule.id} className="srow" data-testid="rule-row" data-effect={rule.effect}>
-      <div className="srow__text">
-        <span className="srow__title" data-testid="rule-sentence">
-          {ruleSentence(rule, {
-            botName: rule.botId === null ? undefined : bots[rule.botId]?.name,
-            connectors,
-          })}
-        </span>
-        {!rule.enabled && (
-          <span className="srow__desc" data-testid="rule-disabled-reason">
-            Desativada: {rule.disabledReason}
-          </span>
-        )}
-        {rule.note !== null && rule.note !== "" && <span className="srow__desc">{rule.note}</span>}
-      </div>
-      <div className="srow__control">
-        <Pill
-          tone="ghost"
-          className="spill spill--ghost"
-          data-testid="rule-edit"
-          onClick={() => setEditing({ rule, effect: rule.effect })}
-        >
-          Editar
-        </Pill>
-        <Pill
-          tone="ghost"
-          className="spill spill--ghost"
-          data-testid="rule-delete"
-          onClick={() => setDeleting(rule)}
-        >
-          Remover
-        </Pill>
-      </div>
-    </li>
+    <div key={rule.id} data-testid="rule-row" data-effect={rule.effect}>
+      <SettingsRow
+        title={ruleSentence(rule, {
+          botName: rule.botId === null ? undefined : bots[rule.botId]?.name,
+          connectors,
+        })}
+        titleTestId="rule-sentence"
+        description={
+          <>
+            {!rule.enabled && (
+              <span className="srow__line" data-testid="rule-disabled-reason">
+                Desativada: {rule.disabledReason}
+              </span>
+            )}
+            {rule.note !== null && rule.note !== "" && (
+              <span className="srow__line">{rule.note}</span>
+            )}
+          </>
+        }
+        control={
+          <>
+            <RowAction
+              data-testid="rule-edit"
+              onClick={() => setEditing({ rule, effect: rule.effect })}
+            >
+              Editar
+            </RowAction>
+            <RowAction danger data-testid="rule-delete" onClick={() => setDeleting(rule)}>
+              Remover
+            </RowAction>
+          </>
+        }
+      />
+    </div>
   );
 
   return (
     <>
       <PaneHead title={title} titleId={titleId} onClose={onClose} />
       <div className="spane__body">
-        <SettingsGroup>
+        <SettingsGroup label="Aprovações">
           <SettingsRow
-            title="Aprovações"
+            title="Modo"
             description="Leitura e escrita reversível rodam sozinhas; o que sai para o mundo ou não tem volta espera o seu cartão."
             control={
               <span className="srow__value" data-testid="approval-mode">
@@ -106,54 +106,41 @@ export function PermissionsSettings({ title, titleId, onClose }: SectionProps) {
             }
           />
         </SettingsGroup>
-        <div className="sgroup" data-testid="rules-card">
-          {kinds.map((kind) => {
+        <div className="sroot" data-testid="rules-card">
+          {kinds.map((kind, index) => {
             const mine = rules.filter((r) => r.effect === kind.effect);
             return (
-              <div key={kind.effect} data-testid={`rules-${kind.effect}`}>
-                <div className="srow srow--bare">
-                  <div className="srow__text">
-                    <span className="srow__title">{kind.title}</span>
-                    <span className="srow__desc">{kind.description}</span>
-                  </div>
-                  <div className="srow__control">
-                    <Pill
-                      tone="secondary"
-                      className="spill"
+              <SettingsGroup
+                key={kind.effect}
+                label={kind.title}
+                testId={`rules-${kind.effect}`}
+                {...(index === kinds.length - 1 ? { hint: RULE_PRECEDENCE } : {})}
+              >
+                <SettingsRow
+                  title="Regras"
+                  description={kind.description}
+                  control={
+                    <RowAction
                       data-testid={`rule-new-${kind.effect}`}
                       onClick={() => setEditing({ rule: undefined, effect: kind.effect })}
                     >
                       Adicionar regra
-                    </Pill>
-                  </div>
-                </div>
-                {!rulesLoaded ? (
-                  <p className="slist__empty">Carregando…</p>
-                ) : (
-                  mine.length > 0 && (
-                    <ul className="slist" data-testid="rule-list">
-                      {mine.map(ruleLine)}
-                    </ul>
-                  )
-                )}
-              </div>
+                    </RowAction>
+                  }
+                />
+                {!rulesLoaded ? <SettingsRow title="Carregando…" /> : mine.map(ruleLine)}
+              </SettingsGroup>
             );
           })}
-          <p className="sgroup__hint">{RULE_PRECEDENCE}</p>
         </div>
-        <SettingsGroup>
+        <SettingsGroup label="Conectores">
           <SettingsRow
             title="Permissões dos conectores"
             description="Você escolhe quais ferramentas de cada conector cada bot pode usar; as que o servidor mudou esperam a sua revisão."
             control={
-              <Pill
-                tone="secondary"
-                className="spill"
-                data-testid="open-connectors"
-                onClick={() => setTab("connectors")}
-              >
+              <RowAction data-testid="open-connectors" onClick={() => setTab("connectors")}>
                 Abrir conectores
-              </Pill>
+              </RowAction>
             }
           />
         </SettingsGroup>

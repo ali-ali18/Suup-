@@ -215,7 +215,7 @@ test.describe("per-tool grants and the review of a definition", () => {
     // The tool list carries the badge too.
     await expect(
       row.locator('[data-testid="connector-tool"][data-tool="echo"]').getByTestId("tool-pin"),
-    ).toContainText("definição mudou, esperando sua revisão");
+    ).toContainText("Definição mudou, esperando sua revisão");
 
     // The review: the old definition next to the new one, marked as written by the server.
     await row.getByTestId("connector-review").click();

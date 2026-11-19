@@ -22,14 +22,29 @@ import {
 } from "../../lib/connector-form.js";
 import { RUNS_IN_LABEL } from "../../lib/network.js";
 import { reviewNotice } from "../../lib/tool-review.js";
+import { Dropdown, type DropdownOption } from "../../ui/dropdown.js";
 import { Dialog, Pill, Tag, TextField, Toggle } from "../../ui/primitives.js";
 import { ConnectorGrants } from "./ConnectorGrants.js";
 import { ConnectorNetwork } from "./ConnectorNetwork.js";
 import { formatWhen } from "./formatting.js";
-import { PaneHead, type SectionProps, SettingsGroup, SettingsRow } from "./parts.js";
+import { PaneHead, RowAction, type SectionProps, SettingsGroup, SettingsRow } from "./parts.js";
 import { ReviewDialog, ToolHistory } from "./ToolReview.js";
 import { useTask } from "./use-task.js";
 import { SecretDialog } from "./VaultSettings.js";
+
+const SOURCE_OPTIONS: readonly DropdownOption<RefRow["mode"]>[] = [
+  { value: "text", label: "Texto" },
+  { value: "secret", label: "Segredo do cofre" },
+];
+const secretOption = (name: string): DropdownOption => ({ value: name, label: name });
+const SCOPE_OPTIONS: readonly DropdownOption<ConnectorForm["scope"]>[] = [
+  { value: "read_only", label: "Somente leitura (só as ferramentas de leitura são oferecidas)" },
+  { value: "read_write", label: "Leitura e escrita (as que escrevem pedem cartão)" },
+];
+const RISK_OPTIONS: readonly DropdownOption<RiskLevel | "">[] = [
+  { value: "", label: "Padrão (pergunta antes)" },
+  ...LEVELS.map((level) => ({ value: level, label: LEVEL_LABEL[level] })),
+];
 
 const KIND_LABEL = { stdio: "Programa neste computador", http: "Servidor HTTP" } as const;
 
@@ -63,15 +78,13 @@ function RefRows({
             value={row.key}
             onChange={(e) => set(row.id, { key: e.target.value })}
           />
-          <select
-            className="ui-field__control"
-            aria-label={`De onde vem o valor d${noun === "variável" ? "a" : "o"} ${noun}`}
+          <Dropdown
+            variant="field"
+            label={`De onde vem o valor d${noun === "variável" ? "a" : "o"} ${noun}`}
             value={row.mode}
-            onChange={(e) => set(row.id, { mode: e.target.value as RefRow["mode"] })}
-          >
-            <option value="text">Texto</option>
-            <option value="secret">Segredo do cofre</option>
-          </select>
+            options={SOURCE_OPTIONS}
+            onChange={(mode) => set(row.id, { mode })}
+          />
           {row.mode === "text" ? (
             <input
               className="ui-field__control"
@@ -81,19 +94,13 @@ function RefRows({
               onChange={(e) => set(row.id, { text: e.target.value })}
             />
           ) : (
-            <select
-              className="ui-field__control"
-              aria-label="Segredo"
+            <Dropdown
+              variant="field"
+              label="Segredo"
               value={row.secret}
-              onChange={(e) => set(row.id, { secret: e.target.value })}
-            >
-              <option value="">Escolha um segredo…</option>
-              {secrets.map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
-            </select>
+              options={[{ value: "", label: "Escolha um segredo…" }, ...secrets.map(secretOption)]}
+              onChange={(secret) => set(row.id, { secret })}
+            />
           )}
           <button
             type="button"
@@ -107,13 +114,13 @@ function RefRows({
       ))}
       <div className="settings__row">
         <Pill
-          tone="ghost"
+          tone="secondary"
           icon={<Plus size={16} aria-hidden="true" />}
           onClick={() => onChange([...rows, emptyRow()])}
         >
           Adicionar {noun}
         </Pill>
-        <Pill tone="ghost" onClick={onNewSecret} data-testid="connector-new-secret">
+        <Pill tone="secondary" onClick={onNewSecret} data-testid="connector-new-secret">
           Cadastrar um segredo novo
         </Pill>
         {extra}
@@ -276,7 +283,7 @@ function AddConnectorDialog({ onClose, onNewSecret }: { onClose(): void; onNewSe
                 onNewSecret={onNewSecret}
                 extra={
                   <Pill
-                    tone="ghost"
+                    tone="secondary"
                     disabled={secretNames.length === 0}
                     onClick={() =>
                       set({ headers: [...form.headers, bearerRow(secretNames[0] ?? "")] })
@@ -298,17 +305,14 @@ function AddConnectorDialog({ onClose, onNewSecret }: { onClose(): void; onNewSe
           <label className="ui-field__label" htmlFor="connector-scope">
             Escopo
           </label>
-          <select
+          <Dropdown
             id="connector-scope"
-            className="ui-field__control"
+            variant="field"
+            label="Escopo"
             value={form.scope}
-            onChange={(e) => set({ scope: e.target.value as ConnectorForm["scope"] })}
-          >
-            <option value="read_only">
-              Somente leitura (só as ferramentas de leitura são oferecidas)
-            </option>
-            <option value="read_write">Leitura e escrita (as que escrevem pedem cartão)</option>
-          </select>
+            options={SCOPE_OPTIONS}
+            onChange={(scope) => set({ scope })}
+          />
         </div>
         <TextField
           label="Tempo limite de cada chamada, em segundos (opcional)"
@@ -366,48 +370,53 @@ function OutboundMark({ connector, tool }: { connector: Connector; tool: Connect
       return result.ok ? { ok: true } : { ok: false, message: result.message };
     });
   return (
-    <div className="tool-row__outbound" data-testid="tool-outbound">
-      <label className="settings__row">
-        <input
-          type="checkbox"
-          checked={marked}
-          disabled={task.busy}
-          data-testid="tool-outbound-check"
-          onChange={(e) => setMarked(e.target.checked)}
-        />
-        <span>Envia mensagem para outra pessoa</span>
-      </label>
-      {marked && (
-        <div className="settings__row">
-          <label className="ui-field__label" htmlFor={id}>
-            Campo do destinatário
-          </label>
-          <input
-            id={id}
-            className="ui-field__control"
-            placeholder="ex.: to (separe vários por vírgula)"
-            value={fields}
+    <>
+      <SettingsRow
+        title="Envia mensagem para outra pessoa"
+        description="Só você marca isto; o servidor não pode. O cartão desta ferramenta passa a ter “Enviar” e o menu do destinatário."
+        control={
+          <Toggle
+            checked={marked}
             disabled={task.busy}
-            data-testid="tool-outbound-fields"
-            onChange={(e) => setFields(e.target.value)}
+            testId="tool-outbound-check"
+            label={`${tool.tool}: envia mensagem para outra pessoa`}
+            onChange={setMarked}
           />
-        </div>
+        }
+      />
+      {marked && (
+        <SettingsRow
+          title="Campo do destinatário"
+          titleId={`${id}-label`}
+          control={
+            <input
+              id={id}
+              className="ui-field__control sinput"
+              aria-labelledby={`${id}-label`}
+              placeholder="ex.: to (separe vários por vírgula)"
+              value={fields}
+              disabled={task.busy}
+              data-testid="tool-outbound-fields"
+              onChange={(e) => setFields(e.target.value)}
+            />
+          }
+        />
       )}
-      <p className="ui-field__hint">
-        Só você marca isto; o servidor não pode. O cartão desta ferramenta passa a ter “Enviar” e o
-        menu do destinatário.
-      </p>
       {dirty && (
-        <Pill
-          tone="secondary"
-          disabled={task.busy || (marked && parsed.length === 0)}
-          data-testid="tool-outbound-save"
-          onClick={() => void save()}
-        >
-          {task.busy ? "Salvando…" : "Salvar"}
-        </Pill>
+        <SettingsRow
+          title="Alteração não salva"
+          control={
+            <RowAction
+              disabled={task.busy || (marked && parsed.length === 0)}
+              data-testid="tool-outbound-save"
+              onClick={() => void save()}
+            >
+              {task.busy ? "Salvando…" : "Salvar"}
+            </RowAction>
+          }
+        />
       )}
-    </div>
+    </>
   );
 }
 
@@ -418,127 +427,122 @@ function ToolRow({ connector, tool }: { connector: Connector; tool: ConnectorToo
   const chosen = connector.toolOverrides[tool.tool]?.risk ?? "";
   return (
     <li
-      className="tool-row stool"
+      className="tool-row"
       data-testid="connector-tool"
       data-tool={tool.tool}
       data-available={tool.available}
     >
-      <div className="row-between">
-        <p>
-          <strong>{tool.tool}</strong>
-          {(tool.pin === "changed" || tool.pin === "new") && (
-            <>
-              {" "}
-              <Tag tone="outline">
-                <span data-testid="tool-pin" data-pin={tool.pin}>
-                  {tool.pin === "changed"
-                    ? "definição mudou, esperando sua revisão"
-                    : "nova, esperando sua revisão"}
-                </span>
+      <SettingsRow
+        title={tool.tool}
+        description={
+          tool.pin === "changed" || tool.pin === "new" ? (
+            <span data-testid="tool-pin" data-pin={tool.pin}>
+              {tool.pin === "changed"
+                ? "Definição mudou, esperando sua revisão"
+                : "Nova, esperando sua revisão"}
+            </span>
+          ) : undefined
+        }
+        control={
+          <>
+            <span className="srow__value">
+              <Tag
+                tone={
+                  tool.risk === "external_irreversible"
+                    ? "danger"
+                    : tool.risk === "read"
+                      ? "neutral"
+                      : "outline"
+                }
+              >
+                {LEVEL_LABEL[tool.risk]}
               </Tag>
-            </>
-          )}
-        </p>
-        <span className="srow__control">
-          <Tag
-            tone={
-              tool.risk === "external_irreversible"
-                ? "danger"
-                : tool.risk === "read"
-                  ? "neutral"
-                  : "outline"
-            }
-          >
-            {LEVEL_LABEL[tool.risk]}
-          </Tag>
-          <Pill
-            tone="ghost"
-            className="spill spill--ghost"
-            aria-expanded={open}
-            data-testid="connector-tool-toggle"
-            onClick={() => setOpen(!open)}
-          >
-            {open ? "Fechar" : "Detalhes"}
-          </Pill>
-        </span>
-      </div>
-      {open && (
-        <p className="muted small">
-          Nome registrado: <code>{tool.name}</code>
-        </p>
-      )}
-      {open && tool.description !== "" && (
-        <blockquote className="quote" data-testid="tool-description">
-          <Tag tone="outline">escrito pelo servidor</Tag>
-          <p className="wrap">{tool.description}</p>
-        </blockquote>
-      )}
-      {!open ? null : tool.available ? (
-        <>
-          <p className="muted small" data-testid="tool-basis">
-            {RISK_BASIS_TEXT[tool.riskBasis]}
-            {tool.hints !== null && (
-              <>
-                {" "}
-                Dica do servidor:{" "}
-                {[
-                  tool.hints.readOnlyHint === undefined
-                    ? undefined
-                    : tool.hints.readOnlyHint
-                      ? "só lê"
-                      : "escreve",
-                  tool.hints.destructiveHint === true ? "destrutiva" : undefined,
-                ]
-                  .filter(Boolean)
-                  .join(", ") || "nenhuma"}
-                .
-              </>
-            )}
-          </p>
-          {tool.riskBasis === "tightened_by_hint" && (
-            <p className="ui-notice" role="note">
-              {TIGHTENED_HELP}
-            </p>
-          )}
-          <div className="settings__row tool-row__risk">
-            <label className="ui-field__label" htmlFor={`risk-${connector.name}-${tool.tool}`}>
-              O que você afirma
-            </label>
-            <select
-              id={`risk-${connector.name}-${tool.tool}`}
-              className="ui-field__control tool-row__select"
-              value={chosen}
-              disabled={task.busy}
-              data-testid="tool-risk"
-              onChange={(e) => {
-                const value = e.target.value === "" ? null : (e.target.value as RiskLevel);
-                void task.run(async () => {
-                  const result = await sync.connectorCall(() =>
-                    api.connectors.setToolRisk(connector.name, tool.tool, { risk: value }),
-                  );
-                  return result.ok ? { ok: true } : { ok: false, message: result.message };
-                });
-              }}
+            </span>
+            <RowAction
+              aria-expanded={open}
+              data-testid="connector-tool-toggle"
+              onClick={() => setOpen(!open)}
             >
-              <option value="">Padrão (pergunta antes)</option>
-              {LEVELS.map((level) => (
-                <option key={level} value={level}>
-                  {LEVEL_LABEL[level]}
-                </option>
-              ))}
-            </select>
-          </div>
-          <OutboundMark connector={connector} tool={tool} />
-          {task.error !== undefined && (
-            <p className="ui-field__error" role="alert">
-              {task.error}
+              {open ? "Fechar" : "Detalhes"}
+            </RowAction>
+          </>
+        }
+      />
+      {open && (
+        <div className="sfold">
+          <p className="sgroup__hint">
+            Nome registrado: <code>{tool.name}</code>
+          </p>
+          {tool.description !== "" && (
+            <blockquote className="quote" data-testid="tool-description">
+              <Tag tone="outline">escrito pelo servidor</Tag>
+              <p className="wrap">{tool.description}</p>
+            </blockquote>
+          )}
+          {tool.available ? (
+            <>
+              <p className="sgroup__hint" data-testid="tool-basis">
+                {RISK_BASIS_TEXT[tool.riskBasis]}
+                {tool.hints !== null && (
+                  <>
+                    {" "}
+                    Dica do servidor:{" "}
+                    {[
+                      tool.hints.readOnlyHint === undefined
+                        ? undefined
+                        : tool.hints.readOnlyHint
+                          ? "só lê"
+                          : "escreve",
+                      tool.hints.destructiveHint === true ? "destrutiva" : undefined,
+                    ]
+                      .filter(Boolean)
+                      .join(", ") || "nenhuma"}
+                    .
+                  </>
+                )}
+              </p>
+              {tool.riskBasis === "tightened_by_hint" && (
+                <p className="ui-notice" role="note">
+                  {TIGHTENED_HELP}
+                </p>
+              )}
+              <div className="scard">
+                <SettingsRow
+                  title="O que você afirma"
+                  control={
+                    <Dropdown
+                      label={`O que você afirma sobre ${tool.tool}`}
+                      value={chosen}
+                      options={RISK_OPTIONS}
+                      disabled={task.busy}
+                      testId="tool-risk"
+                      onChange={(value) => {
+                        void task.run(async () => {
+                          const result = await sync.connectorCall(() =>
+                            api.connectors.setToolRisk(connector.name, tool.tool, {
+                              risk: value === "" ? null : value,
+                            }),
+                          );
+                          return result.ok ? { ok: true } : { ok: false, message: result.message };
+                        });
+                      }}
+                    />
+                  }
+                />
+                <OutboundMark connector={connector} tool={tool} />
+              </div>
+              {task.error !== undefined && (
+                <p className="ui-field__error" role="alert">
+                  {task.error}
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="sgroup__hint" data-testid="tool-unavailable-reason">
+              Não é oferecida aos bots: {tool.reason ?? "motivo não informado"}.
             </p>
           )}
-        </>
-      ) : (
-        <p className="muted small" data-testid="tool-unavailable-reason">
-          Não é oferecida aos bots: {tool.reason ?? "motivo não informado"}.
-        </p>
+        </div>
       )}
     </li>
   );
@@ -595,14 +599,9 @@ function ConnectorRow({
                 });
               }}
             />
-            <Pill
-              tone="secondary"
-              className="spill"
-              data-testid="connector-details"
-              onClick={onOpen}
-            >
+            <RowAction data-testid="connector-details" onClick={onOpen}>
               Abrir
-            </Pill>
+            </RowAction>
           </>
         }
       />
@@ -659,20 +658,20 @@ function ConnectorDetail({
       data-enabled={connector.enabled}
     >
       <PaneHead title={connector.name} titleId={titleId} onClose={onClose}>
-        <Pill
-          tone="ghost"
-          className="spill spill--ghost"
-          data-testid="connector-delete"
-          onClick={() => setRemoving(true)}
-        >
+        <RowAction danger data-testid="connector-delete" onClick={() => setRemoving(true)}>
           Remover
-        </Pill>
+        </RowAction>
       </PaneHead>
       <div className="spane__body">
-        <button type="button" className="sback" data-testid="connectors-back" onClick={onBack}>
-          <ChevronLeft size={16} aria-hidden="true" />
-          Conectores
-        </button>
+        <div className="sback">
+          <RowAction
+            icon={<ChevronLeft size={16} aria-hidden="true" />}
+            data-testid="connectors-back"
+            onClick={onBack}
+          >
+            Conectores
+          </RowAction>
+        </div>
         <SettingsGroup>
           <SettingsRow
             title="Ligado"
@@ -717,9 +716,7 @@ function ConnectorDetail({
                   : `${available.length} ${available.length === 1 ? "ferramenta oferecida" : "ferramentas oferecidas"}${connector.discovery.discoveredAt !== null ? ` · listado em ${formatWhen(connector.discovery.discoveredAt)}` : ""}`
             }
             control={
-              <Pill
-                tone="secondary"
-                className="spill"
+              <RowAction
                 disabled={testing.busy}
                 data-testid="connector-test"
                 onClick={() =>
@@ -739,7 +736,7 @@ function ConnectorDetail({
                 }
               >
                 {testing.busy ? "Testando…" : "Testar"}
-              </Pill>
+              </RowAction>
             }
           />
           {notice !== null && (
@@ -749,14 +746,9 @@ function ConnectorDetail({
               testId="review-notice"
               role="status"
               control={
-                <Pill
-                  tone="secondary"
-                  className="spill"
-                  data-testid="connector-review"
-                  onClick={() => setReviewing(true)}
-                >
+                <RowAction data-testid="connector-review" onClick={() => setReviewing(true)}>
                   Revisar
-                </Pill>
+                </RowAction>
               }
             />
           )}
@@ -833,32 +825,30 @@ function ConnectorDetail({
           )}
           <ConnectorNetwork connector={connector} />
           <ToolHistory connector={connector} />
-          <section className="sgroup">
-            <h3 className="sgroup__label">Ferramentas</h3>
-            <p className="sgroup__hint">{READ_WARNING}</p>
+          <SettingsGroup label="Ferramentas" hint={READ_WARNING}>
             {connector.tools === null ? (
-              <p className="sgroup__hint">
-                Ainda não listado. Use “Testar” para o servidor listar as ferramentas.
-              </p>
+              <SettingsRow
+                title="Ainda não listado"
+                description="Use “Testar” para o servidor listar as ferramentas."
+              />
             ) : available.length === 0 ? (
-              <p className="sgroup__hint">Nenhuma ferramenta é oferecida aos bots.</p>
+              <SettingsRow title="Nenhuma ferramenta é oferecida aos bots" />
             ) : (
-              <ul className="scard tool-list" data-testid="connector-tools">
+              <ul className="sroot-list" data-testid="connector-tools">
                 {available.map((tool) => (
                   <ToolRow key={tool.name} connector={connector} tool={tool} />
                 ))}
               </ul>
             )}
-          </section>
+          </SettingsGroup>
           {unavailable.length > 0 && (
-            <section className="sgroup">
-              <h3 className="sgroup__label">Não oferecidas aos bots</h3>
-              <ul className="scard tool-list" data-testid="connector-tools-unavailable">
+            <SettingsGroup label="Não oferecidas aos bots">
+              <ul className="sroot-list" data-testid="connector-tools-unavailable">
                 {unavailable.map((tool) => (
                   <ToolRow key={tool.name} connector={connector} tool={tool} />
                 ))}
               </ul>
-            </section>
+            </SettingsGroup>
           )}
         </div>
       </div>
@@ -954,7 +944,7 @@ export function ConnectorsSettings({ title, titleId, onClose }: SectionProps) {
               </p>
             ) : (
               <SettingsGroup hint="Um conector liga um servidor externo (MCP) aos seus bots. Cada ferramenta pede um cartão de aprovação antes de rodar, a não ser que você diga o contrário.">
-                <div data-testid="connector-list">
+                <div className="sroot-list" data-testid="connector-list">
                   {connectors.map((c) => (
                     <ConnectorRow
                       key={c.name}

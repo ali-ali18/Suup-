@@ -587,10 +587,7 @@
   min-width: 200px;
   max-width: 420px;
 }
-.memory__select-control {
-  height: var(--size-control);
-  padding-block: 0;
-  border-radius: var(--radius-pill);
+.memory__select {
   min-width: 180px;
 }
 .memory__toggle {
@@ -1028,75 +1025,7 @@ fieldset.form__row legend {
   gap: var(--space-3);
   padding-top: var(--space-3);
 }
-.tool-row {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-3) 0;
-  border-top: 1px solid var(--color-border);
-  min-width: 0;
-}
-.tool-row__risk {
-  align-items: center;
-}
-.tool-row__select {
-  height: var(--size-control);
-  padding-block: 0;
-  border-radius: var(--radius-pill);
-  width: auto;
-  min-width: 220px;
-}
-
 /* ---- Connectors: per-tool grants, review of a definition, history, network ----------------------------- */
-.grant-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-.grant-shortcuts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1);
-  margin-left: calc(var(--space-3) * -1);
-}
-.grant-tools {
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.grant-tool {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-3);
-  padding: var(--space-2) 0;
-  border-top: 1px solid var(--color-border);
-}
-.grant-tool:first-child {
-  border-top: 0;
-}
-.grant-tool input[type="checkbox"] {
-  flex: none;
-  margin-top: var(--space-1);
-}
-.grant-tool__text {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  flex: 1;
-}
-.grant-tool__head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-}
-.grant-tool__risk {
-  color: var(--color-text-muted);
-  font-size: var(--text-small-size);
-}
 .grant-footer {
   display: flex;
   justify-content: flex-end;

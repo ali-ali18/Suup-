@@ -5,6 +5,7 @@ import { useData, useServices } from "../../app/context.js";
 import { sortedBots } from "../../app/selectors.js";
 import { useUi } from "../../app/ui-store.js";
 import { fold } from "../../data/botlist.js";
+import { Dropdown } from "../../ui/dropdown.js";
 import { MemoryItem } from "../../ui/memory-item.js";
 import { Dialog, EmptyState, Pill, Tabs, TextField, Toggle } from "../../ui/primitives.js";
 import {
@@ -96,23 +97,19 @@ export function MemoryScreen() {
               placeholder="Buscar na memória…"
             />
           </div>
-          <label className="memory__select">
-            <span className="sr-only">Filtrar por bot</span>
-            <select
+          <div className="memory__select">
+            <Dropdown
+              variant="field"
+              label="Filtrar por bot"
               value={botFilter}
-              onChange={(e) => setBotFilter(e.target.value)}
-              aria-label="Filtrar por bot"
-              className="ui-field__control memory__select-control"
-            >
-              <option value="all">Todos os bots</option>
-              <option value="shared">Compartilhadas</option>
-              {botList.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
-          </label>
+              options={[
+                { value: "all", label: "Todos os bots" },
+                { value: "shared", label: "Compartilhadas" },
+                ...botList.map((b) => ({ value: b.id, label: b.name })),
+              ]}
+              onChange={setBotFilter}
+            />
+          </div>
           <span className="memory__toggle small">
             <Toggle
               checked={showForgotten}
@@ -216,40 +213,37 @@ function AddMemoryDialog({
       }
     >
       <div className="form">
-        <label className="form__row">
+        <div className="form__row">
           <span className="ui-field__label">Camada</span>
-          <select
-            className="ui-field__control"
+          <Dropdown
+            variant="field"
+            label="Camada"
             value={layer}
-            onChange={(e) => {
-              const next = e.target.value as typeof layer;
+            options={[
+              { value: "rule", label: "Regra" },
+              { value: "profile", label: "Perfil (vale para todos os bots)" },
+              { value: "note", label: "Nota de um bot" },
+            ]}
+            onChange={(next) => {
               setLayer(next);
               if (next === "note" && target === "shared") setTarget(selected ?? list[0]?.id ?? "");
             }}
-            aria-label="Camada"
-          >
-            <option value="rule">Regra</option>
-            <option value="profile">Perfil (vale para todos os bots)</option>
-            <option value="note">Nota de um bot</option>
-          </select>
-        </label>
+          />
+        </div>
         {layer !== "profile" && (
-          <label className="form__row">
+          <div className="form__row">
             <span className="ui-field__label">Vale para</span>
-            <select
-              className="ui-field__control"
+            <Dropdown
+              variant="field"
+              label="Vale para"
               value={target}
-              onChange={(e) => setTarget(e.target.value)}
-              aria-label="Vale para"
-            >
-              {layer === "rule" && <option value="shared">Todos os bots</option>}
-              {list.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
-          </label>
+              options={[
+                ...(layer === "rule" ? [{ value: "shared", label: "Todos os bots" }] : []),
+                ...list.map((b) => ({ value: b.id, label: b.name })),
+              ]}
+              onChange={setTarget}
+            />
+          </div>
         )}
         <TextField
           label="Texto"

@@ -908,6 +908,103 @@ input.ui-field__control {
   color: var(--color-danger-text);
 }
 
+/* ---- Dropdown (the only way to choose among options: never a native select) ------------------------------- */
+.ui-dropdown {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  max-width: 100%;
+  border: 1px solid transparent;
+  color: var(--color-text);
+  font-size: var(--text-small-size);
+  line-height: var(--text-small-line);
+  text-align: left;
+}
+.ui-dropdown:disabled {
+  opacity: 0.4;
+}
+.ui-dropdown__value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ui-dropdown__chevron {
+  flex: none;
+  color: var(--color-text-muted);
+}
+/* in a settings row: text and chevron, no box until hover */
+.ui-dropdown--quiet {
+  height: 32px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-pill);
+  background: transparent;
+}
+.ui-dropdown--quiet:hover:not(:disabled),
+.ui-dropdown--quiet[aria-expanded="true"] {
+  background: var(--color-raised);
+}
+/* in a form: the bordered field */
+.ui-dropdown--field {
+  width: 100%;
+  height: var(--size-control);
+  padding: 0 var(--space-4);
+  border-color: var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-bg);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+}
+.ui-dropdown:focus-visible {
+  outline: var(--focus-ring);
+  border-color: var(--color-border-strong);
+}
+.ui-dropdown__panel {
+  position: fixed;
+  right: auto;
+  z-index: 60;
+  overflow: hidden;
+  max-width: calc(100vw - 16px);
+}
+.ui-dropdown__list {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+}
+.ui-dropdown__filter {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+  padding: 0 var(--space-3);
+  height: 36px;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+}
+.ui-dropdown__filter input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  font-size: var(--text-small-size);
+}
+.ui-dropdown__filter input:focus-visible {
+  outline: none;
+}
+.ui-dropdown__none {
+  padding: var(--space-3);
+  font-size: var(--text-small-size);
+  color: var(--color-text-muted);
+}
+.ui-dropdown__panel .ui-menu__item[aria-selected="true"] {
+  background: var(--color-hover);
+}
+
 /* ---- Library ---------------------------------------------------------------------------------------- */
 .ui-library {
   display: flex;

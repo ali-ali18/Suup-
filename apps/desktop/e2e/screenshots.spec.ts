@@ -4,7 +4,15 @@ import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
 import { recordNetworkEvent } from "@suup/db";
 import { DATABASE_URL, fakeMcpCommand, SKIP_REASON, startWorld, type World } from "./harness.js";
-import { closeSettings, connect, freshBot, openSettings, selectBot, send } from "./helpers.js";
+import {
+  choose,
+  closeSettings,
+  connect,
+  freshBot,
+  openSettings,
+  selectBot,
+  send,
+} from "./helpers.js";
 
 // Takes a screenshot of each main screen from a real run of the app, for the visual review against
 // the owner's references (1920x1080) and for the design review (1440x900 at 2x).
@@ -326,6 +334,12 @@ test.describe("screenshots", () => {
       await page.getByRole("menuitem", { name: "Configurações" }).click();
       await expect(page.getByTestId("model-row").first()).toBeVisible();
       await shot("15-configuracoes");
+      // An open dropdown (the one of the rows, our menu surface: never a native select).
+      await page.getByTestId("setting-theme").click();
+      await expect(page.getByRole("listbox")).toBeVisible();
+      await shot("15a-configuracoes-dropdown");
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("listbox")).toHaveCount(0);
       await closeSettings(page);
       await selectBot(page, "Nova");
       await page.getByTestId("bot-chip").click({ button: "right" });
@@ -511,12 +525,12 @@ test.describe("screenshots", () => {
 
       // Light theme, once.
       await openSettings(page, "Geral");
-      await page.getByTestId("setting-theme").selectOption("light");
+      await choose(page, page.getByTestId("setting-theme"), "Claro");
       await closeSettings(page);
       await selectBot(page, "Cookie");
       await shot("17-tema-claro");
       await openSettings(page, "Geral");
-      await page.getByTestId("setting-theme").selectOption("dark");
+      await choose(page, page.getByTestId("setting-theme"), "Escuro");
       await closeSettings(page);
       await context.close();
       await world.stop();

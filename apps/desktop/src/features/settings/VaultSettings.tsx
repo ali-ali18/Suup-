@@ -8,7 +8,7 @@ import { nameProblem, writeSecret } from "../../lib/secret-form.js";
 import { Dialog, Pill, TextField, Toggle } from "../../ui/primitives.js";
 import { SecretInput, type SecretInputHandle } from "../../ui/secret-input.js";
 import { formatWhen } from "./formatting.js";
-import { PaneHead, type SectionProps, SettingsGroup, SettingsRow } from "./parts.js";
+import { PaneHead, RowAction, type SectionProps, SettingsGroup, SettingsRow } from "./parts.js";
 import { useTask } from "./use-task.js";
 
 /**
@@ -279,69 +279,66 @@ export function VaultSettings({ title, titleId, onClose }: SectionProps) {
                       .filter((part) => part !== undefined)
                       .join(" · ")}
                     control={
-                      <Pill
-                        tone="secondary"
-                        className="spill"
+                      <RowAction
                         aria-expanded={expanded}
                         data-testid="secret-grants-toggle"
                         onClick={() => setOpen(expanded ? null : secret.name)}
                       >
                         Gerenciar
-                      </Pill>
+                      </RowAction>
                     }
                   />
                   {expanded && (
                     <div className="sfold">
-                      <fieldset className="grants" data-testid="secret-grants">
-                        <legend className="ui-field__label">Quem pode usar</legend>
-                        {botList.length === 0 && <p className="muted small">Nenhum bot.</p>}
+                      <SettingsGroup label="Quem pode usar" testId="secret-grants">
+                        {botList.length === 0 && <SettingsRow title="Nenhum bot" />}
                         {botList.map((b) => {
                           const on = secret.grantedBotIds.includes(b.id);
                           return (
-                            <div key={b.id} className="grant-row">
-                              <span>{b.name}</span>
-                              <Toggle
-                                checked={on}
-                                disabled={grant.busy}
-                                label={`${b.name} pode usar ${secret.name}`}
-                                onChange={(next) =>
-                                  void grant.run(() =>
-                                    sync.secretCall(() =>
-                                      next
-                                        ? api.vault.grant(secret.name, b.id)
-                                        : api.vault.revoke(secret.name, b.id),
-                                    ),
-                                  )
-                                }
-                              />
-                            </div>
+                            <SettingsRow
+                              key={b.id}
+                              title={b.name}
+                              control={
+                                <Toggle
+                                  checked={on}
+                                  disabled={grant.busy}
+                                  label={`${b.name} pode usar ${secret.name}`}
+                                  onChange={(next) =>
+                                    void grant.run(() =>
+                                      sync.secretCall(() =>
+                                        next
+                                          ? api.vault.grant(secret.name, b.id)
+                                          : api.vault.revoke(secret.name, b.id),
+                                      ),
+                                    )
+                                  }
+                                />
+                              }
+                            />
                           );
                         })}
-                        {grant.error !== undefined && (
-                          <p className="ui-field__error" role="alert">
-                            {grant.error}
-                          </p>
-                        )}
-                        <p className="muted small">A mudança vale a partir da próxima execução.</p>
-                      </fieldset>
+                      </SettingsGroup>
+                      {grant.error !== undefined && (
+                        <p className="ui-field__error" role="alert">
+                          {grant.error}
+                        </p>
+                      )}
+                      <p className="sgroup__hint">A mudança vale a partir da próxima execução.</p>
                       <div className="srow__control">
-                        <Pill
-                          tone="secondary"
-                          className="spill"
+                        <RowAction
                           disabled={blocked}
                           data-testid="secret-replace"
                           onClick={() => setDialog({ existing: secret.name })}
                         >
                           Trocar o valor
-                        </Pill>
-                        <Pill
-                          tone="ghost"
-                          className="spill spill--ghost"
+                        </RowAction>
+                        <RowAction
+                          danger
                           data-testid="secret-delete"
                           onClick={() => setDeleting(secret)}
                         >
                           Apagar
-                        </Pill>
+                        </RowAction>
                       </div>
                     </div>
                   )}

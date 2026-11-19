@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { DATABASE_URL, SKIP_REASON, startWorld, type World } from "./harness.js";
 import {
   botItem,
+  choose,
   closeSettings,
   freshBot,
   openApp,
@@ -468,8 +469,8 @@ test.describe("bots, sidebar, palette, memory", () => {
 
     await page.getByTestId("owner-menu").click();
     await page.getByRole("menuitem", { name: "Configurações" }).click();
-    await page.getByTestId("setting-bubble").selectOption("neutral");
-    await page.getByTestId("setting-density").selectOption("compact");
+    await choose(page, page.getByTestId("setting-bubble"), "Sempre neutro");
+    await choose(page, page.getByTestId("setting-density"), "Compacta");
     await expect(page.locator("html")).toHaveAttribute("data-bubble", "neutral");
     await expect(page.locator("html")).toHaveAttribute("data-density", "compact");
     await closeSettings(page);
@@ -525,18 +526,18 @@ test.describe("bots, sidebar, palette, memory", () => {
     // Wide column and "show all actions" are settings too.
     await page.getByTestId("owner-menu").click();
     await page.getByRole("menuitem", { name: "Configurações" }).click();
-    await page.getByTestId("setting-width").selectOption("wide");
-    await page.getByTestId("setting-phrase").selectOption("discreet");
+    await choose(page, page.getByTestId("setting-width"), "Larga");
+    await choose(page, page.getByTestId("setting-phrase"), "Discreta");
     await page.getByTestId("setting-fold").click();
     await expect(page.locator("html")).toHaveAttribute("data-width", "wide");
     await expect(page.locator("html")).toHaveAttribute("data-phrase", "discreet");
     await expect(page.locator("html")).toHaveAttribute("data-fold", "off");
-    await page.getByTestId("setting-bubble").selectOption("bot");
-    await page.getByTestId("setting-density").selectOption("comfortable");
+    await choose(page, page.getByTestId("setting-bubble"), "Seguir o bot");
+    await choose(page, page.getByTestId("setting-density"), "Confortável");
     await page.getByTestId("setting-favicons").click();
     await expect(page.getByTestId("setting-favicons")).toHaveAttribute("aria-checked", "false");
-    await page.getByTestId("setting-width").selectOption("default");
-    await page.getByTestId("setting-phrase").selectOption("real");
+    await choose(page, page.getByTestId("setting-width"), "Padrão");
+    await choose(page, page.getByTestId("setting-phrase"), "Estado real");
     await page.getByTestId("setting-fold").click();
     await closeSettings(page);
   });
@@ -552,9 +553,9 @@ test.describe("bots, sidebar, palette, memory", () => {
     const settings = page.getByTestId("settings-screen");
     await expect(settings.getByTestId("server-url")).toHaveText(world.serverUrl);
     await expect(settings.getByTestId("model-row")).toHaveCount(2);
-    await settings.getByTestId("setting-theme").selectOption("light");
+    await choose(page, settings.getByTestId("setting-theme"), "Claro");
     await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
-    await settings.getByTestId("setting-theme").selectOption("dark");
+    await choose(page, settings.getByTestId("setting-theme"), "Escuro");
     await closeSettings(page);
     await page.getByTestId("owner-menu").click();
     await page.getByRole("menuitem", { name: "Desconectar" }).click();

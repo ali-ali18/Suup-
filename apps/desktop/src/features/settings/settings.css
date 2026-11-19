@@ -119,9 +119,6 @@
 .scard:not(.scard--plain) > * + * {
   border-top: 1px solid var(--color-border);
 }
-.srow--bare {
-  padding-inline: var(--space-2);
-}
 .srow__text {
   display: flex;
   flex-direction: column;
@@ -146,45 +143,19 @@
   gap: var(--space-2);
   max-width: 50%;
 }
+.srow__line {
+  display: block;
+}
+.sinput {
+  width: 260px;
+  max-width: 100%;
+  height: 32px;
+  font-size: var(--text-small-size);
+}
 .srow__value {
   font-size: var(--text-small-size);
   color: var(--color-text-muted);
   text-align: right;
-}
-/* a quiet dropdown: text and a chevron, no box until hover */
-.sselect {
-  appearance: none;
-  height: 32px;
-  padding: 0 28px 0 var(--space-3);
-  border: 1px solid transparent;
-  border-radius: var(--radius-pill);
-  background-color: transparent;
-  background-image:
-    linear-gradient(45deg, transparent 50%, var(--color-text-muted) 50%),
-    linear-gradient(135deg, var(--color-text-muted) 50%, transparent 50%);
-  background-position:
-    calc(100% - 15px) 14px,
-    calc(100% - 10px) 14px;
-  background-size:
-    5px 5px,
-    5px 5px;
-  background-repeat: no-repeat;
-  color: var(--color-text);
-  font-size: var(--text-small-size);
-  line-height: var(--text-small-line);
-  max-width: 100%;
-  text-overflow: ellipsis;
-}
-.sselect:hover {
-  background-color: var(--color-raised);
-}
-.sselect:focus-visible {
-  outline: var(--focus-ring);
-  border-color: var(--color-border-strong);
-}
-.sselect option {
-  background: var(--color-surface);
-  color: var(--color-text);
 }
 .spill {
   height: 32px;
@@ -192,24 +163,6 @@
 }
 .spill--ghost {
   padding: 0 var(--space-3);
-  color: var(--color-text-muted);
-}
-.spill--ghost:hover:not(:disabled) {
-  color: var(--color-text);
-}
-/* a list of short rows under a heading row (the rules, the secrets, the connectors) */
-.slist {
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-  padding: 0 var(--space-2);
-}
-.slist > li + li {
-  border-top: 1px solid var(--color-border);
-}
-.slist__empty {
-  padding: var(--space-1) var(--space-2) var(--space-3);
-  font-size: var(--text-small-size);
   color: var(--color-text-muted);
 }
 .sempty {
@@ -252,27 +205,26 @@
   flex-wrap: wrap;
 }
 .sback {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
   align-self: flex-start;
-  height: 32px;
-  padding: 0 var(--space-3) 0 var(--space-2);
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--color-text-muted);
-  font-size: var(--text-small-size);
-}
-.sback:hover {
-  background: var(--color-raised);
-  color: var(--color-text);
 }
 .sfold {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  padding: var(--space-3) 0 var(--space-4);
+  padding: var(--space-2) 0 var(--space-4);
+}
+.sfold > .srow__control {
+  justify-content: flex-end;
+  max-width: none;
+}
+.grant-shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.grant-tools {
+  margin: 0;
+  list-style: none;
 }
 .srule-form {
   display: flex;
@@ -308,16 +260,24 @@
   flex-direction: column;
   gap: var(--space-5);
 }
-.stool {
-  padding: var(--space-3) 0;
-}
-.scard.tool-list {
-  gap: 0;
-  list-style: none;
-}
 .sroot {
   display: contents;
 }
-.slist .srow__title {
-  font-weight: 400;
+.grant-tool {
+  gap: var(--space-3);
+}
+.grant-tool .srow__text {
+  flex: 1;
+}
+
+/* rows that are not direct children of the card (a list of tools, of connectors): same separators */
+.sroot-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.scard .sroot-list > * + * {
+  border-top: 1px solid var(--color-border);
 }

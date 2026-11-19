@@ -334,7 +334,7 @@ describe("the history of a connector's tools", () => {
     const { view } = setup({ connectors: { events } }, connector);
     view(<ToolHistory connector={connector} />);
     expect(events).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: /Histórico das ferramentas/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Ver" }));
     const list = await screen.findByTestId("tool-history-list");
     expect([...list.querySelectorAll("li")].map((li) => li.getAttribute("data-kind"))).toEqual([
       "approved",

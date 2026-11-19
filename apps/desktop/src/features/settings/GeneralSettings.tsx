@@ -4,9 +4,10 @@ import { useData, useServices } from "../../app/context.js";
 import { sortedBots } from "../../app/selectors.js";
 import { useSettings } from "../../app/settings-store.js";
 import type { Settings } from "../../lib/settings.js";
-import { Pill, Toggle } from "../../ui/primitives.js";
+import { Toggle } from "../../ui/primitives.js";
 import {
   PaneHead,
+  RowAction,
   type SectionProps,
   SettingsGroup,
   SettingsRow,
@@ -199,11 +200,7 @@ export function GeneralSettings({ title, titleId, onClose }: SectionProps) {
             title="Servidor"
             description={connection.serverUrl}
             descriptionTestId="server-url"
-            control={
-              <Pill tone="secondary" className="spill" onClick={() => void disconnect()}>
-                Desconectar
-              </Pill>
-            }
+            control={<RowAction onClick={() => void disconnect()}>Desconectar</RowAction>}
           />
           <SettingsRow
             title="Token de acesso"

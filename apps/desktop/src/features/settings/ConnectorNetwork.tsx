@@ -9,7 +9,8 @@ import {
   RUNS_IN_LABEL,
   sameHosts,
 } from "../../lib/network.js";
-import { Pill, TextField } from "../../ui/primitives.js";
+import { TextField } from "../../ui/primitives.js";
+import { RowAction, SettingsGroup, SettingsRow } from "./parts.js";
 import { useTask } from "./use-task.js";
 
 /**
@@ -59,61 +60,63 @@ export function ConnectorNetwork({ connector }: { connector: Connector }) {
     });
 
   return (
-    <div className="connector-network" data-testid="connector-network" data-runs-in={runsIn}>
-      <h3 className="sgroup__label">Onde roda e que hosts alcança</h3>
-      {runsIn === "host" ? (
-        <p className="ui-notice" role="note" data-testid="connector-runs-in">
-          <strong>{RUNS_IN_LABEL.host}</strong>
-          Este programa roda no computador do servidor, com os arquivos e o ambiente dele, e a rede
-          dele não passa por proxy nem por lista de hosts. O isolamento só existe com o sandbox
-          docker.
-        </p>
-      ) : (
-        <p className="small" data-testid="connector-runs-in">
-          <strong>{RUNS_IN_LABEL.container}</strong>
-          <span className="muted">
-            {" "}
-            · sem acesso aos seus arquivos nem ao ambiente do servidor; a rede sai só pelo proxy,
-            para os hosts abaixo.
-          </span>
-        </p>
-      )}
-      {defaults !== undefined && (
-        <p className="muted small" data-testid="connector-default-hosts">
-          Liberados para todos:{" "}
-          <span className="mono">{defaults.length === 0 ? "nenhum" : defaults.join(", ")}</span>
-        </p>
-      )}
-      <TextField
-        label="Hosts liberados só para este conector (um por linha)"
-        value={text}
-        onChange={setText}
-        multiline
-        rows={3}
-        placeholder="api.exemplo.com"
+    <div className="sroot" data-testid="connector-network" data-runs-in={runsIn}>
+      <SettingsGroup
+        label="Onde roda e que hosts alcança"
         hint={`${EXACT_HOST_NOTE}${runsIn === "host" ? " Enquanto o programa rodar no servidor, esta lista não é usada." : ""}`}
-        name="connector-egress"
-      />
-      {task.error !== undefined && (
-        <p className="ui-field__error" role="alert" data-testid="egress-error">
-          {task.error}
-        </p>
-      )}
-      <div className="grant-footer">
-        {dirty && (
-          <Pill tone="ghost" disabled={task.busy} onClick={() => setText(hostsText(saved))}>
-            Descartar
-          </Pill>
+      >
+        {runsIn === "host" ? (
+          <SettingsRow
+            testId="connector-runs-in"
+            role="note"
+            title={RUNS_IN_LABEL.host}
+            description="Roda no computador do servidor, com os arquivos e o ambiente dele; a rede dele não passa por proxy nem por lista de hosts. O isolamento só existe com o sandbox docker."
+          />
+        ) : (
+          <SettingsRow
+            testId="connector-runs-in"
+            title={RUNS_IN_LABEL.container}
+            description="Sem acesso aos seus arquivos nem ao ambiente do servidor; a rede sai só pelo proxy, para os hosts abaixo."
+          />
         )}
-        <Pill
-          tone="primary"
-          disabled={!dirty || task.busy}
-          data-testid="egress-save"
-          onClick={() => void save()}
-        >
-          {task.busy ? "Salvando…" : "Salvar hosts"}
-        </Pill>
-      </div>
+        {defaults !== undefined && (
+          <SettingsRow
+            testId="connector-default-hosts"
+            title="Liberados para todos"
+            description={defaults.length === 0 ? "nenhum" : defaults.join(", ")}
+          />
+        )}
+        <div className="sfold">
+          <TextField
+            label="Hosts liberados só para este conector (um por linha)"
+            value={text}
+            onChange={setText}
+            multiline
+            rows={3}
+            placeholder="api.exemplo.com"
+            name="connector-egress"
+          />
+          {task.error !== undefined && (
+            <p className="ui-field__error" role="alert" data-testid="egress-error">
+              {task.error}
+            </p>
+          )}
+          <div className="srow__control">
+            {dirty && (
+              <RowAction disabled={task.busy} onClick={() => setText(hostsText(saved))}>
+                Descartar
+              </RowAction>
+            )}
+            <RowAction
+              disabled={!dirty || task.busy}
+              data-testid="egress-save"
+              onClick={() => void save()}
+            >
+              {task.busy ? "Salvando…" : "Salvar hosts"}
+            </RowAction>
+          </div>
+        </div>
+      </SettingsGroup>
     </div>
   );
 }

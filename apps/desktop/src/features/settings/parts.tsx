@@ -1,5 +1,7 @@
 import { X } from "lucide-react";
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
+import { Dropdown } from "../../ui/dropdown.js";
+import { Pill } from "../../ui/primitives.js";
 
 /**
  * The pieces every settings section is built from (docs/DESIGN.md §3c): a small faded group label
@@ -38,6 +40,7 @@ export function SettingsRow({
   control,
   testId,
   titleId,
+  titleTestId,
   role,
 }: {
   title: string;
@@ -46,13 +49,14 @@ export function SettingsRow({
   control?: ReactNode;
   testId?: string;
   titleId?: string;
-  /** `status` for a calm notice (a definition waiting for review). */
-  role?: "status";
+  titleTestId?: string;
+  /** `status` for a calm notice (a definition waiting for review), `note` for a standing warning. */
+  role?: "status" | "note";
 }) {
   return (
     <div className="srow" data-testid={testId} {...(role === undefined ? {} : { role })}>
       <div className="srow__text">
-        <span className="srow__title" id={titleId}>
+        <span className="srow__title" id={titleId} data-testid={titleTestId}>
           {title}
         </span>
         {description !== undefined && (
@@ -66,7 +70,7 @@ export function SettingsRow({
   );
 }
 
-/** The quiet dropdown of a row: its text and a chevron, no box until it is hovered. */
+/** The quiet dropdown of a row: its text and a chevron, no box until it is hovered (`ui/dropdown.tsx`). */
 export function SettingsSelect<V extends string>({
   label,
   value,
@@ -81,19 +85,30 @@ export function SettingsSelect<V extends string>({
   testId?: string;
 }) {
   return (
-    <select
-      className="sselect"
-      aria-label={label}
+    <Dropdown
+      label={label}
       value={value}
-      data-testid={testId}
-      onChange={(e) => onChange(e.target.value as V)}
-    >
-      {options.map(([v, text]) => (
-        <option key={v} value={v}>
-          {text}
-        </option>
-      ))}
-    </select>
+      options={options.map(([v, text]) => ({ value: v, label: text }))}
+      onChange={onChange}
+      {...(testId === undefined ? {} : { testId })}
+    />
+  );
+}
+
+/**
+ * The one style of a row's action (docs/DESIGN.md §3c): a secondary pill. "Adicionar regra",
+ * "Abrir", "Editar", "Gerenciar", "Testar", "Revisar"... in every section. The destructive one
+ * ("Remover", "Apagar") is the same pill in the danger tone; never bare text.
+ */
+export function RowAction({
+  children,
+  danger,
+  ...rest
+}: Omit<ComponentProps<typeof Pill>, "tone" | "className"> & { danger?: boolean }) {
+  return (
+    <Pill tone={danger === true ? "danger" : "secondary"} className="spill" {...rest}>
+      {children}
+    </Pill>
   );
 }
 

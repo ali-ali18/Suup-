@@ -1,5 +1,4 @@
 import type { Bot, Connector } from "@suup/api";
-import { Bot as BotIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { sortedBots } from "../../app/selectors.js";
@@ -21,8 +20,7 @@ import {
   selectReadOnly,
   toggleTool,
 } from "../../lib/tool-grants.js";
-import { ActionCard } from "../../ui/action-card.js";
-import { Pill } from "../../ui/primitives.js";
+import { RowAction, SettingsGroup, SettingsRow } from "./parts.js";
 import { useTask } from "./use-task.js";
 
 /** One bot of the connector: a collapsed row ("Nova · 3 de 14") that opens the ticks of its tools. */
@@ -68,132 +66,128 @@ function BotGrant({
 
   return (
     <div data-testid="grant-row" data-bot={bot.name} data-count={countLabel(draft, list)}>
-      <ActionCard
+      <SettingsRow
         testId="grant-card"
-        icon={<BotIcon size={14} />}
-        kind={bot.name}
-        state="done"
-        stateLabel=""
-        summary={countLabel(saved, list)}
-        expanded={open}
-        onToggle={() => setOpen(!open)}
-      >
-        <div className="grant-shortcuts" role="group" aria-label={`Atalhos para ${bot.name}`}>
-          <Pill
-            tone="ghost"
-            disabled={task.busy}
-            data-testid="grant-all"
-            onClick={() => setDraft(selectAll())}
+        title={bot.name}
+        description={countLabel(saved, list)}
+        control={
+          <RowAction
+            aria-expanded={open}
+            aria-label={`${bot.name}: ferramentas`}
+            onClick={() => setOpen(!open)}
           >
-            Selecionar todas
-          </Pill>
-          <Pill
-            tone="ghost"
-            disabled={task.busy}
-            data-testid="grant-read"
-            onClick={() => setDraft(selectReadOnly(list))}
-          >
-            Só as de leitura
-          </Pill>
-          <Pill
-            tone="ghost"
-            disabled={task.busy}
-            data-testid="grant-none"
-            onClick={() => setDraft(selectNone())}
-          >
-            Nenhuma
-          </Pill>
-        </div>
-        {list.length === 0 ? (
-          <p className="ui-action__label">Este conector não oferece ferramentas aos bots.</p>
-        ) : (
-          <ul
-            className="grant-tools"
-            aria-label={`Ferramentas de ${connector.name} para ${bot.name}`}
-          >
-            {list.map((item) => {
-              const checkId = `${id}-${item.tool.tool}`;
-              return (
-                <li
-                  key={item.tool.name}
-                  className="grant-tool"
-                  data-testid="grant-tool"
-                  data-tool={item.tool.tool}
-                  data-blocked={item.blocked ?? undefined}
-                >
-                  <input
-                    id={checkId}
-                    type="checkbox"
-                    checked={isTicked(draft, item)}
-                    disabled={item.blocked !== null || task.busy}
-                    aria-describedby={`${checkId}-why`}
-                    onChange={() => setDraft(toggleTool(draft, list, item.tool.tool))}
-                  />
-                  <div className="grant-tool__text">
-                    <div className="grant-tool__head">
-                      <label htmlFor={checkId}>
-                        <strong>{item.tool.tool}</strong>
+            {open ? "Fechar" : "Ferramentas"}
+          </RowAction>
+        }
+      />
+      {open && (
+        <div className="sfold">
+          <div className="grant-shortcuts" role="group" aria-label={`Atalhos para ${bot.name}`}>
+            <RowAction
+              disabled={task.busy}
+              data-testid="grant-all"
+              onClick={() => setDraft(selectAll())}
+            >
+              Selecionar todas
+            </RowAction>
+            <RowAction
+              disabled={task.busy}
+              data-testid="grant-read"
+              onClick={() => setDraft(selectReadOnly(list))}
+            >
+              Só as de leitura
+            </RowAction>
+            <RowAction
+              disabled={task.busy}
+              data-testid="grant-none"
+              onClick={() => setDraft(selectNone())}
+            >
+              Nenhuma
+            </RowAction>
+          </div>
+          {list.length === 0 ? (
+            <p className="sgroup__hint">Este conector não oferece ferramentas aos bots.</p>
+          ) : (
+            <ul
+              className="scard grant-tools"
+              aria-label={`Ferramentas de ${connector.name} para ${bot.name}`}
+            >
+              {list.map((item) => {
+                const checkId = `${id}-${item.tool.tool}`;
+                return (
+                  <li
+                    key={item.tool.name}
+                    className="srow grant-tool"
+                    data-testid="grant-tool"
+                    data-tool={item.tool.tool}
+                    data-blocked={item.blocked ?? undefined}
+                  >
+                    <input
+                      id={checkId}
+                      type="checkbox"
+                      checked={isTicked(draft, item)}
+                      disabled={item.blocked !== null || task.busy}
+                      aria-describedby={`${checkId}-why`}
+                      onChange={() => setDraft(toggleTool(draft, list, item.tool.tool))}
+                    />
+                    <div className="srow__text">
+                      <label className="srow__title" htmlFor={checkId}>
+                        {item.tool.tool}
                       </label>
-                      <span className="grant-tool__risk" data-testid="grant-risk">
+                      <span id={`${checkId}-why`} className="srow__desc" data-testid="grant-basis">
+                        {item.blocked === null
+                          ? RISK_BASIS_TEXT[item.tool.riskBasis]
+                          : BLOCKED_TEXT[item.blocked]}
+                      </span>
+                    </div>
+                    <div className="srow__control">
+                      <span className="srow__value" data-testid="grant-risk">
                         <span className="sr-only">Risco: </span>
                         {LEVEL_LABEL[item.tool.risk]}
                       </span>
-                    </div>
-                    <p id={`${checkId}-why`} className="ui-action__label" data-testid="grant-basis">
-                      {item.blocked === null ? (
-                        RISK_BASIS_TEXT[item.tool.riskBasis]
-                      ) : (
-                        <>
-                          {BLOCKED_TEXT[item.blocked]}{" "}
-                          <button
-                            type="button"
-                            className="link-button"
-                            data-testid="grant-review"
-                            onClick={onReview}
-                          >
-                            Revisar
-                          </button>
-                        </>
+                      {item.blocked !== null && (
+                        <RowAction data-testid="grant-review" onClick={onReview}>
+                          Revisar
+                        </RowAction>
                       )}
-                    </p>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-        {blocked > 0 && (
-          <p className="ui-action__label">
-            Uma ferramenta com a definição mudada ou nova só pode ser marcada depois da sua revisão.
-          </p>
-        )}
-        <p className="ui-action__label">A mudança vale a partir da próxima execução do bot.</p>
-        {task.error !== undefined && (
-          <p className="ui-field__error" role="alert" data-testid="grant-error">
-            {task.error}
-          </p>
-        )}
-        <div className="grant-footer">
-          {dirty && (
-            <Pill
-              tone="ghost"
-              disabled={task.busy}
-              data-testid="grant-discard"
-              onClick={() => setDraft(saved)}
-            >
-              Descartar
-            </Pill>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
           )}
-          <Pill
-            tone="primary"
-            disabled={!dirty || task.busy}
-            data-testid="grant-save"
-            onClick={() => void save()}
-          >
-            {task.busy ? "Salvando…" : "Salvar"}
-          </Pill>
+          {blocked > 0 && (
+            <p className="sgroup__hint">
+              Uma ferramenta com a definição mudada ou nova só pode ser marcada depois da sua
+              revisão.
+            </p>
+          )}
+          <p className="sgroup__hint">A mudança vale a partir da próxima execução do bot.</p>
+          {task.error !== undefined && (
+            <p className="ui-field__error" role="alert" data-testid="grant-error">
+              {task.error}
+            </p>
+          )}
+          <div className="srow__control">
+            {dirty && (
+              <RowAction
+                disabled={task.busy}
+                data-testid="grant-discard"
+                onClick={() => setDraft(saved)}
+              >
+                Descartar
+              </RowAction>
+            )}
+            <RowAction
+              disabled={!dirty || task.busy}
+              data-testid="grant-save"
+              onClick={() => void save()}
+            >
+              {task.busy ? "Salvando…" : "Salvar"}
+            </RowAction>
+          </div>
         </div>
-      </ActionCard>
+      )}
     </div>
   );
 }
@@ -213,26 +207,24 @@ export function ConnectorGrants({
   const botList = useMemo(() => sortedBots(bots), [bots]);
   const list = useMemo(() => grantableTools(connector.tools), [connector.tools]);
   return (
-    <div className="grants" data-testid="connector-grants" role="group" aria-label="Quem pode usar">
-      <h3 className="sgroup__label">Quem pode usar</h3>
+    <SettingsGroup
+      label="Quem pode usar"
+      hint="Dar uma ferramenta a um bot dá a ele o que o servidor faz com as credenciais do conector. Nenhuma vem marcada: você escolhe."
+      testId="connector-grants"
+    >
       {connector.tools === null ? (
-        <p className="muted small" data-testid="grants-unlisted">
-          Use “Testar” para o servidor listar as ferramentas: depois você escolhe, bot a bot, quais
-          ele pode usar.
-        </p>
+        <SettingsRow
+          testId="grants-unlisted"
+          title="Ainda não listado"
+          description="Use “Testar” para o servidor listar as ferramentas: depois você escolhe, bot a bot, quais ele pode usar."
+        />
       ) : botList.length === 0 ? (
-        <p className="muted small">Ainda não há bots.</p>
+        <SettingsRow title="Ainda não há bots" />
       ) : (
-        <div className="grant-list">
-          {botList.map((b) => (
-            <BotGrant key={b.id} bot={b} connector={connector} list={list} onReview={onReview} />
-          ))}
-        </div>
+        botList.map((b) => (
+          <BotGrant key={b.id} bot={b} connector={connector} list={list} onReview={onReview} />
+        ))
       )}
-      <p className="muted small">
-        Dar uma ferramenta a um bot dá a ele o que o servidor faz com as credenciais do conector.
-        Nenhuma vem marcada: você escolhe.
-      </p>
-    </div>
+    </SettingsGroup>
   );
 }

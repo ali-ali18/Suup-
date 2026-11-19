@@ -2,6 +2,7 @@ import { expect, type Locator, type Page, type Response, test } from "@playwrigh
 import { DATABASE_URL, fakeMcpCommand, SKIP_REASON, startWorld, type World } from "./harness.js";
 import {
   botItem,
+  choose,
   closeSettings,
   freshBot,
   openApp,
@@ -259,7 +260,11 @@ test.describe("connectors", () => {
     await expect(dialog).toContainText("Só o programa, sem espaços");
     await dialog.getByLabel("Programa").fill(command);
     await dialog.getByLabel("Argumentos (um por linha)").fill(args.join("\n"));
-    await dialog.getByLabel("Escopo").selectOption("read_write");
+    await choose(
+      page,
+      dialog.getByLabel("Escopo"),
+      "Leitura e escrita (as que escrevem pedem cartão)",
+    );
     // Nothing is granted at creation: the tools are chosen per bot afterwards.
     await expect(dialog.getByTestId("connector-grant-hint")).toContainText("Nenhum bot recebe");
     await expect(dialog.getByRole("checkbox", { name: "Conectado" })).toHaveCount(0);
@@ -309,14 +314,14 @@ test.describe("connectors", () => {
     );
     // Marking a tool as a read: the risk and its origin change, and "read" says what it means.
     await expect(panel).toContainText("roda sem cartão de aprovação");
-    await echo.getByTestId("tool-risk").selectOption("read");
+    await choose(page, echo.getByTestId("tool-risk"), "Leitura");
     await expect(echo.getByTestId("tool-basis")).toContainText("Definido por você.");
     await expect(echo.locator("span.ui-tag", { hasText: /^Leitura$/ })).toBeVisible();
     expect((await world.api.connectors.get("fake")).toolOverrides.echo?.risk).toBe("read");
     // The server says this one is destructive: it cannot be loosened, and the way out is explained.
     const contradicted = panel.locator('[data-testid="connector-tool"][data-tool="contradicted"]');
     await contradicted.getByTestId("connector-tool-toggle").click();
-    await contradicted.getByTestId("tool-risk").selectOption("read");
+    await choose(page, contradicted.getByTestId("tool-risk"), "Leitura");
     await expect(contradicted.getByTestId("tool-basis")).toContainText("Apertado pelo servidor");
     await expect(contradicted).toContainText("crie uma regra em Configurações > Permissões");
     await expect(contradicted).toContainText("Externa ou irreversível");
@@ -436,8 +441,8 @@ test.describe("connectors", () => {
       .getByTestId("connector-panel")
       .locator('[data-testid="connector-tool"][data-tool="send_email"]');
     await tool.getByTestId("connector-tool-toggle").click();
-    await expect(tool.getByTestId("tool-outbound-check")).not.toBeChecked();
-    await tool.getByTestId("tool-outbound-check").check();
+    await expect(tool.getByTestId("tool-outbound-check")).toHaveAttribute("aria-checked", "false");
+    await tool.getByTestId("tool-outbound-check").click();
     await tool.getByTestId("tool-outbound-fields").fill("to");
     await tool.getByTestId("tool-outbound-save").click();
     await expect
@@ -536,7 +541,7 @@ test.describe("connectors", () => {
     await dialog.getByLabel("Nome", { exact: true }).fill("remoto");
     await dialog.getByLabel("Endereço (URL)").fill("http://localhost:9/mcp");
     await dialog.getByRole("button", { name: "Authorization: Bearer (segredo)" }).click();
-    await expect(dialog.getByLabel("Segredo")).toHaveValue("HTTP_TOKEN");
+    await expect(dialog.getByLabel("Segredo")).toContainText("HTTP_TOKEN");
     await dialog.getByTestId("connector-create").click();
     const row = page.getByTestId("connector-item").filter({ hasText: "remoto" });
     await expect(row).toContainText("Servidor HTTP");

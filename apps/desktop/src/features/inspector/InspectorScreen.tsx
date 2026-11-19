@@ -11,6 +11,7 @@ import {
   catalogOf,
   requestToolStats,
 } from "../../data/tool-stats.js";
+import { Dropdown } from "../../ui/dropdown.js";
 import { Card, Pill, RoundButton, TextField } from "../../ui/primitives.js";
 
 const json = (value: unknown): string => JSON.stringify(value, null, 2);
@@ -205,21 +206,19 @@ export function InspectorScreen() {
         <Card aria-label="O que o modelo viu">
           <h2 className="section-label">O que o modelo viu</h2>
           <div className="inspector__row">
-            <label className="form__row">
+            <div className="form__row">
               <span className="ui-field__label">Chamada ao modelo</span>
-              <select
-                className="ui-field__control"
-                aria-label="Chamada ao modelo"
+              <Dropdown
+                variant="field"
+                label="Chamada ao modelo"
                 value={seq}
-                onChange={(e) => setSeq(e.target.value)}
-              >
-                {requests.map((r) => (
-                  <option key={r.seq} value={r.seq}>
-                    #{r.seq} · {String(r.payload.purpose ?? "agent")}
-                  </option>
-                ))}
-              </select>
-            </label>
+                options={requests.map((r) => ({
+                  value: String(r.seq),
+                  label: `#${r.seq} · ${String(r.payload.purpose ?? "agent")}`,
+                }))}
+                onChange={setSeq}
+              />
+            </div>
             <Pill
               tone="secondary"
               disabled={seq === "" || busy !== undefined}
@@ -270,22 +269,19 @@ export function InspectorScreen() {
           </p>
           <div className="inspector__row">
             <TextField label="Quantas vezes" value={times} onChange={setTimes} type="text" />
-            <label className="form__row">
+            <div className="form__row">
               <span className="ui-field__label">Modelo</span>
-              <select
-                className="ui-field__control"
-                aria-label="Modelo para reenviar"
+              <Dropdown
+                variant="field"
+                label="Modelo para reenviar"
                 value={model}
-                onChange={(e) => setModel(e.target.value)}
-              >
-                <option value="">O mesmo da gravação</option>
-                {models.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.id}
-                  </option>
-                ))}
-              </select>
-            </label>
+                options={[
+                  { value: "", label: "O mesmo da gravação" },
+                  ...models.map((m) => ({ value: m.id, label: m.id })),
+                ]}
+                onChange={setModel}
+              />
+            </div>
           </div>
           <div>
             <Pill

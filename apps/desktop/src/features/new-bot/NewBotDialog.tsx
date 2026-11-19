@@ -5,6 +5,7 @@ import { useData, useServices } from "../../app/context.js";
 import { useUi } from "../../app/ui-store.js";
 import { avatarOf, colorVars, effectiveColor, mascotValue, SHAPES } from "../../lib/mascots.js";
 import { Avatar } from "../../ui/avatar.js";
+import { Dropdown } from "../../ui/dropdown.js";
 import { Mascot } from "../../ui/mascot.js";
 import { Dialog, Pill, Tag, TextField } from "../../ui/primitives.js";
 import { BotNetwork } from "./BotNetwork.js";
@@ -240,21 +241,16 @@ export function NewBotDialog() {
             autoFocus
             placeholder="Descreva em uma ou duas frases."
           />
-          <label className="form__row">
+          <div className="form__row">
             <span className="ui-field__label">Modelo</span>
-            <select
-              className="ui-field__control"
-              aria-label="Modelo"
+            <Dropdown
+              variant="field"
+              label="Modelo"
               value={modelId}
-              onChange={(e) => setModelId(e.target.value)}
-            >
-              {usable.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.id} · {m.provider}
-                </option>
-              ))}
-            </select>
-          </label>
+              options={usable.map((m) => ({ value: m.id, label: `${m.id} · ${m.provider}` }))}
+              onChange={setModelId}
+            />
+          </div>
           <div className="newbot__suggest">
             <Pill
               tone="secondary"

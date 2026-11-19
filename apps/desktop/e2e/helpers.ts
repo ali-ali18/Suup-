@@ -82,3 +82,10 @@ export async function closeSettings(page: Page): Promise<void> {
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("settings-screen")).toHaveCount(0);
 }
+
+/** Chooses an option of one of the app's dropdowns (never a native select): open it, click the option. */
+export async function choose(page: Page, dropdown: Locator, label: string): Promise<void> {
+  await dropdown.click();
+  await page.getByRole("option", { name: label, exact: true }).click();
+  await expect(page.getByRole("listbox")).toHaveCount(0);
+}

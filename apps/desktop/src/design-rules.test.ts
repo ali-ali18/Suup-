@@ -182,9 +182,9 @@ describe("approval buttons: normal = Aprovar / Recusar; the split button is only
 describe("connectors: per-tool grants, the review of a definition, the network", () => {
   const settings = (name: string) => read(join(SRC, "features", "settings", name));
 
-  it("a bot's access to a connector is a collapsed row (the shared ActionCard) with a count, never an on/off switch", () => {
+  it("a bot's access to a connector is a collapsed row (a SettingsRow) with a count, never an on/off switch", () => {
     const grants = settings("ConnectorGrants.tsx");
-    expect(grants).toContain('from "../../ui/action-card.js"');
+    expect(grants).toContain("<SettingsRow");
     expect(grants).toContain("countLabel(");
     expect(grants).not.toContain("<Toggle");
     // `all` is sent only for "Selecionar todas": the body comes from the pure function.
@@ -268,7 +268,7 @@ describe("the settings dialog: a modal with a left nav, groups of simple rows, n
       expect(source, name).not.toContain('className="section-label"');
     }
     const css = read(join(SRC, "features", "settings", "settings.css"));
-    for (const part of [".sdialog", ".snav", ".sgroup__label", ".scard", ".srow", ".sselect"])
+    for (const part of [".sdialog", ".snav", ".sgroup__label", ".scard", ".srow"])
       expect(css, part).toContain(`${part} {`);
     // Sizes come from tokens.
     const tokens = read(join(SRC, "styles", "tokens.css"));
@@ -284,10 +284,69 @@ describe("the settings dialog: a modal with a left nav, groups of simple rows, n
     expect(general).not.toContain('role="radio"');
   });
 
+  it("never a native select: every choice is the dropdown of ui/dropdown.tsx", () => {
+    const dropdown = read(join(SRC, "ui", "dropdown.tsx"));
+    // The dropdown is the ARIA listbox pattern, with the keys of the menu and no pattern matching.
+    for (const part of [
+      'aria-haspopup="listbox"',
+      'role="listbox"',
+      'role="option"',
+      "aria-selected",
+      "preventScroll",
+      'e.key === "Escape"',
+      'e.key === "ArrowDown"',
+      'e.key === "Home"',
+      'e.key === "End"',
+      'e.key === "Enter"',
+      "createPortal(",
+      ".includes(needle)",
+      "DROPDOWN_FILTER_AFTER",
+    ])
+      expect(dropdown, part).toContain(part);
+    expect(dropdown).not.toContain("RegExp");
+    // No native select element anywhere in the app. RuleDialog.tsx is the one exception, until the
+    // written rules replace it (substituído pelas regras escritas).
+    const offenders = files(SRC, /\.tsx$/)
+      .filter((f) => !f.endsWith("RuleDialog.tsx"))
+      .filter((f) => read(f).includes("<select"));
+    expect(offenders.map(rel)).toEqual([]);
+    // The quiet row control of Geral is that same dropdown.
+    expect(settings("parts.tsx")).toContain("<Dropdown");
+    expect(read(join(SRC, "ui", "ui.css"))).toContain(".ui-dropdown {");
+  });
+
+  it("every section is made of the pieces of Geral, and a row action has one style", () => {
+    const parts = settings("parts.tsx");
+    expect(parts).toContain("export function RowAction");
+    const all = [...sections, "ConnectorGrants", "ConnectorNetwork"];
+    for (const name of all) {
+      const source = settings(`${name}.tsx`);
+      expect(source, name).toContain('from "./parts.js"');
+      // No pill of the row styled by hand, no bare text button: RowAction is the only row button.
+      expect(source, name).not.toContain("spill--ghost");
+      expect(source, name).not.toContain('tone="ghost"');
+      expect(source, name).not.toContain("link-button");
+      expect(source, name).not.toContain("<ActionCard");
+    }
+    for (const name of [
+      "PermissionsSettings",
+      "VaultSettings",
+      "ConnectorsSettings",
+      "ConnectorGrants",
+      "ConnectorNetwork",
+    ])
+      expect(settings(`${name}.tsx`), name).toContain("<SettingsGroup");
+    // The rule groups are a labelled card whose first row has the title and "Adicionar regra".
+    const permissions = settings("PermissionsSettings.tsx");
+    expect(permissions).toContain("label={kind.title}");
+    expect(permissions).toContain("hint: RULE_PRECEDENCE");
+    expect(permissions).not.toContain('className="srow"');
+  });
+
   it("Permissões is small: the approval mode, two rule rows with 'Adicionar regra', the connectors card", () => {
     const page = settings("PermissionsSettings.tsx");
     for (const text of [
-      'title="Aprovações"',
+      'label="Aprovações"',
       "Nunca permitir",
       "Permitir sem perguntar",
       "Adicionar regra",
