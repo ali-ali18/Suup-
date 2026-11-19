@@ -1,9 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { DATABASE_URL, dbSuiteName, useProject } from "./harness.js";
 
 // Phase 2 end to end, through the real `main`: conversations, memory and the context of a run.
 // The scripted provider answers by case: a case is chosen by a token in the conversation, and a
 // run that has history starts its script at the number of assistant turns already in the history.
+
+// Cada teste abre vários processos da CLI; numa máquina carregada isso passa dos 5 s padrão.
+vi.setConfig({ testTimeout: 30_000 });
 
 const say = (text: string) => ({ text });
 const act = (name: string, args: unknown) => ({ calls: [{ name, args }] });

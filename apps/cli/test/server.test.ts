@@ -38,7 +38,8 @@ describe("suup server --generate-token", () => {
   });
 });
 
-describe.skipIf(!DATABASE_URL)(dbSuiteName("suup server, end to end"), () => {
+// Cada teste abre vários processos da CLI; numa máquina carregada isso passa dos 5 s padrão.
+describe.skipIf(!DATABASE_URL)(dbSuiteName("suup server, end to end"), { timeout: 30_000 }, () => {
   const p = useProject();
   const token = "t".repeat(48);
 

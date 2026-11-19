@@ -103,7 +103,8 @@ const SCRIPT = {
   ],
 };
 
-describe.skipIf(!DATABASE_URL)(dbSuiteName("suup eval, end to end"), () => {
+// Cada teste abre vários processos da CLI; numa máquina carregada isso passa dos 5 s padrão.
+describe.skipIf(!DATABASE_URL)(dbSuiteName("suup eval, end to end"), { timeout: 30_000 }, () => {
   const p = useProject();
 
   it("prepares: migrate and write the scripts", async () => {
