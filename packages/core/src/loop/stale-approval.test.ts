@@ -3,7 +3,14 @@
 // the store recorded, never by reading text.
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createToolGate, type ToolGate } from "../approvals/index.js";
+import {
+  type ApprovalRule,
+  createModelReviewer,
+  createToolGate,
+  REVIEW_TOOL_NAME,
+  type ToolGate,
+  type WrittenRule,
+} from "../approvals/index.js";
 import { replayRun } from "../replay.js";
 import {
   CrashingStore,
@@ -32,9 +39,21 @@ interface Setup {
   rig: Rig;
   sent: string[];
   gate: ToolGate;
+  /** Exact rules and written rules the gate reads at every call: a test may add one later. */
+  rules: ApprovalRule[];
+  written: WrittenRule[];
 }
 
-function setup(script: Parameters<typeof createRig>[0]["script"]): Setup {
+const NEVER: WrittenRule = {
+  id: "w-never",
+  kind: "never",
+  text: "mensagens para ana",
+  botId: null,
+};
+
+function setup(script: Parameters<typeof createRig>[0]["script"], withReviewer = false): Setup {
+  const rules: ApprovalRule[] = [];
+  const written: WrittenRule[] = [];
   const sent: string[] = [];
   const rig = createRig({
     script,
@@ -56,10 +75,40 @@ function setup(script: Parameters<typeof createRig>[0]["script"]): Setup {
   });
   const gate = createToolGate({
     tools: rig.registry,
-    rules: { rulesFor: async () => [] },
+    rules: { rulesFor: async () => rules },
+    written: { writtenRulesFor: async () => written },
+    ...(withReviewer
+      ? {
+          // Blocks citing the never rule once it exists, asks until then.
+          modelReviewer: createModelReviewer({
+            provider: new FakeProvider(
+              Array.from({ length: 20 }, () => () => ({
+                blocks: [
+                  {
+                    type: "tool_call" as const,
+                    id: "r",
+                    name: REVIEW_TOOL_NAME,
+                    args:
+                      written.length > 0
+                        ? { decision: "block", ruleId: NEVER.id, reason: "Nunca." }
+                        : { decision: "ask", ruleId: null, reason: "Não sei." },
+                  },
+                ],
+                usage: { inputTokens: 100, outputTokens: 10 },
+              })),
+              { id: "rev" },
+            ),
+            model: {
+              id: "reviewer-model",
+              maxOutputTokens: 400,
+              pricing: { inputPerMTok: 1, outputPerMTok: 5 },
+            },
+          }),
+        }
+      : {}),
     now: () => new Date(rig.clock.now),
   });
-  return { script, rig, sent, gate };
+  return { script, rig, sent, gate, rules, written };
 }
 
 const loop = (s: Setup): Promise<RunStatus> => runLoop(s.rig.deps({ gate: s.gate }), s.rig.runId);
@@ -177,6 +226,65 @@ describe("an approval that waited too long", () => {
     expect(cards(events).map((c) => c.payload.callId)).toEqual(["c1", "c2"]);
     expect(eventsOfType(events, "approval_grant_used")).toHaveLength(0);
     expect(s.sent).toEqual([]);
+  });
+
+  it("an exact deny rule created after the late approval still refuses the identical call; the grant is not consumed", async () => {
+    const s = setup([use(call("c1", "send", ARGS)), use(call("c2", "send", ARGS)), say("ok")]);
+    await loop(s);
+    s.rules.push({
+      id: "r-deny",
+      botId: null,
+      tool: "send",
+      effect: "deny",
+      matchers: [],
+      note: "no",
+    });
+    await answer(s, "approved", STALE);
+    expect(await loop(s)).toBe("done");
+    expect(s.sent).toEqual([]);
+    const events = await s.rig.events();
+    expect(eventsOfType(events, "approval_grant_used")).toHaveLength(0);
+    expect(eventsOfType(events, "tool_result").map((e) => e.payload.outcome)).toEqual([
+      "denied",
+      "denied",
+    ]);
+    expect(eventsOfType(events, "policy_checked")[0]?.payload).toMatchObject({
+      callId: "c2",
+      outcome: "deny",
+      source: "rule",
+    });
+  });
+
+  it("a written never-rule (the reviewer) created after the late approval refuses the identical call; the grant is not consumed", async () => {
+    const s = setup(
+      [use(call("c1", "send", ARGS)), use(call("c2", "send", ARGS)), say("ok")],
+      true,
+    );
+    await loop(s);
+    s.written.push(NEVER);
+    await answer(s, "approved", STALE);
+    expect(await loop(s)).toBe("done");
+    expect(s.sent).toEqual([]);
+    const events = await s.rig.events();
+    expect(eventsOfType(events, "approval_grant_used")).toHaveLength(0);
+    expect(cards(events).map((c) => c.payload.callId)).toEqual(["c1"]);
+    expect(eventsOfType(events, "policy_checked")[0]?.payload).toMatchObject({
+      callId: "c2",
+      outcome: "deny",
+      source: "reviewer",
+    });
+  });
+
+  it("with the reviewer asking, the grant still replaces the card", async () => {
+    const s = setup(
+      [use(call("c1", "send", ARGS)), use(call("c2", "send", ARGS)), say("ok")],
+      true,
+    );
+    await loop(s);
+    await answer(s, "approved", STALE);
+    expect(await loop(s)).toBe("done");
+    expect(s.sent).toEqual(["ana|hello"]);
+    expect(eventsOfType(await s.rig.events(), "approval_grant_used")).toHaveLength(1);
   });
 
   it("the grant does not survive the run", async () => {

@@ -115,7 +115,11 @@ export async function consumeGrant(
  * Asks the gate about a call nothing was decided about yet, and records its verdict before
  * anything else happens. An allow-all gate (`allowAllGate`) answers `null` for every call.
  */
-export async function askGate(ctx: LoopContext, call: ControlCall): Promise<CallClearance> {
+export async function askGate(
+  ctx: LoopContext,
+  call: ControlCall,
+  grant?: { approvalId: string; consumed: boolean },
+): Promise<CallClearance> {
   const { gate, bot, executor } = ctx.deps;
   const verdict = await gate.check({
     runId: ctx.runId,
@@ -156,6 +160,11 @@ export async function askGate(ctx: LoopContext, call: ControlCall): Promise<Call
       await recordPolicy(ctx, call, verdict, "deny");
       return { kind: "denied", text: ruleDenial(call.name, verdict.reason) };
     case "ask":
+      // The user already answered this exact call (a late approval): the grant stands in for the card.
+      if (grant !== undefined) {
+        await consumeGrant(ctx, call, grant);
+        return { kind: "run", args: call.args as JsonValue };
+      }
       await record(ctx, {
         type: "approval_requested",
         payload: {

@@ -369,6 +369,16 @@ export function createReplayGate(events: readonly { type: string; payload?: unkn
         secrets: [],
         args: null,
       });
+    } else if (event.type === "approval_grant_used") {
+      // The gate said "ask" and a late approval's grant stood in for the card: nothing else was logged.
+      verdicts.set(event.payload.callId, {
+        outcome: "ask",
+        source: "default",
+        level: "external_irreversible",
+        summary: "",
+        secrets: [],
+        args: null,
+      });
     } else if (event.type === "approval_requested") {
       const p = event.payload;
       verdicts.set(p.callId, {

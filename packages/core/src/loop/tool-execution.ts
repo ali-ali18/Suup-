@@ -8,7 +8,6 @@ import {
   askGate,
   type CallClearance,
   clearanceFromLog,
-  consumeGrant,
   grantFor,
   SKIPPED_AFTER_DENIAL,
 } from "./approval-flow.js";
@@ -140,14 +139,14 @@ async function handleTool(
     });
     return false;
   }
-  // A call identical to one the user approved too late runs once without a new card.
+  // A call identical to one the user approved too late: the gate still speaks first (deny wins),
+  // and the grant only replaces the card it would have asked for.
   const grant = logged === undefined ? grantFor(ctx, call) : undefined;
-  if (grant !== undefined) await consumeGrant(ctx, call, grant);
   const clearance: CallClearance =
     logged ??
-    (grant === undefined
-      ? await askGate(ctx, call)
-      : { kind: "run", args: call.args as JsonValue });
+    (grant?.consumed === true
+      ? { kind: "run", args: call.args as JsonValue }
+      : await askGate(ctx, call, grant));
   if (clearance.kind === "wait") return true;
   if (clearance.kind === "denied") {
     await deny(ctx, call, clearance.text);
