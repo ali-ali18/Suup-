@@ -2,6 +2,7 @@ import type {
   Approval,
   ApprovalRule,
   Bot,
+  BotNetwork,
   Connector,
   Conversation,
   Memory,
@@ -72,6 +73,8 @@ export interface DataState {
   /** The MCP connectors, by name. */
   connectors: Record<string, Connector>;
   connectorsLoaded: boolean;
+  /** What each bot's machine may reach (the server's answer to the last read or write), by bot id. */
+  networks: Record<string, BotNetwork>;
 }
 
 export const emptyData = (): DataState => ({
@@ -93,6 +96,7 @@ export const emptyData = (): DataState => ({
   vault: null,
   connectors: {},
   connectorsLoaded: false,
+  networks: {},
 });
 
 export const emptyMessages = (): MessagesSlice => ({ byId: {}, hasOlder: false, loaded: false });

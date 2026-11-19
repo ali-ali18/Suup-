@@ -7,6 +7,7 @@ import { avatarOf, colorVars, effectiveColor, mascotValue, SHAPES } from "../../
 import { Avatar } from "../../ui/avatar.js";
 import { Mascot } from "../../ui/mascot.js";
 import { Dialog, Pill, Tag, TextField } from "../../ui/primitives.js";
+import { BotNetwork } from "./BotNetwork.js";
 
 const COLOR_NAME: Record<BotColor, string> = {
   laranja: "Laranja",
@@ -305,6 +306,7 @@ export function NewBotDialog() {
               })}
             </div>
           </fieldset>
+          {editing !== undefined && <BotNetwork botId={editing.id} />}
         </div>
       )}
     </Dialog>

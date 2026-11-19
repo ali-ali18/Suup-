@@ -1,4 +1,13 @@
-import { Brain, FileText, Globe, Mail, Plug, ShieldQuestion, Terminal } from "lucide-react";
+import {
+  Brain,
+  FileText,
+  Globe,
+  Mail,
+  Network,
+  Plug,
+  ShieldQuestion,
+  Terminal,
+} from "lucide-react";
 import type { ReactNode } from "react";
 import type { CategoryIcon } from "../data/approval-text.js";
 
@@ -9,6 +18,7 @@ const GLYPH: Record<CategoryIcon, typeof Terminal> = {
   memory: Brain,
   mail: Mail,
   connector: Plug,
+  network: Network,
   generic: ShieldQuestion,
 };
 

@@ -11,6 +11,7 @@ import {
   workingPhrase,
 } from "./actions.js";
 import { toolCategory } from "./approval-text.js";
+import { runningTool } from "./derive.js";
 
 const call = (seq: number, callId: string, name: string, args: Record<string, unknown> = {}) =>
   makeEvent(seq, "tool_call", { callId, name, args });
@@ -92,6 +93,66 @@ describe("actionsOf", () => {
       ["d", "Arquivo", "running", undefined],
     ]);
     expect(items[0]).toMatchObject({ runId: "run-1", durationMs: 1200, truncated: false });
+  });
+
+  it("a call through use_tool is the real tool's row, never the wrapper's", () => {
+    // The server logs a valid call with the real name and arguments...
+    const direct = actionsOf(
+      "r",
+      [call(1, "a", "conn_fake__write_thing", { name: "x" }), result(2, "a", "wrote x")],
+      [{ name: "fake", tools: [{ name: "conn_fake__write_thing", tool: "write_thing" }] }],
+    );
+    expect(direct).toHaveLength(1);
+    expect(direct[0]).toMatchObject({ name: "conn_fake__write_thing", kindLabel: "fake" });
+    // ...and a refused one keeps the wrapper's name, with the real one inside its arguments.
+    const refused = actionsOf(
+      "r",
+      [
+        call(1, "b", "use_tool", {
+          tool: "conn_fake__write_thing",
+          arguments: { name: "y" },
+        }),
+        result(2, "b", "Unknown tool", true),
+      ],
+      [{ name: "fake", tools: [{ name: "conn_fake__write_thing", tool: "write_thing" }] }],
+    );
+    expect(refused).toHaveLength(1);
+    expect(refused[0]).toMatchObject({
+      name: "conn_fake__write_thing",
+      kindLabel: "fake",
+      args: { name: "y" },
+      state: "failed",
+    });
+    expect(JSON.stringify(refused)).not.toContain("use_tool");
+  });
+
+  it("the search of the meta mode is a calm row of its own, and the tool in flight is the real one", () => {
+    const [row] = actionsOf("r", [
+      call(1, "s", "search_tools", { connector: "fake", words: "gravar" }),
+    ]);
+    expect(row).toMatchObject({
+      kindLabel: "Ferramenta",
+      summary: "Procurar ferramentas “gravar” no conector fake",
+    });
+    expect(describeAction("search_tools", { connector: "erp" }).summary).toBe(
+      "Procurar ferramentas do conector erp",
+    );
+    expect(describeAction("search_tools", {}).summary).toBe("Procurar ferramentas");
+    expect(
+      runningTool([call(1, "u", "use_tool", { tool: "conn_fake__echo", arguments: {} })]),
+    ).toBe("conn_fake__echo");
+  });
+
+  it("a request for network access is a row of the category 'Rede'", () => {
+    const [row] = actionsOf("r", [
+      call(1, "n", "request_network_access", { host: "api.novo.com", reason: "baixar" }),
+    ]);
+    expect(row).toMatchObject({
+      kindLabel: "Rede",
+      icon: "network",
+      summary: "Acessar api.novo.com",
+      doing: "Pedindo acesso a api.novo.com",
+    });
   });
 
   it("a duplicated call event is one card", () => {

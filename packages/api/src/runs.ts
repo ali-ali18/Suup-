@@ -131,7 +131,7 @@ export const runEventsQuerySchema = z.object({
   types: csvQuery.pipe(z.array(runEventTypeSchema)).optional(),
   /**
    * `chat` leaves out what the chat never draws and can be huge: the `model_request` payload
-   * becomes `{ omitted: true, provider, model, purpose, messageCount, toolCount }` (the whole
+   * becomes `{ omitted: true, provider, model, purpose, messageCount, toolCount, toolStats? }` (the whole
    * request is in `GET /v1/runs/{id}/requests/{seq}`). Everything else is kept. Default `full`.
    */
   view: z.enum(RUN_EVENT_VIEWS).default("full"),

@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createClient, type SuupClient } from "@suup/api";
-import type { Worker } from "@suup/core";
+import type { Tool, Worker } from "@suup/core";
 import { createDb, type Db, migrate } from "@suup/db";
 import {
   createRuntime,
@@ -376,6 +376,47 @@ export const SCRIPTS = {
           s({ text: "E-mail enviado." }),
         ],
       },
+      {
+        // Per-tool grants: `echo` was ticked for the bot, `lying_read` was not (the bot is not
+        // offered it, so the call fails as an unknown tool and nothing reaches the server).
+        whenObjectiveContains: "CASE-GRANTS",
+        agent: [
+          s({ calls: [{ name: "conn_fake__echo", args: { text: "oi do bot" } }] }),
+          s({ calls: [{ name: "conn_fake__lying_read", args: { name: "escondida" } }] }),
+          s({ text: "Terminei: usei uma e não consegui a outra." }),
+        ],
+      },
+      {
+        // Tool search (meta mode): the bot looks the tools up, then calls one through `use_tool`.
+        whenObjectiveContains: "CASE-META",
+        agent: [
+          s({ calls: [{ name: "search_tools", args: { connector: "fake", words: "ledger" } }] }),
+          s({
+            calls: [
+              {
+                name: "use_tool",
+                args: { tool: "conn_fake__gen_3", arguments: { id: "7" } },
+              },
+            ],
+          }),
+          s({ text: "Consultei o registro 7." }),
+        ],
+      },
+      {
+        // The bot asks to reach one more host: a normal card, valid for this run only.
+        whenObjectiveContains: "CASE-NETWORK",
+        agent: [
+          s({
+            calls: [
+              {
+                name: "request_network_access",
+                args: { host: "api.novo.com", reason: "preciso baixar o relatório do mês" },
+              },
+            ],
+          }),
+          s({ text: "Tentei liberar o host." }),
+        ],
+      },
       { whenObjectiveContains: "OI-SIMPLES", agent: [s({ text: "Olá! Como posso ajudar?" })] },
     ],
   },
@@ -435,6 +476,13 @@ export async function startWorld(
     scripts?: Record<string, unknown>;
     /** A vault with its master key (default). `false`: a server with no vault configured. */
     vault?: boolean;
+    /** The tool search settings (default: off, so scripts call connector tools by name). */
+    toolSearch?: { minTools: number; minDefinitionTokens: number };
+    /**
+     * Registers `request_network_access` in the runtimes, as the isolated (docker) machine has it.
+     * The e2e has no Docker: the card is real, and the tool says it has no proxy to act on.
+     */
+    networkTool?: boolean;
   } = {},
 ): Promise<World> {
   if (DATABASE_URL === undefined) throw new Error(SKIP_REASON);
@@ -488,11 +536,19 @@ export async function startWorld(
     ...(vault ? { vault: { keyEnv: VAULT_KEY_ENV } } : {}),
     // The scripts call the fake connector server's tools directly (it has 17): the tool search,
     // which would defer them, has its own tests (docs/CONECTORES.md).
-    toolSearch: { minTools: 1000, minDefinitionTokens: 10_000_000 },
+    toolSearch: options.toolSearch ?? { minTools: 1000, minDefinitionTokens: 10_000_000 },
     worker: { concurrency: 4, leaseRenewMs: 1000, staleAfterMs: 8000, controlPollMs: 100 },
     defaults: { maxTurns: 30 },
   });
   const runtimeOptions = { env, baseDir: dir };
+  const withNetworkTool = async (runtime: Runtime): Promise<Runtime> => {
+    if (options.networkTool !== true) return runtime;
+    // From the sources of the package (the desktop app does not depend on it).
+    const path = fileURLToPath(new URL("../../../packages/tools/dist/index.js", import.meta.url));
+    const tools = (await import(path)) as { networkTools: readonly Tool<unknown>[] };
+    for (const tool of tools.networkTools) runtime.tools.register(tool);
+    return runtime;
+  };
 
   const web = await serveDist();
   cleanups.unshift(() => new Promise<void>((resolve) => web.server.close(() => resolve())));
@@ -502,7 +558,7 @@ export async function startWorld(
   let server: SuupServer | undefined;
   let port = 0;
   const startServer = async (bootstrap: boolean) => {
-    serverRuntime = createRuntime(config, runtimeOptions);
+    serverRuntime = await withNetworkTool(createRuntime(config, runtimeOptions));
     server = createServer(serverRuntime, {
       token,
       host: "127.0.0.1",
@@ -524,7 +580,7 @@ export async function startWorld(
   const serverUrl = await startServer(true);
   cleanups.unshift(stopServer);
 
-  const workerRuntime = createRuntime(config, runtimeOptions);
+  const workerRuntime = await withNetworkTool(createRuntime(config, runtimeOptions));
   cleanups.unshift(() => workerRuntime.close());
   const worker: Worker = workerRuntime.createWorker({
     concurrency: 4,

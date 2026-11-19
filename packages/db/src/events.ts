@@ -117,8 +117,9 @@ export interface ListRunEventsOptions {
   /**
    * Leave out the heavy `model_request` payload (a request carries the whole conversation and the
    * tool list, and can be megabytes): the event keeps its place and gets a small summary instead
-   * (`omitted: true`, `provider`, `model`, `purpose`, `messageCount`, `toolCount`). The database
-   * does the cutting, so the megabytes never leave it.
+   * (`omitted: true`, `provider`, `model`, `purpose`, `messageCount`, `toolCount`, and `toolStats`
+   * when the request has it: a few numbers, what the tool definitions cost). The database does the
+   * cutting, so the megabytes never leave it.
    */
   slim?: boolean;
 }
@@ -149,7 +150,8 @@ export async function listRunEvents(
               'model', payload -> 'model',
               'purpose', payload -> 'purpose',
               'messageCount', jsonb_array_length(payload -> 'messages'),
-              'toolCount', jsonb_array_length(payload -> 'tools')
+              'toolCount', jsonb_array_length(payload -> 'tools'),
+              'toolStats', payload -> 'toolStats'
             )) else payload end`
       : sql`payload`;
   const rows = await sql<RunEventRow[]>`

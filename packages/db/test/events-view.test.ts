@@ -18,6 +18,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("run events: type filter and the slim
       tools: [{ name: "a" }, { name: "b" }],
       maxOutputTokens: 100,
       purpose: "review",
+      toolStats: { definitions: 2, deferred: 0, estimatedTokens: 50, loadedTokens: 50 },
     });
     await appendRunEvent(ctx.db, run.id, "nudge", { reason: "r", text: "t" });
 
@@ -34,6 +35,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("run events: type filter and the slim
       purpose: "review",
       messageCount: 1,
       toolCount: 2,
+      toolStats: { definitions: 2, deferred: 0, estimatedTokens: 50, loadedTokens: 50 },
     });
     expect(slim[0]?.payload).toEqual({ botId: "b" }); // everything else is untouched
     expect(slim[2]?.payload).toEqual({ reason: "r", text: "t" });

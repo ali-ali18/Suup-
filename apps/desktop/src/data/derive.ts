@@ -68,6 +68,8 @@ export const TOOL_LABEL: Record<string, string> = {
   recall: "Consultar memória",
   forget: "Esquecer",
   search_conversations: "Buscar nas conversas",
+  request_network_access: "Acesso à rede",
+  search_tools: "Procurar ferramentas",
 };
 
 /** The control tools are not cards: `request_secret` is the secure form, not an "action". */
@@ -79,6 +81,37 @@ export const CONTROL_TOOLS: ReadonlySet<string> = new Set([
 ]);
 
 export const toolLabel = (name: string): string => TOOL_LABEL[name] ?? name;
+
+/** The tool that finds the definitions of deferred connector tools (tool search, `meta` and `client` modes). */
+export const SEARCH_TOOLS = "search_tools";
+/** The tool that calls one deferred tool by name; it only resolves to the real call (`docs/CONECTORES.md`). */
+const USE_TOOL = "use_tool";
+
+/**
+ * The tool a logged call really is. The server records a call made through `use_tool` with the real
+ * tool's name and arguments; only a call it refused (an unknown tool, bad arguments) keeps the
+ * wrapper's name, and then the real name is in `args.tool`. The chat never shows `use_tool`.
+ */
+export function resolveToolCall(
+  name: string,
+  args: unknown,
+): { name: string; args: Record<string, unknown> } {
+  const record =
+    typeof args === "object" && args !== null && !Array.isArray(args)
+      ? (args as Record<string, unknown>)
+      : {};
+  if (name === USE_TOOL && typeof record.tool === "string" && record.tool !== "") {
+    const inner = record.arguments;
+    return {
+      name: record.tool,
+      args:
+        typeof inner === "object" && inner !== null && !Array.isArray(inner)
+          ? (inner as Record<string, unknown>)
+          : {},
+    };
+  }
+  return { name, args: record };
+}
 
 const str = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
 
@@ -114,8 +147,10 @@ export function runningTool(events: readonly RunEvent[]): string | undefined {
     const event = events[i] as RunEvent;
     if (event.type !== "tool_call") continue;
     const callId = str(event.payload.callId);
-    const name = str(event.payload.name);
-    if (callId === undefined || name === undefined || CONTROL_TOOLS.has(name)) continue;
+    const logged = str(event.payload.name);
+    if (callId === undefined || logged === undefined) continue;
+    const { name } = resolveToolCall(logged, event.payload.args);
+    if (CONTROL_TOOLS.has(name)) continue;
     if (!resolved.has(callId)) return name;
   }
   return undefined;

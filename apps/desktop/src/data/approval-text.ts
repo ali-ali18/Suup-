@@ -46,6 +46,9 @@ export const STATUS_DETAIL: Record<string, string> = {
 const CONNECTOR_PREFIX = "conn_";
 const SEPARATOR = "__";
 
+/** The tool with which a bot asks to reach one more host from its machine (`docs/REDE.md`). */
+export const NETWORK_TOOL = "request_network_access";
+
 /** The name a connector's tools carry: dashes become underscores (`conn_meu_erp__`). */
 const prefixOf = (connector: string): string =>
   `${CONNECTOR_PREFIX}${connector.replaceAll("-", "_")}${SEPARATOR}`;
@@ -186,6 +189,7 @@ export type CategoryIcon =
   | "memory"
   | "mail"
   | "connector"
+  | "network"
   | "generic";
 
 export interface ToolCategory {
@@ -212,6 +216,8 @@ export function toolCategory(
   const ref = parseConnectorTool(tool, connectors);
   if (ref !== null) return { label: ref.connector, icon: "connector" };
   switch (tool) {
+    case NETWORK_TOOL:
+      return { label: "Rede", icon: "network" };
     case "shell":
       return { label: "Terminal", icon: "terminal" };
     case "read_file":
@@ -264,6 +270,10 @@ export function approvalTitle(
   }
   const path = text(args, "path");
   switch (tool) {
+    case NETWORK_TOOL: {
+      const host = text(args, "host");
+      return host === undefined ? "Acessar um host" : `Acessar ${oneLine(host)}`;
+    }
     case "shell": {
       const command = text(args, "command");
       return command === undefined ? "Rodar um comando" : `Rodar ${oneLine(command)}`;
@@ -305,6 +315,25 @@ function toolVerb(tool: string): string {
       return `usar ${toolLabel(tool).toLowerCase()}`;
   }
 }
+
+/** The host and the reason of a `request_network_access` call, from its arguments. */
+export function networkRequestOf(
+  tool: string,
+  args: unknown,
+): { host: string | undefined; reason: string | undefined } | null {
+  if (tool !== NETWORK_TOOL) return null;
+  return { host: text(args, "host"), reason: text(args, "reason") };
+}
+
+/** The one muted paragraph of the network card: the bot's own words, said to be the bot's. */
+export function networkLede(botName: string, reason: string | undefined): string {
+  return reason === undefined
+    ? `${botName} pede acesso a este host e não disse o motivo.`
+    : `Motivo dado pelo bot: “${reason}”`;
+}
+
+/** The muted note of the network card: how far an approval reaches. */
+export const NETWORK_SCOPE_NOTE = "Aprovar vale só para esta execução.";
 
 /** "Expira em 12 min", "Expira em 40 s", "Expirou": the time left on a card that expires. */
 export function expiryText(expiresAt: string, now: number): string {

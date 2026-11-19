@@ -16,6 +16,12 @@ const stdio = (over: Partial<ConnectorForm> = {}): ConnectorForm => ({
 });
 
 describe("the add-connector form becomes the API body", () => {
+  it("never grants anything: which tools each bot may use is chosen afterwards, per tool", () => {
+    const result = buildCreateBody(stdio({ command: "node" }), []);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.body).not.toHaveProperty("grants");
+  });
+
   it("a local program: the executable alone, one argument per line, env as text or a vault reference", () => {
     const result = buildCreateBody(
       stdio({
@@ -26,7 +32,6 @@ describe("the add-connector form becomes the API body", () => {
           emptyRow({ key: "API_TOKEN", mode: "secret", secret: "ERP_TOKEN" }),
         ],
         timeoutSec: "30",
-        grantBotIds: ["b1"],
         scope: "read_write",
       }),
       ["ERP_TOKEN"],
@@ -38,7 +43,6 @@ describe("the add-connector form becomes the API body", () => {
         description: "ERP da loja",
         scope: "read_write",
         timeoutMs: 30_000,
-        grants: [{ botId: "b1", tools: "all" }],
         transport: {
           kind: "stdio",
           command: "node",

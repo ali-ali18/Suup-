@@ -8,6 +8,9 @@ import {
   instructionLine,
   LEVEL_HINT,
   LEVEL_LABEL,
+  NETWORK_SCOPE_NOTE,
+  networkLede,
+  networkRequestOf,
   parseConnectorTool,
   ruleSentence,
   SOURCE_REASON,
@@ -111,6 +114,8 @@ function PendingCard({
   const outbound = approval.outbound;
   const category = toolCategory(approval.tool, connectors, outbound !== null);
   const title = approvalTitle(approval.tool, approval.args, approval.summary, connectors);
+  // A request to reach one more host: the bot's reason in its own words, and how far "Aprovar" goes.
+  const network = networkRequestOf(approval.tool, approval.args);
 
   // The card appears: take the focus on the card itself (not on a button, so a stray Enter cannot
   // decide), unless the person is in the middle of typing something.
@@ -144,6 +149,14 @@ function PendingCard({
       return (
         <span data-testid="allow-recipient-sentence" aria-live="polite">
           {allowRecipientSentence({ botName, tool: approval.tool, recipients, connectors })}
+        </span>
+      );
+    }
+    if (network !== null) {
+      return (
+        <span data-testid="network-scope">
+          {NETWORK_SCOPE_NOTE}
+          {approval.expiresAt !== null && ` ${expiryText(approval.expiresAt, current)}.`}
         </span>
       );
     }
@@ -193,7 +206,11 @@ function PendingCard({
         </span>
       }
       title={title}
-      lede={`${instructionLine(botName, approval.tool, ref?.connector ?? null)} Está perguntando porque ${SOURCE_REASON[approval.source]}.`}
+      lede={
+        network === null
+          ? `${instructionLine(botName, approval.tool, ref?.connector ?? null)} Está perguntando porque ${SOURCE_REASON[approval.source]}.`
+          : networkLede(botName, network.reason)
+      }
       ledeTestId="approval-why"
       footerNote={note()}
       footer={

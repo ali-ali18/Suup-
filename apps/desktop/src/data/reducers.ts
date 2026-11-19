@@ -3,6 +3,7 @@ import type {
   ApprovalRule,
   ApprovalStatus,
   Bot,
+  BotNetwork,
   Connector,
   Conversation,
   Memory,
@@ -439,6 +440,13 @@ export function removeConnector(state: DataState, name: string): DataState {
   if (state.connectors[name] === undefined) return state;
   const { [name]: _gone, ...rest } = state.connectors;
   return { ...state, connectors: rest };
+}
+
+/** The network of a bot, as the server just answered it (a read or a write: both carry the whole view). */
+export function setBotNetwork(state: DataState, botId: string, network: BotNetwork): DataState {
+  const current = state.networks[botId];
+  if (current !== undefined && sameJson(current, network)) return state;
+  return { ...state, networks: { ...state.networks, [botId]: network } };
 }
 
 export function orderedConnectors(state: Pick<DataState, "connectors">): Connector[] {

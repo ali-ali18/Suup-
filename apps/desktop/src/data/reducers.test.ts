@@ -37,6 +37,7 @@ import {
   removeSecret,
   resolveOptimisticMessage,
   rollbackOptimisticMessage,
+  setBotNetwork,
   setBots,
   setConnection,
   setConnectors,
@@ -395,5 +396,28 @@ describe("rules, vault and connectors (no stream frame: read again after writing
     expect(s.connectors.fake?.grantedBotIds).toEqual(["b1"]);
     expect(Object.keys(removeConnector(s, "fake").connectors)).toEqual([]);
     expect(removeConnector(s, "outro")).toBe(s);
+  });
+});
+
+describe("the network of a bot's machine", () => {
+  const view = (hosts: string[]) => ({
+    defaults: ["registry.npmjs.org"],
+    hosts: hosts.map((host) => ({ host, createdBy: "user" as const, createdAt: at(0) })),
+    refusals: [],
+  });
+
+  it("keeps what the server last said, by bot, and replaces it whole", () => {
+    const one = setBotNetwork(emptyData(), "b1", view(["a.com"]));
+    expect(one.networks.b1?.hosts.map((h) => h.host)).toEqual(["a.com"]);
+    const two = setBotNetwork(one, "b2", view([]));
+    expect(Object.keys(two.networks).sort()).toEqual(["b1", "b2"]);
+    const after = setBotNetwork(two, "b1", view([]));
+    expect(after.networks.b1?.hosts).toEqual([]);
+    expect(after.networks.b2).toBe(two.networks.b2);
+  });
+
+  it("the same answer twice changes nothing", () => {
+    const once = setBotNetwork(emptyData(), "b1", view(["a.com"]));
+    expect(setBotNetwork(once, "b1", view(["a.com"]))).toBe(once);
   });
 });

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { DecideOutcome } from "../data/sync.js";
 import { makeApproval, makeMessageApproval, makeRule } from "../test-fixtures.js";
@@ -339,6 +339,68 @@ describe("ApprovalCard waiting for you", () => {
       now: () => now,
     });
     expect(screen.getByTestId("approval-expiry").textContent).toContain("Expira em 12 min");
+  });
+});
+
+describe("ApprovalCard asking for network access", () => {
+  const network = (over = {}) =>
+    makeApproval({
+      tool: "request_network_access",
+      args: { host: "api.novo.com", reason: "preciso baixar o relatório do mês" },
+      summary: "Allow network access to api.novo.com until the end of this run. Reason: x",
+      ...over,
+    });
+
+  it("is a normal decision card: 'Rede', 'Acessar <host>', the bot's words, only Recusar and Aprovar", () => {
+    show({ approval: network() });
+    const card = screen.getByTestId("approval-card");
+    expect(card.getAttribute("data-state")).toBe("needs-action");
+    expect(card.querySelector(".ui-decision__category")?.textContent).toBe("Rede");
+    expect(card.querySelector(".ui-decision__title")?.textContent).toBe("Acessar api.novo.com");
+    // One paragraph, and it says the words are the bot's own.
+    expect(within(card).getByTestId("approval-why").textContent).toBe(
+      "Motivo dado pelo bot: “preciso baixar o relatório do mês”",
+    );
+    expect(card.querySelectorAll(".ui-decision__lede")).toHaveLength(1);
+    // The exact content stays inspectable.
+    expect(
+      within(card)
+        .getAllByTestId("arg-field")
+        .map((f) => f.getAttribute("data-key")),
+    ).toEqual(["host", "reason"]);
+    // The muted note: an approval reaches only this execution.
+    expect(within(card).getByTestId("network-scope").textContent).toBe(
+      "Aprovar vale só para esta execução.",
+    );
+    // No split button, no menu: a normal action.
+    expect(
+      within(card)
+        .getAllByRole("button")
+        .map((b) => b.textContent),
+    ).toEqual(["Recusar", "Aprovar"]);
+    expect(card.querySelector(".ui-split")).toBeNull();
+  });
+
+  it("decides like any card: Aprovar sends an approval, Recusar a denial, nothing else", async () => {
+    const { onDecide } = show({ approval: network() });
+    fireEvent.click(screen.getByTestId("approval-approve"));
+    await waitFor(() => expect(onDecide).toHaveBeenCalledWith({ decision: "approve" }));
+    fireEvent.click(screen.getByTestId("approval-deny"));
+    await waitFor(() => expect(onDecide).toHaveBeenLastCalledWith({ decision: "deny" }));
+  });
+
+  it("decided, it is the standard single collapsed row", () => {
+    show({ approval: network({ status: "approved", decidedAt: "2026-11-18T12:00:00.000Z" }) });
+    const row = screen.getByTestId("approval-card");
+    expect(row.getAttribute("data-state")).toBe("done");
+    expect(row.textContent).toContain("Rede");
+    expect(row.textContent).toContain("Aprovado · Acessar api.novo.com");
+    expect(row.querySelector(".ui-decision__footer")).toBeNull();
+    cleanup();
+    show({ approval: network({ status: "denied", decidedAt: "2026-11-18T12:00:00.000Z" }) });
+    expect(screen.getByTestId("approval-card").textContent).toContain(
+      "Recusado · Acessar api.novo.com",
+    );
   });
 });
 

@@ -1,4 +1,4 @@
-import { expect, type Page, type Response, test } from "@playwright/test";
+import { expect, type Locator, type Page, type Response, test } from "@playwright/test";
 import { DATABASE_URL, fakeMcpCommand, SKIP_REASON, startWorld, type World } from "./harness.js";
 import { botItem, freshBot, openApp, openWithBot, selectBot, send } from "./helpers.js";
 
@@ -14,6 +14,9 @@ async function openSettings(page: Page, tab: "Geral" | "Aprovações" | "Cofre" 
   await page.getByRole("menuitem", { name: "Configurações" }).click();
   await page.getByRole("tab", { name: tab }).click();
 }
+
+const grantRow = (row: Locator, bot: string): Locator =>
+  row.locator(`[data-testid="grant-row"][data-bot="${bot}"]`);
 
 async function botId(world: World, name: string): Promise<string> {
   return (await world.api.bots.list()).find((b) => b.name === name)?.id as string;
@@ -248,12 +251,14 @@ test.describe("connectors", () => {
     await dialog.getByLabel("Programa").fill(command);
     await dialog.getByLabel("Argumentos (um por linha)").fill(args.join("\n"));
     await dialog.getByLabel("Escopo").selectOption("read_write");
-    await dialog.getByRole("checkbox", { name: "Conectado" }).check();
+    // Nothing is granted at creation: the tools are chosen per bot afterwards.
+    await expect(dialog.getByTestId("connector-grant-hint")).toContainText("Nenhum bot recebe");
+    await expect(dialog.getByRole("checkbox", { name: "Conectado" })).toHaveCount(0);
     await dialog.getByTestId("connector-create").click();
     const row = page.getByTestId("connector-row").filter({ hasText: "fake" });
     await expect(row).toBeVisible();
     await expect(row).toContainText("Programa neste computador");
-    await expect(row).toContainText("1 bot");
+    await expect(row).toContainText("Nenhum bot");
     await expect(row.getByTestId("connector-health")).toContainText("Ainda não listado");
     // Test: it really starts the server, lists its tools and shows the result.
     await row.getByTestId("connector-test").click();
@@ -261,13 +266,17 @@ test.describe("connectors", () => {
     await expect(result).toHaveAttribute("data-ok", "true");
     await expect(result).toContainText("fake-server 1.2.3");
     await expect(row.getByTestId("connector-health")).toContainText("ferramentas oferecidas");
-    // The panel: grants (as toggles), scope, the tools with the risk and where it came from.
+    // The panel: the grants (a row per bot with a count), scope, the tools with the risk and origin.
     await row.getByTestId("connector-details").click();
     const panel = row.getByTestId("connector-panel");
-    await expect(panel.getByRole("switch", { name: "Conectado pode usar fake" })).toHaveAttribute(
-      "aria-checked",
-      "true",
-    );
+    const access = grantRow(row, "Conectado");
+    await expect(access).toContainText("0 de");
+    await access.getByRole("button", { name: /Conectado/ }).click();
+    await access.getByTestId("grant-all").click();
+    await access.getByTestId("grant-save").click();
+    await expect(row).toContainText("1 bot");
+    await expect(access.getByTestId("grant-card")).toContainText("(todas)");
+    await access.getByRole("button", { name: /Conectado/ }).click();
     await expect(panel.getByRole("switch", { name: "fake: somente leitura" })).toHaveAttribute(
       "aria-checked",
       "false",

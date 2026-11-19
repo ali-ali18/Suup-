@@ -179,6 +179,52 @@ describe("approval buttons: normal = Aprovar / Recusar; the split button is only
   });
 });
 
+describe("connectors: per-tool grants, the review of a definition, the network", () => {
+  const settings = (name: string) => read(join(SRC, "features", "settings", name));
+
+  it("a bot's access to a connector is a collapsed row (the shared ActionCard) with a count, never an on/off switch", () => {
+    const grants = settings("ConnectorGrants.tsx");
+    expect(grants).toContain('from "../../ui/action-card.js"');
+    expect(grants).toContain("countLabel(");
+    expect(grants).not.toContain("<Toggle");
+    // `all` is sent only for "Selecionar todas": the body comes from the pure function.
+    expect(grants).toContain("grantBody(draft, list)");
+    expect(read(join(SRC, "features", "settings", "ConnectorsSettings.tsx"))).not.toContain(
+      'tools: "all"',
+    );
+  });
+
+  it("the comparison of two definitions marks differences without colour alone, and says the text is the server's", () => {
+    const review = settings("ToolReview.tsx");
+    expect(review).toContain('aria-hidden="true"');
+    expect(review).toContain("Linha removida");
+    expect(review).toContain("Linha nova");
+    expect(review).toContain("Texto escrito pelo servidor");
+    const css = read(join(SRC, "features", "features.css"));
+    const word = css.slice(
+      css.indexOf(".diff-word {"),
+      css.indexOf("}", css.indexOf(".diff-word {")),
+    );
+    expect(word).toContain("font-weight");
+    expect(word).toContain("text-decoration: underline");
+    // Approving is one tool at a time: there is no "approve all".
+    expect(review.toLowerCase()).not.toContain("aprovar tudo");
+    expect(review.toLowerCase()).not.toContain("aprovar todas");
+  });
+
+  it("the network section judges nothing about a host: no pattern, only the server's refusal", () => {
+    const form = read(join(SRC, "lib", "network.ts"));
+    expect(form).not.toMatch(/\bnew RegExp\b|\.test\(|\.match\(/);
+    expect(read(join(SRC, "features", "new-bot", "BotNetwork.tsx"))).toContain("hostInput(host)");
+  });
+
+  it("the network request is a normal decision card: the same DecisionCard, no split button for it", () => {
+    const card = read(join(SRC, "ui", "approval-card.tsx"));
+    expect(card).toContain("networkRequestOf(approval.tool, approval.args)");
+    expect(card).toContain('from "./decision-card.js"');
+  });
+});
+
 describe("docs/DESIGN.md is the standard, and everyone is pointed to it", () => {
   const root = join(SRC, "..", "..", "..");
   it("exists and is referenced by the desktop README, FRONTEND.md and CLAUDE.md", () => {

@@ -86,7 +86,7 @@ Tudo é opcional; sem `network` valem os padrões acima. `defaultHosts: []` não
 
 ## O que o app de desktop vai precisar
 
-Veja a seção "Rede dos bots" de [FRONTEND.md](FRONTEND.md).
+O app desenha (seção "Rede" na edição do bot, `runsIn` e hosts dos conectores, o cartão de acesso à rede): veja a seção "Rede dos bots" de [FRONTEND.md](FRONTEND.md) e [DESIGN.md](DESIGN.md) §3b. O servidor não declara se o sandbox é o local; o app deduz pela ferramenta `request_network_access` em `GET /v1/tools`.
 
 ## Não verificado / adiado
 

@@ -3,6 +3,7 @@ import {
   type Approval,
   type ApprovalRule,
   type Bot,
+  type BotNetwork,
   type Connector,
   type Conversation,
   type DecideApprovalBody,
@@ -36,6 +37,7 @@ import {
   removeSecret,
   resolveOptimisticMessage,
   rollbackOptimisticMessage,
+  setBotNetwork,
   setBots,
   setConnection,
   setConnectors,
@@ -639,6 +641,27 @@ export class Sync {
         update(this.store, (s) => removeConnector(s, name));
         return { ok: true };
       }
+      return { ok: false, message: messageOf(error) };
+    }
+  }
+
+  // ---------------------------------------------------- network of a bot's machine
+  // No stream frame either: the server answers a read and every write with the whole view of the
+  // bot, which replaces what the store held. The error of a refused write is the server's message.
+
+  async loadBotNetwork(botId: string): Promise<{ ok: true } | { ok: false; message: string }> {
+    return this.networkCall(botId, () => this.deps.api.network.forBot(botId));
+  }
+
+  async networkCall(
+    botId: string,
+    call: () => Promise<BotNetwork>,
+  ): Promise<{ ok: true } | { ok: false; message: string }> {
+    try {
+      const network = await call();
+      update(this.store, (s) => setBotNetwork(s, botId, network));
+      return { ok: true };
+    } catch (error) {
       return { ok: false, message: messageOf(error) };
     }
   }

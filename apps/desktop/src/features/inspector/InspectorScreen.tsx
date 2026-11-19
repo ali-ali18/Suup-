@@ -5,6 +5,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { useUi } from "../../app/ui-store.js";
 import { orderedEvents } from "../../data/reducers.js";
+import {
+  CATALOG_DETAIL,
+  CATALOG_LABEL,
+  catalogOf,
+  requestToolStats,
+} from "../../data/tool-stats.js";
 import { Card, Pill, RoundButton, TextField } from "../../ui/primitives.js";
 
 const json = (value: unknown): string => JSON.stringify(value, null, 2);
@@ -38,6 +44,8 @@ export function InspectorScreen() {
   }, [runId, sync, api]);
 
   const requests = events.filter((e) => e.type === "model_request");
+  const catalog = useMemo(() => catalogOf(events), [events]);
+  const stats = useMemo(() => requestToolStats(events), [events]);
   useEffect(() => {
     if (seq === "" && requests[0] !== undefined) setSeq(String(requests[0].seq));
   }, [requests, seq]);
@@ -114,6 +122,64 @@ export function InspectorScreen() {
               </li>
             ))}
           </ol>
+        </Card>
+        <Card aria-label="Definições de ferramentas" data-testid="tool-stats-card">
+          <h2 className="section-label">Definições de ferramentas</h2>
+          <p className="muted small">
+            Quanto as definições das ferramentas pesam em cada pedido ao modelo. Os números são
+            estimativas, só para leitura.
+          </p>
+          {catalog === undefined ? (
+            <p data-testid="tool-catalog" data-mode="none">
+              Modo do catálogo: sem ferramentas de conectores nesta execução.
+            </p>
+          ) : (
+            <p
+              data-testid="tool-catalog"
+              data-mode={catalog.mode}
+              data-definition-tokens={catalog.definitionTokens}
+            >
+              Modo do catálogo: <strong>{CATALOG_LABEL[catalog.mode]}</strong>.{" "}
+              <span className="muted">
+                {CATALOG_DETAIL[catalog.mode]} {catalog.connectorTools}{" "}
+                {catalog.connectorTools === 1 ? "ferramenta" : "ferramentas"} de conectores, cerca
+                de {catalog.definitionTokens} tokens de definições
+                {catalog.deferred > 0 ? `; ${catalog.deferred} adiadas` : ""}.
+              </span>
+            </p>
+          )}
+          {stats.length === 0 ? (
+            <p className="muted small" data-testid="tool-stats-empty">
+              Nenhum pedido desta execução traz a medida das definições (execuções mais antigas não
+              a gravam).
+            </p>
+          ) : (
+            <table className="inspector__table" data-testid="tool-stats">
+              <caption className="sr-only">Definições de ferramentas por pedido</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Pedido</th>
+                  <th scope="col">Definições</th>
+                  <th scope="col">Adiadas no pedido</th>
+                  <th scope="col">Tokens estimados</th>
+                  <th scope="col">Tokens carregados</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stats.map((r) => (
+                  <tr key={r.seq} data-testid="tool-stats-row" data-seq={r.seq}>
+                    <th scope="row">
+                      #{r.seq} · {r.purpose}
+                    </th>
+                    <td>{r.definitions}</td>
+                    <td>{r.deferred}</td>
+                    <td>{r.estimatedTokens}</td>
+                    <td>{r.loadedTokens}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </Card>
         <Card aria-label="O que o modelo viu">
           <h2 className="section-label">O que o modelo viu</h2>

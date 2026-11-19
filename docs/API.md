@@ -160,7 +160,7 @@ A mensagem do bot que **é uma pergunta** (o `escalate` do bot, ou o desempate d
 `RunEvent`: `{ seq, type, createdAt, payload }`. Os tipos e o `payload` de cada um estão em [FRONTEND.md](FRONTEND.md), seção 5; `seq` é a posição na execução (1, 2, 3...). Parâmetros: `afterSeq` (padrão 0), `limit` (1 a 1000, padrão 200), `types` (lista separada por vírgula, dos tipos conhecidos) e `view`:
 
 - `full` (padrão): tudo, inclusive o `model_request` inteiro, que carrega a conversa e a lista de ferramentas e **pode ter megabytes**.
-- `chat`: tudo igual, **exceto** que o `payload` de `model_request` vira `{ "omitted": true, "provider", "model", "purpose"?, "messageCount", "toolCount" }`. O corte é feito no banco, então os megabytes nem saem dele. O pedido inteiro está em `GET /v1/runs/{id}/requests/{seq}`.
+- `chat`: tudo igual, **exceto** que o `payload` de `model_request` vira `{ "omitted": true, "provider", "model", "purpose"?, "messageCount", "toolCount", "toolStats"? }` (`toolStats`: `definitions`, `deferred`, `estimatedTokens`, `loadedTokens`, o custo das definições de ferramentas do pedido; só números). O corte é feito no banco, então os megabytes nem saem dele. O pedido inteiro está em `GET /v1/runs/{id}/requests/{seq}`.
 
 `lastSeq` é o `seq` do último evento devolvido (ou o `afterSeq` pedido, se nenhum veio): é o `afterSeq` da próxima página.
 

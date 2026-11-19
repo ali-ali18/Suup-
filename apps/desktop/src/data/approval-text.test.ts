@@ -7,6 +7,10 @@ import {
   isConnectorTool,
   matchersText,
   matcherText,
+  NETWORK_SCOPE_NOTE,
+  NETWORK_TOOL,
+  networkLede,
+  networkRequestOf,
   parseConnectorTool,
   ruleSentence,
   toolCategory,
@@ -175,5 +179,42 @@ describe("the time left on a card that expires", () => {
   });
   it("a date it cannot read says nothing", () => {
     expect(expiryText("não é data", now)).toBe("");
+  });
+});
+
+describe("the card that asks for network access", () => {
+  const args = { host: "api.novo.com", reason: "preciso baixar o relatório" };
+
+  it("is the category 'Rede', named by the tool and never by its text", () => {
+    expect(NETWORK_TOOL).toBe("request_network_access");
+    expect(toolCategory(NETWORK_TOOL)).toEqual({ label: "Rede", icon: "network" });
+    expect(toolCategory("acesso_a_rede").label).toBe("Ferramenta");
+  });
+
+  it("the title is 'Acessar <host>', and a missing host does not break it", () => {
+    expect(approvalTitle(NETWORK_TOOL, args, "Allow network access to api.novo.com ...")).toBe(
+      "Acessar api.novo.com",
+    );
+    expect(approvalTitle(NETWORK_TOOL, {}, "x")).toBe("Acessar um host");
+  });
+
+  it("reads the host and the reason of the call, only for this tool", () => {
+    expect(networkRequestOf(NETWORK_TOOL, args)).toEqual({
+      host: "api.novo.com",
+      reason: "preciso baixar o relatório",
+    });
+    expect(networkRequestOf(NETWORK_TOOL, { host: " " })).toEqual({
+      host: undefined,
+      reason: undefined,
+    });
+    expect(networkRequestOf("web_fetch", args)).toBeNull();
+  });
+
+  it("the reason is the bot's own words, and the note says how far an approval reaches", () => {
+    expect(networkLede("Nova", "preciso baixar o relatório")).toBe(
+      "Motivo dado pelo bot: “preciso baixar o relatório”",
+    );
+    expect(networkLede("Nova", undefined)).toContain("Nova");
+    expect(NETWORK_SCOPE_NOTE).toContain("só para esta execução");
   });
 });

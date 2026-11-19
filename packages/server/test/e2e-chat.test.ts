@@ -927,6 +927,12 @@ describe.skipIf(!DATABASE_URL)(
         model: "model-x",
         messageCount: expect.any(Number),
         toolCount: expect.any(Number),
+        toolStats: {
+          definitions: expect.any(Number),
+          deferred: 0,
+          estimatedTokens: expect.any(Number),
+          loadedTokens: expect.any(Number),
+        },
       });
       // Everything FRONTEND.md section 5 lists as drawn keeps its payload.
       for (const type of [

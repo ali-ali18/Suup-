@@ -2,7 +2,6 @@ import type { Connector, ConnectorTest, ConnectorTool, RiskLevel } from "@suup/a
 import { Plug, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
-import { sortedBots } from "../../app/selectors.js";
 import { LEVEL_LABEL, LEVELS } from "../../data/approval-text.js";
 import { formatDuration } from "../../data/derive.js";
 import { orderedConnectors, orderedSecrets } from "../../data/reducers.js";
@@ -21,8 +20,13 @@ import {
   STDIO_WARNING,
   TIGHTENED_HELP,
 } from "../../lib/connector-form.js";
+import { RUNS_IN_LABEL } from "../../lib/network.js";
+import { reviewNotice } from "../../lib/tool-review.js";
 import { Card, Dialog, EmptyState, Pill, Tag, TextField, Toggle } from "../../ui/primitives.js";
+import { ConnectorGrants } from "./ConnectorGrants.js";
+import { ConnectorNetwork } from "./ConnectorNetwork.js";
 import { formatWhen } from "./formatting.js";
+import { ReviewDialog, ToolHistory } from "./ToolReview.js";
 import { useTask } from "./use-task.js";
 import { SecretDialog } from "./VaultSettings.js";
 
@@ -126,7 +130,6 @@ function RefRows({
 
 function AddConnectorDialog({ onClose, onNewSecret }: { onClose(): void; onNewSecret(): void }) {
   const { sync, api } = useServices();
-  const bots = useData((s) => s.bots);
   const secretsByName = useData((s) => s.secrets);
   const secretNames = useMemo(
     () => orderedSecrets({ secrets: secretsByName }).map((s) => s.name),
@@ -313,28 +316,10 @@ function AddConnectorDialog({ onClose, onNewSecret }: { onClose(): void; onNewSe
           error={errors.timeout}
           hint="Em branco: o padrão do servidor (60 s)."
         />
-        {sortedBots(bots).length > 0 && (
-          <fieldset className="form__row">
-            <legend className="ui-field__label">Quem pode usar já na criação</legend>
-            {sortedBots(bots).map((b) => (
-              <label key={b.id} className="grant-check">
-                <input
-                  type="checkbox"
-                  checked={form.grantBotIds.includes(b.id)}
-                  onChange={(e) =>
-                    set({
-                      grantBotIds: e.target.checked
-                        ? [...form.grantBotIds, b.id]
-                        : form.grantBotIds.filter((g) => g !== b.id),
-                    })
-                  }
-                />
-                <span>{b.name}</span>
-              </label>
-            ))}
-            <p className="ui-field__hint">A mudança vale a partir da próxima execução do bot.</p>
-          </fieldset>
-        )}
+        <p className="ui-field__hint" data-testid="connector-grant-hint">
+          Nenhum bot recebe o conector ao criá-lo. Depois de “Testar”, você escolhe, bot a bot,
+          quais ferramentas cada um pode usar.
+        </p>
         {task.error !== undefined && (
           <p className="ui-field__error" role="alert" data-testid="connector-error">
             {task.error}
@@ -434,6 +419,18 @@ function ToolRow({ connector, tool }: { connector: Connector; tool: ConnectorToo
       <div className="row-between">
         <p>
           <strong>{tool.tool}</strong> <code className="muted">{tool.name}</code>
+          {(tool.pin === "changed" || tool.pin === "new") && (
+            <>
+              {" "}
+              <Tag tone="outline">
+                <span data-testid="tool-pin" data-pin={tool.pin}>
+                  {tool.pin === "changed"
+                    ? "definição mudou, esperando sua revisão"
+                    : "nova, esperando sua revisão"}
+                </span>
+              </Tag>
+            </>
+          )}
         </p>
         <Tag
           tone={
@@ -534,13 +531,11 @@ function ConnectorCard({
   onAskEnable(c: Connector): void;
 }) {
   const { sync, api } = useServices();
-  const bots = useData((s) => s.bots);
-  const botList = useMemo(() => sortedBots(bots), [bots]);
   const [open, setOpen] = useState(false);
   const [test, setTest] = useState<ConnectorTest | undefined>(undefined);
   const [removing, setRemoving] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
   const toggling = useTask();
-  const grant = useTask();
   const scope = useTask();
   const trust = useTask();
   const testing = useTask();
@@ -548,6 +543,8 @@ function ConnectorCard({
   const available = (connector.tools ?? []).filter((t) => t.available);
   const unavailable = (connector.tools ?? []).filter((t) => !t.available);
   const lastError = connector.discovery.lastError;
+  const notice = reviewNotice(connector);
+  const withAccess = connector.grants.filter((g) => g.all || g.tools.length > 0).length;
 
   return (
     <li
@@ -581,10 +578,13 @@ function ConnectorCard({
         <Tag tone="outline">{KIND_LABEL[connector.transport.kind]}</Tag>
         {connector.scope === "read_only" && <Tag tone="outline">Só leitura</Tag>}
         {!connector.enabled && <Tag tone="outline">Desligado</Tag>}
+        {connector.runsIn !== null && (
+          <Tag tone="outline">
+            <span data-testid="connector-runs-tag">{RUNS_IN_LABEL[connector.runsIn]}</span>
+          </Tag>
+        )}
         <Tag tone="outline">
-          {connector.grantedBotIds.length === 0
-            ? "Nenhum bot"
-            : `${connector.grantedBotIds.length} ${connector.grantedBotIds.length === 1 ? "bot" : "bots"}`}
+          {withAccess === 0 ? "Nenhum bot" : `${withAccess} ${withAccess === 1 ? "bot" : "bots"}`}
         </Tag>
         {connector.origin === "proposal" && <Tag tone="outline">Proposto por um bot</Tag>}
       </div>
@@ -602,6 +602,14 @@ function ConnectorCard({
           </span>
         )}
       </p>
+      {notice !== null && (
+        <div className="ui-notice review-notice" role="status" data-testid="review-notice">
+          <span>{notice}.</span>
+          <Pill tone="secondary" data-testid="connector-review" onClick={() => setReviewing(true)}>
+            Revisar
+          </Pill>
+        </div>
+      )}
       {toggling.error !== undefined && (
         <p className="ui-field__error" role="alert">
           {toggling.error}
@@ -660,38 +668,7 @@ function ConnectorCard({
       )}
       {open && (
         <div className="connector__details" data-testid="connector-panel">
-          <fieldset className="grants" data-testid="connector-grants">
-            <legend className="ui-field__label">Quem pode usar</legend>
-            {botList.map((b) => (
-              <div key={b.id} className="grant-row">
-                <span>{b.name}</span>
-                <Toggle
-                  checked={connector.grantedBotIds.includes(b.id)}
-                  disabled={grant.busy}
-                  label={`${b.name} pode usar ${connector.name}`}
-                  onChange={(next) =>
-                    void grant.run(async () => {
-                      const result = await sync.connectorCall(() =>
-                        next
-                          ? api.connectors.grant(connector.name, b.id, { tools: "all" })
-                          : api.connectors.revoke(connector.name, b.id),
-                      );
-                      return result.ok ? { ok: true } : { ok: false, message: result.message };
-                    })
-                  }
-                />
-              </div>
-            ))}
-            {grant.error !== undefined && (
-              <p className="ui-field__error" role="alert">
-                {grant.error}
-              </p>
-            )}
-            <p className="muted small">
-              Dar o conector a um bot dá a ele o que o servidor faz com as credenciais do conector.
-              A mudança vale a partir da próxima execução.
-            </p>
-          </fieldset>
+          <ConnectorGrants connector={connector} onReview={() => setReviewing(true)} />
           <div className="settings__setting">
             <div className="settings__setting-text">
               <span>Somente leitura</span>
@@ -750,6 +727,8 @@ function ConnectorCard({
               <span className="mono">{connector.secretNames.join(", ")}</span>
             </p>
           )}
+          <ConnectorNetwork connector={connector} />
+          <ToolHistory connector={connector} />
           <h3 className="section-label">Ferramentas</h3>
           <p className="muted small">{READ_WARNING}</p>
           {connector.tools === null ? (
@@ -777,6 +756,7 @@ function ConnectorCard({
           )}
         </div>
       )}
+      {reviewing && <ReviewDialog connector={connector} onClose={() => setReviewing(false)} />}
       {removing && (
         <Dialog
           title={`Remover o conector ${connector.name}?`}

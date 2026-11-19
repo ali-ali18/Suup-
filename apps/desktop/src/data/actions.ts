@@ -1,6 +1,6 @@
 import type { Approval, PlanStep, Run, RunEvent } from "@suup/api";
-import { type CategoryIcon, STATUS_LABEL, toolCategory } from "./approval-text.js";
-import { CONTROL_TOOLS, currentStep, toolLabel } from "./derive.js";
+import { type CategoryIcon, NETWORK_TOOL, STATUS_LABEL, toolCategory } from "./approval-text.js";
+import { CONTROL_TOOLS, currentStep, resolveToolCall, SEARCH_TOOLS, toolLabel } from "./derive.js";
 
 // What the bot DID, as the chat shows it: one card per tool call of a run, built from the run's
 // events (`tool_call` + `tool_result`). A call that had an approval card is still ONE row: the
@@ -140,6 +140,32 @@ export function describeAction(
         doing: where === undefined ? "Acessando uma página" : `Acessando ${where}`,
       };
     }
+    case NETWORK_TOOL: {
+      const where = text("host") === undefined ? undefined : clip(text("host") as string, 60);
+      return {
+        kind: "other",
+        ...label,
+        summary: where === undefined ? "Acessar um host" : `Acessar ${where}`,
+        doing: where === undefined ? "Pedindo acesso a um host" : `Pedindo acesso a ${where}`,
+      };
+    }
+    case SEARCH_TOOLS: {
+      const words = text("words") === undefined ? undefined : clip(text("words") as string, 40);
+      const connector =
+        text("connector") === undefined ? undefined : clip(text("connector") as string, 40);
+      const what =
+        words === undefined
+          ? connector === undefined
+            ? ""
+            : ` do conector ${connector}`
+          : ` “${words}”${connector === undefined ? "" : ` no conector ${connector}`}`;
+      return {
+        kind: "other",
+        ...label,
+        summary: `Procurar ferramentas${what}`,
+        doing: `Procurando ferramentas${what}`,
+      };
+    }
     case "remember":
       return memory("Salvar na memória", "Salvando na memória");
     case "recall":
@@ -184,13 +210,12 @@ export function actionsOf(
   for (const event of events) {
     if (event.type === "tool_call") {
       const callId = str(event.payload.callId);
-      const name = str(event.payload.name);
-      if (callId === undefined || name === undefined || CONTROL_TOOLS.has(name)) continue;
+      const logged = str(event.payload.name);
+      if (callId === undefined || logged === undefined) continue;
+      // A call through `use_tool` is the REAL tool: its row is that tool's, never the wrapper's.
+      const { name, args } = resolveToolCall(logged, event.payload.args);
+      if (CONTROL_TOOLS.has(name)) continue;
       if (byCall.has(callId)) continue;
-      const args =
-        typeof event.payload.args === "object" && event.payload.args !== null
-          ? (event.payload.args as Record<string, unknown>)
-          : {};
       const item: ActionItem = {
         callId,
         runId,
