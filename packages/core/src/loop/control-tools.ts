@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  type Discrepancy,
   type EscalateQuestion,
   escalateOptionSchema,
   escalateQuestionSchema,
@@ -173,22 +174,70 @@ export function normalizeEscalateInput(
   return { ok: true, questions, text };
 }
 
+const discrepanciesField = z
+  .array(
+    z.object({
+      claimed: z.string().describe("What the assistant's work or evidence claims."),
+      shows: z.string().describe("What the tool results or files actually show instead."),
+      where: z
+        .string()
+        .describe('Where to see it: a digest id ("#3"), a file path, or an acceptance criterion.'),
+    }),
+  )
+  .optional()
+  .describe(
+    "REQUIRED when verdict is reject, at least one entry: each concrete discrepancy, as what the work claims / what the evidence shows / where. A reject without it is not accepted. If you cannot name one, answer approve or cannot_verify instead.",
+  );
+
+/** The discrepancies of a reject that are usable: all three parts written. */
+export function validDiscrepancies(list: readonly Discrepancy[] | undefined): Discrepancy[] {
+  return (list ?? [])
+    .map((d) => ({
+      claimed: d.claimed.trim(),
+      shows: d.shows.trim(),
+      where: d.where.trim(),
+    }))
+    .filter((d) => d.claimed !== "" && d.shows !== "" && d.where !== "");
+}
+
+/** The discrepancies as a numbered list, for the assistant (and the user) to act on. */
+export function formatDiscrepancies(list: readonly Discrepancy[]): string {
+  return list
+    .map(
+      (d, i) =>
+        `${i + 1}. Claimed: ${d.claimed}\n   Evidence shows: ${d.shows}\n   Where: ${d.where}`,
+    )
+    .join("\n");
+}
+
 /**
  * What the reviewer may answer. `need_evidence` asks the harness for items the digest only shows
- * in part (`results`: digest entries like "#3" or call ids; `files`: workspace paths);
- * `cannot_verify` says that something stayed unchecked even with the evidence.
+ * in part (`results`: digest entries like "#3" or call ids; `calls`: the full ARGUMENTS of tool
+ * calls, such as a script written inside a shell command; `files`: workspace paths);
+ * `cannot_verify` says that something stayed unchecked even with the evidence. A `reject` must
+ * carry `discrepancies` (checked by `parseVerdict`, not by the schema, so the reviewer can be asked
+ * again instead of failing the call).
  */
 export const verdictInputSchema = z.object({
   verdict: z.enum(["approve", "reject", "need_evidence", "cannot_verify"]),
   notes: z
     .string()
     .describe(
-      "Short explanation. Reject: the concrete discrepancy. need_evidence: what you will check. cannot_verify: exactly what could not be verified.",
+      "Short explanation. Reject: what the assistant should fix. need_evidence: what you will check. cannot_verify: exactly what could not be verified.",
     ),
+  discrepancies: discrepanciesField,
   results: z
     .array(z.string())
     .optional()
-    .describe('need_evidence: tool results to see in full, as in the digest ("#3") or by call id.'),
+    .describe(
+      'need_evidence: tool RESULTS (what the tool returned) to see in full, as in the digest ("#3") or by call id.',
+    ),
+  calls: z
+    .array(z.string())
+    .optional()
+    .describe(
+      'need_evidence: tool CALLS whose full ARGUMENTS (the whole command, the content written to a file) you want to see, as in the digest ("#3"). Use it when the digest marks ARGUMENTS SHORTENED. Different from `results`.',
+    ),
   files: z
     .array(z.string())
     .optional()
@@ -216,8 +265,9 @@ const finalVerdictInputSchema = z.object({
   notes: z
     .string()
     .describe(
-      "Short explanation. Reject: the concrete discrepancy. cannot_verify: exactly what could not be verified.",
+      "Short explanation. Reject: what the assistant should fix. cannot_verify: exactly what could not be verified.",
     ),
+  discrepancies: discrepanciesField,
 });
 
 export function verdictToolSpec(canAskEvidence = true): ToolSpec {

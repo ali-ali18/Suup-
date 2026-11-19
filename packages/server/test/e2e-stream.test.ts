@@ -60,11 +60,9 @@ describe.skipIf(!DATABASE_URL)(
       fb.sub.setRuns([sent.run.id]);
       const isBotMessage = (e: StreamEvent) =>
         e.type === "message.created" && e.data.message.authorKind === "bot";
-      // The diary entry the worker writes after the answer is the last change of the run.
-      const isJournal = (e: StreamEvent) =>
-        e.type === "memory.changed" && e.data.memory.layer === "journal";
-      await fa.waitFor(isJournal, "the end of the run on A");
-      await fb.waitFor(isJournal, "the end of the run on B");
+      // A run that only answers has no diary entry: the bot's answer is the last change of the run.
+      await fa.waitFor(isBotMessage, "the end of the run on A");
+      await fb.waitFor(isBotMessage, "the end of the run on B");
 
       const idsOf = (events: StreamEvent[], runId: string) =>
         events.flatMap((e) =>

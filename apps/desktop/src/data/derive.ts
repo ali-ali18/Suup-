@@ -87,6 +87,7 @@ function isActivity(event: RunEvent): boolean {
     "finish_attempt",
     "review",
     "review_evidence",
+    "review_reprompt",
     "escalated",
     "plan_updated",
     "user_message",

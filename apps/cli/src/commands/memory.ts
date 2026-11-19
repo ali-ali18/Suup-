@@ -336,6 +336,11 @@ export const memorySearch: CommandSpec = {
     }
     if (hits.length === 0 && messageHits.length === 0) {
       ctx.out.line(`Nada encontrado para ${JSON.stringify(query)}.`);
+      if (bot === undefined) {
+        ctx.out.line(
+          "Sem --bot só as memórias compartilhadas são buscadas; notas e diário são de cada bot: tente --bot <bot>.",
+        );
+      }
       return EXIT_OK;
     }
     if (hits.length > 0) {

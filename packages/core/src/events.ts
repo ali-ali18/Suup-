@@ -52,6 +52,14 @@ export function escalatedQuestions(payload: {
     : [...payload.questions];
 }
 
+/** One concrete discrepancy named by the reviewer: what the work claims, what the evidence shows, where. */
+export const discrepancySchema = z.object({
+  claimed: z.string(),
+  shows: z.string(),
+  where: z.string(),
+});
+export type Discrepancy = z.infer<typeof discrepancySchema>;
+
 export const contextItemSchema = z.object({ id: z.string(), text: z.string() });
 export type ContextItem = z.infer<typeof contextItemSchema>;
 
@@ -240,6 +248,21 @@ export const runEventSchema = z.discriminatedUnion("type", [
        * verdict is then an approval by default and this says why.
        */
       warning: z.exactOptional(z.string()),
+      /** `reject`: the concrete discrepancies the reviewer named (at least one; else not a reject). */
+      discrepancies: z.exactOptional(z.array(discrepancySchema).min(1)),
+    }),
+  }),
+  z.object({
+    /**
+     * The reviewer answered `reject` without naming a concrete discrepancy. The harness asked once
+     * more (this event is that question); `args` is what the reviewer sent, so the conversation
+     * can be rebuilt. A second invalid reject ends the review as `unverified`.
+     */
+    type: z.literal("review_reprompt"),
+    payload: z.object({
+      callId: z.string(),
+      args: z.json(),
+      reason: z.string(),
     }),
   }),
   z.object({
@@ -258,7 +281,12 @@ export const runEventSchema = z.discriminatedUnion("type", [
       /** Why the reviewer wanted it, in its words. */
       notes: z.string(),
       /** What the reviewer named: digest entries (`#3` or a call id) and workspace paths. */
-      requested: z.object({ results: z.array(z.string()), files: z.array(z.string()) }),
+      requested: z.object({
+        results: z.array(z.string()),
+        files: z.array(z.string()),
+        /** Tool CALLS whose full arguments were asked for (absent in older logs: none). */
+        calls: z.exactOptional(z.array(z.string())),
+      }),
       /** What was supplied, in order. `sent` is how many characters were shown (the budget). */
       supplied: z.array(
         z.discriminatedUnion("kind", [
@@ -267,6 +295,14 @@ export const runEventSchema = z.discriminatedUnion("type", [
             /** The tool call id; the full content is that call's `tool_result` event. */
             ref: z.string(),
             /** Position in the digest (1-based). */
+            index: z.number().int().positive(),
+            chars: z.number().int().nonnegative(),
+            sent: z.number().int().nonnegative(),
+          }),
+          z.object({
+            kind: z.literal("tool_call"),
+            /** The tool call id; the arguments are that call's `tool_call` event, rendered. */
+            ref: z.string(),
             index: z.number().int().positive(),
             chars: z.number().int().nonnegative(),
             sent: z.number().int().nonnegative(),
@@ -284,7 +320,16 @@ export const runEventSchema = z.discriminatedUnion("type", [
         ]),
       ),
       /** Requested items that could not be supplied, and why. */
-      missing: z.array(z.object({ item: z.string(), reason: z.string() })),
+      missing: z.array(
+        z.object({
+          item: z.string(),
+          reason: z.string(),
+          /** What else the reviewer can try (for example: the content may be a call's arguments). */
+          hint: z.exactOptional(z.string()),
+        }),
+      ),
+      /** Requested items left out only because the budget ran out (absent in older logs: none). */
+      omitted: z.exactOptional(z.array(z.object({ item: z.string(), chars: z.number().int() }))),
       /** The most characters of evidence the harness shows in one round. */
       budgetChars: z.number().int().positive(),
     }),

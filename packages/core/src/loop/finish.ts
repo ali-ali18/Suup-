@@ -1,22 +1,21 @@
 // Owns the `finish` control tool: argument validation, the harness checks, the independent
-// reviewer hand-off (a forced `verdict` tool call, with one unforced retry, and up to two rounds in
-// which the reviewer asks for evidence it could not see), the tie-break that escalates to the user
+// reviewer hand-off (a forced `verdict` tool call, with one unforced retry, a reject with no
+// discrepancy asked once more, and a few rounds in which the reviewer asks for evidence it could
+// not see), the tie-break that escalates to the user
 // (the reviewer kept rejecting, or could not verify), and recording the finish attempt.
 
+import type { Discrepancy } from "../events.js";
 import type { Message } from "../messages.js";
 import {
   finishInputSchema,
+  formatDiscrepancies,
   formatReasons,
   renderArgIssues,
   validateFinish,
   verdictToolSpec,
 } from "./control-tools.js";
-import {
-  EVIDENCE_MAX_ROUNDS,
-  gatherEvidence,
-  renderEvidence,
-  toolResultContents,
-} from "./evidence.js";
+import { EVIDENCE_MAX_ROUNDS, gatherEvidence, loadLogged } from "./evidence.js";
+import { renderEvidence } from "./evidence-render.js";
 import { type CallSpec, callModel } from "./model-call.js";
 import { REVIEWER_SYSTEM } from "./prompts.js";
 import {
@@ -136,7 +135,11 @@ async function decideFinish(
       return outcome;
     }
     if (review.verdict === "reject") {
-      return reject([`An independent reviewer rejected the finish: ${review.notes}`]);
+      const found =
+        review.discrepancies === undefined
+          ? ""
+          : `\nThe discrepancies it found:\n${formatDiscrepancies(review.discrepancies)}`;
+      return reject([`An independent reviewer rejected the finish: ${review.notes}${found}`]);
     }
   }
 
@@ -166,18 +169,36 @@ interface ReviewOutcome {
   verdict: "approve" | "reject" | "unverified";
   notes: string;
   warning?: string;
+  discrepancies?: Discrepancy[];
 }
 
-/** The conversation with the reviewer: the review message, then each evidence round it asked for. */
+/** What the reviewer is told when it rejected without naming a discrepancy. */
+const REPROMPT_TEXT = (reason: string) =>
+  `Your answer was not accepted: ${reason}. Answer again with the \`verdict\` tool: give at least one concrete discrepancy (what the work claims, what the evidence shows, where), or answer "approve" if you found none, or "cannot_verify" and say exactly what you could not verify. A reject with no discrepancy is not a rejection.`;
+
+/** The conversation with the reviewer: the review message, then each step taken since, in order. */
 async function reviewMessages(ctx: LoopContext, first: string): Promise<Message[]> {
   const messages: Message[] = [{ role: "user", blocks: [{ type: "text", text: first }] }];
-  const rounds = ctx.state.reviewRounds;
-  if (rounds.length === 0) return messages;
-  const results = rounds.some((r) => r.supplied.some((i) => i.kind === "tool_result"))
-    ? await toolResultContents(ctx)
-    : new Map<string, string>();
-  for (const round of rounds) {
+  const steps = ctx.state.reviewSteps;
+  if (steps.length === 0) return messages;
+  const logged = steps.some((s) => s.kind === "evidence")
+    ? await loadLogged(ctx)
+    : { results: new Map<string, string>(), args: new Map() };
+  for (const step of steps) {
+    if (step.kind === "reprompt") {
+      const { callId, args, reason } = step.payload;
+      messages.push(
+        { role: "assistant", blocks: [{ type: "tool_call", id: callId, name: "verdict", args }] },
+        {
+          role: "user",
+          blocks: [{ type: "tool_result", callId, content: REPROMPT_TEXT(reason), isError: true }],
+        },
+      );
+      continue;
+    }
+    const round = step.payload;
     const { results: asked, files } = round.requested;
+    const calls = round.requested.calls ?? [];
     messages.push({
       role: "assistant",
       blocks: [
@@ -189,6 +210,7 @@ async function reviewMessages(ctx: LoopContext, first: string): Promise<Message[
             verdict: "need_evidence",
             notes: round.notes,
             ...(asked.length === 0 ? {} : { results: asked }),
+            ...(calls.length === 0 ? {} : { calls }),
             ...(files.length === 0 ? {} : { files }),
           },
         },
@@ -200,7 +222,7 @@ async function reviewMessages(ctx: LoopContext, first: string): Promise<Message[
         {
           type: "tool_result",
           callId: round.callId,
-          content: renderEvidence(round, ctx.state.toolLog, results),
+          content: renderEvidence(round, ctx.state.toolLog, logged),
         },
       ],
     });
@@ -229,7 +251,8 @@ async function requestReview(
 
   for (;;) {
     const rounds = ctx.state.reviewRounds.length;
-    if (rounds > 0) {
+    const steps = ctx.state.reviewSteps.length;
+    if (steps > 0) {
       // Another call costs like any other: the limits of the run apply to it too.
       ctx.run = await ctx.deps.store.getRun(ctx.runId);
       const limit = checkLimits(ctx);
@@ -250,7 +273,7 @@ async function requestReview(
       tools: [verdictToolSpec(!final)],
       ...(forced ? { toolChoice: { name: "verdict" } } : {}),
       retries: 0,
-      countsAsTurn: rounds > 0,
+      countsAsTurn: steps > 0,
     };
     let outcome = await callModel(ctx, reviewSpec);
     if (forced && outcome.kind === "error" && outcome.error.kind === "invalid_request") {
@@ -283,6 +306,7 @@ async function requestReview(
           callId: parsed.callId,
           notes: parsed.notes,
           results: parsed.results,
+          calls: parsed.calls,
           files: parsed.files,
         },
         rounds + 1,
@@ -300,9 +324,28 @@ async function requestReview(
             : parsed.notes,
       });
     }
+    if (parsed.invalidReject !== undefined && parsed.callId !== undefined) {
+      if (ctx.state.reviewSteps.some((step) => step.kind === "reprompt")) {
+        // Twice without a discrepancy: not a rejection. What it could not show is not a defect.
+        return recordReview(ctx, {
+          verdict: "unverified",
+          notes: `the reviewer answered reject twice without naming a concrete discrepancy, so it is not treated as a rejection (its words: ${parsed.notes})`,
+        });
+      }
+      await record(ctx, {
+        type: "review_reprompt",
+        payload: {
+          callId: parsed.callId,
+          args: parsed.rawArgs ?? null,
+          reason: parsed.invalidReject,
+        },
+      });
+      continue;
+    }
     return recordReview(ctx, {
       verdict: parsed.verdict,
       notes: parsed.notes,
+      ...(parsed.verdict === "reject" ? { discrepancies: parsed.discrepancies } : {}),
       ...(parsed.warning === undefined ? {} : { warning: parsed.warning }),
     });
   }
@@ -315,6 +358,7 @@ async function recordReview(ctx: LoopContext, outcome: ReviewOutcome): Promise<R
       verdict: outcome.verdict,
       notes: outcome.notes,
       ...(outcome.warning === undefined ? {} : { warning: outcome.warning }),
+      ...(outcome.discrepancies === undefined ? {} : { discrepancies: outcome.discrepancies }),
     },
   });
   return outcome;

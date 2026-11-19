@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { validateConversation } from "../messages.js";
 import {
+  bareReject,
   CrashingStore,
   call,
   createRig,
@@ -131,6 +132,32 @@ const scenarios: Scenario[] = [
       verdict("reject", "The summary says 42 but nothing shows it."),
       verdict("approve"),
     ],
+  },
+  {
+    name: "the reviewer asks for the arguments of a call and for a file outside the workspace",
+    script: [
+      use(call("c1", "echo", { text: `cat > /tmp/calc.py <<'EOF'\n${"x = 1\n".repeat(80)}EOF` })),
+      use(finishCall("c2", "Computed with /tmp/calc.py.")),
+    ],
+    reviewerScript: [
+      needEvidence("v1", "need the script", { calls: ["#1", "#7"], files: ["/tmp/calc.py"] }),
+      verdict("approve"),
+    ],
+  },
+  {
+    name: "the reviewer rejects without a discrepancy, is asked again, then rejects for real and approves",
+    script: [use(finishCall("c1", "Done.")), use(finishCall("c2", "Done, fixed."))],
+    reviewerScript: [
+      bareReject("something feels off"),
+      verdict("reject", "The total is 41, not 42."),
+      verdict("approve"),
+    ],
+  },
+  {
+    name: "the reviewer rejects twice without a discrepancy: unverified, handed to the user",
+    script: [use(finishCall("c1", "Done.")), use(finishCall("c2", "Done, accepted."))],
+    reviewerScript: [bareReject("not sure"), bareReject("still not sure")],
+    answer: "Accept it.",
   },
   {
     name: "a run that starts with rules, a profile and the history of the conversation",

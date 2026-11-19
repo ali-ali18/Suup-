@@ -145,7 +145,7 @@ Os mesmos três testes do conjunto principal (`evals/test/hard.test.ts`): depois
 - **Origem das falhas:** um histograma por modelo.
 - **Falhas:** uma seção por célula reprovada, com o id da execução, a origem, as verificações que reprovaram e os comandos para diagnosticar.
 
-Em cada célula também ficam: estado final, turnos, tokens, custo, duração, quantos avisos do harness (*nudges*) o bot recebeu, recusas de `finish` (do **harness**, por critério sem evidência ou passo aberto; e do **revisor**: inclui o `finish` passado ao dono porque o revisor "não conseguiu verificar" algo; já a taxa de recusa do revisor conta só os `reject`), erros de ferramenta, argumentos inválidos, o id da execução e o id do bot (a pasta de trabalho fica em `<raiz do sandbox>/bots/<id do bot>`; o bot aparece arquivado em `suup bot list --all`).
+Em cada célula também ficam: estado final, turnos, tokens, custo, duração, quantos avisos do harness (*nudges*) o bot recebeu, recusas de `finish` (do **harness**, por critério sem evidência ou passo aberto; e do **revisor**: inclui o `finish` passado ao dono porque o revisor "não conseguiu verificar" algo; já a taxa de recusa do revisor conta só os `reject`, e um `reject` sem divergência concreta nunca chega a ser contado: vira nova pergunta ao revisor e, se persistir, `unverified`), erros de ferramenta, argumentos inválidos, o id da execução e o id do bot (a pasta de trabalho fica em `<raiz do sandbox>/bots/<id do bot>`; o bot aparece arquivado em `suup bot list --all`).
 
 ### Origem da falha
 

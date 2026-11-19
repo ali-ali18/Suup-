@@ -650,7 +650,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup chat and memory, end to end"), 
       );
     });
 
-    it("the journal shows what each bot did, one entry per run", async () => {
+    it("answers that used no tool leave no journal entry (and the journal never has the user's words)", async () => {
       const journal = (await json([
         "memory",
         "list",
@@ -659,9 +659,9 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup chat and memory, end to end"), 
         "--bot",
         "hist",
       ])) as Json[];
-      const runs = await runsOf("hist");
-      expect(journal.map((j) => j.sourceRunId).sort()).toEqual([...runs].sort());
-      expect(journal[0]?.text).toMatch(/Objetivo: "TURNO-/);
+      expect((await runsOf("hist")).length).toBeGreaterThan(0);
+      // The turns of this bot were plain answers: nothing was done, so nothing is journaled.
+      expect(journal).toEqual([]);
     });
   });
 });

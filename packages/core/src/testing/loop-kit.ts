@@ -53,14 +53,35 @@ export const finishCall = (
   evidence: { criterion: string; evidence: string }[] = [],
 ): Block => call(id, "finish", { summary, evidence });
 
-export const verdict = (v: "approve" | "reject" | "cannot_verify", notes = "ok"): FakeResponse =>
-  use(call("v", "verdict", { verdict: v, notes }));
+/** A verdict. A `reject` carries one discrepancy built from the notes unless `discrepancies` is given. */
+export const verdict = (
+  v: "approve" | "reject" | "cannot_verify",
+  notes = "ok",
+  discrepancies?: { claimed: string; shows: string; where: string }[],
+): FakeResponse =>
+  use(
+    call("v", "verdict", {
+      verdict: v,
+      notes,
+      ...(v === "reject"
+        ? {
+            discrepancies: discrepancies ?? [
+              { claimed: "the summary and evidence", shows: notes, where: "#1" },
+            ],
+          }
+        : {}),
+    }),
+  );
 
-/** The reviewer asking for evidence it could not see: digest entries ("#1") and/or file paths. */
+/** A `reject` that names no discrepancy: the harness must not take it as a rejection. */
+export const bareReject = (notes: string): FakeResponse =>
+  use(call("v", "verdict", { verdict: "reject", notes }));
+
+/** The reviewer asking for evidence it could not see: results and calls ("#1") and/or file paths. */
 export const needEvidence = (
   id: string,
   notes: string,
-  items: { results?: string[]; files?: string[] },
+  items: { results?: string[]; calls?: string[]; files?: string[] },
 ): FakeResponse => use(call(id, "verdict", { verdict: "need_evidence", notes, ...items }));
 
 /** Tools used by the loop tests. Each is simple and deterministic. */

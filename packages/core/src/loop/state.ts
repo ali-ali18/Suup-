@@ -7,7 +7,7 @@ import type {
 } from "../events.js";
 import type { Block, JsonValue, Message, ToolCallBlock } from "../messages.js";
 import type { GenerateResult, StopReason } from "../provider.js";
-import { isControlTool } from "./control-tools.js";
+import { formatDiscrepancies, isControlTool } from "./control-tools.js";
 import { historyMessages } from "./history.js";
 import {
   isReminderBlock,
@@ -53,8 +53,10 @@ export type Waiting =
 export interface ToolLogEntry {
   callId: string;
   name: string;
-  /** Arguments as compact JSON, clipped. */
+  /** Arguments as compact JSON, clipped (see `argsLength`). */
   args: string;
+  /** Length of the whole arguments JSON; larger than `args` when they were clipped. */
+  argsLength: number;
   outcome: RunEventPayload<"tool_result">["outcome"];
   isError: boolean;
   /** Length of the result text. */
@@ -73,6 +75,10 @@ export interface UserExchange {
   kind: "question" | "answer" | "message";
   text: string;
 }
+
+export type ReviewStep =
+  | { kind: "evidence"; payload: RunEventPayload<"review_evidence"> }
+  | { kind: "reprompt"; payload: RunEventPayload<"review_reprompt"> };
 
 export interface FinishAttemptRecord {
   accepted: boolean;
@@ -128,6 +134,12 @@ export interface RunState {
   currentReview: RunEventPayload<"review"> | null;
   /** The evidence rounds of the review in progress (since the latest `finish` call started). */
   reviewRounds: RunEventPayload<"review_evidence">[];
+  /**
+   * What happened in the review in progress, in order: each evidence round and each time the
+   * reviewer was asked again after an invalid `reject`. It rebuilds the conversation with the
+   * reviewer exactly, whether live, resumed or replayed.
+   */
+  reviewSteps: ReviewStep[];
   /** Reviews that rejected for real (not warnings). */
   reviewRejections: number;
   lastRejectionNotes: string;
@@ -175,6 +187,7 @@ export function createRunState(): RunState {
     finishAttempts: new Map(),
     currentReview: null,
     reviewRounds: [],
+    reviewSteps: [],
     reviewRejections: 0,
     lastRejectionNotes: "",
     reviewWaived: false,
@@ -191,6 +204,7 @@ export function createRunState(): RunState {
 
 const MAX_TOOL_LOG = 400;
 const DIGEST_SNIPPET = 1000;
+export const ARGS_SNIPPET = 200;
 
 /**
  * Rebuilds a run's state from its events. This is the ONLY way the loop gets its conversation:
@@ -287,6 +301,7 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
       if (event.payload.name === "finish") {
         state.currentReview = null;
         state.reviewRounds = [];
+        state.reviewSteps = [];
       }
       break;
     }
@@ -371,6 +386,12 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
       // The reviewer's answer was used: the next request is a new one.
       state.sideResponse = null;
       state.reviewRounds.push(structuredClone(event.payload));
+      state.reviewSteps.push({ kind: "evidence", payload: structuredClone(event.payload) });
+      break;
+
+    case "review_reprompt":
+      state.sideResponse = null;
+      state.reviewSteps.push({ kind: "reprompt", payload: structuredClone(event.payload) });
       break;
 
     case "review":
@@ -378,7 +399,10 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
       state.currentReview = event.payload;
       if (event.payload.verdict === "reject" && event.payload.warning === undefined) {
         state.reviewRejections += 1;
-        state.lastRejectionNotes = event.payload.notes;
+        state.lastRejectionNotes =
+          event.payload.discrepancies === undefined
+            ? event.payload.notes
+            : `${event.payload.notes}\n${formatDiscrepancies(event.payload.discrepancies)}`;
       }
       break;
 
@@ -505,7 +529,8 @@ function logTool(
   state.toolLog.push({
     callId: call.id,
     name: call.name,
-    args: clip(canonicalJson(call.args), 200),
+    args: clip(canonicalJson(call.args), ARGS_SNIPPET),
+    argsLength: canonicalJson(call.args).length,
     outcome,
     isError: result.isError,
     length: content.length,

@@ -404,7 +404,9 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("conversation engine"), () => {
     });
 
     it("a run that ended before the hook ran (the process died) is caught up, once, by reconcile", async () => {
-      const runtime = await open({ agent: [{ text: "Fiz." }] });
+      const runtime = await open({
+        agent: [{ calls: [call("shell", { command: "echo oi" })] }, { text: "Fiz." }],
+      });
       const bot = await newBot(runtime);
       const sent = await sendMessage(runtime, { botId: bot.id, text: "Faça" });
       const { conversationId } = sent.message;
@@ -490,6 +492,99 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("conversation engine"), () => {
       for (const e of entries) {
         expect(e).toMatchObject({ scope: "bot", botId: bot.id, createdBy: "bot" });
       }
+      await runtime.close();
+    });
+
+    it("never copies what the user typed in a conversation: a password leaves no trace in any memory", async () => {
+      const secret = "Bananeira#2049";
+      const runtime = await open({
+        cases: [
+          {
+            whenObjectiveContains: "JOURNAL-SECRET",
+            agent: [
+              { calls: [call("shell", { command: "echo oi" })] },
+              // The bot does not repeat it. (Redaction below covers a bot that does.)
+              { text: "Anotei que você usa o wifi de casa; não guardo a senha." },
+            ],
+          },
+          {
+            whenObjectiveContains: "JOURNAL-LEAK",
+            agent: [
+              { calls: [call("shell", { command: "echo oi" })] },
+              { text: "Entendi: a senha do wifi é Zebra#9999 e já usei." },
+            ],
+          },
+        ],
+      });
+      const bot = await newBot(runtime);
+      const first = await sendMessage(runtime, {
+        botId: bot.id,
+        text: `JOURNAL-SECRET A senha do meu wifi de casa é ${secret}, use quando precisar`,
+      });
+      await work(runtime, first.run.id);
+      // Another bot, so that its conversation holds only its own words.
+      const other = await newBot(runtime);
+      const second = await sendMessage(runtime, { botId: other.id, text: "JOURNAL-LEAK oi" });
+      await work(runtime, second.run.id);
+
+      const memories = await runtime.db.sql<{ text: string; layer: string }[]>`
+        select text, layer from memories`;
+      expect(memories.filter((m) => m.layer === "journal").length).toBeGreaterThanOrEqual(2);
+      for (const m of memories) {
+        expect(m.text).not.toContain(secret);
+        expect(m.text).not.toContain("Bananeira");
+        expect(m.text).not.toContain("Zebra#9999");
+      }
+      const byRun = new Map(
+        [
+          ...(await listMemories(runtime.db, { layer: "journal", botId: bot.id, limit: 10 })),
+          ...(await listMemories(runtime.db, { layer: "journal", botId: other.id, limit: 10 })),
+        ].map((e) => [e.sourceRunId, e.text]),
+      );
+      // Neutral metadata and the bot's own summary; never the objective.
+      expect(byRun.get(first.run.id)).toMatch(
+        /^\d{4}-\d{2}-\d{2} · Conversa · Resultado: concluída\. Resumo: Anotei que você usa o wifi/,
+      );
+      expect(byRun.get(first.run.id)).not.toContain("Objetivo");
+      // A summary that does carry a secret is cleaned by the second line of defence.
+      expect(byRun.get(second.run.id)).toContain("[segredo removido]");
+      await runtime.close();
+    });
+
+    it("a conversation that only answered (no tool beyond the control ones) leaves no journal entry", async () => {
+      const runtime = await open({ agent: [{ text: "Bom dia!" }] });
+      const bot = await newBot(runtime);
+      const sent = await sendMessage(runtime, { botId: bot.id, text: "Bom dia" });
+      await work(runtime, sent.run.id);
+      expect((await botMessages(runtime, sent.message.conversationId)).map((m) => m.text)).toEqual([
+        "Bom dia!",
+      ]);
+      expect(
+        await listMemories(runtime.db, { layer: "journal", botId: bot.id, limit: 10 }),
+      ).toEqual([]);
+      // Catching up after a crash does not invent one either, and does not keep revisiting the run.
+      expect(await reconcileRunEffects(runtime.db)).not.toContain(sent.run.id);
+      expect(
+        await listMemories(runtime.db, { layer: "journal", botId: bot.id, limit: 10 }),
+      ).toEqual([]);
+      await runtime.close();
+    });
+
+    it("a run without a conversation keeps its (cut, cleaned) objective", async () => {
+      const runtime = await open({ agent: [{ text: "Feito." }] });
+      const bot = await newBot(runtime);
+      const run = await runtime.createRun({
+        botId: bot.id,
+        objective: "Configure o wifi, a senha é Bananeira#2049, e teste",
+      });
+      await work(runtime, run.id);
+      const [entry] = await listMemories(runtime.db, {
+        layer: "journal",
+        botId: bot.id,
+        limit: 10,
+      });
+      expect(entry?.text).toContain('Objetivo: "Configure o wifi, a senha é [segredo removido]');
+      expect(entry?.text).not.toContain("Bananeira");
       await runtime.close();
     });
   });

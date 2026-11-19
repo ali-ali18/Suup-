@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { Block, JsonValue } from "../messages.js";
 import { ProviderError } from "../provider.js";
 import {
   call,
@@ -267,6 +268,7 @@ describe("review digest", () => {
     callId: `c${i}`,
     name: "shell",
     args: '{"command":"ls"}',
+    argsLength: 15,
     outcome: "ok",
     isError: false,
     length: 5,
@@ -301,17 +303,62 @@ describe("review digest", () => {
 });
 
 describe("parseVerdict", () => {
-  it("reads a well-formed verdict and fills notes for a bare rejection", () => {
-    expect(
-      parseVerdict([
-        { type: "tool_call", id: "v", name: "verdict", args: { verdict: "reject", notes: " " } },
-      ]),
-    ).toEqual({
+  const verdictCall = (args: unknown): Block[] => [
+    { type: "tool_call", id: "v", name: "verdict", args: args as JsonValue },
+  ];
+
+  it("a reject with no discrepancy is invalid (not a rejection), with the reason", () => {
+    const parsed = parseVerdict(verdictCall({ verdict: "reject", notes: " " }));
+    expect(parsed).toMatchObject({
       verdict: "reject",
       notes: "(no reason given)",
       callId: "v",
       results: [],
+      calls: [],
       files: [],
+      discrepancies: [],
     });
+    expect(parsed.invalidReject).toContain("at least one concrete discrepancy");
+  });
+
+  it("a discrepancy with an empty part does not count", () => {
+    const parsed = parseVerdict(
+      verdictCall({
+        verdict: "reject",
+        notes: "wrong",
+        discrepancies: [{ claimed: "42", shows: " ", where: "#1" }],
+      }),
+    );
+    expect(parsed.invalidReject).toBeDefined();
+  });
+
+  it("a reject with a complete discrepancy is valid and keeps it", () => {
+    const parsed = parseVerdict(
+      verdictCall({
+        verdict: "reject",
+        notes: "fix the total",
+        discrepancies: [{ claimed: "Total 42", shows: "report says 41", where: "#2" }],
+      }),
+    );
+    expect(parsed.invalidReject).toBeUndefined();
+    expect(parsed.discrepancies).toEqual([
+      { claimed: "Total 42", shows: "report says 41", where: "#2" },
+    ]);
+  });
+
+  it("an approval or cannot_verify needs no discrepancy", () => {
+    expect(
+      parseVerdict(verdictCall({ verdict: "approve", notes: "" })).invalidReject,
+    ).toBeUndefined();
+    expect(
+      parseVerdict(verdictCall({ verdict: "cannot_verify", notes: "x" })).invalidReject,
+    ).toBeUndefined();
+  });
+
+  it("reads the calls the reviewer asked for", () => {
+    const parsed = parseVerdict(
+      verdictCall({ verdict: "need_evidence", notes: "n", results: ["#1"], calls: ["#4"] }),
+    );
+    expect(parsed).toMatchObject({ results: ["#1"], calls: ["#4"], files: [] });
   });
 });

@@ -99,6 +99,7 @@ export {
   type RequestDiff,
   replayRun,
 } from "./replay.js";
+export { REDACTED, redactSecrets, SECRET_PATTERNS } from "./secrets.js";
 export {
   type DirEntry,
   defineTool,
