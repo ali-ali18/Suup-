@@ -115,7 +115,12 @@ describe.skipIf(!DATABASE_URL)(
       expect(done.id).toBe(runId);
       expect(done.wakeAt ?? null).toBeNull();
 
-      const after = await messagesOf(conversation.id);
+      // The final message is written when the run's end is processed, just after the status
+      // changes: wait for it as for the first one.
+      const after = await until(async () => {
+        const all = await messagesOf(conversation.id);
+        return all.filter((m) => m.authorKind === "bot").length >= 2 ? all : undefined;
+      }, "the bot's answer after the return");
       expect(after.map((m) => [m.authorKind, m.text])).toEqual([
         ["user", "CASE-VOLTO faça o deploy"],
         ["bot", "Disparei o deploy. Volto em 1 minuto para conferir."],
