@@ -62,6 +62,9 @@ jobs:
         with:
           workspaces: apps/desktop/src-tauri
       - run: pnpm install --frozen-lockfile
+      # Os testes importam os pacotes pelo dist (como no ci.yml, que compila no typecheck).
+      - name: Compilar os pacotes
+        run: pnpm exec tsc -b
       # A prova mais importante para o Windows: o PostgreSQL embutido, as migrações, o servidor e o
       # worker sobem do jeito que o app os sobe, respondem uma conversa e param sem deixar nada.
       - name: Servidor embutido (teste da disposição empacotada)
