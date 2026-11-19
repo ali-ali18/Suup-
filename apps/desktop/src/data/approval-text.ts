@@ -28,18 +28,18 @@ export const SOURCE_REASON: Record<"rule" | "reviewer" | "default", string> = {
   rule: "uma regra sua manda perguntar",
 };
 
-/** `Aprovado`, `Negado`... for a decided card. */
+/** `Aprovado`, `Recusado`... for a decided card. */
 export const STATUS_LABEL: Record<string, string> = {
   pending: "Aguardando você",
   approved: "Aprovado",
-  denied: "Negado",
+  denied: "Recusado",
   cancelled: "Cancelado",
   expired: "Expirou",
 };
 
 export const STATUS_DETAIL: Record<string, string> = {
   approved: "Você aprovou e a ação rodou exatamente com este conteúdo.",
-  denied: "Você negou: o bot foi avisado e seguiu sem executar a ação.",
+  denied: "Você recusou: o bot foi avisado e seguiu sem executar a ação.",
   cancelled: "A execução foi cancelada, então o pedido foi cancelado junto.",
   expired: "Ninguém decidiu a tempo: o pedido expirou e o bot foi avisado.",
 };
@@ -180,7 +180,10 @@ export function alwaysSentence(input: {
   return `Passa a valer para ${who}: ${tool} roda sem perguntar só quando ${fields}. Qualquer outro conteúdo continua pedindo sua aprovação. Você pode apagar a regra em Configurações > Aprovações.`;
 }
 
-/** The short title of "what the card asks", for the instruction line. */
+/**
+ * The one muted paragraph under the title: what the bot wants and why it is asking. A connector
+ * also says that the content leaves this computer.
+ */
 export function instructionLine(
   botName: string,
   tool: string,
@@ -189,7 +192,115 @@ export function instructionLine(
   if (connectorName !== null) {
     return `${botName} quer usar o conector ${connectorName}. O conteúdo abaixo sai deste computador para um servidor externo.`;
   }
-  return `${botName} quer ${toolVerb(tool)}. Confira o conteúdo exato abaixo: é isto que vai rodar.`;
+  return `${botName} quer ${toolVerb(tool)}.`;
+}
+
+export type CategoryIcon =
+  | "terminal"
+  | "file"
+  | "web"
+  | "memory"
+  | "mail"
+  | "connector"
+  | "generic";
+
+export interface ToolCategory {
+  /** The short word of the card's header: "Arquivo", "Terminal", "Web", the connector's name... */
+  label: string;
+  icon: CategoryIcon;
+}
+
+const MAIL = /mail|smtp|imap|gmail|outlook/i;
+
+/** The category of a tool, for the header of its card. Unknown tools are just "Aprovação". */
+export function toolCategory(
+  tool: string,
+  connectors: readonly {
+    name: string;
+    tools?: readonly { name: string; tool: string }[] | null;
+  }[] = [],
+): ToolCategory {
+  const ref = parseConnectorTool(tool, connectors);
+  if (ref !== null) {
+    return MAIL.test(ref.tool)
+      ? { label: "E-mail", icon: "mail" }
+      : { label: ref.connector, icon: "connector" };
+  }
+  if (MAIL.test(tool)) return { label: "E-mail", icon: "mail" };
+  switch (tool) {
+    case "shell":
+      return { label: "Terminal", icon: "terminal" };
+    case "read_file":
+    case "write_file":
+    case "edit_file":
+    case "list_files":
+    case "search_files":
+      return { label: "Arquivo", icon: "file" };
+    case "web_fetch":
+      return { label: "Web", icon: "web" };
+    case "remember":
+    case "recall":
+    case "forget":
+    case "search_conversations":
+      return { label: "Memória", icon: "memory" };
+    default:
+      return { label: "Aprovação", icon: "generic" };
+  }
+}
+
+const text = (args: unknown, key: string): string | undefined => {
+  if (typeof args !== "object" || args === null) return undefined;
+  const value = (args as Record<string, unknown>)[key];
+  return typeof value === "string" && value.trim() !== "" ? value : undefined;
+};
+
+const oneLine = (value: string, max = 80): string => {
+  const first = value.trim().split("\n")[0] ?? "";
+  return first.length > max ? `${first.slice(0, max - 1)}…` : first;
+};
+
+/**
+ * The bold title: what will happen, as a short sentence in Portuguese. The server's summary (which
+ * may be in English) is the fallback for a tool this file does not know.
+ */
+export function approvalTitle(
+  tool: string,
+  args: unknown,
+  summary: string,
+  connectors: readonly {
+    name: string;
+    tools?: readonly { name: string; tool: string }[] | null;
+  }[] = [],
+): string {
+  const ref = parseConnectorTool(tool, connectors);
+  if (ref !== null) {
+    return ref.tool === ""
+      ? `Usar o conector ${ref.connector}`
+      : `Usar ${ref.tool} no conector ${ref.connector}`;
+  }
+  const path = text(args, "path");
+  switch (tool) {
+    case "shell": {
+      const command = text(args, "command");
+      return command === undefined ? "Rodar um comando" : `Rodar ${oneLine(command)}`;
+    }
+    case "write_file":
+      return path === undefined ? "Escrever um arquivo" : `Escrever ${path}`;
+    case "edit_file":
+      return path === undefined ? "Editar um arquivo" : `Editar ${path}`;
+    case "read_file":
+      return path === undefined ? "Ler um arquivo" : `Ler ${path}`;
+    case "web_fetch": {
+      const url = text(args, "url");
+      return url === undefined ? "Acessar uma página" : `Acessar ${oneLine(url)}`;
+    }
+    case "remember":
+      return "Salvar na memória";
+    case "forget":
+      return "Esquecer uma memória";
+    default:
+      return summary;
+  }
 }
 
 function toolVerb(tool: string): string {

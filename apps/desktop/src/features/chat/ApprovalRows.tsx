@@ -40,6 +40,7 @@ export function ApprovalRow({
   );
   const settings = useSettings((s) => s.settings);
   const toast = useUi((s) => s.toast);
+  const openSettings = useUi((s) => s.openSettings);
   const key = `approval-${approval.id}`;
   const onDecide = useCallback(
     (body: Parameters<typeof sync.decideApproval>[1]) => sync.decideApproval(approval.id, body),
@@ -57,6 +58,7 @@ export function ApprovalRow({
       collapseLong={settings.approvalLong === "collapse"}
       {...(autoFocus === undefined ? {} : { autoFocus })}
       onDecide={onDecide}
+      onManageRules={() => openSettings("approvals")}
       onDecidedElsewhere={(card) =>
         toast(
           card === undefined

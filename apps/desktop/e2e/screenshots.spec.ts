@@ -257,18 +257,27 @@ test.describe("screenshots", () => {
       await expect(approval).toHaveAttribute("data-state", "needs-action");
       await settle();
       await shot("18-aprovacao-cartao");
-      await approval.getByTestId("approval-always-toggle").click();
+      await approval.getByTestId("approval-more").click();
+      await expect(page.getByRole("menu")).toBeVisible();
       await settle();
-      await shot("18b-aprovacao-sempre-permitir");
-      await approval.getByTestId("approval-always-toggle").click();
+      await shot("18b-aprovacao-menu");
+      await page.keyboard.press("Escape");
       await approval.getByTestId("approval-approve").click();
       await expect(approval).toHaveAttribute("data-state", "done");
-      await approval.getByRole("button", { name: /Aprovado/ }).click();
       await expect(
         page.getByTestId("message-bot").filter({ hasText: "Escrevi o arquivo aprovado." }),
       ).toBeVisible();
+      // Collapsed to one row, chevron hidden at rest; then on hover; then opened.
+      await page.mouse.move(0, 0);
       await settle();
-      await shot("18c-aprovacao-resolvida");
+      await shot("18c-aprovacao-resolvida-recolhida");
+      await approval.getByRole("button", { name: /Aprovado/ }).hover();
+      await settle();
+      await shot("18d-aprovacao-resolvida-hover");
+      await approval.getByRole("button", { name: /Aprovado/ }).click();
+      await page.mouse.move(0, 0);
+      await settle();
+      await shot("18e-aprovacao-resolvida-aberta");
       await selectBot(page, "Chaveiro");
       const secret = page.getByTestId("secret-card");
       await expect(secret).toHaveAttribute("data-state", "needs-action");
@@ -276,6 +285,9 @@ test.describe("screenshots", () => {
       await settle();
       await shot("19-segredo-formulario");
       await secret.getByTestId("secret-input").fill("");
+      await expect(secret.getByTestId("secret-save")).toBeDisabled();
+      await settle();
+      await shot("19a-segredo-vazio");
       await page.getByTestId("owner-menu").click();
       await page.getByRole("menuitem", { name: /Pendências/ }).click();
       await expect(page.getByTestId("pending-secret")).toHaveCount(1);

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import type { MenuItem } from "./menu.js";
+import { type MenuItem, MenuItemBody } from "./menu.js";
 
 /** A menu at a point of the screen (a context menu), with the same keyboard behaviour as `MenuButton`. */
 export function PopupMenu({
@@ -18,7 +18,7 @@ export function PopupMenu({
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
-    ref.current?.querySelector<HTMLElement>('[role="menuitem"]:not([disabled])')?.focus();
+    ref.current?.querySelector<HTMLElement>('[role^="menuitem"]:not([disabled])')?.focus();
     const onDown = (e: MouseEvent) => {
       if (!ref.current?.contains(e.target as Node)) onClose();
     };
@@ -44,7 +44,7 @@ export function PopupMenu({
           return;
         }
         const entries = Array.from(
-          ref.current?.querySelectorAll<HTMLElement>('[role="menuitem"]:not([disabled])') ?? [],
+          ref.current?.querySelectorAll<HTMLElement>('[role^="menuitem"]:not([disabled])') ?? [],
         );
         const index = entries.indexOf(document.activeElement as HTMLElement);
         const go = (n: number) => {
@@ -70,7 +70,7 @@ export function PopupMenu({
             item.onSelect();
           }}
         >
-          {item.label}
+          <MenuItemBody item={item} />
         </button>
       ))}
     </div>

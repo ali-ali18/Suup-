@@ -27,32 +27,45 @@ function show(over: Partial<ApprovalCardProps> = {}) {
 }
 
 describe("ApprovalCard waiting for you", () => {
-  it("shows the summary, the risk, who asks, and the exact content with the buttons underneath", () => {
+  it("is a calm card: category, bold title in pt-BR, one muted paragraph, the exact content, buttons at the right", () => {
     show({
       approval: makeApproval({
-        summary: "Shell em repo: git push origin main",
+        summary: "Shell in repo: git push origin main",
         args: { command: "git push origin main", cwd: "/repo" },
       }),
     });
     const card = screen.getByTestId("approval-card");
     expect(card.getAttribute("data-state")).toBe("needs-action");
-    expect(within(card).getByText("Shell em repo: git push origin main")).toBeTruthy();
-    expect(within(card).getByText("Externa ou irreversível")).toBeTruthy();
-    // The tool in human words, in the header.
-    expect(within(card).getByText("Aprovação · Terminal")).toBeTruthy();
-    expect(within(card).getByText(/Ajudante quer rodar um comando/)).toBeTruthy();
+    // The header: the category, and the risk as quiet text with an accessible prefix.
+    expect(within(card).getByText("Terminal")).toBeTruthy();
+    expect(within(card).getByTestId("approval-risk").textContent).toBe(
+      "Risco: Externa ou irreversível",
+    );
+    // The title is ours (the server's summary may be in English); one paragraph says who and why.
+    expect(within(card).getByText("Rodar git push origin main")).toBeTruthy();
+    expect(within(card).queryByText(/Shell in repo/)).toBeNull();
+    expect(within(card).getByTestId("approval-why").textContent).toBe(
+      "Ajudante quer rodar um comando. Está perguntando porque o nível desta ação pede sua permissão.",
+    );
     const fields = within(card).getAllByTestId("arg-field");
     expect(fields.map((f) => f.getAttribute("data-key"))).toEqual(["command", "cwd"]);
+    // Monospace only for what is code-like.
+    expect(fields.map((f) => f.getAttribute("data-code"))).toEqual(["true", "false"]);
     expect(within(fields[0] as HTMLElement).getByTestId("arg-value").textContent).toBe(
       "git push origin main",
     );
-    expect(within(card).getByTestId("approval-why").textContent).toContain(
-      "o nível desta ação pede sua permissão",
-    );
+    // Recusar (plain), Aprovar and the chevron of the split button; no reason field any more.
     const buttons = within(card)
       .getAllByRole("button")
-      .map((b) => b.textContent);
-    expect(buttons).toEqual(["Negar", "Aprovar e sempre permitir…", "Aprovar"]);
+      .map((b) => b.getAttribute("aria-label") ?? b.textContent);
+    expect(buttons).toEqual(["Recusar", "Aprovar", "Mais opções de aprovação"]);
+    expect(within(card).queryByRole("textbox")).toBeNull();
+  });
+
+  it("an unknown tool falls back to the server's summary, with the generic category", () => {
+    show({ approval: makeApproval({ tool: "tool_nova", summary: "Faz algo novo" }) });
+    expect(screen.getByText("Faz algo novo")).toBeTruthy();
+    expect(screen.getByText("Aprovação")).toBeTruthy();
   });
 
   it("a secret is only its placeholder, with a seal", () => {
@@ -112,9 +125,10 @@ describe("ApprovalCard waiting for you", () => {
         { name: "fake", tools: [{ name: "conn_fake__write_thing", tool: "write_thing" }] },
       ],
     });
-    expect(screen.getByTestId("approval-connector").textContent).toBe(
-      "Conector fake · ferramenta write_thing",
-    );
+    expect(screen.getByTestId("approval-connector").textContent).toBe("Conectorfake");
+    expect(screen.getByText("write_thing", { selector: ".ui-args__body" })).toBeTruthy();
+    // The category of a connector tool is the connector.
+    expect(document.querySelector(".ui-decision__category")?.textContent).toBe("fake");
     expect(screen.getByText(/sai deste computador para um servidor externo/)).toBeTruthy();
   });
 
@@ -135,57 +149,102 @@ describe("ApprovalCard waiting for you", () => {
     for (const button of within(card).getAllByRole("button")) {
       expect((button as HTMLButtonElement).disabled).toBe(true);
     }
-    expect((screen.getByTestId("approval-reason") as HTMLInputElement).disabled).toBe(true);
     // Still a pending card: nothing was assumed.
     expect(card.getAttribute("data-state")).toBe("needs-action");
     await act(async () => finish(ok()));
     expect(screen.getByTestId("approval-approve").textContent).toBe("Aprovar");
   });
 
-  it("Negar sends the reason (trimmed), or none when it is empty", () => {
-    const { onDecide } = show();
-    fireEvent.change(screen.getByTestId("approval-reason"), { target: { value: "  não agora  " } });
-    fireEvent.click(screen.getByTestId("approval-deny"));
-    expect(onDecide).toHaveBeenLastCalledWith({ decision: "deny", reason: "não agora" });
-  });
-
-  it("Negar without a reason sends no reason", () => {
+  it("Recusar is one click: no reason field, and no reason is sent", () => {
     const { onDecide } = show();
     fireEvent.click(screen.getByTestId("approval-deny"));
     expect(onDecide).toHaveBeenCalledExactlyOnceWith({ decision: "deny" });
   });
 
-  it("Aprovar e sempre permitir: choose the scope and what it matches, read what the rule does, then confirm", () => {
+  const openMenu = () => {
+    fireEvent.click(screen.getByTestId("approval-more"));
+    return screen.getByRole("menu", { name: "Mais opções de aprovação" });
+  };
+
+  it("the chevron opens the menu: four 'Sempre permitir' variants, 'Precisa de aprovação' checked, 'Gerenciar regras'", () => {
+    const onManageRules = vi.fn();
+    show({ onManageRules });
+    const trigger = screen.getByTestId("approval-more");
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    const menu = openMenu();
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    const items = Array.from(menu.querySelectorAll<HTMLElement>('[role^="menuitem"]'));
+    expect(items.map((i) => i.querySelector(".ui-menu__label")?.textContent)).toEqual([
+      "Sempre permitir isto, neste bot",
+      "Sempre permitir esta ferramenta, neste bot",
+      "Sempre permitir isto, em todos os bots",
+      "Sempre permitir esta ferramenta, em todos os bots",
+      "Precisa de aprovação",
+      "Gerenciar regras",
+    ]);
+    // Each variant says in one muted line what it does.
+    expect(items[0]?.textContent).toContain("Só quando o conteúdo for idêntico a este.");
+    expect(items[1]?.textContent).toContain("Qualquer uso de Terminal");
+    expect(screen.getByTestId("approval-needs").getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(screen.getByTestId("approval-manage-rules"));
+    expect(onManageRules).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("'Sempre permitir' approves and sends the scope and what it matches; the settings order the scopes", () => {
+    const { onDecide } = show({ defaultScope: "global" });
+    openMenu();
+    const first = screen.getAllByRole("menuitem")[0] as HTMLElement;
+    expect(first.textContent).toContain("em todos os bots");
+    fireEvent.click(screen.getByTestId("always-global-exact"));
+    expect(onDecide).toHaveBeenLastCalledWith({ decision: "approve", always: { scope: "global" } });
+  });
+
+  it("'Sempre permitir esta ferramenta' sends an empty list of conditions", async () => {
+    const { onDecide } = show();
+    openMenu();
+    fireEvent.click(screen.getByTestId("always-bot-any"));
+    expect(onDecide).toHaveBeenLastCalledWith({
+      decision: "approve",
+      always: { scope: "bot", matchers: [] },
+    });
+    await waitFor(() =>
+      expect((screen.getByTestId("approval-approve") as HTMLButtonElement).disabled).toBe(false),
+    );
+  });
+
+  it("turning 'Precisa de aprovação' off makes Aprovar create the rule, and says which one before", () => {
     const { onDecide } = show({
       approval: makeApproval({ args: { command: "git push origin main" } }),
-      defaultScope: "bot",
     });
-    const toggle = screen.getByTestId("approval-always-toggle");
-    expect(toggle.getAttribute("aria-expanded")).toBe("false");
-    fireEvent.click(toggle);
-    expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    expect(screen.getByTestId("always-scope-bot").getAttribute("aria-checked")).toBe("true");
+    openMenu();
+    fireEvent.click(screen.getByTestId("approval-needs"));
     expect(screen.getByTestId("always-sentence").textContent).toContain("o bot Ajudante");
     expect(screen.getByTestId("always-sentence").textContent).toContain(
       "command = “git push origin main”",
     );
-    fireEvent.click(screen.getByTestId("always-scope-global"));
-    expect(screen.getByTestId("always-sentence").textContent).toContain("todos os bots");
-    fireEvent.click(screen.getByTestId("approval-always-confirm"));
-    expect(onDecide).toHaveBeenLastCalledWith({ decision: "approve", always: { scope: "global" } });
+    expect(screen.getByTestId("approval-approve").textContent).toBe("Aprovar e permitir");
+    fireEvent.click(screen.getByTestId("approval-approve"));
+    expect(onDecide).toHaveBeenLastCalledWith({ decision: "approve", always: { scope: "bot" } });
   });
 
-  it("'qualquer uso' sends an empty list of conditions, and the settings choose the scope that is proposed", () => {
-    const { onDecide } = show({ defaultScope: "global" });
-    fireEvent.click(screen.getByTestId("approval-always-toggle"));
-    expect(screen.getByTestId("always-scope-global").getAttribute("aria-checked")).toBe("true");
-    fireEvent.click(screen.getByTestId("always-match-any"));
-    expect(screen.getByTestId("always-sentence").textContent).toContain("qualquer uso de Terminal");
-    fireEvent.click(screen.getByTestId("approval-always-confirm"));
-    expect(onDecide).toHaveBeenLastCalledWith({
-      decision: "approve",
-      always: { scope: "global", matchers: [] },
-    });
+  it("the menu works from the keyboard: arrows move, Escape closes and gives the focus back", () => {
+    show();
+    const trigger = screen.getByTestId("approval-more");
+    openMenu();
+    const items = Array.from(
+      screen.getByRole("menu").querySelectorAll<HTMLElement>('[role^="menuitem"]'),
+    );
+    expect(document.activeElement).toBe(items[0]);
+    fireEvent.keyDown(items[0] as HTMLElement, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(items[1]);
+    fireEvent.keyDown(items[1] as HTMLElement, { key: "End" });
+    expect(document.activeElement).toBe(items.at(-1));
+    fireEvent.keyDown(items.at(-1) as HTMLElement, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(items[0]);
+    fireEvent.keyDown(items[0] as HTMLElement, { key: "Escape" });
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(document.activeElement).toBe(trigger);
   });
 
   it("a failure keeps the card pending and says why, next to the buttons", async () => {
@@ -249,27 +308,32 @@ describe("ApprovalCard waiting for you", () => {
 describe("ApprovalCard decided", () => {
   it.each([
     ["approved", "Aprovado", "done"],
-    ["denied", "Negado", "stopped"],
+    ["denied", "Recusado", "stopped"],
     ["expired", "Expirou", "stopped"],
     ["cancelled", "Cancelado", "stopped"],
   ] as const)(
-    "%s is one line: '%s · summary', closed until it is clicked",
+    "%s is one line: category, '%s · title', closed until it is clicked",
     (status, word, state) => {
       const onToggle = vi.fn();
       show({
         approval: makeApproval({
           status,
-          summary: "Shell em repo: ls",
+          tool: "shell",
+          args: { command: "ls" },
+          summary: "Shell in repo: ls",
           decidedAt: new Date().toISOString(),
         }),
         onToggle,
       });
       const card = screen.getByTestId("approval-card");
       expect(card.getAttribute("data-state")).toBe(state);
-      expect(card.textContent).toContain(`${word} · Shell em repo: ls`);
+      expect(card.textContent).toBe(`Terminal${word} · Rodar ls`);
       const row = within(card).getByRole("button");
       expect(row.getAttribute("aria-expanded")).toBe("false");
       expect(within(card).queryByTestId("approval-args")).toBeNull();
+      // No buttons but the row itself, and the chevron is only drawn on hover/focus (CSS).
+      expect(within(card).getAllByRole("button")).toHaveLength(1);
+      expect(card.querySelector(".ui-action__chevron")).not.toBeNull();
       fireEvent.click(row);
       expect(onToggle).toHaveBeenCalledTimes(1);
     },
@@ -288,12 +352,13 @@ describe("ApprovalCard decided", () => {
       expanded: true,
     });
     const card = screen.getByTestId("approval-card");
-    expect(within(card).getByTestId("approval-detail").textContent).toContain("Você negou");
+    expect(within(card).getByTestId("approval-detail").textContent).toContain("Você recusou");
     expect(within(card).getByTestId("approval-denial").textContent).toContain("agora não");
     expect(within(card).getByTestId("arg-value").textContent).toBe("rm -rf build");
     expect(within(card).getByTestId("approval-rule").textContent).toContain(
       "Libera Terminal para todos os bots em qualquer uso.",
     );
     expect(within(card).queryByTestId("approval-deny")).toBeNull();
+    expect(within(card).queryByTestId("approval-more")).toBeNull();
   });
 });
