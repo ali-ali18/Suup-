@@ -33,6 +33,7 @@ export function App() {
   const switchServer = useCallback(async () => {
     servicesRef.current?.sync.stop();
     servicesRef.current = null;
+    useUi.getState().leaveServer();
     const platform = platformRef.current;
     await platform?.local?.stop();
     await platform?.connection.clear();
@@ -46,6 +47,7 @@ export function App() {
     if (servicesRef.current?.mode === "local") return switchServer();
     servicesRef.current?.sync.stop();
     servicesRef.current = null;
+    useUi.getState().leaveServer();
     await platformRef.current?.connection.clear();
     setSaved(null);
     setPhase({ kind: "connect" });

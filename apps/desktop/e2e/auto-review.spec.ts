@@ -230,13 +230,19 @@ test.describe("Auto-review: the mode, the rules you write, and what the chat sho
     await pick(page, page.getByTestId("approval-mode"), "Perguntar tudo");
     await expect(page.getByTestId("approval-mode")).toHaveText("Perguntar tudo");
     await expect(page.getByTestId("rules-allow")).toContainText("não são lidas");
-    expect((await world.api.approvalSettings.get()).mode).toBe("ask_all");
+    // The mode changes on the screen at once and is written after (PermissionsSettings): wait for
+    // the server to hold the final value; it must get there, whatever the machine's speed.
+    await expect.poll(async () => (await world.api.approvalSettings.get()).mode).toBe("ask_all");
     await page.reload();
     await openSettings(page, "Permissões");
     await expect(page.getByTestId("approval-mode")).toHaveText("Perguntar tudo");
     await pick(page, page.getByTestId("approval-mode"), "Auto-review");
     await expect(page.getByTestId("approval-mode")).toHaveText("Auto-review");
-    expect((await world.api.approvalSettings.get()).mode).toBe("auto_review");
+    // The mode changes on the screen at once and is written after (PermissionsSettings): wait for
+    // the server to hold the final value; it must get there, whatever the machine's speed.
+    await expect
+      .poll(async () => (await world.api.approvalSettings.get()).mode)
+      .toBe("auto_review");
     await closeSettings(page);
     for (const rule of await world.api.writtenRules.list())
       await world.api.writtenRules.remove(rule.id);

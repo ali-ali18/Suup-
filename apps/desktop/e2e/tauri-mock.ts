@@ -144,6 +144,9 @@ export async function installTauriMock(
           }
         },
       };
+      // The real shell starts the server at launch when "neste computador" is the saved mode
+      // (`local::start_if_selected`): a reloaded page finds it starting again.
+      if (store("mode") === "local") begin();
       w.__TAURI_INTERNALS__ = {
         transformCallback(callback: unknown) {
           const id = nextCallback++;
