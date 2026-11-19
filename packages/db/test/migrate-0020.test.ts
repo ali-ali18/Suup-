@@ -29,7 +29,8 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("migration 0020: prompt limit in memo
       expiryDays: null,
     });
     const columns = await ctx.db.sql<{ column_name: string }[]>`
-      select column_name from information_schema.columns where table_name = 'memory_settings'`;
+      select column_name from information_schema.columns
+      where table_schema = ${ctx.schema} and table_name = 'memory_settings'`;
     expect(columns.map((c) => c.column_name)).not.toContain("prompt_limit_chars");
     // the table keeps the range too, whatever the code says
     await expect(ctx.db.sql`update memory_settings set prompt_limit_items = 19`).rejects.toThrow();
