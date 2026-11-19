@@ -121,6 +121,8 @@ O worker comanda a máquina dos bots com `docker exec`, o que exige falar com o 
 
 A máquina dos bots (e cada conector stdio) fica numa rede Docker **interna** e só sai pelo proxy do worker, com uma lista de hosts de nome exato: [REDE.md](REDE.md). No Compose de produção o worker é um contêiner, então ele entra na rede interna com IP fixo e o proxy escuta nesse IP: o `docker-compose.prod.yml` já declara a rede `suup-sandbox-net` (interna, `172.29.77.0/24`, worker em `172.29.77.2`) e o `suup.config.prod.example.json` aponta `sandbox.network.proxy` para esse endereço. Se mudar a sub-rede, mude os dois. A imagem do runner dos conectores (`suup-connector-runner:prod`) é construída pelo serviço `connector-runner-image`.
 
+**Produção usa o proxy dentro do worker** (`sandbox.network.proxy.mode` omitido = `process`): é o caminho provado e o mais simples com o worker na rede interna; o contêiner `suup-egress` (modo `container`, [REDE.md](REDE.md)) existe para quem roda o worker como processo num computador com Docker Desktop (o app no Windows) e não muda o `docker-compose.prod.yml`. Para construir a imagem à mão (desenvolvimento e testes): `pnpm exec tsc -b && node apps/sidecar/scripts/egress-image.mjs docker/egress && docker build -t suup-egress:dev docker/egress`; os testes com Docker real a usam em `SUUP_EGRESS_IMAGE=suup-egress:dev` (o CI constrói `suup-egress:ci`).
+
 Contêineres criados antes desta versão (na rede padrão, com saída direta) são **recriados sozinhos** na primeira execução (o volume do workspace é mantido); `suup doctor` confere que a máquina não tem saída direta.
 
 ## Construir atrás de um proxy que reassina o TLS
