@@ -366,6 +366,8 @@ A mensagem é sempre gravada na hora e aparece no chat. O que varia é quando o 
 
 **Decisão (18/11/2026):** a única assinatura que o Suup usa é a do ChatGPT. Todos os outros fornecedores entram por chave de API, pela camada de provedores.
 
+**Situação (19/11/2026): não validado; implementação suspensa.** A pesquisa em [pesquisas/fase-3-provedor-chatgpt.md](pesquisas/fase-3-provedor-chatgpt.md) não conseguiu ler as páginas oficiais e, no código do Codex, não achou nada que diga que um app de terceiros pode usar esse login nem o identificador de cliente dele; o endpoint que o Codex chama é interno do produto, não a API pública. O que este texto afirma abaixo sobre "caminho oficial" fica como hipótese até o dono ler a página oficial de autenticação e os termos, ou perguntar à OpenAI. Sem permissão escrita, o provedor não entra.
+
 O motivo é que só a OpenAI oferece um caminho oficial em que o app recebe um token e chama o modelo por conta própria. Assim a assinatura funciona como um provedor comum e o loop continua sendo o do Suup, com plano, conclusão com evidência, revisor, replay e retomada intactos. Nos demais fornecedores, usar a assinatura exigiria rodar a ferramenta deles, com o loop deles, ou violaria os termos.
 
 **O que o provedor ChatGPT exige**
