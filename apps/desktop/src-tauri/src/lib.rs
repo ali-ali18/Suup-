@@ -78,10 +78,58 @@ struct Connection {
     token: String,
 }
 
-#[derive(Serialize, Deserialize)]
+/// O que fica no arquivo de configuração: o modo (`local` ou `vps`) e, no modo `vps`, o endereço.
+/// Um arquivo de antes do modo (só o endereço) vale como `vps`.
+#[derive(Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 struct StoredConfig {
-    server_url: String,
+    #[serde(default)]
+    server_url: Option<String>,
+    #[serde(default)]
+    mode: Option<String>,
+}
+
+fn read_config(app: &AppHandle) -> StoredConfig {
+    config_path(app)
+        .ok()
+        .and_then(|path| fs::read_to_string(path).ok())
+        .and_then(|text| serde_json::from_str::<StoredConfig>(&text).ok())
+        .unwrap_or_default()
+}
+
+fn write_config(app: &AppHandle, config: &StoredConfig) -> Result<(), String> {
+    let text = serde_json::to_string_pretty(config).map_err(|e| e.to_string())?;
+    fs::write(config_path(app)?, text).map_err(|e| e.to_string())
+}
+
+fn effective_mode(config: &StoredConfig) -> Option<String> {
+    match (&config.mode, &config.server_url) {
+        (Some(mode), _) => Some(mode.clone()),
+        (None, Some(_)) => Some("vps".into()),
+        (None, None) => None,
+    }
+}
+
+/// O servidor que este dispositivo usa: `local`, `vps` ou nada (a primeira abertura).
+#[tauri::command]
+fn mode_load(app: AppHandle) -> Option<String> {
+    effective_mode(&read_config(&app))
+}
+
+#[tauri::command]
+fn mode_save(app: AppHandle, mode: String) -> Result<(), String> {
+    if mode != "local" && mode != "vps" {
+        return Err("modo desconhecido".into());
+    }
+    let mut config = read_config(&app);
+    config.mode = Some(mode);
+    write_config(&app, &config)
+}
+
+/// Esquece a escolha (e o endereço): a próxima abertura pergunta de novo.
+#[tauri::command]
+fn mode_clear(app: AppHandle) -> Result<(), String> {
+    write_config(&app, &StoredConfig::default())
 }
 
 fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -104,11 +152,17 @@ fn connection_load(app: AppHandle, net: State<'_, Net>) -> Result<Option<Connect
     let Ok(config) = serde_json::from_str::<StoredConfig>(&text) else {
         return Ok(None);
     };
+    if effective_mode(&config).as_deref() != Some("vps") {
+        return Ok(None);
+    }
+    let Some(server_url) = config.server_url else {
+        return Ok(None);
+    };
     let Ok(token) = keyring_entry()?.get_password() else {
         return Ok(None);
     };
-    net.allow(&parse_server_url(&config.server_url)?);
-    Ok(Some(Connection { server_url: config.server_url, token }))
+    net.allow(&parse_server_url(&server_url)?);
+    Ok(Some(Connection { server_url, token }))
 }
 
 /// Libera o servidor que a pessoa acabou de digitar, para o teste da conexão (antes de guardar).
@@ -122,8 +176,10 @@ fn connection_allow(net: State<'_, Net>, server_url: String) -> Result<(), Strin
 fn connection_save(app: AppHandle, net: State<'_, Net>, server_url: String, token: String) -> Result<(), String> {
     let url = parse_server_url(&server_url)?;
     keyring_entry()?.set_password(&token).map_err(|e| e.to_string())?;
-    let config = serde_json::to_string_pretty(&StoredConfig { server_url }).map_err(|e| e.to_string())?;
-    fs::write(config_path(&app)?, config).map_err(|e| e.to_string())?;
+    let mut config = read_config(&app);
+    config.server_url = Some(server_url);
+    config.mode = Some("vps".into());
+    write_config(&app, &config)?;
     net.allow(&url);
     Ok(())
 }
@@ -132,7 +188,9 @@ fn connection_save(app: AppHandle, net: State<'_, Net>, server_url: String, toke
 fn connection_clear(app: AppHandle, net: State<'_, Net>) -> Result<(), String> {
     // Apagar o que não existe não é erro.
     let _ = keyring_entry().and_then(|e| e.delete_credential().map_err(|e| e.to_string()));
-    let _ = fs::remove_file(config_path(&app)?);
+    let mut config = read_config(&app);
+    config.server_url = None;
+    write_config(&app, &config)?;
     net.forget();
     Ok(())
 }
@@ -260,6 +318,9 @@ pub fn run() {
             connection_allow,
             connection_save,
             connection_clear,
+            mode_load,
+            mode_save,
+            mode_clear,
             settings_load,
             settings_save,
             http_fetch,

@@ -597,8 +597,9 @@ describe("the settings dialog: a modal with a left nav, groups of simple rows, n
     // Geral's rows all carry one.
     const general = settings("GeneralSettings.tsx");
     expect(general).toContain("icon={row.icon}");
-    expect(general).toContain("icon={Server}");
-    expect(general).toContain("icon={Key}");
+    const server = settings("ServerGroup.tsx");
+    expect(server).toContain("icon={Server}");
+    expect(server).toContain("icon={Key}");
   });
 
   it("Permissões: the mode, three groups of rules you write, the connectors card; no native select", () => {
@@ -728,5 +729,26 @@ describe("docs/DESIGN.md is the standard, and everyone is pointed to it", () => 
     for (const file of ["apps/desktop/README.md", "docs/FRONTEND.md", "CLAUDE.md"]) {
       expect(read(join(root, file)), file).toContain("DESIGN.md");
     }
+  });
+});
+
+describe("telas antes do app (docs/DESIGN.md 3d)", () => {
+  const screen = (name: string): string => read(join(SRC, "features", "connect", name));
+
+  it("todas usam o cartão calmo de ui/welcome.tsx, sem lista de classes própria", () => {
+    for (const name of ["ConnectScreen.tsx", "FirstRunScreen.tsx", "LocalScreen.tsx"]) {
+      const source = screen(name);
+      expect(source, name).toContain("WelcomeCard");
+      expect(source, name).not.toContain("className=");
+      expect(source, name).not.toContain("<select");
+    }
+  });
+
+  it("a primeira abertura tem as duas escolhas e a chave é um campo secreto", () => {
+    const first = screen("FirstRunScreen.tsx");
+    expect(first).toContain("Usar neste computador");
+    expect(first).toContain("Conectar à minha VPS");
+    expect(first.split("<ChoiceCard").length - 1).toBe(2);
+    expect(screen("LocalScreen.tsx")).toContain("<SecretInput");
   });
 });

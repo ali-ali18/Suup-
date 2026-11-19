@@ -122,6 +122,17 @@ Configurações **não é uma tela**: é um diálogo modal (`features/settings/S
 - [ ] **Conectores**: primeiro a lista (uma linha por conector: nome, uma linha de estado, o interruptor e "Abrir"); os detalhes (acesso por bot e ferramenta, ajustes, rede, histórico, ferramentas, revisão) abrem ao selecionar o conector; não há botão de voltar (veja acima: a navegação e Esc voltam à lista). Uma ferramenta é uma linha; os detalhes dela abrem em "Detalhes".
 - [ ] Um diálogo aberto de dentro de outro (regra, segredo, revisão) é uma superfície modal própria, a mais de cima: leva o foco, prende o Tab e devolve o foco ao fechar.
 
+## 3d. Telas antes do app: primeira abertura, conectar, iniciar
+
+As telas que aparecem antes do app abrir (`features/connect/`) são **um cartão calmo no meio da janela** (`WelcomeCard`, `ui/welcome.tsx`): o mascote, um título, uma linha apagada e o conteúdo. Nada de barra lateral, de cabeçalho ou de cor de alerta.
+
+- [ ] **Primeira abertura** (nada guardado neste dispositivo, só no app de desktop): `FirstRunScreen` com **duas** escolhas, cada uma um `ChoiceCard` (ícone numa placa redonda, título, uma linha apagada): "Usar neste computador" (a sugerida, borda mais forte) e "Conectar à minha VPS". O navegador não tem a escolha: ele só conecta a um endereço.
+- [ ] **Um cérebro por vez, sem sincronização**: a linha da tela diz isso. Trocar depois fica em Configurações > Geral > Servidor (linha "Neste computador" ou "Minha VPS" com a pílula "Trocar", que abre uma janela pequena de confirmação em linguagem comum e **não apaga nada**).
+- [ ] **A chave do modelo** (`LocalScreen`, passo da primeira vez): um `SecretInput` (campo de senha, nunca mostrado de volta), "Guardar e continuar" e "Fazer depois". A chave nunca aparece em tela, registro, captura ou mensagem; em Configurações a linha só diz "Guardada no chaveiro do sistema" ou "Ainda não definida".
+- [ ] **Iniciar**: "Iniciando o Suup…" com **uma** linha do estágio real (banco, atualização do banco, máquina dos bots, servidor); falha mostra o **motivo**, a pasta dos registros, "Tentar de novo" e "Abrir a pasta de registros"; nunca um laço silencioso. Um reinício automático aparece como aviso calmo (`Notice`) com o motivo e a espera.
+- [ ] **A máquina dos bots** (Configurações > Geral > Servidor, "Máquina dos bots"): "Isolada (Docker)" ou "Sem isolamento: <motivo>" e, quando não há isolamento, a linha de aviso fixa (`role="note"`) com o texto verdadeiro de que os comandos rodam neste computador.
+- [ ] As telas usam as peças de `ui/` (`WelcomeCard`, `ChoiceCard`, `SecretInput`, `Pill`, `Notice`); nenhuma lista de classes própria. `design-rules.test.ts` confere.
+
 ## 4. Balões e links
 
 - [ ] Balão do bot: borda de 1 px, fundo de superfície. Balão do usuário: a cor do bot; se o bot é branco, cinza neutro.

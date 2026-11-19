@@ -8,7 +8,6 @@ import {
   DollarSign,
   FoldVertical,
   Image,
-  Key,
   Layers,
   type LucideIcon,
   MessageSquareText,
@@ -16,7 +15,6 @@ import {
   Palette,
   Repeat,
   Rows3,
-  Server,
   Sun,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -28,13 +26,13 @@ import { Toggle } from "../../ui/primitives.js";
 import {
   PaneBody,
   PaneHead,
-  RowAction,
   RowValue,
   type SectionProps,
   SettingsGroup,
   SettingsRow,
   SettingsSelect,
 } from "./parts.js";
+import { ServerGroup } from "./ServerGroup.js";
 
 /** A setting of the app, drawn as one row: a quiet dropdown, or a switch for an on/off pair. */
 interface Choice<K extends keyof Settings> {
@@ -216,7 +214,7 @@ function SwitchRow({ row }: { row: Switch<keyof Settings> }) {
  * read-only: the server has no endpoint to change them).
  */
 export function GeneralSettings({ title, titleId, onClose }: SectionProps) {
-  const { api, connection, disconnect, platform } = useServices();
+  const { api } = useServices();
   const bots = useData((s) => s.bots);
   const [models, setModels] = useState<ModelInfo[] | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -232,24 +230,7 @@ export function GeneralSettings({ title, titleId, onClose }: SectionProps) {
     <>
       <PaneHead title={title} titleId={titleId} onClose={onClose} />
       <PaneBody>
-        <SettingsGroup label="Servidor" testId="server-group">
-          <SettingsRow
-            icon={Server}
-            title="Servidor"
-            description={connection.serverUrl}
-            descriptionTestId="server-url"
-            control={<RowAction onClick={() => void disconnect()}>Desconectar</RowAction>}
-          />
-          <SettingsRow
-            icon={Key}
-            title="Token de acesso"
-            description={
-              platform.kind === "tauri"
-                ? "Guardado no chaveiro do sistema."
-                : "Modo navegador: fica só nesta aba, até ela ser fechada."
-            }
-          />
-        </SettingsGroup>
+        <ServerGroup />
         <SettingsGroup
           label="Aparência"
           hint="Fica guardado neste computador. O mascote, a cor e o nome de cada bot se editam no próprio bot."
