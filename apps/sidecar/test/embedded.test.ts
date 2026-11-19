@@ -28,16 +28,23 @@ const IS_ROOT = typeof process.getuid === "function" && process.getuid() === 0;
 const CAN_RUN = !IS_ROOT || RUN_AS !== undefined;
 const TOKEN = "t".repeat(48);
 
+/** The same path with one kind of slash (Windows tools print either), and no case on Windows. */
+function samePath(text: string): string {
+  const slashed = text.split("\\").join("/");
+  return process.platform === "win32" ? slashed.toLowerCase() : slashed;
+}
+
 /** The processes whose command line has `match` (a path of this test, so nothing else matches). */
 function listProcesses(match: string): string[] {
+  const wanted = samePath(match);
   if (process.platform === "win32") {
     const script =
-      "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine.Contains($env:SUUP_MATCH) } | ForEach-Object { $_.CommandLine }";
+      "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine } | ForEach-Object { $_.CommandLine }";
     const out = execFileSync("powershell", ["-NoProfile", "-Command", script], {
       encoding: "utf8",
-      env: { ...process.env, SUUP_MATCH: match },
+      maxBuffer: 64 * 1024 * 1024,
     });
-    return out.split("\n").filter((line) => line.trim() !== "");
+    return out.split("\n").filter((line) => line.trim() !== "" && samePath(line).includes(wanted));
   }
   const out = execFileSync("ps", ["-eo", "pid,args"], { encoding: "utf8" });
   return out.split("\n").filter((line) => line.includes(match));
