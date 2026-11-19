@@ -161,7 +161,7 @@ Uma conexão por instância do app (Server-Sent Events; o cliente `api.subscribe
 | `message.created` | Mensagem nova em qualquer conversa (inclui a pergunta do bot e os avisos do sistema) |
 | `message.updated` | Mudou o estado de entrega de uma mensagem sua (`sent` → `delivered`) |
 | `conversation.updated` | Mudou a lista de conversas: mensagem nova, lida, arquivada (com `unreadCount` e `activeRun`) |
-| `memory.changed` | Uma memória foi criada, editada, esquecida, restaurada, confirmada ou recusada. Com `change: "pending"` e `memory.status: "pending"`, **um bot ou a consolidação propôs** uma regra, um fato sobre o usuário ou uma nota que espera confirmação: é o gatilho do cartão "Guardar isto?" (`memory.review`, quando vem, diz por que o revisor segurou) |
+| `memory.changed` | Uma memória foi criada, editada, esquecida, restaurada, confirmada ou recusada. Com `change: "pending"` e `memory.status: "pending"`, **um bot ou a consolidação propôs** uma regra, um fato sobre o usuário ou uma nota que espera confirmação: o app **não** mostra cartão no chat nem em Pendências (o dono não quer gerenciar memória); a tela Memória lista as pendentes que sobraram (`memory.review`, quando vem, diz por que o revisor segurou) |
 | `bot.updated` | Um bot foi criado, editado, arquivado ou tornado principal |
 | `ready` / `resync` | Da conexão: `resync` diz que o app deve **recarregar** o que mostra (veja API.md, "Retomada") |
 
@@ -284,7 +284,7 @@ Uma tela separada do chat, para quando algo dá errado. A API serve os mesmos c�
 | Cofre | Segredos: `GET /v1/secrets`, `PUT`/`DELETE /v1/secrets/{nome}`, concessões por bot |
 | Dispositivos | Seus computadores e celular |
 | Inspetor | Eventos crus, `requests/{seq}`, `replay`, `resend`, `doctor` |
-| Configurações | Modelos e chaves, limites padrão, notificações |
+| Configurações | Modelos e chaves, limites padrão, notificações; **Memória** (`GET`/`PATCH /v1/memory-settings`: consolidação, compactação, limite do prompt com o aviso por bot, validade) |
 
 ## 11. Momentos em que o avatar do bot pode reagir
 

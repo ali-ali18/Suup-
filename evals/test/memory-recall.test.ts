@@ -55,6 +55,12 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("the recall benchmark: the measuremen
     expect(first.with.hitAt5).toBeGreaterThanOrEqual(MEASURED.allWords.with - 1e-9);
     expect(first.anyWord.without.hitAt5).toBeGreaterThanOrEqual(MEASURED.anyWord.without - 1e-9);
     expect(first.anyWord.with.hitAt5).toBeGreaterThanOrEqual(MEASURED.anyWord.with - 1e-9);
+    // What the bot does now (all the words, and any of them only when those find nothing):
+    expect(first.fallback.without.hitAt5).toBeGreaterThanOrEqual(MEASURED.fallback.without - 1e-9);
+    expect(first.fallback.with.hitAt5).toBeGreaterThanOrEqual(MEASURED.fallback.with - 1e-9);
+    // ...and it never loses what the all-words search already found.
+    expect(first.fallback.with.hitAt5).toBeGreaterThanOrEqual(first.with.hitAt5);
+    expect(first.fallback.without.hitAt5).toBeGreaterThanOrEqual(first.without.hitAt5);
     // Same words, any of them: the unmatched words stop mattering, and every question is found at
     // the top. The question as a whole sentence is worse than both (the harness needs key words).
     expect(first.sentenceAsQuery.hitAt5).toBeLessThan(first.questions);
@@ -62,11 +68,12 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("the recall benchmark: the measuremen
 });
 
 /**
- * The numbers of the first measurement (20 questions: 9 of 20 with all the words, 20 of 20 with any
+ * The numbers of the measurement (20 questions: 9 of 20 with all the words, 20 of 20 with any and 20 of 20 with the fallback the bot uses now,
  * of them, with and without the short fact). A guard against the search getting worse, never raised
  * to make a number look good: docs/TESTES-REAIS.md has the reading.
  */
 const MEASURED = {
   allWords: { without: 9 / 20, with: 9 / 20 },
   anyWord: { without: 1, with: 1 },
+  fallback: { without: 1, with: 1 },
 };

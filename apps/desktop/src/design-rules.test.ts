@@ -464,7 +464,7 @@ describe("the settings dialog: a modal with a left nav, groups of simple rows, n
 
   it("has exactly the sections the backend can fill, and no hollow ones", () => {
     const dialog = settings("SettingsDialog.tsx");
-    for (const label of ["Geral", "Permissões", "Cofre", "Conectores"])
+    for (const label of ["Geral", "Permissões", "Memória", "Cofre", "Conectores"])
       expect(dialog, label).toContain(`label: "${label}"`);
     for (const hollow of ["Uso e cobrança", "Atualizações", "Computador", "Conta"])
       expect(dialog, hollow).not.toContain(`label: "${hollow}"`);
@@ -550,6 +550,37 @@ describe("the settings dialog: a modal with a left nav, groups of simple rows, n
     expect(permissions).toContain("label={KIND_TEXT[kind].title}");
     expect(permissions).toContain("precedenceHint(settings)");
     expect(permissions).not.toContain('className="srow"');
+  });
+
+  it("Memória: Geral's pieces, a numeric field from ui/, a dropdown for the validity, no native select", () => {
+    const page = settings("MemorySettings.tsx");
+    expect(page).toContain('from "./parts.js"');
+    expect(page).toContain("<SettingsGroup");
+    expect(page).toContain("<SettingsRow");
+    expect(page).toContain("<RowAction");
+    expect(page).toContain("<SettingsSelect");
+    expect(page).toContain("<NumberField");
+    expect(page).toContain('from "../../ui/number-field.js"');
+    expect(page).not.toContain("<select");
+    expect(page).not.toContain("<input");
+    expect(page).not.toContain("<Card");
+    for (const group of ["Consolidação", "Contexto", "Validade"])
+      expect(page, group).toContain(`label="${group}"`);
+    // The field is one reusable piece: quiet, right-aligned, no native spinner, no `type="number"`.
+    const field = read(join(SRC, "ui", "number-field.tsx"));
+    expect(field).toContain("text-right");
+    expect(field).not.toContain('type="number"');
+    expect(field).not.toContain("<select");
+    // Nothing else draws a bare input for a number in the settings.
+    for (const name of files(join(SRC, "features", "settings"), /\.tsx$/))
+      expect(read(name), rel(name)).not.toContain('type="number"');
+  });
+
+  it("memories are never asked about in the chat: no memory card, and the history is the only undo", () => {
+    expect(files(join(SRC, "ui"), /\.tsx$/).map(rel)).not.toContain(join("ui", "memory-card.tsx"));
+    const history = read(join(SRC, "features", "memory", "MemoryHistoryDialog.tsx"));
+    expect(history).toContain("Desfazer");
+    expect(read(join(SRC, "features", "chat", "MessageList.tsx"))).not.toContain("memory");
   });
 
   it("separators run the card's full width, and a row has one optional leading icon slot", () => {

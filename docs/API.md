@@ -185,7 +185,7 @@ Erros: `404` se a execução não existe; `409` para `pause` e `interrupt` numa 
 
 | Método e caminho | Corpo | Resposta |
 |---|---|---|
-| `GET /v1/memories?layer=&scope=&botId=&includeArchived=&status=&limit=` | | `200 { items: [Memory] }`, do mais antigo ao mais novo (`limit` até 1000, padrão 500). `botId` filtra o que **pertence** ao bot. **`status`** (`active` por padrão, `pending`, `rejected`): sem ele, o que espera confirmação **não aparece**; `?status=pending` é a fila de confirmação |
+| `GET /v1/memories?layer=&scope=&botId=&includeArchived=&status=&limit=` | | `200 { items: [Memory] }`, do mais antigo ao mais novo (`limit` até 1000, padrão 500). `botId` filtra o que **pertence** ao bot. **`status`** (`active` por padrão, `pending`, `rejected`): sem ele, só as ativas; `?status=pending` lista as propostas de antes (o fluxo normal não cria pendentes: o bot e a consolidação gravam ativo) |
 | `POST /v1/memories` | `{ layer, text, scope?, botId? }` | `201 Memory`, `createdBy: "user"`; `400` |
 | `PATCH /v1/memories/{id}` | `{ text }` | `200 Memory`; `400`, `404` |
 | `POST /v1/memories/{id}/archive` | | `200 Memory` (idempotente); `404` |
@@ -393,7 +393,7 @@ data: {"runId":"...","event":{"seq":7,"type":"tool_call","createdAt":"...","payl
 | `message.created` | `{ message }` | Mensagem nova em qualquer conversa |
 | `message.updated` | `{ message }` | Mudou o estado de entrega (`sent`, `delivered`) |
 | `conversation.updated` | `{ conversation }` | Mudou a lista de conversas: mensagem nova, lida, arquivada. Vai a `Conversation` inteira, com `unreadCount` e `activeRun` |
-| `memory.changed` | `{ change, memory }` | `change`: `created`, **`pending`** (um bot ou a consolidação **propôs** uma regra, um fato ou uma nota que espera você: é o gatilho do cartão de confirmação; `memory.status` é `pending`, e uma pendente que o revisor segurou traz `memory.review`), `updated` (inclui confirmar e recusar: veja `memory.status`), `archived`, `restored`. Usar uma memória (o `recall` renovar `lastUsedAt`) **não** gera quadro |
+| `memory.changed` | `{ change, memory }` | `change`: `created`, **`pending`** (só para linhas de antes: o fluxo normal grava ativo e emite `created`/`updated`; um bot ou a consolidação nunca pede confirmação), `updated` (inclui confirmar e recusar: veja `memory.status`), `archived`, `restored`. Usar uma memória (o `recall` renovar `lastUsedAt`) **não** gera quadro |
 | `bot.updated` | `{ bot }` | Bot criado, editado, arquivado ou tornado principal |
 | `approval.changed` | `{ change, approval }` | Um cartão de aprovação apareceu (`created`) ou mudou de situação (`updated`: aprovado, negado, cancelado, expirado). Vai o `Approval` inteiro |
 

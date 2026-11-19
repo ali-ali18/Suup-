@@ -34,6 +34,7 @@ import {
   orderedMessages,
   orderedRules,
   pendingApprovals,
+  pendingMemories,
   removeConnector,
   removeRule,
   removeSecret,
@@ -45,11 +46,13 @@ import {
   setConnection,
   setConnectors,
   setMemories,
+  setPendingMemories,
   setRules,
   setSecrets,
   setVaultStatus,
   setWrittenRules,
   stalePendingIds,
+  stalePendingMemoryIds,
   upsertMessage,
   writtenRulesOf,
 } from "./reducers.js";
@@ -444,5 +447,38 @@ describe("the network of a bot's machine", () => {
   it("the same answer twice changes nothing", () => {
     const once = setBotNetwork(emptyData(), "b1", view(["a.com"]));
     expect(setBotNetwork(once, "b1", view(["a.com"]))).toBe(once);
+  });
+});
+
+describe("memories that wait for you", () => {
+  const pending = (over = {}) => makeMemory({ status: "pending", layer: "rule", ...over });
+
+  it("a pending frame is held, and a list of active memories does not drop it", () => {
+    const m = pending();
+    let s = applyStreamEvent(
+      emptyData(),
+      frame("memory.changed", { change: "pending", memory: m }, 1),
+    );
+    expect(pendingMemories(s).map((x) => x.id)).toEqual([m.id]);
+    const other = makeMemory();
+    s = setMemories(s, [other]);
+    expect(pendingMemories(s).map((x) => x.id)).toEqual([m.id]);
+    s = applyStreamEvent(
+      s,
+      frame(
+        "memory.changed",
+        { change: "updated", memory: { ...m, status: "active", updatedAt: at(1000) } },
+        2,
+      ),
+    );
+    expect(pendingMemories(s)).toEqual([]);
+  });
+
+  it("the list of pending ones merges them, and says which held ones it no longer has", () => {
+    const a = pending();
+    const b = pending();
+    const s = setPendingMemories(emptyData(), [a, b]);
+    expect(pendingMemories(s)).toHaveLength(2);
+    expect(stalePendingMemoryIds(s, [a])).toEqual([b.id]);
   });
 });

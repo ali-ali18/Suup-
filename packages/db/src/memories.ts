@@ -579,6 +579,31 @@ export async function findMemoriesWithText(
   return rows.map(mapMemory);
 }
 
+/**
+ * The memories (not archived, any status) whose short fact (`summary`) is EXACTLY this one once
+ * case and runs of white space are ignored. Same comparison as `findMemoriesWithText`: equality only.
+ * Visible to `botId` (shared + its own) when given.
+ */
+export async function findMemoriesWithSummary(
+  db: Db,
+  summary: string,
+  filter: { layers?: MemoryLayer[]; botId?: string } = {},
+): Promise<Memory[]> {
+  const { sql } = db;
+  const layers =
+    filter.layers === undefined ? undefined : z.array(layerSchema).parse(filter.layers);
+  const rows = await sql<MemoryRow[]>`
+    select ${sql(MEMORY_COLUMNS)} from memories
+    where summary is not null
+      and suup_text_key(summary) = suup_text_key(${summarySchema.parse(summary)})
+      and archived_at is null
+      and status <> 'rejected'
+      and ${layers === undefined ? sql`true` : sql`layer = any(${layers}::text[])`}
+      and ${filter.botId === undefined ? sql`true` : sql`(scope = 'shared' or bot_id = ${uuidSchema.parse(filter.botId)})`}
+    order by created_at, id`;
+  return rows.map(mapMemory);
+}
+
 export interface MemoryRevision {
   id: string;
   memoryId: string;
@@ -753,6 +778,11 @@ export interface SearchMemoriesOptions {
   /** Restrict to these layers. Default: all. */
   layers?: MemoryLayer[];
   limit: number;
+  /**
+   * `all` (default): every word of the query must be in the memory. `any`: at least one of them
+   * (the OR of the same lexemes, same ranking; see `suup_search_query_any`, migration 0018).
+   */
+  match?: "all" | "any";
 }
 
 export interface MemorySearchHit {
@@ -779,7 +809,7 @@ export async function searchMemories(
   if (layers?.length === 0) return [];
   const { sql } = db;
   const rows = await sql<(MemoryRow & { excerpt: string; rank: number })[]>`
-    with q as (select suup_search_query(${query}) as tsq)
+    with q as (select ${opts.match === "any" ? sql`suup_search_query_any(${query})` : sql`suup_search_query(${query})`} as tsq)
     select ${sql(MEMORY_COLUMNS.map((c) => `m.${c}`))},
       ts_rank(m.search, q.tsq) as rank,
       ts_headline('portuguese', m.text, q.tsq, ${SEARCH_HEADLINE_OPTIONS}) as excerpt
@@ -793,6 +823,20 @@ export async function searchMemories(
     order by rank desc, m.created_at, m.id
     limit ${limit}`;
   return rows.map((r) => ({ memory: mapMemory(r), excerpt: r.excerpt, rank: Number(r.rank) }));
+}
+
+/**
+ * The search the bot uses: every word of the query; and only when that finds nothing, any of its
+ * words (`broader: true`, so the caller can say so). A result with hits is never broadened.
+ */
+export async function searchMemoriesBroadening(
+  db: Db,
+  opts: Omit<SearchMemoriesOptions, "match">,
+): Promise<{ hits: MemorySearchHit[]; broader: boolean }> {
+  const strict = await searchMemories(db, { ...opts, match: "all" });
+  if (strict.length > 0) return { hits: strict, broader: false };
+  const hits = await searchMemories(db, { ...opts, match: "any" });
+  return { hits, broader: hits.length > 0 };
 }
 
 export interface MemoryContext {

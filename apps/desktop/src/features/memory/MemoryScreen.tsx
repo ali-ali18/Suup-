@@ -1,10 +1,11 @@
-import type { MemoryLayer } from "@suup/api";
+import type { Memory, MemoryLayer } from "@suup/api";
 import { Plus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { sortedBots } from "../../app/selectors.js";
 import { useUi } from "../../app/ui-store.js";
 import { fold } from "../../data/botlist.js";
+import { memoryStatusOf, pendingMemories } from "../../data/reducers.js";
 import { Dropdown } from "../../ui/dropdown.js";
 import { MemoryItem } from "../../ui/memory-item.js";
 import {
@@ -15,6 +16,7 @@ import {
   FormStack,
   MutedText,
   Pill,
+  SectionLabel,
   Tabs,
   TextField,
   Toggle,
@@ -28,6 +30,7 @@ import {
   LAYER_TAB,
   scopeLabel,
 } from "./labels.js";
+import { MemoryHistoryDialog } from "./MemoryHistoryDialog.js";
 
 const LAYERS: MemoryLayer[] = ["rule", "profile", "note", "journal"];
 
@@ -43,9 +46,13 @@ export function MemoryScreen() {
   const [query, setQuery] = useState("");
   const [showForgotten, setShowForgotten] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [history, setHistory] = useState<Memory | null>(null);
+  const toast = useUi((s) => s.toast);
+  const [deciding, setDeciding] = useState<string | null>(null);
 
   useEffect(() => {
     void sync.loadMemories();
+    void sync.loadPendingMemories();
     return () => sync.unwatchMemories();
   }, [sync]);
 
@@ -53,6 +60,7 @@ export function MemoryScreen() {
   const items = useMemo(() => {
     const q = fold(query.trim());
     return Object.values(memories)
+      .filter((m) => memoryStatusOf(m) === "active")
       .filter((m) => m.layer === layer)
       .filter((m) => showForgotten || m.archivedAt === null)
       .filter((m) =>
@@ -68,9 +76,18 @@ export function MemoryScreen() {
 
   const counts = useMemo(() => {
     const c: Record<MemoryLayer, number> = { rule: 0, profile: 0, note: 0, journal: 0 };
-    for (const m of Object.values(memories)) if (m.archivedAt === null) c[m.layer] += 1;
+    for (const m of Object.values(memories))
+      if (memoryStatusOf(m) === "active" && m.archivedAt === null) c[m.layer] += 1;
     return c;
   }, [memories]);
+  // What waits for you, from every bot: not narrowed by the layer, the bot filter or the search.
+  const waiting = useMemo(() => pendingMemories({ memories }), [memories]);
+  const decide = async (memory: Memory, decision: "confirm" | "reject") => {
+    setDeciding(memory.id);
+    const outcome = await sync.decideMemory(memory.id, decision);
+    setDeciding(null);
+    if (!outcome.ok) toast(outcome.message, "error");
+  };
 
   return (
     <Screen data-testid="memory-screen">
@@ -88,6 +105,44 @@ export function MemoryScreen() {
         }
       />
       <ScreenBody>
+        {waiting.length > 0 && (
+          <section
+            aria-label="Pendentes"
+            className="flex max-w-memory-list flex-col gap-2"
+            data-testid="memory-pending"
+          >
+            <SectionLabel as="h2">Pendentes ({waiting.length})</SectionLabel>
+            <ul className="flex flex-col gap-2" data-testid="memory-pending-list">
+              {waiting.map((m) => (
+                <MemoryItem
+                  key={m.id}
+                  text={m.text}
+                  summary={m.summary}
+                  layerLabel={LAYER_LABEL[m.layer]}
+                  scopeLabel={scopeLabel(m, bots)}
+                  authorLabel={authorLabel(m)}
+                  dateLabel={dateLabel(m.updatedAt)}
+                  archived={false}
+                  editable={false}
+                  onEdit={() => {}}
+                  onForget={() => {}}
+                  onRestore={() => {}}
+                  pending={{
+                    busy: deciding === m.id,
+                    replacesText:
+                      m.supersedesId == null ? undefined : memories[m.supersedesId]?.text,
+                    reviewReason:
+                      m.review == null || m.review.reason.trim() === ""
+                        ? undefined
+                        : m.review.reason,
+                    onConfirm: () => void decide(m, "confirm"),
+                    onReject: () => void decide(m, "reject"),
+                  }}
+                />
+              ))}
+            </ul>
+          </section>
+        )}
         <Tabs
           label="Camadas da memória"
           idPrefix="memory"
@@ -147,6 +202,8 @@ export function MemoryScreen() {
               <MemoryItem
                 key={m.id}
                 text={m.text}
+                summary={m.summary}
+                onHistory={() => setHistory(m)}
                 layerLabel={LAYER_LABEL[m.layer]}
                 scopeLabel={scopeLabel(m, bots)}
                 authorLabel={authorLabel(m)}
@@ -161,6 +218,12 @@ export function MemoryScreen() {
           </ul>
         )}
       </ScreenBody>
+      {history !== null && (
+        <MemoryHistoryDialog
+          memory={memories[history.id] ?? history}
+          onClose={() => setHistory(null)}
+        />
+      )}
       {adding && (
         <AddMemoryDialog
           initialLayer={layer === "journal" ? "rule" : layer}

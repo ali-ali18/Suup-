@@ -278,6 +278,7 @@ export interface VisibleMemory {
   layer: MemoryLayer;
   status: MemoryStatus;
   text: string;
+  summary: string | null;
   sourceConversationId: string | null;
 }
 
@@ -296,10 +297,11 @@ export async function memoriesVisibleTo(
       layer: MemoryLayer;
       status: MemoryStatus;
       text: string;
+      summary: string | null;
       source_conversation_id: string | null;
     }[]
   >`
-    select id, layer, status, text, source_conversation_id from (
+    select id, layer, status, text, summary, source_conversation_id from (
       select * from memories
       where archived_at is null and status in ('active', 'pending')
         and layer in ('rule', 'profile', 'note')
@@ -311,6 +313,7 @@ export async function memoriesVisibleTo(
     layer: r.layer,
     status: r.status,
     text: r.text,
+    summary: r.summary,
     sourceConversationId: r.source_conversation_id,
   }));
 }
@@ -400,7 +403,7 @@ export interface MemoryReviewInput {
   layer: string;
   decision: "run" | "ask" | "block" | "error";
   reason: string;
-  outcome: "active" | "pending";
+  outcome: "active" | "pending" | "not_saved";
   model?: string;
   promptVersion?: string;
   inputTokens?: number;

@@ -20,14 +20,14 @@ export async function checkMemory(runtime: Runtime): Promise<DoctorCheck[]> {
       ? "consolidação em segundo plano desligada nas configurações da memória"
       : status.available
         ? `consolidação em segundo plano: ${status.model} (a cada ${settings.idleMinutes} min de silêncio ou ${settings.maxTurns} mensagens)`
-        : `consolidação em segundo plano sem modelo (${status.reason ?? "sem motivo"}): nada é consolidado e o que o bot escreve depois de ler conteúdo de fora espera você`,
+        : `consolidação em segundo plano sem modelo (${status.reason ?? "sem motivo"}): nada é consolidado e o que o bot escreve depois de ler conteúdo de fora não é salvo`,
   });
   const pending = await listMemories(db, { status: "pending", limit: 200 });
   if (pending.length > 0) {
     checks.push({
       component: "Memória pendente",
       ok: true,
-      detail: `${pending.length} proposta(s) esperam você (suup memory pending)`,
+      detail: `${pending.length} proposta(s) de antes ainda esperam você (suup memory pending); o que o bot escreve agora vale na hora`,
     });
   }
   const usage = await memoryPromptUsage(db, settings.promptLimitChars);

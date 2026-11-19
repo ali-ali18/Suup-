@@ -151,6 +151,7 @@ export {
   archiveMemory,
   confirmMemory,
   expireUnusedMemories,
+  findMemoriesWithSummary,
   findMemoriesWithText,
   getMemory,
   getMemoryRevision,
@@ -185,6 +186,7 @@ export {
   restoreMemory,
   type SearchMemoriesOptions,
   searchMemories,
+  searchMemoriesBroadening,
   touchMemories,
   undoMemoryRevision,
   updateMemory,
@@ -246,6 +248,7 @@ export {
   markMessageDelivered,
   type SearchMessagesOptions,
   searchMessages,
+  searchMessagesBroadening,
 } from "./messages.js";
 export {
   MIGRATIONS_DIR,

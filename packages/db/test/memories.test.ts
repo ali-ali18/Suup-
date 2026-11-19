@@ -15,6 +15,7 @@ import {
   memoryContextFor,
   restoreMemory,
   searchMemories,
+  searchMemoriesBroadening,
   updateMemory,
 } from "../src/index.js";
 import { DATABASE_URL, dbSuiteName, useIsolatedDb } from "./helpers.js";
@@ -383,6 +384,102 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("memories"), () => {
       expect(
         await searchMemories(ctx.db, { query: "café -açúcar", botId: a.id, limit: 5 }),
       ).toEqual([]);
+    });
+  });
+
+  describe("any-word search and the fallback", () => {
+    it("`match: any` is the OR of the same lexemes (stems, accents), best match first; `all` stays strict", async () => {
+      const a = await newBot("any-a");
+      const both = await addMemory(ctx.db, {
+        layer: "note",
+        botId: a.id,
+        text: "Orçamento da cozinha aprovado com o Marcos.",
+        createdBy: "bot",
+      });
+      const one = await addMemory(ctx.db, {
+        layer: "note",
+        botId: a.id,
+        text: "A cozinha ganhou piso novo.",
+        createdBy: "bot",
+      });
+      const query = "orcamentos cozinha";
+      expect(
+        ids(
+          await searchMemories(ctx.db, { query, botId: a.id, limit: 5 }).then((h) =>
+            h.map((x) => x.memory),
+          ),
+        ),
+      ).toEqual([both.id]);
+      const any = await searchMemories(ctx.db, { query, botId: a.id, limit: 5, match: "any" });
+      expect(any.map((h) => h.memory.id)).toEqual([both.id, one.id]);
+      expect(any[0]?.rank).toBeGreaterThan(any[1]?.rank as number);
+    });
+
+    it("broadens only when all the words find nothing, and says so", async () => {
+      const a = await newBot("fb-a");
+      const note = await addMemory(ctx.db, {
+        layer: "note",
+        botId: a.id,
+        text: "Reunião do condomínio na terça às 19h.",
+        createdBy: "bot",
+      });
+      const strict = await searchMemoriesBroadening(ctx.db, {
+        query: "reunião condomínio",
+        botId: a.id,
+        limit: 5,
+      });
+      expect(strict.broader).toBe(false);
+      expect(ids(strict.hits.map((h) => h.memory))).toEqual([note.id]);
+      const wide = await searchMemoriesBroadening(ctx.db, {
+        query: "reunião escola",
+        botId: a.id,
+        limit: 5,
+      });
+      expect(wide.broader).toBe(true);
+      expect(ids(wide.hits.map((h) => h.memory))).toEqual([note.id]);
+      const none = await searchMemoriesBroadening(ctx.db, {
+        query: "foguete escola",
+        botId: a.id,
+        limit: 5,
+      });
+      expect(none).toEqual({ hits: [], broader: false });
+    });
+
+    it("never treats the query as tsquery syntax: quotes and operators are plain text", async () => {
+      const a = await newBot("fb-safe");
+      const note = await addMemory(ctx.db, {
+        layer: "note",
+        botId: a.id,
+        text: "O roteador novo fica na gaveta.",
+        createdBy: "bot",
+      });
+      for (const query of [
+        "",
+        '"',
+        "'; drop table memories; --",
+        "café & | ! (",
+        ":*",
+        "\\",
+        "\u0000roteador",
+        "a e o de",
+        "roteador:* & ! ( foguete",
+        "roteador' <-> gaveta \"",
+      ]) {
+        await expect(
+          searchMemoriesBroadening(ctx.db, { query, botId: a.id, limit: 5 }),
+        ).resolves.toBeDefined();
+      }
+      const out = await searchMemoriesBroadening(ctx.db, {
+        query: "roteador' & | ! (foguete:*",
+        botId: a.id,
+        limit: 5,
+      });
+      expect(out.broader).toBe(true);
+      expect(ids(out.hits.map((h) => h.memory))).toEqual([note.id]);
+      expect(await searchMemoriesBroadening(ctx.db, { query: "", botId: a.id, limit: 5 })).toEqual({
+        hits: [],
+        broader: false,
+      });
     });
   });
 

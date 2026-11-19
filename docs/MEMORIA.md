@@ -6,22 +6,24 @@ Como o harness lembra: o que é guardado, quem guarda, o que entra em toda execu
 
 | Camada | O que é | Quem escreve | Quem enxerga | Como chega ao bot |
 |---|---|---|---|---|
-| Regra (`rule`) | Ordem permanente do usuário ("responda sempre em português") | Você (`suup memory add rule`). Um bot (`remember`) ou a consolidação em segundo plano só **propõem**: fica **pendente** até você confirmar | Todos os bots (compartilhada) ou só um (escopo do bot) | **Entra em toda execução**, no prompt do sistema, como regra que vale mais que as preferências do bot |
-| Perfil (`profile`) | Fato duradouro sobre você ("moro em Recife") | Você. Um bot ou a consolidação só propõem (pendente), salvo o caso de dois lugares abaixo | Todos os bots | **Entra em toda execução**, no prompt do sistema |
+| Regra (`rule`) | Ordem permanente do usuário ("responda sempre em português") | Você (`suup memory add rule`), o bot (`remember`) ou a consolidação em segundo plano: **ativa na hora, sem pedir a sua confirmação** | Todos os bots (compartilhada) ou só um (escopo do bot) | **Entra em toda execução**, no prompt do sistema, como regra que vale mais que as preferências do bot |
+| Perfil (`profile`) | Fato duradouro sobre você ("moro em Recife") | Você, o bot ou a consolidação: **ativo na hora**, sem confirmação. Não duplica (veja "Sem duplicar") | Todos os bots | **Entra em toda execução**, no prompt do sistema |
 | Nota (`note`) | O que um bot aprendeu fazendo o trabalho dele | O bot (`remember`), a consolidação ou você (`--bot`) | Só aquele bot | **Buscada**: o bot usa `recall` quando precisa |
 | Diário (`journal`) | O que o bot fez, quando e com que resultado (nunca o texto que você digitou) | O sistema, ao fim de cada execução que fez algo (sem chamar modelo) | Só aquele bot | **Buscada** (`recall`) |
 
 Além delas, o **texto integral das conversas** fica guardado e o bot o consulta com `search_conversations` (busca por palavras, em português: "provas" acha "prova"). A busca, de memória e de conversas, **ignora acentos** ("avaliacao" acha "avaliação") onde o PostgreSQL tem a extensão `unaccent`, que a imagem Docker tem; num PostgreSQL sem ela a busca funciona como antes, só que com acentos (`suup doctor` e `GET /v1/doctor` dizem qual é o caso). Escrever sem acento *e* no plural contra um texto singular acentuado pode não achar ("avaliacoes" não acha "avaliação"): o radical muda.
 
-Toda memória tem texto, camada, escopo, data, **autor** (`você` ou `bot`), **origem** (a execução, a conversa e a mensagem de onde veio, quando veio de um bot), **estado** (ativa, pendente ou recusada), um **fato curto** (notas e diário) e a data do **último uso**. Uma regra ou um fato criado por um bot fica marcado como criado por ele, para você conferir, e **toda mudança** (quem, de onde, o que mudou) entra num histórico que dá para desfazer (veja "Histórico e desfazer").
+Toda memória tem texto, camada, escopo, data, **autor** (`você` ou `bot`), **origem** (a execução, a conversa e a mensagem de onde veio, quando veio de um bot), **estado** (ativa; pendente e recusada só existem em linhas de antes), um **fato curto** (notas e diário) e a data do **último uso**. Uma regra ou um fato criado por um bot fica marcado como criado por ele, para você conferir, e **toda mudança** (quem, de onde, o que mudou) entra num histórico que dá para desfazer (veja "Histórico e desfazer").
 
-### Estados: ativa, pendente, recusada
+### Estados: ativa (e as de antes: pendente, recusada)
+
+**O bot gerencia a memória sozinho; você só vê, se quiser.** Nada do que o bot ou a consolidação escrevem espera você: tudo é gravado ativo, com autor, origem e histórico (e dá para desfazer pela tela de Memória). A segurança é de estrutura: a citação verbatim de uma mensagem sua (consolidação), o revisor que decide quando a execução leu conteúdo de fora, a não duplicação e o histórico de toda mudança.
 
 - **Ativa** vale: regras e perfil entram em todo prompt; notas e diário são achados pelo `recall`.
-- **Pendente** é uma proposta que espera você: uma regra ou um fato sobre você que **um bot ou a consolidação** escreveram. **Nunca entra em prompt, nem é achada pelo `recall`**, até você confirmar (`suup memory confirm`, `POST /v1/memories/{id}/confirm`). Uma nota também fica pendente quando o bot a escreve depois de ler conteúdo de fora e a revisão não a liberou (abaixo). Nada é descartado em silêncio: o que ficou pendente aparece em `suup memory pending` e no quadro `memory.changed` com `change: "pending"` do fluxo em tempo real.
+- **Pendente** já não é criada por nada no fluxo normal. Sobra para linhas de antes (e para a API `confirm`/`reject`, mantida por compatibilidade): uma pendente **nunca entra em prompt, nem é achada pelo `recall`**, até alguém confirmar (`suup memory confirm`, `POST /v1/memories/{id}/confirm`); aparece em `suup memory pending`.
 - **Recusada** é o que você recusou (`suup memory reject`). Fica guardada para a consolidação e o `remember` não proporem a mesma coisa outra vez (comparação exata do texto, ignorando só caixa e espaços).
 
-Uma proposta de **atualização** de uma regra ou de um fato ativo é uma memória pendente que "troca" a outra: confirmar a nova arquiva a velha, recusar não toca em nada.
+Uma **atualização** de uma regra, de um fato ou de uma nota ativos **edita a memória no lugar** (o histórico guarda o texto de antes). Pendentes que "trocavam" outra (de antes) continuam funcionando: confirmar a nova arquiva a velha.
 
 ## O que entra em toda execução
 
@@ -72,13 +74,12 @@ O bot salva com `remember` (`rule`, `profile` ou `note`, e um `summary`, o fato 
 
 | Escreveu | A execução leu conteúdo de fora? | Resultado |
 |---|---|---|
-| nota | não | **ativa** na hora (você vê e desfaz) |
-| regra ou fato sobre você | não | **pendente**, e o bot é avisado de que espera você |
-| qualquer um | **sim** | o pedido vai antes ao **modelo barato** (o do auto-review): `run` mantém o resultado da linha de cima; `ask`, `block`, erro, tempo esgotado ou **modelo indisponível** deixam a memória **pendente** (nunca descartada), e o bot é avisado |
+| regra, fato sobre você ou nota | não | **ativa** na hora, sem confirmação |
+| qualquer um | **sim** | o pedido vai antes ao **modelo barato** (o do auto-review), e **ele decide**: `run` grava ativa; `ask`, `block`, erro, tempo esgotado ou **modelo indisponível** **não gravam** (nunca ficam pendentes): o bot é avisado de que **não foi salvo** e por quê, e a revisão fica em `memory_reviews` com `outcome: not_saved` |
 
 **"Leu conteúdo de fora"** não é decidido por texto: é `true` quando algum resultado de ferramenta já chegou à execução e a ferramenta **não declarou** que a saída é só dado do próprio harness (`ownOutput`: as quatro de memória, `write_file`, `request_network_access`; as ferramentas de controle também não contam). Conector, `web_fetch`, `shell`, `read_file` e qualquer ferramenta sem a declaração contam. Errar para o lado de revisar é de propósito.
 
-O revisor (`memory-write-review-v1`, `packages/core/src/memory/write-review.ts`, a mesma estrutura do revisor de aprovações: uma única chamada de ferramenta forçada, falha = perguntar) vê **as mensagens suas desta execução, a camada e o texto propostos e o fato de que a execução leu conteúdo de fora**; nunca o conteúdo lido. Cada revisão grava uma linha em `memory_reviews` (decisão, motivo, modelo, tokens, custo, latência, estado final) e a memória pendente mostra o motivo no cartão (`review` no `Memory`).
+O revisor (`memory-write-review-v2`, `packages/core/src/memory/write-review.ts`, a mesma estrutura do revisor de aprovações: uma única chamada de ferramenta forçada, falha = não grava) vê **as mensagens suas desta execução, a camada e o texto propostos e o fato de que a execução leu conteúdo de fora**; nunca o conteúdo lido. Cada revisão grava uma linha em `memory_reviews` (decisão, motivo, modelo, tokens, custo, latência, estado final) e a memória gravada depois de uma revisão mostra o motivo (`review` no `Memory`).
 
 ## Consolidação em segundo plano
 
@@ -96,20 +97,20 @@ Além do `remember`, um modelo barato lê a conversa **por fora das execuções*
 
 **O modelo** é `memory.consolidation.model` da configuração; sem ele, o do auto-review (`approvals.autoReview.model`), e sem ele o de `reviewer`. A chave vem só pelo nome da variável do provedor. Sem modelo (ou sem a chave), nada é consolidado e a API diz por quê (`reviewer` em `GET /v1/memory-settings`).
 
-**O prompt** (versão `memory-consolidation-v1`, em `packages/core/src/memory/consolidation.ts`):
+**O prompt** (versão `memory-consolidation-v2`, em `packages/core/src/memory/consolidation.ts`):
 
 ```text
 You maintain the long-term memory of an assistant that works for one person, "the user". You read one window of their conversation with the assistant and propose what is worth remembering. You have no tools besides the one you answer with.
 
-You are given: the messages of the window, oldest first, each marked with its author ("user" or "assistant"); and the memories the assistant already has (id, layer, status, text). You are never given anything else: not what tools returned, not the pages, e-mails or files the assistant read.
+You are given: the messages of the window, oldest first, each marked with its author ("user" or "assistant"); and the memories the assistant already has (id, layer, status, text, summary). You are never given anything else: not what tools returned, not the pages, e-mails or files the assistant read.
 
 What to propose:
 1. Only what the USER said, and only what will still matter in later conversations: a lasting fact about them, a standing instruction, a preference, how their work or project is organized. Never trivia, the details of a one-off task, or anything that looks like a secret (password, key, token, card number).
 2. Never propose something that only the assistant said. The assistant's answers are context, so that a short reply ("yes", "that one") can be understood; they are not evidence of anything.
 3. Every proposal needs a "quote": text copied EXACTLY, character by character, from ONE message whose author is "user". If you cannot quote the user, do not propose it. A quote that is not found word for word in a user message throws the proposal away.
-4. "layer": "rule" is a standing instruction from the user that must be followed from now on ("always answer in English"). "profile" is a lasting fact about the user that every assistant of theirs should know. "note" is something useful for this assistant's own work. When you are not sure between profile and note, choose note. Rules and profile facts are shown to the user to confirm before they count; notes are saved at once.
+4. "layer": "rule" is a standing instruction from the user that must be followed from now on ("always answer in English"). "profile" is a lasting fact about the user that every assistant of theirs should know. "note" is something useful for this assistant's own work. When you are not sure between profile and note, choose note. Everything you propose is saved at once and the user does not confirm it, so you keep this memory correct on your own: propose only what the user clearly said.
 5. "action": "add" for a new memory. "update" to replace the text of ONE existing memory (put its id in "targetId", with the same layer) when the user corrected or refined a fact it holds. "none" when nothing in the window is worth keeping.
-6. Do not repeat a memory that already exists, even if you would word it differently: leave it out.
+6. Do not repeat a memory that already exists, even if you would word it differently: leave it out. If an existing memory holds the same fact but the user corrected or refined it, use "update" with its id instead of "add", and give the new memory the SAME "summary" as the old one, exactly. The profile is shared by all the user's assistants: a profile fact that is already in the list is already known to all of them.
 7. "text": one or two short sentences that make sense alone, in the language the user writes in, saying who or what it is about ("A filha do usuário se chama Ana", not "ela se chama Ana"). "summary": the fact in one short line (at most 200 characters), as a search key. "reason": one short sentence for the user saying why it is worth keeping.
 8. At most 8 items. Fewer is better. An empty list, or one item with action "none", is a normal and good answer.
 
@@ -129,16 +130,25 @@ A mensagem do usuário do pedido traz `<window>` (cada mensagem com `author="use
 | mesmo texto (igual, ignorando só caixa e espaços) já existe | descartada (`duplicate`); se você o recusou antes, `rejected_before` |
 | erro de rede, tempo esgotado (60 s) ou resposta fora do formato | **nada é gravado**; a linha vira `failed` com o motivo |
 
-A citação prova **de quem é a frase**, não que ela **sustente** o que o modelo concluiu (isso é entender texto: é do modelo). Na medição real, um item saiu com uma citação verdadeira, sua e que não dizia o que ele afirmava (seção "Medindo", abaixo). É por isso que regra e perfil nascem pendentes.
+A citação prova **de quem é a frase**, não que ela **sustente** o que o modelo concluiu (isso é entender texto: é do modelo). Na medição real, um item saiu com uma citação verdadeira, sua e que não dizia o que ele afirmava (seção "Medindo", abaixo). Como nada espera você agora, esta é a lacuna que o dono aceitou em troca de autonomia: o que segura é o modelo, o revisor e o histórico com desfazer.
 
 **O que vira o quê:**
 
 - **Nota**: gravada na hora, autor `bot`, origem = esta consolidação e a mensagem da citação, com o fato curto. Visível e desfazível.
-- **Regra** e **perfil**: **pendentes** (a regra, só do bot daquela conversa; o perfil, de todos). Não entram em prompt antes de você confirmar.
-- **`update`** de uma nota: edita a nota (histórico: `edited`, por `consolidation`). De uma regra ou perfil ativos: uma proposta pendente que troca a antiga quando confirmada. De uma pendente: edita a pendente.
-- **Promoção**: um fato visto em **duas conversas diferentes** com o **mesmo texto** (igual, ignorando só caixa e espaços; nada aproximado) vira um fato **ativo** do perfil: a nota existente (ou o fato pendente) é promovida, o histórico guarda a camada e o escopo antigos e dá para desfazer. Fora isso, uma nota fica nota. **Decisão a confirmar com o dono:** esta é a leitura do plano ("ou quando o mesmo fato foi proposto em duas conversas diferentes"); se preferir que a promoção também espere você, é uma linha em `applyProposal` (`packages/runtime/src/memory-consolidation.ts`).
+- **Regra** e **perfil**: **ativos na hora**, como a nota (a regra, só do bot daquela conversa; o perfil, de todos os bots). Entram no prompt a partir da próxima execução.
+- **`update`** de uma nota: edita a nota (histórico: `edited`, por `consolidation`). De uma regra ou de um perfil: também edita no lugar. A consolidação não cria mais pendentes.
+- **Promoção**: um fato visto em **duas conversas diferentes** com o **mesmo texto** (igual, ignorando só caixa e espaços; nada aproximado) vira um fato **ativo** do perfil: a nota existente (ou o fato pendente) é promovida, o histórico guarda a camada e o escopo antigos e dá para desfazer. Fora isso, uma nota fica nota. Agora é coerente com o resto: nada espera você.
 
 **Registro.** Cada tentativa é uma linha de `memory_consolidations` (`GET /v1/memory-consolidations`, `suup memory consolidations`): motivo, janela (`fromSeq`, `toSeq`), turnos, modelo, versão do prompt, tokens, custo, latência, o que o modelo **propôs**, o que **ficou** (id da memória, ação) e o que foi **descartado** (e por quê), e o erro, se houve. Um erro nunca fica só no log do processo: está na linha.
+
+## Sem duplicar
+
+Antes de gravar um fato de perfil ou uma nota (consolidação e `remember`), o código confere, **por igualdade exata** (ignorando só caixa e espaços; nada aproximado):
+
+- **o mesmo texto** já existe, ativo ou pendente, onde o bot enxerga (as memórias compartilhadas e as dele; o **perfil é compartilhado**, então vale o de **qualquer** bot): não grava de novo (`duplicate` na consolidação; o `remember` devolve a memória que já existe). Uma nota cujo texto já é um fato de perfil também não é gravada. Um texto que você recusou nunca volta;
+- **o mesmo fato curto** (`summary`, igual com a mesma comparação): se a consolidação propõe **adicionar** um fato de perfil e já existe um fato de perfil, ou uma nota daquele bot, com o mesmo `summary`, a adição vira **atualização** daquela memória (se era uma nota, ela é promovida a perfil). O prompt (`memory-consolidation-v2`) mostra o `summary` das memórias existentes e manda o modelo reaproveitá-lo para atualizar em vez de repetir.
+
+Fora isso o modelo decide (sinônimos e outras palavras são com ele; o código não compara "parecido").
 
 ## O fato curto (`summary`)
 
@@ -183,7 +193,7 @@ O que é seu escolher fica no servidor (tabela `memory_settings`, uma linha só,
 
 `suup eval memory-recall` (e `evals/test/memory-recall.test.ts`, no CI) mede se o `recall` e o `search_conversations` põem o item certo nos 5 primeiros, numa memória **inventada** (28 notas, 10 entradas de diário, 8 conversas) e 20 perguntas escritas antes de rodar, **com e sem o fato curto**. Resultado e leitura em [TESTES-REAIS.md](TESTES-REAIS.md) ("Fase 3", item G): com **todas** as palavras-chave (o que o `recall` faz hoje) acerta 45% nos 5 primeiros, **com ou sem** o fato curto; com **qualquer** das palavras, 100% nas duas. O que falha é o vocabulário (a pergunta diz "orçamento", a nota diz "fechamos em quatro mil"), não a falta de vetor.
 
-Por isso, **por enquanto, notas e conversas usam busca textual** (PostgreSQL, português, sem acento) e **não** `pgvector`: embeddings exigem escolher um provedor (a Anthropic não tem modelo de embeddings), mandar texto da pessoa para fora e manter vetores em dia, e a medição mostra que o primeiro passo barato é outro (cair para "qualquer palavra" quando "todas" não acha nada, o que **não está feito**: é uma decisão do dono, medida acima). `pgvector` só se a medição **falhar** depois disso.
+Por isso, **notas e conversas usam busca textual** (PostgreSQL, português, sem acento) e **não** `pgvector`: embeddings exigem escolher um provedor (a Anthropic não tem modelo de embeddings), mandar texto da pessoa para fora e manter vetores em dia. O primeiro passo barato **está feito**: quando "todas as palavras" não acha nada, `recall` e `search_conversations` repetem a busca com **qualquer** das palavras, e dizem no resultado que é uma **busca mais ampla** ("BROADER MATCH"); com a de todas as palavras achando algo, o resultado é só ele. A consulta "qualquer" é montada pelo PostgreSQL (`suup_search_query_any`, migração 0018): ele devolve os radicais do texto (os mesmos do índice, com e sem acento, sem palavras vazias), e cada radical vira um termo por `plainto_tsquery('simple', radical)`, como texto puro (aspas, `&`, `|`, `!`, `:` nunca viram operador; sem regex). Uma negação (`-palavra`) vale só na busca de todas as palavras. Medido (`suup eval memory-recall`): **45% → 100%** nos 5 primeiros, com e sem o fato curto (o `recall` hoje). `pgvector` só se a medição **falhar** depois disso.
 
 ## A conversa
 
@@ -200,7 +210,7 @@ suup memory edit <id> "novo texto"
 suup memory forget <id>        # arquiva: some das execuções, e dá para desfazer
 suup memory restore <id>
 suup memory search "palavras" [--bot <bot>] [--layer ...] [--messages]
-suup memory pending                  # o que espera a sua confirmação
+suup memory pending                  # só linhas de antes: o fluxo normal não cria pendentes
 suup memory confirm <id>             # passa a valer (a partir da próxima execução)
 suup memory reject <id>              # recusada: não é proposta de novo
 suup memory history <id>             # quem mudou, de onde, o que mudou
@@ -218,4 +228,4 @@ A mesma memória está na API (`/v1/memories`, [API.md](API.md)): listar, criar,
 
 ## O que o bot nunca deve guardar
 
-Senhas, chaves, tokens, números de cartão e detalhes de uma tarefa pontual. Nem a ferramenta `remember` nem a consolidação recusam nada **por aparência** (a detecção por padrão foi removida, veja acima): quem pede isso é o prompt do bot, a descrição da ferramenta e o prompt da consolidação. A defesa adicional é a de estrutura: o que o bot escreve como regra ou fato sobre você **espera você**, o que ele escreve depois de ler conteúdo de fora passa por um revisor antes, a consolidação só cita o que **você** disse e nunca vê o conteúdo lido, e tudo tem origem, histórico e desfazer. Na medição com o modelo real, a senha dita no meio da conversa **não** foi para nenhuma memória, mas isso é o modelo, não uma garantia do código (TESTES-REAIS.md).
+Senhas, chaves, tokens, números de cartão e detalhes de uma tarefa pontual. Nem a ferramenta `remember` nem a consolidação recusam nada **por aparência** (a detecção por padrão foi removida, veja acima): quem pede isso é o prompt do bot, a descrição da ferramenta e o prompt da consolidação. A defesa adicional é a de estrutura: o que o bot escreve depois de ler conteúdo de fora passa por um revisor que **decide** (sem liberação, não grava), a consolidação só cita o que **você** disse e nunca vê o conteúdo lido, e tudo tem origem, histórico e desfazer. Na medição com o modelo real, a senha dita no meio da conversa **não** foi para nenhuma memória, mas isso é o modelo, não uma garantia do código (TESTES-REAIS.md).

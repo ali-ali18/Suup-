@@ -100,8 +100,8 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("memory service and run context"), ()
         text: "planilha compartilhada de despesas",
         createdBy: "user",
       });
-      const seenByA = await a.service.recall({ query: "planilha" });
-      const seenByB = await b.service.recall({ query: "planilha" });
+      const seenByA = (await a.service.recall({ query: "planilha" })).hits;
+      const seenByB = (await b.service.recall({ query: "planilha" })).hits;
       expect(seenByA.map((h) => h.layer).sort()).toEqual(["note", "profile"]);
       expect(seenByB.map((h) => h.layer)).toEqual(["profile"]);
       // Excerpts come back as plain text.
@@ -110,7 +110,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("memory service and run context"), ()
       }
       // Layers filter.
       expect(
-        (await a.service.recall({ query: "planilha", layers: ["note"] })).map((h) => h.layer),
+        (await a.service.recall({ query: "planilha", layers: ["note"] })).hits.map((h) => h.layer),
       ).toEqual(["note"]);
     });
 
@@ -127,7 +127,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("memory service and run context"), ()
       expect((await getMemory(ctx.db, note.id))?.archivedAt).not.toBeNull();
       expect(await a.service.forget({ id: note.id })).toBe(false); // already forgotten
       expect(await a.service.forget({ id: "not-a-uuid" })).toBe(false);
-      expect(await a.service.recall({ query: "bule" })).toEqual([]);
+      expect(await a.service.recall({ query: "bule" })).toEqual({ hits: [], broader: false });
       // A shared memory can be forgotten by any bot.
       const rule = await addMemory(ctx.db, {
         layer: "rule",
@@ -145,11 +145,63 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("memory service and run context"), ()
         authorKind: "user",
         text: "Meu cachorro se chama Bolt e adora bolinhas.",
       });
-      const hits = await a.service.searchConversations({ query: "cachorro" });
+      const { hits } = await a.service.searchConversations({ query: "cachorro" });
       expect(hits).toHaveLength(1);
       expect(hits[0]).toMatchObject({ conversationId: a.conversation.id, author: "user" });
       expect(hits[0]?.excerpt).toContain("cachorro");
-      expect(await b.service.searchConversations({ query: "cachorro" })).toEqual([]);
+      expect(await b.service.searchConversations({ query: "cachorro" })).toEqual({
+        hits: [],
+        broader: false,
+      });
+    });
+
+    it("recall falls back to ANY word when no memory has all of them, says so, and keeps the all-words result when there is one", async () => {
+      const a = await world();
+      const b = await world();
+      const note = await a.service.remember({
+        layer: "note",
+        text: "A obra da cozinha com o Marcos fechou em quatro mil reais.",
+      });
+      await b.service.remember({ layer: "note", text: "Orçamento da cozinha do vizinho." });
+      const exact = await a.service.recall({ query: "obra cozinha" });
+      expect(exact.broader).toBe(false);
+      expect(exact.hits.map((h) => h.id)).toEqual([note.id]);
+      // a word is missing from every memory: broader match, and only what this bot sees
+      const wide = await a.service.recall({ query: "orçamento cozinha" });
+      expect(wide.broader).toBe(true);
+      expect(wide.hits.map((h) => h.id)).toEqual([note.id]);
+      expect(await a.service.recall({ query: "foguete submarino" })).toEqual({
+        hits: [],
+        broader: false,
+      });
+      await appendMessage(ctx.db, {
+        conversationId: a.conversation.id,
+        authorKind: "user",
+        text: "Quero pintar a varanda de azul.",
+      });
+      const convo = await a.service.searchConversations({ query: "varanda vermelha" });
+      expect(convo.broader).toBe(true);
+      expect(convo.hits).toHaveLength(1);
+      expect((await a.service.searchConversations({ query: "varanda azul" })).broader).toBe(false);
+    });
+
+    it("the fallback is safe with quotes, operators and special characters in the query", async () => {
+      const a = await world();
+      await a.service.remember({ layer: "note", text: "A senha do roteador novo fica na gaveta." });
+      for (const query of [
+        'roteador "gaveta',
+        "roteador' ; drop table memories; --",
+        "roteador & | ! ( ) : * <-> foguete",
+        "roteador \\ ' \" :* ))((",
+        "!!! ??? '",
+      ]) {
+        const out = await a.service.recall({ query });
+        expect(Array.isArray(out.hits), query).toBe(true);
+      }
+      const out = await a.service.recall({ query: "roteador' & | ! foguete:*" });
+      expect(out.broader).toBe(true);
+      expect(out.hits).toHaveLength(1);
+      expect(await a.service.recall({ query: "!!! ???" })).toEqual({ hits: [], broader: false });
     });
   });
 

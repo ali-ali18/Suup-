@@ -5,7 +5,9 @@ import {
   createGroupConversation,
   type Db,
   searchMemories,
+  searchMemoriesBroadening,
   searchMessages,
+  searchMessagesBroadening,
 } from "@suup/db";
 import { CONVERSATIONS, CORPUS, JOURNAL, NOTES, QUESTIONS, type RecallQuestion } from "./corpus.js";
 
@@ -23,6 +25,8 @@ import { CONVERSATIONS, CORPUS, JOURNAL, NOTES, QUESTIONS, type RecallQuestion }
  */
 
 export const TOP_K = 5;
+
+type Mode = "all" | "any" | "fallback";
 
 export type Variant = "with_summary" | "without_summary";
 
@@ -57,6 +61,11 @@ export interface RecallReport {
    * to decide whether the search should fall back to it when all the words find nothing.
    */
   anyWord: { with: VariantReport; without: VariantReport };
+  /**
+   * What `recall` and `search_conversations` do now: all the words, and only when that finds nothing,
+   * any of them (`searchMemoriesBroadening` / `searchMessagesBroadening`).
+   */
+  fallback: { with: VariantReport; without: VariantReport };
   /** Questions the full question text (not the key words) would have found, as a note on the method. */
   sentenceAsQuery: { hitAt5: number; n: number };
 }
@@ -142,9 +151,14 @@ export async function runRecallBenchmark(db: Db): Promise<RecallReport> {
     question: RecallQuestion,
     query: string,
     owner: { id: string },
+    mode: Mode,
   ): Promise<number | null> => {
     if (question.kind === "conversation") {
-      const hits = await searchMessages(db, { query, botId: chatBot.id, limit: 30 });
+      const opts = { query, botId: chatBot.id, limit: 30 };
+      const hits =
+        mode === "fallback"
+          ? (await searchMessagesBroadening(db, opts)).hits
+          : await searchMessages(db, { ...opts, match: mode });
       const order: string[] = [];
       for (const hit of hits) {
         const key = keyOfConversation.get(hit.message.conversationId);
@@ -153,12 +167,16 @@ export async function runRecallBenchmark(db: Db): Promise<RecallReport> {
       const at = order.indexOf(question.expected);
       return at === -1 ? null : at + 1;
     }
-    const hits = await searchMemories(db, {
+    const opts = {
       query,
       botId: owner.id,
-      layers: ["note", "journal"],
+      layers: ["note", "journal"] as ("note" | "journal")[],
       limit: TOP_K,
-    });
+    };
+    const hits =
+      mode === "fallback"
+        ? (await searchMemoriesBroadening(db, opts)).hits
+        : await searchMemories(db, { ...opts, match: mode });
     const at = hits.findIndex((h) => keyOfMemory.get(h.memory.id) === question.expected);
     return at === -1 ? null : at + 1;
   };
@@ -167,7 +185,7 @@ export async function runRecallBenchmark(db: Db): Promise<RecallReport> {
     variant: Variant,
     owner: { id: string },
     text: "keywords" | "question",
-    any = false,
+    mode: Mode = "all",
   ) =>
     summarize(
       variant,
@@ -176,7 +194,7 @@ export async function runRecallBenchmark(db: Db): Promise<RecallReport> {
           id: q.id,
           kind: q.kind,
           category: q.category,
-          rank: await rankOf(q, any ? q[text].split(" ").join(" or ") : q[text], owner),
+          rank: await rankOf(q, q[text], owner, mode),
         })),
       ),
     );
@@ -194,8 +212,12 @@ export async function runRecallBenchmark(db: Db): Promise<RecallReport> {
     with: await measure("with_summary", withBot, "keywords"),
     without: await measure("without_summary", withoutBot, "keywords"),
     anyWord: {
-      with: await measure("with_summary", withBot, "keywords", true),
-      without: await measure("without_summary", withoutBot, "keywords", true),
+      with: await measure("with_summary", withBot, "keywords", "any"),
+      without: await measure("without_summary", withoutBot, "keywords", "any"),
+    },
+    fallback: {
+      with: await measure("with_summary", withBot, "keywords", "fallback"),
+      without: await measure("without_summary", withoutBot, "keywords", "fallback"),
     },
     sentenceAsQuery: {
       n: QUESTIONS.length,
@@ -232,7 +254,7 @@ export function formatRecallReport(report: RecallReport): string {
     .filter((r) => r.rank === null || r.rank > report.topK)
     .map((r) => r.id);
   lines.push("");
-  lines.push("Com QUALQUER das palavras-chave (a or b or c), ainda sem mudar o `recall`:");
+  lines.push("Com QUALQUER das palavras-chave (a or b or c), sempre:");
   lines.push(
     `acerto nos 5 primeiros    ${pct(report.anyWord.without.hitAt5).padStart(6)}             ${pct(report.anyWord.with.hitAt5).padStart(6)}   (MRR ${report.anyWord.without.mrr.toFixed(2)} / ${report.anyWord.with.mrr.toFixed(2)})`,
   );
@@ -244,6 +266,13 @@ export function formatRecallReport(report: RecallReport): string {
       `${kind.padEnd(13)} (${String(a.n).padStart(2)} perguntas)  ${pct(a.hitAt5).padStart(6)}             ${pct(b.hitAt5).padStart(6)}`,
     );
   }
+  lines.push("");
+  lines.push(
+    "O que o `recall` e o `search_conversations` fazem agora (todas as palavras; se nada, qualquer uma):",
+  );
+  lines.push(
+    `acerto nos 5 primeiros    ${pct(report.fallback.without.hitAt5).padStart(6)}             ${pct(report.fallback.with.hitAt5).padStart(6)}   (MRR ${report.fallback.without.mrr.toFixed(2)} / ${report.fallback.with.mrr.toFixed(2)})`,
+  );
   lines.push("");
   lines.push(`Perdidas sem o fato curto: ${missedWithout.join(", ") || "nenhuma"}`);
   lines.push(`Perdidas com o fato curto: ${missed.join(", ") || "nenhuma"}`);

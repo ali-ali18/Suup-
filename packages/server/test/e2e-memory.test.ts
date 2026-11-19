@@ -3,7 +3,7 @@ import { MEMORY_SETTING_LIMITS as DB_LIMITS } from "@suup/db";
 import { describe, expect, it } from "vitest";
 import { DATABASE_URL, dbSuiteName, follow, until, useWorld } from "./world.js";
 
-// The memory through the API: the settings the user controls, what waits for their confirmation, the
+// The memory through the API: the settings the user controls, what the bot saves by itself (nothing waits for the user), the
 // history with undo, and a worker that consolidates a conversation in the background. What the
 // model MEANS by a memory is measured separately (evals/); here only the harness's own checks run.
 
@@ -37,7 +37,7 @@ const SCRIPTS = {
               }),
             ],
           }),
-          s({ text: "Anotei: duas coisas esperam a sua confirmação." }),
+          s({ text: "Anotei: a regra, o fato e a nota já valem." }),
         ],
       },
       { whenObjectiveContains: "SO-RESPONDA", agent: [s({ text: "Certo." })] },
@@ -174,8 +174,8 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("memory through the API"), { timeout:
     });
   });
 
-  describe("what waits for the user", () => {
-    it("a rule and a fact the bot saves are pending, never in a prompt; confirming makes them count; the history shows who did what", async () => {
+  describe("what the bot saves by itself", () => {
+    it("a rule, a fact and a note the bot saves are active at once and in the next prompt; the history shows who did what and the undo works", async () => {
       const { api } = w.started;
       const bot = await api.bots.create({
         name: "Anotadora",
@@ -191,77 +191,57 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("memory through the API"), { timeout:
         "the answer",
       );
 
-      // The stream said, as it happened, that two things wait for the user.
-      const pendingFrames = f.events.filter(
-        (e) => e.type === "memory.changed" && e.data.change === "pending",
-      );
+      // The stream never said that something waits: nothing is pending.
       expect(
-        pendingFrames.map((e) =>
-          e.type === "memory.changed" ? [e.data.memory.layer, e.data.memory.status] : [],
-        ),
-      ).toEqual([
-        ["rule", "pending"],
-        ["profile", "pending"],
-      ]);
+        f.events.filter((e) => e.type === "memory.changed" && e.data.change === "pending"),
+      ).toEqual([]);
       f.close();
-
-      const pending = await api.memories.pending();
-      const mine = pending.filter((m) => m.createdBy === "bot" && m.sourceRunId === sent.run.id);
-      expect(mine.map((m) => [m.layer, m.status, m.text])).toEqual([
-        ["rule", "pending", "Sempre responda com um haicai."],
-        ["profile", "pending", "O usuário tem um gato chamado Pipoca."],
-      ]);
-      expect(mine[0]?.sourceConversationId).toBe(conversation.id);
-      // The note counts at once, and is found by the short fact.
-      const notes = await api.memories.list({ layer: "note", botId: bot.id });
-      expect(notes.map((m) => [m.text, m.summary, m.status])).toEqual([
-        ["O gato do usuário gosta de atum.", "Gato gosta de atum", "active"],
-      ]);
-      // Not in the active list...
-      expect((await api.memories.list()).map((m) => m.id)).not.toContain(mine[0]?.id);
-
-      // ...and not in the next run's prompt.
-      const systemOfNext = async (name: string, key: string) => {
-        const other = await api.bots.create({ name, modelId: "model-x" });
-        const c = await api.bots.openConversation(other.id);
-        const run = await api.conversations.send(c.id, key);
-        await until(
-          async () => ((await api.runs.get(run.run.id)).status === "done" ? true : undefined),
-          "the run",
-        );
-        const [request] = (await api.runs.events(run.run.id, { types: ["model_request"] })).items;
-        return (await api.diagnostics.request(run.run.id, request?.seq as number)).request
-          .system as string;
-      };
-      const before = await systemOfNext("Leitora 1", "SO-RESPONDA um");
-      expect(before).not.toContain("haicai");
-      expect(before).not.toContain("Pipoca");
-
-      const rule = mine[0] as NonNullable<(typeof mine)[0]>;
-      const confirmed = await api.memories.confirm(rule.id);
-      expect(confirmed.status).toBe("active");
-      expect(await code(api.memories.confirm(rule.id))).toContain("conflict");
-      const refused = await api.memories.reject((mine[1] as NonNullable<(typeof mine)[1]>).id);
-      expect(refused.status).toBe("rejected");
-      expect((await api.memories.pending()).map((m) => m.id)).not.toContain(refused.id);
-
-      const after = await systemOfNext("Leitora 2", "SO-RESPONDA dois");
-      expect(after).toContain("Sempre responda com um haicai.");
-      expect(after).not.toContain("Pipoca");
-
-      // History: created by the bot, confirmed by the user; the undo of the confirmation makes it pending again.
-      const history = await api.memories.history(rule.id);
-      expect(history.map((h) => [h.kind, h.actor])).toEqual([
-        ["confirmed", "user"],
-        ["created", "bot"],
-      ]);
-      expect(history[1]?.originRunId).toBe(sent.run.id);
-      expect(history[1]?.originConversationId).toBe(conversation.id);
-      expect(await code(api.memories.undo(rule.id, (history[1] as { id: string }).id))).toContain(
-        "conflict",
+      expect((await api.memories.pending()).filter((m) => m.sourceRunId === sent.run.id)).toEqual(
+        [],
       );
-      const undone = await api.memories.undo(rule.id, (history[0] as { id: string }).id);
-      expect(undone.status).toBe("pending");
+
+      const active = await api.memories.list({ botId: bot.id });
+      const shared = await api.memories.list();
+      const mine = [...active, ...shared].filter(
+        (m) => m.createdBy === "bot" && m.sourceRunId === sent.run.id,
+      );
+      const byLayer = (layer: string) => mine.find((m) => m.layer === layer);
+      expect(byLayer("rule")).toMatchObject({
+        status: "active",
+        text: "Sempre responda com um haicai.",
+      });
+      expect(byLayer("profile")).toMatchObject({
+        status: "active",
+        text: "O usuário tem um gato chamado Pipoca.",
+      });
+      expect(byLayer("note")).toMatchObject({
+        status: "active",
+        summary: "Gato gosta de atum",
+      });
+      expect(byLayer("rule")?.sourceConversationId).toBe(conversation.id);
+
+      // It is in the next run's prompt, with no confirmation.
+      const other = await api.bots.create({ name: "Leitora", modelId: "model-x" });
+      const c = await api.bots.openConversation(other.id);
+      const run = await api.conversations.send(c.id, "SO-RESPONDA um");
+      await until(
+        async () => ((await api.runs.get(run.run.id)).status === "done" ? true : undefined),
+        "the run",
+      );
+      const [request] = (await api.runs.events(run.run.id, { types: ["model_request"] })).items;
+      const system = (await api.diagnostics.request(run.run.id, request?.seq as number)).request
+        .system as string;
+      expect(system).toContain("Sempre responda com um haicai.");
+      expect(system).toContain("Pipoca");
+
+      // History: created by the bot; undoing the creation forgets it, and undoing that brings it back.
+      const rule = byLayer("rule") as NonNullable<ReturnType<typeof byLayer>>;
+      const history = await api.memories.history(rule.id);
+      expect(history.map((h) => [h.kind, h.actor])).toEqual([["created", "bot"]]);
+      expect(history[0]?.originRunId).toBe(sent.run.id);
+      expect(history[0]?.originConversationId).toBe(conversation.id);
+      await api.memories.undo(rule.id, (history[0] as { id: string }).id);
+      expect((await api.memories.list()).map((m) => m.id)).not.toContain(rule.id);
       expect(await code(api.memories.history("00000000-0000-4000-8000-000000000000"))).toContain(
         "not_found",
       );
@@ -269,7 +249,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("memory through the API"), { timeout:
   });
 
   describe("the worker consolidates a conversation in the background", () => {
-    it("a quiet conversation is consolidated: the note is written, the fact is pending, the bad quotes are dropped, and the record says it all", async () => {
+    it("a quiet conversation is consolidated: the note and the fact are written active, the bad quotes are dropped, and the record says it all", async () => {
       const { api } = w.started;
       const bot = await api.bots.create({
         name: "Ouvinte",
@@ -305,7 +285,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("memory through the API"), { timeout:
         status: "done",
         reason: "idle",
         model: "model-x",
-        promptVersion: "memory-consolidation-v1",
+        promptVersion: "memory-consolidation-v2",
         userTurns: 1,
       });
       expect(row.costUsd).toBeGreaterThan(0);
@@ -326,18 +306,16 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("memory through the API"), { timeout:
         actor: "consolidation",
         originConsolidationId: row.id,
       });
-      const fact = (await api.memories.pending()).find(
+      const fact = (await api.memories.list({ layer: "profile" })).find(
         (m) => m.text === "O usuário tem uma cachorra chamada Mel.",
       );
-      expect(fact).toMatchObject({ layer: "profile", status: "pending" });
-      // The UI's card: the stream said so.
-      await f.waitFor(
-        (e) =>
-          e.type === "memory.changed" &&
-          e.data.change === "pending" &&
-          e.data.memory.id === fact?.id,
-        "the pending frame",
-      );
+      expect(fact).toMatchObject({ layer: "profile", status: "active", createdBy: "bot" });
+      expect((await api.memories.pending()).map((m) => m.id)).not.toContain(fact?.id);
+      expect((await api.memories.history(fact?.id as string))[0]).toMatchObject({
+        kind: "created",
+        actor: "consolidation",
+        originConsolidationId: row.id,
+      });
       f.close();
       // It does not run again for the same window.
       await new Promise((resolve) => setTimeout(resolve, 400));
@@ -346,15 +324,13 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("memory through the API"), { timeout:
       );
     });
 
-    it("the doctor says how many wait and whether the cap is passed", async () => {
+    it("the doctor says the memory works and nothing waits for the user", async () => {
       const { api } = w.started;
       const checks = (await api.diagnostics.doctor()).checks;
       const memory = checks.find((c) => c.component === "Memória");
       expect(memory?.ok).toBe(true);
       expect(memory?.detail).toContain("model-x");
-      expect(checks.find((c) => c.component === "Memória pendente")?.detail).toContain(
-        "esperam você",
-      );
+      expect(checks.find((c) => c.component === "Memória pendente")).toBeUndefined();
     });
   });
 });

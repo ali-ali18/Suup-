@@ -21,6 +21,7 @@ import {
   consolidationWindow,
   type Db,
   expireUnusedMemories,
+  findMemoriesWithSummary,
   findMemoriesWithText,
   finishConsolidation,
   getMemory,
@@ -51,7 +52,7 @@ export interface ConsolidationDeps {
 
 /** What one consolidation did, as it is recorded in `memory_consolidations.kept`. */
 export interface KeptItem {
-  action: "added" | "updated" | "proposed" | "promoted";
+  action: "added" | "updated" | "proposed" | "promoted"; // "proposed" only in old rows
   layer: "rule" | "profile" | "note";
   memoryId: string;
   status: "active" | "pending";
@@ -72,6 +73,7 @@ const toKnown = (m: VisibleMemory): KnownMemory => ({
   layer: m.layer as KnownMemory["layer"],
   status: m.status as KnownMemory["status"],
   text: m.text,
+  summary: m.summary,
 });
 
 /**
@@ -192,15 +194,18 @@ type Applied =
     };
 
 /**
- * The policy of what a verified proposal becomes (docs/MEMORIA.md):
- * - a note is written at once (author `bot`, origin: this consolidation and the message of the quote);
- * - a rule or a profile fact becomes PENDING (the user confirms; it never enters a prompt before);
- * - an update of a note edits it; an update of a rule or profile fact becomes a pending proposal that
- *   replaces the old one when confirmed;
- * - the same text (ignoring only case and white space) already there: dropped as a duplicate, unless
- *   it is a note, or a pending profile fact, from ANOTHER conversation: then the fact was seen in two
- *   conversations and it is promoted to an active profile fact; a text the user refused is never
- *   proposed again.
+ * The policy of what a verified proposal becomes (docs/MEMORIA.md). Nothing waits for the user: the
+ * quote check (the user said it) is the structural guard, and every change has a revision.
+ * - a rule, a profile fact or a note is written ACTIVE at once (author `bot`, origin: this
+ *   consolidation and the message of the quote, revision recorded, undoable); a rule said to one bot
+ *   stays with that bot, a profile fact is the user's, for every bot;
+ * - an update edits the memory in place (the history keeps the old text);
+ * - no duplication: the same text (ignoring only case and white space) already visible to the bot
+ *   (shared memories and its own, active or pending, ANY bot's profile) is dropped; an `add` of a
+ *   profile fact whose `summary` equals EXACTLY (same comparison) that of a visible profile fact or
+ *   note of this bot becomes an update of that memory;
+ * - the same note seen in two different conversations becomes an active profile fact (promotion);
+ * - a text the user refused is never written again.
  */
 async function applyProposal(
   tx: Db,
@@ -230,6 +235,7 @@ async function applyProposal(
     createdBy: "bot" as const,
     actor: "consolidation" as const,
   };
+  const summary = proposal.summary === null ? {} : { summary: proposal.summary };
 
   const same = await findMemoriesWithText(tx, proposal.text);
   if (same.some((m) => m.status === "rejected")) {
@@ -253,39 +259,49 @@ async function applyProposal(
       }
     }
   }
-  if (same.length > 0 && proposal.action === "add") {
+  const visibleSame = same.filter((m) => m.scope === "shared" || m.botId === claimed.botId);
+  if (visibleSame.length > 0 && proposal.action === "add") {
     return {
       dropped: { reason: "duplicate", detail: "Esta memória, com o mesmo texto, já existe." },
     };
   }
 
-  if (proposal.action === "update" && proposal.targetId !== null) {
-    const target = await getMemory(tx, proposal.targetId);
+  let targetId = proposal.action === "update" ? proposal.targetId : null;
+  if (proposal.action === "add" && proposal.layer === "profile" && proposal.summary !== null) {
+    // Same short fact (exact comparison) already known as a profile fact or as this bot's note:
+    // it is the same memory, so it is updated instead of added again.
+    const [known] = (
+      await findMemoriesWithSummary(tx, proposal.summary, {
+        layers: ["profile", "note"],
+        botId: claimed.botId,
+      })
+    ).filter((m) => m.status === "active" || m.status === "pending");
+    if (known !== undefined) targetId = known.id;
+  }
+
+  if (targetId !== null) {
+    let target = await getMemory(tx, targetId);
     if (target === null || target.archivedAt !== null) {
       return { dropped: { reason: "unchanged", detail: "A memória a atualizar já não existe." } };
     }
-    const editInPlace = target.layer === "note" || target.status === "pending";
-    if (editInPlace) {
-      const edited = await updateMemory(tx, target.id, proposal.text, {
-        actor: "consolidation",
-        origin,
-        ...(proposal.summary === null ? {} : { summary: proposal.summary }),
-      });
-      if (edited === null || edited.text === target.text) {
-        return { dropped: { reason: "unchanged", detail: "O texto já era este." } };
+    let promotedNow = false;
+    if (proposal.layer === "profile" && target.layer === "note" && target.status === "active") {
+      const promoted = await promoteToProfile(tx, target.id, { actor: "consolidation", origin });
+      if (promoted !== null) {
+        target = promoted;
+        promotedNow = true;
       }
-      return keptOf("updated", edited);
     }
-    const proposed = await addMemory(tx, {
-      layer: target.layer,
-      scope: target.scope,
-      ...(target.botId === null ? {} : { botId: target.botId }),
-      text: proposal.text,
-      ...source,
-      status: "pending",
-      supersedesId: target.id,
+    const before = target.text;
+    const edited = await updateMemory(tx, target.id, proposal.text, {
+      actor: "consolidation",
+      origin,
+      ...summary,
     });
-    return keptOf("proposed", proposed);
+    if (edited === null || (edited.text === before && !promotedNow)) {
+      return { dropped: { reason: "unchanged", detail: "O texto já era este." } };
+    }
+    return keptOf("updated", edited);
   }
 
   if (proposal.layer === "note") {
@@ -293,20 +309,20 @@ async function applyProposal(
       layer: "note",
       botId: claimed.botId,
       text: proposal.text,
-      ...(proposal.summary === null ? {} : { summary: proposal.summary }),
+      ...summary,
       ...source,
     });
     return keptOf("added", note);
   }
-  const pending = await addMemory(tx, {
+  const written = await addMemory(tx, {
     layer: proposal.layer,
     // A profile fact is the user's, for every bot; a rule said to one bot stays with that bot.
     ...(proposal.layer === "rule" ? { scope: "bot" as const, botId: claimed.botId } : {}),
     text: proposal.text,
+    ...summary,
     ...source,
-    status: "pending",
   });
-  return keptOf("proposed", pending);
+  return keptOf("added", written);
 }
 
 /** Asks for a consolidation of the conversation before its run compacts (it only queues). */

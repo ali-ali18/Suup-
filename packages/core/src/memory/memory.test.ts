@@ -291,7 +291,7 @@ describe("the review of a write the bot made after reading outside content", () 
       expect(await reviewer.review(request)).toMatchObject({
         decision,
         reason: "porque sim",
-        promptVersion: "memory-write-review-v1",
+        promptVersion: "memory-write-review-v2",
       });
     }
     const odd = createMemoryWriteReviewer({

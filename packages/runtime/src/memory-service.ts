@@ -16,8 +16,8 @@ import {
   HIGHLIGHT_START,
   type MemoryLayer,
   recordMemoryReview,
-  searchMemories,
-  searchMessages,
+  searchMemoriesBroadening,
+  searchMessagesBroadening,
   touchMemories,
 } from "@suup/db";
 import { z } from "zod";
@@ -48,10 +48,9 @@ export interface MemoryServiceDeps {
  *   `memoryContextFor` and `forget` all apply that rule).
  * - Audit: whatever the bot saves is marked `created_by = 'bot'`, records the run, the
  *   conversation of the run and the message that opened it, and enters the history of changes.
- * - A rule or a fact about the user that the bot saves is PENDING: it does not enter any prompt
- *   until the user confirms it. A note is active at once, unless the run had already read content
- *   from outside and the reviewer did not clear it (or there is no reviewer): then it is pending
- *   too. Nothing is ever dropped silently; the result tells the bot what happened.
+ * - What the bot saves is ACTIVE at once (rule, profile or note): nothing waits for the user. If the
+ *   run had already read content from outside, the reviewer decides: only `run` saves it; anything
+ *   else (or no reviewer) does NOT save it, the bot is told why and the review is recorded.
  * - Saving the same text twice returns the existing memory instead of piling up duplicates.
  *   (Same text: ignoring only case and white space; nothing fuzzy.)
  */
@@ -95,19 +94,21 @@ export function createMemoryService(
       const effective =
         layer === "rule" ? (scope ?? "shared") : layer === "profile" ? "shared" : "bot";
 
-      // The same text, already remembered where this bot would see it: nothing new to save. A fact
-      // the user refused is not saved again either, and the bot is told.
-      const same = (await findMemoriesWithText(db, text, { layers: [layer], botId })).filter(
-        (m) => m.scope === effective && (effective === "shared" || m.botId === botId),
+      // The same text, already remembered where this bot would see it (a note is also "already
+      // remembered" by a shared profile fact): nothing new to save. A fact the user refused is not
+      // saved again either, and the bot is told. Exact comparison (case and white space only).
+      const lookup: MemoryLayer[] = layer === "note" ? ["note", "profile"] : [layer];
+      const same = (await findMemoriesWithText(db, text, { layers: lookup, botId })).filter((m) =>
+        m.layer === layer
+          ? m.scope === effective && (effective === "shared" || m.botId === botId)
+          : true,
       );
       const known = same.find((m) => m.status !== "rejected");
       if (known !== undefined) {
         return {
           id: known.id,
           status: known.status === "pending" ? "pending" : "active",
-          ...(known.status === "pending"
-            ? { reason: "Já estava salva e espera a confirmação do usuário." }
-            : {}),
+          reason: "Already saved; nothing new was written.",
         };
       }
       if (same.some((m) => m.status === "rejected")) {
@@ -116,19 +117,15 @@ export function createMemoryService(
         );
       }
 
-      // What decides whether it counts now: the layer, and (after outside content) the reviewer.
-      let status: "active" | "pending" = layer === "note" ? "active" : "pending";
-      let reason: string | undefined =
-        layer === "note"
-          ? undefined
-          : "Uma regra ou um fato sobre o usuário só vale depois que ele confirma.";
+      // Nothing waits for the user. After the run read content from outside, the reviewer DECIDES:
+      // `run` saves it; anything else (ask, block, error, no reviewer) does NOT save it.
       let review: Awaited<ReturnType<MemoryWriteReviewer["review"]>> | undefined;
       const external = readExternal(facts);
+      let notSaved: string | undefined;
       if (external) {
         if (deps.reviewer === undefined) {
-          status = "pending";
-          reason =
-            "Nesta execução você leu conteúdo de fora e não há revisor disponível: o usuário precisa confirmar.";
+          notSaved =
+            "Nesta execução você leu conteúdo de fora e não há revisor disponível: a memória NÃO foi salva.";
         } else {
           review = await deps.reviewer.review({
             layer,
@@ -137,31 +134,15 @@ export function createMemoryService(
             userMessages: facts?.userMessages ?? [],
           });
           if (review.decision !== "run") {
-            status = "pending";
-            reason = `Nesta execução você leu conteúdo de fora e a revisão pediu a confirmação do usuário (${review.reason})`;
+            notSaved = `Nesta execução você leu conteúdo de fora e a revisão não liberou esta memória (${review.reason}): ela NÃO foi salva.`;
           }
         }
       }
-
-      const from = await sourceOf();
-      const saved = await addMemory(db, {
-        layer,
-        scope: effective,
-        ...(effective === "bot" ? { botId } : {}),
-        text: text.trim(),
-        ...(summary === undefined ? {} : { summary }),
-        createdBy: "bot",
-        actor: "bot",
-        status,
-        sourceRunId: runId,
-        ...(from.conversationId === undefined ? {} : { sourceConversationId: from.conversationId }),
-        ...(from.messageId === undefined ? {} : { sourceMessageId: from.messageId }),
-      });
-      if (external) {
-        await recordMemoryReview(db, {
+      const recordReview = (memoryId: string | null, outcome: "active" | "not_saved") =>
+        recordMemoryReview(db, {
           runId,
           botId,
-          memoryId: saved.id,
+          memoryId,
           layer,
           decision:
             review === undefined
@@ -169,10 +150,8 @@ export function createMemoryService(
               : review.failure === undefined
                 ? review.decision
                 : "error",
-          reason:
-            review?.reason ??
-            "Não há revisor disponível: a memória espera a confirmação do usuário.",
-          outcome: status,
+          reason: review?.reason ?? "Não há revisor disponível: a memória não foi salva.",
+          outcome,
           ...(review === undefined
             ? {}
             : {
@@ -184,12 +163,31 @@ export function createMemoryService(
                 latencyMs: review.latencyMs,
               }),
         });
+      if (notSaved !== undefined) {
+        await recordReview(null, "not_saved");
+        throw new MemoryRuleError(notSaved);
       }
-      return { id: saved.id, status, ...(reason === undefined ? {} : { reason }) };
+
+      const from = await sourceOf();
+      const saved = await addMemory(db, {
+        layer,
+        scope: effective,
+        ...(effective === "bot" ? { botId } : {}),
+        text: text.trim(),
+        ...(summary === undefined ? {} : { summary }),
+        createdBy: "bot",
+        actor: "bot",
+        status: "active",
+        sourceRunId: runId,
+        ...(from.conversationId === undefined ? {} : { sourceConversationId: from.conversationId }),
+        ...(from.messageId === undefined ? {} : { sourceMessageId: from.messageId }),
+      });
+      if (external) await recordReview(saved.id, "active");
+      return { id: saved.id, status: "active" };
     },
 
     async recall({ query, layers, limit }) {
-      const hits = await searchMemories(db, {
+      const { hits, broader } = await searchMemoriesBroadening(db, {
         query,
         botId,
         ...(layers === undefined ? {} : { layers: layers as MemoryLayer[] }),
@@ -199,13 +197,16 @@ export function createMemoryService(
         db,
         hits.map((h) => h.memory.id),
       );
-      return hits.map(({ memory, excerpt }) => ({
-        id: memory.id,
-        layer: memory.layer,
-        text: memory.text,
-        excerpt: plain(excerpt),
-        createdAt: memory.createdAt,
-      }));
+      return {
+        broader,
+        hits: hits.map(({ memory, excerpt }) => ({
+          id: memory.id,
+          layer: memory.layer,
+          text: memory.text,
+          excerpt: plain(excerpt),
+          createdAt: memory.createdAt,
+        })),
+      };
     },
 
     async forget({ id }) {
@@ -226,14 +227,21 @@ export function createMemoryService(
     },
 
     async searchConversations({ query, limit }) {
-      const hits = await searchMessages(db, { query, botId, limit: limit ?? 5 });
-      return hits.map(({ message, excerpt }) => ({
-        conversationId: message.conversationId,
-        messageId: message.id,
-        author: message.authorKind,
-        excerpt: plain(excerpt),
-        createdAt: message.createdAt,
-      }));
+      const { hits, broader } = await searchMessagesBroadening(db, {
+        query,
+        botId,
+        limit: limit ?? 5,
+      });
+      return {
+        broader,
+        hits: hits.map(({ message, excerpt }) => ({
+          conversationId: message.conversationId,
+          messageId: message.id,
+          author: message.authorKind,
+          excerpt: plain(excerpt),
+          createdAt: message.createdAt,
+        })),
+      };
     },
   };
 }

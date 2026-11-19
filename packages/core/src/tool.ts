@@ -144,28 +144,32 @@ export interface MemoryService {
     /** What the run knows about itself, for the checks on a write (docs/MEMORIA.md). */
     run?: RunFacts,
   ): Promise<RememberResult>;
-  recall(input: { query: string; layers?: RecallLayerName[]; limit?: number }): Promise<
-    {
+  recall(input: { query: string; layers?: RecallLayerName[]; limit?: number }): Promise<{
+    hits: {
       id: string;
       layer: RecallLayerName;
       text: string;
       /** The passage around the match, as plain text. */
       excerpt: string;
       createdAt: Date;
-    }[]
-  >;
+    }[];
+    /** `true` when no memory had ALL the words and these have at least one of them. */
+    broader: boolean;
+  }>;
   /** Forgets (archives) a memory visible to the bot. `false` when there is none with that id. */
   forget(input: { id: string }): Promise<boolean>;
   /** Full-text search over the past messages of the bot's conversations. */
-  searchConversations(input: { query: string; limit?: number }): Promise<
-    {
+  searchConversations(input: { query: string; limit?: number }): Promise<{
+    hits: {
       conversationId: string;
       messageId: string;
       author: "user" | "bot" | "system";
       excerpt: string;
       createdAt: Date;
-    }[]
-  >;
+    }[];
+    /** `true` when no message had ALL the words and these have at least one of them. */
+    broader: boolean;
+  }>;
 }
 
 /**
@@ -179,14 +183,14 @@ export interface RunFacts {
 }
 
 /**
- * `active`: the memory counts from the next run. `pending`: it waits for the user (a rule or a fact
- * about the user written by the bot never counts before they confirm; a note written after the run
- * read content from outside waits when the reviewer did not clear it). `reason` says why.
+ * `active`: the memory counts from the next run. Nothing the bot writes waits for the user. `pending`
+ * remains only for compatibility (an existing row). A write that the reviewer did not clear after the
+ * run read content from outside is NOT saved: the service throws a `MemoryRuleError` that says why.
  */
 export interface RememberResult {
   id: string;
   status: "active" | "pending";
-  /** Why it is pending, in words the bot can pass on. */
+  /** A note for the bot, in words it can pass on. */
   reason?: string;
 }
 

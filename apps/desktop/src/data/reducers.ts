@@ -274,6 +274,10 @@ export function orderedEvents(slice: EventsSlice | undefined): RunEvent[] {
 
 // ------------------------------------------------------------------ memory
 
+/** A memory with no `status` is an active one (the field is optional only for hand-built values). */
+export const memoryStatusOf = (memory: Memory): "active" | "pending" | "rejected" =>
+  memory.status ?? "active";
+
 export function mergeMemory(state: DataState, memory: Memory): DataState {
   const current = state.memories[memory.id];
   if (current !== undefined && !newerOrEqual(memory.updatedAt, current.updatedAt)) return state;
@@ -281,6 +285,10 @@ export function mergeMemory(state: DataState, memory: Memory): DataState {
   return { ...state, memories: { ...state.memories, [memory.id]: memory } };
 }
 
+/**
+ * The memories the server listed (active and forgotten ones). A pending one already held stays:
+ * the list of active memories does not carry it.
+ */
 export function setMemories(state: DataState, items: readonly Memory[]): DataState {
   const memories: Record<string, Memory> = {};
   for (const memory of items) {
@@ -288,7 +296,33 @@ export function setMemories(state: DataState, items: readonly Memory[]): DataSta
     memories[memory.id] =
       current !== undefined && current.updatedAt > memory.updatedAt ? current : memory;
   }
+  for (const [id, kept] of Object.entries(state.memories))
+    if (memories[id] === undefined && memoryStatusOf(kept) === "pending") memories[id] = kept;
   return { ...state, memories, memoriesLoaded: true };
+}
+
+/** The list of what waits for the user, as the server just said it. */
+export function setPendingMemories(state: DataState, items: readonly Memory[]): DataState {
+  let next = state;
+  for (const memory of items) next = mergeMemory(next, memory);
+  return next;
+}
+
+export function stalePendingMemoryIds(
+  state: Pick<DataState, "memories">,
+  listed: readonly Memory[],
+): string[] {
+  const ids = new Set(listed.map((m) => m.id));
+  return Object.values(state.memories)
+    .filter((m) => memoryStatusOf(m) === "pending" && !ids.has(m.id))
+    .map((m) => m.id);
+}
+
+/** What waits for the user's confirmation, from every bot, oldest first. */
+export function pendingMemories(state: Pick<DataState, "memories">): Memory[] {
+  return Object.values(state.memories)
+    .filter((m) => memoryStatusOf(m) === "pending")
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
 }
 
 // --------------------------------------------------------------- approvals

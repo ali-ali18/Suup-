@@ -9,7 +9,7 @@ const input = z.object({
     .min(1)
     .max(300)
     .describe(
-      "What to look for, as a few key words or a short phrase (not a long sentence): a name, a topic, a project. Matching is by words, with plurals and verb forms tolerated, so use the words the memory probably contains.",
+      "What to look for, as a few key words or a short phrase (not a long sentence): a name, a topic, a project. Matching is by words, with plurals and verb forms tolerated, so use the words the memory probably contains. If no memory has all the words, the result falls back to memories with at least one of them and says so.",
     ),
   layers: z
     .array(z.enum(["rule", "profile", "note", "journal"]))
@@ -40,7 +40,7 @@ export const recallTool = defineTool({
   async execute({ query, layers, limit }, ctx) {
     const memory = memoryOf(ctx);
     if (isOutput(memory)) return memory;
-    const hits = await memory.recall({
+    const { hits, broader } = await memory.recall({
       query,
       ...(layers === undefined ? {} : { layers }),
       limit: limit ?? 5,
@@ -55,7 +55,7 @@ export const recallTool = defineTool({
         `${i + 1}. [${hit.layer}] ${day(hit.createdAt)} · id ${hit.id}\n   ${clip(hit.text, 600).replaceAll("\n", "\n   ")}`,
     );
     return {
-      content: `${hits.length} memor${hits.length === 1 ? "y" : "ies"} found for ${JSON.stringify(query)}:\n${lines.join("\n")}`,
+      content: `${hits.length} memor${hits.length === 1 ? "y" : "ies"} found for ${JSON.stringify(query)}${broader ? " (BROADER MATCH: no memory had all the words, so these have at least one of them; check that they really answer what you need)" : ""}:\n${lines.join("\n")}`,
     };
   },
 });

@@ -1,4 +1,4 @@
-import { Pencil, RotateCcw, Trash2 } from "lucide-react";
+import { History, Pencil, RotateCcw, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { cx } from "../lib/cx.js";
 import { MutedText, Pill, PlainText, RoundButton, Tag, TextField } from "./primitives.js";
@@ -16,6 +16,21 @@ export interface MemoryItemProps {
   onForget(): void;
   onRestore(): void;
   compact?: boolean;
+  /** The fact in one short line (a note, a journal entry): faded under the text. */
+  summary?: string | null | undefined;
+  /** Opens the list of changes of this memory. */
+  onHistory?(): void;
+  /**
+   * A proposal that waits for you: "Descartar" and "Guardar" instead of the edit and forget
+   * buttons. `replacesText` is what it would replace; `reviewReason` is why it was held.
+   */
+  pending?: {
+    onConfirm(): void;
+    onReject(): void;
+    busy: boolean;
+    replacesText?: string | undefined;
+    reviewReason?: string | undefined;
+  };
 }
 
 /** An item of the memory (Figma v2/Item de memória): normal, or forgotten (can be restored). */
@@ -64,26 +79,77 @@ export function MemoryItem(p: MemoryItemProps) {
           <PlainText className={cx("text-body", p.archived && "text-text-muted line-through")}>
             {p.text}
           </PlainText>
+          {p.summary !== undefined && p.summary !== null && p.summary !== "" && (
+            <MutedText data-testid="memory-summary">{p.summary}</MutedText>
+          )}
+          {p.pending?.replacesText !== undefined && (
+            <MutedText data-testid="memory-replaces">Substitui: {p.pending.replacesText}</MutedText>
+          )}
+          {p.pending?.reviewReason !== undefined && (
+            <MutedText data-testid="memory-review">{p.pending.reviewReason}</MutedText>
+          )}
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex flex-wrap gap-1">
               <Tag>{p.layerLabel}</Tag>
               <Tag tone="outline">{p.scopeLabel}</Tag>
               {p.archived && <Tag tone="outline">Esquecida</Tag>}
+              {p.pending !== undefined && <Tag tone="outline">Pendente</Tag>}
             </span>
             <MutedText className="min-w-0 flex-1">
               {p.authorLabel} · {p.dateLabel}
             </MutedText>
             <span className="ml-auto inline-flex gap-1">
-              {p.archived ? (
-                <Pill
-                  tone="secondary"
-                  icon={<RotateCcw size={14} aria-hidden="true" />}
-                  onClick={p.onRestore}
-                >
-                  Restaurar
-                </Pill>
+              {p.pending !== undefined ? (
+                <>
+                  <Pill
+                    tone="quiet"
+                    disabled={p.pending.busy}
+                    data-testid="memory-reject"
+                    onClick={p.pending.onReject}
+                  >
+                    Descartar
+                  </Pill>
+                  <Pill
+                    tone="primary"
+                    disabled={p.pending.busy}
+                    data-testid="memory-confirm"
+                    onClick={p.pending.onConfirm}
+                  >
+                    Guardar
+                  </Pill>
+                </>
+              ) : p.archived ? (
+                <>
+                  {p.onHistory !== undefined && (
+                    <RoundButton
+                      label="Histórico da memória"
+                      tone="ghost"
+                      size="sm"
+                      onClick={p.onHistory}
+                    >
+                      <History size={16} aria-hidden="true" />
+                    </RoundButton>
+                  )}
+                  <Pill
+                    tone="secondary"
+                    icon={<RotateCcw size={14} aria-hidden="true" />}
+                    onClick={p.onRestore}
+                  >
+                    Restaurar
+                  </Pill>
+                </>
               ) : (
                 <>
+                  {p.onHistory !== undefined && (
+                    <RoundButton
+                      label="Histórico da memória"
+                      tone="ghost"
+                      size="sm"
+                      onClick={p.onHistory}
+                    >
+                      <History size={16} aria-hidden="true" />
+                    </RoundButton>
+                  )}
                   {p.editable && (
                     <RoundButton
                       label="Editar memória"

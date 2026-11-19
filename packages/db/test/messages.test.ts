@@ -15,6 +15,7 @@ import {
   listMessages,
   markMessageDelivered,
   searchMessages,
+  searchMessagesBroadening,
 } from "../src/index.js";
 import { DATABASE_URL, dbSuiteName, useIsolatedDb } from "./helpers.js";
 
@@ -384,6 +385,30 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("messages"), () => {
         searchMessages(ctx.db, { query: "x", limit: 5, conversationId: "not-a-uuid" }),
       ).rejects.toThrow();
       await expect(searchMessages(ctx.db, { query: "x".repeat(1001), limit: 5 })).rejects.toThrow();
+    });
+
+    it("falls back to any word only when all the words find nothing; hostile text stays plain text", async () => {
+      const { conv } = await newDirect();
+      await say(conv.id, "Quero pintar a varanda de azul.");
+      const opts = { conversationId: conv.id, limit: 5 };
+      const strict = await searchMessagesBroadening(ctx.db, { ...opts, query: "varanda azul" });
+      expect(strict.broader).toBe(false);
+      expect(strict.hits).toHaveLength(1);
+      const wide = await searchMessagesBroadening(ctx.db, { ...opts, query: "varanda vermelha" });
+      expect(wide.broader).toBe(true);
+      expect(wide.hits).toHaveLength(1);
+      const hostile = await searchMessagesBroadening(ctx.db, {
+        ...opts,
+        query: "varanda' & | ! (vermelha:* \" <->",
+      });
+      expect(hostile.broader).toBe(true);
+      expect(hostile.hits).toHaveLength(1);
+      for (const query of ["", '"', "'; drop table messages; --", ":*", "a e o de", "\\"]) {
+        expect(await searchMessagesBroadening(ctx.db, { ...opts, query })).toEqual({
+          hits: [],
+          broader: false,
+        });
+      }
     });
   });
 });

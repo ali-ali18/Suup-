@@ -45,11 +45,13 @@ import {
   setConnection,
   setConnectors,
   setMemories,
+  setPendingMemories,
   setRules,
   setSecrets,
   setVaultStatus,
   setWrittenRules,
   stalePendingIds,
+  stalePendingMemoryIds,
   upsertMessage,
 } from "./reducers.js";
 import { type DataStore, update } from "./store.js";
@@ -236,6 +238,7 @@ export class Sync {
       ...[...this.watched].map((id) => this.refreshConversation(id)),
       ...this.followed.map((id) => this.loadRunEvents(id)),
       this.memoryWatched ? this.loadMemories() : Promise.resolve(),
+      this.loadPendingMemories(),
       this.loadPendingApprovals(),
     ]);
   }
@@ -718,6 +721,55 @@ export class Sync {
     }
   }
 
+  /**
+   * What waits for the user's confirmation, from every bot (the chat and Pendências draw it). A
+   * memory held as pending that the list no longer has was decided somewhere else: read again.
+   */
+  async loadPendingMemories(): Promise<void> {
+    try {
+      const items = await this.deps.api.memories.pending();
+      const stale = stalePendingMemoryIds(this.store.getState(), items);
+      update(this.store, (s) => setPendingMemories(s, items));
+      if (stale.length === 0) return;
+      const [active, rejected] = await Promise.all([
+        this.deps.api.memories.list({ includeArchived: true, limit: 1000 }),
+        this.deps.api.memories.list({ status: "rejected", limit: 1000 }),
+      ]);
+      update(this.store, (s) => {
+        let next = s;
+        for (const memory of [...active, ...rejected])
+          if (stale.includes(memory.id)) next = mergeMemory(next, memory);
+        return next;
+      });
+    } catch (error) {
+      this.fail(error);
+    }
+  }
+
+  /**
+   * Confirms or refuses a pending memory. Not optimistic: the store changes with what the server
+   * answers. A `409` (already decided elsewhere) reads the lists again and says so.
+   */
+  async decideMemory(
+    id: string,
+    decision: "confirm" | "reject",
+  ): Promise<{ ok: true } | { ok: false; message: string }> {
+    try {
+      const memory =
+        decision === "confirm"
+          ? await this.deps.api.memories.confirm(id)
+          : await this.deps.api.memories.reject(id);
+      update(this.store, (s) => mergeMemory(s, memory));
+      return { ok: true };
+    } catch (error) {
+      if (error instanceof ApiError && error.code === "conflict") {
+        await this.loadPendingMemories();
+        return { ok: false, message: "Esta memória já tinha sido decidida em outro lugar." };
+      }
+      return { ok: false, message: messageOf(error) };
+    }
+  }
+
   unwatchMemories(): void {
     this.memoryWatched = false;
   }
@@ -738,6 +790,11 @@ export class Sync {
   /** Merges a bot the screen just created or edited (the stream says it too; same data). */
   mergeBotNow(bot: Bot): void {
     update(this.store, (s) => mergeBot(s, bot));
+  }
+
+  /** Merges a memory the screen got from a REST call (an undo): idempotent with the stream. */
+  mergeMemoryNow(memory: import("@suup/api").Memory): void {
+    update(this.store, (s) => mergeMemory(s, memory));
   }
 
   /** Merges a message the screen got from a REST call (idempotent with the stream). */

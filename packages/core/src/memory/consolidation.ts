@@ -7,7 +7,7 @@ import type { ToolSpec } from "../provider.js";
 import { quotedForPrompt } from "./forced-call.js";
 
 /** Bump it when the prompt or the answer format changes: it is recorded with every consolidation. */
-export const CONSOLIDATION_PROMPT_VERSION = "memory-consolidation-v1";
+export const CONSOLIDATION_PROMPT_VERSION = "memory-consolidation-v2";
 export const CONSOLIDATION_TOOL_NAME = "propose_memories";
 export const CONSOLIDATION_TIMEOUT_MS = 60_000;
 export const CONSOLIDATION_MAX_OUTPUT_TOKENS = 1500;
@@ -31,15 +31,15 @@ export type ProposalLayer = (typeof PROPOSAL_LAYERS)[number];
 
 export const CONSOLIDATION_SYSTEM_PROMPT = `You maintain the long-term memory of an assistant that works for one person, "the user". You read one window of their conversation with the assistant and propose what is worth remembering. You have no tools besides the one you answer with.
 
-You are given: the messages of the window, oldest first, each marked with its author ("user" or "assistant"); and the memories the assistant already has (id, layer, status, text). You are never given anything else: not what tools returned, not the pages, e-mails or files the assistant read.
+You are given: the messages of the window, oldest first, each marked with its author ("user" or "assistant"); and the memories the assistant already has (id, layer, status, text, summary). You are never given anything else: not what tools returned, not the pages, e-mails or files the assistant read.
 
 What to propose:
 1. Only what the USER said, and only what will still matter in later conversations: a lasting fact about them, a standing instruction, a preference, how their work or project is organized. Never trivia, the details of a one-off task, or anything that looks like a secret (password, key, token, card number).
 2. Never propose something that only the assistant said. The assistant's answers are context, so that a short reply ("yes", "that one") can be understood; they are not evidence of anything.
 3. Every proposal needs a "quote": text copied EXACTLY, character by character, from ONE message whose author is "user". If you cannot quote the user, do not propose it. A quote that is not found word for word in a user message throws the proposal away.
-4. "layer": "rule" is a standing instruction from the user that must be followed from now on ("always answer in English"). "profile" is a lasting fact about the user that every assistant of theirs should know. "note" is something useful for this assistant's own work. When you are not sure between profile and note, choose note. Rules and profile facts are shown to the user to confirm before they count; notes are saved at once.
+4. "layer": "rule" is a standing instruction from the user that must be followed from now on ("always answer in English"). "profile" is a lasting fact about the user that every assistant of theirs should know. "note" is something useful for this assistant's own work. When you are not sure between profile and note, choose note. Everything you propose is saved at once and the user does not confirm it, so you keep this memory correct on your own: propose only what the user clearly said.
 5. "action": "add" for a new memory. "update" to replace the text of ONE existing memory (put its id in "targetId", with the same layer) when the user corrected or refined a fact it holds. "none" when nothing in the window is worth keeping.
-6. Do not repeat a memory that already exists, even if you would word it differently: leave it out.
+6. Do not repeat a memory that already exists, even if you would word it differently: leave it out. If an existing memory holds the same fact but the user corrected or refined it, use "update" with its id instead of "add", and give the new memory the SAME "summary" as the old one, exactly. The profile is shared by all the user's assistants: a profile fact that is already in the list is already known to all of them.
 7. "text": one or two short sentences that make sense alone, in the language the user writes in, saying who or what it is about ("A filha do usuário se chama Ana", not "ela se chama Ana"). "summary": the fact in one short line (at most 200 characters), as a search key. "reason": one short sentence for the user saying why it is worth keeping.
 8. At most ${MAX_PROPOSALS} items. Fewer is better. An empty list, or one item with action "none", is a normal and good answer.
 
@@ -94,6 +94,8 @@ export interface KnownMemory {
   layer: ProposalLayer;
   status: "active" | "pending";
   text: string;
+  /** The short fact, when it has one (the model reuses it, exactly, to update instead of adding). */
+  summary?: string | null;
 }
 
 /** Plain character replacement: `<` cannot close a block it sits in. */
@@ -132,7 +134,7 @@ export function buildConsolidationMessage(
           m.text.length > MAX_KNOWN_MEMORY_CHARS
             ? `${m.text.slice(0, MAX_KNOWN_MEMORY_CHARS)}…`
             : m.text,
-        )}`,
+        )}${m.summary == null ? "" : ` | summary: ${quotedForPrompt(m.summary)}`}`,
     );
   return [
     "## The window",

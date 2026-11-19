@@ -321,6 +321,8 @@ export interface SearchMessagesOptions {
   /** Only conversations this bot is a member of. */
   botId?: string;
   limit: number;
+  /** `all` (default): every word. `any`: at least one (`suup_search_query_any`, migration 0018). */
+  match?: "all" | "any";
 }
 
 export interface MessageSearchHit {
@@ -349,7 +351,7 @@ export async function searchMessages(
   const botId = opts.botId && uuidSchema.parse(opts.botId);
   const { sql } = db;
   const rows = await sql<(MessageRow & { excerpt: string; rank: number })[]>`
-    with q as (select suup_search_query(${query}) as tsq)
+    with q as (select ${opts.match === "any" ? sql`suup_search_query_any(${query})` : sql`suup_search_query(${query})`} as tsq)
     select ${sql(MESSAGE_COLUMNS.map((c) => `m.${c}`))},
       ts_rank(m.search, q.tsq) as rank,
       ts_headline('portuguese', m.text, q.tsq, ${SEARCH_HEADLINE_OPTIONS}) as excerpt
@@ -367,4 +369,15 @@ export async function searchMessages(
     order by rank desc, m.created_at desc, m.id
     limit ${limit}`;
   return rows.map((r) => ({ message: mapMessage(r), excerpt: r.excerpt, rank: Number(r.rank) }));
+}
+
+/** Every word first; only when that finds nothing, any word (`broader: true`). */
+export async function searchMessagesBroadening(
+  db: Db,
+  opts: Omit<SearchMessagesOptions, "match">,
+): Promise<{ hits: MessageSearchHit[]; broader: boolean }> {
+  const strict = await searchMessages(db, { ...opts, match: "all" });
+  if (strict.length > 0) return { hits: strict, broader: false };
+  const hits = await searchMessages(db, { ...opts, match: "any" });
+  return { hits, broader: hits.length > 0 };
 }

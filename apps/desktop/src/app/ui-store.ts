@@ -12,7 +12,7 @@ import type { ToastItem } from "../ui/primitives.js";
 export type View = "chat" | "pending" | "memory" | "inspector";
 export type PanelTab = "activity" | "library";
 /** The sections of the settings dialog. */
-export type SettingsTab = "general" | "permissions" | "vault" | "connectors";
+export type SettingsTab = "general" | "permissions" | "memory" | "vault" | "connectors";
 
 export interface UiState {
   view: View;

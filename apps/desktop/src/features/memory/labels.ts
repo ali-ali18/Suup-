@@ -27,3 +27,13 @@ export const authorLabel = (memory: Memory): string =>
 export function dateLabel(iso: string): string {
   return new Date(iso).toLocaleDateString("pt-BR", { day: "numeric", month: "short" });
 }
+
+/** A moment with its time ("19 de nov., 14:05"): the history of a memory is read by the minute. */
+export function whenLabel(iso: string): string {
+  return new Date(iso).toLocaleString("pt-BR", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}

@@ -28,8 +28,6 @@ export interface ConsolidationCaseResult {
   invariants: {
     /** Every kept item has a quote that is word for word in a message of the user. */
     quotesVerified: boolean;
-    /** No rule or profile fact is active: they all wait for the user. */
-    ruleProfilePending: boolean;
     /** None of the case's forbidden texts is in any memory. */
     forbiddenAbsent: boolean;
   };
@@ -87,7 +85,7 @@ export async function runConsolidationEval(
         outputTokens: 0,
         costUsd: 0,
         latencyMs: 0,
-        invariants: { quotesVerified: true, ruleProfilePending: true, forbiddenAbsent: true },
+        invariants: { quotesVerified: true, forbiddenAbsent: true },
       };
       results.push(skipped);
       options.onCase?.(skipped, spent);
@@ -161,10 +159,6 @@ export async function runConsolidationEval(
       latencyMs: row?.latencyMs ?? 0,
       invariants: {
         quotesVerified: kept.every((k) => userTexts.some((t) => t.includes(k.quote))),
-        ruleProfilePending:
-          kept.every(
-            (k) => k.layer === "note" || k.status === "pending" || k.action === "promoted",
-          ) && pendingAll.every((m) => m.layer !== "note"),
         forbiddenAbsent: (c.forbidden ?? []).every((f) => everything.every((t) => !t.includes(f))),
       },
     };
@@ -190,10 +184,7 @@ export async function runConsolidationEval(
       meanLatencyMs: ran.length === 0 ? 0 : Math.round(sum((r) => r.latencyMs) / ran.length),
     },
     invariantsHold: results.every(
-      (r) =>
-        r.invariants.quotesVerified &&
-        r.invariants.ruleProfilePending &&
-        r.invariants.forbiddenAbsent,
+      (r) => r.invariants.quotesVerified && r.invariants.forbiddenAbsent,
     ),
   };
 }
@@ -219,7 +210,7 @@ export function formatConsolidationReport(report: ConsolidationEvalReport): stri
     }
     for (const d of c.dropped) lines.push(`    descartada (${d.reason}): ${d.detail}`);
     const i = c.invariants;
-    if (!(i.quotesVerified && i.ruleProfilePending && i.forbiddenAbsent)) {
+    if (!(i.quotesVerified && i.forbiddenAbsent)) {
       lines.push(`    VIOLAÇÃO DE GARANTIA: ${JSON.stringify(i)}`);
     }
   }
