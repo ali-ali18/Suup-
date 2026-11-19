@@ -54,8 +54,15 @@ export const finishCall = (
   evidence: { criterion: string; evidence: string }[] = [],
 ): Block => call(id, "finish", { summary, evidence });
 
-export const verdict = (v: "approve" | "reject", notes = "ok"): FakeResponse =>
+export const verdict = (v: "approve" | "reject" | "cannot_verify", notes = "ok"): FakeResponse =>
   use(call("v", "verdict", { verdict: v, notes }));
+
+/** The reviewer asking for evidence it could not see: digest entries ("#1") and/or file paths. */
+export const needEvidence = (
+  id: string,
+  notes: string,
+  items: { results?: string[]; files?: string[] },
+): FakeResponse => use(call(id, "verdict", { verdict: "need_evidence", notes, ...items }));
 
 /** Tools used by the loop tests. Each is simple and deterministic. */
 export function testTools(): Tool[] {

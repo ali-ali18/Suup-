@@ -54,6 +54,9 @@ export function buildReviewDigest(
     } else {
       lines.push(`  start: ${JSON.stringify(e.head)}`);
       lines.push(`  end: ${JSON.stringify(e.tail)}`);
+      lines.push(
+        `  [SHORTENED: only the start and end of ${e.length} chars are shown; ask for "#${i + 1}" with need_evidence to see all of it]`,
+      );
     }
     return lines.join("\n");
   });
@@ -66,7 +69,12 @@ export function buildReviewDigest(
     total += entry.length + 1;
   }
   const omitted = entries.length - kept.length;
-  const header = omitted > 0 ? [`(${omitted} earlier tool call(s) omitted)`] : [];
+  const header =
+    omitted > 0
+      ? [
+          `(${omitted} earlier tool call(s) omitted: #1 to #${omitted}; they can still be requested with need_evidence)`,
+        ]
+      : [];
   return [...header, ...kept].join("\n");
 }
 
@@ -107,13 +115,18 @@ export function buildReviewMessage(input: {
     `## The assistant's evidence\n${evidence}`,
     `## Exchanges with the user (these are real: the harness records them itself)\n${buildUserExchangeDigest(input.userExchanges ?? [])}`,
     `## What the assistant actually did (tool calls, outcome, start and end of each result)\n${input.digest}`,
-    "Decide now and answer with the `verdict` tool.",
+    'Decide now and answer with the `verdict` tool. If you cannot verify something because the digest shows it only in part, ask for it with "need_evidence" (digest ids like "#3" and/or workspace file paths) instead of rejecting.',
   ].join("\n\n");
 }
 
 export interface ParsedVerdict {
-  verdict: "approve" | "reject";
+  verdict: "approve" | "reject" | "need_evidence" | "cannot_verify";
   notes: string;
+  /** The `verdict` call that carried the answer, for `need_evidence` (the evidence replies to it). */
+  callId?: string;
+  /** `need_evidence`: digest entries and workspace paths the reviewer asked for. */
+  results: string[];
+  files: string[];
   /** Set when the answer was unusable and the verdict is an approval by default. */
   warning?: string;
 }
@@ -125,6 +138,8 @@ export function parseVerdict(blocks: readonly Block[]): ParsedVerdict {
     return {
       verdict: "approve",
       notes: "",
+      results: [],
+      files: [],
       warning: "the reviewer did not answer through the verdict tool; approved by default",
     };
   }
@@ -133,12 +148,18 @@ export function parseVerdict(blocks: readonly Block[]): ParsedVerdict {
     return {
       verdict: "approve",
       notes: "",
+      results: [],
+      files: [],
       warning: "the reviewer's verdict was malformed; approved by default",
     };
   }
   const notes = parsed.data.notes.trim();
+  const { verdict } = parsed.data;
   return {
-    verdict: parsed.data.verdict,
-    notes: notes === "" && parsed.data.verdict === "reject" ? "(no reason given)" : notes,
+    verdict,
+    notes: notes === "" && verdict !== "approve" ? "(no reason given)" : notes,
+    callId: call.id,
+    results: parsed.data.results ?? [],
+    files: parsed.data.files ?? [],
   };
 }

@@ -139,13 +139,13 @@ Os mesmos três testes do conjunto principal (`evals/test/hard.test.ts`): depois
 
 `report.md` (para pessoas) e `report.json` (validado por esquema, para máquinas) trazem:
 
-- **Resumo por modelo:** aprovadas, a **versão do modelo que o provedor serviu** (vem dos eventos `model_response`, não do nome pedido), e as métricas por modelo do plano: **taxa de conclusão** (execuções que terminaram `done` ou esperando você, em vez de falhar), **taxa de argumentos inválidos** (chamadas recusadas pela validação, entre todas as chamadas), **taxa de recusa pelo revisor** (só existe com `reviewer` configurado), **turnos por execução** e **custo por execução**.
+- **Resumo por modelo:** aprovadas, a **versão do modelo que o provedor serviu** (vem dos eventos `model_response`, não do nome pedido), e as métricas por modelo do plano: **taxa de conclusão** (execuções que terminaram `done` ou esperando você, em vez de falhar), **taxa de argumentos inválidos** (chamadas recusadas pela validação, entre todas as chamadas), **taxa de recusa pelo revisor** (só existe com `reviewer` configurado; conta as reprovações, não os pedidos de evidência nem o "não consegui verificar"; as chamadas extras do revisor entram em turnos e custo), **turnos por execução** e **custo por execução**.
 - **Matriz tarefas × modelos:** ✓ passou, ✗ reprovou, `skip` não rodou, com o custo; com `--repeat`, `~ 2/3` quando o resultado varia.
 - **Taxa por categoria:** mostra quais tipos de tarefa cada modelo aguenta.
 - **Origem das falhas:** um histograma por modelo.
 - **Falhas:** uma seção por célula reprovada, com o id da execução, a origem, as verificações que reprovaram e os comandos para diagnosticar.
 
-Em cada célula também ficam: estado final, turnos, tokens, custo, duração, quantos avisos do harness (*nudges*) o bot recebeu, recusas de `finish` (do **harness**, por critério sem evidência ou passo aberto; e do **revisor**), erros de ferramenta, argumentos inválidos, o id da execução e o id do bot (a pasta de trabalho fica em `<raiz do sandbox>/bots/<id do bot>`; o bot aparece arquivado em `suup bot list --all`).
+Em cada célula também ficam: estado final, turnos, tokens, custo, duração, quantos avisos do harness (*nudges*) o bot recebeu, recusas de `finish` (do **harness**, por critério sem evidência ou passo aberto; e do **revisor**: inclui o `finish` passado ao dono porque o revisor "não conseguiu verificar" algo; já a taxa de recusa do revisor conta só os `reject`), erros de ferramenta, argumentos inválidos, o id da execução e o id do bot (a pasta de trabalho fica em `<raiz do sandbox>/bots/<id do bot>`; o bot aparece arquivado em `suup bot list --all`).
 
 ### Origem da falha
 

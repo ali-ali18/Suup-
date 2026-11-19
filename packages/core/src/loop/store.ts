@@ -33,7 +33,7 @@ export interface RunRecord {
   plan: PlanStep[];
   status: RunStatus;
   origin: RunOrigin;
-  /** Model calls made by the agent so far (reviewer and compaction calls are not turns). */
+  /** Model calls made by the agent so far, plus the extra calls of the reviewer's evidence rounds (the first review call and compaction calls are not turns). */
   turns: number;
   inputTokens: number;
   outputTokens: number;

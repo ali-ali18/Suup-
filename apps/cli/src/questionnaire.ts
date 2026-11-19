@@ -38,6 +38,29 @@ export function parseCliAnswer(question: Question, line: string, allowSkip: bool
   return { ok: true, answer: { chosen: [text] } };
 }
 
+/**
+ * The choices of one question as lines of text: the hint on how to answer (one number, several,
+ * or free text) and the numbered options with their descriptions. Empty for an open question.
+ * Shared by the live view of a run and by the chat, so the person sees the same options in both,
+ * with or without a terminal.
+ */
+export function optionLines(question: Question): string[] {
+  const options = question.options;
+  if (options === undefined) return [];
+  const hint =
+    question.multiple === true
+      ? "(pode escolher vários: números separados por vírgula, ou texto livre)"
+      : question.allowOther === true
+        ? "(escolha um número, ou escreva outra resposta)"
+        : "(escolha um número, ou responda com texto livre)";
+  return [
+    hint,
+    ...options.map(
+      (o, j) => `${j + 1}) ${o.label}${o.description === undefined ? "" : ` — ${o.description}`}`,
+    ),
+  ];
+}
+
 export type QuestionnaireStep =
   | { done: false; message: string | undefined; prompt: string }
   | { done: true; text: string };

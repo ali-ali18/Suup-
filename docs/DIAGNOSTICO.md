@@ -56,6 +56,15 @@ Imprime exatamente o pedido daquele turno: o prompt do sistema, cada mensagem (c
 | A informação **estava** e o modelo a ignorou | **Modelo** ou instruções |
 | A resposta foi cortada (`max_tokens`) ou recusada (`refusal`) | Não foi decisão do modelo: é configuração (`maxOutputTokens`) ou o filtro do provedor |
 
+### Lendo o revisor
+
+Os eventos `review` e `review_evidence` aparecem na linha do tempo (`suup inspect`). Uma revisão é: a chamada do revisor (`model_request`/`model_response` com `purpose: review`), zero a duas rodadas de `review_evidence` (cada uma seguida de uma nova chamada ao revisor) e um `review` final com `approve`, `reject` ou `unverified`.
+
+- `reject` precisa de uma divergência concreta nas `notes`. Se o motivo for "o resumo está cortado" e não um valor errado, é problema do revisor/harness, não do bot: veja se ele pediu evidência (`review_evidence`) e o que foi cortado (`supplied[].sent` menor que `chars`, `missing`).
+- `unverified`: o revisor não conseguiu checar algo (`notes` diz o quê); a execução fica `waiting_user` com a pergunta do dono. O trabalho não foi reprovado.
+- Cada rodada extra é uma chamada a mais ao modelo: conta como turno e no custo da execução, e aparece como um `model_request` com `purpose: review` no inspetor. `suup inspect --request <seq>` mostra o que o revisor viu, inclusive o texto da evidência.
+- O replay refaz a revisão toda a partir do log (os arquivos que o revisor leu estão em `review_evidence`), sem tocar na máquina.
+
 ## 4. `suup replay`: o harness reproduz a execução?
 
 ```sh

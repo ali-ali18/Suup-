@@ -7,7 +7,7 @@ import {
 } from "../events.js";
 import type { JsonObject } from "../messages.js";
 import type { ToolSpec } from "../provider.js";
-import { openSteps, VERDICT_TOOL_DESCRIPTION } from "./prompts.js";
+import { FINAL_VERDICT_TOOL_DESCRIPTION, openSteps, VERDICT_TOOL_DESCRIPTION } from "./prompts.js";
 
 /**
  * Tools the loop handles itself. They are always available, never go through the registry and do
@@ -184,9 +184,26 @@ export function normalizeEscalateInput(
   return { ok: true, questions, text };
 }
 
+/**
+ * What the reviewer may answer. `need_evidence` asks the harness for items the digest only shows
+ * in part (`results`: digest entries like "#3" or call ids; `files`: workspace paths);
+ * `cannot_verify` says that something stayed unchecked even with the evidence.
+ */
 export const verdictInputSchema = z.object({
-  verdict: z.enum(["approve", "reject"]),
-  notes: z.string().describe("Short explanation; when rejecting, what is wrong and how to fix it."),
+  verdict: z.enum(["approve", "reject", "need_evidence", "cannot_verify"]),
+  notes: z
+    .string()
+    .describe(
+      "Short explanation. Reject: the concrete discrepancy. need_evidence: what you will check. cannot_verify: exactly what could not be verified.",
+    ),
+  results: z
+    .array(z.string())
+    .optional()
+    .describe('need_evidence: tool results to see in full, as in the digest ("#3") or by call id.'),
+  files: z
+    .array(z.string())
+    .optional()
+    .describe("need_evidence: workspace files to read in full, by relative path."),
 });
 
 function toolSpec(name: string, description: string, schema: z.ZodType): ToolSpec {
@@ -210,8 +227,20 @@ export function controlToolSpecs(options: { secrets?: boolean } = {}): ToolSpec[
   ];
 }
 
-export function verdictToolSpec(): ToolSpec {
-  return toolSpec("verdict", VERDICT_TOOL_DESCRIPTION, verdictInputSchema);
+/** The last round no longer lets the reviewer ask for evidence: it must decide or say what it could not check. */
+const finalVerdictInputSchema = z.object({
+  verdict: z.enum(["approve", "reject", "cannot_verify"]),
+  notes: z
+    .string()
+    .describe(
+      "Short explanation. Reject: the concrete discrepancy. cannot_verify: exactly what could not be verified.",
+    ),
+});
+
+export function verdictToolSpec(canAskEvidence = true): ToolSpec {
+  return canAskEvidence
+    ? toolSpec("verdict", VERDICT_TOOL_DESCRIPTION, verdictInputSchema)
+    : toolSpec("verdict", FINAL_VERDICT_TOOL_DESCRIPTION, finalVerdictInputSchema);
 }
 
 /** Renders zod issues for the model, in the same shape the registry uses for ordinary tools. */

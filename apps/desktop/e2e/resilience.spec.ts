@@ -35,7 +35,12 @@ test.describe("the app converges", () => {
     // The server agrees: one run, done, eight tool calls.
     const bot = (await world.api.bots.list()).find((b) => b.name === "Recarga");
     expect(bot?.latestRun?.status).toBe("done");
-    expect((await world.api.bots.list()).find((b) => b.name === "Recarga")?.unreadCount).toBe(0);
+    // O app marca como lido depois que a contagem chega pelo fluxo: é assíncrono, então espera convergir.
+    await expect
+      .poll(
+        async () => (await world.api.bots.list()).find((b) => b.name === "Recarga")?.unreadCount,
+      )
+      .toBe(0);
   });
 
   test("the server is killed and restarted mid-run: the app reconnects and converges", async ({

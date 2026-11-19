@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseCliAnswer, Questionnaire } from "../src/questionnaire.js";
+import { optionLines, parseCliAnswer, Questionnaire } from "../src/questionnaire.js";
 import { primedRenderState, renderEvent } from "../src/render.js";
 
 const q = {
@@ -90,5 +90,18 @@ describe("rendering what the bot asked", () => {
     expect(several).toContain("2. Quais extras?");
     expect(several).toContain("pode escolher vários");
     expect(several).toContain("Enter pula");
+  });
+});
+
+describe("the lines that show a question's options", () => {
+  it("hint plus numbered options with descriptions; nothing for an open question", () => {
+    expect(optionLines(q)).toEqual([
+      "(escolha um número, ou responda com texto livre)",
+      "1) Postgres — robusto",
+      "2) SQLite",
+    ]);
+    expect(optionLines(many)[0]).toContain("pode escolher vários");
+    expect(optionLines({ ...q, allowOther: true })[0]).toContain("escreva outra resposta");
+    expect(optionLines({ question: "Qual é o seu nome?" })).toEqual([]);
   });
 });

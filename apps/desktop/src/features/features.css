@@ -190,7 +190,7 @@
   min-width: 0;
   padding: 8px 10px;
   border: 1px solid transparent;
-  border-radius: var(--radius-row);
+  border-radius: var(--radius-card);
   background: transparent;
   text-align: left;
 }

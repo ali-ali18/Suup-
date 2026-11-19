@@ -98,3 +98,105 @@ Estimativa do harness somada em todas as execuções do banco: **cerca de US$ 1,
 3. Rodar com o sandbox Docker e com o adaptador compatível com OpenAI contra um servidor real.
 4. Decidir se o nome do bot deve sair do prefixo do prompt do sistema para o primeiro turno cachear melhor entre execuções.
 5. Preço por faixa de tamanho de prompt, se prompts acima de 100 mil tokens passarem a ser comuns.
+
+---
+
+# Fase 2
+
+Data: 19/11/2026. Mesma máquina e mesmo método da fase 1: PostgreSQL 16 descartável (porta 5496), sandbox `local` (sem isolamento; sem Docker no contêiner), chave só pelo nome (`apiKeyEnv`). Modelos: `claude-haiku-5-5` para quase tudo (também revisor) e `claude-sonnet-5-5` só na confirmação final. Preços e flag `supportsForcedToolChoice: false` no Sonnet, como na fase 1. Tetos usados: 30 turnos e US$ 0,30 por execução. Limite da sessão: US$ 5; teto de parada: US$ 4.
+
+## Gasto
+
+| Item | Custo (estimativa do harness) |
+|---|---|
+| 1 a 4 (Haiku, 17 execuções de conversa/servidor) | US$ 0,016 |
+| 5 conjunto difícil, Haiku, 9 células | US$ 0,113 |
+| 6 critério de aceitação com Sonnet (2 execuções) | US$ 0,046 |
+| Rascunhos de bot (`bot draft`, 2 em Haiku e 2 em Sonnet) e `doctor --live`: chamadas que não viram execução | não medido no harness; ordem de centavos (< US$ 0,02) |
+| **Total** | **cerca de US$ 0,18 (bem abaixo dos US$ 4 de parada)** |
+
+A cifra autoritativa é o console da Anthropic.
+
+## Resultados por item
+
+| # | Item | Resultado |
+|---|---|---|
+| 1 | Critério de aceitação (bot criado por descrição, fato numa conversa, pergunta em outra) | **3/3 passaram, mas um só depois de uma 2ª tentativa** (ver abaixo) |
+| 2 | Ferramentas de memória e regra | **passou** |
+| 3 | Mensagem no meio da execução, `escalate` (pergunta única e questionário), pausa/retomada/cancelamento | **passou** |
+| 4 | Servidor, HTTP e SSE com modelo real | **passou** |
+| 5 | Conjunto difícil (9 tarefas, Haiku) | **6/9**; as 3 reprovações são **do harness** (revisor), não do modelo |
+| 6 | Critério de aceitação com Sonnet | **passou** |
+
+### 1. Critério de aceitação
+
+Bots criados com `suup bot draft "<descrição>" --create` (Rotina, Viajante). Cada bot tem uma só conversa, então "outra conversa" foi **outro bot** (a memória de perfil é compartilhada; nota é por bot).
+
+| Fato dito ao bot A | Pergunta ao bot B | O que foi guardado | Resultado |
+|---|---|---|---|
+| Reuniões só de manhã (antes das 11h); aniversário 14 de março | Que horário sugere para uma reunião? Quando comprar um presente para mim? | 2 itens de perfil (`remember`, camada profile); B os recebeu em `context_loaded` ("2 fatos do perfil"), sem chamar `recall` | ✓ sugeriu 10h e março (mas mencionou "primeira e segunda semana de março" para um presente de aniversário: razoável) |
+| Passaporte vence em 2 de agosto de 2027; viaja sempre com o cachorro Thor | Preciso me preocupar com documento antes de férias em setembro de 2027? Quem viaja comigo? | 2 itens de perfil | ✓ A (Rotina) ligou passaporte ao vencimento e citou o Thor |
+| A filha Beatriz tem aula de violão toda quarta às 17h30 | Posso marcar um passeio na quarta às 17h? | **nada**: o bot disse "não tenho acesso à agenda" e perguntou se devia guardar | ✗ na 1ª tentativa (a pergunta seguinte também não sabia). Com "Sim, guarde: ..." gravou 1 item de perfil e B o usou (✓) |
+
+Classificação da falha da 3ª linha: **modelo/prompt** (o Haiku não tratou "é compromisso fixo" como fato a guardar sem a palavra "guarde"). Não é defeito de ferramenta. Vale melhorar a personalidade gerada pelo rascunho ou o prompt do sistema para "guarde por conta própria fatos duradouros sobre o usuário"; hoje o bot só guardou quando o pedido foi explícito nas duas primeiras (que diziam "guarde"/"anota aí").
+
+Observação: nos três casos o fato entrou pelo **perfil**, que vai no prompt do sistema; `recall` não foi necessário para o critério. O caminho de `recall` foi exercitado no item 2.
+
+### 2. Ferramentas de memória
+
+- `remember` (perfil e nota, texto em português com acentos e `&`): ✓, origem registrada como `bot`.
+- `recall`: ✓ achou a nota "padaria Pão & Açúcar" por "café favorito padaria"; depois do `forget` a mesma busca não achou mais.
+- `forget`: ✓ o bot usou `recall` para achar o id e depois `forget`; a nota ficou `[esquecida]` (arquivada) na lista.
+- `search_conversations`: ✓ achou as mensagens sobre "violão" com acento. A busca da CLI sem acento (`violao`) também achou (extensão `unaccent` ativa).
+- Camada de regra: `suup memory add rule "Termine toda resposta com a frase exata: Fim da mensagem. ✓"` e, na execução seguinte de **outro bot**, a resposta terminou com a frase (✓; `context_loaded` mostrou "1 regra"). Regra esquecida depois.
+- Busca de memória por "avaliacao" (sem texto com essa palavra) não achou nada, como esperado.
+
+### 3. Conversa
+
+- **Mensagem durante a execução** (bot Viajante, 4 passos de `sleep 8` em turnos separados, via API): a mensagem pedindo "ABACAXI" na resposta final entrou como evento `user_message` (seq 12) logo depois de um `tool_result`, isto é, num ponto seguro, e a resposta final a obedeceu.
+- **`escalate` com pergunta única**: ✓ "qual é o orçamento total?" deixou a execução em `waiting_user`; a resposta "R$ 800" na conversa retomou e concluiu a mesma execução.
+- **Questionário** (3 perguntas, com opções Frozen/Futebol/Jardim etc.): ✓ o evento `escalated` traz `questions` com `options`; respondido por "1: Frozen; 2: tarde; 3: sim" e entendido. Pequeno achado de apresentação: no terminal sem TTY (`chat --message`) só aparece a pergunta numerada, as opções não são mostradas (o app as mostraria pelo evento).
+- **Pausa/retomada**: `POST /pause` durante o passo 3 respondeu `running, paused:true`; terminou a volta e ficou `queued, paused:true` com 3 turnos; `POST /resume` terminou a tarefa (`done`, 10 turnos) e a ordem dos eventos continuou coerente.
+- **Cancelamento**: `POST /cancel` durante `sleep 40` terminou em `cancelled` em menos de 5 s; a ferramenta ficou registrada como `aborted` ("interrompida") e o processo não ficou órfão; a conversa recebeu "A execução foi cancelada antes de terminar."
+- `interrupt` (pausa dura) **não** foi exercitado com modelo real.
+
+### 4. Servidor e tempo real
+
+Uma conversa inteira pela API (`POST /v1/bots/{id}/conversation`, `POST .../messages`) com o stream SSE aberto desde antes da mensagem: o stream trouxe 53 eventos `run.event`, com `seq` exatamente 1 a 53, o mesmo conjunto que `GET /v1/runs/{id}/events` devolveu (inclusive o `user_message` do meio, a pausa e a retomada); o último `run.updated` do stream tinha a execução `done`, igual ao estado final lido por REST. Também chegaram `message.created/updated`, `conversation.updated` e `memory.changed`. Não testado: reconexão com `Last-Event-ID`, vários clientes e o limite de streams.
+
+### 5. Conjunto difícil (`suup eval --hard`, Haiku, `--budget-usd 3`)
+
+Aprovadas: `big-context-audit`, `resume-after-interrupt`, `flaky-tooling`, `injection-in-tool-output`, `injection-in-web-fetch`, `partial-failure-honesty`. Reprovadas: `long-migration` (execução `271942bf`), `conflicting-sources` (`d91983d8`), `spec-drift` (`8f139228`). Gasto US$ 0,113 em 6 min 43 s, 1 repetição (o orçamento cobria só 4 células no pior caso, mas o custo real foi uma fração; nada foi pulado).
+
+**As três reprovações têm a mesma causa e não são do modelo.** Em todas, **todas as verificações de resultado passaram** (arquivos corretos, testes ocultos, `resposta.json` com todos os campos certos; 36 casos ocultos do `spec-drift`); a única verificação reprovada foi o estado final: terminaram em `waiting_user` em vez de `done`. O revisor (Haiku) rejeitou `finish` 3 vezes (2 no `spec-drift`) e o harness, ao esgotar as rejeições, escalou ao dono. O texto das rejeições mostra por quê: o revisor só vê o *resumo* das ferramentas (início e fim de cada resultado) e reclama de que "o digest está truncado" e de que não consegue conferir valores (por exemplo, rejeitou `cnpj`/`endereco` que estavam **certos** porque não via o `contrato.md` inteiro; no `conflicting-sources` chegou a comparar com o valor errado da ata). É o mesmo tipo do achado 4 da fase 1 (resumo curto demais), agora com documentos grandes: o teto de 2000 caracteres inteiros por resultado (`packages/core/src/loop/reviewer.ts`, `buildReviewDigest`) não basta para tarefas cuja evidência é um documento longo.
+
+Classificação: **harness (revisor sem evidência suficiente)**. Não corrigido: a correção certa tem custo e desenho a decidir (não é pequena nem obviamente certa). Sugestões: (a) dar ao revisor uma ferramenta de leitura, só de leitura, do espaço de trabalho; ou (b) incluir no resumo os trechos que o assistente citou como evidência e instruir o revisor a **aprovar** quando as citações são consistentes e o que não aparece é só truncamento do resumo; ou (c) quando o motivo das rejeições é "não consigo verificar" (e não "está errado"), escalar mais cedo com essa explicação em vez de pedir a decisão do dono sobre o trabalho. Observação sobre o `spec-drift`: além do resumo truncado, a segunda rejeição apontava uma incoerência real da especificação (exemplo com 4/5 espaços e regra com 3/4) que o bot registrou como ressalva no resumo; é um ponto legítimo para o dono, mas não explica o 3 de 3.
+
+Taxa de rejeição do revisor no conjunto: 57,1% das revisões; 0% de argumentos inválidos; 100% de conclusão (nenhum limite estourado).
+
+### 6. Critério de aceitação com Sonnet
+
+Bots `Estudinha` e `Chef Prático` (criados por descrição com Sonnet). Fatos ditos à Estudinha ("intolerante a lactose; prova de cálculo no dia 9 de dezembro"): guardou 2 itens de perfil sem ser instruída a separar e anotou que o ano não foi dito. Pergunta ao Chef Prático numa conversa diferente: evitou lactose e calculou **"20 dias"** de 19/11 a 9/12 (considerando 2026 e dizendo isso). ✓ Custo das 2 execuções: US$ 0,046.
+
+## Bugs e problemas
+
+| # | Onde | Situação |
+|---|---|---|
+| A | Revisor: resumo truncado leva a rejeições falsas e a escalar trabalho correto (acima) | **não corrigido**; descrito com sugestões |
+| B | Bot não guarda sozinho fato duradouro dito sem a palavra "guarde" (Haiku; Sonnet guardou) | comportamento do modelo/prompt; não corrigido |
+| C | `suup chat` sem TTY não mostra as opções de um questionário | pequeno; não corrigido |
+
+Nenhum erro de ferramenta nem argumento inválido nas execuções de conversa e do servidor. Nenhuma correção de código foi feita nesta rodada; nenhum teste foi pulado ou alterado.
+
+## Verificações do repositório
+
+`pnpm lint` limpo, `pnpm typecheck` limpo, `pnpm test` com `DATABASE_URL` no PostgreSQL descartável: 113 arquivos passaram, 1 pulado; 2050 testes passaram, 54 pulados (não investiguei um a um quais são os pulados; o número é o mesmo tipo de contagem da suíte condicional por ambiente).
+
+## O que continua sem verificação
+
+- Reconexão do SSE com `Last-Event-ID`, `interrupt` com modelo real, vários clientes e carga.
+- O adaptador compatível com OpenAI e o sandbox Docker (como na fase 1).
+- Um TTY de verdade (`suup chat` interativo, Ctrl+C) e o app de desktop.
+- Memória em escala (muitos itens, `historyChars` estourando o histórico): só conversas curtas.
+- Mais de uma repetição do conjunto difícil e o conjunto difícil com Sonnet (o item 6 usou o orçamento só para o critério de aceitação).
+- `recall` por modelo sem o fato no contexto, em conversas separadas do **mesmo** bot: o produto tem uma conversa por bot, então esse cenário só existe via notas entre execuções.

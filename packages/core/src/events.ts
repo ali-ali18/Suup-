@@ -307,13 +307,65 @@ export const runEventSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("review"),
     payload: z.object({
-      verdict: z.enum(["approve", "reject"]),
+      /**
+       * `unverified`: after the evidence rounds the reviewer still could not check something. It
+       * is neither an approval nor a rejection of the work: the decision goes to the owner, and
+       * `notes` says exactly what could not be verified.
+       */
+      verdict: z.enum(["approve", "reject", "unverified"]),
       notes: z.string(),
       /**
        * Set when the review did not really happen (reviewer unreachable, answer malformed): the
        * verdict is then an approval by default and this says why.
        */
       warning: z.exactOptional(z.string()),
+    }),
+  }),
+  z.object({
+    /**
+     * The reviewer asked for evidence it could not see in the digest, and the harness supplied it
+     * (one event per round). Tool results are named by `ref` (the call id): their content is
+     * already in the log, so it is not copied here. Files are not in the log, so their content is
+     * kept (that is what makes a resumed or replayed review identical).
+     */
+    type: z.literal("review_evidence"),
+    payload: z.object({
+      /** 1-based round of this review. */
+      round: z.number().int().positive(),
+      /** The reviewer's `verdict` tool call that asked, so the conversation can be rebuilt. */
+      callId: z.string(),
+      /** Why the reviewer wanted it, in its words. */
+      notes: z.string(),
+      /** What the reviewer named: digest entries (`#3` or a call id) and workspace paths. */
+      requested: z.object({ results: z.array(z.string()), files: z.array(z.string()) }),
+      /** What was supplied, in order. `sent` is how many characters were shown (the budget). */
+      supplied: z.array(
+        z.discriminatedUnion("kind", [
+          z.object({
+            kind: z.literal("tool_result"),
+            /** The tool call id; the full content is that call's `tool_result` event. */
+            ref: z.string(),
+            /** Position in the digest (1-based). */
+            index: z.number().int().positive(),
+            chars: z.number().int().nonnegative(),
+            sent: z.number().int().nonnegative(),
+          }),
+          z.object({
+            kind: z.literal("file"),
+            ref: z.string(),
+            chars: z.number().int().nonnegative(),
+            sent: z.number().int().nonnegative(),
+            /** A short fingerprint of the whole content (not cryptographic). */
+            hash: z.string(),
+            /** The whole text read, so that resume and replay do not depend on the disk. */
+            content: z.string(),
+          }),
+        ]),
+      ),
+      /** Requested items that could not be supplied, and why. */
+      missing: z.array(z.object({ item: z.string(), reason: z.string() })),
+      /** The most characters of evidence the harness shows in one round. */
+      budgetChars: z.number().int().positive(),
     }),
   }),
   z.object({

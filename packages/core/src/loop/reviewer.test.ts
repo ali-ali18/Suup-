@@ -290,7 +290,7 @@ describe("review digest", () => {
     const log = Array.from({ length: 200 }, (_, i) => entry(i + 1));
     const digest = buildReviewDigest(log, 1000);
     expect(digest.length).toBeLessThan(1200);
-    expect(digest).toMatch(/^\(\d+ earlier tool call\(s\) omitted\)/);
+    expect(digest).toMatch(/^\(\d+ earlier tool call\(s\) omitted: #1 to #\d+;/);
     expect(digest).toContain("#200 shell");
     expect(digest).not.toContain("#1 shell");
   });
@@ -306,6 +306,12 @@ describe("parseVerdict", () => {
       parseVerdict([
         { type: "tool_call", id: "v", name: "verdict", args: { verdict: "reject", notes: " " } },
       ]),
-    ).toEqual({ verdict: "reject", notes: "(no reason given)" });
+    ).toEqual({
+      verdict: "reject",
+      notes: "(no reason given)",
+      callId: "v",
+      results: [],
+      files: [],
+    });
   });
 });

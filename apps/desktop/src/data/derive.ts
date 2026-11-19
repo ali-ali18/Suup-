@@ -86,6 +86,7 @@ function isActivity(event: RunEvent): boolean {
     "tool_result",
     "finish_attempt",
     "review",
+    "review_evidence",
     "escalated",
     "plan_updated",
     "user_message",
@@ -269,6 +270,8 @@ export function timelineNotices(events: readonly RunEvent[]): Timeline {
       case "review":
         if (p.verdict === "reject") {
           notices.push({ seq: event.seq, text: "O revisor recusou a conclusão." });
+        } else if (p.verdict === "unverified") {
+          notices.push({ seq: event.seq, text: "O revisor não conseguiu verificar a conclusão." });
         }
         break;
       case "user_message":

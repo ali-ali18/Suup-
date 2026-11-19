@@ -137,6 +137,8 @@ export interface RunState {
   finishAttempts: Map<string, FinishAttemptRecord>;
   /** The review recorded since the latest `finish` call started, if any. */
   currentReview: RunEventPayload<"review"> | null;
+  /** The evidence rounds of the review in progress (since the latest `finish` call started). */
+  reviewRounds: RunEventPayload<"review_evidence">[];
   /** Reviews that rejected for real (not warnings). */
   reviewRejections: number;
   lastRejectionNotes: string;
@@ -189,6 +191,7 @@ export function createRunState(): RunState {
     acceptedFinish: null,
     finishAttempts: new Map(),
     currentReview: null,
+    reviewRounds: [],
     reviewRejections: 0,
     lastRejectionNotes: "",
     reviewWaived: false,
@@ -303,7 +306,10 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
     case "tool_call": {
       const call = state.pendingCalls.find((c) => c.id === event.payload.callId);
       if (call !== undefined) call.started = true;
-      if (event.payload.name === "finish") state.currentReview = null;
+      if (event.payload.name === "finish") {
+        state.currentReview = null;
+        state.reviewRounds = [];
+      }
       break;
     }
 
@@ -427,6 +433,12 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
       if (accepted) state.acceptedFinish = { summary, evidence: structuredClone(evidence) };
       break;
     }
+
+    case "review_evidence":
+      // The reviewer's answer was used: the next request is a new one.
+      state.sideResponse = null;
+      state.reviewRounds.push(structuredClone(event.payload));
+      break;
 
     case "review":
       state.sideResponse = null;
