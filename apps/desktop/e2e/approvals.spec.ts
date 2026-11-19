@@ -6,7 +6,9 @@ import { botItem, freshBot, openWithBot, selectBot, send } from "./helpers.js";
 // elsewhere, cancelled), the permanent rules, and the secure form of a secret request. Everything
 // runs against the real server with the scripted provider: nothing is mocked.
 
+// The decision card (waiting for you) and the row of a call (what the bot did, an approval merged in).
 const card = (page: Page) => page.getByTestId("approval-card");
+const row = (page: Page) => page.getByTestId("action-card");
 const botMessage = (page: Page, text: string) =>
   page.getByTestId("message-bot").filter({ hasText: text });
 
@@ -88,54 +90,60 @@ test.describe("approval cards", () => {
     for (const button of await pending.getByRole("button").all())
       await expect(button).toBeDisabled();
     await expect(pending.getByTestId("approval-more")).toBeDisabled();
-    // Confirmed: one line, "Aprovado · ...", closed; the run goes on and the bot says so.
-    await expect(card(page)).toHaveAttribute("data-state", "done");
-    await expect(card(page)).toContainText("Aprovado · Escrever aprovado.txt");
-    await expect(card(page).getByRole("button", { name: /Aprovado/ })).toHaveAttribute(
+    // Confirmed: ONE line for the call, with the decision and the execution together, closed; the run
+    // goes on and the bot says so. The decision card is gone and no second row stands for the tool.
+    await expect(botMessage(page, "Escrevi o arquivo aprovado.")).toBeVisible();
+    await expect(card(page)).toHaveCount(0);
+    await expect(row(page)).toHaveCount(1);
+    await expect(row(page)).toHaveAttribute("data-state", "done");
+    await expect(row(page)).toContainText("Arquivo");
+    await expect(row(page)).toContainText("Aprovado e concluído · Escrever aprovado.txt");
+    await expect(row(page).getByRole("button", { name: /Aprovado/ })).toHaveAttribute(
       "aria-expanded",
       "false",
     );
-    await expect(botMessage(page, "Escrevi o arquivo aprovado.")).toBeVisible();
-    await expect(
-      page.getByTestId("action-card").filter({ hasText: "Escrever aprovado.txt" }),
-    ).toContainText("Concluído");
     await page.unroute("**/v1/approvals/*/decision");
-    // Resolved cards are one row; the chevron shows only on hover and on keyboard focus, and the
-    // row expands to what ran and collapses again. The same for the action card of the tool.
+    // The row's chevron shows only on hover and on keyboard focus, and the row expands to what was
+    // approved and what ran, and collapses again.
     await page.mouse.move(0, 0);
-    for (const resolved of [card(page), page.getByTestId("action-card")]) {
-      const row = resolved.getByRole("button").first();
-      const chevron = resolved.locator(".ui-action__chevron");
-      await expect(chevron).toHaveCSS("opacity", "0");
-      await row.hover();
-      await expect(chevron).toHaveCSS("opacity", "1");
-      await page.mouse.move(0, 0);
-      await expect(chevron).toHaveCSS("opacity", "0");
+    const resolved = row(page);
+    const rowButton = resolved.getByRole("button").first();
+    const chevron = resolved.locator(".ui-action__chevron");
+    await expect(chevron).toHaveCSS("opacity", "0");
+    await rowButton.hover();
+    await expect(chevron).toHaveCSS("opacity", "1");
+    await page.mouse.move(0, 0);
+    await expect(chevron).toHaveCSS("opacity", "0");
+    await page.keyboard.press("Tab");
+    for (
+      let i = 0;
+      i < 40 && !(await rowButton.evaluate((el) => el === document.activeElement));
+      i++
+    )
       await page.keyboard.press("Tab");
-      for (let i = 0; i < 40 && !(await row.evaluate((el) => el === document.activeElement)); i++)
-        await page.keyboard.press("Tab");
-      await expect(row).toBeFocused();
-      await expect(chevron).toHaveCSS("opacity", "1");
-      await row.blur();
-    }
-    await card(page)
-      .getByRole("button", { name: /Aprovado/ })
-      .click();
-    await expect(card(page).getByRole("region")).toContainText("Você aprovou");
-    await expect(card(page).getByTestId("arg-value").first()).toHaveText("aprovado.txt");
-    await expect(card(page).getByRole("button")).toHaveCount(1);
-    await card(page)
-      .getByRole("button", { name: /Aprovado/ })
-      .click();
-    await expect(card(page).getByRole("region")).toHaveCount(0);
+    await expect(rowButton).toBeFocused();
+    await expect(chevron).toHaveCSS("opacity", "1");
+    await rowButton.blur();
+    await rowButton.click();
+    await expect(row(page).getByRole("region")).toContainText("Você aprovou");
+    // What was approved, exactly, and what the tool answered.
+    await expect(row(page).getByTestId("arg-value").first()).toHaveText("aprovado.txt");
+    await expect(row(page).getByTestId("arg-value").nth(1)).toHaveText(
+      /conteúdo aprovado\s+segunda linha/,
+    );
+    await expect(row(page).getByTestId("action-output")).toBeVisible();
+    await expect(row(page).getByRole("button")).toHaveCount(1);
+    await rowButton.click();
+    await expect(row(page).getByRole("region")).toHaveCount(0);
     // Nothing waits any more: the badge, the counter and the avatar went back.
     await expect(botItem(page, "Aprovador").getByTestId("bot-badge")).toHaveCount(0);
     await expect(page.getByTestId("pending-counter")).toHaveCount(0);
     // After a reload the card is still there, decided (it comes from the server, not from memory).
     await page.reload();
     await botItem(page, "Aprovador").click();
-    await expect(card(page)).toHaveAttribute("data-state", "done");
-    await expect(card(page)).toContainText("Aprovado ·");
+    await expect(row(page)).toHaveCount(1);
+    await expect(row(page)).toHaveAttribute("data-state", "done");
+    await expect(row(page)).toContainText("Aprovado e concluído · Escrever aprovado.txt");
   });
 
   test("deny is one click, with no reason field: the bot is told, goes on and says so", async ({
@@ -146,14 +154,18 @@ test.describe("approval cards", () => {
     await expect(card(page)).toHaveAttribute("data-state", "needs-action");
     await expect(card(page).getByRole("textbox")).toHaveCount(0);
     await card(page).getByTestId("approval-deny").click();
-    await expect(card(page)).toHaveAttribute("data-state", "stopped");
-    await expect(card(page)).toContainText("Recusado ·");
+    // Denied: it never ran, so the one row says "Recusado" and there is no row of a tool that failed.
+    await expect(row(page)).toHaveCount(1);
+    await expect(row(page)).toHaveAttribute("data-state", "stopped");
+    await expect(row(page)).toContainText("Recusado · Escrever negado.txt");
+    await expect(card(page)).toHaveCount(0);
     await expect(botMessage(page, "Entendi, não escrevi o arquivo.")).toBeVisible();
-    await card(page)
+    await row(page)
       .getByRole("button", { name: /Recusado/ })
       .click();
-    await expect(card(page).getByTestId("approval-detail")).toContainText("Você recusou");
-    await expect(card(page).getByTestId("approval-denial")).toHaveCount(0);
+    await expect(row(page).getByTestId("approval-detail")).toContainText("Você recusou");
+    await expect(row(page).getByTestId("approval-denial")).toHaveCount(0);
+    await expect(row(page).getByTestId("action-output")).toHaveCount(0);
     // No reason was sent; the file was not written.
     const [denied] = await world.api.approvals.list({
       botId: await botId(world, "Negador"),
@@ -187,31 +199,38 @@ test.describe("approval cards", () => {
     // "Sempre permitir isto, neste bot": approves and creates the rule in one click.
     await card(page).getByTestId("approval-more").click();
     await page.getByTestId("always-bot-exact").click();
-    await expect(card(page)).toHaveAttribute("data-state", "done");
     await expect(botMessage(page, "Primeiro arquivo escrito.")).toBeVisible();
-    // The card says it created a rule.
-    await card(page)
+    await expect(row(page)).toHaveCount(1);
+    await expect(row(page)).toHaveAttribute("data-state", "done");
+    // The row says it created a rule.
+    await row(page)
       .getByRole("button", { name: /Aprovado/ })
       .click();
-    await expect(card(page).getByTestId("approval-rule")).toContainText(
+    await expect(row(page).getByTestId("approval-rule")).toContainText(
       "Libera Escrever arquivo para o bot Permissivo",
     );
     // The next call, the same one, goes through without a card.
     await send(page, "CASE-AGAIN agora faça de novo");
     await expect(botMessage(page, "Segundo arquivo escrito, sem perguntar.")).toBeVisible();
-    await expect(card(page)).toHaveCount(1);
+    // Still one row per call: the first one (approved), the second one (a rule let it through, no card).
+    await expect(card(page)).toHaveCount(0);
+    await expect(row(page)).toHaveCount(2);
+    // (the first call belongs to an earlier run, whose events are not loaded: the approval alone says "Aprovado")
+    await expect(row(page).first()).toContainText("Aprovado · Escrever sempre.txt");
+    await expect(row(page).last()).toContainText("Concluído");
+    await expect(row(page).last()).not.toContainText("Aprovado");
     expect(
       await world.api.approvals.list({ botId: await botId(world, "Permissivo") }),
     ).toHaveLength(1);
     // The rule is in the settings, in plain language, and can be deleted there.
     await openSettings(page, "Aprovações");
-    const row = page.getByTestId("rule-row").filter({ hasText: "Permissivo" });
-    await expect(row).toHaveCount(1);
-    await expect(row.getByTestId("rule-sentence")).toContainText(
+    const ruleRow = page.getByTestId("rule-row").filter({ hasText: "Permissivo" });
+    await expect(ruleRow).toHaveCount(1);
+    await expect(ruleRow.getByTestId("rule-sentence")).toContainText(
       "Libera Escrever arquivo para o bot Permissivo quando o campo path é exatamente “sempre.txt” e o campo content é exatamente “pode sempre”.",
     );
-    await expect(row).toContainText("Criada num cartão");
-    await row.getByTestId("rule-delete").click();
+    await expect(ruleRow).toContainText("Criada num cartão");
+    await ruleRow.getByTestId("rule-delete").click();
     await page.getByTestId("rule-delete-confirm").click();
     await expect(page.getByTestId("rule-row").filter({ hasText: "Permissivo" })).toHaveCount(0);
     expect(
@@ -302,19 +321,19 @@ test.describe("approval cards", () => {
         .getByTestId("toast")
         .filter({ hasText: "já tinha sido decidido em outro lugar: recusado" }),
     ).toBeVisible();
-    await expect(card(page)).toHaveAttribute("data-state", "stopped");
-    await expect(card(page)).toContainText("Recusado ·");
-    await expect(card(page).getByTestId("approval-error")).toHaveCount(0);
-    // A reason given by another client (the API still takes one) is shown when the card opens.
-    await card(page)
+    // The call was refused: ONE row, stopped, "Recusado"; the run went on (the script's next line).
+    await expect(row(page)).toHaveCount(1);
+    await expect(row(page)).toHaveAttribute("data-state", "stopped");
+    await expect(row(page)).toContainText("Recusado · Escrever aprovado.txt");
+    await expect(card(page)).toHaveCount(0);
+    await expect(row(page)).not.toContainText("Concluído");
+    // A reason given by another client (the API still takes one) is shown when the row opens.
+    await row(page)
       .getByRole("button", { name: /Recusado/ })
       .click();
-    await expect(card(page).getByTestId("approval-denial")).toContainText("neguei no terminal");
+    await expect(row(page).getByTestId("approval-denial")).toContainText("neguei no terminal");
     await page.unroute("**/v1/approvals/*/decision");
-    // The call was refused: the run went on (the script's next line), and the call is a failed card.
     await expect(botMessage(page, "Escrevi o arquivo aprovado.")).toBeVisible();
-    await expect(page.getByTestId("action-card")).toHaveAttribute("data-state", "failed");
-    await expect(page.getByTestId("action-card")).not.toContainText("Concluído");
 
     // A card of a run that is cancelled is cancelled too.
     await freshBot(world, "Cancelado");
@@ -327,8 +346,10 @@ test.describe("approval cards", () => {
       botId: await botId(world, "Cancelado"),
     });
     await world.api.runs.cancel(open?.runId as string);
-    await expect(card(page)).toHaveAttribute("data-state", "stopped");
-    await expect(card(page)).toContainText("Cancelado ·");
+    await expect(row(page)).toHaveCount(1);
+    await expect(row(page)).toHaveAttribute("data-state", "stopped");
+    await expect(row(page)).toContainText("Cancelado · Escrever aprovado.txt");
+    await expect(card(page)).toHaveCount(0);
   });
 
   test("long content is collapsed with a button, and the whole card works from the keyboard", async ({
@@ -371,8 +392,9 @@ test.describe("approval cards", () => {
     await page.keyboard.press("Shift+Tab");
     await expect(pending.getByTestId("approval-approve")).toBeFocused();
     await page.keyboard.press("Enter");
-    await expect(card(page)).toHaveAttribute("data-state", "done");
     await expect(botMessage(page, "Arquivo longo escrito.")).toBeVisible();
+    await expect(row(page)).toHaveCount(1);
+    await expect(row(page)).toHaveAttribute("data-state", "done");
   });
 
   test("'Gerenciar regras' in the menu opens Configurações > Aprovações", async ({ page }) => {
@@ -409,7 +431,8 @@ test.describe("approval cards", () => {
     await expect(page.getByTestId("pending-approval")).toHaveCount(0);
     await expect(page.getByText("Nenhuma aprovação")).toBeVisible();
     await botItem(page, "Pendente").click();
-    await expect(card(page)).toHaveAttribute("data-state", "done");
+    await expect(row(page)).toHaveCount(1);
+    await expect(row(page)).toHaveAttribute("data-state", "done");
     await expect(botMessage(page, "Escrevi o arquivo aprovado.")).toBeVisible();
   });
 });

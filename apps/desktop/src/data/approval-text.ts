@@ -212,7 +212,10 @@ export interface ToolCategory {
 
 const MAIL = /mail|smtp|imap|gmail|outlook/i;
 
-/** The category of a tool, for the header of its card. Unknown tools are just "Aprovação". */
+/**
+ * The ONE vocabulary of tools in the chat: the same label and icon whether the tool shows as a
+ * decision card, a decided approval or a row of what the bot did. Unknown tools are "Ferramenta".
+ */
 export function toolCategory(
   tool: string,
   connectors: readonly {
@@ -244,7 +247,7 @@ export function toolCategory(
     case "search_conversations":
       return { label: "Memória", icon: "memory" };
     default:
-      return { label: "Aprovação", icon: "generic" };
+      return { label: "Ferramenta", icon: "generic" };
   }
 }
 

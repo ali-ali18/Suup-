@@ -159,7 +159,7 @@ describe("the category and the title of a card", () => {
     expect(toolCategory("conn_erp__criar_pedido")).toEqual({ label: "erp", icon: "connector" });
     expect(toolCategory("conn_gmail__send_email")).toEqual({ label: "E-mail", icon: "mail" });
     expect(toolCategory("send_mail").icon).toBe("mail");
-    expect(toolCategory("algo_novo")).toEqual({ label: "Aprovação", icon: "generic" });
+    expect(toolCategory("algo_novo")).toEqual({ label: "Ferramenta", icon: "generic" });
   });
 
   it("writes a pt-BR title per known tool and falls back to the server's summary", () => {

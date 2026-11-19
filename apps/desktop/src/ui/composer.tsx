@@ -1,5 +1,6 @@
 import { ArrowUp, Plus } from "lucide-react";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { focusOnAppearance } from "../lib/focus.js";
 import { RoundButton } from "./primitives.js";
 
 export interface ComposerProps {
@@ -29,6 +30,12 @@ export function Composer({
 }: ComposerProps) {
   const [text, setText] = useState("");
   const ref = useRef<HTMLTextAreaElement>(null);
+
+  // Take the focus when the composer appears (not the `autoFocus` attribute: it would also steal
+  // the focus from the palette or a dialog that is already open when the chat mounts).
+  useEffect(() => {
+    if (autoFocus === true && disabled !== true) focusOnAppearance(ref.current);
+  }, []);
 
   useEffect(() => {
     if (restore !== undefined) setText((current) => (current === "" ? restore.text : current));
@@ -68,7 +75,6 @@ export function Composer({
         placeholder={disabled && disabledReason !== undefined ? disabledReason : placeholder}
         value={text}
         disabled={disabled}
-        autoFocus={autoFocus}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={onKeyDown}
       />

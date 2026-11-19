@@ -9,8 +9,7 @@ import { EndedLine, WorkingIndicator } from "../../ui/chat-lines.js";
 import { BotMessage, EventLine, UserMessage } from "../../ui/message.js";
 import { Pill, RoundButton } from "../../ui/primitives.js";
 import { QuestionCard } from "../../ui/question-card.js";
-import { ActionRow } from "./ActionRow.js";
-import { ApprovalRow, SecretRequestRow } from "./ApprovalRows.js";
+import { ApprovalRow, CallRow, callKey, SecretRequestRow } from "./ApprovalRows.js";
 import type { TimelineItem } from "./timeline.js";
 
 const NEAR_BOTTOM = 80;
@@ -172,11 +171,11 @@ export function MessageList({
                     <div className="ui-actions" data-testid="actions">
                       {item.entries.map((entry) =>
                         entry.kind === "action" ? (
-                          <ActionRow
-                            key={entry.item.callId}
+                          <CallRow
+                            key={callKey(entry.item)}
                             item={entry.item}
-                            expanded={expanded.has(entry.item.callId)}
-                            onToggle={() => onToggle(entry.item.callId)}
+                            clicked={expanded}
+                            onToggle={onToggle}
                           />
                         ) : (
                           <ActionFold
@@ -186,11 +185,11 @@ export function MessageList({
                             onToggle={() => onToggle(entry.key)}
                           >
                             {entry.items.map((it) => (
-                              <ActionRow
-                                key={it.callId}
+                              <CallRow
+                                key={callKey(it)}
                                 item={it}
-                                expanded={expanded.has(it.callId)}
-                                onToggle={() => onToggle(it.callId)}
+                                clicked={expanded}
+                                onToggle={onToggle}
                               />
                             ))}
                           </ActionFold>

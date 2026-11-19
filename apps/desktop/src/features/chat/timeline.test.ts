@@ -382,4 +382,90 @@ describe("buildTimeline: approval cards and secure forms among the bot's actions
     );
     expect(kinds(items)).toEqual(["separator", "user", "actions", "secret"]);
   });
+
+  describe("one row per tool call: the approval merges into its call", () => {
+    const rowsOf = (items: ReturnType<typeof buildTimeline>) =>
+      items.flatMap((i) =>
+        i.kind === "actions"
+          ? i.entries.flatMap((e) => (e.kind === "fold" ? e.items : [e.item]))
+          : [],
+      );
+
+    it("a decided approval and its call are one row, in the call's place", () => {
+      const done = makeApproval({
+        runId: run.id,
+        callId: "c2",
+        tool: "shell",
+        status: "approved",
+        createdAt: local(14, 3),
+        decidedAt: local(14, 4),
+      });
+      const items = buildTimeline(
+        [opener],
+        { [run.id]: { ...run, status: "running" } },
+        [action("c1", 2), action("c2", 3), action("c3", 8)],
+        NOW,
+        Number.POSITIVE_INFINITY,
+        { approvals: [done] },
+      );
+      expect(kinds(items)).toEqual(["separator", "user", "actions", "working"]);
+      const rows = rowsOf(items);
+      expect(rows.map((r) => r.callId)).toEqual(["c1", "c2", "c3"]);
+      expect(rows[1]?.approval?.id).toBe(done.id);
+    });
+
+    it("while it waits the decision card shows and the call has no row", () => {
+      const waiting = makeApproval({ runId: run.id, callId: "c2", createdAt: local(14, 3) });
+      const items = buildTimeline(
+        [opener],
+        { [run.id]: run },
+        [action("c1", 2), { ...action("c2", 3), state: "running" }],
+        NOW,
+        3,
+        { approvals: [waiting] },
+      );
+      expect(kinds(items)).toEqual(["separator", "user", "actions", "approval"]);
+      expect(rowsOf(items).map((r) => r.callId)).toEqual(["c1"]);
+    });
+
+    it("the fold counts calls, not rows: approved calls fold with the rest", () => {
+      const approved = ["c1", "c2"].map((callId, n) =>
+        makeApproval({
+          runId: run.id,
+          callId,
+          status: "approved",
+          createdAt: local(14, 2 + n),
+          decidedAt: local(14, 3 + n),
+        }),
+      );
+      const items = buildTimeline(
+        [opener],
+        { [run.id]: { ...run, status: "running" } },
+        [1, 2, 3, 4, 5].map((n) => action(`c${n}`, 1 + n)),
+        NOW,
+        3,
+        { approvals: approved },
+      );
+      const group = items.find((i) => i.kind === "actions") as Extract<
+        ReturnType<typeof buildTimeline>[number],
+        { kind: "actions" }
+      >;
+      expect(group.entries.map((e) => (e.kind === "fold" ? e.items.length : 1))).toEqual([
+        2, 1, 1, 1,
+      ]);
+    });
+
+    it("an approval of a run with no events loaded still gets its one row", () => {
+      const old = makeApproval({
+        runId: "run-antigo",
+        status: "denied",
+        createdAt: local(13, 0),
+        decidedAt: local(13, 1),
+      });
+      const items = buildTimeline([opener], {}, none, NOW, 3, { approvals: [old] });
+      expect(kinds(items)).toEqual(["separator", "user", "actions"]);
+      expect(rowsOf(items)).toHaveLength(1);
+      expect(rowsOf(items)[0]?.state).toBe("stopped");
+    });
+  });
 });

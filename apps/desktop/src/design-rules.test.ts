@@ -61,6 +61,20 @@ describe("chat cards share one chrome and one collapsed row", () => {
     expect(read(join(SRC, "features", "chat", "ActionRow.tsx"))).toContain("ActionCard");
   });
 
+  it("one tool vocabulary: the decision card, the decided approval and the action row read the label and icon from toolCategory", () => {
+    const row = read(join(SRC, "features", "chat", "ActionRow.tsx"));
+    expect(row).toContain("categoryGlyph(item.icon)");
+    expect(row).not.toMatch(/SquareTerminal|FileText|Globe|Brain|Wrench/);
+    expect(read(join(SRC, "data", "actions.ts"))).toContain("toolCategory(name, connectors)");
+    expect(read(join(SRC, "data", "actions.ts"))).not.toMatch(/kindLabel: "/);
+    for (const name of ["approval-card.tsx"])
+      expect(ui(name), name).toContain("categoryGlyph(category.icon)");
+  });
+
+  it("one row per tool call: the chat timeline merges the approvals into their calls", () => {
+    expect(read(join(SRC, "features", "chat", "timeline.ts"))).toContain("mergeApprovals(");
+  });
+
   it("the chrome of every chat card is the same: 1px border and the card radius", () => {
     const css = read(join(SRC, "ui", "ui.css"));
     const block = (selector: string): string => {

@@ -1,6 +1,7 @@
 import { KeyRound, LoaderCircle, ShieldCheck } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { SecretRequestState } from "../data/secret-requests.js";
+import { modalOpen } from "../lib/focus.js";
 import type { SecretOutcome } from "../lib/secret-form.js";
 import { ActionCard } from "./action-card.js";
 import { DecisionCard } from "./decision-card.js";
@@ -57,7 +58,7 @@ function OpenForm({
   // The form appears: the focus goes to the field (the person was asked for exactly this), unless
   // they are typing something else.
   useEffect(() => {
-    if (autoFocus === true && !userIsTyping()) field.current?.focus();
+    if (autoFocus === true && !userIsTyping() && !modalOpen()) field.current?.focus();
   }, [autoFocus]);
 
   const save = async () => {

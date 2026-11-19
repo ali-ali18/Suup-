@@ -1,22 +1,11 @@
 import type { Approval, ApprovalRule, DecideApprovalBody } from "@suup/api";
-import {
-  Brain,
-  ChevronDown,
-  FileText,
-  Globe,
-  LoaderCircle,
-  Mail,
-  Plug,
-  ShieldQuestion,
-  Terminal,
-} from "lucide-react";
+import { ChevronDown, LoaderCircle } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
   type AlwaysMatch,
   type AlwaysScope,
   alwaysSentence,
   approvalTitle,
-  type CategoryIcon,
   expiryText,
   instructionLine,
   LEVEL_HINT,
@@ -30,8 +19,10 @@ import {
   toolTitle,
 } from "../data/approval-text.js";
 import type { DecideOutcome } from "../data/sync.js";
+import { focusOnAppearance } from "../lib/focus.js";
 import { ActionCard } from "./action-card.js";
 import { ArgRow, ArgsView } from "./args-view.js";
+import { categoryGlyph } from "./category-icon.js";
 import { DecisionCard } from "./decision-card.js";
 import { MenuButton, type MenuItem } from "./menu.js";
 import { Pill } from "./primitives.js";
@@ -64,16 +55,6 @@ export interface ApprovalCardProps {
   onManageRules?(): void;
   now?: () => number;
 }
-
-const CATEGORY_ICON: Record<CategoryIcon, typeof Terminal> = {
-  terminal: Terminal,
-  file: FileText,
-  web: Globe,
-  memory: Brain,
-  mail: Mail,
-  connector: Plug,
-  generic: ShieldQuestion,
-};
 
 type Busy = "approve" | "always" | "deny";
 
@@ -128,14 +109,13 @@ function PendingCard({
   const current = useNow(approval.expiresAt !== null, now);
   const ref = parseConnectorTool(approval.tool, connectors);
   const category = toolCategory(approval.tool, connectors);
-  const Icon = CATEGORY_ICON[category.icon];
   const title = approvalTitle(approval.tool, approval.args, approval.summary, connectors);
   const tool = toolTitle(approval.tool, connectors);
 
   // The card appears: take the focus on the card itself (not on a button, so a stray Enter cannot
   // decide), unless the person is in the middle of typing something.
   useEffect(() => {
-    if (autoFocus === true && !userIsTyping()) root.current?.focus();
+    if (autoFocus === true && !userIsTyping()) focusOnAppearance(root.current);
   }, [autoFocus]);
 
   const send = async (kind: Busy, body: DecideApprovalBody) => {
@@ -226,7 +206,7 @@ function PendingCard({
       rootRef={root}
       groupLabel={`Pedido de aprovação de ${botName}: ${title}`}
       busy={waiting}
-      icon={<Icon size={14} />}
+      icon={categoryGlyph(category.icon)}
       category={category.label}
       aside={
         <span
@@ -328,15 +308,15 @@ function ResolvedCard({
   onToggle,
   collapseLong = true,
 }: ApprovalCardProps) {
-  const Icon = CATEGORY_ICON[toolCategory(approval.tool, connectors).icon];
+  const category = toolCategory(approval.tool, connectors);
   const state = approval.status === "approved" ? "done" : "stopped";
   const decided = approval.decidedAt === null ? undefined : new Date(approval.decidedAt);
   const title = approvalTitle(approval.tool, approval.args, approval.summary, connectors);
   return (
     <ActionCard
       testId="approval-card"
-      icon={<Icon size={14} />}
-      kind={toolCategory(approval.tool, connectors).label}
+      icon={categoryGlyph(category.icon)}
+      kind={category.label}
       state={state}
       stateLabel={STATUS_LABEL[approval.status] ?? approval.status}
       summary={title}

@@ -1,13 +1,16 @@
 import type { PlanStep } from "@suup/api";
 import { describe, expect, it } from "vitest";
-import { makeEvent } from "../test-fixtures.js";
+import { makeApproval, makeEvent } from "../test-fixtures.js";
 import {
   type ActionItem,
   actionsOf,
+  callStateLabel,
   describeAction,
   foldActions,
+  mergeApprovals,
   workingPhrase,
 } from "./actions.js";
+import { toolCategory } from "./approval-text.js";
 
 const call = (seq: number, callId: string, name: string, args: Record<string, unknown> = {}) =>
   makeEvent(seq, "tool_call", { callId, name, args });
@@ -24,22 +27,22 @@ describe("describeAction: kind, label, and the two one-line descriptions", () =>
       "Rodando o comando pnpm test",
     ],
     ["shell", {}, "Terminal", "Rodar um comando", "Rodando um comando"],
-    ["read_file", { path: "src/a.ts" }, "Arquivos", "Ler src/a.ts", "Lendo src/a.ts"],
-    ["write_file", { path: "b.md" }, "Arquivos", "Escrever b.md", "Escrevendo b.md"],
-    ["edit_file", { path: "a.ts" }, "Arquivos", "Editar a.ts", "Editando a.ts"],
-    ["edit_file", {}, "Arquivos", "Editar um arquivo", "Editando um arquivo"],
-    ["list_files", {}, "Arquivos", "Listar arquivos", "Listando arquivos"],
+    ["read_file", { path: "src/a.ts" }, "Arquivo", "Ler src/a.ts", "Lendo src/a.ts"],
+    ["write_file", { path: "b.md" }, "Arquivo", "Escrever b.md", "Escrevendo b.md"],
+    ["edit_file", { path: "a.ts" }, "Arquivo", "Editar a.ts", "Editando a.ts"],
+    ["edit_file", {}, "Arquivo", "Editar um arquivo", "Editando um arquivo"],
+    ["list_files", {}, "Arquivo", "Listar arquivos", "Listando arquivos"],
     [
       "list_files",
       { path: "src" },
-      "Arquivos",
+      "Arquivo",
       "Listar arquivos em src",
       "Listando arquivos em src",
     ],
     [
       "search_files",
       { pattern: "TODO" },
-      "Arquivos",
+      "Arquivo",
       "Buscar “TODO” nos arquivos",
       "Buscando “TODO” nos arquivos",
     ],
@@ -55,7 +58,7 @@ describe("describeAction: kind, label, and the two one-line descriptions", () =>
     ["recall", {}, "Memória", "Consultar a memória", "Consultando a memória"],
     ["forget", {}, "Memória", "Esquecer uma memória", "Esquecendo uma memória"],
     ["search_conversations", {}, "Memória", "Buscar nas conversas", "Buscando nas conversas"],
-    ["novidade", {}, "novidade", "Usar novidade", "Usando novidade"],
+    ["novidade", {}, "Ferramenta", "Usar novidade", "Usando novidade"],
   ];
   it.each(table)("%s %j", (name, args, label, summary, doing) => {
     expect(describeAction(name, args)).toMatchObject({ kindLabel: label, summary, doing });
@@ -85,8 +88,8 @@ describe("actionsOf", () => {
     ]);
     expect(items.map((i) => [i.callId, i.kindLabel, i.state, i.output])).toEqual([
       ["a", "Terminal", "done", "arquivos"],
-      ["b", "Arquivos", "failed", "falhou"],
-      ["d", "Arquivos", "running", undefined],
+      ["b", "Arquivo", "failed", "falhou"],
+      ["d", "Arquivo", "running", undefined],
     ]);
     expect(items[0]).toMatchObject({ runId: "run-1", durationMs: 1200, truncated: false });
   });
@@ -186,5 +189,192 @@ describe("workingPhrase: from the real state of the run", () => {
     expect(workingPhrase(run({ status: "queued" }), [], [])).toBe("Retomando");
     expect(workingPhrase(run({ status: "queued", startedAt: null }), [], [])).toBe("Na fila");
     expect(workingPhrase(run({ paused: true }), [running("shell", {})], plan)).toBe("Pausado");
+  });
+});
+
+describe("one vocabulary: the action row and the decision card name a tool the same way", () => {
+  it.each([
+    ["shell", {}],
+    ["read_file", {}],
+    ["write_file", {}],
+    ["web_fetch", {}],
+    ["remember", {}],
+    ["algo_novo", {}],
+    ["conn_erp__criar_pedido", {}],
+    ["conn_correio__enviar_email", {}],
+  ] as [string, Record<string, unknown>][])("%s", (name, args) => {
+    const category = toolCategory(name);
+    expect(describeAction(name, args)).toMatchObject({
+      kindLabel: category.label,
+      icon: category.icon,
+    });
+  });
+
+  it("a connector tool gets the connector's name when the connectors are known", () => {
+    expect(describeAction("conn_meu_erp__criar", {}, [{ name: "meu-erp" }])).toMatchObject({
+      kindLabel: "meu-erp",
+      icon: "connector",
+    });
+  });
+});
+
+describe("actionsOf: policy", () => {
+  it("a call a rule let through with no card says so; a default allow does not", () => {
+    const policy = (seq: number, callId: string, source: string, outcome = "allow") =>
+      makeEvent(seq, "policy_checked", {
+        callId,
+        tool: "write_file",
+        level: "write_reversible",
+        outcome,
+        source,
+      });
+    const items = actionsOf("r", [
+      call(1, "a", "write_file", { path: "a.txt" }),
+      policy(2, "a", "rule"),
+      call(3, "b", "write_file", { path: "b.txt" }),
+      policy(4, "b", "default"),
+      call(5, "c", "write_file", { path: "c.txt" }),
+    ]);
+    expect(items.map((i) => i.allowedByRule === true)).toEqual([true, false, false]);
+  });
+});
+
+describe("mergeApprovals: one row per tool call, the link is the call id", () => {
+  const RUN = "run-1";
+  const write = (callId = "w") => call(1, callId, "write_file", { path: "aprovado.txt" });
+  const approvalOf = (over: Partial<Parameters<typeof makeApproval>[0]> = {}) =>
+    makeApproval({
+      runId: RUN,
+      callId: "w",
+      tool: "write_file",
+      args: { path: "aprovado.txt", content: "conteúdo aprovado" },
+      status: "approved",
+      decidedAt: "2026-11-18T12:00:05.000Z",
+      ...over,
+    });
+  const merge = (events: ReturnType<typeof call>[], approvals: ReturnType<typeof approvalOf>[]) =>
+    mergeApprovals(actionsOf(RUN, events), approvals);
+
+  it("no approval: the calls pass through as they are", () => {
+    const { calls, pending } = merge([write(), result(2, "w")], []);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.approval).toBeUndefined();
+    expect(pending).toEqual([]);
+    expect(callStateLabel(calls[0] as ActionItem)).toBeUndefined();
+  });
+
+  it("approved and running: one row, the approval inside, saying so", () => {
+    const { calls } = merge([write()], [approvalOf()]);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ callId: "w", state: "running", kindLabel: "Arquivo" });
+    expect(callStateLabel(calls[0] as ActionItem)).toBe("Aprovado, rodando");
+  });
+
+  it("approved and done: one row with the result", () => {
+    const { calls } = merge([write(), result(2, "w", "escrito")], [approvalOf()]);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ state: "done", output: "escrito" });
+    expect(callStateLabel(calls[0] as ActionItem)).toBe("Aprovado e concluído");
+  });
+
+  it("approved and the tool failed: one row, failed, with its error", () => {
+    const { calls } = merge([write(), result(2, "w", "disco cheio", true)], [approvalOf()]);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ state: "failed", output: "disco cheio" });
+    expect(callStateLabel(calls[0] as ActionItem)).toBe("Aprovado, mas falhou");
+  });
+
+  it.each([
+    ["denied", "Recusado"],
+    ["expired", "Expirou"],
+    ["cancelled", "Cancelado"],
+  ] as const)(
+    "%s: it never ran, so it is stopped and its error result is not shown",
+    (status, word) => {
+      const { calls } = merge(
+        [write(), result(2, "w", "O usuário recusou a ação.", true)],
+        [approvalOf({ status })],
+      );
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toMatchObject({ state: "stopped", truncated: false });
+      expect(calls[0]?.output).toBeUndefined();
+      expect(callStateLabel(calls[0] as ActionItem)).toBe(word);
+    },
+  );
+
+  it("waiting: the call is NOT a row (the decision card is), the approval is pending", () => {
+    const waiting = approvalOf({ status: "pending", decidedAt: null });
+    const { calls, pending } = merge([write()], [waiting]);
+    expect(calls).toEqual([]);
+    expect(pending).toEqual([waiting]);
+  });
+
+  it("the link is the call id of the approval, never the text: same text, other call id, no merge", () => {
+    const { calls, pending } = merge([write("w")], [approvalOf({ callId: "outra" })]);
+    expect(calls.map((c) => [c.callId, c.approval === undefined ? "sem" : "com"])).toEqual([
+      ["w", "sem"],
+      ["outra", "com"],
+    ]);
+    expect(pending).toEqual([]);
+  });
+
+  it("a call id repeated in another run does not merge across runs", () => {
+    const { calls } = merge([write()], [approvalOf({ runId: "run-0" })]);
+    expect(calls.map((c) => [c.runId, c.approval === undefined])).toEqual([
+      ["run-1", true],
+      ["run-0", false],
+    ]);
+  });
+
+  it("a decided approval of a run whose events are not loaded is a row of its own", () => {
+    const { calls } = merge([], [approvalOf({ runId: "run-0" }), approvalOf({ status: "denied" })]);
+    expect(calls).toHaveLength(2);
+    expect(calls[0]).toMatchObject({
+      state: "done",
+      summary: "Escrever aprovado.txt",
+      kindLabel: "Arquivo",
+    });
+    expect(callStateLabel(calls[0] as ActionItem)).toBe("Aprovado");
+    expect(callStateLabel(calls[1] as ActionItem)).toBe("Recusado");
+    expect(calls[1]?.state).toBe("stopped");
+  });
+
+  it("a call allowed by a rule is just the action, with the fact kept for the details", () => {
+    const events = [
+      write(),
+      makeEvent(2, "policy_checked", {
+        callId: "w",
+        tool: "write_file",
+        level: "write_reversible",
+        outcome: "allow",
+        source: "rule",
+      }),
+      result(3, "w"),
+    ];
+    const { calls } = merge(events, []);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ allowedByRule: true, state: "done" });
+    expect(calls[0]?.approval).toBeUndefined();
+  });
+
+  it("the fold counts calls: two approved-and-done calls fold as 2, a stopped one stays where it is", () => {
+    const approvedCall = (id: string) =>
+      merge(
+        [call(1, id, "write_file", { path: `${id}.txt` }), result(2, id)],
+        [approvalOf({ callId: id })],
+      ).calls[0] as ActionItem;
+    const denied = merge(
+      [call(1, "d", "write_file", {}), result(2, "d", "recusado", true)],
+      [approvalOf({ callId: "d", status: "denied" })],
+    ).calls[0] as ActionItem;
+    const plain = (id: string) =>
+      actionsOf("r", [call(1, id, "shell", { command: id }), result(2, id)])[0] as ActionItem;
+    const entries = foldActions(
+      [approvedCall("a1"), approvedCall("a2"), denied, plain("c4"), plain("c5"), plain("c6")],
+      3,
+    );
+    expect(
+      entries.map((e) => (e.kind === "fold" ? `fold(${e.items.length})` : e.item.callId)),
+    ).toEqual(["fold(2)", "d", "c4", "c5", "c6"]);
   });
 });

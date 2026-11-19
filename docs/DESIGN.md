@@ -28,7 +28,7 @@ Todo cartão do chat (aprovação, segredo, ação do bot, pergunta, "precisa de
 - [ ] Sem preenchimento forte e sem cor de alerta no cartão.
 
 **Cabeçalho**
-- [ ] Ícone pequeno (14 px) num quadrado arredondado de 24 px (`--size-icon-box`, `--radius-chip`, fundo `--color-raised`) e o rótulo curto da categoria em negrito: "Arquivo", "Terminal", "Web", "Memória", o nome do conector, "E-mail" (ferramenta de e-mail), "Segredos"; sem categoria, "Aprovação" (`toolCategory`).
+- [ ] Ícone pequeno (14 px) num quadrado arredondado de 24 px (`--size-icon-box`, `--radius-chip`, fundo `--color-raised`) e o rótulo curto da categoria em negrito: "Arquivo", "Terminal", "Web", "Memória", o nome do conector, "E-mail" (ferramenta de e-mail), "Segredos"; sem categoria, "Ferramenta" (`toolCategory`). **Um só vocabulário**: o mesmo rótulo e o mesmo ícone para uma ferramenta, seja cartão que espera você, aprovação decidida ou linha do que o bot fez; vem sempre de `toolCategory` (`data/approval-text.ts`) e do ícone dela (`ui/category-icon.tsx`). Nenhuma tela tem tabela própria ("Arquivo" num lugar e "Arquivos" noutro é erro).
 - [ ] O nível de risco é texto apagado à direita, com prefixo "Risco:" só para leitor de tela. Nunca pílula colorida.
 
 **Corpo**
@@ -45,9 +45,16 @@ Todo cartão do chat (aprovação, segredo, ação do bot, pergunta, "precisa de
 **Segredo** (`secret-request-card.tsx`): cabeçalho "Segredos"; título e um parágrafo com o motivo dado **pelo bot** ("Motivo dado pelo bot: …"); o NOME como rótulo do campo; o campo seguro (sem estado, sem autocompletar, olho desligado, limpo antes de enviar); "Enviar" só liga com algo digitado (o cartão guarda só um booleano de "vazio", nunca o texto).
 
 **Estado resolvido (todo cartão)**
-- [ ] Cai para **uma linha**: ícone em quadrado + rótulo em negrito + resultado apagado ("Aprovado · Escrever a.txt", "Recusado", "Expirou", "Cancelado", "Segredo NOME disponível"). Sem botões.
+- [ ] Cai para **uma linha**: ícone em quadrado + rótulo em negrito + resultado apagado ("Aprovado e concluído · Escrever a.txt", "Recusado · Escrever a.txt", "Expirou", "Cancelado", "Segredo NOME disponível"). No chat, a aprovação decidida **não** é uma linha à parte: é a linha da chamada (ver acima); a linha só da aprovação existe no histórico de Configurações > Aprovações. Sem botões.
 - [ ] O affordance de expandir é o par de **setas empilhadas** (`ChevronsUpDown`, recolhido; `ChevronsDownUp`, aberto), nunca uma seta simples; vale para toda linha recolhida de cartão (`ui/action-card.tsx`, inclusive "Mais N ações").
 - [ ] A seta de expandir só aparece em hover ou foco do teclado (e continua anunciada por `aria-expanded`). Clicar expande, no lugar, o que foi executado; clicar de novo recolhe. A linha sem detalhes não é botão.
+
+**Uma linha por chamada de ferramenta**
+- [ ] Cada chamada de ferramenta aparece **uma única vez** no chat. Quando ela teve aprovação, a aprovação **entra na linha da chamada** (`mergeApprovals`, `data/actions.ts`); nunca há uma linha para o pedido e outra para a ação.
+- [ ] O vínculo vem dos dados: o `callId` (e a execução) que a aprovação carrega e os eventos trazem, nunca comparação de texto.
+- [ ] Enquanto espera, só o cartão de decisão aparece (a chamada ainda não é linha). Decidida, vira a linha da chamada, com o texto apagado dizendo a decisão e a execução juntas: "Aprovado, rodando", "Aprovado e concluído", "Aprovado, mas falhou", e, sem execução, "Recusado", "Expirou", "Cancelado"; depois o resumo ("Escrever a.txt"). Ex.: "Arquivo · Aprovado e concluído · Escrever aprovado.txt".
+- [ ] Aberta, a linha mostra o que foi aprovado (o conteúdo exato) e o resultado da execução (ou o erro). Recusada, expirada ou cancelada não tem resultado, só o motivo quando há. Chamada liberada por regra, sem cartão, é só a ação, com uma linha discreta "Permitido por uma regra sua" quando aberta.
+- [ ] "Mais N ações" conta **chamadas**, não linhas. Linha que não rodou (recusada, expirada, cancelada) ou falhou não se esconde na dobra.
 
 **Cartão "precisa de você"** (ação no computador do bot, fase 5): a mesma moldura; prévia do que está na tela e os botões embaixo, no rodapé.
 
@@ -70,6 +77,7 @@ Todo cartão do chat (aprovação, segredo, ação do bot, pergunta, "precisa de
 
 - [ ] Tudo se opera pelo teclado; foco visível (`--focus-ring`); menus com setas, Esc e retorno do foco.
 - [ ] Pedido novo (aprovação, segredo) é anunciado em região `aria-live`; o cartão recebe o foco, não um botão, e não rouba o foco de quem digita.
+- [ ] **Superfície modal manda no foco** (paleta, diálogos: `aria-modal="true"`): nada do chat toma o foco por conta própria enquanto uma está aberta (compositor, cartão de decisão, formulário de segredo, pergunta usam `focusOnAppearance`, `lib/focus.ts`; teste em `ui/modal-focus.test.tsx`), e a paleta devolve o foco ao campo se algo o levar.
 - [ ] Controle só com ícone tem nome (`aria-label`); estado vai em `aria-expanded` / `aria-checked` / `aria-busy`.
 - [ ] Movimento reduzido (`prefers-reduced-motion`) zera as durações (`tokens.css`).
 

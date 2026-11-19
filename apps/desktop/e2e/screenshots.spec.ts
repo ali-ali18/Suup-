@@ -263,18 +263,21 @@ test.describe("screenshots", () => {
       await shot("18b-aprovacao-menu");
       await page.keyboard.press("Escape");
       await approval.getByTestId("approval-approve").click();
-      await expect(approval).toHaveAttribute("data-state", "done");
       await expect(
         page.getByTestId("message-bot").filter({ hasText: "Escrevi o arquivo aprovado." }),
       ).toBeVisible();
+      // One row for the call: the approval merged into it.
+      const approved = page.getByTestId("action-card");
+      await expect(approved).toHaveCount(1);
+      await expect(approved).toHaveAttribute("data-state", "done");
       // Collapsed to one row, chevron hidden at rest; then on hover; then opened.
       await page.mouse.move(0, 0);
       await settle();
       await shot("18c-aprovacao-resolvida-recolhida");
-      await approval.getByRole("button", { name: /Aprovado/ }).hover();
+      await approved.getByRole("button", { name: /Aprovado/ }).hover();
       await settle();
       await shot("18d-aprovacao-resolvida-hover");
-      await approval.getByRole("button", { name: /Aprovado/ }).click();
+      await approved.getByRole("button", { name: /Aprovado/ }).click();
       await page.mouse.move(0, 0);
       await settle();
       await shot("18e-aprovacao-resolvida-aberta");

@@ -65,7 +65,7 @@ describe("ApprovalCard waiting for you", () => {
   it("an unknown tool falls back to the server's summary, with the generic category", () => {
     show({ approval: makeApproval({ tool: "tool_nova", summary: "Faz algo novo" }) });
     expect(screen.getByText("Faz algo novo")).toBeTruthy();
-    expect(screen.getByText("Aprovação")).toBeTruthy();
+    expect(screen.getByText("Ferramenta")).toBeTruthy();
   });
 
   it("a secret is only its placeholder, with a seal", () => {

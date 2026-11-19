@@ -3,6 +3,7 @@ import {
   type ActionEntry,
   type ActionItem,
   foldActions,
+  mergeApprovals,
   VISIBLE_ACTIONS,
 } from "../../data/actions.js";
 import { failureLine } from "../../data/derive.js";
@@ -29,7 +30,7 @@ export type TimelineItem =
     }
   /** The tool calls made between two messages, as cards (older finished ones folded). */
   | { kind: "actions"; key: string; entries: ActionEntry[] }
-  /** An action that waits for the user (or was decided): the approval card. */
+  /** An approval that waits for the user: the decision card (a decided one is part of its call's row). */
   | { kind: "approval"; key: string; approval: Approval }
   /** The bot asked for a credential: the secure form (or, once answered, one line). */
   | { kind: "secret"; key: string; request: SecretRequestItem }
@@ -64,7 +65,7 @@ export function dayLabel(date: Date, now: Date): string {
 
 /**
  * What the chat draws, from the messages, the runs they belong to and the tool calls of the runs.
- * Every action of the bot is a card in its column, placed among the messages by the time it was
+ * Every tool call of the bot is ONE row in its column (its approval, if it had one, merged into it), placed among the messages by the time it was
  * made; a failure or a cancellation is one line (`ended`); a question is a bot message that carries
  * what was asked; a final answer is an ordinary bot message; a working run ends the list with the
  * indicator.
@@ -76,9 +77,15 @@ export function buildTimeline(
   now: Date,
   /** How many of the latest cards stay visible before older finished ones fold (Infinity: never fold). */
   keep: number = VISIBLE_ACTIONS,
-  /** The approval cards of the conversation and the secure forms of the run, among the actions. */
-  extras: { approvals?: readonly Approval[]; secrets?: readonly SecretRequestItem[] } = {},
+  /** The approvals of the conversation and the secure forms of the run, among the actions. */
+  extras: {
+    approvals?: readonly Approval[];
+    secrets?: readonly SecretRequestItem[];
+    connectors?: Parameters<typeof mergeApprovals>[2];
+  } = {},
 ): TimelineItem[] {
+  // One row per tool call: a decided approval merges into its call; a waiting one is the decision card.
+  const merged = mergeApprovals(actions, extras.approvals ?? [], extras.connectors);
   const items: TimelineItem[] = [];
   const opened = new Set<string>();
   // Everything the bot did, in the order it happened: tool calls, approval cards, secure forms.
@@ -87,7 +94,7 @@ export function buildTimeline(
     | { kind: "approval"; at: string; runId: string; approval: Approval }
     | { kind: "secret"; at: string; runId: string; request: SecretRequestItem };
   const waiting: Placed[] = [
-    ...actions.map(
+    ...merged.calls.map(
       (action): Placed => ({
         kind: "action",
         at: action.startedAt,
@@ -95,7 +102,7 @@ export function buildTimeline(
         action,
       }),
     ),
-    ...(extras.approvals ?? []).map(
+    ...merged.pending.map(
       (approval): Placed => ({
         kind: "approval",
         at: approval.createdAt,

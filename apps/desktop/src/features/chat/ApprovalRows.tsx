@@ -3,11 +3,13 @@ import { useCallback, useMemo } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { useSettings } from "../../app/settings-store.js";
 import { useUi } from "../../app/ui-store.js";
+import type { ActionItem } from "../../data/actions.js";
 import { STATUS_LABEL } from "../../data/approval-text.js";
 import type { SecretRequestItem } from "../../data/secret-requests.js";
 import { answerSecretRequest } from "../../lib/secret-form.js";
 import { ApprovalCard } from "../../ui/approval-card.js";
 import { SecretRequestCard } from "../../ui/secret-request-card.js";
+import { ActionRow } from "./ActionRow.js";
 
 /**
  * Whether a decided card is open: its own choice (a click) flips what the setting says by default.
@@ -66,6 +68,56 @@ export function ApprovalRow({
             : `Este pedido já tinha sido decidido em outro lugar: ${(STATUS_LABEL[card.status] ?? card.status).toLowerCase()}.`,
         )
       }
+    />
+  );
+}
+
+/**
+ * The row of one tool call: the same row whether or not it had an approval. With one, the row says
+ * the decision and the execution together and opens to what was approved and what happened; its
+ * default (open or closed) follows the setting for decided cards, a click flips it.
+ */
+/** The key of a call's row among what is expanded: call ids repeat from run to run, approval ids do not. */
+export const callKey = (item: ActionItem): string =>
+  item.approval === undefined ? item.callId : `approval-${item.approval.id}`;
+
+export function CallRow({
+  item,
+  clicked,
+  onToggle,
+}: {
+  item: ActionItem;
+  clicked: ReadonlySet<string>;
+  onToggle(key: string): void;
+}) {
+  const approval = item.approval;
+  const bot = useData((s) => (approval === undefined ? undefined : s.bots[approval.botId]));
+  const connectorsByName = useData((s) => s.connectors);
+  const connectors = useMemo(() => Object.values(connectorsByName), [connectorsByName]);
+  const rule: ApprovalRule | undefined = useData((s) =>
+    approval?.ruleId == null ? undefined : s.rules[approval.ruleId],
+  );
+  const settings = useSettings((s) => s.settings);
+  const key = callKey(item);
+  const expanded =
+    approval === undefined
+      ? clicked.has(key)
+      : resolvedOpen(clicked, key, settings.approvalResolved);
+  return (
+    <ActionRow
+      item={item}
+      expanded={expanded}
+      onToggle={() => onToggle(key)}
+      {...(approval === undefined
+        ? {}
+        : {
+            context: {
+              botName: bot?.name ?? "O bot",
+              rule,
+              connectors,
+              collapseLong: settings.approvalLong === "collapse",
+            },
+          })}
     />
   );
 }

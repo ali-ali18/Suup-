@@ -341,6 +341,10 @@ test.describe("connectors", () => {
     await expect(botMessage(page, "Criei a coisa no conector.")).toBeVisible();
     const action = page.getByTestId("action-card").filter({ hasText: "conn_fake__write_thing" });
     await expect(action).toBeVisible();
+    // One row for the call, with the connector's name as its category, the same as on the card.
+    await expect(page.getByTestId("action-card")).toHaveCount(1);
+    await expect(action.locator(".ui-action__kind")).toHaveText("fake");
+    await expect(action).toContainText("Aprovado e concluído");
     await action.getByRole("button").click();
     await expect(action.getByTestId("action-output")).toContainText("wrote coisa");
     // Removing it asks first; the bot loses the tools.

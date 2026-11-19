@@ -1,22 +1,29 @@
-import { Brain, FileText, Globe, SquareTerminal, Wrench } from "lucide-react";
+import type { ApprovalRule } from "@suup/api";
 import type { ReactNode } from "react";
-import type { ActionItem } from "../../data/actions.js";
+import { type ActionItem, callStateLabel } from "../../data/actions.js";
+import { type RuleContext, ruleSentence, STATUS_DETAIL } from "../../data/approval-text.js";
 import { diffLines } from "../../lib/diff.js";
 import { ActionCard } from "../../ui/action-card.js";
+import { ArgsView } from "../../ui/args-view.js";
+import { categoryGlyph } from "../../ui/category-icon.js";
 
-const ICON: Record<ActionItem["kind"], ReactNode> = {
-  terminal: <SquareTerminal size={16} />,
-  files: <FileText size={16} />,
-  web: <Globe size={16} />,
-  memory: <Brain size={16} />,
-  other: <Wrench size={16} />,
-};
+/** What the row of a call with an approval needs from the app, besides the call itself. */
+export interface CallContext {
+  botName?: string;
+  /** The rule an "always allow" of the approval created, when it is known. */
+  rule?: ApprovalRule | undefined;
+  connectors?: RuleContext["connectors"];
+  /** Long content is collapsed with a button to show it all. */
+  collapseLong?: boolean;
+}
 
 const str = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
 
 /** What the details of an action say, as plain text: the command and its output, the path and the diff... */
-export function ActionDetail({ item }: { item: ActionItem }) {
-  const { args, output } = item;
+export function ActionDetail({ item, context = {} }: { item: ActionItem; context?: CallContext }) {
+  const { args, approval } = item;
+  // A call that never ran has no result to show.
+  const output = item.state === "stopped" ? undefined : item.output;
   const blocks: ReactNode[] = [];
   const label = (text: string, key: string) => (
     <p key={key} className="ui-action__label">
@@ -30,7 +37,53 @@ export function ActionDetail({ item }: { item: ActionItem }) {
   );
   const oldText = str(args.old_string);
   const newText = str(args.new_string);
-  if (item.name === "shell" && str(args.command) !== undefined) {
+  if (approval !== undefined) {
+    // What was approved: the exact content, as the card showed it (a secret stays its placeholder).
+    const decided = approval.decidedAt === null ? undefined : new Date(approval.decidedAt);
+    blocks.push(
+      <p key="approval" className="ui-action__label" data-testid="approval-detail">
+        {STATUS_DETAIL[approval.status] ?? ""}
+        {decided !== undefined &&
+          ` Decidido às ${decided.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}.`}
+      </p>,
+    );
+    if (approval.status === "denied" && approval.reason !== null && approval.reason !== "") {
+      blocks.push(
+        <p key="denial" className="ui-action__label" data-testid="approval-denial">
+          Motivo da recusa: <span className="ui-approval__quote">{approval.reason}</span>
+        </p>,
+      );
+    }
+    blocks.push(
+      <ArgsView
+        key="approved"
+        args={approval.args}
+        collapse={context.collapseLong ?? true}
+        testId="approval-content"
+      />,
+    );
+    if (approval.ruleId !== null) {
+      blocks.push(
+        <p key="rule" className="ui-action__label" data-testid="approval-rule">
+          {context.rule === undefined
+            ? "Criou uma regra “sempre permitir”."
+            : `Criou a regra: ${ruleSentence(context.rule, {
+                botName: context.botName,
+                ...(context.connectors === undefined ? {} : { connectors: context.connectors }),
+              })}`}
+        </p>,
+      );
+    }
+  } else if (item.allowedByRule === true) {
+    blocks.push(
+      <p key="allowed" className="ui-action__label" data-testid="action-rule-allowed">
+        Permitido por uma regra sua: rodou sem pedir aprovação.
+      </p>,
+    );
+  }
+  if (approval !== undefined) {
+    // The exact content is already shown above.
+  } else if (item.name === "shell" && str(args.command) !== undefined) {
     blocks.push(pre(`$ ${str(args.command)}`, "cmd"));
   } else if (item.name === "edit_file" && oldText !== undefined && newText !== undefined) {
     blocks.push(label(str(args.path) ?? "Arquivo", "path"));
@@ -89,21 +142,25 @@ export function ActionRow({
   item,
   expanded,
   onToggle,
+  context,
 }: {
   item: ActionItem;
   expanded: boolean;
   onToggle(): void;
+  context?: CallContext;
 }) {
+  const stateLabel = callStateLabel(item);
   return (
     <ActionCard
-      icon={ICON[item.kind]}
+      icon={categoryGlyph(item.icon)}
       kind={item.kindLabel}
       state={item.state}
       summary={item.summary}
+      {...(stateLabel === undefined ? {} : { stateLabel })}
       expanded={expanded}
       onToggle={onToggle}
     >
-      <ActionDetail item={item} />
+      <ActionDetail item={item} {...(context === undefined ? {} : { context })} />
     </ActionCard>
   );
 }
