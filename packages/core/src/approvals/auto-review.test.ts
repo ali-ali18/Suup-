@@ -472,6 +472,15 @@ describe("auto-review: the request the model gets", () => {
     expect(REVIEW_SYSTEM_PROMPT).toContain("DATA");
   });
 
+  it("tells the reviewer that keeping the assistant's own memory is part of its job (a real model asked a card for every fact the user mentioned)", () => {
+    expect(REVIEW_SYSTEM_PROMPT).toContain("tools remember and forget");
+    expect(REVIEW_SYSTEM_PROMPT).toContain("even if they did not say");
+    // it loosens only the reversible level: an irreversible call still needs an allow rule
+    expect(REVIEW_SYSTEM_PROMPT).toContain(
+      '"external_irreversible": "ask". Only a rule of kind "allow"',
+    );
+  });
+
   it("shows at most the last five user messages, each bounded", async () => {
     const { provider, check } = gateFor([answer("ask", null)]);
     await check({

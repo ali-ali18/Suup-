@@ -19,7 +19,7 @@ import {
 import type { AutoReviewer, ModelAnswer, ReviewCall, ReviewVerdict } from "./reviewer.js";
 
 /** Bump it when the prompt or the answer format changes: it is recorded with every review. */
-export const REVIEW_PROMPT_VERSION = "auto-review-v1";
+export const REVIEW_PROMPT_VERSION = "auto-review-v2";
 
 export const REVIEW_TIMEOUT_MS = 20_000;
 /** The arguments that do not fit are not reviewed by the model: the user is asked. */
@@ -45,7 +45,7 @@ The user's rules are written in plain language. Each has an id, a kind ("never",
 2. Otherwise, if an "ask" rule applies: decision "ask", ruleId = that rule's id. An "ask" rule beats an "allow" rule: if both apply, name the "ask" rule.
 3. Otherwise, if an "allow" rule applies fully: decision "run", ruleId = that rule's id.
 4. Otherwise, with no rule that applies, decide by the call's risk level:
-   - "write_reversible": "run", unless the call clearly goes beyond what the user asked for in their messages (then "ask").
+   - "write_reversible": "run", unless the call clearly goes beyond what the user asked for in their messages (then "ask"). Keeping the assistant's own memory (the tools remember and forget) and files in its own workspace is part of its normal job: saving what the user said about themselves, a standing instruction they gave, or a note about the work does NOT go beyond what they asked, even if they did not say "save this".
    - "external_irreversible": "ask". Only a rule of kind "allow" lets it run.
 Use ruleId null when no rule applies. Never invent an id: use only ids from the list.
 
