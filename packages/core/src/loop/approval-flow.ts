@@ -8,8 +8,11 @@ import type { GateVerdict } from "../approvals/gate.js";
 import { approvalIdFor } from "../approvals/id.js";
 import type { ApprovalDecision } from "../events.js";
 import type { JsonValue } from "../messages.js";
+import { renderStaleApprovalNotice, sameCall } from "./grants.js";
+import { renderNotice } from "./prompts.js";
 import { type ControlCall, record } from "./recording.js";
 import type { LoopContext } from "./run-context.js";
+import type { ApprovalDecisionItem } from "./store.js";
 
 /** What the gate (and the user) said about one call. */
 export type CallClearance =
@@ -55,6 +58,17 @@ export function clearanceFromLog(ctx: LoopContext, call: ControlCall): CallClear
   if (given !== undefined) {
     const decided = given.decided;
     if (decided === undefined) return { kind: "wait" };
+    const stale = ctx.state.staleApprovals.get(call.id);
+    if (decided.decision === "approved" && stale !== undefined) {
+      // Approved after a long wait: the call does NOT run now. The model is told, and the approval
+      // stays as a one-time grant for the identical call (see `grantFor`).
+      return {
+        kind: "denied",
+        text: renderNotice(
+          renderStaleApprovalNotice({ tool: call.name, waitedMs: stale.waitedMs }),
+        ),
+      };
+    }
     return decided.decision === "approved"
       ? // Exactly what was shown on the card, never what the model might say now.
         { kind: "run", args: given.requested.args }
@@ -67,6 +81,34 @@ export function clearanceFromLog(ctx: LoopContext, call: ControlCall): CallClear
       : { kind: "denied", text: ruleDenial(call.name, earlier.reason) };
   }
   return undefined;
+}
+
+/**
+ * The grant a late approval left for exactly this call, if it is still unused: same tool, same
+ * arguments (canonical JSON equality; nothing fuzzy). A call that already ran on a grant (the log
+ * says so) is its own answer.
+ */
+export function grantFor(
+  ctx: LoopContext,
+  call: ControlCall,
+): { approvalId: string; consumed: boolean } | undefined {
+  const used = ctx.state.grantUses.get(call.id);
+  if (used !== undefined) return { approvalId: used, consumed: true };
+  const grant = ctx.state.grants.find((g) => !g.used && sameCall(g, call));
+  return grant === undefined ? undefined : { approvalId: grant.approvalId, consumed: false };
+}
+
+/** Records that the call consumes the grant (once: a resumed loop finds it in the log). */
+export async function consumeGrant(
+  ctx: LoopContext,
+  call: ControlCall,
+  grant: { approvalId: string; consumed: boolean },
+): Promise<void> {
+  if (grant.consumed) return;
+  await record(ctx, {
+    type: "approval_grant_used",
+    payload: { approvalId: grant.approvalId, callId: call.id, tool: call.name },
+  });
 }
 
 /**
@@ -179,8 +221,27 @@ export async function deliverApprovalDecisions(ctx: LoopContext): Promise<boolea
         ...(d.ruleId === undefined ? {} : { ruleId: d.ruleId }),
       },
     });
+    await recordStale(ctx, d);
   }
+  // A process that died between the decision and its stale note finishes the note now.
+  for (const d of stale) await recordStale(ctx, d);
   const done = [...fresh, ...stale].map((d) => d.approvalId);
   if (done.length > 0) await store.ackApprovalDecisions(ctx.runId, done);
   return fresh.length > 0;
+}
+
+/** Writes `approval_stale` for an approval that waited too long (once per card). */
+async function recordStale(ctx: LoopContext, d: ApprovalDecisionItem): Promise<void> {
+  if (d.decision !== "approved" || d.stale === undefined) return;
+  if (ctx.state.staleApprovals.has(d.callId)) return;
+  if (ctx.state.approvals.get(d.callId)?.decided?.approvalId !== d.approvalId) return;
+  await record(ctx, {
+    type: "approval_stale",
+    payload: {
+      approvalId: d.approvalId,
+      callId: d.callId,
+      waitedMs: d.stale.waitedMs,
+      thresholdMs: d.stale.thresholdMs,
+    },
+  });
 }

@@ -50,6 +50,8 @@ export const RUN_EVENT_TYPES = [
   "approval_review",
   "approval_requested",
   "approval_decided",
+  "approval_stale",
+  "approval_grant_used",
   "secret_requested",
   "wait_scheduled",
   "wait_fired",

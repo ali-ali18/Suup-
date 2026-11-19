@@ -165,6 +165,28 @@ modelo pede a chamada
 - **Sem prazo escondido.** Um cartão só expira se `approvals.expireAfterMinutes` estiver na configuração (aí ele vira `expired`, o bot é avisado e segue). Sem isso espera para sempre, e o worker não fica preso nele (a execução está em `waiting_approval`).
 - **Cancelar a execução cancela os cartões pendentes** (`approval_decided` com `cancelled` no log).
 
+### Aprovação depois de muito tempo
+
+Decisão do dono: um cartão **nunca expira por padrão** (acima). Mas aprovar um que esperou **mais** que `staleAfterMinutes` (configuração do servidor, padrão 60 minutos, de 5 a 10080; Configurações > Permissões, `suup approvals stale [minutos]`, `PATCH /v1/approval-settings`) **não executa a ação na hora**: o mundo pode ter mudado desde que o cartão foi pedido.
+
+```
+você aprova (esperou 5 h, o limite é 1 h)
+  └─ o banco grava, na hora da decisão: waited_ms (decided_at - created_at) e o limite daquele momento
+  └─ o loop retoma: approval_decided (approved), depois approval_stale { approvalId, callId, waitedMs, thresholdMs }
+       ├─ a chamada NÃO roda; o modelo recebe, como resultado dela, um aviso do harness (nunca do usuário)
+       └─ a aprovação fica como permissão de uma vez para a chamada idêntica, nesta execução
+```
+
+- **O aviso ao modelo** (resultado da chamada, com o prefixo de aviso do harness): "o usuário aprovou esta chamada exata a "<ferramenta>" depois de 5 h, e por isso ela NÃO foi executada agora: o estado das coisas pode ter mudado. Confira se ela ainda faz sentido antes de contar com ela. Se ainda faz, chame de novo com exatamente os mesmos argumentos (vale uma vez, sem novo cartão). Se não faz mais, não chame, e conte ao usuário por quê. Ao retomar, diga ao usuário, na sua mensagem, que você está retomando a tarefa antiga." A mensagem do bot é a explicação ao usuário; a interface não inventa outra.
+- **A permissão de uma vez (`grant`).** Uma chamada seguinte da **mesma execução**, com o **mesmo nome de ferramenta e os mesmos argumentos** (igualdade exata do JSON, com as chaves em ordem canônica; sem comparação aproximada, sem olhar texto), roda **sem novo cartão** e consome a permissão (`approval_grant_used { approvalId, callId, tool }`). Qualquer diferença (um caractere de argumento) é um cartão normal. Uma segunda chamada idêntica depois da primeira também pergunta. A permissão **morre com a execução**: ela é só o log desta execução (uma execução nova começa sem nenhuma). Ela vale antes do portão: nenhuma regra nem revisor são consultados para essa chamada (o usuário já viu e aprovou aquele conteúdo exato).
+- **Gravação e replay.** A linha de `approvals` continua `approved`. O limite e a espera são gravados quando você decide (colunas `waited_ms` e `stale_after_ms`, migração 0021) e vão para o evento `approval_stale`; o loop e o replay leem os números do log, nunca um relógio nem a configuração de hoje. Uma queda entre `approval_decided` e `approval_stale` é completada ao retomar (o teste derruba o processo depois de cada evento).
+- **Cartões de mensagem** (e-mail com "Permitir destinatário" etc.) seguem a mesma regra: aprovar tarde não envia na hora. (Se "Permitir destinatário" foi marcado, a regra de destinatário já nasce; ela vale para as chamadas seguintes como sempre.)
+- **Na tela:** a linha recolhida da chamada diz "Aprovado depois de 5 h · <ação>", sem botão novo ([DESIGN.md](DESIGN.md)).
+
+### Mensagem logo depois de uma recusa
+
+Quando você recusa um cartão e escreve ao bot em seguida ("manda por e-mail então"), a mensagem costuma ser sobre a ação recusada. Se ela estava na caixa da execução quando o loop retomou da recusa, isto é, **depois** do evento `approval_decided` com `denied` e **antes** do próximo pedido ao modelo, o bot a lê como "Sobre a ação que você acabou de não poder fazer (<ferramenta>, recusada pelo usuário): <mensagem>". A decisão é pela **ordem dos eventos do log**, nunca pelo texto da mensagem. O evento `user_message` guarda `linkedApprovalId` (o cartão recusado), então o replay entrega a mesma coisa. A execução nunca para por causa disso; uma mensagem que chega depois que o modelo já foi pedido de novo é uma mensagem normal, e só uma recusa do usuário liga (expirado e cancelado não).
+
 ### Várias chamadas no mesmo turno
 
 O modelo pode pedir várias ferramentas numa resposta. A regra adotada:
@@ -191,6 +213,7 @@ suup deny <id> [--reason "..."]
 suup rules list|add|edit|rm                  # a regra: igualdade exata, `--match campo=valor`
 suup rules written list|add|edit|rm          # as regras que você escreve em linguagem comum
 suup approvals mode [auto-review|ask-all]    # o modo de aprovação (sem argumento: mostra)
+suup approvals stale [minutos]               # depois de quantos minutos aprovar um cartão não roda na hora (5 a 10080)
 suup eval approvals --yes                    # mede o auto-review com a bateria plantada (gasta dinheiro)
 suup chat                                    # o cartão aparece no terminal e você responde na hora
 ```

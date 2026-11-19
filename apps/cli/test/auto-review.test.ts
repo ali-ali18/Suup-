@@ -85,6 +85,20 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup approvals mode and written rule
     await json(["approvals", "mode", "auto-review"]);
   });
 
+  it("approvals stale: shows 60 minutes, changes it, refuses what is not a whole number from 5 to 10080", async () => {
+    expect(await json(["approvals", "stale"])).toEqual({ staleAfterMinutes: 60 });
+    expect((await p.suup(["approvals", "stale"])).stdout).toContain("mais de 60 minutos");
+    expect(await json(["approvals", "stale", "360"])).toEqual({ staleAfterMinutes: 360 });
+    expect(await json(["approvals", "stale"])).toEqual({ staleAfterMinutes: 360 });
+    for (const bad of ["4", "10081", "1.5", "uma hora"]) {
+      const r = await p.suup(["approvals", "stale", bad]);
+      expect(r.code, bad).toBe(2);
+      expect(r.stderr).toContain("de 5 a 10080");
+    }
+    expect(await json(["approvals", "stale"])).toEqual({ staleAfterMinutes: 360 });
+    await json(["approvals", "stale", "60"]);
+  });
+
   it("approvals mode: says so when there is no reviewer model", async () => {
     await p.config({ reviewer: undefined, approvals: { levels: { shell: "write_reversible" } } });
     const r = await p.suup(["approvals", "mode"]);

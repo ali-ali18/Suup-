@@ -11,6 +11,7 @@ import { PermissionsSettings } from "./PermissionsSettings.js";
 
 const settingsOf = (over: Partial<ApprovalSettings> = {}): ApprovalSettings => ({
   mode: "auto_review",
+  staleAfterMinutes: 60,
   reviewer: { available: true, model: "model-x", reason: null },
   ...over,
 });
@@ -98,6 +99,54 @@ describe("Permissões: the mode", () => {
     const note = await screen.findByTestId("reviewer-unavailable");
     expect(note.textContent).toContain("Nenhum modelo de revisão configurado.");
     expect(screen.getByTestId("rules-allow").textContent).toContain("não são lidas");
+  });
+});
+
+describe("Permissões: the card that waited too long", () => {
+  const staleButton = () => screen.getByTestId("approval-stale");
+
+  it("shows the server's limit in a Dropdown with the owner's five choices; the current one is added when it is another", async () => {
+    setup({
+      approvalSettings: {
+        get: async () => settingsOf({ staleAfterMinutes: 90 }),
+        update: async () => settingsOf(),
+      },
+    });
+    await waitFor(() => expect(staleButton().textContent).toBe("90 min"));
+    expect(staleButton().getAttribute("aria-haspopup")).toBe("listbox");
+    fireEvent.click(staleButton());
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "15 min",
+      "1 h",
+      "90 min",
+      "6 h",
+      "1 dia",
+      "1 semana",
+    ]);
+  });
+
+  it("changes at once and sends only the limit", async () => {
+    const update = vi.fn(async (body: { staleAfterMinutes?: number }) =>
+      settingsOf({ staleAfterMinutes: body.staleAfterMinutes ?? 60 }),
+    );
+    setup({ approvalSettings: { get: async () => settingsOf(), update } });
+    await waitFor(() => expect(staleButton().textContent).toBe("1 h"));
+    fireEvent.click(staleButton());
+    fireEvent.click(await screen.findByRole("option", { name: "1 dia" }));
+    expect(staleButton().textContent).toBe("1 dia");
+    await waitFor(() => expect(update).toHaveBeenCalledWith({ staleAfterMinutes: 1440 }));
+  });
+
+  it("goes back, with the server's words, when it refuses", async () => {
+    const update = vi.fn(async () => {
+      throw new ApiError("invalid_request", "O limite deve ficar entre 5 minutos e 1 semana.", 400);
+    });
+    setup({ approvalSettings: { get: async () => settingsOf(), update } });
+    await waitFor(() => expect(staleButton().textContent).toBe("1 h"));
+    fireEvent.click(staleButton());
+    fireEvent.click(await screen.findByRole("option", { name: "15 min" }));
+    await waitFor(() => expect(screen.getByRole("note").textContent).toContain("entre 5 minutos"));
+    expect(staleButton().textContent).toBe("1 h");
   });
 });
 

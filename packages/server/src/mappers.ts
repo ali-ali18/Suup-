@@ -222,6 +222,8 @@ export function toApprovalDto(approval: ApprovalRow): Approval {
     expiresAt: isoOrNull(approval.expiresAt),
     decidedAt: isoOrNull(approval.decidedAt),
     createdAt: iso(approval.createdAt),
+    waitedMs: approval.waitedMs,
+    stale: approval.stale,
   };
 }
 

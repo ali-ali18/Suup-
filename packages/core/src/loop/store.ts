@@ -21,6 +21,12 @@ export interface ApprovalDecisionItem {
   reason?: string | undefined;
   /** The rule an "approve and always allow" created. */
   ruleId?: string | undefined;
+  /**
+   * Only on an approval: the card waited longer than the staleness limit before the user approved
+   * it (numbers the store measured when the user decided). The loop does not run the call; see
+   * `approval_stale`.
+   */
+  stale?: { waitedMs: number; thresholdMs: number } | undefined;
 }
 
 /** The run as the store knows it. The conversation is NOT here: it is rebuilt from events. */

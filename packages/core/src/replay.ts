@@ -691,6 +691,17 @@ class ReplayStore implements RunStore {
     const items: ApprovalDecisionItem[] = [];
     for (let i = this.#position(); ; i++) {
       const event = this.#recorded[i];
+      if (event?.type === "approval_stale") {
+        // The late-approval note that follows its decision: the numbers are the recorded ones.
+        const item = items.find((it) => it.approvalId === event.payload.approvalId);
+        if (item !== undefined) {
+          item.stale = {
+            waitedMs: event.payload.waitedMs,
+            thresholdMs: event.payload.thresholdMs,
+          };
+        }
+        continue;
+      }
       if (event?.type !== "approval_decided") break;
       const p = event.payload;
       items.push({

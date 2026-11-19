@@ -161,6 +161,15 @@ const samples: RunEventData[] = [
     type: "approval_decided",
     payload: { approvalId: "a1", callId: "1", decision: "denied", reason: "no", ruleId: "r2" },
   },
+  {
+    type: "approval_stale",
+    payload: { approvalId: "a1", callId: "1", waitedMs: 18_000_000, thresholdMs: 3_600_000 },
+  },
+  { type: "approval_grant_used", payload: { approvalId: "a1", callId: "2", tool: "send" } },
+  {
+    type: "user_message",
+    payload: { text: "mande por e-mail", inboxId: "i1", linkedApprovalId: "a1" },
+  },
   { type: "secret_requested", payload: { callId: "1", name: "GITHUB_TOKEN", reason: "push" } },
   {
     type: "tool_catalog",

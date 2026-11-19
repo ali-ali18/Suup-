@@ -438,6 +438,34 @@ export const runEventSchema = z.discriminatedUnion("type", [
     }),
   }),
   z.object({
+    /**
+     * An approved card waited longer than the staleness limit (`approvals.staleAfterMinutes`, kept
+     * by the server). Written right after the `approval_decided` that approved it, from numbers the
+     * store recorded when the user decided: `waitedMs` and the `thresholdMs` it was measured
+     * against. The call is NOT run: the model is told, and the approval stays as a one-time grant
+     * for the identical call within this run (`approval_grant_used`).
+     */
+    type: z.literal("approval_stale"),
+    payload: z.object({
+      approvalId: z.string(),
+      callId: z.string(),
+      waitedMs: z.number().int().nonnegative(),
+      thresholdMs: z.number().int().nonnegative(),
+    }),
+  }),
+  z.object({
+    /**
+     * A call identical (same tool, same arguments, compared exactly) to one approved late ran
+     * without a new card, consuming that approval's grant. `callId` is the NEW call.
+     */
+    type: z.literal("approval_grant_used"),
+    payload: z.object({
+      approvalId: z.string(),
+      callId: z.string(),
+      tool: z.string(),
+    }),
+  }),
+  z.object({
     /** The bot asks the user for a credential; the answer is only that it is now available. */
     type: z.literal("secret_requested"),
     payload: z.object({
@@ -457,6 +485,12 @@ export const runEventSchema = z.discriminatedUnion("type", [
       text: z.string(),
       /** The inbox item this event delivers. A resumed loop never delivers the same id twice. */
       inboxId: z.exactOptional(z.string()),
+      /**
+       * The card the user had just denied, when this message was delivered after that denial and
+       * before the model's next request (decided by the order of the log, never by the text).
+       * The model reads the message as being about that denied action.
+       */
+      linkedApprovalId: z.exactOptional(z.string()),
     }),
   }),
   z.object({

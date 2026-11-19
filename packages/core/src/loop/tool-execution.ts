@@ -1,12 +1,15 @@
 // Owns executing the tool calls of a response: dispatching control tools (plan, finish, escalate)
 // versus registry tools, the heartbeat and hard-interruption check between calls, and the
 // "interrupted" results that keep the conversation valid after an abort or a crash mid-call.
+import type { JsonValue } from "../messages.js";
 import type { ToolInvocation } from "../registry.js";
 import type { ToolContext } from "../tool.js";
 import {
   askGate,
   type CallClearance,
   clearanceFromLog,
+  consumeGrant,
+  grantFor,
   SKIPPED_AFTER_DENIAL,
 } from "./approval-flow.js";
 import { handleEscalate, handlePlan, handleScheduleReturn } from "./control-calls.js";
@@ -137,7 +140,14 @@ async function handleTool(
     });
     return false;
   }
-  const clearance: CallClearance = logged ?? (await askGate(ctx, call));
+  // A call identical to one the user approved too late runs once without a new card.
+  const grant = logged === undefined ? grantFor(ctx, call) : undefined;
+  if (grant !== undefined) await consumeGrant(ctx, call, grant);
+  const clearance: CallClearance =
+    logged ??
+    (grant === undefined
+      ? await askGate(ctx, call)
+      : { kind: "run", args: call.args as JsonValue });
   if (clearance.kind === "wait") return true;
   if (clearance.kind === "denied") {
     await deny(ctx, call, clearance.text);

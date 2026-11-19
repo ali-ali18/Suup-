@@ -335,6 +335,19 @@ describe("mergeApprovals: one row per tool call, the link is the call id", () =>
     expect(callStateLabel(calls[0] as ActionItem)).toBe("Aprovado, rodando");
   });
 
+  it("approved after waiting too long: the row says how long, whatever happened to the call", () => {
+    const stale = { stale: true, waitedMs: 5 * 3_600_000 };
+    const held = merge([write(), result(2, "w", "Aviso do sistema")], [approvalOf(stale)]);
+    expect(callStateLabel(held.calls[0] as ActionItem)).toBe("Aprovado depois de 5 h");
+    const running = merge([write()], [approvalOf({ stale: true, waitedMs: 40 * 60_000 })]);
+    expect(callStateLabel(running.calls[0] as ActionItem)).toBe("Aprovado depois de 40 min");
+    const days = merge([write()], [approvalOf({ stale: true, waitedMs: 72 * 3_600_000 })]);
+    expect(callStateLabel(days.calls[0] as ActionItem)).toBe("Aprovado depois de 3 dias");
+    // A fresh approval says nothing about time.
+    const fresh = merge([write(), result(2, "w", "ok")], [approvalOf({ waitedMs: 5000 })]);
+    expect(callStateLabel(fresh.calls[0] as ActionItem)).toBe("Aprovado e concluído");
+  });
+
   it("approved and done: one row with the result", () => {
     const { calls } = merge([write(), result(2, "w", "escrito")], [approvalOf()]);
     expect(calls).toHaveLength(1);

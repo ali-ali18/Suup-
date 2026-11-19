@@ -105,7 +105,7 @@ Cada execução tem um log de eventos numerados (`seq`), só de acréscimo. É a
 | `tool_call` | `callId`, `name`, `args` | Linha recolhível "usando ferramenta" |
 | `tool_result` | `callId`, `content`, `isError`, `truncated`, `durationMs` | Resultado dentro da mesma linha |
 | `plan_updated` | `plan` | Lista de checagem que se atualiza |
-| `user_message` | `text` | Sua mensagem, marcada como "lida pelo bot" |
+| `user_message` | `text`, `inboxId?`, `linkedApprovalId?` | Sua mensagem, marcada como "lida pelo bot". `linkedApprovalId` existe quando ela chegou logo depois de uma recusa sua e antes do próximo turno do bot: o bot a leu como sendo sobre a ação recusada (o app não precisa desenhar nada diferente) |
 | `nudge` | `reason`, `text` | Aviso discreto: "o Suup pediu ao bot que continuasse" |
 | `finish_attempt` | `summary`, `evidence`, `accepted`, `rejectionReasons` | Conclusão aceita, ou "conclusão recusada" com os motivos |
 | `review` | `verdict` (`approve`, `reject` ou `unverified`), `notes`, `discrepancies?` (num `reject`: lista de `{ claimed, shows, where }`, ao menos uma), `warning?` | Selo do revisor. `unverified`: o revisor não conseguiu verificar algo mesmo com as evidências; `notes` diz o quê, e a decisão vai para o dono |
@@ -121,6 +121,8 @@ Cada execução tem um log de eventos numerados (`seq`), só de acréscimo. É a
 | `approval_review` | `callId`, `tool`, `level`, `decision` (`run`/`ask`/`block`), `ruleId`, `reason`, `outcome` (`allow`/`ask`/`deny`), `adjusted?`, `skipped?`, `model?`, `promptVersion?`, `usage?`, `costUsd?`, `latencyMs?` | O modelo do Auto-review olhou a chamada (vem **antes** do `policy_checked` ou do `approval_requested` dela). Detalhe recolhido ("revisado: pode / perguntar / bloquear, e a frase"); o custo e o modelo vão no detalhe técnico |
 | `approval_requested` | `approvalId`, `callId`, `tool`, `args`, `level`, `summary`, `secrets`, `source`, `expiresAt?`, `reason?`, `writtenRuleId?` | **O cartão de aprovação** (seção 8, fase 3). `args` é o conteúdo exato; segredos aparecem como `{{secret:NOME}}` |
 | `approval_decided` | `approvalId`, `callId`, `decision` (`approved`, `denied`, `cancelled`, `expired`), `reason?`, `ruleId?` | O cartão resolvido; entra no log quando o worker retoma a execução |
+| `approval_stale` | `approvalId`, `callId`, `waitedMs`, `thresholdMs` | Só no inspetor: o cartão foi aprovado depois de esperar mais que o limite (`staleAfterMinutes`); a ação **não** rodou, o bot foi avisado. A linha do chat vem do `Approval` (`stale`, `waitedMs`): "Aprovado depois de 5 h · Escrever a.txt" |
+| `approval_grant_used` | `approvalId`, `callId`, `tool` | Só no inspetor: uma chamada idêntica à aprovada tarde rodou sem novo cartão (a permissão de uma vez, desta execução) |
 | `wait_scheduled` | `at`, `note`, `minutes`, `callId?` | Só no inspetor: o bot marcou um retorno. A chamada de `schedule_return` não vira cartão |
 | `wait_fired` | `at`, `note`, `delayMs?` | Só no inspetor: a hora do retorno chegou (gravado pelo job que acorda as execuções) |
 | `wait_cancelled` | `reason` (`user_message`, `cancelled`, `replaced`, `finished`) | Só no inspetor: o retorno não vai disparar |

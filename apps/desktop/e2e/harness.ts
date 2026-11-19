@@ -255,6 +255,21 @@ export const SCRIPTS = {
         ],
       },
       {
+        // Approved after the card waited for hours: the first call is held back, the bot asks again.
+        whenObjectiveContains: "CASE-STALE",
+        agent: [
+          s({
+            text: "Vou gravar o arquivo.",
+            calls: [writeCall("tardio.txt", "conteúdo tardio")],
+          }),
+          s({
+            text: "Retomando a tarefa antiga: ainda faz sentido.",
+            calls: [writeCall("tardio.txt", "conteúdo tardio")],
+          }),
+          s({ text: "Escrevi o arquivo tardio." }),
+        ],
+      },
+      {
         whenObjectiveContains: "CASE-DENY",
         agent: [
           s({ calls: [writeCall("negado.txt", "isto não deve ser escrito")] }),

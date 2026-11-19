@@ -157,6 +157,8 @@ export function makeApproval(over: Partial<Approval> = {}): Approval {
     expiresAt: null,
     decidedAt: null,
     createdAt: iso(),
+    waitedMs: null,
+    stale: false,
     ...over,
   };
 }

@@ -249,6 +249,8 @@ describe("approvals in the contract", () => {
     expiresAt: null,
     decidedAt: null,
     createdAt: "2026-11-18T20:00:00.000Z",
+    waitedMs: null,
+    stale: false,
   };
 
   it("the stream carries the card, and an unknown level or status is refused", () => {

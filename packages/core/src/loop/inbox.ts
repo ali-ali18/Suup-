@@ -24,7 +24,17 @@ export async function freshInbox(ctx: LoopContext): Promise<InboxItem[]> {
 
 export async function recordUserMessage(ctx: LoopContext, item: InboxItem): Promise<void> {
   if (item.kind !== "user_message") return;
-  await record(ctx, { type: "user_message", payload: { text: item.text, inboxId: item.id } });
+  // Delivered after a denial and before the model's next request: it is about that denial. The
+  // order of the log says so; the text is never read.
+  const link = ctx.state.denialLink;
+  await record(ctx, {
+    type: "user_message",
+    payload: {
+      text: item.text,
+      inboxId: item.id,
+      ...(link === null ? {} : { linkedApprovalId: link.approvalId }),
+    },
+  });
 }
 
 /** Delivers what was posted while the run worked: user messages, or a request to stop. */

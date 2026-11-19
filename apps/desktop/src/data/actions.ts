@@ -354,6 +354,16 @@ export function mergeApprovals(
   return { calls, pending };
 }
 
+/** How long a card waited, in the owner's words: "40 min", "5 h", "3 dias". */
+export function waitedText(ms: number): string {
+  const minutes = Math.max(1, Math.round(ms / 60_000));
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `${hours} h`;
+  const days = Math.round(hours / 24);
+  return `${days} dias`;
+}
+
 /**
  * The muted word before the summary of a call's row, in Portuguese, saying the decision and the
  * execution together ("Aprovado e concluído", "Recusado"). `undefined`: no approval, the row says
@@ -364,6 +374,10 @@ export function callStateLabel(item: ActionItem): string | undefined {
   if (item.blocked !== undefined) return "Bloqueado pela regra";
   if (approval === undefined) return undefined;
   if (approval.status !== "approved") return STATUS_LABEL[approval.status] ?? approval.status;
+  // Approved after waiting too long: the call did not run then (the bot asked again, or dropped it).
+  if (approval.stale && approval.waitedMs !== null) {
+    return `Aprovado depois de ${waitedText(approval.waitedMs)}`;
+  }
   if (item.fromApproval === true) return "Aprovado";
   switch (item.state) {
     case "running":

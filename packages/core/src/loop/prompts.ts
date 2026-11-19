@@ -162,7 +162,10 @@ export function renderStateReminder(input: {
   ].join("\n\n");
 }
 
-export function renderUserMessage(text: string): string {
+export function renderUserMessage(text: string, deniedTool?: string): string {
+  if (deniedTool !== undefined) {
+    return `${USER_PREFIX}\nSobre a ação que você acabou de não poder fazer (${deniedTool}, recusada pelo usuário): ${text}`;
+  }
   return `${USER_PREFIX}\n${text}`;
 }
 
