@@ -1,6 +1,7 @@
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import {
   chownSync,
+  cpSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -60,6 +61,29 @@ describe.skipIf(!CAN_RUN)(
       }
     };
 
+    /** The tail of the sidecar's and PostgreSQL's logs, printed (and copied to a folder) on failure. */
+    const diagnostics = (): string => {
+      const logs = join(appData, "logs");
+      let text = "";
+      try {
+        for (const name of readdirSync(logs)) {
+          const lines = readFileSync(join(logs, name), "utf8").split("\n");
+          text += `\n--- ${name} (últimas linhas) ---\n${lines.slice(-60).join("\n")}`;
+        }
+      } catch (error) {
+        text += `\n(sem logs em ${logs}: ${String(error)})`;
+      }
+      const keep = process.env.SUUP_TEST_LOGS_DIR;
+      if (keep !== undefined) {
+        try {
+          cpSync(logs, keep, { recursive: true });
+        } catch {
+          // best effort
+        }
+      }
+      return text;
+    };
+
     const waitFor = (test: (event: SidecarEvent) => boolean, ms: number): Promise<SidecarEvent> =>
       new Promise((resolve, reject) => {
         const started = Date.now();
@@ -70,7 +94,7 @@ describe.skipIf(!CAN_RUN)(
             resolve(found);
           } else if (Date.now() - started > ms) {
             clearInterval(timer);
-            reject(new Error(`timeout; eventos: ${JSON.stringify(events)}`));
+            reject(new Error(`timeout; eventos: ${JSON.stringify(events)}\n${diagnostics()}`));
           }
         }, 50);
       });

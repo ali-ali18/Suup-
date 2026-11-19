@@ -1,5 +1,16 @@
-import { execFile } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+import {
+  appendFileSync,
+  closeSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createDb } from "@suup/db";
 
@@ -62,19 +73,50 @@ export class EmbeddedPostgres {
     return join(this.#o.home, "bin", process.platform === "win32" ? `${name}.exe` : name);
   }
 
+  /**
+   * Runs one of the PostgreSQL tools and waits for it to EXIT (not for its stdio to close). `pg_ctl
+   * start` leaves the server running, and on Windows the server inherits the handles of the tool: with
+   * pipes (as `execFile` makes them) the stream never closes while the server lives, so waiting for
+   * the pipes hangs forever. The output goes to files instead, and stdin is not inherited.
+   */
   #run(name: string, args: string[]): Promise<Ran> {
+    const dir = mkdtempSync(join(tmpdir(), "suup-pgtool-"));
+    const outFile = join(dir, "out.txt");
+    const errFile = join(dir, "err.txt");
+    const out = openSync(outFile, "w");
+    const err = openSync(errFile, "w");
     return new Promise((resolve) => {
-      execFile(
-        this.#exe(name),
-        args,
-        { windowsHide: true, timeout: 180_000, env: { ...process.env, LC_MESSAGES: "C" } },
-        (error, stdout, stderr) => {
-          const code =
-            error === null ? 0 : typeof error.code === "number" ? error.code : (1 as number);
-          this.#o.log?.(`${name} ${args[0] ?? ""} -> ${code}\n${stdout}${stderr}`);
-          resolve({ code, stdout: String(stdout), stderr: String(stderr) });
-        },
-      );
+      let settled = false;
+      const finish = (code: number, extra: string) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        closeSync(out);
+        closeSync(err);
+        const read = (file: string) => {
+          try {
+            return readFileSync(file, "utf8");
+          } catch {
+            return "";
+          }
+        };
+        const stdout = read(outFile);
+        const stderr = read(errFile) + extra;
+        rmSync(dir, { recursive: true, force: true });
+        this.#o.log?.(`${name} ${args[0] ?? ""} saiu com código ${code}\n${stdout}${stderr}`);
+        resolve({ code, stdout, stderr });
+      };
+      const child = spawn(this.#exe(name), args, {
+        windowsHide: true,
+        stdio: ["ignore", out, err],
+        env: { ...process.env, LC_MESSAGES: "C" },
+      });
+      const timer = setTimeout(() => {
+        child.kill();
+        finish(1, `\n(${name} passou de 180 s e foi encerrado)`);
+      }, 180_000);
+      child.once("error", (error) => finish(1, `\n${String(error)}`));
+      child.once("exit", (code) => finish(code ?? 1, ""));
     });
   }
 
@@ -127,7 +169,10 @@ export class EmbeddedPostgres {
 
   /** Starts it and waits until it accepts connections. A server left by a crash is stopped first. */
   async start(): Promise<void> {
-    if (!this.clusterExists()) await this.init();
+    if (!this.clusterExists()) {
+      await this.init();
+      this.#o.log?.("postgres: initdb concluído");
+    }
     if (await this.isRunning()) await this.stop();
     const done = await this.#run("pg_ctl", [
       "start",
@@ -143,6 +188,30 @@ export class EmbeddedPostgres {
     ]);
     if (done.code !== 0) {
       throw new Error(`o PostgreSQL não subiu (código ${done.code}). Veja ${this.#o.logFile}.`);
+    }
+    this.#o.log?.(`postgres: pg_ctl terminou; esperando conexão na porta ${this.#o.port}`);
+    await this.#waitForConnection();
+    this.#o.log?.(`postgres: conectado na porta ${this.#o.port}`);
+  }
+
+  /** Polls a real connection (the server may report ready a moment before it accepts logins). */
+  async #waitForConnection(): Promise<void> {
+    const until = Date.now() + 60_000;
+    let last = "";
+    for (;;) {
+      const db = createDb(this.url("postgres"));
+      try {
+        await db.sql`select 1`;
+        return;
+      } catch (error) {
+        last = String(error);
+      } finally {
+        await db.close().catch(() => undefined);
+      }
+      if (Date.now() > until) {
+        throw new Error(`o PostgreSQL não aceitou conexão na porta ${this.#o.port}: ${last}`);
+      }
+      await new Promise((r) => setTimeout(r, 250));
     }
   }
 

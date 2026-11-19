@@ -44,7 +44,7 @@ jobs:
           - name: Linux
             os: ubuntu-latest
             required: false
-            bundles: appimage,deb
+            bundles: deb
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -70,6 +70,15 @@ jobs:
       # worker sobem do jeito que o app os sobe, respondem uma conversa e param sem deixar nada.
       - name: Servidor embutido (teste da disposição empacotada)
         run: pnpm vitest run apps/sidecar
+        env:
+          SUUP_TEST_LOGS_DIR: ${{ runner.temp }}/sidecar-logs
+      - name: Registros do servidor embutido (se falhou)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: registros-sidecar-${{ matrix.name }}
+          path: ${{ runner.temp }}/sidecar-logs
+          if-no-files-found: ignore
       - name: Preparar o servidor embutido (Node, PostgreSQL, pacote)
         run: pnpm --filter @suup/sidecar run bundle
       - uses: tauri-apps/tauri-action@v0
