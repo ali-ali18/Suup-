@@ -227,8 +227,8 @@
   padding-right: 36px;
 }
 .bot-entry--row .ui-avatar {
-  width: 46px;
-  height: 46px;
+  width: 52px;
+  height: 52px;
 }
 .bot-entry--tile .bot-entry__main {
   flex-direction: column;
@@ -711,8 +711,14 @@ select.ui-field__control {
   background: var(--color-hover);
 }
 .newbot__mascot--on {
-  border-color: var(--color-text-muted);
   background: var(--color-raised);
+}
+/* A marca do escolhido contorna a forma, em vez de pôr uma caixa em volta dela. */
+.newbot__mascot--on .ui-mascot {
+  filter: drop-shadow(2px 0 0 var(--color-raised)) drop-shadow(-2px 0 0 var(--color-raised))
+    drop-shadow(0 2px 0 var(--color-raised)) drop-shadow(0 -2px 0 var(--color-raised))
+    drop-shadow(1.5px 0 0 var(--color-text)) drop-shadow(-1.5px 0 0 var(--color-text))
+    drop-shadow(0 1.5px 0 var(--color-text)) drop-shadow(0 -1.5px 0 var(--color-text));
 }
 .newbot .ui-field__control {
   text-align: center;
