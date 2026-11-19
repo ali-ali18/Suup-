@@ -106,6 +106,15 @@ const samples: RunEventData[] = [
   },
   { type: "compacted", payload: { summary: "s", uptoSeq: 7, droppedMessages: 3 } },
   {
+    type: "wait_scheduled",
+    payload: { at: "2026-11-19T20:00:00.000Z", note: "check", minutes: 20, callId: "c1" },
+  },
+  {
+    type: "wait_fired",
+    payload: { at: "2026-11-19T20:00:00.000Z", note: "check", delayMs: 1200 },
+  },
+  { type: "wait_cancelled", payload: { reason: "user_message" } },
+  {
     type: "policy_checked",
     payload: {
       callId: "1",

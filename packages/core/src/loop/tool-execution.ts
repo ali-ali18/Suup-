@@ -9,7 +9,7 @@ import {
   clearanceFromLog,
   SKIPPED_AFTER_DENIAL,
 } from "./approval-flow.js";
-import { handleEscalate, handlePlan } from "./control-calls.js";
+import { handleEscalate, handlePlan, handleScheduleReturn } from "./control-calls.js";
 import { handleFinish } from "./finish.js";
 import { type ControlCall, ensureToolCall, INTERRUPTED_RESULT, recordResult } from "./recording.js";
 import type { LoopContext } from "./run-context.js";
@@ -59,6 +59,9 @@ export async function executeCalls(
         break;
       case "request_secret":
         await handleRequestSecret(ctx, call, alone);
+        break;
+      case "schedule_return":
+        await handleScheduleReturn(ctx, call);
         break;
       case "search_tools":
         await handleSearchTools(ctx, call);

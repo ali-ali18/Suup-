@@ -166,6 +166,22 @@ async function outcomeMessage(
         },
       };
     }
+    case "waiting_timer": {
+      // The bot scheduled a return and told the user in its last message of the turn (kept in the
+      // status change that parked the run): that is the chat message. Its position in the log makes
+      // the key, so each parking writes once however often it is observed.
+      const [parked] = await db.sql<{ seq: number; payload: { result?: { summary?: string } } }[]>`
+        select seq, payload from run_events
+        where run_id = ${run.id} and type = 'status_changed' and payload->>'to' = 'waiting_timer'
+        order by seq desc limit 1`;
+      if (parked === undefined) return null;
+      const text = parked.payload.result?.summary?.trim() ?? "";
+      return {
+        authorKind: "bot",
+        text: text === "" ? "Volto daqui a pouco para conferir." : text,
+        key: `run:${run.id}:wait:${parked.seq}`,
+      };
+    }
     case "failed": {
       const origin = (run.failureOrigin ?? "harness") as FailureOrigin;
       return {
@@ -224,6 +240,8 @@ export interface RunEffects {
  *   or a system message in Portuguese saying it failed or was cancelled.
  * - `waiting_user`: the question the run asked, as a bot message (key: run + the position of the
  *   `escalated` event, so each question is written once).
+ * - `waiting_timer`: the bot's message of the turn in which it scheduled its return (key: run + the
+ *   position of the status change that parked it). There is no other mark of the return in the chat.
  * - messages posted to a run that ended before reading them become the objective of a new run.
  * - any other status: nothing.
  */
@@ -284,7 +302,7 @@ export async function reconcileRunEffects(
   const rows = await db.sql<{ id: string }[]>`
     select r.id from runs r
     where not r.isolated and ((
-      r.status = 'waiting_user' and r.conversation_id is not null
+      r.status in ('waiting_user', 'waiting_timer') and r.conversation_id is not null
     ) or (
       r.status in ('done', 'failed', 'cancelled')
       and r.updated_at > now() - make_interval(days => ${days}::integer)

@@ -11,6 +11,7 @@ Os valores vêm do código (`src/styles/tokens.css`, os componentes de `src/ui/`
 - [ ] Escuro neutro "v2", arredondado. O claro é derivado dele (`tokens.css`).
 - [ ] Todo comportamento é configurável em Configurações (`src/lib/settings.ts`); a tela lê a configuração, nunca fixa a escolha.
 - [ ] Nada de efeito decorativo: sem sombra pesada, sem preenchimento forte, sem pílula vermelha.
+- [ ] **O retorno interno do bot não tem marcador próprio na interface; ele avisa pela própria mensagem** (decisão do dono, 19/11/2026: um "volto às 14h20" com botão Cancelar seria "meio anti-usuário"). A chamada de `schedule_return` não vira cartão, a execução parada até a hora (`waiting_timer`) não tem chip, indicador de trabalho, linha de "terminou" nem aviso, e o avatar fica calmo (`idle`). Parar é falar com o bot ou cancelar a execução como sempre. O estado só aparece no inspetor, que é diagnóstico. `design-rules.test.ts` confere onde `waiting_timer` pode ser lido. Ver [RETORNO.md](RETORNO.md).
 
 ## 2a. Como se estiliza (Tailwind CSS v4)
 

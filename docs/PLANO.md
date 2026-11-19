@@ -75,13 +75,14 @@ Ferramentas de controle, presentes em todo bot:
 | `plan` | Cria e atualiza os passos (pendente, em andamento, feito, descartado com motivo) |
 | `finish` | Encerra com resumo e evidência por critério de pronto |
 | `escalate` | Faz uma pergunta objetiva ao usuário e pausa |
+| `schedule_return` | Marca um retorno do próprio bot, de 1 a 60 minutos, para conferir algo que demora (CI, deploy). A mesma execução fica parada e volta sozinha ([RETORNO.md](RETORNO.md)). Só em conversa do usuário |
 
 Regras:
 
 - Pergunta simples não precisa de plano. A partir do momento em que existe plano, `finish` é a única saída válida.
 - O plano e o objetivo vão sempre no fim do contexto, onde o modelo presta mais atenção.
 - Antes de aceitar `finish` em execução com plano, um **revisor** (outra chamada ao modelo, sem o histórico) recebe objetivo, critérios e evidência, e pode devolver. O resumo que ele recebe é curto: por isso pode **pedir evidência** (resultados inteiros, argumentos de chamadas e arquivos, em até 3 rodadas e com orçamento de caracteres) antes de decidir, e só reprova com ao menos uma divergência concreta e estruturada; o que continua inverificável chega ao dono como "não consegui verificar X", nunca como reprovação.
-- Estados: `queued`, `running`, `waiting_approval`, `waiting_user`, `done`, `failed`, `cancelled`.
+- Estados: `queued`, `running`, `waiting_approval`, `waiting_user`, `waiting_timer`, `done`, `failed`, `cancelled`. `waiting_timer` é a execução parada até um retorno que o próprio bot marcou ([RETORNO.md](RETORNO.md)).
 - Execuções longas rodam em segundo plano; a conversa continua livre.
 - Retomada: o contexto é reconstruído a partir dos eventos. Uma ferramenta interrompida no meio é marcada como "resultado desconhecido" e o modelo decide se confere ou repete.
 
@@ -297,6 +298,8 @@ O inspetor e a origem da falha entram na fase 1 (pela CLI). As cinco verificaç�
 ### 4.14 Iniciativa
 
 O bot não espera ser chamado: percebe o que pode resolver, adianta tudo o que não tem risco e deixa para o usuário só a decisão final. Entra na fase 4, porque é construída sobre rotinas e aprovações.
+
+**Primeira peça da fase 4, já feita: o bot volta sozinho.** Ele dispara algo que demora (CI, deploy), diz "volto em 20 minutos" na própria mensagem e a mesma execução acorda sozinha na hora, sem rotina e sem marcador na tela (decisão do dono). É a ferramenta `schedule_return` e o estado `waiting_timer`; o desenho, os limites e como parar estão em [RETORNO.md](RETORNO.md), e a pesquisa que o embasa em [pesquisas/fase-4-acordar-sozinho.md](pesquisas/fase-4-acordar-sozinho.md). Fica de fora dela o que é do resto da iniciativa: acordar por evento de conector ou webhook, horário fixo (isso é rotina) e trabalho por iniciativa própria (`proactive`).
 
 **De onde vem o "perceber"**
 

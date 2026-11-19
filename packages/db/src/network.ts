@@ -79,7 +79,7 @@ export async function activeHostsForBot(db: Db, botId: string): Promise<string[]
     select distinct h.host from network_hosts h
     left join runs r on r.id = h.run_id
     where h.bot_id = ${z.uuid().parse(botId)}
-      and (h.run_id is null or r.status in ('queued', 'running', 'waiting_approval', 'waiting_user'))`;
+      and (h.run_id is null or r.status in ('queued', 'running', 'waiting_approval', 'waiting_user', 'waiting_timer'))`;
   return rows.map((r) => r.host);
 }
 

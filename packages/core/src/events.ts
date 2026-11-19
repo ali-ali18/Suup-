@@ -181,11 +181,17 @@ export type UncheckedItem = z.infer<typeof uncheckedItemSchema>;
 export const contextItemSchema = z.object({ id: z.string(), text: z.string() });
 export type ContextItem = z.infer<typeof contextItemSchema>;
 
+/** Why a pending return was dropped: the user wrote, the run was stopped, a new call replaced it, or the run finished. */
+export const WAIT_CANCEL_REASONS = ["user_message", "cancelled", "replaced", "finished"] as const;
+export type WaitCancelReason = (typeof WAIT_CANCEL_REASONS)[number];
+
 export const runStatusSchema = z.enum([
   "queued",
   "running",
   "waiting_approval",
   "waiting_user",
+  /** Parked by `schedule_return` until `wake_at`: no worker holds it (docs/RETORNO.md). */
+  "waiting_timer",
   "done",
   "failed",
   "cancelled",
@@ -619,6 +625,39 @@ export const runEventSchema = z.discriminatedUnion("type", [
       /** Set when the change is a cancellation asked for through the inbox (the `stop` items). */
       inboxIds: z.exactOptional(z.array(z.string())),
     }),
+  }),
+  z.object({
+    /**
+     * The bot asked to come back by itself (`schedule_return`). `at` is the instant, ISO 8601, fixed
+     * when the call was made (so a resumed or replayed run never recomputes it). One pending return
+     * per run: a second call logs `wait_cancelled` (`replaced`) and then a new `wait_scheduled`.
+     */
+    type: z.literal("wait_scheduled"),
+    payload: z.object({
+      at: z.string(),
+      note: z.string(),
+      minutes: z.number().int().positive(),
+      /** The `schedule_return` call that asked for it (a resumed run does not log it twice). */
+      callId: z.exactOptional(z.string()),
+    }),
+  }),
+  z.object({
+    /**
+     * The return came due. Written by the database job that wakes the run, in the same transaction
+     * that makes the run claimable again (so it is written exactly once); the resumed loop reads
+     * it and tells the model. `delayMs` is how late it fired (a worker that was down): it fires once.
+     */
+    type: z.literal("wait_fired"),
+    payload: z.object({
+      at: z.string(),
+      note: z.string(),
+      delayMs: z.exactOptional(z.number().int().nonnegative()),
+    }),
+  }),
+  z.object({
+    /** The pending return will not fire: why. */
+    type: z.literal("wait_cancelled"),
+    payload: z.object({ reason: z.enum(WAIT_CANCEL_REASONS) }),
   }),
   z.object({
     type: z.literal("compacted"),

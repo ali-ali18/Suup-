@@ -13,6 +13,11 @@ import {
 } from "./prompts.js";
 import type { LoopContext } from "./run-context.js";
 
+/** Whether this run may come back by itself: a conversation run of the user, not an evaluation. */
+export function canScheduleReturn(ctx: LoopContext): boolean {
+  return ctx.deps.allowReturns === true && ctx.run.origin === "user";
+}
+
 export function fixedParts(ctx: LoopContext): {
   system: string;
   tools: ToolSpec[];
@@ -27,6 +32,7 @@ export function fixedParts(ctx: LoopContext): {
   const offered = [
     ...controlToolSpecs({
       secrets: ctx.deps.secrets !== undefined,
+      scheduleReturn: canScheduleReturn(ctx),
       toolSearch: catalog?.mode,
     }),
     ...tools

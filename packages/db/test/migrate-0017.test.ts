@@ -25,7 +25,11 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("migration 0017: memory consolidation
     const dir = await mkdtemp(join(tmpdir(), "suup-migrations-"));
     await cp(MIGRATIONS_DIR, dir, { recursive: true });
     const held = (await readdir(MIGRATIONS_DIR)).filter((f) => f >= "0017" && f.endsWith(".sql"));
-    expect(held).toEqual(["0017_memory_consolidation.sql", "0018_search_any_word.sql"]);
+    expect(held).toEqual([
+      "0017_memory_consolidation.sql",
+      "0018_search_any_word.sql",
+      "0019_waiting_timer.sql",
+    ]);
     for (const file of held) await rm(join(dir, file));
     await migrate(ctx.db, dir);
 

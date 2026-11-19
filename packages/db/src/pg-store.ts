@@ -103,6 +103,7 @@ export class PgRunStore implements RunStore {
       const base = {
         from: change.from,
         ...(change.result === undefined ? {} : { result: change.result as unknown as JsonValue }),
+        ...(change.wake === undefined ? {} : { wake: change.wake }),
       };
       let input: SetRunStatusInput;
       if (change.to === "failed") {
@@ -117,14 +118,15 @@ export class PgRunStore implements RunStore {
       if (updated === null) return false;
       if (
         change.requeueIfInbox === true &&
-        change.to === "waiting_user" &&
+        (change.to === "waiting_user" || change.to === "waiting_timer") &&
         (await hasPendingInbox(tx, runId))
       ) {
         // Something was posted while the loop was on its way to waiting (the post saw the run
         // `running`, so it did not requeue it): requeue now, or the item would wait for ever.
         await tx.sql`
-          update runs set status = 'queued', locked_by = null, locked_at = null
-          where id = ${runId} and status = 'waiting_user'`;
+          update runs set status = 'queued', locked_by = null, locked_at = null,
+            wake_at = null, wake_note = null
+          where id = ${runId} and status in ('waiting_user', 'waiting_timer')`;
       }
       if (
         change.requeueIfDecided === true &&

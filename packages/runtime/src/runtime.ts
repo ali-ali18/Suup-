@@ -40,6 +40,7 @@ import {
   PgRunStore,
   type Run,
   rulesForBot,
+  wakeDueRuns,
   writtenRulesForBot,
 } from "@suup/db";
 import { createProvider, type ProviderConfig } from "@suup/providers";
@@ -122,6 +123,8 @@ export interface CreateWorkerOptions {
    * (`undefined`: every 30 s and every hour). A worker that follows one run never does either.
    */
   memoryEveryMs?: { consolidation?: number; expiry?: number };
+  /** How often the job that wakes the runs parked for a return looks for due ones (ms). Default 5000. */
+  wakeEveryMs?: number;
   onRunEnd?(end: RunEnd): void;
   onError?(error: unknown, context: string): void;
 }
@@ -490,6 +493,8 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     const limits = bot.limits;
     const maxCostUsd = limits.maxCostUsd ?? config.defaults?.maxCostUsd;
     const maxDurationMs = limits.maxDurationMs ?? config.defaults?.maxDurationMs;
+    const maxReturns =
+      typeof limits.maxReturns === "number" ? limits.maxReturns : config.defaults?.maxReturns;
     return {
       id: bot.id,
       name: bot.name,
@@ -505,6 +510,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
         maxTurns: limits.maxTurns ?? config.defaults?.maxTurns ?? DEFAULT_MAX_TURNS,
         ...(maxCostUsd === undefined ? {} : { maxCostUsd }),
         ...(maxDurationMs === undefined ? {} : { maxDurationMs }),
+        ...(maxReturns === undefined ? {} : { maxReturns }),
       },
     };
   };
@@ -760,6 +766,9 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
       // outra execução passa pelo portão.
       ...(toolSearch === undefined ? {} : { toolSearch }),
       gate: guarded ? gateFor(runTools) : allowAllGate(),
+      // The bot may come back by itself (`schedule_return`) in a conversation run; an evaluation
+      // runs alone and without a chat, so it has no return.
+      ...(guarded ? { allowReturns: true } : {}),
       ...(vaultOn ? { secrets: vault.accessFor(bot.id) } : {}),
       // Uma execução isolada não carrega memória: nada do que o usuário contou chega a ela.
       ...(!guarded
@@ -871,7 +880,11 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
         getProvider(bot.modelProvider).capabilities,
       );
       const sent = [
-        ...controlToolSpecs({ secrets: vault.settings !== undefined, toolSearch: catalog.mode }),
+        ...controlToolSpecs({
+          secrets: vault.settings !== undefined,
+          scheduleReturn: true,
+          toolSearch: catalog.mode,
+        }),
         ...builtin,
         ...(catalog.mode === "direct"
           ? [...connectorSpecs.values()]
@@ -883,7 +896,8 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
       return {
         botId,
         builtinTools:
-          builtin.length + controlToolSpecs({ secrets: vault.settings !== undefined }).length,
+          builtin.length +
+          controlToolSpecs({ secrets: vault.settings !== undefined, scheduleReturn: true }).length,
         connectorTools: connectorSpecs.size,
         withheld: offered.withheld.length,
         mode: catalog.mode,
@@ -1010,6 +1024,15 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
                       });
                       if (done === null) return;
                     }
+                  },
+                },
+                {
+                  // The runs parked for a return that came due are woken here: the event and the
+                  // requeue happen in one transaction, so only one worker wakes each (docs/RETORNO.md).
+                  name: "wake-returns",
+                  everyMs: opts.wakeEveryMs ?? 5_000,
+                  run: async () => {
+                    await wakeDueRuns(runtime.db);
                   },
                 },
                 {

@@ -45,6 +45,13 @@ describe("deriveRunDisplay (FRONTEND.md sections 4 and 11)", () => {
       { chip: "permission", reaction: "permission", active: true },
     ],
     [
+      // The bot parked itself for a return it scheduled: calm, no chip, not working, not an error.
+      "parked until a return it scheduled",
+      { status: "waiting_timer" },
+      [],
+      { chip: null, reaction: "idle", active: false },
+    ],
+    [
       "first time in the queue",
       { status: "queued", startedAt: null },
       [],
@@ -104,6 +111,12 @@ describe("deriveRunDisplay (FRONTEND.md sections 4 and 11)", () => {
       [call(1, "c1", "plan")],
       { chip: "thinking", reaction: "thinking", active: true },
     ],
+    [
+      "running, scheduling a return is not 'working' either",
+      { status: "running" },
+      [call(1, "c1", "schedule_return")],
+      { chip: "thinking", reaction: "thinking", active: true },
+    ],
   ];
 
   it.each(rows)("%s", (_name, run, events, expected) => {
@@ -126,6 +139,7 @@ describe("deriveRunDisplay (FRONTEND.md sections 4 and 11)", () => {
     expect(state({ status: "running", paused: true })).toBe("paused");
     expect(state({ status: "waiting_user" })).toBe("asking");
     expect(state({ status: "waiting_approval" })).toBe("waiting");
+    expect(state({ status: "waiting_timer" })).toBe("idle");
     expect(state({ status: "done" })).toBe("done");
     expect(state({ status: "failed" })).toBe("failed");
     expect(state({ status: "cancelled" })).toBe("idle");

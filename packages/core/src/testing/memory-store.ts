@@ -37,6 +37,8 @@ interface Entry {
   approvals: { item: ApprovalDecisionItem; acked: boolean }[];
   failure?: { origin: string; detail: string };
   result?: RunResult;
+  /** While the run is `waiting_timer`: when it wakes, the note and the count (as the columns). */
+  wake: { at: string; note: string; count: number } | null;
   heartbeats: number;
   /** What the user asked of the run from outside (see `setControl`). */
   control: RunControl;
@@ -83,6 +85,7 @@ export class InMemoryRunStore implements RunStore {
       events: [],
       inbox: [],
       approvals: [],
+      wake: null,
       heartbeats: 0,
       control: { pause: false, interrupt: false },
       lease: null,
@@ -97,8 +100,47 @@ export class InMemoryRunStore implements RunStore {
     entry.inbox.push({ item: { ...structuredClone(item), id }, acked: false });
     // Same as the database store: an item posted to a run that waits for the user makes it
     // claimable again.
-    if (entry.record.status === "waiting_user") this.#requeue(entry);
+    if (entry.record.status === "waiting_user" || entry.record.status === "waiting_timer") {
+      this.#requeue(entry);
+    }
     return id;
+  }
+
+  /** When the parked run wakes, as the database columns would say; `null` unless it is parked. */
+  wakeOf(runId: string): { at: string; note: string; count: number } | null {
+    const entry = this.#entry(runId);
+    return entry.wake === null ? null : { ...entry.wake };
+  }
+
+  /**
+   * Plays the job that wakes runs: every `waiting_timer` run whose instant is `now` or earlier
+   * gets its `wait_fired` event and becomes claimable, in one step. Returns the ids it woke. Safe
+   * to call again: a run that was woken is not parked any more.
+   */
+  wakeDue(now: Date = this.#clock()): string[] {
+    const woken: string[] = [];
+    for (const [id, entry] of this.#runs) {
+      if (entry.record.status !== "waiting_timer" || entry.wake === null) continue;
+      const due = new Date(entry.wake.at).getTime();
+      if (due > now.getTime()) continue;
+      const seq = entry.events.length + 1;
+      entry.events.push({
+        ...runEventSchema.parse({
+          type: "wait_fired",
+          payload: {
+            at: entry.wake.at,
+            note: entry.wake.note,
+            delayMs: Math.max(0, now.getTime() - due),
+          },
+        }),
+        seq,
+        createdAt: now,
+      });
+      entry.wake = null;
+      this.#requeue(entry);
+      woken.push(id);
+    }
+    return woken;
   }
 
   /**
@@ -178,6 +220,8 @@ export class InMemoryRunStore implements RunStore {
     const entry = this.#entry(runId);
     if (!change.from.includes(entry.record.status)) return false;
     entry.record.status = change.to;
+    entry.wake =
+      change.to === "waiting_timer" && change.wake !== undefined ? { ...change.wake } : null;
     if (change.failure === undefined) delete entry.failure;
     else entry.failure = { ...change.failure };
     if (change.result === undefined) delete entry.result;
@@ -187,7 +231,7 @@ export class InMemoryRunStore implements RunStore {
     }
     if (
       change.requeueIfInbox === true &&
-      change.to === "waiting_user" &&
+      (change.to === "waiting_user" || change.to === "waiting_timer") &&
       entry.inbox.some((e) => !e.acked)
     ) {
       this.#requeue(entry);
@@ -243,6 +287,7 @@ export class InMemoryRunStore implements RunStore {
   }
 
   #requeue(entry: Entry): void {
+    entry.wake = null;
     entry.record.status = "queued";
     entry.lease = null;
     entry.control.interrupt = false;

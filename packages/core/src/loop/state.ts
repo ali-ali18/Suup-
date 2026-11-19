@@ -14,6 +14,7 @@ import { historyMessages } from "./history.js";
 import {
   isReminderBlock,
   renderNotice,
+  renderReturnNotice,
   renderSummaryMessage,
   renderUserMessage,
 } from "./prompts.js";
@@ -55,6 +56,16 @@ export type Waiting =
   | { kind: "approval"; callId: string; approvalId: string }
   /** The bot asked the user for a credential. */
   | { kind: "secret"; callId: string; name: string };
+
+/** A return the bot asked for (`wait_scheduled`) that has neither fired nor been cancelled. */
+export interface PendingReturn {
+  at: string;
+  note: string;
+  minutes: number;
+  callId?: string;
+  /** The run was settled into `waiting_timer` for it (the status change is in the log). */
+  parked: boolean;
+}
 
 /** The approval of one call, as the log tells it. */
 export interface ApprovalRecord {
@@ -143,6 +154,14 @@ export interface RunState {
   /** Outcomes of the calls of the turn in progress, for the no-progress count. */
   turnOutcomes: { name: string; failed: boolean }[];
   waiting: Waiting | null;
+  /** The return the bot scheduled and that has not fired or been cancelled yet; one at most. */
+  wait: PendingReturn | null;
+  /** Returns that fired since the user last wrote to the run (the cap counts these). */
+  wakeCount: number;
+  /** Milliseconds the run spent parked for returns; the duration limit does not count them. */
+  waitedMs: number;
+  /** When the run was parked, while it is. */
+  parkedAt: Date | null;
   /** A `finish` was accepted but the run has not been closed yet. */
   acceptedFinish: { summary: string; evidence: { criterion: string; evidence: string }[] } | null;
   finishAttempts: Map<string, FinishAttemptRecord>;
@@ -227,6 +246,10 @@ export function createRunState(): RunState {
     sawRequest: false,
     turnOutcomes: [],
     waiting: null,
+    wait: null,
+    wakeCount: 0,
+    waitedMs: 0,
+    parkedAt: null,
     acceptedFinish: null,
     finishAttempts: new Map(),
     currentReview: null,
@@ -562,8 +585,49 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
           : { kind: "review_tie_break", question: event.payload.question };
       break;
 
+    case "wait_scheduled":
+      state.wait = {
+        at: event.payload.at,
+        note: event.payload.note,
+        minutes: event.payload.minutes,
+        ...(event.payload.callId === undefined ? {} : { callId: event.payload.callId }),
+        parked: false,
+      };
+      break;
+
+    case "wait_fired":
+      endWait(state, event.createdAt);
+      state.wakeCount += 1;
+      // The model reads it as a message of the harness, never as the user's.
+      appendUserBlock(
+        state,
+        {
+          type: "text",
+          text: renderNotice(
+            renderReturnNotice({
+              note: event.payload.note,
+              plan: state.plan,
+              ...(event.payload.delayMs === undefined ? {} : { delayMs: event.payload.delayMs }),
+            }),
+          ),
+        },
+        event.seq,
+      );
+      state.noProgressStreak = 0;
+      break;
+
+    case "wait_cancelled":
+      endWait(state, event.createdAt);
+      // The user wrote: a person is in the loop again, so the count of returns starts over.
+      if (event.payload.reason === "user_message") state.wakeCount = 0;
+      break;
+
     case "status_changed":
       for (const id of event.payload.inboxIds ?? []) state.deliveredInbox.add(id);
+      if (event.payload.to === "waiting_timer") {
+        state.parkedAt = event.createdAt;
+        if (state.wait !== null) state.wait.parked = true;
+      }
       state.status = event.payload.to;
       state.statusDetail = {
         ...(event.payload.failure === undefined ? {} : { failure: event.payload.failure }),
@@ -612,6 +676,15 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
 
     case "model_error":
       break;
+  }
+}
+
+/** The pending return ended (fired or cancelled): the time parked stops counting. */
+function endWait(state: RunState, at: Date): void {
+  state.wait = null;
+  if (state.parkedAt !== null) {
+    state.waitedMs += Math.max(0, at.getTime() - state.parkedAt.getTime());
+    state.parkedAt = null;
   }
 }
 

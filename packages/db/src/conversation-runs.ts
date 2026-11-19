@@ -12,6 +12,7 @@ export const ACTIVE_RUN_STATUSES = [
   "running",
   "waiting_user",
   "waiting_approval",
+  "waiting_timer",
 ] as const;
 
 /** Thrown when the conversation cannot take the message (a group, an archived bot...). */

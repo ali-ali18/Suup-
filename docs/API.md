@@ -90,7 +90,7 @@ As ferramentas que se pode liberar a um bot. `200 { "items": [ToolInfo], "contro
 | `id`, `name`, `description`, `personality` | texto | |
 | `modelProvider`, `modelId` | texto | O provedor sai do modelo, pela configuração |
 | `allowedTools` | lista de textos | |
-| `limits` | `{ maxTurns?, maxCostUsd?, maxDurationMs? }` | Sem o campo, vale o padrão da configuração |
+| `limits` | `{ maxTurns?, maxCostUsd?, maxDurationMs?, maxReturns? }` | Sem o campo, vale o padrão da configuração |
 | `avatar` | texto ou `null` | Referência opaca que o app interpreta (emoji, id de arquivo...) |
 | `isDefault` | booleano | O bot principal: recebe as mensagens quando nenhum é escolhido |
 | `pinned` | booleano | Fixado no topo da lista do app |
@@ -173,9 +173,11 @@ O servidor **não roda o loop**: quem trabalha é um worker, que pode ser outro 
 | `pause` | O worker termina a volta em andamento (a chamada ao modelo **e** as ferramentas que ela pediu) e, no próximo ponto seguro, para sem iniciar outra chamada ao modelo | `queued`, `running` | `status: queued`, `paused: true` |
 | `interrupt` | O worker vê o pedido no próximo batimento (`worker.controlPollMs`, padrão 2 s) e **aborta** a chamada ao modelo e a ferramenta em curso; a ferramenta cortada fica registrada como interrompida, com resultado desconhecido | `queued`, `running` | `status: queued`, `paused: true` |
 | `resume` | Tira a pausa; um worker pega a execução e ela continua de onde o log parou | pausada | volta a `queued`/`running` |
-| `cancel` | Posta o pedido de parada, tira a pausa (para um worker poder aplicar) e, se a execução trabalha agora, também interrompe; ela termina `cancelled` e a conversa recebe o aviso | `queued`, `running`, `waiting_user` (o pedido a recoloca na fila), `waiting_approval` | `cancelled` |
+| `cancel` | Posta o pedido de parada, tira a pausa (para um worker poder aplicar) e, se a execução trabalha agora, também interrompe; ela termina `cancelled` e a conversa recebe o aviso | `queued`, `running`, `waiting_user` (o pedido a recoloca na fila), `waiting_approval`, `waiting_timer` (cancelada na hora, sem worker) | `cancelled` |
 
-Erros: `404` se a execução não existe; `409` para `pause` e `interrupt` numa execução que terminou ou espera você ou uma aprovação (`pause` numa já pausada é idempotente, e `interrupt` a endurece); para `resume`, numa execução que não está pausada ou que terminou; para `cancel`, numa que já terminou. **`cancel` e a retomada precisam de um worker vivo** para serem aplicados.
+Uma execução em `waiting_timer` (o bot marcou um retorno para si, [RETORNO.md](RETORNO.md)) tem `wakeAt` (a hora) e `wakeNote` (o que conferir) na `Run`, e as duas são `null` em qualquer outro estado. Nenhum worker a segura: `cancel` a cancela na hora (o log guarda `wait_cancelled`, motivo `cancelled`), uma mensagem em `POST /v1/conversations/{id}/messages` cancela o retorno (`user_message`) e a execução segue com ela, e `pause`/`interrupt` dão `409`.
+
+Erros: `404` se a execução não existe; `409` para `pause` e `interrupt` numa execução que terminou ou espera você, uma aprovação ou a hora de um retorno (`pause` numa já pausada é idempotente, e `interrupt` a endurece); para `resume`, numa execução que não está pausada ou que terminou; para `cancel`, numa que já terminou. **`cancel` e a retomada precisam de um worker vivo** para serem aplicados.
 
 ---
 

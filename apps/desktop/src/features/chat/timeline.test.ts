@@ -358,6 +358,21 @@ describe("buildTimeline: approval cards and secure forms among the bot's actions
     expect(kinds(items)).toEqual(["separator", "user", "approval"]);
   });
 
+  it("a run parked for a return of its own has no marker at all: the bot's message is the whole notice", () => {
+    const parked = { ...run, status: "waiting_timer" as const };
+    const said = makeMessage({
+      conversationId,
+      seq: 2,
+      createdAt: local(14, 5),
+      authorKind: "bot",
+      authorBotId: parked.botId,
+      runId: parked.id,
+      text: "Disparei o deploy, volto em 1 minuto.",
+    });
+    const items = buildTimeline([opener, said], { [parked.id]: parked }, none, NOW, 3);
+    expect(kinds(items)).toEqual(["separator", "user", "bot"]);
+  });
+
   it("a card of a run no message opened yet still shows at the end", () => {
     const card = makeApproval({ runId: "other-run", createdAt: local(14, 5) });
     const items = buildTimeline([opener], {}, none, NOW, 3, { approvals: [card] });

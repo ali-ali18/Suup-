@@ -75,6 +75,17 @@ export async function startOrResume(ctx: LoopContext): Promise<RunStatus | undef
     return resumeFromApproval(ctx);
   }
 
+  // The run was parked for a return it scheduled (the log says so, whatever the store says: it may
+  // just have been claimed again after the wake job fired, or after a crash).
+  if (
+    (ctx.run.status === "running" ||
+      ctx.run.status === "queued" ||
+      ctx.run.status === "waiting_timer") &&
+    ctx.state.status === "waiting_timer"
+  ) {
+    return resumeFromTimer(ctx);
+  }
+
   if (ctx.run.status === "queued") {
     if (!(await transition(ctx, "queued", "running"))) {
       return (await store.getRun(runId)).status;
@@ -141,6 +152,57 @@ async function resumeFromWaiting(ctx: LoopContext): Promise<RunStatus | undefine
     );
   }
   const ok = await transition(ctx, "waiting_user", "running");
+  return ok ? undefined : (await store.getRun(ctx.runId)).status;
+}
+
+/**
+ * A run parked in `waiting_timer` is looked at again. `undefined` means it is running again and
+ * the loop should go on.
+ *
+ * - The return fired (`wait_fired` is in the log: the wake job wrote it when it made the run
+ *   claimable) or was cancelled: the run goes back to `running`; the model reads the note.
+ * - The return is still pending, and the user wrote meanwhile: the return is cancelled
+ *   (`user_message`), the messages are delivered as usual and the run goes on with them.
+ * - Still pending, and a stop is in the inbox: the return is cancelled and so is the run.
+ * - Still pending and nothing else: it stays parked (the store is put where the log is).
+ */
+async function resumeFromTimer(ctx: LoopContext): Promise<RunStatus | undefined> {
+  const { store } = ctx.deps;
+  const from = ctx.run.status;
+  const wait = ctx.state.wait;
+  if (wait !== null) {
+    const items = await freshInbox(ctx);
+    const messages = items.filter((i) => i.kind === "user_message");
+    const stops = items.filter((i) => i.kind === "stop");
+    if (stops.length > 0) {
+      await record(ctx, { type: "wait_cancelled", payload: { reason: "cancelled" } });
+      for (const item of messages) await recordUserMessage(ctx, item);
+      const ok = await transition(ctx, "waiting_timer", "cancelled", {
+        inboxIds: stops.map((i) => i.id),
+        ackInboxIds: items.map((i) => i.id),
+        storeFrom: from,
+      });
+      return ok ? "cancelled" : (await store.getRun(ctx.runId)).status;
+    }
+    if (messages.length === 0) {
+      if (from !== "waiting_timer") {
+        await store.setStatus(ctx.runId, {
+          from: [from],
+          to: "waiting_timer",
+          wake: { at: wait.at, note: wait.note, count: ctx.state.wakeCount },
+          requeueIfInbox: true,
+        });
+      }
+      return "waiting_timer";
+    }
+    await record(ctx, { type: "wait_cancelled", payload: { reason: "user_message" } });
+    for (const item of messages) await recordUserMessage(ctx, item);
+    await store.ackInbox(
+      ctx.runId,
+      messages.map((i) => i.id),
+    );
+  }
+  const ok = await transition(ctx, "waiting_timer", "running", { storeFrom: from });
   return ok ? undefined : (await store.getRun(ctx.runId)).status;
 }
 

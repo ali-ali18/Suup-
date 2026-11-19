@@ -72,12 +72,16 @@ export const TOOL_LABEL: Record<string, string> = {
   search_tools: "Procurar ferramentas",
 };
 
-/** The control tools are not cards: `request_secret` is the secure form, not an "action". */
+/**
+ * The control tools are not cards: `request_secret` is the secure form, not an "action", and
+ * `schedule_return` has no mark of its own (the bot says it in its message; docs/RETORNO.md).
+ */
 export const CONTROL_TOOLS: ReadonlySet<string> = new Set([
   "plan",
   "finish",
   "escalate",
   "request_secret",
+  "schedule_return",
 ]);
 
 export const toolLabel = (name: string): string => TOOL_LABEL[name] ?? name;
@@ -213,6 +217,10 @@ function displayOfRun(
       return display("doubt", "doubt", true);
     case "waiting_approval":
       return display("permission", "permission", true);
+    case "waiting_timer":
+      // The bot parked itself until the time it scheduled (and said so in its own message): no
+      // marker, no activity, nothing to answer. It looks like a bot that is simply there.
+      return display(null, "idle", false);
     case "queued":
       if (run.paused) return display("paused", "paused", true);
       if (run.startedAt !== null) return display("resuming", "thinking", true);

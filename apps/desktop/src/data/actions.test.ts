@@ -85,6 +85,9 @@ describe("actionsOf", () => {
       call(3, "b", "edit_file", { path: "a.ts", old_string: "x", new_string: "y" }),
       call(4, "c", "escalate"),
       call(5, "d", "read_file", { path: "z" }),
+      // The bot's own return has no card: its message is the whole notice.
+      call(8, "r", "schedule_return", { inMinutes: 1, note: "conferir" }),
+      result(9, "r", "Retorno agendado"),
       result(6, "a", "arquivos"),
       result(7, "b", "falhou", true),
     ]);

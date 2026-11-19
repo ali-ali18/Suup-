@@ -152,7 +152,10 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("network allowlist and the approval c
     const { runtime, bot } = await open({ agent: [{ text: "x" }] });
     // The bot allows only `read_file`; on the isolated machine it also always has the host request.
     const report = await runtime.toolReport(bot.id);
-    const control = controlToolSpecs({ secrets: runtime.vault.settings !== undefined }).length;
+    const control = controlToolSpecs({
+      secrets: runtime.vault.settings !== undefined,
+      scheduleReturn: true,
+    }).length;
     expect(report.builtinTools).toBe(control + 2);
     expect(report.mode).toBe("direct");
     expect(report.connectorTools).toBe(0);

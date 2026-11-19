@@ -333,6 +333,7 @@ export type {
   RunOrigin,
   RunStatus,
 } from "./types.js";
+export { type WakeDueOptions, type WokenRun, wakeDueRuns } from "./wake.js";
 export {
   type CreateWrittenRuleInput,
   createWrittenRule,

@@ -73,6 +73,7 @@ Ações: criar, editar, arquivar, tornar principal, listar (com ou sem arquivado
 | `running` | Trabalhando | Indicador de atividade, plano vivo |
 | `waiting_user` | O bot fez uma pergunta | A pergunta em destaque e o campo de resposta |
 | `waiting_approval` | Há uma ação aguardando aprovação (existe): `GET /v1/approvals?runId=&status=pending` | Cartão de aprovação |
+| `waiting_timer` | O bot marcou um retorno para si mesmo (`wakeAt`, `wakeNote` na `Run`) e a execução está parada até a hora | **Nada**: sem marcador, sem indicador de trabalho (decisão do dono); o bot já avisou na própria mensagem. Avatar calmo (`idle`). Só o inspetor mostra a hora |
 | `done` | Concluída | Resumo e evidência |
 | `failed` | Falhou | Origem da falha em destaque |
 | `cancelled` | Você mandou parar | "Cancelada" |
@@ -120,6 +121,9 @@ Cada execução tem um log de eventos numerados (`seq`), só de acréscimo. É a
 | `approval_review` | `callId`, `tool`, `level`, `decision` (`run`/`ask`/`block`), `ruleId`, `reason`, `outcome` (`allow`/`ask`/`deny`), `adjusted?`, `skipped?`, `model?`, `promptVersion?`, `usage?`, `costUsd?`, `latencyMs?` | O modelo do Auto-review olhou a chamada (vem **antes** do `policy_checked` ou do `approval_requested` dela). Detalhe recolhido ("revisado: pode / perguntar / bloquear, e a frase"); o custo e o modelo vão no detalhe técnico |
 | `approval_requested` | `approvalId`, `callId`, `tool`, `args`, `level`, `summary`, `secrets`, `source`, `expiresAt?`, `reason?`, `writtenRuleId?` | **O cartão de aprovação** (seção 8, fase 3). `args` é o conteúdo exato; segredos aparecem como `{{secret:NOME}}` |
 | `approval_decided` | `approvalId`, `callId`, `decision` (`approved`, `denied`, `cancelled`, `expired`), `reason?`, `ruleId?` | O cartão resolvido; entra no log quando o worker retoma a execução |
+| `wait_scheduled` | `at`, `note`, `minutes`, `callId?` | Só no inspetor: o bot marcou um retorno. A chamada de `schedule_return` não vira cartão |
+| `wait_fired` | `at`, `note`, `delayMs?` | Só no inspetor: a hora do retorno chegou (gravado pelo job que acorda as execuções) |
+| `wait_cancelled` | `reason` (`user_message`, `cancelled`, `replaced`, `finished`) | Só no inspetor: o retorno não vai disparar |
 | `secret_requested` | `callId`, `name`, `reason?` | O bot pede um segredo: abre o formulário seguro (seção 8, fase 3). A execução fica em `waiting_user` |
 
 Observações:
@@ -315,4 +319,5 @@ O rosto é desenhado pelo motor `@suup/avatar` (formatos, cores e estados no `RE
 - **Datas** são sempre texto ISO 8601 em UTC; **custos**, texto decimal.
 - **Mensagem para uma execução pausada** fica guardada (`sent`) e é lida depois do `resume`.
 - **`risk` de uma ferramenta** (`GET /v1/tools`) passou de `read`/`write`/`external` para `read`/`write_reversible`/`external_irreversible` (fase 3), e ganhou `dynamicRisk`, `acceptsSecrets` e `externalOutput`.
+- **Uma execução em `waiting_timer` também não pode ser pausada** (`409`): nenhum worker a segura. Uma mensagem no chat cancela o retorno e a execução segue com ela; `cancel` a cancela na hora. Ver [RETORNO.md](RETORNO.md).
 - **Uma execução em `waiting_approval` não pode ser pausada** (`409`): ela já não usa um worker. Cancelar funciona e cancela o cartão. Mensagem no chat não aprova nada.

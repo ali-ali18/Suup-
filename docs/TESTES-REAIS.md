@@ -664,3 +664,33 @@ Data: 19/11/2026. Código: a árvore de trabalho da entrega da consolidação de
 - **Garantias do harness (conferidas por código): todas valeram nos 9 casos.** Toda citação mantida é palavra por palavra de uma mensagem do usuário; nenhuma regra nem fato ficou ativo (todos pendentes); a senha, o endereço do e-mail e o resto do que era proibido não está em nenhuma memória.
 - Totais: 12 propostas, 8 ficaram, 1 descartada; **16 461 tokens de entrada e 1 676 de saída; US$ 0,00129** (média de 1 829 de entrada e 186 de saída por conversa); latência média **1,04 s** (0,77 a 1,6 s). Somando as duas execuções: **US$ 0,0025** (orçamento de US$ 0,50).
 - **O que isto NÃO mostra.** 9 casos, uma execução de cada, um modelo, uma língua; não é uma taxa. Todos os textos foram escritos por mim e o modelo é o mesmo que costuma acertar os testes simples. Um atacante que conheça o prompt e escreva a ordem **como se fosse sua fala** (não colada de um e-mail) não foi testado, e nesse caso a citação passa na conferência: o que protege é o estado pendente e a revisão do usuário. Os fatos curtos reais (`summary`) do modelo foram lidos de relance ("Eu moro em Recife", "Cachorra Mel", ...): são curtos e repetem as palavras da pessoa, então é provável que eles também **não** ajudem a busca por sinônimos; não medi.
+
+# Fase 4
+
+Data: 19/11/2026. Primeira peça da fase 4: o bot volta sozinho (`schedule_return`, estado `waiting_timer`; [RETORNO.md](RETORNO.md)). Este trecho registra só o que foi medido com o modelo real; os testes automáticos estão no código.
+
+## Preparação
+
+| Item | Valor |
+|---|---|
+| Modelo | `claude-sonnet-5-5` (o Sonnet dos testes de bot), a API devolveu a versão `claude-sonnet-5-5`; preços 2 / 10 / 0,10 / 2,50 US$/MTok, como na fase 1 |
+| Chave | variável `SUUP_ANTHROPIC_KEY`, referenciada por `apiKeyEnv`; o valor não foi impresso nem gravado |
+| Banco | PostgreSQL 16 descartável (porta 5497), banco novo |
+| Sandbox | `local`, sem isolamento (tarefa inventada: `sleep 1 && echo ok`) |
+| Teto | US$ 0,30 para a medição; `maxCostUsd` 0,12 por execução. **Gasto real: US$ 0,0616** pelo `cost_usd` do harness (2 execuções) |
+| Retorno | **de verdade**: o relógio não foi forçado, a execução esperou o minuto inteiro. Quem acordou foi o próprio acompanhamento da CLI (`suup run`, `suup chat --message`), que só trabalha naquela execução |
+
+## O que foi pedido e o que aconteceu
+
+| # | Pedido | Resultado |
+|---|---|---|
+| 1 | `suup run`: "inicie um deploy falso (`sleep 1 && echo ok`) e confira o resultado daqui a 1 minuto, voltando sozinho" | O bot montou um plano de 3 passos, disparou o comando em segundo plano gravando num arquivo, **chamou `schedule_return { inMinutes: 1, note }`** (a nota dizia o que conferir e o que fazer depois) e, no turno seguinte, **escreveu ao usuário** que deixou o deploy rodando, onde está a saída e que voltava em 1 minuto. A execução ficou em `waiting_timer`. Um minuto depois: `wait_fired`, o bot leu a nota, rodou `cat` no arquivo (`ok`), atualizou o plano e chamou `finish` com o resultado. 6 turnos, 69 s, US$ 0,0400 |
+| 2 | `suup chat --message`, a mesma tarefa, numa conversa | Executou o comando, **agendou o retorno** e escreveu a mensagem ("Agendei meu retorno para daqui a 1 minuto..."), que **chegou na conversa na hora em que a execução parou** (é a mensagem do turno, nada mais). Um minuto depois voltou sozinho e a mensagem seguinte ("Voltei sozinho após o 1 minuto agendado e confirmo o resultado: deploy concluído sem erros") chegou **na mesma conversa**, da mesma execução. 5 turnos, US$ 0,0215 |
+
+Conferido nas duas: `wait_scheduled` e `wait_fired` uma vez cada; a execução parada não usou worker nem tokens; o aviso ao usuário veio **na mensagem do bot** (a ferramenta e o resultado dela pedem isso), sem nenhuma outra marca. (O replay com o acordar foi testado no caso roteirizado da CLI, não nestas duas execuções.)
+
+## O que isto NÃO mostra
+
+- Duas execuções, um modelo, uma língua, uma tarefa fácil: não é uma taxa. Não medi se o bot **sempre** avisa na mensagem (o texto da ferramenta pede, e o log mostra o retorno em `suup show`/`suup inspect` caso ele não avise).
+- Não medi o laço induzido por instrução de página externa, a mensagem do usuário durante a espera com modelo real, nem o custo de um retorno com cache frio depois de mais de 5 minutos (a espera medida foi de 1 minuto, dentro do TTL do cache).
+- O app (Playwright) foi testado só com o provedor roteirizado; o acordar pelo job do worker (e não pelo acompanhamento da CLI) foi testado com o servidor e o worker em runtimes separados, mas não com o modelo real.

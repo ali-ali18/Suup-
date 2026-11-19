@@ -1,10 +1,11 @@
 import { createInterface } from "node:readline";
 import type { Readable } from "node:stream";
 import { escalatedQuestions } from "@suup/core";
-import { getRun, hasPendingInbox, postInbox, type Run } from "@suup/db";
+import { getRun, hasPendingInbox, postInbox, type Run, wakeDueRuns } from "@suup/db";
 import { pendingCards, printCards } from "./approval-prompt.js";
 import type { Ctx } from "./context.js";
 import { CommandError, EXIT_FAILED, EXIT_OK } from "./errors.js";
+import { formatClock } from "./format.js";
 import { readEvents } from "./lookup.js";
 import { needsQuestionnaire, Questionnaire } from "./questionnaire.js";
 import { primedRenderState, type RawEvent, renderEvent, renderFooter } from "./render.js";
@@ -215,6 +216,7 @@ export async function followRunCore(
   const detach = interactive ? source?.attach((line) => void handleLine(line)) : undefined;
 
   let prompted = false;
+  let parkedShown = false;
   worker.start();
   try {
     for (;;) {
@@ -222,6 +224,18 @@ export async function followRunCore(
       if (run === null) throw new CommandError(`A execução ${short} sumiu do banco.`);
       emit(await readEvents(db, runId, afterSeq));
       if (workerStopped || TERMINAL.has(run.status)) break;
+      // Parked for a return the bot scheduled: this process only works on this run (no background
+      // job wakes it), so it wakes it itself when the time comes and goes on following. Typing
+      // meanwhile cancels the return. Ctrl+C leaves it parked.
+      if (run.status === "waiting_timer") {
+        if (!parkedShown) {
+          parkedShown = true;
+          await options.beforePrompt?.();
+        }
+        await wakeDueRuns(db, { runId });
+      } else {
+        parkedShown = false;
+      }
       // Esperar de verdade é haver algo pendente: um cartão sem decisão ou uma pergunta sem
       // resposta no log (`waiting.ts`). Uma linha com status de espera sem isso é o instante em que
       // uma execução retomada é recolocada onde o log está, antes de absorver a resposta que ele já
@@ -318,7 +332,10 @@ export async function followRun(ctx: Ctx, runId: string, fromSeq: number): Promi
       inputTokens: run.inputTokens,
       outputTokens: run.outputTokens,
       costUsd: run.costUsd,
-      paused: !TERMINAL.has(run.status) && run.status !== "waiting_user",
+      paused:
+        !TERMINAL.has(run.status) &&
+        run.status !== "waiting_user" &&
+        run.status !== "waiting_timer",
     });
   } else {
     if (interactive && prompted && run.status === "waiting_user") out.line("");
@@ -346,6 +363,11 @@ export async function followRun(ctx: Ctx, runId: string, fromSeq: number): Promi
       out.line(`A execução continua aguardando a sua resposta. Responda com:`);
       out.line(`  suup say ${short} "<sua resposta>"`);
       out.line(`  suup resume ${short}   (ou deixe um worker em execução continuar)`);
+      return EXIT_OK;
+    case "waiting_timer":
+      out.line(
+        `A execução está parada até o retorno que o bot agendou${run.wakeAt == null ? "" : ` (${formatClock(run.wakeAt)})`}. Um worker (suup worker, suup serve) a acorda na hora; ou acompanhe com: suup resume ${short}`,
+      );
       return EXIT_OK;
     case "waiting_approval": {
       out.line("A execução espera a sua aprovação:");

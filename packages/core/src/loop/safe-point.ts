@@ -3,7 +3,7 @@
 // limits, and the no-progress and repetition guards.
 import { deliverApprovalDecisions } from "./approval-flow.js";
 import { repetitionNudge } from "./prompts.js";
-import { end, fail, nudge, transition } from "./recording.js";
+import { end, fail, nudge, record, transition } from "./recording.js";
 import type { LoopContext } from "./run-context.js";
 import type { RunStatus } from "./store.js";
 
@@ -21,6 +21,10 @@ export const REPEAT_FAIL_AT = 5;
 export async function settle(ctx: LoopContext): Promise<RunStatus | "again" | undefined> {
   const state = ctx.state;
   if (state.acceptedFinish !== null) {
+    // A return still pending is moot now that the work is finished.
+    if (state.wait !== null) {
+      await record(ctx, { type: "wait_cancelled", payload: { reason: "finished" } });
+    }
     const { summary, evidence } = state.acceptedFinish;
     return end(ctx, "done", { result: { summary, evidence } });
   }
@@ -48,7 +52,8 @@ export function checkLimits(ctx: LoopContext): string | undefined {
     return `cost limit reached: $${run.costUsd.toFixed(4)} spent of $${limits.maxCostUsd} allowed`;
   }
   if (limits.maxDurationMs !== undefined) {
-    const elapsed = ctx.deps.now().getTime() - run.startedAt.getTime();
+    // The time parked for a return is not work: it does not count against the duration limit.
+    const elapsed = ctx.deps.now().getTime() - run.startedAt.getTime() - ctx.state.waitedMs;
     if (elapsed >= limits.maxDurationMs) {
       return `duration limit reached: ${Math.round(elapsed / 1000)}s elapsed of ${Math.round(limits.maxDurationMs / 1000)}s allowed`;
     }

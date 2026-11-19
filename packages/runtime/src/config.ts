@@ -224,6 +224,11 @@ const defaultsSchema = z.strictObject({
   maxCostUsd: z.exactOptional(z.number().positive()),
   maxDurationMs: z.exactOptional(positiveInt),
   /**
+   * How many returns in a row one run may schedule for itself (`schedule_return`) before the tool
+   * refuses and the bot must finish or ask the user. Default 6. 0 turns the returns off.
+   */
+  maxReturns: z.exactOptional(z.number().int().nonnegative()),
+  /**
    * How many characters of the earlier messages of a conversation a run gets as history (whole
    * messages, newest first). Older ones are found with `search_conversations`.
    */
