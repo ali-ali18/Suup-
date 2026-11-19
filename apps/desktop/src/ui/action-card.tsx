@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, LoaderCircle } from "lucide-react";
+import { ChevronsDownUp, ChevronsUpDown, LoaderCircle } from "lucide-react";
 import { type ReactNode, type Ref, useId } from "react";
 import { DecisionCard } from "./decision-card.js";
 
@@ -100,9 +100,9 @@ export function ActionCard({
         {state === "running" ? (
           <LoaderCircle size={16} className="ui-spin" />
         ) : children === undefined ? null : expanded ? (
-          <ChevronUp size={16} className="ui-action__chevron" />
+          <ChevronsDownUp size={16} className="ui-action__chevron" />
         ) : (
-          <ChevronDown size={16} className="ui-action__chevron" />
+          <ChevronsUpDown size={16} className="ui-action__chevron" />
         )}
       </span>
     </>
@@ -166,7 +166,11 @@ export function ActionFold({
         <strong className="ui-action__kind">Mais {count} ações</strong>
         <span className="ui-action__summary">Concluídas</span>
         <span className="ui-action__end" aria-hidden="true">
-          {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          {expanded ? (
+            <ChevronsDownUp size={16} className="ui-action__chevron" />
+          ) : (
+            <ChevronsUpDown size={16} className="ui-action__chevron" />
+          )}
         </span>
       </button>
       {expanded && (

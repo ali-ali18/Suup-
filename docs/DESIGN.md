@@ -38,7 +38,7 @@ Todo cartão do chat (aprovação, segredo, ação do bot, pergunta, "precisa de
 
 **Rodapé**
 - [ ] À direita: ação secundária como **texto simples** ("Recusar", "Descartar", "Agora não") e a primária em **pílula** branca. Recusar é **um clique**, sem campo de motivo (a API ainda aceita um motivo; o cartão não o envia).
-- [ ] Opções extras ficam no menu da seta do botão dividido (`ui/menu.tsx`, teclado: setas, Home/End, Esc devolve o foco). Cada item tem título e descrição apagada de uma linha. No cartão de aprovação: quatro "Sempre permitir" (este bot ou todos × exatamente isto ou qualquer uso da ferramenta), "Precisa de aprovação" (marcado; desmarcar faz "Aprovar" criar também a regra e o cartão diz qual) e "Gerenciar regras" (abre Configurações > Aprovações).
+- [ ] Opções extras ficam no menu da seta do botão dividido (`ui/menu.tsx`, teclado: setas, Home/End, Esc devolve o foco; o foco nos itens usa `preventScroll`, porque rolar o chat fecha o menu). Cada item tem título e descrição apagada de uma linha. No cartão de aprovação: quatro "Sempre permitir" (este bot ou todos × exatamente isto ou qualquer uso da ferramenta), "Precisa de aprovação" (marcado; desmarcar faz "Aprovar" criar também a regra e o cartão diz qual) e "Gerenciar regras" (abre Configurações > Aprovações).
 - [ ] À esquerda, quando houver, uma linha discreta: garantia (segredo: "Guardado no cofre; o bot nunca vê o valor."), prazo, erro, ou a regra que será criada.
 - [ ] Durante o envio os botões ficam desligados com um pequeno giro e o rótulo ("Aprovando…"); a largura não muda. Nada é otimista: o cartão só muda quando o servidor responde.
 
@@ -46,6 +46,7 @@ Todo cartão do chat (aprovação, segredo, ação do bot, pergunta, "precisa de
 
 **Estado resolvido (todo cartão)**
 - [ ] Cai para **uma linha**: ícone em quadrado + rótulo em negrito + resultado apagado ("Aprovado · Escrever a.txt", "Recusado", "Expirou", "Cancelado", "Segredo NOME disponível"). Sem botões.
+- [ ] O affordance de expandir é o par de **setas empilhadas** (`ChevronsUpDown`, recolhido; `ChevronsDownUp`, aberto), nunca uma seta simples; vale para toda linha recolhida de cartão (`ui/action-card.tsx`, inclusive "Mais N ações").
 - [ ] A seta de expandir só aparece em hover ou foco do teclado (e continua anunciada por `aria-expanded`). Clicar expande, no lugar, o que foi executado; clicar de novo recolhe. A linha sem detalhes não é botão.
 
 **Cartão "precisa de você"** (ação no computador do bot, fase 5): a mesma moldura; prévia do que está na tela e os botões embaixo, no rodapé.

@@ -35,6 +35,22 @@ export interface MenuTriggerProps {
 
 const ENTRY = '[role^="menuitem"]:not([disabled])';
 
+/**
+ * Focus a menu item without letting the browser scroll the page to reveal it: the menu is `fixed`,
+ * and a plain `focus()` of an item that is cut by the list's own scroll also scrolls the chat
+ * behind it, which the menu takes for "the screen moved" and closes. The list is scrolled by hand.
+ */
+export function focusEntry(el: HTMLElement | null | undefined): void {
+  if (el === undefined || el === null) return;
+  el.focus({ preventScroll: true });
+  const list = el.closest<HTMLElement>('[role="menu"]');
+  if (list === null) return;
+  const top = el.offsetTop; // the list is positioned: it is the item's offset parent
+  if (top < list.scrollTop) list.scrollTop = top;
+  else if (top + el.offsetHeight > list.scrollTop + list.clientHeight)
+    list.scrollTop = top + el.offsetHeight - list.clientHeight;
+}
+
 /** The content of a menu item: its label, and the muted line and the check when it has them. */
 export function MenuItemBody({ item }: { item: MenuItem }) {
   return (
@@ -119,7 +135,7 @@ export function MenuButton({
   useEffect(() => {
     if (!open) return;
     const first = rootRef.current?.querySelector<HTMLElement>(ENTRY);
-    first?.focus();
+    focusEntry(first);
     const onDown = (e: MouseEvent) => {
       if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
     };
@@ -137,7 +153,7 @@ export function MenuButton({
     const index = entries.indexOf(document.activeElement as HTMLElement);
     const move = (next: number) => {
       e.preventDefault();
-      entries[(next + entries.length) % entries.length]?.focus();
+      focusEntry(entries[(next + entries.length) % entries.length]);
     };
     if (e.key === "ArrowDown") move(index + 1);
     else if (e.key === "ArrowUp") move(index - 1);

@@ -333,7 +333,7 @@ describe("ApprovalCard decided", () => {
       expect(within(card).queryByTestId("approval-args")).toBeNull();
       // No buttons but the row itself, and the chevron is only drawn on hover/focus (CSS).
       expect(within(card).getAllByRole("button")).toHaveLength(1);
-      expect(card.querySelector(".ui-action__chevron")).not.toBeNull();
+      expect(card.querySelector(".ui-action__chevron.lucide-chevrons-up-down")).not.toBeNull();
       fireEvent.click(row);
       expect(onToggle).toHaveBeenCalledTimes(1);
     },

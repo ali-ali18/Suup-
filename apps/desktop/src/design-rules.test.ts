@@ -77,6 +77,13 @@ describe("chat cards share one chrome and one collapsed row", () => {
     expect(block(".ui-bubble")).toContain("border-radius: var(--radius-card)");
   });
 
+  it("the expand affordance is the stacked chevrons, never a single chevron", () => {
+    const src = read(join(SRC, "ui", "action-card.tsx"));
+    expect(src).toContain("ChevronsUpDown");
+    expect(src).toContain("ChevronsDownUp");
+    expect(src).not.toMatch(/\bChevron(Down|Up)\b/);
+  });
+
   it("the expand chevron is hidden at rest and shown on hover and on keyboard focus", () => {
     const css = read(join(SRC, "ui", "ui.css"));
     expect(css).toMatch(/\.ui-action__chevron \{[^}]*opacity: 0/);
