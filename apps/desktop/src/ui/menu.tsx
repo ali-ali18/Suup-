@@ -69,7 +69,7 @@ export function MenuItemBody({ item }: { item: MenuItem }) {
   return (
     <>
       <span className="flex min-w-0 flex-col">
-        <span className="ui-menu__label">{item.label}</span>
+        <span data-testid="menu-label">{item.label}</span>
         {item.description !== undefined && (
           <span className="text-small text-text-muted">{item.description}</span>
         )}

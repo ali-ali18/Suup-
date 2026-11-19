@@ -316,7 +316,7 @@ test.describe("connectors", () => {
     await expect(panel).toContainText("roda sem cartão de aprovação");
     await choose(page, echo.getByTestId("tool-risk"), "Leitura");
     await expect(echo.getByTestId("tool-basis")).toContainText("Definido por você.");
-    await expect(echo.locator("span.ui-tag", { hasText: /^Leitura$/ })).toBeVisible();
+    await expect(echo.locator('span[data-testid="tag"]', { hasText: /^Leitura$/ })).toBeVisible();
     expect((await world.api.connectors.get("fake")).toolOverrides.echo?.risk).toBe("read");
     // The server says this one is destructive: it cannot be loosened, and the way out is explained.
     const contradicted = panel.locator('[data-testid="connector-tool"][data-tool="contradicted"]');
@@ -365,7 +365,7 @@ test.describe("connectors", () => {
     await expect(card).toHaveAttribute("data-state", "needs-action");
     await expect(card.getByTestId("approval-connector")).toContainText("fake");
     await expect(card).toContainText("write_thing");
-    await expect(card.locator(".ui-decision__category")).toHaveText("fake");
+    await expect(card.locator('[data-testid="decision-category"]')).toHaveText("fake");
     await expect(card).toContainText("sai deste computador para um servidor externo");
     // (The server keeps the arguments in a JSON column, which does not keep the order of the keys.)
     await expect(card.locator('[data-key="name"]').getByTestId("arg-value")).toHaveText("coisa");
@@ -378,7 +378,7 @@ test.describe("connectors", () => {
     await expect(action).toBeVisible();
     // One row for the call, with the connector's name as its category, the same as on the card.
     await expect(page.getByTestId("action-card")).toHaveCount(1);
-    await expect(action.locator(".ui-action__kind")).toHaveText("fake");
+    await expect(action.locator('[data-testid="action-kind"]')).toHaveText("fake");
     await expect(action).toContainText("Aprovado e concluído");
     await action.getByRole("button").click();
     await expect(action.getByTestId("action-output")).toContainText("wrote coisa");
@@ -422,9 +422,9 @@ test.describe("connectors", () => {
     await send(page, "CASE-EMAIL-NORMAL mande o plano");
     const plain = page.getByTestId("approval-card");
     await expect(plain).toHaveAttribute("data-state", "needs-action");
-    await expect(plain.locator(".ui-decision__category")).toHaveText("fake");
+    await expect(plain.locator('[data-testid="decision-category"]')).toHaveText("fake");
     expect(await plain.getByRole("button").allTextContents()).toEqual(["Recusar", "Aprovar"]);
-    await expect(plain.locator(".ui-split")).toHaveCount(0);
+    await expect(plain.locator('[data-testid="split-button"]')).toHaveCount(0);
     await expect(plain.getByTestId("approval-more")).toHaveCount(0);
     await plain.getByTestId("approval-approve").click();
     await expect(botMessage(page, "E-mail normal enviado.")).toBeVisible();
@@ -457,7 +457,7 @@ test.describe("connectors", () => {
     await send(page, "CASE-EMAIL-MARCADO mande o e-mail");
     const message = page.getByTestId("approval-card");
     await expect(message).toHaveAttribute("data-state", "needs-action");
-    await expect(message.locator(".ui-decision__category")).toHaveText("Mensagem");
+    await expect(message.locator('[data-testid="decision-category"]')).toHaveText("Mensagem");
     await expect(message.getByTestId("approval-deny")).toHaveText("Descartar");
     await expect(message.getByTestId("approval-approve")).toHaveText("Enviar");
     await message.getByTestId("approval-more").click();

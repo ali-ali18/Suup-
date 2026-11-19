@@ -200,9 +200,10 @@ export function Tag({
   return (
     <span
       className={cx(
-        "ui-tag inline-flex h-5.5 items-center rounded-pill px-2.5 text-section font-label whitespace-nowrap",
+        "inline-flex h-5.5 items-center rounded-pill px-2.5 text-section font-label whitespace-nowrap",
         TAG_TONE[tone],
       )}
+      data-testid="tag"
     >
       {children}
     </span>
@@ -271,7 +272,10 @@ export function FieldLabel({
   as?: "label" | "span" | "legend" | "h3";
 } & LabelHTMLAttributes<HTMLElement>) {
   return (
-    <Element className={cx("text-small text-text-muted", className)} {...rest}>
+    <Element
+      className={cx("text-small text-text-muted", Element === "h3" && "font-bold", className)}
+      {...rest}
+    >
       {children}
     </Element>
   );
@@ -531,27 +535,46 @@ export function tabClass(active: boolean): string {
   );
 }
 
-/** The small uppercase label of a group ("Hoje", "Camada"). */
+/** The small uppercase label of a group ("Hoje", "Camada"). `as="h2"` when it heads a section. */
 export function SectionLabel({
-  children,
-  ...rest
-}: { children: ReactNode } & HTMLAttributes<HTMLParagraphElement>) {
-  return (
-    <p className="text-section font-label tracking-section text-text-muted uppercase" {...rest}>
-      {children}
-    </p>
-  );
-}
-
-/** Small muted text: a subtitle, a date, a count. `as="p"` for a paragraph of it. */
-export function MutedText({
-  as: Element = "span",
+  as: Element = "p",
   children,
   className,
   ...rest
-}: { as?: "span" | "p"; children: ReactNode } & HTMLAttributes<HTMLElement>) {
+}: { as?: "p" | "h2"; children: ReactNode } & HTMLAttributes<HTMLElement>) {
   return (
-    <Element className={cx("text-small text-text-muted", className)} {...rest}>
+    <Element
+      className={cx(
+        "text-section font-label tracking-section text-text-muted uppercase",
+        className,
+      )}
+      {...rest}
+    >
+      {children}
+    </Element>
+  );
+}
+
+/**
+ * Muted text: a subtitle, a date, a count (small, by default). `as="p"` for a paragraph of it.
+ * `size="inherit"` keeps the size of the text around it (the description after a bot's name).
+ */
+export function MutedText({
+  as: Element = "span",
+  size = "small",
+  children,
+  className,
+  ...rest
+}: {
+  as?: "span" | "p";
+  size?: "small" | "inherit";
+  children: ReactNode;
+} & HTMLAttributes<HTMLElement>) {
+  return (
+    <Element
+      className={cx(size === "small" && "text-small", "text-text-muted", className)}
+      {...rest}
+    >
       {children}
     </Element>
   );
@@ -559,14 +582,27 @@ export function MutedText({
 
 /** A paragraph of text that is not ours (a rule, a name, a value): breaks anywhere, keeps its lines. */
 export function PlainText({
+  as: Element = "p",
+  size,
   children,
   className,
   ...rest
-}: { children: ReactNode } & HTMLAttributes<HTMLParagraphElement>) {
+}: {
+  as?: "p" | "li";
+  size?: "small";
+  children: ReactNode;
+} & HTMLAttributes<HTMLElement>) {
   return (
-    <p className={cx("wrap-anywhere whitespace-pre-wrap", className)} {...rest}>
+    <Element
+      className={cx(
+        "wrap-anywhere whitespace-pre-wrap",
+        size === "small" && "text-small",
+        className,
+      )}
+      {...rest}
+    >
       {children}
-    </p>
+    </Element>
   );
 }
 
@@ -823,10 +859,9 @@ export function Scrim({
   children: ReactNode;
 }) {
   return (
-    // `ui-scrim` is a hook for the screens that must not lay out a scrim (features.css), not a style.
     <div
       className={cx(
-        "ui-scrim fixed inset-0 z-40 flex justify-center bg-scrim p-5",
+        "fixed inset-0 z-40 flex justify-center bg-scrim p-5",
         top === true ? "items-start pt-[12vh]" : "items-center",
       )}
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}

@@ -265,7 +265,7 @@ export function Dropdown<V extends string>({
                   onClick={() => choose(o.value)}
                 >
                   <span className="flex min-w-0 flex-col">
-                    <span className="ui-menu__label">{o.label}</span>
+                    <span data-testid="menu-label">{o.label}</span>
                     {o.description !== undefined && (
                       <span className="text-small text-text-muted">{o.description}</span>
                     )}

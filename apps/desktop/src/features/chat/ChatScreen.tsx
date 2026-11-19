@@ -13,8 +13,10 @@ import {
   orderedMessages,
 } from "../../data/reducers.js";
 import { secretRequestsOf } from "../../data/secret-requests.js";
+import { cx } from "../../lib/cx.js";
 import { colorVars, effectiveColor } from "../../lib/mascots.js";
 import { Avatar } from "../../ui/avatar.js";
+import { BotTitle } from "../../ui/bot-title.js";
 import { EventLineButton } from "../../ui/chat-lines.js";
 import { Composer } from "../../ui/composer.js";
 import type { MenuItem } from "../../ui/menu.js";
@@ -29,7 +31,7 @@ export function ChatScreen() {
   const bot = useData((s) => (selected === null ? undefined : s.bots[selected]));
   if (bot === undefined) {
     return (
-      <div className="chat chat--empty">
+      <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center">
         <EmptyState
           title="Nenhum bot selecionado"
           text="Escolha um bot na barra lateral ou crie um novo."
@@ -227,16 +229,19 @@ function ChatForBot({ botId }: { botId: string }) {
     slice?.loaded === true && messages.length === 0 && bot.personality.trim() === "";
   return (
     <div
-      className="chat"
+      className="flex min-h-0 min-w-0 flex-1"
       style={colorVars(color) as React.CSSProperties}
       data-testid="chat"
       data-bot={bot.name}
     >
-      <section className="chat__center" aria-label={`Conversa com ${bot.name}`}>
-        <header className="chat__top">
+      <section
+        className="flex min-h-0 min-w-chat-min flex-[1_0_var(--width-chat-min)] flex-col"
+        aria-label={`Conversa com ${bot.name}`}
+      >
+        <header className="flex min-h-15.5 flex-none justify-center px-4 pt-3">
           <button
             type="button"
-            className="bot-chip"
+            className="group/chip inline-flex h-control max-w-bot-chip items-center gap-2 rounded-pill border border-border-strong bg-transparent py-0 pr-3.5 pl-1.5 text-label hover:bg-hover"
             aria-expanded={panelOpen}
             aria-haspopup="menu"
             aria-label={`${bot.name}. ${panelOpen ? "Fechar" : "Abrir"} o painel do bot. Menu de contexto para controlar a execução`}
@@ -262,14 +267,16 @@ function ChatForBot({ botId }: { botId: string }) {
               size="sm"
               state={display.avatar}
             />
-            <span className="bot-chip__text">
-              <strong>{bot.name}</strong>
-              {description !== "" && <span className="muted"> · {description}</span>}
+            <span className="min-w-0 truncate">
+              <BotTitle name={bot.name} description={description} />
             </span>
             <ChevronDown
               size={16}
               aria-hidden="true"
-              className={`bot-chip__chevron${panelOpen ? " bot-chip__chevron--open" : ""}`}
+              className={cx(
+                "hidden flex-none transition-transform duration-(--duration-base) group-hover/chip:block group-focus-visible/chip:block",
+                panelOpen && "rotate-180",
+              )}
             />
           </button>
         </header>
@@ -298,7 +305,10 @@ function ChatForBot({ botId }: { botId: string }) {
             ) : undefined
           }
         />
-        <div className="chat__composer">
+        <div
+          className="mx-auto w-full max-w-[calc(var(--width-content)+var(--space-5)*2)] flex-none px-5 pt-2 pb-5"
+          data-testid="chat-composer"
+        >
           <Composer
             placeholder={
               openQuestion

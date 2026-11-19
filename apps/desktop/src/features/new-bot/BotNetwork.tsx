@@ -1,5 +1,5 @@
 import { Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { type HTMLAttributes, type ReactNode, useEffect, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { NETWORK_TOOL } from "../../data/approval-text.js";
 import { EXACT_HOST_NOTE, hostInput, LOCAL_SANDBOX_NOTE, refusalLabel } from "../../lib/network.js";
@@ -7,12 +7,32 @@ import {
   FieldError,
   FieldLabel,
   IconButton,
+  MutedText,
   Notice,
   Pill,
   TextField,
 } from "../../ui/primitives.js";
+import { MonoText } from "../../ui/text.js";
 import { formatWhen } from "../settings/formatting.js";
 import { useTask } from "../settings/use-task.js";
+
+/** The title of a list of hosts. */
+function HostsLabel({ children }: { children: ReactNode }) {
+  return <p className="text-label leading-inherit font-label">{children}</p>;
+}
+
+/** One host of a list: its name, what is said about it, and what can be done with it. */
+function HostItem({
+  host,
+  children,
+  ...rest
+}: { host: string; children: ReactNode } & HTMLAttributes<HTMLLIElement>) {
+  return (
+    <li className="flex min-w-0 flex-wrap items-center gap-3" data-host={host} {...rest}>
+      {children}
+    </li>
+  );
+}
 
 /**
  * "Rede" of one bot: what its machine may reach. The default hosts come from the server's
@@ -62,7 +82,7 @@ export function BotNetwork({ botId }: { botId: string }) {
   };
 
   return (
-    <section className="botnet" data-testid="bot-network" aria-label="Rede">
+    <section className="flex min-w-0 flex-col gap-3" data-testid="bot-network" aria-label="Rede">
       <FieldLabel as="h3">Rede</FieldLabel>
       {isolated === false && (
         <Notice role="note" data-testid="network-local-note">
@@ -74,39 +94,41 @@ export function BotNetwork({ botId }: { botId: string }) {
         load.error !== undefined ? (
           <FieldError>{load.error}</FieldError>
         ) : (
-          <p className="muted small">Carregando…</p>
+          <MutedText as="p">Carregando…</MutedText>
         )
       ) : (
         <>
           <div>
-            <p className="botnet__label">Liberados para todos os bots</p>
-            <p className="muted small">Vêm da configuração do servidor; aqui só se leem.</p>
+            <HostsLabel>Liberados para todos os bots</HostsLabel>
+            <MutedText as="p">Vêm da configuração do servidor; aqui só se leem.</MutedText>
             {network.defaults.length === 0 ? (
-              <p className="small" data-testid="network-defaults">
+              <p className="text-small" data-testid="network-defaults">
                 Nenhum.
               </p>
             ) : (
-              <ul className="botnet__hosts" data-testid="network-defaults">
+              <ul className="flex flex-col gap-1" data-testid="network-defaults">
                 {network.defaults.map((h) => (
-                  <li key={h} className="mono">
+                  <MonoText as="li" key={h}>
                     {h}
-                  </li>
+                  </MonoText>
                 ))}
               </ul>
             )}
           </div>
           <div>
-            <p className="botnet__label">Liberados só para este bot</p>
+            <HostsLabel>Liberados só para este bot</HostsLabel>
             {network.hosts.length === 0 ? (
-              <p className="muted small" data-testid="network-hosts-empty">
+              <MutedText as="p" data-testid="network-hosts-empty">
                 Nenhum host além dos de todos.
-              </p>
+              </MutedText>
             ) : (
-              <ul className="botnet__hosts" data-testid="network-hosts">
+              <ul className="flex flex-col gap-1" data-testid="network-hosts">
                 {network.hosts.map((h) => (
-                  <li key={h.host} className="botnet__host" data-host={h.host}>
-                    <span className="mono">{h.host}</span>
-                    <span className="muted small">desde {formatWhen(h.createdAt)}</span>
+                  <HostItem key={h.host} host={h.host}>
+                    <MonoText>{h.host}</MonoText>
+                    <MutedText className="min-w-0 flex-1">
+                      desde {formatWhen(h.createdAt)}
+                    </MutedText>
                     <IconButton
                       label={`Remover ${h.host}`}
                       disabled={remove.busy}
@@ -119,7 +141,7 @@ export function BotNetwork({ botId }: { botId: string }) {
                     >
                       <Trash2 size={16} aria-hidden="true" />
                     </IconButton>
-                  </li>
+                  </HostItem>
                 ))}
               </ul>
             )}
@@ -127,7 +149,7 @@ export function BotNetwork({ botId }: { botId: string }) {
               <FieldError data-testid="network-remove-error">{remove.error}</FieldError>
             )}
           </div>
-          <div className="botnet__add">
+          <div className="flex flex-col items-start gap-2">
             <TextField
               label="Liberar um host"
               value={host}
@@ -152,26 +174,25 @@ export function BotNetwork({ botId }: { botId: string }) {
             </Pill>
           </div>
           <div>
-            <p className="botnet__label">Recusas recentes</p>
+            <HostsLabel>Recusas recentes</HostsLabel>
             {network.refusals.length === 0 ? (
-              <p className="muted small" data-testid="network-refusals-empty">
+              <MutedText as="p" data-testid="network-refusals-empty">
                 O proxy ainda não recusou nada para este bot.
-              </p>
+              </MutedText>
             ) : (
-              <ul className="botnet__hosts" data-testid="network-refusals">
+              <ul className="flex flex-col gap-1" data-testid="network-refusals">
                 {network.refusals.map((r) => (
-                  <li
+                  <HostItem
                     key={`${r.createdAt}-${r.host}-${r.port}-${r.reason}`}
-                    className="botnet__host"
-                    data-host={r.host}
+                    host={r.host}
                     title={r.message}
                   >
-                    <span className="mono">
+                    <MonoText>
                       {r.host}:{r.port}
-                    </span>
-                    <span className="muted small">
+                    </MonoText>
+                    <MutedText className="min-w-0 flex-1">
                       {refusalLabel(r.reason)} · {formatWhen(r.createdAt)}
-                    </span>
+                    </MutedText>
                     <Pill
                       tone="ghost"
                       disabled={add.busy}
@@ -181,14 +202,12 @@ export function BotNetwork({ botId }: { botId: string }) {
                     >
                       Liberar
                     </Pill>
-                  </li>
+                  </HostItem>
                 ))}
               </ul>
             )}
           </div>
-          <p className="muted small">
-            Estas mudanças valem na hora, sem esperar o “Salvar” do bot.
-          </p>
+          <MutedText as="p">Estas mudanças valem na hora, sem esperar o “Salvar” do bot.</MutedText>
         </>
       )}
     </section>

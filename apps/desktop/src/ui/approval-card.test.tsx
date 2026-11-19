@@ -153,7 +153,7 @@ describe("ApprovalCard waiting for you", () => {
     expect(screen.getByTestId("approval-connector").textContent).toBe("Conectorfake");
     expect(screen.getByText("Ferramenta").parentElement?.textContent).toBe("Ferramentawrite_thing");
     // The category of a connector tool is the connector.
-    expect(document.querySelector(".ui-decision__category")?.textContent).toBe("fake");
+    expect(document.querySelector('[data-testid="decision-category"]')?.textContent).toBe("fake");
     expect(screen.getByText(/sai deste computador para um servidor externo/)).toBeTruthy();
   });
 
@@ -202,7 +202,7 @@ describe("ApprovalCard waiting for you", () => {
           .getAllByRole("button")
           .map((b) => b.textContent),
       ).toEqual(["Recusar", "Aprovar"]);
-      expect(card.querySelector(".ui-split")).toBeNull();
+      expect(card.querySelector('[data-testid="split-button"]')).toBeNull();
       expect(within(card).queryByTestId("approval-more")).toBeNull();
       expect(card.querySelector('[aria-haspopup="menu"]')).toBeNull();
       expect(card.textContent).not.toMatch(/sempre permitir|Permitir destinat/i);
@@ -218,10 +218,12 @@ describe("ApprovalCard waiting for you", () => {
   it("a message to another person (declared) has Descartar and a split button Enviar", () => {
     show({ approval: makeMessageApproval() });
     const card = screen.getByTestId("approval-card");
-    expect(document.querySelector(".ui-decision__category")?.textContent).toBe("Mensagem");
+    expect(document.querySelector('[data-testid="decision-category"]')?.textContent).toBe(
+      "Mensagem",
+    );
     expect(within(card).getByTestId("approval-deny").textContent).toBe("Descartar");
     expect(within(card).getByTestId("approval-approve").textContent).toBe("Enviar");
-    expect(card.querySelector(".ui-split")).not.toBeNull();
+    expect(card.querySelector('[data-testid="split-button"]')).not.toBeNull();
     expect(within(card).getByTestId("approval-more")).toBeTruthy();
   });
 
@@ -233,7 +235,7 @@ describe("ApprovalCard waiting for you", () => {
     const menu = openMenu();
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
     const items = Array.from(menu.querySelectorAll<HTMLElement>('[role^="menuitem"]'));
-    expect(items.map((i) => i.querySelector(".ui-menu__label")?.textContent)).toEqual([
+    expect(items.map((i) => i.querySelector('[data-testid="menu-label"]')?.textContent)).toEqual([
       "Permitir destinatário",
       "Precisa de aprovação",
       "Gerenciar regras",
@@ -415,13 +417,15 @@ describe("ApprovalCard asking for network access", () => {
     show({ approval: network() });
     const card = screen.getByTestId("approval-card");
     expect(card.getAttribute("data-state")).toBe("needs-action");
-    expect(card.querySelector(".ui-decision__category")?.textContent).toBe("Rede");
-    expect(card.querySelector(".ui-decision__title")?.textContent).toBe("Acessar api.novo.com");
+    expect(card.querySelector('[data-testid="decision-category"]')?.textContent).toBe("Rede");
+    expect(card.querySelector('[data-testid="decision-title"]')?.textContent).toBe(
+      "Acessar api.novo.com",
+    );
     // One paragraph, and it says the words are the bot's own.
     expect(within(card).getByTestId("approval-why").textContent).toBe(
       "Motivo dado pelo bot: “preciso baixar o relatório do mês”",
     );
-    expect(card.querySelectorAll(".ui-decision__lede")).toHaveLength(1);
+    expect(within(card).getAllByTestId("approval-why")).toHaveLength(1);
     // The rows do not repeat what the title (host) and the paragraph (reason) already say...
     expect(
       within(screen.getByTestId("approval-content")).queryAllByTestId("arg-field"),
@@ -448,7 +452,7 @@ describe("ApprovalCard asking for network access", () => {
         .getAllByRole("button")
         .map((b) => b.textContent),
     ).toEqual(["Recusar", "Aprovar"]);
-    expect(card.querySelector(".ui-split")).toBeNull();
+    expect(card.querySelector('[data-testid="split-button"]')).toBeNull();
   });
 
   it("decides like any card: Aprovar sends an approval, Recusar a denial, nothing else", async () => {
@@ -465,7 +469,7 @@ describe("ApprovalCard asking for network access", () => {
     expect(row.getAttribute("data-state")).toBe("done");
     expect(row.textContent).toContain("Rede");
     expect(row.textContent).toContain("Aprovado · Acessar api.novo.com");
-    expect(row.querySelector(".ui-decision__footer")).toBeNull();
+    expect(row.querySelector('[data-testid="decision-footer"]')).toBeNull();
     cleanup();
     show({ approval: network({ status: "denied", decidedAt: "2026-11-18T12:00:00.000Z" }) });
     expect(screen.getByTestId("approval-card").textContent).toContain(
@@ -502,7 +506,9 @@ describe("ApprovalCard decided", () => {
       expect(within(card).queryByTestId("approval-args")).toBeNull();
       // No buttons but the row itself, and the chevron is only drawn on hover/focus (CSS).
       expect(within(card).getAllByRole("button")).toHaveLength(1);
-      expect(card.querySelector(".ui-action__chevron.lucide-chevrons-up-down")).not.toBeNull();
+      expect(
+        card.querySelector('[data-testid="action-chevron"].lucide-chevrons-up-down'),
+      ).not.toBeNull();
       fireEvent.click(row);
       expect(onToggle).toHaveBeenCalledTimes(1);
     },

@@ -233,7 +233,9 @@ test.describe("per-tool grants and the review of a definition", () => {
     await expect(description.locator('[data-mark="added"]')).toContainText(
       "Now it also sends a copy of the text somewhere else.",
     );
-    await expect(description.locator('[data-mark="added"] .diff-word').first()).toBeVisible();
+    await expect(
+      description.locator('[data-mark="added"] [data-testid="diff-word"]').first(),
+    ).toBeVisible();
     await expect(echo.locator('[data-section="schema"]').getByTestId("review-changes")).toHaveText(
       "sem mudança",
     );
@@ -429,8 +431,8 @@ test.describe("the card that asks for a host", () => {
     await send(page, "CASE-NETWORK preciso de um host");
     const card = page.getByTestId("approval-card");
     await expect(card).toHaveAttribute("data-state", "needs-action");
-    await expect(card.locator(".ui-decision__category")).toHaveText("Rede");
-    await expect(card.locator(".ui-decision__title")).toHaveText("Acessar api.novo.com");
+    await expect(card.locator('[data-testid="decision-category"]')).toHaveText("Rede");
+    await expect(card.locator('[data-testid="decision-title"]')).toHaveText("Acessar api.novo.com");
     await expect(card.getByTestId("approval-why")).toHaveText(
       "Motivo dado pelo bot: “preciso baixar o relatório do mês”",
     );
@@ -438,7 +440,7 @@ test.describe("the card that asks for a host", () => {
       "Aprovar vale só para esta execução.",
     );
     expect(await card.getByRole("button").allTextContents()).toEqual(["Recusar", "Aprovar"]);
-    await expect(card.locator(".ui-split")).toHaveCount(0);
+    await expect(card.locator('[data-testid="split-button"]')).toHaveCount(0);
     // No rows that only repeat the title and the paragraph...
     await expect(card.getByTestId("approval-content").getByTestId("arg-field")).toHaveCount(0);
     // ...and the exact content stays one click away, all of it.
@@ -457,7 +459,7 @@ test.describe("the card that asks for a host", () => {
     // One row for the call: the category, the decision, and what it was.
     const row = page.getByTestId("action-card");
     await expect(row).toHaveCount(1);
-    await expect(row.locator(".ui-action__kind")).toHaveText("Rede");
+    await expect(row.locator('[data-testid="action-kind"]')).toHaveText("Rede");
     await expect(row).toContainText("Acessar api.novo.com");
     await expect(row).toContainText("Aprovado");
     // The isolated machine has this tool: the app does not say "no isolation".
@@ -521,7 +523,7 @@ test.describe("tool search: the measure of the definitions, and the real tool in
     await expect(rows.nth(0)).toContainText("Procurar ferramentas");
     await expect(rows.nth(0)).toContainText("no conector fake");
     await expect(rows.nth(1)).toContainText("conn_fake__gen_3");
-    await expect(rows.nth(1).locator(".ui-action__kind")).toHaveText("fake");
+    await expect(rows.nth(1).locator('[data-testid="action-kind"]')).toHaveText("fake");
     await expect(page.getByTestId("chat")).not.toContainText("use_tool");
 
     // The inspector: the mode of the run, and the definitions of each request.

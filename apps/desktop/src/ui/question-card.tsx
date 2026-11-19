@@ -165,10 +165,7 @@ export function QuestionCard({
                   aria-checked={on}
                   disabled={disabled === true || readOnly}
                   tabIndex={readOnly ? -1 : on || (selected.length === 0 && oi === 0) ? 0 : -1}
-                  className={cx(
-                    "group flex w-full items-center gap-3 border-0 bg-transparent px-0 py-1.5 text-left",
-                    on && "qcard__option--on",
-                  )}
+                  className="group flex w-full items-center gap-3 border-0 bg-transparent px-0 py-1.5 text-left"
                   data-testid="question-option"
                   onClick={() => choose(qi, o.key)}
                 >

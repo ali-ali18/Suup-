@@ -114,9 +114,9 @@ describe("links in a message", () => {
 
   it("no accent colour: the link is the text colour, underlined, with a neutral glyph and NO image", () => {
     const { container, anchors } = links("[doc](https://example.com/docs)");
-    expect(anchors[0]?.className).toContain("md__link");
+    expect(anchors[0]?.getAttribute("data-testid")).toBe("md-link");
     expect(container.querySelector("img")).toBeNull();
-    expect(container.querySelector(".md__ico svg")).not.toBeNull();
+    expect(container.querySelector('[data-testid="link-icon"] svg')).not.toBeNull();
   });
 
   it("with site icons on: https://<host>/favicon.ico only, no referrer, lazy; nothing for unsafe hosts", () => {
@@ -136,7 +136,7 @@ describe("links in a message", () => {
     const { container } = links("[a](https://example.com/)", true);
     fireEvent.error(container.querySelector("img") as HTMLImageElement);
     expect(container.querySelector("img")).toBeNull();
-    expect(container.querySelector(".md__ico svg")).not.toBeNull();
+    expect(container.querySelector('[data-testid="link-icon"] svg')).not.toBeNull();
   });
 
   it("an image in the text is never loaded: off, no image at all; on, only the site's own icon", () => {

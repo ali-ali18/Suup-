@@ -111,7 +111,7 @@ test.describe("connect and chat", () => {
     const bubble = await page
       .getByTestId("message-bot")
       .filter({ hasText: "Terminei as cinco ações." })
-      .locator(".ui-bubble--bot")
+      .locator('[data-testid="bubble-bot"]')
       .evaluate((el) => getComputedStyle(el).backgroundColor);
     expect(bubble).toBe(flat.cardBackground);
     // Collapses again, from the keyboard.
@@ -134,11 +134,13 @@ test.describe("connect and chat", () => {
     await expect(diff).toContainText("+ tudo certo");
     expect(
       await diff
-        .locator(".ui-action__line--removed")
+        .locator('[data-testid="action-line-removed"]')
         .evaluate((el) => getComputedStyle(el).backgroundColor),
     ).toBe("rgba(0, 0, 0, 0)");
     expect(
-      await diff.locator(".ui-action__line--added").evaluate((el) => getComputedStyle(el).color),
+      await diff
+        .locator('[data-testid="action-line-added"]')
+        .evaluate((el) => getComputedStyle(el).color),
     ).toBe("rgb(74, 222, 128)");
     await expect(
       page
@@ -180,7 +182,9 @@ test.describe("connect and chat", () => {
       page.getByTestId("message-bot").filter({ hasText: "Anotei a sua escolha e terminei." }),
     ).toBeVisible();
     await expect(card).toHaveAttribute("data-state", "answered");
-    await expect(card.locator(".qcard__option--on")).toHaveText("BVerdeA cor da mata");
+    await expect(card.locator('[data-testid="question-option"][aria-checked="true"]')).toHaveText(
+      "BVerdeA cor da mata",
+    );
     await expect(page.getByLabel("Mensagem", { exact: true })).toHaveAttribute(
       "placeholder",
       "Mensagem para Cores",
@@ -190,7 +194,11 @@ test.describe("connect and chat", () => {
     await page.reload();
     await page.locator('[data-testid="bot-item"][data-bot="Cores"]').click();
     await expect(page.getByTestId("question-card")).toHaveAttribute("data-state", "answered");
-    await expect(page.getByTestId("question-card").locator(".qcard__option--on")).toHaveCount(1);
+    await expect(
+      page
+        .getByTestId("question-card")
+        .locator('[data-testid="question-option"][aria-checked="true"]'),
+    ).toHaveCount(1);
   });
 
   test("an open question survives a reload and can be answered afterwards, with the keyboard", async ({
@@ -223,13 +231,17 @@ test.describe("connect and chat", () => {
     await expect(card).toContainText("Selecione todas as opções aplicáveis");
     await card.getByTestId("question-option").filter({ hasText: "Cache" }).click();
     await card.getByTestId("question-option").filter({ hasText: "Fila" }).click();
-    await expect(card.locator(".qcard__option--on")).toHaveCount(2);
+    await expect(card.locator('[data-testid="question-option"][aria-checked="true"]')).toHaveCount(
+      2,
+    );
     await card.getByRole("button", { name: "Avançar" }).click();
     await expect(card).toContainText("Posso começar agora?");
     await expect(card.getByRole("button", { name: "Enviar" })).toBeVisible();
     // Back and forth keeps the choices.
     await card.getByRole("button", { name: "Voltar" }).click();
-    await expect(card.locator(".qcard__option--on")).toHaveCount(2);
+    await expect(card.locator('[data-testid="question-option"][aria-checked="true"]')).toHaveCount(
+      2,
+    );
     await card.getByRole("button", { name: "Avançar" }).click();
     await card.getByTestId("question-option").filter({ hasText: "Sim" }).click();
     await card.getByRole("button", { name: "Enviar" }).click();
@@ -242,7 +254,9 @@ test.describe("connect and chat", () => {
     // The card is dimmed and shows what was chosen in each question.
     await expect(card).toHaveAttribute("data-state", "answered");
     await expect(card.getByTestId("question-block")).toHaveCount(3);
-    await expect(card.locator(".qcard__option--on")).toHaveCount(3);
+    await expect(card.locator('[data-testid="question-option"][aria-checked="true"]')).toHaveCount(
+      3,
+    );
     // The model received exactly that text as the answer of its question.
     const bot = (await world.api.bots.list()).find((b) => b.name === "Questionario");
     const conversation = await world.api.bots.openConversation(bot?.id ?? "");
@@ -265,7 +279,9 @@ test.describe("connect and chat", () => {
     await send(page, "prefiro conversar sobre outra coisa");
     await expect(userBubbles(page).last()).toContainText("prefiro conversar sobre outra coisa");
     await expect(card).toHaveAttribute("data-state", "answered");
-    await expect(card.locator(".qcard__option--on")).toHaveCount(0);
+    await expect(card.locator('[data-testid="question-option"][aria-checked="true"]')).toHaveCount(
+      0,
+    );
     await expect(
       page.getByTestId("message-bot").filter({ hasText: "Anotei todas as respostas." }),
     ).toBeVisible();

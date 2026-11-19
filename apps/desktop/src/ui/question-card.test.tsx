@@ -144,9 +144,9 @@ describe("QuestionCard: answered", () => {
     expect(card.getAttribute("data-state")).toBe("answered");
     expect(card.hasAttribute("inert")).toBe(true);
     expect(screen.queryByRole("button", { name: /Pular|Avançar|Enviar/ })).toBeNull();
-    const on = Array.from(container.querySelectorAll(".qcard__option--on")).map(
-      (o) => o.textContent,
-    );
+    const on = Array.from(
+      container.querySelectorAll('[data-testid="question-option"][aria-checked="true"]'),
+    ).map((o) => o.textContent);
     expect(on).toEqual(["APostgres", "ACache", "BFila"]);
     expect(within(card).getAllByTestId("question-block")).toHaveLength(3);
   });
@@ -156,7 +156,9 @@ describe("QuestionCard: answered", () => {
       <QuestionCard questions={quiz} answer="um de escrita também" onSubmit={vi.fn()} />,
     );
     expect(screen.getByTestId("question-card").getAttribute("data-state")).toBe("answered");
-    expect(container.querySelectorAll(".qcard__option--on")).toHaveLength(0);
+    expect(
+      container.querySelectorAll('[data-testid="question-option"][aria-checked="true"]'),
+    ).toHaveLength(0);
   });
 
   it("a single question answered shows its chosen option", () => {
@@ -164,7 +166,9 @@ describe("QuestionCard: answered", () => {
       <QuestionCard questions={single} answer="SQLite" onSubmit={vi.fn()} />,
     );
     expect(
-      Array.from(container.querySelectorAll(".qcard__option--on")).map((o) => o.textContent),
+      Array.from(
+        container.querySelectorAll('[data-testid="question-option"][aria-checked="true"]'),
+      ).map((o) => o.textContent),
     ).toEqual(["BSQLite"]);
   });
 });

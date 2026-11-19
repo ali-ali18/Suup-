@@ -11,8 +11,23 @@ import {
   catalogOf,
   requestToolStats,
 } from "../../data/tool-stats.js";
+import { CheckInput } from "../../ui/choice.js";
 import { Dropdown } from "../../ui/dropdown.js";
-import { Card, FieldError, FieldLabel, Pill, RoundButton, TextField } from "../../ui/primitives.js";
+import {
+  Card,
+  FieldError,
+  FieldLabel,
+  FormRow,
+  MutedText,
+  Pill,
+  PlainText,
+  RoundButton,
+  SectionLabel,
+  TextField,
+} from "../../ui/primitives.js";
+import { Screen, ScreenBody, ScreenHead } from "../../ui/screen.js";
+import { Cell, DataTable, HeadCell } from "../../ui/table.js";
+import { CodeBlock } from "../../ui/text.js";
 
 const json = (value: unknown): string => JSON.stringify(value, null, 2);
 
@@ -68,31 +83,31 @@ export function InspectorScreen() {
   };
 
   return (
-    <div className="screen" data-testid="inspector-screen">
-      <header className="screen__head">
-        <div className="screen__head-main">
+    <Screen data-testid="inspector-screen">
+      <ScreenHead
+        title="Inspetor"
+        subtitle={
+          <>
+            Execução {runId.slice(0, 8)} · {run?.status ?? "…"}
+            {run?.objective === undefined ? "" : ` · ${run.objective}`}
+          </>
+        }
+        leading={
           <RoundButton label="Voltar" tone="ghost" onClick={close}>
             <ArrowLeft size={18} aria-hidden="true" />
           </RoundButton>
-          <div>
-            <h1 className="screen__title">Inspetor</h1>
-            <p className="muted small wrap">
-              Execução {runId.slice(0, 8)} · {run?.status ?? "…"}
-              {run?.objective === undefined ? "" : ` · ${run.objective}`}
-            </p>
-          </div>
-        </div>
-      </header>
-      <div className="screen__body inspector">
+        }
+      />
+      <ScreenBody limit="wide">
         {error !== undefined && <FieldError>{error}</FieldError>}
         <Card aria-label="Linha do tempo">
-          <h2 className="section-label">
+          <SectionLabel as="h2">
             Linha do tempo ({shown.length}/{events.length})
-          </h2>
-          <div className="inspector__filters" role="group" aria-label="Filtrar por tipo">
+          </SectionLabel>
+          <div className="flex flex-wrap gap-3" role="group" aria-label="Filtrar por tipo">
             {types.map((t) => (
-              <label key={t} className="inspector__filter small">
-                <input
+              <label key={t} className="text-small">
+                <CheckInput
                   type="checkbox"
                   checked={!hidden.has(t)}
                   onChange={() => {
@@ -106,27 +121,30 @@ export function InspectorScreen() {
               </label>
             ))}
           </div>
-          <ol className="inspector__events" data-testid="inspector-events">
+          <ol
+            className="my-[1em] flex max-h-events list-decimal flex-col gap-1 overflow-auto pl-10"
+            data-testid="inspector-events"
+          >
             {shown.map((e: RunEvent) => (
-              <li key={e.seq} className="inspector__event">
+              <li key={e.seq}>
                 <details>
                   <summary>
                     <code>#{e.seq}</code> <strong>{e.type}</strong>{" "}
-                    <span className="muted small">{e.createdAt}</span>
+                    <MutedText>{e.createdAt}</MutedText>
                   </summary>
-                  <pre className="ui-code__pre ui-code__pre--scroll">{json(e.payload)}</pre>
+                  <CodeBlock>{json(e.payload)}</CodeBlock>
                 </details>
               </li>
             ))}
           </ol>
         </Card>
         <Card aria-label="Definições de ferramentas" data-testid="tool-stats-card">
-          <h2 className="section-label">Definições de ferramentas</h2>
-          <p className="muted small">
+          <SectionLabel as="h2">Definições de ferramentas</SectionLabel>
+          <MutedText as="p">
             Quanto as definições das ferramentas pesam em cada pedido ao modelo. As colunas
             &quot;estimado&quot; são estimativas (cerca de 2,65 caracteres por token, sem
             tokenizador); a entrada real é a que o provedor contou, quando já respondeu.
-          </p>
+          </MutedText>
           {catalog === undefined ? (
             <p data-testid="tool-catalog" data-mode="none">
               Modo do catálogo: sem ferramentas de conectores nesta execução.
@@ -138,71 +156,76 @@ export function InspectorScreen() {
               data-definition-tokens={catalog.definitionTokens}
             >
               Modo do catálogo: <strong>{CATALOG_LABEL[catalog.mode]}</strong>.{" "}
-              <span className="muted">
+              <MutedText size="inherit">
                 {CATALOG_DETAIL[catalog.mode]} {catalog.connectorTools}{" "}
                 {catalog.connectorTools === 1 ? "ferramenta" : "ferramentas"} de conectores, cerca
                 de {catalog.definitionTokens} tokens de definições
                 {catalog.deferred > 0 ? `; ${catalog.deferred} adiadas` : ""}.
-              </span>
+              </MutedText>
             </p>
           )}
           {stats.length === 0 ? (
-            <p className="muted small" data-testid="tool-stats-empty">
+            <MutedText as="p" data-testid="tool-stats-empty">
               Nenhum pedido desta execução traz a medida das definições (execuções mais antigas não
               a gravam).
-            </p>
+            </MutedText>
           ) : (
-            <table className="inspector__table" data-testid="tool-stats">
+            <DataTable data-testid="tool-stats">
               <caption className="sr-only">Definições de ferramentas por pedido</caption>
               <thead>
                 <tr>
-                  <th scope="col">Pedido</th>
-                  <th scope="col">Definições</th>
-                  <th scope="col">Adiadas no pedido</th>
-                  <th scope="col">Definições (estimado)</th>
-                  <th scope="col">No contexto (estimado)</th>
-                  <th scope="col">Pedido inteiro (estimado)</th>
-                  <th scope="col">Entrada real (provedor)</th>
+                  {[
+                    "Pedido",
+                    "Definições",
+                    "Adiadas no pedido",
+                    "Definições (estimado)",
+                    "No contexto (estimado)",
+                    "Pedido inteiro (estimado)",
+                    "Entrada real (provedor)",
+                  ].map((name) => (
+                    <HeadCell key={name} column scope="col">
+                      {name}
+                    </HeadCell>
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {stats.map((r) => (
                   <tr key={r.seq} data-testid="tool-stats-row" data-seq={r.seq}>
-                    <th scope="row">
+                    <HeadCell scope="row">
                       #{r.seq} · {r.purpose}
-                    </th>
-                    <td>{r.definitions}</td>
-                    <td>{r.deferred}</td>
-                    <td>~{r.estimatedTokens}</td>
-                    <td>~{r.loadedTokens}</td>
-                    <td>
+                    </HeadCell>
+                    <Cell>{r.definitions}</Cell>
+                    <Cell>{r.deferred}</Cell>
+                    <Cell>~{r.estimatedTokens}</Cell>
+                    <Cell>~{r.loadedTokens}</Cell>
+                    <Cell>
                       {r.requestEstimatedTokens === undefined
                         ? "—"
                         : `~${r.requestEstimatedTokens}`}
-                    </td>
-                    <td data-testid="tool-stats-real">
+                    </Cell>
+                    <Cell data-testid="tool-stats-real">
                       {r.realInputTokens === undefined ? "—" : r.realInputTokens}
                       {r.hostedToolSearch !== undefined && (
-                        <span
-                          className="muted small"
+                        <MutedText
                           data-testid="tool-stats-hosted"
                           title="O provedor fez a busca de ferramentas por conta própria, em passagens internas: este número é a soma delas, não o tamanho de um pedido."
                         >
                           {" "}
                           (soma de passagens da busca do provedor)
-                        </span>
+                        </MutedText>
                       )}
-                    </td>
+                    </Cell>
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </DataTable>
           )}
         </Card>
         <Card aria-label="O que o modelo viu">
-          <h2 className="section-label">O que o modelo viu</h2>
-          <div className="inspector__row">
-            <div className="form__row">
+          <SectionLabel as="h2">O que o modelo viu</SectionLabel>
+          <div className="flex flex-wrap items-end gap-3">
+            <FormRow>
               <FieldLabel as="span">Chamada ao modelo</FieldLabel>
               <Dropdown
                 variant="field"
@@ -214,7 +237,7 @@ export function InspectorScreen() {
                 }))}
                 onChange={setSeq}
               />
-            </div>
+            </FormRow>
             <Pill
               tone="secondary"
               disabled={seq === "" || busy !== undefined}
@@ -227,20 +250,20 @@ export function InspectorScreen() {
           </div>
           {seen !== undefined && (
             <div data-testid="model-request">
-              <p className="small muted">
+              <MutedText as="p">
                 Turno {seen.turn ?? "—"} · {seen.purpose}
-              </p>
-              <pre className="ui-code__pre ui-code__pre--scroll">{json(seen.request)}</pre>
-              <p className="section-label">Resposta gravada</p>
-              <pre className="ui-code__pre ui-code__pre--scroll">{json(seen.response)}</pre>
+              </MutedText>
+              <CodeBlock>{json(seen.request)}</CodeBlock>
+              <SectionLabel>Resposta gravada</SectionLabel>
+              <CodeBlock>{json(seen.response)}</CodeBlock>
             </div>
           )}
         </Card>
         <Card aria-label="Replay">
-          <h2 className="section-label">Replay</h2>
-          <p className="muted small">
+          <SectionLabel as="h2">Replay</SectionLabel>
+          <MutedText as="p">
             Reexecuta o laço atual com as respostas gravadas, sem chamar nenhum modelo.
-          </p>
+          </MutedText>
           <div>
             <Pill
               tone="secondary"
@@ -253,19 +276,19 @@ export function InspectorScreen() {
           {replay !== undefined && (
             <div data-testid="replay-report">
               <p>{replay.identical ? "Idêntico ao gravado." : "Diverge do gravado."}</p>
-              <p className="wrap">{replay.reading}</p>
+              <PlainText>{replay.reading}</PlainText>
             </div>
           )}
         </Card>
         <Card aria-label="Reenviar">
-          <h2 className="section-label">Reenviar o pedido</h2>
-          <p className="muted small">
+          <SectionLabel as="h2">Reenviar o pedido</SectionLabel>
+          <MutedText as="p">
             Manda de novo a mesma requisição (até 20 vezes), ou a outro modelo, e compara os
             desfechos. Não altera a execução.
-          </p>
-          <div className="inspector__row">
+          </MutedText>
+          <div className="flex flex-wrap items-end gap-3">
             <TextField label="Quantas vezes" value={times} onChange={setTimes} type="text" />
-            <div className="form__row">
+            <FormRow>
               <FieldLabel as="span">Modelo</FieldLabel>
               <Dropdown
                 variant="field"
@@ -277,7 +300,7 @@ export function InspectorScreen() {
                 ]}
                 onChange={setModel}
               />
-            </div>
+            </FormRow>
           </div>
           <div>
             <Pill
@@ -307,16 +330,16 @@ export function InspectorScreen() {
           </div>
           {resend !== undefined && (
             <div data-testid="resend-report">
-              <p className="wrap">{resend.summary.reading}</p>
-              <p className="small muted">
+              <PlainText>{resend.summary.reading}</PlainText>
+              <MutedText as="p">
                 {resend.attempts.length} tentativa(s) enviada(s) a {resend.sentTo.provider}/
                 {resend.sentTo.model}
-              </p>
+              </MutedText>
             </div>
           )}
         </Card>
         <Card aria-label="Saúde">
-          <h2 className="section-label">Saúde dos componentes</h2>
+          <SectionLabel as="h2">Saúde dos componentes</SectionLabel>
           <div>
             <Pill
               tone="secondary"
@@ -329,14 +352,14 @@ export function InspectorScreen() {
           {doctor !== undefined && (
             <ul>
               {doctor.checks.map((c) => (
-                <li key={c.component} className="small wrap">
+                <PlainText as="li" size="small" key={c.component}>
                   {c.ok ? "OK" : "FALHA"} · {c.component}: {c.detail}
-                </li>
+                </PlainText>
               ))}
             </ul>
           )}
         </Card>
-      </div>
-    </div>
+      </ScreenBody>
+    </Screen>
   );
 }

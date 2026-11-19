@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { Connection } from "../../lib/platform.js";
 import { Avatar } from "../../ui/avatar.js";
-import { Pill, TextField } from "../../ui/primitives.js";
+import { FieldError, MutedText, Pill, TextField } from "../../ui/primitives.js";
 
 /** First open: server address and token, checked against the server before anything is kept. */
 export function ConnectScreen({
@@ -20,18 +20,18 @@ export function ConnectScreen({
   const ready = serverUrl.trim() !== "" && token.trim() !== "" && !busy;
   const submit = () => ready && onSubmit(serverUrl, token);
   return (
-    <main className="connect">
+    <main className="flex min-h-full items-center justify-center overflow-auto p-6">
       <form
-        className="connect__card"
+        className="flex w-connect flex-col gap-4 rounded-card border border-border bg-surface p-8"
         onSubmit={(e) => {
           e.preventDefault();
           submit();
         }}
       >
-        <div className="connect__brand">
+        <div className="flex flex-col items-center gap-2 text-center">
           <Avatar avatar="mascot:blob" seed="suup" size="lg" />
-          <h1 className="connect__title">Conectar ao Suup</h1>
-          <p className="muted small">Informe o endereço do servidor e o token de acesso.</p>
+          <h1 className="text-heading font-bold">Conectar ao Suup</h1>
+          <MutedText as="p">Informe o endereço do servidor e o token de acesso.</MutedText>
         </div>
         <TextField
           label="Endereço do servidor"
@@ -50,11 +50,7 @@ export function ConnectScreen({
           onChange={setToken}
           hint="O mesmo valor de SUUP_SERVER_TOKEN. No app de desktop ele fica guardado no chaveiro do sistema."
         />
-        {error !== undefined && (
-          <p className="connect__error" role="alert" data-testid="connect-error">
-            {error}
-          </p>
-        )}
+        {error !== undefined && <FieldError data-testid="connect-error">{error}</FieldError>}
         <Pill tone="primary" type="submit" disabled={!ready}>
           {busy ? "Conectando…" : "Conectar"}
         </Pill>

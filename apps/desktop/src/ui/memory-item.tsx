@@ -1,6 +1,7 @@
 import { Pencil, RotateCcw, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { MutedText, Pill, RoundButton, Tag, TextField } from "./primitives.js";
+import { cx } from "../lib/cx.js";
+import { MutedText, Pill, PlainText, RoundButton, Tag, TextField } from "./primitives.js";
 
 export interface MemoryItemProps {
   text: string;
@@ -60,9 +61,9 @@ export function MemoryItem(p: MemoryItemProps) {
         </div>
       ) : (
         <>
-          <p className="text-body wrap-anywhere whitespace-pre-wrap text-text-muted line-through">
+          <PlainText className={cx("text-body", p.archived && "text-text-muted line-through")}>
             {p.text}
-          </p>
+          </PlainText>
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex flex-wrap gap-1">
               <Tag>{p.layerLabel}</Tag>

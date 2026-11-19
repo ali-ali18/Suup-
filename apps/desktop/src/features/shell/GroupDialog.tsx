@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { useUi } from "../../app/ui-store.js";
 import { groupNames } from "../../data/botlist.js";
+import { ChoiceGroup, ChoiceRow } from "../../ui/choice.js";
 import { Dialog, Pill, TextField } from "../../ui/primitives.js";
 
 const NEW = "__new__";
@@ -48,28 +49,20 @@ export function GroupDialog() {
         </>
       }
     >
-      <fieldset className="group-dialog">
-        <legend className="sr-only">Grupo</legend>
+      <ChoiceGroup legend="Grupo">
         {names.map((name) => (
-          <label key={name} className="group-dialog__choice">
-            <input
-              type="radio"
-              name="group"
-              checked={choice === name}
-              onChange={() => setChoice(name)}
-            />{" "}
-            {name}
-          </label>
-        ))}
-        <label className="group-dialog__choice">
-          <input
-            type="radio"
+          <ChoiceRow
+            key={name}
             name="group"
-            checked={choice === NEW}
-            onChange={() => setChoice(NEW)}
-          />{" "}
+            checked={choice === name}
+            onChange={() => setChoice(name)}
+          >
+            {name}
+          </ChoiceRow>
+        ))}
+        <ChoiceRow name="group" checked={choice === NEW} onChange={() => setChoice(NEW)}>
           Novo grupo…
-        </label>
+        </ChoiceRow>
         {choice === NEW && (
           <TextField
             label="Nome do grupo"
@@ -79,16 +72,10 @@ export function GroupDialog() {
             onEnter={() => valid && void save()}
           />
         )}
-        <label className="group-dialog__choice">
-          <input
-            type="radio"
-            name="group"
-            checked={choice === NONE}
-            onChange={() => setChoice(NONE)}
-          />{" "}
+        <ChoiceRow name="group" checked={choice === NONE} onChange={() => setChoice(NONE)}>
           Sem grupo (lista “Bots”)
-        </label>
-      </fieldset>
+        </ChoiceRow>
+      </ChoiceGroup>
     </Dialog>
   );
 }

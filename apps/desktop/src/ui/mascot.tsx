@@ -20,6 +20,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { cx } from "../lib/cx.js";
 import { useReducedMotion } from "../lib/reduced-motion.js";
 
 // O ÚNICO lugar onde o rosto dos bots é desenhado, sobre o motor `@suup/avatar`. Quem chama diz o
@@ -60,6 +61,8 @@ export interface MascotProps {
   seed?: string;
   /** Sempre imagem parada (listas de escolha, onde há dezenas de uma vez). */
   still?: boolean;
+  /** O escolhido numa lista: a forma é contornada, em vez de ganhar uma caixa em volta. */
+  picked?: boolean;
 }
 
 /**
@@ -145,6 +148,7 @@ export function Mascot({
   size = "md",
   seed = shape,
   still = false,
+  picked = false,
 }: MascotProps) {
   const host = useContext(MascotHostContext);
   const systemReduced = useReducedMotion();
@@ -214,8 +218,10 @@ export function Mascot({
     <span
       ref={root}
       // The engine leaves room around the body for the animation: the scale makes the body fill the box.
-      // `ui-mascot` is a hook (the picker of the new-bot dialog outlines the chosen one), not a style.
-      className="ui-mascot inline-flex size-full items-center justify-center [&_svg]:block [&_svg]:size-full [&_svg]:scale-140"
+      className={cx(
+        "inline-flex size-full items-center justify-center [&_svg]:block [&_svg]:size-full [&_svg]:scale-140",
+        picked && "filter-(--filter-mascot-picked)",
+      )}
       data-mascot={shape}
       data-color={color}
       data-state={shown}

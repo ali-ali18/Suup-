@@ -48,25 +48,18 @@
           "a11y": {
             "useSemanticElements": "off",
             "noStaticElementInteractions": "off",
-            "noAutofocus": "off"
+            "noAutofocus": "off",
+            "noLabelWithoutControl": {
+              "level": "error",
+              "options": { "inputComponents": ["CheckInput"] }
+            }
           },
           "correctness": {
             "useExhaustiveDependencies": "off"
           },
           "complexity": {
             "noImportantStyles": "off"
-          }
-        }
-      }
-    },
-    {
-      "includes": [
-        "apps/desktop/src/ui/**",
-        "apps/desktop/src/features/settings/**",
-        "apps/desktop/src/lib/markdown.tsx"
-      ],
-      "linter": {
-        "rules": {
+          },
           "nursery": {
             "useTailwindSortedClasses": "error"
           }

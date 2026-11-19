@@ -5,6 +5,7 @@ import { useData, useServices } from "../../app/context.js";
 import { sortedBots } from "../../app/selectors.js";
 import { orderedConnectors, orderedSecrets } from "../../data/reducers.js";
 import { nameProblem, writeSecret } from "../../lib/secret-form.js";
+import { CheckInput } from "../../ui/choice.js";
 import {
   BulletList,
   Dialog,
@@ -161,7 +162,7 @@ export function SecretDialog({
             </FieldLabel>
             {sortedBots(bots).map((b) => (
               <label key={b.id} className="flex items-center gap-2">
-                <input
+                <CheckInput
                   type="checkbox"
                   checked={grants.includes(b.id)}
                   onChange={(e) =>

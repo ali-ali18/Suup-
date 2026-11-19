@@ -29,7 +29,7 @@ describe("tokens: no literal colour, radius or font size outside tokens.css", ()
     expect(found.map(rel)).toEqual([]);
   });
 
-  it("literal radii and font sizes in the stylesheets only go down (a ratchet: new ones go in tokens.css)", () => {
+  it("no literal radius or font size in a stylesheet but tokens.css (new ones go there)", () => {
     const LITERAL = /(?:font-size|border-radius):\s*[1-9]\d*px/;
     const count = css.reduce(
       (n, f) =>
@@ -39,7 +39,7 @@ describe("tokens: no literal colour, radius or font size outside tokens.css", ()
           .filter((line) => LITERAL.test(line)).length,
       0,
     );
-    expect(count).toBeLessThanOrEqual(9);
+    expect(count).toBe(0);
   });
 });
 
@@ -190,20 +190,76 @@ describe("Tailwind: classes name tokens, never a colour, a palette or a pixel", 
     expect(offenders).toEqual([]);
   });
 
-  it("a screen does not restyle a shared piece: the class names of src/ui are not repeated in features", () => {
-    // The old hooks (`ui-pill`, `ui-card`, `section-label`...) are gone from the screens; what is left
-    // is the `ui-*` hook classes that carry no style (tests and layout hooks).
-    const styled = [
-      ".ui-pill",
-      ".ui-card",
-      ".ui-field",
-      ".ui-dialog",
-      ".ui-menu",
-      ".srow",
-      ".scard",
+  /** The class names written as `className="..."` in a source file (a plain string, no template). */
+  const classNames = (source: string): string[] => {
+    const out: string[] = [];
+    const marker = 'className="';
+    let from = source.indexOf(marker);
+    while (from !== -1) {
+      const start = from + marker.length;
+      const end = source.indexOf('"', start);
+      if (end === -1) break;
+      for (const name of source.slice(start, end).split(" ")) if (name !== "") out.push(name);
+      from = source.indexOf(marker, end);
+    }
+    return out;
+  };
+
+  it("there is one stylesheet, Tailwind's: no legacy CSS file, Preflight on, a base that only adds", () => {
+    const sheets = files(SRC, /\.css$/)
+      .map(rel)
+      .sort();
+    expect(sheets).toEqual(
+      ["styles/app.css", "styles/base.css", "styles/theme.css", "styles/tokens.css"].sort(),
+    );
+    const app = read(join(SRC, "styles", "app.css"));
+    expect(app).toContain('@import "tailwindcss/preflight.css" layer(base);');
+    expect(app).toContain("@layer theme, base, components, utilities;");
+    expect(app).not.toContain("legacy");
+    // base.css is not a second set of classes: it names no class of its own.
+    const base = read(join(SRC, "styles", "base.css"));
+    for (const old of [".muted", ".small", ".mono", ".wrap", ".section-label", ".form", ".sr-only"])
+      expect(base.includes(old), old).toBe(false);
+  });
+
+  it("a screen does not use the old global helpers or the old per-screen class names", () => {
+    const helpers = new Set([
+      "muted",
+      "small",
+      "mono",
+      "wrap",
+      "section-label",
+      "form",
+      "form__row",
+    ]);
+    const prefixes = [
+      "bot-entry",
+      "bot-badge",
+      "bot-chip",
+      "sidebar__",
+      "chat__",
+      "panel__",
+      "screen__",
+      "memory__",
+      "pending__",
+      "inspector__",
+      "newbot",
+      "palette__",
+      "botnet",
+      "shortcuts",
+      "group-dialog",
+      "connect__",
+      "shell__",
+      "ui-code__",
     ];
-    const css = read(join(SRC, "features", "features.css"));
-    for (const selector of styled) expect(css.includes(selector), selector).toBe(false);
+    const offenders: string[] = [];
+    for (const file of components) {
+      for (const name of classNames(read(file))) {
+        if (helpers.has(name) || prefixes.some((p) => name.startsWith(p)))
+          offenders.push(`${rel(file)}: ${name}`);
+      }
+    }
+    expect(offenders).toEqual([]);
   });
 });
 
@@ -298,13 +354,15 @@ describe("approval buttons: normal = Aprovar / Recusar; the split button is only
   it("the split button class is drawn only by the message footer of the approval card, nowhere else", () => {
     const offenders = files(SRC, /\.tsx?$/)
       .filter((f) => !f.endsWith("design-rules.test.ts"))
-      .filter((f) => read(f).includes("ui-split"))
+      .filter((f) => read(f).includes("split-button"))
       .map(rel);
     expect(offenders).toEqual(["ui/approval-card.tsx"]);
     const messageFooter = between(card, "function MessageFooter(", "function ResolvedCard(");
-    expect(messageFooter).toContain('className="ui-split inline-flex"');
+    expect(messageFooter).toContain('data-testid="split-button"');
     // every use of the split button in the file is inside the message footer
-    expect(card.split("ui-split").length - 1).toBe(messageFooter.split("ui-split").length - 1);
+    expect(card.split("split-button").length - 1).toBe(
+      messageFooter.split("split-button").length - 1,
+    );
   });
 
   it("the message footer is rendered only when the approval DECLARES an outbound message", () => {
@@ -313,7 +371,7 @@ describe("approval buttons: normal = Aprovar / Recusar; the split button is only
     // the branch before it is the normal footer: Recusar and Aprovar, no menu of any kind
     expect(branch).toContain('data-testid="approval-approve"');
     expect(branch).not.toContain("MenuButton");
-    expect(branch).not.toContain("ui-split");
+    expect(branch).not.toContain("split-button");
     // `outbound` comes from the approval's declaration, never from the tool's name or text
     expect(card).toContain("const outbound = approval.outbound;");
   });
@@ -359,7 +417,8 @@ describe("connectors: per-tool grants, the review of a definition, the network",
     expect(review).toContain("Linha nova");
     expect(review).toContain("Texto escrito pelo servidor");
     // The changed words are bold and underlined.
-    expect(review).toContain('className="diff-word font-bold underline"');
+    expect(review).toContain('data-testid="diff-word"');
+    expect(review).toContain('className="font-bold underline"');
     // Approving is one tool at a time: there is no "approve all".
     expect(review.toLowerCase()).not.toContain("aprovar tudo");
     expect(review.toLowerCase()).not.toContain("aprovar todas");

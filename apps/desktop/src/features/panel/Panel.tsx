@@ -25,13 +25,22 @@ export function Panel({ botId }: { botId: string }) {
   const [now] = useState(() => new Date());
   if (bot === undefined) return null;
   return (
-    <aside className="panel" aria-label={`Painel de ${bot.name}`} data-testid="panel">
-      <div className="panel__head">
-        <RoundButton label="Fechar o painel" tone="ghost" onClick={togglePanel}>
+    <aside
+      className="relative flex min-h-0 min-w-0 flex-[0_1_var(--panel-w,var(--width-panel))] flex-col border-l border-border data-[closing=true]:opacity-50"
+      aria-label={`Painel de ${bot.name}`}
+      data-testid="panel"
+    >
+      <div className="relative flex flex-none flex-col items-center gap-4 px-5 pt-14 pb-5">
+        <RoundButton
+          label="Fechar o painel"
+          tone="ghost"
+          className="absolute top-3 right-3"
+          onClick={togglePanel}
+        >
           <X size={18} aria-hidden="true" />
         </RoundButton>
         <Avatar avatar={bot.avatar} color={bot.color} seed={bot.id} size="xl" />
-        <h2 className="panel__name">{bot.name}</h2>
+        <h2 className="text-title font-label">{bot.name}</h2>
         <Tabs
           tabs={TABS}
           value={tab}
@@ -41,7 +50,7 @@ export function Panel({ botId }: { botId: string }) {
         />
       </div>
       <div
-        className="panel__body"
+        className="min-h-0 flex-1 overflow-y-auto px-4 pt-2 pb-5"
         role="tabpanel"
         id={`panel-panel-${tab}`}
         aria-labelledby={`panel-${tab}`}

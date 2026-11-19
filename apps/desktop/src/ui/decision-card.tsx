@@ -1,4 +1,5 @@
 import type { ReactNode, Ref } from "react";
+import { cx } from "../lib/cx.js";
 import { IconBox } from "./icon-box.js";
 
 /** The chrome every card of the chat shares (docs/DESIGN.md §3): one border, one radius. */
@@ -45,7 +46,10 @@ export function DecisionCard({
   return (
     <div
       ref={rootRef}
-      className={`${CARD_CHROME} flex flex-col gap-4 p-5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus`}
+      className={cx(
+        CARD_CHROME,
+        "flex flex-col gap-4 p-5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+      )}
       data-testid={testId}
       data-state="needs-action"
       role="group"
@@ -55,17 +59,24 @@ export function DecisionCard({
     >
       <div className="flex items-center gap-2">
         <IconBox>{icon}</IconBox>
-        <strong className="ui-decision__category text-small font-title">{category}</strong>
+        <strong className="text-small font-title" data-testid="decision-category">
+          {category}
+        </strong>
         {aside !== undefined && <span className="ml-auto text-small text-text-muted">{aside}</span>}
       </div>
       <div className="flex flex-col gap-1">
-        <p className="ui-decision__title text-title font-title wrap-anywhere">{title}</p>
-        <p className="ui-decision__lede text-label text-text-muted" data-testid={ledeTestId}>
+        <p className="text-title font-title wrap-anywhere" data-testid="decision-title">
+          {title}
+        </p>
+        <p className="text-label text-text-muted" data-testid={ledeTestId ?? "decision-lede"}>
           {lede}
         </p>
       </div>
       {children !== undefined && <div className="min-w-0">{children}</div>}
-      <div className="ui-decision__footer flex flex-wrap items-center justify-between gap-3">
+      <div
+        className="flex flex-wrap items-center justify-between gap-3"
+        data-testid="decision-footer"
+      >
         <div className="flex min-w-0 shrink grow basis-50 text-small text-text-muted">
           {footerNote}
         </div>

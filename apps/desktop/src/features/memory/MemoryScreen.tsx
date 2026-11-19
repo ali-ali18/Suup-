@@ -11,11 +11,15 @@ import {
   Dialog,
   EmptyState,
   FieldLabel,
+  FormRow,
+  FormStack,
+  MutedText,
   Pill,
   Tabs,
   TextField,
   Toggle,
 } from "../../ui/primitives.js";
+import { Screen, ScreenBody, ScreenHead } from "../../ui/screen.js";
 import {
   authorLabel,
   dateLabel,
@@ -69,24 +73,21 @@ export function MemoryScreen() {
   }, [memories]);
 
   return (
-    <div className="screen" data-testid="memory-screen">
-      <header className="screen__head">
-        <div>
-          <h1 className="screen__title">Memória</h1>
-          <p className="muted small">
-            Tudo o que o Suup sabe e usa. Uma memória nova ou esquecida vale a partir da próxima
-            execução.
-          </p>
-        </div>
-        <Pill
-          tone="primary"
-          icon={<Plus size={16} aria-hidden="true" />}
-          onClick={() => setAdding(true)}
-        >
-          Adicionar
-        </Pill>
-      </header>
-      <div className="screen__body">
+    <Screen data-testid="memory-screen">
+      <ScreenHead
+        title="Memória"
+        subtitle="Tudo o que o Suup sabe e usa. Uma memória nova ou esquecida vale a partir da próxima execução."
+        action={
+          <Pill
+            tone="primary"
+            icon={<Plus size={16} aria-hidden="true" />}
+            onClick={() => setAdding(true)}
+          >
+            Adicionar
+          </Pill>
+        }
+      />
+      <ScreenBody>
         <Tabs
           label="Camadas da memória"
           idPrefix="memory"
@@ -94,8 +95,8 @@ export function MemoryScreen() {
           onChange={(id) => setLayer(id as MemoryLayer)}
           tabs={LAYERS.map((l) => ({ id: l, label: `${LAYER_TAB[l]} (${counts[l]})` }))}
         />
-        <div className="memory__filters">
-          <div className="memory__search">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="max-w-search min-w-50 flex-1">
             <TextField
               label="Buscar na memória"
               hideLabel
@@ -105,7 +106,7 @@ export function MemoryScreen() {
               placeholder="Buscar na memória…"
             />
           </div>
-          <div className="memory__select">
+          <div className="min-w-45">
             <Dropdown
               variant="field"
               label="Filtrar por bot"
@@ -118,7 +119,7 @@ export function MemoryScreen() {
               onChange={setBotFilter}
             />
           </div>
-          <span className="memory__toggle small">
+          <span className="inline-flex items-center gap-2 text-small">
             <Toggle
               checked={showForgotten}
               onChange={setShowForgotten}
@@ -128,9 +129,9 @@ export function MemoryScreen() {
           </span>
         </div>
         {!loaded ? (
-          <p className="muted" role="status">
+          <MutedText as="p" size="inherit" role="status">
             Carregando…
-          </p>
+          </MutedText>
         ) : items.length === 0 ? (
           <EmptyState
             title="Nada por aqui"
@@ -141,7 +142,7 @@ export function MemoryScreen() {
             }
           />
         ) : (
-          <ul className="memory__list" data-testid="memory-list">
+          <ul className="flex max-w-memory-list flex-col gap-2" data-testid="memory-list">
             {items.map((m) => (
               <MemoryItem
                 key={m.id}
@@ -159,14 +160,14 @@ export function MemoryScreen() {
             ))}
           </ul>
         )}
-      </div>
+      </ScreenBody>
       {adding && (
         <AddMemoryDialog
           initialLayer={layer === "journal" ? "rule" : layer}
           onClose={() => setAdding(false)}
         />
       )}
-    </div>
+    </Screen>
   );
 }
 
@@ -220,8 +221,8 @@ function AddMemoryDialog({
         </>
       }
     >
-      <div className="form">
-        <div className="form__row">
+      <FormStack>
+        <FormRow>
           <FieldLabel as="span">Camada</FieldLabel>
           <Dropdown
             variant="field"
@@ -237,9 +238,9 @@ function AddMemoryDialog({
               if (next === "note" && target === "shared") setTarget(selected ?? list[0]?.id ?? "");
             }}
           />
-        </div>
+        </FormRow>
         {layer !== "profile" && (
-          <div className="form__row">
+          <FormRow>
             <FieldLabel as="span">Vale para</FieldLabel>
             <Dropdown
               variant="field"
@@ -251,7 +252,7 @@ function AddMemoryDialog({
               ]}
               onChange={setTarget}
             />
-          </div>
+          </FormRow>
         )}
         <TextField
           label="Texto"
@@ -268,7 +269,7 @@ function AddMemoryDialog({
                 : "Ex.: O deploy fica em tools/deploy.sh"
           }
         />
-      </div>
+      </FormStack>
     </Dialog>
   );
 }

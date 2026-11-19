@@ -41,12 +41,8 @@ export function BotBubble({
 }: { children: ReactNode } & HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cx(
-        "ui-bubble--bot",
-        BUBBLE,
-        "max-w-full self-start border border-border bg-surface",
-        className,
-      )}
+      className={cx(BUBBLE, "max-w-full self-start border border-border bg-surface", className)}
+      data-testid="bubble-bot"
       {...rest}
     >
       {children}
@@ -86,14 +82,14 @@ export function UserMessage({
       data-bubble={position}
     >
       <div
-        // `ui-bubble--user` and `ui-bubble--pending` are hooks (tests, screens), not styles.
         className={cx(
-          "ui-bubble--user",
           BUBBLE,
           "max-w-bubble-user bg-bot-bubble text-bot-on-bubble bubble-neutral:bg-bubble-neutral bubble-neutral:text-text",
           linkCorners("user", position),
-          pending && "ui-bubble--pending opacity-72",
+          pending && "opacity-72",
         )}
+        data-testid="bubble-user"
+        data-pending={pending}
       >
         <p className="text-body wrap-anywhere whitespace-pre-wrap">{text}</p>
       </div>

@@ -423,7 +423,7 @@ test.describe("screenshots", () => {
       await selectBot(page, "Pedinte");
       const network = page.getByTestId("approval-card");
       await expect(network).toHaveAttribute("data-state", "needs-action");
-      await expect(network.locator(".ui-decision__category")).toHaveText("Rede");
+      await expect(network.locator('[data-testid="decision-category"]')).toHaveText("Rede");
       expect(await network.getByRole("button").allTextContents()).toEqual(["Recusar", "Aprovar"]);
       await settle();
       await shot("18h-rede-cartao");

@@ -53,8 +53,12 @@ describe("ActionRow: what an expanded action says, as plain text", () => {
       />,
     );
     expect(screen.getByTestId("diff").textContent).toBe("  x\n- foo\n+ bar\n  y\n");
-    expect(container.querySelector(".ui-action__line--removed")?.textContent).toContain("foo");
-    expect(container.querySelector(".ui-action__line--added")?.textContent).toContain("bar");
+    expect(container.querySelector('[data-testid="action-line-removed"]')?.textContent).toContain(
+      "foo",
+    );
+    expect(container.querySelector('[data-testid="action-line-added"]')?.textContent).toContain(
+      "bar",
+    );
   });
 
   it("a failed action shows its error; a web action its address and an excerpt (cut when long)", () => {
@@ -66,7 +70,7 @@ describe("ActionRow: what an expanded action says, as plain text", () => {
       />,
     );
     expect(screen.getByRole("button").textContent).toContain("Falhou · Ler x");
-    expect(screen.getByTestId("action-output").className).toContain("ui-action__pre--error");
+    expect(screen.getByTestId("action-output").getAttribute("data-error")).toBe("true");
     const web = render(
       <ActionRow
         item={item("web_fetch", { url: "https://example.com/a" }, "y".repeat(3000))}
@@ -147,7 +151,7 @@ describe("ActionRow: what an expanded action says, as plain text", () => {
         <ActionRow item={merged("approved", "disco cheio", true)} expanded onToggle={() => {}} />,
       );
       expect(screen.getByRole("button").textContent).toContain("Aprovado, mas falhou · Escrever");
-      expect(screen.getByTestId("action-output").className).toContain("ui-action__pre--error");
+      expect(screen.getByTestId("action-output").getAttribute("data-error")).toBe("true");
     });
 
     it("denied: no execution, the reason, and no result block", () => {

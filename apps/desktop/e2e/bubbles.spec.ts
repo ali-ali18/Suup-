@@ -56,9 +56,16 @@ test.describe("dynamic bubbles", () => {
       ];
     });
   const botBubble = (page: import("@playwright/test").Page, text: string) =>
-    page.getByTestId("message-bot").filter({ hasText: text }).locator(".ui-bubble--bot").first();
+    page
+      .getByTestId("message-bot")
+      .filter({ hasText: text })
+      .locator('[data-testid="bubble-bot"]')
+      .first();
   const userBubble = (page: import("@playwright/test").Page, text: string) =>
-    page.getByTestId("message-user").filter({ hasText: text }).locator(".ui-bubble--user");
+    page
+      .getByTestId("message-user")
+      .filter({ hasText: text })
+      .locator('[data-testid="bubble-user"]');
 
   test("first, middle and last link on the bot's side; the far side and the ends stay round; cards keep their radius", async ({
     page,

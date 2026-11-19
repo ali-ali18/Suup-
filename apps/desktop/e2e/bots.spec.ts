@@ -168,7 +168,7 @@ test.describe("bots, sidebar, palette, memory", () => {
     await expect(sidebar).toHaveAttribute("data-collapsed", "true");
     expect(await width()).toBeLessThan(150);
     await expect(sidebar.getByTestId("bot-item").first()).toBeVisible();
-    await expect(sidebar.locator(".bot-entry__text")).toHaveCount(0);
+    await expect(sidebar.getByTestId("bot-entry-text")).toHaveCount(0);
     await page.reload();
     await expect(sidebar).toHaveAttribute("data-collapsed", "true");
     // Back out past the threshold: the expanded layout, at the width the drag ended on.
@@ -213,7 +213,7 @@ test.describe("bots, sidebar, palette, memory", () => {
     await openApp(page, world);
     const sidebar = page.getByTestId("sidebar");
     await selectBot(page, "Tile1");
-    const tiles = sidebar.locator(".sidebar__tiles");
+    const tiles = sidebar.getByTestId("pinned-tiles");
     const columns = () =>
       tiles.evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(" ").length);
     expect(await columns()).toBe(2);
@@ -353,11 +353,14 @@ test.describe("bots, sidebar, palette, memory", () => {
       await selectBot(page, name);
       await send(page, "OI-SIMPLES cor");
       // (the bubble is replaced when the server confirms the message: the assertion retries)
-      await expect(userBubbles(page).last().locator(".ui-bubble--user")).toHaveCSS(
+      await expect(userBubbles(page).last().locator('[data-testid="bubble-user"]')).toHaveCSS(
         "background-color",
         bg,
       );
-      await expect(userBubbles(page).last().locator(".ui-bubble--user")).toHaveCSS("color", fg);
+      await expect(userBubbles(page).last().locator('[data-testid="bubble-user"]')).toHaveCSS(
+        "color",
+        fg,
+      );
       await expect(page.getByTestId("message-bot").last()).toContainText("Como posso ajudar");
     }
     // The white bot's bubble is a neutral grey, and its send button is the plain white round one;
@@ -454,12 +457,12 @@ test.describe("bots, sidebar, palette, memory", () => {
     await send(page, "CASE-MD mostre");
     const bubble = page.getByTestId("message-bot").filter({ hasText: "Resumo:" });
     await expect(bubble).toBeVisible();
-    await expect(userBubbles(page).last().locator(".ui-bubble--user")).toHaveCSS(
+    await expect(userBubbles(page).last().locator('[data-testid="bubble-user"]')).toHaveCSS(
       "background-color",
       "rgb(0, 201, 114)",
     );
-    const gap = await page.locator(".chat__log").evaluate((el) => getComputedStyle(el).rowGap);
-    const width = (await page.locator(".chat__composer").boundingBox())?.width ?? 0;
+    const gap = await page.getByTestId("chat-log").evaluate((el) => getComputedStyle(el).rowGap);
+    const width = (await page.getByTestId("chat-composer").boundingBox())?.width ?? 0;
     // Links: underlined text in the normal colour, a neutral glyph, NO request to the site by default.
     const link = bubble.getByRole("link", { name: "a documentação" });
     await expect(link).toHaveCSS("text-decoration-line", "underline");
@@ -476,13 +479,13 @@ test.describe("bots, sidebar, palette, memory", () => {
     await closeSettings(page);
     await selectBot(page, "Visual");
     // The user's bubble is neutral now (not the bot's green), and the column is denser.
-    await expect(userBubbles(page).last().locator(".ui-bubble--user")).toHaveCSS(
+    await expect(userBubbles(page).last().locator('[data-testid="bubble-user"]')).toHaveCSS(
       "background-color",
       "rgb(42, 42, 42)",
     );
-    expect(await page.locator(".chat__log").evaluate((el) => getComputedStyle(el).rowGap)).not.toBe(
-      gap,
-    );
+    expect(
+      await page.getByTestId("chat-log").evaluate((el) => getComputedStyle(el).rowGap),
+    ).not.toBe(gap);
     expect(width).toBeGreaterThan(0);
 
     // They persist across a reload (the app's own storage, not the server).
@@ -490,7 +493,7 @@ test.describe("bots, sidebar, palette, memory", () => {
     await expect(page.locator("html")).toHaveAttribute("data-bubble", "neutral");
     await expect(page.locator("html")).toHaveAttribute("data-density", "compact");
     await selectBot(page, "Visual");
-    await expect(userBubbles(page).last().locator(".ui-bubble--user")).toHaveCSS(
+    await expect(userBubbles(page).last().locator('[data-testid="bubble-user"]')).toHaveCSS(
       "background-color",
       "rgb(42, 42, 42)",
     );

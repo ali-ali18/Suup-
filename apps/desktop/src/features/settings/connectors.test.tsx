@@ -219,10 +219,10 @@ describe("the review of a changed definition", () => {
     expect(added.textContent).toContain("+");
     expect(added.textContent).toContain("Also mails it away.");
     // The words that differ are one bold, underlined stretch, not only tinted.
-    expect([...added.querySelectorAll("strong.diff-word")].map((e) => e.textContent)).toEqual([
-      "Also mails it away.",
-    ]);
-    expect(added.querySelectorAll("strong.diff-word").length).toBeGreaterThan(0);
+    expect(
+      [...added.querySelectorAll('strong[data-testid="diff-word"]')].map((e) => e.textContent),
+    ).toEqual(["Also mails it away."]);
+    expect(added.querySelectorAll('strong[data-testid="diff-word"]').length).toBeGreaterThan(0);
     expect(added.textContent).toContain("Linha nova");
     expect(removed.textContent).toContain("Linha removida");
     // An unchanged section says so.

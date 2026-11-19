@@ -3,11 +3,22 @@ import type { ShapeId } from "@suup/avatar";
 import { useEffect, useMemo, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { useUi } from "../../app/ui-store.js";
+import { cx } from "../../lib/cx.js";
 import { avatarOf, colorVars, effectiveColor, mascotValue, SHAPES } from "../../lib/mascots.js";
 import { Avatar } from "../../ui/avatar.js";
+import { ToggleChip } from "../../ui/choice.js";
 import { Dropdown } from "../../ui/dropdown.js";
 import { Mascot } from "../../ui/mascot.js";
-import { Dialog, FieldError, FieldLabel, Pill, Tag, TextField } from "../../ui/primitives.js";
+import {
+  Dialog,
+  FieldError,
+  FieldLabel,
+  FormRow,
+  FormStack,
+  Pill,
+  Tag,
+  TextField,
+} from "../../ui/primitives.js";
 import { BotNetwork } from "./BotNetwork.js";
 
 const COLOR_NAME: Record<BotColor, string> = {
@@ -174,12 +185,8 @@ export function NewBotDialog() {
       }
     >
       {step === 1 ? (
-        <div
-          className="newbot"
-          data-testid="newbot-step-1"
-          style={colorVars(shownColor) as React.CSSProperties}
-        >
-          <div className="newbot__preview" data-testid="newbot-preview" data-color={shownColor}>
+        <FormStack data-testid="newbot-step-1" style={colorVars(shownColor) as React.CSSProperties}>
+          <div className="flex justify-center" data-testid="newbot-preview" data-color={shownColor}>
             <Avatar
               avatar={mascotValue(mascot)}
               color={shownColor}
@@ -196,7 +203,11 @@ export function NewBotDialog() {
             autoFocus
             onEnter={() => nameOk && modelId !== "" && void save()}
           />
-          <div role="radiogroup" aria-label="Mascote" className="newbot__grid">
+          <div
+            role="radiogroup"
+            aria-label="Mascote"
+            className="flex flex-wrap justify-center gap-2"
+          >
             {SHAPES.map((m) => (
               <button
                 key={m.id}
@@ -204,14 +215,17 @@ export function NewBotDialog() {
                 role="radio"
                 aria-checked={mascot === m.id}
                 aria-label={m.name}
-                className={`newbot__mascot${mascot === m.id ? " newbot__mascot--on" : ""}`}
+                className={cx(
+                  "size-14 rounded-card border-[1.5px] border-transparent p-1.5",
+                  mascot === m.id ? "bg-raised" : "bg-transparent hover:bg-hover",
+                )}
                 onClick={() => setMascot(m.id)}
               >
-                <Mascot shape={m.id} color={shownColor} size="md" still />
+                <Mascot shape={m.id} color={shownColor} size="md" still picked={mascot === m.id} />
               </button>
             ))}
           </div>
-          <div role="radiogroup" aria-label="Cor" className="newbot__swatches">
+          <div role="radiogroup" aria-label="Cor" className="flex flex-wrap justify-center gap-2">
             {BOT_COLORS.map((c) => (
               <button
                 key={c}
@@ -220,18 +234,27 @@ export function NewBotDialog() {
                 aria-checked={shownColor === c}
                 aria-label={COLOR_NAME[c]}
                 title={COLOR_NAME[c]}
-                className={`newbot__swatch${shownColor === c ? " newbot__swatch--on" : ""}`}
+                className={cx(
+                  "size-7 rounded-pill border-2",
+                  shownColor === c
+                    ? "border-bg ring-2 ring-text"
+                    : "border-transparent ring-1 ring-border-strong",
+                )}
                 style={{ background: BOT_PALETTE[c].fill }}
                 onClick={() => setColor(c)}
               />
             ))}
           </div>
-          <button type="button" className="newbot__more" onClick={() => setStep(2)}>
+          <button
+            type="button"
+            className="self-center border-0 bg-transparent px-1.5 py-px text-small leading-inherit text-text-muted underline hover:text-text"
+            onClick={() => setStep(2)}
+          >
             Descrever o que ele faz
           </button>
-        </div>
+        </FormStack>
       ) : (
-        <div className="newbot" data-testid="newbot-step-2">
+        <FormStack data-testid="newbot-step-2">
           <TextField
             label="O que esse bot faz?"
             name="description"
@@ -242,7 +265,7 @@ export function NewBotDialog() {
             autoFocus
             placeholder="Descreva em uma ou duas frases."
           />
-          <div className="form__row">
+          <FormRow>
             <FieldLabel as="span">Modelo</FieldLabel>
             <Dropdown
               variant="field"
@@ -251,8 +274,8 @@ export function NewBotDialog() {
               options={usable.map((m) => ({ value: m.id, label: `${m.id} · ${m.provider}` }))}
               onChange={setModelId}
             />
-          </div>
-          <div className="newbot__suggest">
+          </FormRow>
+          <div className="flex flex-wrap items-center gap-3">
             <Pill
               tone="secondary"
               disabled={description.trim() === "" || drafting || modelId === ""}
@@ -270,18 +293,16 @@ export function NewBotDialog() {
             multiline
             rows={5}
           />
-          <fieldset className="newbot__tools">
+          <fieldset>
             <FieldLabel as="legend">Ferramentas</FieldLabel>
-            <div className="newbot__tool-tags">
+            <div className="flex flex-wrap gap-2">
               {toolInfo.map((t) => {
                 const on = selectedTools.includes(t.name);
                 return (
-                  <button
+                  <ToggleChip
                     key={t.name}
-                    type="button"
-                    aria-pressed={on}
+                    on={on}
                     title={t.summary}
-                    className={`newbot__tool${on ? " newbot__tool--on" : ""}`}
                     onClick={() =>
                       setTools(
                         on ? selectedTools.filter((x) => x !== t.name) : [...selectedTools, t.name],
@@ -294,13 +315,13 @@ export function NewBotDialog() {
                         {t.risk === "write_reversible" ? "escreve" : "externa"}
                       </Tag>
                     )}
-                  </button>
+                  </ToggleChip>
                 );
               })}
             </div>
           </fieldset>
           {editing !== undefined && <BotNetwork botId={editing.id} />}
-        </div>
+        </FormStack>
       )}
     </Dialog>
   );

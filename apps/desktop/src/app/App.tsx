@@ -68,7 +68,7 @@ export function App() {
   return (
     <>
       {phase.kind === "boot" && (
-        <div className="boot" role="status">
+        <div className="flex h-full items-center justify-center text-text-muted" role="status">
           Conectando…
         </div>
       )}

@@ -1,5 +1,6 @@
 import { Link2 } from "lucide-react";
 import { type ReactNode, useState } from "react";
+import { cx } from "./cx.js";
 import { faviconUrl, parseLink } from "./links.js";
 
 export { parseLink, safeHref } from "./links.js";
@@ -83,7 +84,8 @@ function LinkMark({ src }: { src: string | null }) {
   const [failed, setFailed] = useState(false);
   return (
     <span
-      className="md__ico mr-1 inline-flex align-[calc(var(--space-1)/-2)] text-text-muted [&_img]:rounded-xs"
+      data-testid="link-icon"
+      className="mr-1 inline-flex align-[calc(var(--space-1)/-2)] text-text-muted [&_img]:rounded-xs"
       aria-hidden="true"
     >
       {src === null || failed ? (
@@ -133,7 +135,8 @@ export function renderInline(
         out.push(
           <a
             key={key++}
-            className="md__link text-inherit underline underline-offset-3"
+            data-testid="md-link"
+            className="text-inherit underline underline-offset-3"
             href={safe.href}
             // The real destination, as the browser sees it (a lookalike domain shows its ASCII form).
             title={safe.href}
@@ -188,7 +191,7 @@ export function Markdown({
             );
           case "ul":
             return (
-              <ul key={key} className={`${LIST} list-disc`}>
+              <ul key={key} className={cx(LIST, "list-disc")}>
                 {block.items.map((item, j) => (
                   // biome-ignore lint/suspicious/noArrayIndexKey: static
                   <li key={j}>{renderInline(item, openUrl, favicons)}</li>
@@ -197,7 +200,7 @@ export function Markdown({
             );
           case "ol":
             return (
-              <ol key={key} className={`${LIST} my-[1em] list-decimal`}>
+              <ol key={key} className={cx(LIST, "my-[1em] list-decimal")}>
                 {block.items.map((item, j) => (
                   // biome-ignore lint/suspicious/noArrayIndexKey: static
                   <li key={j}>{renderInline(item, openUrl, favicons)}</li>

@@ -70,10 +70,13 @@
   --text-section-line: 16px;
   --text-section-weight: 500;
   --text-section-tracking: 0.72px;
+  --font-weight-normal: 400; /* plain weight where the browser would make it bold (a table's header cell) */
+  --font-weight-bold: 700; /* the browser's own bold: a heading or a name with no weight of its own */
   --text-heading-size: 22px;
   --text-heading-line: 28px;
   --text-code-size: 12px;
   --text-code-line: 18px;
+  --text-badge-size: 10px; /* the count on a bot's badge */
   --text-glyph-xs-size: 10px; /* the emoji of a 16 px avatar */
   --text-glyph-tile-size: 28px; /* the emoji of a tile avatar */
   --text-glyph-xl-size: 32px; /* the emoji of the large avatar */
@@ -110,6 +113,15 @@
   --width-dropdown: min(380px, calc(100vw - 16px));
   --width-empty-text: 280px;
   --width-input: 260px; /* the field of a settings row */
+  --width-connect: min(440px, 100%); /* the card of the connect screen */
+  --width-palette: min(640px, 100%); /* the command palette */
+  --width-screen-narrow: 760px; /* a block of a narrow screen (Pendências) */
+  --width-screen-wide: 980px; /* the body of the inspector */
+  --width-memory-list: 860px; /* the list of memories */
+  --width-bot-chip: 420px; /* the widest the bot's chip above the chat gets */
+  --width-search: 420px; /* the search field of a screen */
+  --width-tile: 118px; /* a pinned bot's tile in the sidebar: as many columns as fit */
+  --height-events: 420px; /* the list of events of the inspector scrolls inside this */
   --width-ref-col: 150px; /* the middle column of a name / source / value row of a connector */
   --width-arg-key-min: 64px; /* the label column of the exact content of a call */
   --width-arg-key-max: 120px;
@@ -127,6 +139,13 @@
   ); /* between bubbles of one group; between groups it is --chat-gap */
   --color-bubble-neutral: var(--color-raised);
   --shadow-popover: 0 12px 32px rgba(0, 0, 0, 0.45);
+  /* The mark of the mascot chosen in the new-bot dialog: its shape outlined (a ring of the raised
+     colour, then one of the text colour), instead of a box around it. */
+  --filter-mascot-picked: drop-shadow(2px 0 0 var(--color-raised))
+    drop-shadow(-2px 0 0 var(--color-raised)) drop-shadow(0 2px 0 var(--color-raised))
+    drop-shadow(0 -2px 0 var(--color-raised)) drop-shadow(1.5px 0 0 var(--color-text))
+    drop-shadow(-1.5px 0 0 var(--color-text)) drop-shadow(0 1.5px 0 var(--color-text))
+    drop-shadow(0 -1.5px 0 var(--color-text));
   --menu-gap: 6px; /* between a menu button and its menu */
   --duration-fast: 120ms;
   --duration-base: 200ms;

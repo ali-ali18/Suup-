@@ -19,9 +19,12 @@ import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from "rea
 import { useData, useServices } from "../../app/context.js";
 import { useUi } from "../../app/ui-store.js";
 import { arrangeBots, filterBots, flatBots, fold } from "../../data/botlist.js";
+import { cx } from "../../lib/cx.js";
 import { plainText } from "../../lib/markdown.js";
 import { Avatar } from "../../ui/avatar.js";
-import { Dialog, Pill, Scrim } from "../../ui/primitives.js";
+import { BotTitle } from "../../ui/bot-title.js";
+import { Dialog, MutedText, Pill, Scrim, SectionLabel } from "../../ui/primitives.js";
+import { Kbd } from "../../ui/text.js";
 
 interface Entry {
   id: string;
@@ -108,8 +111,7 @@ export function CommandPalette() {
         section: "Bots",
         label: (
           <>
-            <strong>{bot.name}</strong>
-            {bot.description !== "" && <span className="muted"> · {bot.description}</span>}
+            <BotTitle name={bot.name} description={bot.description} weight="bold" />
           </>
         ),
         detail: plainText(conversation?.lastMessage?.text ?? ""),
@@ -251,7 +253,7 @@ export function CommandPalette() {
         role="dialog"
         aria-modal="true"
         aria-label="Busca e ações"
-        className="palette"
+        className="flex max-h-[70vh] w-palette flex-col overflow-hidden rounded-card border border-border-strong bg-surface shadow-popover"
         data-testid="palette"
         // A modal surface keeps the focus: if something else takes it while the palette is open,
         // the field gets it back.
@@ -281,7 +283,7 @@ export function CommandPalette() {
           }
         }}
       >
-        <div className="palette__field">
+        <div className="flex items-center gap-3 border-b border-border px-5 py-4">
           <Search size={20} aria-hidden="true" />
           <input
             ref={inputRef}
@@ -294,7 +296,7 @@ export function CommandPalette() {
             }
             aria-autocomplete="list"
             aria-label="Buscar Bots, chats, configurações"
-            className="palette__input"
+            className="min-w-0 flex-1 border-0 bg-transparent py-px text-heading outline-0"
             placeholder="Buscar Bots, chats, configurações…"
             value={query}
             onChange={(e) => {
@@ -308,14 +310,14 @@ export function CommandPalette() {
           id={listId}
           role="listbox"
           aria-label="Resultados"
-          className="palette__list"
+          className="overflow-y-auto p-2"
         >
           {sections.map((section) => {
             const items = entries.filter((e) => e.section === section);
             if (items.length === 0) return null;
             return (
               <div key={section} role="group" aria-label={section}>
-                <p className="section-label palette__section">{section}</p>
+                <SectionLabel className="px-3 pt-3 pb-1">{section}</SectionLabel>
                 {items.map((entry) => {
                   const index = entries.indexOf(entry);
                   return (
@@ -325,17 +327,22 @@ export function CommandPalette() {
                       role="option"
                       tabIndex={-1}
                       aria-selected={index === active}
-                      className={`palette__option${index === active ? " palette__option--active" : ""}`}
+                      className={cx(
+                        "flex cursor-pointer items-center gap-3 rounded-row px-3 py-2",
+                        index === active && "bg-raised",
+                      )}
                       data-testid="palette-option"
                       onMouseMove={() => setActive(index)}
                       onClick={() => choose(entry)}
                       onKeyDown={() => {}}
                     >
-                      <span className="palette__icon">{entry.icon}</span>
-                      <span className="palette__text">
-                        <span className="palette__label">{entry.label}</span>
+                      <span className="inline-flex w-avatar-md flex-none justify-center">
+                        {entry.icon}
+                      </span>
+                      <span className="flex min-w-0 flex-col">
+                        <span className="truncate text-label leading-inherit">{entry.label}</span>
                         {entry.detail !== undefined && entry.detail !== "" && (
-                          <span className="palette__detail muted">{entry.detail}</span>
+                          <MutedText className="truncate leading-inherit">{entry.detail}</MutedText>
                         )}
                       </span>
                     </div>
@@ -345,9 +352,9 @@ export function CommandPalette() {
             );
           })}
           {entries.length === 0 && (
-            <p className="palette__empty muted" role="status">
+            <MutedText as="p" size="inherit" className="p-5 text-center" role="status">
               {searching ? "Buscando…" : "Nada encontrado."}
-            </p>
+            </MutedText>
           )}
         </div>
       </div>
@@ -381,11 +388,11 @@ export function ShortcutsDialog() {
         </Pill>
       }
     >
-      <dl className="shortcuts">
+      <dl className="flex flex-col gap-3">
         {SHORTCUTS.map(([keys, what]) => (
-          <div key={keys} className="shortcuts__row">
+          <div key={keys} className="flex justify-between gap-4">
             <dt>
-              <kbd>{keys}</kbd>
+              <Kbd>{keys}</Kbd>
             </dt>
             <dd>{what}</dd>
           </div>

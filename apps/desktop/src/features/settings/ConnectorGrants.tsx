@@ -21,6 +21,7 @@ import {
   selectReadOnly,
   toggleTool,
 } from "../../lib/tool-grants.js";
+import { CheckInput } from "../../ui/choice.js";
 import { FieldError } from "../../ui/primitives.js";
 import {
   RowAction,
@@ -139,7 +140,7 @@ function BotGrant({
                     data-tool={item.tool.tool}
                     data-blocked={item.blocked ?? undefined}
                   >
-                    <input
+                    <CheckInput
                       id={checkId}
                       type="checkbox"
                       checked={isTicked(draft, item)}

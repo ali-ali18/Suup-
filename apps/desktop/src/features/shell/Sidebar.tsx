@@ -6,15 +6,33 @@ import { botDisplay, pendingQuestions, unreadOf } from "../../app/selectors.js";
 import { useUi } from "../../app/ui-store.js";
 import { arrangeBots, flatBots } from "../../data/botlist.js";
 import { pendingApprovals } from "../../data/reducers.js";
+import { cx } from "../../lib/cx.js";
 import { plainText } from "../../lib/markdown.js";
 import { SIDEBAR_SPEC } from "../../lib/pane-size.js";
 import { Avatar } from "../../ui/avatar.js";
+import { type BadgeKind, BotBadge } from "../../ui/bot-badge.js";
+import { BotTitle } from "../../ui/bot-title.js";
 import type { MenuItem } from "../../ui/menu.js";
 import { PopupMenu } from "../../ui/popup-menu.js";
-import { RoundButton } from "../../ui/primitives.js";
+import { Dialog, MutedText, Pill, RoundButton } from "../../ui/primitives.js";
 import { ResizeHandle } from "../../ui/resize-handle.js";
 
-type BadgeKind = "working" | "question" | "unread" | "paused" | "failed";
+/** How a bot's entry is laid out: a tile (pinned), a row (a list), or only the face (the rail). */
+const ENTRY_MAIN = {
+  tile: "w-full flex-col gap-2 px-2 pt-3 pb-2",
+  row: "w-full gap-3 py-2 pr-9 pl-2.5",
+  rail: "w-auto gap-3 p-1.5",
+} as const;
+
+/** The name of the bot beside its face in the rail, shown on hover and on keyboard focus. */
+const RAIL_TIP =
+  "relative after:pointer-events-none after:absolute after:top-1/2 after:left-full after:z-30 after:ml-2.5 after:-translate-y-1/2 after:rounded-pill after:border after:border-border-strong after:bg-raised after:px-2.5 after:py-1 after:text-small after:whitespace-nowrap after:content-none hover:after:content-[attr(data-tip)] focus-visible:after:content-[attr(data-tip)]";
+
+/** The "more" button of an entry: shown on hover and on focus, over the end of a row or a tile's corner. */
+const ENTRY_MORE = {
+  tile: "top-2 right-2",
+  row: "top-1/2 right-1.5 -translate-y-1/2",
+} as const;
 
 interface EntryProps {
   bot: Bot;
@@ -74,11 +92,15 @@ function BotEntry({
     onMenu(bot, e.clientX, e.clientY);
   };
   return (
-    <div className={`bot-entry bot-entry--${variant}${active ? " bot-entry--active" : ""}`}>
+    <div className="group/entry relative min-w-0">
       <button
         ref={setRef}
         type="button"
-        className="bot-entry__main"
+        className={cx(
+          "flex min-w-0 items-center rounded-card border border-transparent bg-transparent text-left hover:bg-hover",
+          ENTRY_MAIN[variant],
+          variant === "rail" && RAIL_TIP,
+        )}
         aria-label={label}
         aria-current={active ? "page" : undefined}
         data-tip={variant === "rail" ? bot.name : undefined}
@@ -99,7 +121,7 @@ function BotEntry({
         }}
         onContextMenu={openMenu}
       >
-        <span className="bot-entry__avatar">
+        <span className="relative inline-flex flex-none">
           <Avatar
             avatar={bot.avatar}
             color={bot.color}
@@ -108,31 +130,37 @@ function BotEntry({
             state={display.avatar}
           />
           {badge !== undefined && (
-            <span
-              className={`bot-badge bot-badge--${badge.kind}`}
+            <BotBadge
+              kind={badge.kind}
               data-testid="bot-badge"
               data-kind={badge.kind}
               aria-hidden="true"
             >
               {badge.text}
-            </span>
+            </BotBadge>
           )}
         </span>
-        {variant === "tile" && <span className="bot-entry__name">{bot.name}</span>}
+        {variant === "tile" && (
+          <span className="max-w-full truncate text-label leading-inherit font-label">
+            {bot.name}
+          </span>
+        )}
         {variant === "row" && (
-          <span className="bot-entry__text">
-            <span className="bot-entry__line1">
-              <strong>{bot.name}</strong>
-              {bot.description !== "" && <span className="muted"> · {bot.description}</span>}
+          <span className="flex min-w-0 flex-1 flex-col" data-testid="bot-entry-text">
+            <span className="truncate text-label">
+              <BotTitle name={bot.name} description={bot.description} />
             </span>
-            <span className="bot-entry__line2 muted">{preview ?? "Sem mensagens"}</span>
+            <MutedText className="truncate">{preview ?? "Sem mensagens"}</MutedText>
           </span>
         )}
       </button>
       {variant !== "rail" && (
         <button
           type="button"
-          className="bot-entry__more"
+          className={cx(
+            "absolute inline-flex size-7 items-center justify-center rounded-pill border-0 bg-transparent text-text-muted opacity-0 group-focus-within/entry:opacity-100 group-hover/entry:opacity-100 hover:bg-raised hover:text-text",
+            ENTRY_MORE[variant],
+          )}
           aria-label={`Mais opções de ${bot.name}`}
           onClick={(e) => {
             const rect = e.currentTarget.getBoundingClientRect();
@@ -260,7 +288,10 @@ export function Sidebar() {
   const ownerButton = (variant: "bar" | "rail") => (
     <button
       type="button"
-      className={`sidebar__owner sidebar__owner--${variant}`}
+      className={cx(
+        "inline-flex items-center rounded-pill border-0 bg-transparent hover:bg-hover",
+        variant === "bar" ? "gap-3 py-1 pr-2.5 pl-1" : "p-1",
+      )}
       aria-haspopup="menu"
       aria-label={pending > 0 ? `Menu da sua conta (${pending} pendências)` : "Menu da sua conta"}
       data-testid="owner-menu"
@@ -269,15 +300,18 @@ export function Sidebar() {
         setOwnerMenu({ x: rect.left, y: rect.top - ownerItems.length * 40 - 16 });
       }}
     >
-      <span className="sidebar__me" aria-hidden="true">
+      <span
+        className="relative inline-flex size-control flex-none items-center justify-center rounded-pill border border-border-strong bg-raised font-label"
+        aria-hidden="true"
+      >
         V
         {pending > 0 && (
-          <span className="bot-badge bot-badge--question" data-testid="pending-counter">
+          <BotBadge kind="question" data-testid="pending-counter">
             {pending}
-          </span>
+          </BotBadge>
         )}
       </span>
-      {variant === "bar" && <span className="sidebar__me-name">Você</span>}
+      {variant === "bar" && <span className="text-label font-label">Você</span>}
     </button>
   );
 
@@ -341,7 +375,12 @@ export function Sidebar() {
   // Um só <nav> nos dois estados: a alça de arrastar continua montada quando o arrasto vira o trilho.
   return (
     <nav
-      className={collapsed ? "sidebar sidebar--rail" : "sidebar"}
+      className={cx(
+        "relative flex min-h-0 flex-none flex-col gap-2 p-3",
+        collapsed
+          ? "w-rail items-center"
+          : "w-[var(--sidebar-w,var(--width-sidebar))] border-r border-border",
+      )}
       aria-label="Bots e atalhos"
       data-testid="sidebar"
       data-collapsed={collapsed ? "true" : "false"}
@@ -351,14 +390,18 @@ export function Sidebar() {
           <RoundButton label="Expandir a barra lateral" tone="ghost" onClick={ui().toggleSidebar}>
             <PanelLeftOpen size={20} aria-hidden="true" />
           </RoundButton>
-          <div className="sidebar__scroll sidebar__scroll--rail" role="group" aria-label="Bots">
+          <div
+            className="flex min-h-0 w-full flex-1 flex-col items-center gap-2 overflow-y-auto py-2"
+            role="group"
+            aria-label="Bots"
+          >
             {layout.pinned.map((bot) => entry(bot, "rail"))}
             {layout.pinned.length > 0 && flat.length > layout.pinned.length && (
-              <hr className="sidebar__divider" />
+              <hr className="my-0.5 w-6 border-0 border-t border-border-strong" />
             )}
             {flat.filter((b) => !b.pinned).map((bot) => entry(bot, "rail"))}
           </div>
-          <div className="sidebar__bottom sidebar__bottom--rail">
+          <div className="relative flex w-full flex-none flex-col items-center gap-1 pt-2">
             <RoundButton label="Novo bot" tone="ghost" onClick={ui().openNewBot}>
               <Plus size={20} aria-hidden="true" />
             </RoundButton>
@@ -370,11 +413,11 @@ export function Sidebar() {
         </>
       ) : (
         <>
-          <div className="sidebar__top">
+          <div className="relative flex flex-none items-center gap-1">
             <RoundButton label="Recolher a barra lateral" tone="ghost" onClick={ui().toggleSidebar}>
               <PanelLeftClose size={20} aria-hidden="true" />
             </RoundButton>
-            <span className="sidebar__spacer" />
+            <span className="flex-1" />
             <RoundButton label="Buscar" tone="raised" onClick={() => ui().setPalette(true)}>
               <Search size={20} aria-hidden="true" />
             </RoundButton>
@@ -382,10 +425,15 @@ export function Sidebar() {
               <Plus size={20} aria-hidden="true" />
             </RoundButton>
           </div>
-          <div className="sidebar__scroll">
+          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto py-2">
             {layout.pinned.length > 0 && (
               <section aria-label="Fixados" data-testid="pinned-section">
-                <div className="sidebar__tiles">{layout.pinned.map((b) => entry(b, "tile"))}</div>
+                <div
+                  className="grid grid-cols-[repeat(auto-fill,var(--width-tile))] justify-center gap-1"
+                  data-testid="pinned-tiles"
+                >
+                  {layout.pinned.map((b) => entry(b, "tile"))}
+                </div>
               </section>
             )}
             {layout.groups.map((group) => (
@@ -395,20 +443,24 @@ export function Sidebar() {
                 data-testid="group-section"
                 data-group={group.name}
               >
-                <p className="sidebar__label">{group.name}</p>
-                <div className="sidebar__rows">{group.bots.map((b) => entry(b, "row"))}</div>
+                <SidebarLabel>{group.name}</SidebarLabel>
+                <div className="flex flex-col gap-0.5">
+                  {group.bots.map((b) => entry(b, "row"))}
+                </div>
               </section>
             ))}
             {layout.rest.length > 0 && (
               <section aria-label="Bots" data-testid="rest-section">
-                <p className="sidebar__label">Bots</p>
-                <div className="sidebar__rows">{layout.rest.map((b) => entry(b, "row"))}</div>
+                <SidebarLabel>Bots</SidebarLabel>
+                <div className="flex flex-col gap-0.5">
+                  {layout.rest.map((b) => entry(b, "row"))}
+                </div>
               </section>
             )}
           </div>
-          <div className="sidebar__bottom">
+          <div className="relative flex flex-none items-center gap-1 pt-2">
             {ownerButton("bar")}
-            <span className="sidebar__spacer" />
+            <span className="flex-1" />
             <RoundButton label="Buscar e ações" tone="raised" onClick={() => ui().setPalette(true)}>
               <LayoutGrid size={18} aria-hidden="true" />
             </RoundButton>
@@ -421,7 +473,10 @@ export function Sidebar() {
   );
 }
 
-import { Dialog, Pill } from "../../ui/primitives.js";
+/** The name of a group of bots, above its rows. */
+function SidebarLabel({ children }: { children: string }) {
+  return <p className="px-3 pb-2 text-label leading-label text-text-muted">{children}</p>;
+}
 
 function ArchiveDialog({
   bot,
@@ -447,9 +502,9 @@ function ArchiveDialog({
         </>
       }
     >
-      <p className="muted">
+      <MutedText as="p" size="inherit">
         O bot deixa de receber trabalho novo. A conversa e a memória dele continuam guardadas.
-      </p>
+      </MutedText>
     </Dialog>
   );
 }

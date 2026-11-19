@@ -83,10 +83,10 @@ describe("messages and lines", () => {
     const { rerender, container } = render(<UserMessage text="oi" state="sent" />);
     expect(screen.getByTestId("message-user").getAttribute("data-state")).toBe("sent");
     expect(container.textContent).toBe("oi");
-    expect(container.querySelector(".ui-bubble--pending")).not.toBeNull();
+    expect(container.querySelector('[data-pending="true"]')).not.toBeNull();
     rerender(<UserMessage text="oi" state="delivered" />);
     expect(screen.getByTestId("message-user").getAttribute("data-state")).toBe("delivered");
-    expect(container.querySelector(".ui-bubble--pending")).toBeNull();
+    expect(container.querySelector('[data-pending="true"]')).toBeNull();
     expect(container.textContent).toBe("oi");
   });
 
@@ -121,11 +121,11 @@ describe("messages and lines", () => {
       <WorkingIndicator phrase="Rodando o comando pnpm test" />,
     );
     expect(screen.getByRole("status").textContent).toBe("Rodando o comando pnpm test");
-    expect(container.querySelectorAll(".ui-dots__dot")).toHaveLength(3);
-    expect(container.querySelector(".ui-dots--animated")).not.toBeNull();
+    expect(container.querySelectorAll('[data-testid="dots-dot"]')).toHaveLength(3);
+    expect(container.querySelector('[data-animated="true"]')).not.toBeNull();
     rerender(<WorkingIndicator phrase="Pausado" animated={false} />);
-    expect(container.querySelector(".ui-dots--animated")).toBeNull();
-    expect(render(<Dots />).container.querySelectorAll(".ui-dots__dot")).toHaveLength(3);
+    expect(container.querySelector('[data-animated="true"]')).toBeNull();
+    expect(render(<Dots />).container.querySelectorAll('[data-testid="dots-dot"]')).toHaveLength(3);
   });
 });
 
@@ -154,11 +154,15 @@ describe("ActionCard", () => {
 
   it("the chevron is drawn (CSS shows it only on hover and focus); a card with no details is a plain row", () => {
     const { container, rerender } = render(card());
-    expect(container.querySelector(".ui-action__chevron")).not.toBeNull();
+    expect(container.querySelector('[data-testid="action-chevron"]')).not.toBeNull();
     // The expand affordance is the stacked chevrons, and the matching collapse glyph when open.
-    expect(container.querySelector(".ui-action__chevron.lucide-chevrons-up-down")).not.toBeNull();
+    expect(
+      container.querySelector('[data-testid="action-chevron"].lucide-chevrons-up-down'),
+    ).not.toBeNull();
     rerender(card({ expanded: true }));
-    expect(container.querySelector(".ui-action__chevron.lucide-chevrons-down-up")).not.toBeNull();
+    expect(
+      container.querySelector('[data-testid="action-chevron"].lucide-chevrons-down-up'),
+    ).not.toBeNull();
     expect(container.querySelector(".lucide-chevron-down, .lucide-chevron-up")).toBeNull();
     rerender(
       <ActionCard
@@ -172,7 +176,7 @@ describe("ActionCard", () => {
       />,
     );
     expect(screen.queryByRole("button")).toBeNull();
-    expect(container.querySelector(".ui-action__chevron")).toBeNull();
+    expect(container.querySelector('[data-testid="action-chevron"]')).toBeNull();
     expect(screen.getByTestId("action-card").textContent).toBe("SegredosSegredo X disponível");
   });
 

@@ -56,7 +56,7 @@ test.describe("approval cards", () => {
     await expect(pending).toContainText("Aprovador quer escrever um arquivo");
     // The title is ours, in pt-BR; the category is in the header; the risk is quiet text.
     await expect(pending).toContainText("Escrever aprovado.txt");
-    await expect(pending.locator(".ui-decision__category")).toHaveText("Arquivo");
+    await expect(pending.locator('[data-testid="decision-category"]')).toHaveText("Arquivo");
     await expect(pending.getByTestId("approval-risk")).toHaveText(/Externa ou irreversível/);
     // Border, radius and reading width of the shared chrome.
     await expect(pending).toHaveCSS("border-top-width", "1px");
@@ -66,7 +66,7 @@ test.describe("approval cards", () => {
     await expect(pending.getByRole("button", { name: /Mostrar tudo/ })).toHaveCount(0);
     expect(await pending.getByRole("button").allTextContents()).toEqual(["Recusar", "Aprovar"]);
     await expect(pending.getByTestId("approval-more")).toHaveCount(0);
-    await expect(pending.locator(".ui-split")).toHaveCount(0);
+    await expect(pending.locator('[data-testid="split-button"]')).toHaveCount(0);
     await expect(pending.locator('[aria-haspopup="menu"]')).toHaveCount(0);
     await expect(pending).not.toContainText(/sempre permitir/i);
     // The buttons are underneath the content.
@@ -118,7 +118,7 @@ test.describe("approval cards", () => {
     await page.mouse.move(0, 0);
     const resolved = row(page);
     const rowButton = resolved.getByRole("button").first();
-    const chevron = resolved.locator(".ui-action__chevron");
+    const chevron = resolved.locator('[data-testid="action-chevron"]');
     await expect(chevron).toHaveCSS("opacity", "0");
     await rowButton.hover();
     await expect(chevron).toHaveCSS("opacity", "1");

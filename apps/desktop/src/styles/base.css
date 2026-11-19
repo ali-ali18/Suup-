@@ -1,13 +1,12 @@
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-}
+/*
+ * What Preflight (Tailwind's reset, loaded before this file in the same layer) does not say: the
+ * page, the text of the app, the cursor of the buttons, the focus ring, the code font, the reduced
+ * motion and the drag of a pane. Everything else is a class on the component.
+ */
 html,
 body,
 #root {
   height: 100%;
-  margin: 0;
 }
 body {
   background: var(--color-bg);
@@ -17,13 +16,6 @@ body {
   line-height: var(--text-body-line);
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
-}
-button,
-input,
-textarea,
-select {
-  font: inherit;
-  color: inherit;
 }
 button {
   cursor: pointer;
@@ -35,57 +27,27 @@ button:disabled {
   outline: var(--focus-ring);
   outline-offset: 2px;
 }
-h1,
-h2,
-h3,
-p {
-  margin: 0;
-}
-ul {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
 code,
 pre {
   font-family: var(--font-mono);
   font-size: var(--text-code-size);
   line-height: var(--text-code-line);
 }
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  padding: 0;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-  border: 0;
+
+/*
+ * The whole page while a pane is being resized (no text selection, one cursor even outside the
+ * handle). `!important` in a layer beats the layers after it, so the cursor wins over every component.
+ */
+html[data-resizing] {
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: col-resize;
 }
-.section-label {
-  font-size: var(--text-section-size);
-  line-height: var(--text-section-line);
-  font-weight: var(--text-section-weight);
-  letter-spacing: var(--text-section-tracking);
-  text-transform: uppercase;
-  color: var(--color-text-muted);
+html[data-resizing] * {
+  cursor: col-resize !important;
+  user-select: none !important;
 }
-.muted {
-  color: var(--color-text-muted);
-}
-.small {
-  font-size: var(--text-small-size);
-  line-height: var(--text-small-line);
-}
-.mono {
-  font-family: var(--font-mono);
-  font-size: var(--text-code-size);
-}
-.wrap {
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

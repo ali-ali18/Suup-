@@ -110,10 +110,16 @@ export function MessageList({
   };
 
   return (
-    <div className="chat__scrollwrap">
-      <div ref={ref} className="chat__scroll" onScroll={onScroll} data-testid="message-scroll">
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      <div
+        ref={ref}
+        className="min-h-0 flex-1 overflow-y-auto px-5 py-4"
+        onScroll={onScroll}
+        data-testid="message-scroll"
+      >
         <div
-          className="chat__log"
+          className="mx-auto flex w-full max-w-content flex-col gap-(--chat-gap)"
+          data-testid="chat-log"
           role="log"
           aria-label={`Conversa com ${botName}`}
           aria-live="polite"
@@ -274,7 +280,7 @@ export function MessageList({
         </div>
       </div>
       {away && (
-        <div className="chat__jump">
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2">
           <RoundButton
             label="Ir para o fim da conversa"
             tone="raised"

@@ -1,5 +1,6 @@
+import type { Bot } from "@suup/api";
 import { KeyRound, ShieldCheck } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { pendingQuestions, questionMessageOf } from "../../app/selectors.js";
 import { useUi } from "../../app/ui-store.js";
@@ -8,9 +9,45 @@ import { openSecretRequest } from "../../data/secret-requests.js";
 import { ActionList } from "../../ui/action-card.js";
 import { Avatar } from "../../ui/avatar.js";
 import { BotBubble } from "../../ui/message.js";
-import { EmptyState, Pill } from "../../ui/primitives.js";
+import { EmptyState, MutedText, Pill, SectionLabel } from "../../ui/primitives.js";
 import { QuestionCard } from "../../ui/question-card.js";
+import { Screen, ScreenBody, ScreenHead } from "../../ui/screen.js";
 import { ApprovalRow, SecretRequestRow } from "../chat/ApprovalRows.js";
+
+/** A block of the screen (the questions, the approvals, the secrets): a label, then its items. */
+function PendingSection({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <section aria-label={label} className="flex flex-col gap-3">
+      <SectionLabel as="h2">{label}</SectionLabel>
+      {children}
+    </section>
+  );
+}
+
+/** One thing that waits for you: whose it is, the card, and the way to the conversation. */
+function PendingItem({
+  bot,
+  testId,
+  onOpen,
+  children,
+}: {
+  bot: Bot;
+  testId: string;
+  onOpen(): void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col items-start gap-2" data-testid={testId}>
+      <MutedText as="p" className="flex items-center gap-2">
+        <Avatar avatar={bot.avatar} color={bot.color} seed={bot.id} size="sm" /> {bot.name}
+      </MutedText>
+      {children}
+      <Pill tone="ghost" onClick={onOpen}>
+        Abrir a conversa
+      </Pill>
+    </div>
+  );
+}
 
 /**
  * What waits for you, across every bot: open questions, approval cards and secret requests. The
@@ -61,16 +98,10 @@ export function PendingScreen() {
   const pending = waiting.filter((run) => !secretRuns.has(run.id));
 
   return (
-    <div className="screen" data-testid="pending-screen">
-      <header className="screen__head">
-        <div>
-          <h1 className="screen__title">Pendências</h1>
-          <p className="muted small">O que está esperando por você, de todos os bots.</p>
-        </div>
-      </header>
-      <div className="screen__body screen__body--narrow">
-        <section aria-label="Perguntas" className="pending__section">
-          <h2 className="section-label">Perguntas</h2>
+    <Screen data-testid="pending-screen">
+      <ScreenHead title="Pendências" subtitle="O que está esperando por você, de todos os bots." />
+      <ScreenBody limit="narrow">
+        <PendingSection label="Perguntas">
           {pending.length === 0 ? (
             <EmptyState
               title="Nenhuma pergunta aberta"
@@ -84,15 +115,16 @@ export function PendingScreen() {
               const ask = questionMessageOf(list, run.id);
               if (bot === undefined) return null;
               return (
-                <div key={run.id} className="pending__item" data-testid="pending-question">
-                  <p className="pending__bot small muted">
-                    <Avatar avatar={bot.avatar} color={bot.color} seed={bot.id} size="sm" />{" "}
-                    {bot.name}
-                  </p>
+                <PendingItem
+                  key={run.id}
+                  bot={bot}
+                  testId="pending-question"
+                  onOpen={() => selectBot(bot.id)}
+                >
                   {ask === undefined ? (
-                    <p className="muted" role="status">
+                    <MutedText as="p" size="inherit" role="status">
                       Carregando a pergunta…
-                    </p>
+                    </MutedText>
                   ) : ask.question?.questions.some((q) => q.options !== undefined) ? (
                     <QuestionCard
                       questions={ask.question.questions}
@@ -105,16 +137,12 @@ export function PendingScreen() {
                       <p className="text-body wrap-anywhere whitespace-pre-wrap">{ask.text}</p>
                     </BotBubble>
                   )}
-                  <Pill tone="ghost" onClick={() => selectBot(bot.id)}>
-                    Abrir a conversa
-                  </Pill>
-                </div>
+                </PendingItem>
               );
             })
           )}
-        </section>
-        <section aria-label="Aprovações" className="pending__section">
-          <h2 className="section-label">Aprovações</h2>
+        </PendingSection>
+        <PendingSection label="Aprovações">
           {cards.length === 0 ? (
             <EmptyState
               icon={<ShieldCheck size={16} />}
@@ -126,11 +154,12 @@ export function PendingScreen() {
               const bot = bots[card.botId];
               if (bot === undefined) return null;
               return (
-                <div key={card.id} className="pending__item" data-testid="pending-approval">
-                  <p className="pending__bot small muted">
-                    <Avatar avatar={bot.avatar} color={bot.color} seed={bot.id} size="sm" />{" "}
-                    {bot.name}
-                  </p>
+                <PendingItem
+                  key={card.id}
+                  bot={bot}
+                  testId="pending-approval"
+                  onOpen={() => selectBot(bot.id)}
+                >
                   <ActionList>
                     <ApprovalRow
                       approval={card}
@@ -139,16 +168,12 @@ export function PendingScreen() {
                       autoFocus={index === 0}
                     />
                   </ActionList>
-                  <Pill tone="ghost" onClick={() => selectBot(bot.id)}>
-                    Abrir a conversa
-                  </Pill>
-                </div>
+                </PendingItem>
               );
             })
           )}
-        </section>
-        <section aria-label="Segredos" className="pending__section">
-          <h2 className="section-label">Segredos</h2>
+        </PendingSection>
+        <PendingSection label="Segredos">
           {secrets.length === 0 ? (
             <EmptyState
               icon={<KeyRound size={16} />}
@@ -160,23 +185,21 @@ export function PendingScreen() {
               const bot = bots[run.botId];
               if (bot === undefined) return null;
               return (
-                <div key={request.callId} className="pending__item" data-testid="pending-secret">
-                  <p className="pending__bot small muted">
-                    <Avatar avatar={bot.avatar} color={bot.color} seed={bot.id} size="sm" />{" "}
-                    {bot.name}
-                  </p>
+                <PendingItem
+                  key={request.callId}
+                  bot={bot}
+                  testId="pending-secret"
+                  onOpen={() => selectBot(bot.id)}
+                >
                   <ActionList>
                     <SecretRequestRow request={request} clicked={clicked} onToggle={toggle} />
                   </ActionList>
-                  <Pill tone="ghost" onClick={() => selectBot(bot.id)}>
-                    Abrir a conversa
-                  </Pill>
-                </div>
+                </PendingItem>
               );
             })
           )}
-        </section>
-      </div>
-    </div>
+        </PendingSection>
+      </ScreenBody>
+    </Screen>
   );
 }

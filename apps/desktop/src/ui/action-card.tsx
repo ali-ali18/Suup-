@@ -18,8 +18,7 @@ export function ActionLabel({
 
 /**
  * The text of what a call did (its output, a diff): plain on the card itself, no inner box, no
- * border, no other background. `error` is the colour of a failure. `ui-action__pre--error` is a
- * hook for tests.
+ * border, no other background. `error` is the colour of a failure (and `data-error`, for tests).
  */
 export function ActionPre({
   error,
@@ -31,9 +30,10 @@ export function ActionPre({
     <pre
       className={cx(
         "m-0 max-h-60 overflow-auto border-0 bg-transparent p-0 wrap-anywhere whitespace-pre-wrap",
-        error === true ? "ui-action__pre--error text-danger-text" : "text-text",
+        error === true ? "text-danger-text" : "text-text",
         className,
       )}
+      data-error={error === true}
       {...rest}
     >
       {children}
@@ -67,7 +67,11 @@ export function DiffLine({
   kind: keyof typeof DIFF_LINE;
   children: ReactNode;
 }) {
-  return <span className={cx(`ui-action__line--${kind}`, DIFF_LINE[kind])}>{children}</span>;
+  return (
+    <span className={DIFF_LINE[kind]} data-testid={`action-line-${kind}`}>
+      {children}
+    </span>
+  );
 }
 
 /** `stopped`: ended without being done and without being a failure (denied, expired, cancelled). */
@@ -86,7 +90,7 @@ const ROW =
 
 /** The expand chevron shows only on hover and on keyboard focus (`aria-expanded` says it always). */
 const CHEVRON =
-  "ui-action__chevron opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100";
+  "opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100";
 
 /** What a card that needs the user shows: a title and instruction, a preview, and the buttons. */
 export interface NeedsAction {
@@ -168,7 +172,9 @@ export function ActionCard({
   const content = (
     <>
       <IconBox>{icon}</IconBox>
-      <strong className="ui-action__kind flex-none text-label font-title">{kind}</strong>
+      <strong className="flex-none text-label font-title" data-testid="action-kind">
+        {kind}
+      </strong>
       <span
         className={cx(
           "min-w-0 flex-1 truncate text-label",
@@ -181,9 +187,9 @@ export function ActionCard({
         {state === "running" ? (
           <LoaderCircle size={16} className="animate-spin" />
         ) : children === undefined ? null : expanded ? (
-          <ChevronsDownUp size={16} className={CHEVRON} />
+          <ChevronsDownUp size={16} className={CHEVRON} data-testid="action-chevron" />
         ) : (
-          <ChevronsUpDown size={16} className={CHEVRON} />
+          <ChevronsUpDown size={16} className={CHEVRON} data-testid="action-chevron" />
         )}
       </span>
     </>
@@ -244,15 +250,15 @@ export function ActionFold({
         aria-controls={bodyId}
         onClick={onToggle}
       >
-        <strong className="ui-action__kind flex-none text-label font-title">
+        <strong className="flex-none text-label font-title" data-testid="action-kind">
           Mais {count} ações
         </strong>
         <span className="min-w-0 flex-1 truncate text-label text-text-muted">Concluídas</span>
         <span className="inline-flex min-w-icon flex-none text-text-muted" aria-hidden="true">
           {expanded ? (
-            <ChevronsDownUp size={16} className={CHEVRON} />
+            <ChevronsDownUp size={16} className={CHEVRON} data-testid="action-chevron" />
           ) : (
-            <ChevronsUpDown size={16} className={CHEVRON} />
+            <ChevronsUpDown size={16} className={CHEVRON} data-testid="action-chevron" />
           )}
         </span>
       </button>

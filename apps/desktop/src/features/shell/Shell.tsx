@@ -60,11 +60,15 @@ export function Shell() {
         : undefined;
 
   return (
-    <div className="shell">
+    <div className="flex h-full min-w-0">
       <Sidebar />
-      <div className="shell__main">
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
         {banner !== undefined && (
-          <div className="shell__banner" role="status" data-testid="connection-banner">
+          <div
+            className="absolute top-3 left-1/2 z-20 -translate-x-1/2 rounded-pill border border-border-strong bg-raised px-4 py-1.5 text-small"
+            role="status"
+            data-testid="connection-banner"
+          >
             {banner}
           </div>
         )}

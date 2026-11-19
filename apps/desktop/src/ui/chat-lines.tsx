@@ -81,19 +81,17 @@ const DOT_DELAY = ["", "[animation-delay:0.2s]", "[animation-delay:0.4s]"] as co
 export function Dots({ animated = true, size = "md" }: { animated?: boolean; size?: "md" | "lg" }) {
   return (
     <span
-      className={cx(
-        "inline-flex items-center",
-        size === "lg" ? "gap-1.5" : "gap-1",
-        animated && "ui-dots--animated",
-      )}
+      className={cx("inline-flex items-center", size === "lg" ? "gap-1.5" : "gap-1")}
+      data-animated={animated}
       aria-hidden="true"
     >
       {DOTS.map((tone, i) => (
         <span
           // biome-ignore lint/suspicious/noArrayIndexKey: three fixed dots
           key={i}
+          data-testid="dots-dot"
           className={cx(
-            "ui-dots__dot rounded-pill",
+            "rounded-pill",
             size === "lg" ? "size-3.25" : "size-2",
             tone,
             animated && "animate-dot",

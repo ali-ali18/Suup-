@@ -346,7 +346,7 @@ function MessageFooter({
   return (
     <>
       {deny}
-      <div className="ui-split inline-flex">
+      <div className="inline-flex" data-testid="split-button">
         <Pill
           tone="primary"
           attach="start"

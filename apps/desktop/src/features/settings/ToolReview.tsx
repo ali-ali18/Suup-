@@ -68,7 +68,7 @@ function CellView({
           : cell.parts.map((part, i) =>
               part.changed ? (
                 // biome-ignore lint/suspicious/noArrayIndexKey: the words never reorder
-                <strong key={i} className="diff-word font-bold underline">
+                <strong key={i} className="font-bold underline" data-testid="diff-word">
                   {part.text}
                 </strong>
               ) : (
