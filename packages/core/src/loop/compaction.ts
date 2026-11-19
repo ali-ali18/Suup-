@@ -11,6 +11,15 @@ import { estimateTokens } from "./state.js";
 
 const SUMMARY_MAX_OUTPUT_TOKENS = 4096;
 
+/**
+ * The cut falls right before an assistant message, so the last message of the transcript is a user
+ * message that the kept part answers. Without this note the summarizer lists it as still pending
+ * (seen with a real model: "the file has not been created yet", with the answer "created" kept
+ * verbatim right after the summary).
+ */
+export const SUMMARIZE_INTRO =
+  "Summarize this earlier part of the conversation. The messages that come right after it are kept word for word and are not shown here, so whatever the LAST message below asks or reports is answered or acted on there: do not list it as pending, unanswered or not yet done; just say what it asked or reported.";
+
 /** Compacts when the next request is estimated above the threshold of the context window. */
 export async function compactIfNeeded(ctx: LoopContext): Promise<void> {
   const { system, tools } = fixedParts(ctx);
@@ -55,7 +64,7 @@ export async function compact(ctx: LoopContext): Promise<boolean> {
         blocks: [
           {
             type: "text",
-            text: `Summarize this earlier part of the conversation:\n\n${transcript}`,
+            text: `${SUMMARIZE_INTRO}\n\n${transcript}`,
           },
         ],
       },

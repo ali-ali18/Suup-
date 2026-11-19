@@ -12,6 +12,7 @@ import {
   textOf,
   use,
 } from "../testing/index.js";
+import { SUMMARIZE_INTRO } from "./compaction.js";
 import {
   COMPACTION_THRESHOLD_RANGE,
   chooseCutIndex,
@@ -60,6 +61,8 @@ describe("compaction", () => {
     expect(summarizer?.system).toContain("decisions made");
     expect(summarizer?.system).toContain("what was tried and failed");
     const transcript = textOf(summarizer?.messages[0]);
+    expect(transcript).toContain(SUMMARIZE_INTRO);
+    expect(transcript).toContain("not shown here");
     expect(transcript).toContain("[result of echo] echo: alpha");
     expect(transcript).toContain("echo: bravo");
     expect(transcript).not.toContain("charlie");
