@@ -119,7 +119,7 @@ test.describe("screenshots", () => {
       description: "Servidor de teste do Suup",
       transport: { kind: "stdio", command: mcp.command, args: mcp.args },
       scope: "read_write",
-      grantBotIds: [phase3Id("Nova")],
+      grants: [{ botId: phase3Id("Nova"), tools: "all" }],
     });
     await api.connectors.test("fake");
     await api.connectors.setToolRisk("fake", "echo", { risk: "read" });
@@ -135,7 +135,7 @@ test.describe("screenshots", () => {
       color: "azul",
     });
     const mailer = (await api.bots.list()).find((b) => b.name === "Carteiro")?.id as string;
-    await api.connectors.grant("fake", mailer);
+    await api.connectors.grant("fake", mailer, { tools: "all" });
     {
       const conversation = await api.bots.openConversation(mailer);
       await api.conversations.send(conversation.id, "CASE-EMAIL-MARCADO envie o e-mail");

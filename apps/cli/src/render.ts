@@ -348,6 +348,8 @@ export function renderEvent(event: RawEvent, state: RenderState): string[] {
       return [
         `? O bot pede o segredo ${e.payload.name}${e.payload.reason === undefined ? "" : ` (${oneLine(e.payload.reason, 120)})`}`,
       ];
+    case "tool_catalog":
+      return [`· ferramentas de conectores: ${summarizeEvent(event)}`];
   }
 }
 
@@ -362,7 +364,12 @@ export function summarizeEvent(event: RawEvent): string {
       return `${e.payload.rules.length} regras · ${e.payload.profile.length} fatos do perfil · ${e.payload.history.length} mensagens de histórico${e.payload.historyNote === undefined ? "" : " (com aviso de mensagens omitidas)"}`;
     case "model_request": {
       const purpose = e.payload.purpose ?? "agent";
-      return `${purpose} ${e.payload.provider}/${e.payload.model} · ${e.payload.messages.length} msgs · ${e.payload.tools.length} ferramentas`;
+      const stats = e.payload.toolStats;
+      const defs =
+        stats === undefined
+          ? ""
+          : ` (definições: ${stats.definitions} enviadas, ${stats.deferred} adiadas, ~${formatInt(stats.estimatedTokens)} tok no total, ~${formatInt(stats.loadedTokens)} no contexto)`;
+      return `${purpose} ${e.payload.provider}/${e.payload.model} · ${e.payload.messages.length} msgs · ${e.payload.tools.length} ferramentas${defs}`;
     }
     case "model_response": {
       const calls = e.payload.blocks
@@ -412,8 +419,17 @@ export function summarizeEvent(event: RawEvent): string {
       return `${e.payload.callId} ${e.payload.decision}${e.payload.reason === undefined ? "" : `: ${oneLine(e.payload.reason, 80)}`}`;
     case "secret_requested":
       return `${e.payload.callId} ${e.payload.name}`;
+    case "tool_catalog":
+      return `${MODE_PT[e.payload.mode]}: ${e.payload.connectorTools} ferramenta(s) de conectores, ~${formatInt(e.payload.definitionTokens)} tok de definições${e.payload.deferred.length > 0 ? `, ${e.payload.deferred.length} adiada(s)` : ""}`;
   }
 }
+
+const MODE_PT = {
+  direct: "carregadas direto",
+  hosted: "busca do provedor",
+  client: "busca nossa + carregamento do provedor",
+  meta: "índice + search_tools/use_tool",
+} as const;
 
 export interface RunFooter {
   id: string;

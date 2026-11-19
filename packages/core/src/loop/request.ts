@@ -13,12 +13,30 @@ import {
 } from "./prompts.js";
 import type { LoopContext } from "./run-context.js";
 
-export function fixedParts(ctx: LoopContext): { system: string; tools: ToolSpec[] } {
+export function fixedParts(ctx: LoopContext): {
+  system: string;
+  tools: ToolSpec[];
+  hostedToolSearch?: "bm25" | "regex";
+} {
   const { bot, tools } = ctx.deps;
   const control = new Set<string>(CONTROL_TOOL_NAMES);
+  // How the connector tools are offered was decided once and written to the log; here it is only
+  // read, so every request of the run carries the same tools in the same order.
+  const catalog = ctx.state.toolCatalog;
+  const deferred = new Set(catalog?.deferred.map((d) => d.name) ?? []);
   const offered = [
-    ...controlToolSpecs({ secrets: ctx.deps.secrets !== undefined }),
-    ...tools.specs(bot.allowedTools).filter((spec) => !control.has(spec.name)),
+    ...controlToolSpecs({
+      secrets: ctx.deps.secrets !== undefined,
+      toolSearch: catalog?.mode,
+    }),
+    ...tools
+      .specs(bot.allowedTools)
+      .filter((spec) => !control.has(spec.name) && !deferred.has(spec.name)),
+    // `hosted` and `client`: the definitions go in the request, last, marked as deferred. With
+    // `meta` they are not sent at all (the model gets them from `search_tools`).
+    ...(catalog !== null && (catalog.mode === "hosted" || catalog.mode === "client")
+      ? catalog.deferred.map((d) => structuredClone(d.spec))
+      : []),
   ];
   const memoryTools = offered.some((spec) =>
     (MEMORY_TOOL_NAMES as readonly string[]).includes(spec.name),
@@ -28,8 +46,12 @@ export function fixedParts(ctx: LoopContext): { system: string; tools: ToolSpec[
       memoryTools,
       secrets: ctx.deps.secrets !== undefined,
       approvals: ctx.deps.gate.allowsEverything !== true,
+      toolIndex: catalog?.index,
     }),
     tools: offered,
+    ...(catalog?.mode === "hosted" && catalog.variant !== undefined
+      ? { hostedToolSearch: catalog.variant }
+      : {}),
   };
 }
 

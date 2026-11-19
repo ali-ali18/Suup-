@@ -369,7 +369,10 @@ test.describe("connectors", () => {
       name: "fake",
       transport: { kind: "stdio", command, args },
       scope: "read_write",
-      grantBotIds: [await botId(world, "Postal"), await botId(world, "Postal 2")],
+      grants: [
+        { botId: await botId(world, "Postal"), tools: "all" },
+        { botId: await botId(world, "Postal 2"), tools: "all" },
+      ],
     });
     await openApp(page, world);
 

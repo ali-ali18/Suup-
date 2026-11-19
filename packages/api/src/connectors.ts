@@ -51,6 +51,20 @@ export const toolOverridesSchema = z
   .record(z.string().min(1).max(128), toolOverrideSchema)
   .refine((o) => Object.keys(o).length <= 200, "overrides demais");
 
+/**
+ * What a bot may use of a connector: `"all"` (every tool the connector offers and that is
+ * approved) or exactly the listed tools, by the name on the server. An empty list grants nothing.
+ */
+export const toolSelectionSchema = z.union([
+  z.literal("all"),
+  z.array(z.string().min(1).max(128)).max(200),
+]);
+export type ToolSelection = z.infer<typeof toolSelectionSchema>;
+
+/** Body of `PUT /v1/connectors/{name}/grants/{botId}`: replaces what the bot may use. */
+export const grantConnectorBodySchema = z.strictObject({ tools: toolSelectionSchema });
+export type GrantConnectorBody = z.input<typeof grantConnectorBodySchema>;
+
 /** One tool of a connector, as the model would get it now. */
 export const connectorToolSchema = z.object({
   /** The name on the server. */
@@ -70,8 +84,25 @@ export const connectorToolSchema = z.object({
   hints: z
     .object({ readOnlyHint: z.boolean().optional(), destructiveHint: z.boolean().optional() })
     .nullable(),
+  /**
+   * The pinning of the definition: `approved` (the server shows what the user approved), `changed`
+   * (it shows something else: the tool is off for every bot until reviewed), `new` (appeared after
+   * the first listing, not approved yet), `unseen` (never listed).
+   */
+  pin: z.enum(["approved", "changed", "new", "unseen"]),
+  /** SHA-256 of the definition the server shows now; `null` when unseen. */
+  fingerprint: z.string().nullable(),
 });
 export type ConnectorTool = z.infer<typeof connectorToolSchema>;
+
+/** What one bot may use of a connector: every tool, or exactly `tools` (names on the server). */
+export const connectorGrantSchema = z.object({
+  botId: uuid,
+  all: z.boolean(),
+  /** Empty when `all`. */
+  tools: z.array(z.string()),
+});
+export type ConnectorGrant = z.infer<typeof connectorGrantSchema>;
 
 export const connectorSchema = z.object({
   id: uuid,
@@ -86,7 +117,11 @@ export const connectorSchema = z.object({
   enabled: z.boolean(),
   /** `proposal`: a bot proposed it (not built yet; such a connector is created off). */
   origin: z.enum(["user", "proposal"]),
+  /** The bots that have a grant (see `grants` for what each may use). */
   grantedBotIds: z.array(uuid),
+  grants: z.array(connectorGrantSchema),
+  /** Tools off for every bot until a person reviews their definition (changed or new). */
+  pendingReviews: z.number().int(),
   /** The vault secrets it refers to (names only). */
   secretNames: z.array(z.string()),
   /** The state of the connection in the instance that answered. */
@@ -119,8 +154,11 @@ export const createConnectorBodySchema = z.strictObject({
   timeoutMs: z.number().int().min(1000).max(600_000).optional(),
   /** Default `true`: the user is adding it. */
   enabled: z.boolean().optional(),
-  /** Bots to let use it right away. */
-  grantBotIds: z.array(uuid).max(50).optional(),
+  /** Bots to let use it right away, each with the tools it may use. */
+  grants: z
+    .array(z.strictObject({ botId: uuid, tools: toolSelectionSchema }))
+    .max(50)
+    .optional(),
 });
 export type CreateConnectorBody = z.input<typeof createConnectorBodySchema>;
 
@@ -159,3 +197,44 @@ export const connectorTestSchema = z.object({
   tools: z.array(connectorToolSchema),
 });
 export type ConnectorTest = z.infer<typeof connectorTestSchema>;
+
+/** The definition of a tool as the server gave it (bounded, cleaned; untrusted text). */
+export const pinnedDefinitionSchema = z.object({
+  name: z.string(),
+  description: z.string().nullable(),
+  inputSchema: z.unknown(),
+  annotations: z
+    .object({ readOnlyHint: z.boolean().optional(), destructiveHint: z.boolean().optional() })
+    .nullable(),
+});
+export type PinnedDefinition = z.infer<typeof pinnedDefinitionSchema>;
+
+/** A tool waiting for a person: the definition they approved (if any) and the one shown now. */
+export const connectorToolReviewSchema = z.object({
+  tool: z.string(),
+  /** `changed`: approved before, the server now shows something else. `new`: never approved. */
+  status: z.enum(["changed", "new"]),
+  approvedFingerprint: z.string().nullable(),
+  approved: pinnedDefinitionSchema.nullable(),
+  currentFingerprint: z.string(),
+  current: pinnedDefinitionSchema,
+  seenAt: isoDate,
+});
+export type ConnectorToolReview = z.infer<typeof connectorToolReviewSchema>;
+export const connectorReviewListSchema = z.object({ items: z.array(connectorToolReviewSchema) });
+
+/** Approves the definition the person looked at; refused when the tool changed again meanwhile. */
+export const approveToolBodySchema = z.strictObject({ fingerprint: z.string().min(1).max(128) });
+export type ApproveToolBody = z.input<typeof approveToolBodySchema>;
+
+export const connectorToolEventSchema = z.object({
+  id: z.string(),
+  tool: z.string().nullable(),
+  kind: z.enum(["baseline", "pinned_on_grant", "changed", "new", "restored", "approved"]),
+  fromFingerprint: z.string().nullable(),
+  toFingerprint: z.string().nullable(),
+  detail: z.string().nullable(),
+  createdAt: isoDate,
+});
+export type ConnectorToolEvent = z.infer<typeof connectorToolEventSchema>;
+export const connectorToolEventListSchema = z.object({ items: z.array(connectorToolEventSchema) });

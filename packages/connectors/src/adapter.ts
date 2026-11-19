@@ -19,8 +19,10 @@ export const MAX_TOOL_DESCRIPTION = 800;
 
 /** What is known about one tool of a connector, for the model's registry and for the person's screens. */
 export interface ConnectorToolInfo {
-  /** The name on the server. */
+  /** The name on the server, cleaned for display. */
   tool: string;
+  /** The name on the server, exactly as it came (what grants and pins are keyed by). */
+  serverName: string;
   /** The name in the registry (what the model calls and what rules match). */
   name: string;
   description: string;
@@ -40,6 +42,15 @@ export interface AdaptedConnector {
   info: ConnectorToolInfo[];
 }
 
+export interface AdaptOptions {
+  /**
+   * Which tools (by the exact name on the server) may be turned into `Tool`s. A tool that is not
+   * included is still described in `info` (`available: false` and the reason), but no `Tool` is
+   * made for it: for the bot it does not exist. Default: all.
+   */
+  include?(serverName: string): { ok: true } | { ok: false; reason: string };
+}
+
 /**
  * Turns the tools a server listed into registry tools and their descriptions. A tool that cannot
  * be offered (an input schema out of bounds, a name clash, hidden by the `read_only` scope) is left
@@ -49,6 +60,7 @@ export function adaptConnector(
   spec: ConnectorSpec,
   discovered: readonly RawTool[],
   manager: Pick<ConnectorManager, "callTool">,
+  options: AdaptOptions = {},
 ): AdaptedConnector {
   const tools: Tool[] = [];
   const info: ConnectorToolInfo[] = [];
@@ -59,6 +71,7 @@ export function adaptConnector(
     const outbound = spec.tools[raw.name]?.outbound;
     const base: ConnectorToolInfo = {
       tool: oneLineClean(raw.name, 128),
+      serverName: typeof raw.name === "string" ? raw.name : "",
       name,
       description: cleanDescription(raw.description, MAX_TOOL_DESCRIPTION),
       risk: risk.level,
@@ -89,6 +102,11 @@ export function adaptConnector(
       skip(
         "escopo somente leitura: a ferramenta não está marcada como leitura (suup connectors set-risk … read)",
       );
+      continue;
+    }
+    const included = options.include?.(raw.name);
+    if (included !== undefined && !included.ok) {
+      skip(included.reason);
       continue;
     }
     let input: z.ZodType<Record<string, unknown>>;

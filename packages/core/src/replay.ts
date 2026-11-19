@@ -374,6 +374,7 @@ export interface RequestChange {
     | "system"
     | "messages"
     | "tools"
+    | "hostedToolSearch"
     | "toolChoice"
     | "maxOutputTokens"
     | "temperature";
@@ -522,6 +523,9 @@ export async function replayRun(
     firstRequest?.type === "model_request" &&
     firstRequest.payload.tools.some((t) => t.name === "request_secret");
 
+  // The way the connector tools were offered is what the recording decided.
+  const recordedCatalog = recorded.find((e) => e.type === "tool_catalog");
+
   const deps: LoopDeps = {
     store,
     provider,
@@ -540,6 +544,9 @@ export async function replayRun(
             resolve: async () => ({}),
           },
         }
+      : {}),
+    ...(recordedCatalog?.type === "tool_catalog"
+      ? { toolSearch: { replayOf: recordedCatalog.payload } }
       : {}),
     now: clock,
     sleep: async () => {},
@@ -771,6 +778,7 @@ const REQUEST_FIELDS = [
   "system",
   "messages",
   "tools",
+  "hostedToolSearch",
   "toolChoice",
   "maxOutputTokens",
   "temperature",

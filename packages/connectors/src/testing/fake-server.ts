@@ -4,7 +4,7 @@
 // needs a secret, a crash in the middle of a call, and tool descriptions and schemas that are
 // hostile. It runs as a child process over stdio (`node fake-server.ts`, the same path real servers
 // take) or in the test's own process over HTTP (`startFakeHttpServer`).
-import { appendFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { createServer, type Server as HttpServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { pathToFileURL } from "node:url";
@@ -234,6 +234,51 @@ function definitions(log: (line: string) => void): Def[] {
   ];
 }
 
+/**
+ * Extra behaviour for tests of the tool search and of definition pinning, read from the environment
+ * of the server process each time the list is asked for:
+ * - `FAKE_MANY=N`: also lists N generated tools `gen_0` ... `gen_N-1` (read tools with a description
+ *   and two arguments each);
+ * - `FAKE_TWEAK=<file>`: when that file exists, its text is appended to the description of `echo`
+ *   (the definition changes, the behaviour does not);
+ * - `FAKE_LATE=<file>`: when that file exists, a tool `late_tool` is also listed.
+ */
+function dynamicDefinitions(base: Def[]): Def[] {
+  const out = base.map((d) => ({ ...d }));
+  const tweak = process.env.FAKE_TWEAK;
+  if (tweak !== undefined && existsSync(tweak)) {
+    const echo = out.find((d) => d.name === "echo");
+    if (echo !== undefined) echo.description = `${echo.description} ${readFileSync(tweak, "utf8")}`;
+  }
+  const late = process.env.FAKE_LATE;
+  if (late !== undefined && existsSync(late)) {
+    out.push({
+      name: "late_tool",
+      description: "A tool that appeared after the first listing.",
+      inputSchema: obj({}),
+      annotations: { readOnlyHint: true },
+      run: () => text("late"),
+    });
+  }
+  const many = Number(process.env.FAKE_MANY ?? "0");
+  for (let i = 0; i < many; i++) {
+    out.push({
+      name: `gen_${i}`,
+      description: `Generated tool number ${i}. Fetches record ${i} of the ledger and returns a summary of its fields, with the owner, the dates and the totals.`,
+      inputSchema: obj(
+        {
+          id: { type: "string", description: `Identifier of record ${i} in the ledger` },
+          verbose: { type: "boolean", description: "Include every field of the record" },
+        },
+        ["id"],
+      ),
+      annotations: { readOnlyHint: true },
+      run: (a) => text(`gen_${i} ${JSON.stringify(a)}`),
+    });
+  }
+  return out;
+}
+
 export interface FakeServerOptions {
   /** Where the calls that change things are logged (one line each). */
   log?: (line: string) => void;
@@ -242,17 +287,16 @@ export interface FakeServerOptions {
 
 /** One protocol server with every fake tool. */
 export function createFakeServer(options: FakeServerOptions = {}, authorization?: string): Server {
-  const defs = definitions(options.log ?? (() => {}));
-  const byName = new Map(defs.map((d) => [d.name, d]));
+  const baseDefs = definitions(options.log ?? (() => {}));
   const server = new Server(
     { name: "fake-server", version: "1.2.3" },
     { capabilities: { tools: {} } },
   );
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: defs.map(({ run: _run, ...tool }) => tool),
+    tools: dynamicDefinitions(baseDefs).map(({ run: _run, ...tool }) => tool),
   }));
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    const def = byName.get(request.params.name);
+    const def = dynamicDefinitions(baseDefs).find((d) => d.name === request.params.name);
     if (def === undefined) {
       throw new McpError(ErrorCode.InvalidParams, `unknown tool ${request.params.name}`);
     }

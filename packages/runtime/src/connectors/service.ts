@@ -3,20 +3,25 @@
 // the tools of the connectors its bot may use. It sits between the rows (`@suup/db`), the protocol
 // (`@suup/connectors`) and the vault; the loop and the tools know none of this.
 import {
-  type AdaptedConnector,
   adaptConnector,
   ConnectorConfigError,
   ConnectorError,
   ConnectorManager,
   type ConnectorSpec,
   type ConnectorToolInfo,
+  type PinnedDefinition,
   parseConnectorSpec,
+  pinnedDefinition,
   type RawTool,
   secretNamesOf,
   type ToolOverride,
+  toolFingerprint,
 } from "@suup/connectors";
 import type { OutboundMessage, RiskLevel, Tool } from "@suup/core";
 import {
+  approvePin,
+  type ConnectorGrant,
+  type ConnectorToolEvent,
   type ConnectorWrite,
   createConnector,
   type Db,
@@ -25,12 +30,19 @@ import {
   getConnector,
   getConnectorDiscovery,
   grantConnector,
+  listConnectorEvents,
   listConnectors,
   listConnectorsForBot,
+  listPins,
+  PinNotFoundError,
+  PinStaleError,
+  type PinStatus,
+  reconcilePins,
   replaceConnector,
   revokeConnector,
   type StoredConnector,
   saveConnectorDiscovery,
+  type ToolPin,
 } from "@suup/db";
 import { RuntimeError } from "../errors.js";
 import type { Vault } from "../vault/service.js";
@@ -59,6 +71,34 @@ export interface ConnectorPatch {
   enabled?: boolean | undefined;
 }
 
+/** What a bot may use of a connector, as the API shows it. */
+export type ConnectorGrantView = ConnectorGrant;
+
+/** A grant as a person asks for it: every tool, or exactly these (names on the server). */
+export type ToolSelection = "all" | readonly string[];
+
+/** Where a tool stands with the pinning of its definition. `unseen`: never listed yet. */
+export type ToolPinState = PinStatus | "unseen";
+
+/** One tool of a connector, with the state of its pin. */
+export interface ConnectorToolState extends ConnectorToolInfo {
+  pin: ToolPinState;
+  /** The fingerprint of the definition the server shows now (`null` when unseen). */
+  fingerprint: string | null;
+}
+
+/** A tool waiting for a person to review its definition. */
+export interface ConnectorToolReview {
+  tool: string;
+  /** `changed`: it was approved and the server now shows something else. `new`: never approved. */
+  status: "changed" | "new";
+  approvedFingerprint: string | null;
+  approved: PinnedDefinition | null;
+  currentFingerprint: string;
+  current: PinnedDefinition;
+  seenAt: Date;
+}
+
 export interface ConnectorView {
   id: string;
   name: string;
@@ -73,6 +113,8 @@ export interface ConnectorView {
   enabled: boolean;
   origin: "user" | "proposal";
   grantedBotIds: string[];
+  /** What each bot with a grant may use. */
+  grants: ConnectorGrantView[];
   /** The vault secrets it refers to. */
   secretNames: string[];
   /** The state of this process's connection (a worker's or the server's own). */
@@ -80,7 +122,9 @@ export interface ConnectorView {
   /** What was last seen of the server (by any process). */
   discovery: { discoveredAt: Date | null; lastError: string | null; lastErrorAt: Date | null };
   /** The tools, as the model would see them now, from the last listing; `null` when never listed. */
-  tools: ConnectorToolInfo[] | null;
+  tools: ConnectorToolState[] | null;
+  /** How many tools wait for a review (changed or new): they are off for every bot. */
+  pendingReviews: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -92,13 +136,27 @@ export interface ConnectorTestResult {
   durationMs: number;
   /** A message for the person (names the connector), when it failed. */
   error: string | null;
-  tools: ConnectorToolInfo[];
+  tools: ConnectorToolState[];
+}
+
+/** A connector tool the bot may use, described for the index of the tool search. */
+export interface BotConnectorCandidate {
+  /** The name in the registry. */
+  name: string;
+  /** The connector. */
+  group: string;
+  /** What the server says the tool does (cleaned and bounded; untrusted). */
+  summary: string;
 }
 
 export interface BotConnectorTools {
   tools: Tool[];
+  /** The same tools, for the search index (parallel to `tools`). */
+  candidates: BotConnectorCandidate[];
   /** Connectors whose tools could not be offered (and why), by name. */
   problems: { connector: string; message: string }[];
+  /** Granted tools that are off until a person reviews their definition. */
+  withheld: { connector: string; tool: string; reason: string }[];
 }
 
 export interface ConnectorService {
@@ -108,8 +166,18 @@ export interface ConnectorService {
   create(input: ConnectorInput, options?: { origin?: "user" | "proposal" }): Promise<ConnectorView>;
   update(name: string, patch: ConnectorPatch): Promise<ConnectorView>;
   remove(name: string): Promise<boolean>;
-  grant(name: string, botId: string): Promise<ConnectorView>;
+  /** Replaces what the bot may use of the connector: every tool or exactly the listed ones. */
+  grant(name: string, botId: string, tools: ToolSelection): Promise<ConnectorView>;
   revoke(name: string, botId: string): Promise<ConnectorView>;
+  /** The tools whose definition changed (or that are new) and wait for a person. */
+  review(name: string): Promise<ConnectorToolReview[]>;
+  /**
+   * The person approves the definition they looked at (`fingerprint`). If the tool changed again
+   * meanwhile nothing is approved. Only the user can do this.
+   */
+  approveTool(name: string, tool: string, fingerprint: string): Promise<ConnectorView>;
+  /** What happened to the pins of the connector, newest first. */
+  events(name: string, limit?: number): Promise<ConnectorToolEvent[]>;
   /** Sets (or, with `null`, clears) what the user says a tool's risk is. */
   setToolRisk(name: string, tool: string, risk: RiskLevel | null): Promise<ConnectorView>;
   /**
@@ -196,6 +264,33 @@ function writeOf(
   };
 }
 
+/** What is saved of a definition to show it later: bounded and cleaned like the stored listing. */
+function storedDefinition(raw: RawTool): PinnedDefinition {
+  const [bounded] = boundSnapshot([raw]);
+  return pinnedDefinition(bounded ?? raw);
+}
+
+/** The tools with the state of their pins (by the exact name on the server). */
+function withPins(
+  info: readonly ConnectorToolInfo[],
+  pins: ReadonlyMap<string, ToolPin>,
+): ConnectorToolState[] {
+  return info.map((t) => {
+    const pin = pins.get(t.serverName);
+    return {
+      ...t,
+      pin: pin === undefined ? "unseen" : pin.status,
+      fingerprint: pin === undefined ? null : pin.seenFingerprint,
+    };
+  });
+}
+
+/** Whether the grant lets the bot use the tool (by the exact name on the server). */
+export function grantAllows(grant: ConnectorGrant | undefined, serverTool: string): boolean {
+  if (grant === undefined) return false;
+  return grant.all || grant.tools.includes(serverTool);
+}
+
 export function createConnectorService(options: {
   db: () => Db;
   vault: Vault;
@@ -226,6 +321,7 @@ export function createConnectorService(options: {
     const seen = await getConnectorDiscovery(db(), c.name);
     const raw = readSnapshot(seen?.tools) ?? manager.lastKnownTools(spec);
     const state = manager.status().find((s) => s.connector === c.name);
+    const pins = new Map((await listPins(db(), c.name)).map((p) => [p.tool, p]));
     return {
       id: c.id,
       name: c.name,
@@ -238,6 +334,7 @@ export function createConnectorService(options: {
       enabled: c.enabled,
       origin: c.origin,
       grantedBotIds: c.grantedBotIds,
+      grants: c.grants,
       secretNames: secretNamesOf(spec),
       connection: {
         connected: state?.connected ?? false,
@@ -252,7 +349,8 @@ export function createConnectorService(options: {
             : vault.redactor.redact(seen.lastError),
         lastErrorAt: seen?.lastErrorAt ?? null,
       },
-      tools: raw === undefined ? null : adaptConnector(spec, raw, manager).info,
+      tools: raw === undefined ? null : withPins(adaptConnector(spec, raw, manager).info, pins),
+      pendingReviews: [...pins.values()].filter((p) => p.status !== "approved").length,
       createdAt: c.createdAt,
       updatedAt: c.updatedAt,
     };
@@ -264,6 +362,32 @@ export function createConnectorService(options: {
       throw new RuntimeError("connector_not_found", `Conector ${name} não encontrado.`);
     }
     return found;
+  };
+
+  /** The tool names the connector is known to have (from pins or the stored listing), or `undefined`. */
+  const knownToolNames = async (c: StoredConnector): Promise<Set<string> | undefined> => {
+    const names = new Set((await listPins(db(), c.name)).map((p) => p.tool));
+    for (const t of readSnapshot((await getConnectorDiscovery(db(), c.name))?.tools) ?? []) {
+      names.add(t.name);
+    }
+    return names.size === 0 ? undefined : names;
+  };
+
+  /** Compares a live listing with the pins (writes them) and returns the pins by tool. */
+  const reconcile = async (
+    name: string,
+    raw: readonly RawTool[],
+  ): Promise<Map<string, ToolPin>> => {
+    const { pins } = await reconcilePins(
+      db(),
+      name,
+      raw.map((t) => ({
+        tool: t.name,
+        fingerprint: toolFingerprint(t),
+        definition: storedDefinition(t),
+      })),
+    );
+    return new Map(pins.map((p) => [p.tool, p]));
   };
 
   /** A connector may only refer to vault secrets that exist (a typo would fail at the first run). */
@@ -369,18 +493,84 @@ export function createConnectorService(options: {
       await manager.invalidate(name);
       return gone;
     },
-    async grant(name, botId) {
-      await must(name);
+    async grant(name, botId, tools) {
+      const connector = await must(name);
       if ((await getBot(db(), botId)) === null) {
         throw new RuntimeError("bot_not_found", `Bot ${botId} não encontrado.`);
       }
-      await grantConnector(db(), name, botId);
+      if (tools !== "all") {
+        let known = await knownToolNames(connector);
+        if (known === undefined) {
+          // Never listed: connect now, so the names can be checked and the definitions are pinned.
+          const listed = await service.test(name);
+          if (!listed.ok) {
+            throw new RuntimeError(
+              "invalid_input",
+              `Não foi possível listar as ferramentas de ${name} para conferir a concessão: ${listed.error ?? "falhou"}`,
+            );
+          }
+          known = await knownToolNames(connector);
+        }
+        const unknown = tools.filter((t) => known === undefined || !known.has(t));
+        if (unknown.length > 0) {
+          throw new RuntimeError(
+            "invalid_input",
+            `O conector ${name} não tem ${unknown.length === 1 ? "a ferramenta" : "as ferramentas"} ${unknown.join(", ")}. Veja as que ele tem: suup connectors tools ${name}`,
+          );
+        }
+      }
+      await grantConnector(db(), name, botId, tools);
+      if (tools !== "all") {
+        // Granting a tool the user can see is the moment its definition is pinned (a tool that
+        // changed after it was approved still needs a review: granting it does not approve it).
+        for (const pin of await listPins(db(), name)) {
+          if (pin.status === "new" && tools.includes(pin.tool)) {
+            await approvePin(db(), name, pin.tool, pin.seenFingerprint, "pinned_on_grant");
+          }
+        }
+      }
       return view(await must(name));
     },
     async revoke(name, botId) {
       await must(name);
       await revokeConnector(db(), name, botId);
       return view(await must(name));
+    },
+    async review(name) {
+      await must(name);
+      const out: ConnectorToolReview[] = [];
+      for (const pin of await listPins(db(), name)) {
+        if (pin.status === "approved") continue;
+        out.push({
+          tool: pin.tool,
+          status: pin.status,
+          approvedFingerprint: pin.approvedFingerprint,
+          approved: asDefinition(pin.approvedDefinition),
+          currentFingerprint: pin.seenFingerprint,
+          current: asDefinition(pin.seenDefinition) ?? emptyDefinition(pin.tool),
+          seenAt: pin.seenAt,
+        });
+      }
+      return out;
+    },
+    async approveTool(name, tool, fingerprint) {
+      await must(name);
+      try {
+        await approvePin(db(), name, tool, fingerprint);
+      } catch (error) {
+        if (error instanceof PinNotFoundError) {
+          throw new RuntimeError("connector_not_found", error.message, { cause: error });
+        }
+        if (error instanceof PinStaleError) {
+          throw new RuntimeError("conflict", error.message, { cause: error });
+        }
+        throw error;
+      }
+      return view(await must(name));
+    },
+    events: async (name, limit) => {
+      await must(name);
+      return listConnectorEvents(db(), name, limit);
     },
     async setToolRisk(name, tool, risk) {
       const current = await must(name);
@@ -404,13 +594,14 @@ export function createConnectorService(options: {
       }
       try {
         const report = await manager.test(spec);
+        const pins = await reconcile(name, report.tools);
         return {
           ok: true,
           serverName: report.serverName,
           serverVersion: report.serverVersion,
           durationMs: report.durationMs,
           error: null,
-          tools: adaptConnector(spec, report.tools, manager).info,
+          tools: withPins(adaptConnector(spec, report.tools, manager).info, pins),
         };
       } catch (error) {
         const text = vault.redactor.redact(message(error));
@@ -419,17 +610,22 @@ export function createConnectorService(options: {
       }
     },
     async toolsForBot(botId) {
-      const out: BotConnectorTools = { tools: [], problems: [] };
+      const out: BotConnectorTools = { tools: [], candidates: [], problems: [], withheld: [] };
       const stored = await listConnectorsForBot(db(), botId);
       const adapted = await Promise.all(
-        stored.map(async (c): Promise<AdaptedConnector | undefined> => {
+        stored.map(async (c) => {
           try {
             const spec = specOf(c);
+            const grant = c.grants.find((g) => g.botId === botId);
             let raw: RawTool[] | undefined;
+            let pins: Map<string, ToolPin> | undefined;
             try {
               raw = await manager.tools(spec);
+              pins = await reconcile(c.name, raw);
             } catch (error) {
               // Down right now: offer what was seen before, so a call fails as a clear tool error.
+              // The stored listing is a cleaned copy, so it cannot be fingerprinted again: the
+              // pins as they were saved decide.
               out.problems.push({
                 connector: c.name,
                 message: vault.redactor.redact(message(error)),
@@ -437,20 +633,71 @@ export function createConnectorService(options: {
               raw =
                 manager.lastKnownTools(spec) ??
                 readSnapshot((await getConnectorDiscovery(db(), c.name))?.tools);
+              pins = new Map((await listPins(db(), c.name)).map((p) => [p.tool, p]));
             }
-            return raw === undefined ? undefined : adaptConnector(spec, raw, manager);
+            if (raw === undefined) return undefined;
+            const livePins = pins;
+            const result = adaptConnector(spec, raw, manager, {
+              include: (serverTool) => {
+                if (!grantAllows(grant, serverTool)) {
+                  return { ok: false, reason: "não concedida a este bot" };
+                }
+                const pin = livePins.get(serverTool);
+                if (pin?.status !== "approved") {
+                  const reason =
+                    pin === undefined
+                      ? "a definição ainda não foi vista (rode suup connectors test)"
+                      : pin.status === "changed"
+                        ? "a definição mudou depois de aprovada: revise (suup connectors review)"
+                        : "ferramenta nova: revise e aprove (suup connectors review)";
+                  out.withheld.push({ connector: c.name, tool: serverTool, reason });
+                  return { ok: false, reason };
+                }
+                return { ok: true };
+              },
+            });
+            return { connector: c.name, result };
           } catch (error) {
             out.problems.push({ connector: c.name, message: message(error) });
             return undefined;
           }
         }),
       );
-      for (const a of adapted) if (a !== undefined) out.tools.push(...a.tools);
+      for (const a of adapted) {
+        if (a === undefined) continue;
+        const byName = new Map(a.result.info.map((i) => [i.name, i]));
+        for (const tool of a.result.tools) {
+          out.tools.push(tool);
+          out.candidates.push({
+            name: tool.name,
+            group: a.connector,
+            summary: byName.get(tool.name)?.description ?? "",
+          });
+        }
+      }
       return out;
     },
     close: () => manager.close(),
   };
   return service;
+}
+
+function asDefinition(value: unknown): PinnedDefinition | null {
+  if (typeof value !== "object" || value === null) return null;
+  const v = value as Record<string, unknown>;
+  return {
+    name: typeof v.name === "string" ? v.name : "",
+    description: typeof v.description === "string" ? v.description : null,
+    inputSchema: v.inputSchema ?? null,
+    annotations:
+      typeof v.annotations === "object" && v.annotations !== null
+        ? (v.annotations as PinnedDefinition["annotations"])
+        : null,
+  };
+}
+
+function emptyDefinition(name: string): PinnedDefinition {
+  return { name, description: null, inputSchema: null, annotations: null };
 }
 
 function failure(error: string): ConnectorTestResult {

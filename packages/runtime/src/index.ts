@@ -20,14 +20,21 @@ export {
   type ServerConfig,
 } from "./config.js";
 export {
+  type BotConnectorCandidate,
   type BotConnectorTools,
+  type ConnectorGrantView,
   type ConnectorInput,
   type ConnectorPatch,
   type ConnectorService,
   type ConnectorTestResult,
+  type ConnectorToolReview,
+  type ConnectorToolState,
   type ConnectorView,
   createConnectorService,
+  grantAllows,
   specOf,
+  type ToolPinState,
+  type ToolSelection,
 } from "./connectors/service.js";
 export {
   type BotDraft,
@@ -78,6 +85,7 @@ export {
   reconcileRunEffects,
 } from "./run-end.js";
 export {
+  type BotToolReport,
   type BuildDepsOptions,
   type CreateWorkerOptions,
   createRuntime,

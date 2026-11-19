@@ -44,6 +44,9 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("migrate"), () => {
       "change_log_state",
       "connector_discovery",
       "connector_grants",
+      "connector_pin_baselines",
+      "connector_tool_events",
+      "connector_tool_pins",
       "connectors",
       "conversation_members",
       "conversations",
@@ -95,7 +98,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("migrate"), () => {
     const fresh = await ctx.db.sql`select 1`; // keep pool warm
     expect(fresh).toHaveLength(1);
     await ctx.db
-      .sql`drop table schema_migrations, memories, messages, conversation_members, conversations, run_inbox, approvals, approval_rules, secret_grants, secrets, connector_discovery, connector_grants, connectors, run_events, runs, bots, extra_ok, change_log, change_log_state cascade`;
+      .sql`drop table schema_migrations, memories, messages, conversation_members, conversations, run_inbox, approvals, approval_rules, secret_grants, secrets, connector_discovery, connector_grants, connector_pin_baselines, connector_tool_events, connector_tool_pins, connectors, run_events, runs, bots, extra_ok, change_log, change_log_state cascade`;
     await ctx.db
       .sql`drop function set_updated_at(), run_events_append_only(), suup_search_query(text), suup_unaccent(text)`;
     const results = await Promise.all([migrate(ctx.db), migrate(ctx.db), migrate(ctx.db)]);

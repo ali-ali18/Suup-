@@ -38,7 +38,7 @@ describe("the add-connector form becomes the API body", () => {
         description: "ERP da loja",
         scope: "read_write",
         timeoutMs: 30_000,
-        grantBotIds: ["b1"],
+        grants: [{ botId: "b1", tools: "all" }],
         transport: {
           kind: "stdio",
           command: "node",

@@ -48,6 +48,8 @@ export function buildSystemPrompt(
      * is not (an evaluation bot must not be told about tools it does not have). Default `true`.
      */
     memoryTools?: boolean;
+    /** The section that lists the connector tools that are searched, not loaded (fixed per run). */
+    toolIndex?: string | undefined;
   } = {},
 ): string {
   const identity = bot.personality.trim();
@@ -92,6 +94,7 @@ export function buildSystemPrompt(
 - A result saying a call was interrupted has an unknown outcome. Check the actual state before repeating the action.
 ${memoryLine}- Never claim to have done something the tool results do not show. If something failed or could not be verified, say so plainly.${approvalLine}`,
     secretsSection,
+    options.toolIndex ?? "",
   ]
     .filter((part) => part !== "")
     .join("\n\n");

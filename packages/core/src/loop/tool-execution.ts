@@ -16,6 +16,8 @@ import type { LoopContext } from "./run-context.js";
 import { handleRequestSecret } from "./secret-request.js";
 import type { PendingResponse } from "./state.js";
 import type { RunStatus } from "./store.js";
+import { USE_TOOL_NAME } from "./tool-search.js";
+import { handleSearchTools, resolveUseTool } from "./tool-search-calls.js";
 
 export async function executeCalls(
   ctx: LoopContext,
@@ -58,7 +60,28 @@ export async function executeCalls(
       case "request_secret":
         await handleRequestSecret(ctx, call, alone);
         break;
+      case "search_tools":
+        await handleSearchTools(ctx, call);
+        break;
+      case USE_TOOL_NAME: {
+        const resolved = await resolveUseTool(ctx, call);
+        if (resolved.kind === "refused") break;
+        // From here on it is the real tool: its name, its arguments, its card, its result.
+        const waits = await handleTool(ctx, resolved.call, open.started, resolved.schema);
+        if (waits) return undefined;
+        break;
+      }
       default: {
+        if (ctx.state.toolCatalog?.mode === "meta" && isDeferred(ctx, call.name)) {
+          // Listed in the index but not loaded: it is reached only through `use_tool`.
+          await ensureToolCall(ctx, call);
+          await recordResult(ctx, call.id, {
+            outcome: "unknown_tool",
+            isError: true,
+            content: `Tool "${call.name}" is not loaded: call it with ${USE_TOOL_NAME} (tool and arguments), after getting its definition with search_tools.`,
+          });
+          break;
+        }
         const waits = await handleTool(ctx, call, open.started);
         if (waits) return undefined;
       }
@@ -80,8 +103,21 @@ async function abortRemaining(ctx: LoopContext): Promise<void> {
   }
 }
 
-/** Runs one registry tool call. Returns `true` when the call waits for the user's decision. */
-async function handleTool(ctx: LoopContext, call: ControlCall, started: boolean): Promise<boolean> {
+function isDeferred(ctx: LoopContext, name: string): boolean {
+  return ctx.state.toolCatalog?.deferred.some((d) => d.name === name) === true;
+}
+
+/**
+ * Runs one registry tool call. Returns `true` when the call waits for the user's decision.
+ * `schema` is set when the call came through `use_tool`: a call whose arguments do not validate
+ * then gets the real input schema back, since the model never saw it as a tool definition.
+ */
+async function handleTool(
+  ctx: LoopContext,
+  call: ControlCall,
+  started: boolean,
+  schema?: string,
+): Promise<boolean> {
   const { tools, bot, executor, now } = ctx.deps;
   const logged = clearanceFromLog(ctx, call);
   if (logged?.kind === "denied") {
@@ -129,10 +165,14 @@ async function handleTool(ctx: LoopContext, call: ControlCall, started: boolean)
     });
     return false;
   }
+  const withSchema =
+    schema !== undefined && invocation.outcome === "invalid_args"
+      ? `${invocation.output.content}\nThe input schema of "${call.name}" (JSON): ${schema}`
+      : invocation.output.content;
   await recordResult(ctx, call.id, {
     outcome: invocation.outcome,
     isError: invocation.output.isError === true,
-    content: invocation.output.content,
+    content: withSchema,
     truncated: invocation.truncated,
     durationMs: invocation.durationMs,
   });

@@ -56,6 +56,57 @@ export function escalatedQuestions(payload: {
 
 export const riskLevelSchema = z.enum(RISK_LEVELS);
 
+/**
+ * What the tool definitions of one model request cost, estimated at one token per four characters
+ * (a simple estimate, not a provider count): how many definitions were sent, how many of them stay
+ * out of the model's context until it searches (`deferred`), and the tokens of all of them and of
+ * the ones that are loaded.
+ */
+export const toolStatsSchema = z.object({
+  definitions: z.number().int().nonnegative(),
+  deferred: z.number().int().nonnegative(),
+  estimatedTokens: z.number().int().nonnegative(),
+  loadedTokens: z.number().int().nonnegative(),
+});
+export type ToolStats = z.infer<typeof toolStatsSchema>;
+
+/** How the connector tools of the run reach the model. */
+export const TOOL_SEARCH_MODES = ["direct", "hosted", "client", "meta"] as const;
+export type ToolSearchMode = (typeof TOOL_SEARCH_MODES)[number];
+
+/**
+ * The decision of how this run offers its connector tools, taken ONCE (see `tool_catalog`):
+ * `direct` every definition is sent on every request; `hosted` / `client` the provider's native
+ * deferred loading; `meta` the harness's own index plus `search_tools` and `use_tool`.
+ */
+export const toolCatalogSchema = z.object({
+  mode: z.enum(TOOL_SEARCH_MODES),
+  /** With `hosted`: the search the provider runs. */
+  variant: z.exactOptional(z.enum(["bm25", "regex"])),
+  settings: z.object({
+    minTools: z.number().int().nonnegative(),
+    minDefinitionTokens: z.number().int().nonnegative(),
+  }),
+  /** The connector tools granted to the bot, and what their definitions would cost (estimated). */
+  connectorTools: z.number().int().nonnegative(),
+  definitionTokens: z.number().int().nonnegative(),
+  /** The tools kept out of the request's context (empty with `direct`), in a fixed order. */
+  deferred: z.array(
+    z.object({
+      name: z.string(),
+      /** The connector the tool belongs to. */
+      group: z.string(),
+      /** What the server says it does, cleaned and bounded (untrusted text). */
+      summary: z.string(),
+      /** The definition, exactly as it goes in the request. */
+      spec: toolSpecSchema,
+    }),
+  ),
+  /** The section of the system prompt that lists what can be searched; fixed for the run. */
+  index: z.exactOptional(z.string()),
+});
+export type ToolCatalog = z.infer<typeof toolCatalogSchema>;
+
 /** Which of the three filters (section 4.8) decided: a user rule, the automatic reviewer, or the level's default. */
 export const POLICY_SOURCES = ["rule", "reviewer", "default"] as const;
 export const policySourceSchema = z.enum(POLICY_SOURCES);
@@ -191,6 +242,10 @@ export const runEventSchema = z.discriminatedUnion("type", [
       maxOutputTokens: z.number().int().positive(),
       temperature: z.exactOptional(z.number()),
       purpose: z.exactOptional(modelCallPurposeSchema),
+      /** The hosted tool search asked of the provider (the specs marked `deferLoading` are searched). */
+      hostedToolSearch: z.exactOptional(z.enum(["bm25", "regex"])),
+      /** What the tool definitions of this request cost (estimated); see `toolDefinitionStats`. */
+      toolStats: z.exactOptional(toolStatsSchema),
     }),
   }),
   z.object({
@@ -230,6 +285,8 @@ export const runEventSchema = z.discriminatedUnion("type", [
       durationMs: z.number().nonnegative(),
       /** Set on the answer to an `escalate` call: the inbox items this result delivers. */
       inboxIds: z.exactOptional(z.array(z.string())),
+      /** Set on the answer to `search_tools` with client-side tool search: the tools it loads. */
+      toolReferences: z.exactOptional(z.array(z.string())),
     }),
   }),
   z.object({
@@ -456,6 +513,16 @@ export const runEventSchema = z.discriminatedUnion("type", [
        */
       reviewVerdict: z.exactOptional(z.enum(["reject", "unverified"])),
     }),
+  }),
+  z.object({
+    /**
+     * How the run offers the tools of its connectors (all loaded, or deferred and found by search).
+     * Decided ONCE, right after `context_loaded`, from the tools granted to the bot at that moment:
+     * resume and replay read it from here, so the tools of every request of the run stay the same
+     * (byte for byte) and the prompt cache holds. Absent in runs without connector tools.
+     */
+    type: z.literal("tool_catalog"),
+    payload: toolCatalogSchema,
   }),
   z.object({
     type: z.literal("status_changed"),

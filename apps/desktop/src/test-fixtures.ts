@@ -199,6 +199,8 @@ export function makeConnectorTool(over: Partial<ConnectorTool> = {}): ConnectorT
     outbound: null,
     available: true,
     hints: null,
+    pin: "approved",
+    fingerprint: null,
     ...over,
   };
 }
@@ -216,6 +218,8 @@ export function makeConnector(over: Partial<Connector> = {}): Connector {
     enabled: true,
     origin: "user",
     grantedBotIds: [],
+    grants: [],
+    pendingReviews: 0,
     secretNames: [],
     connection: { connected: false, failures: 0, lastError: null },
     discovery: { discoveredAt: null, lastError: null, lastErrorAt: null },

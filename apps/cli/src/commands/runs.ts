@@ -135,6 +135,22 @@ export const showCommand: CommandSpec = {
         }),
       ),
     ];
+    const agentRequests = events.flatMap((e) => {
+      const t = typedEvent(e);
+      return t?.type === "model_request" && (t.payload.purpose ?? "agent") === "agent"
+        ? [t.payload]
+        : [];
+    });
+    const catalog = events.flatMap((e) => {
+      const t = typedEvent(e);
+      return t?.type === "tool_catalog" ? [t.payload] : [];
+    })[0];
+    const toolDefinitions = {
+      mode: catalog?.mode ?? null,
+      connectorTools: catalog?.connectorTools ?? 0,
+      requests: agentRequests.length,
+      lastRequest: agentRequests.at(-1)?.toolStats ?? null,
+    };
     const lastQuestion = events
       .map((e) => typedEvent(e))
       .filter((t) => t?.type === "escalated")
@@ -162,6 +178,7 @@ export const showCommand: CommandSpec = {
               },
         modelErrors,
         modelVersions: versions,
+        toolDefinitions,
         events: events.length,
         question: lastQuestion?.type === "escalated" ? lastQuestion.payload.question : null,
       });
@@ -172,6 +189,7 @@ export const showCommand: CommandSpec = {
         events: events.length,
         versions,
         modelErrors,
+        toolDefinitions,
         question: lastQuestion?.type === "escalated" ? lastQuestion.payload.question : null,
       }),
     );
@@ -190,6 +208,18 @@ interface DescribeExtras {
     retryable: boolean;
   }[];
   question: string | null;
+  /** How the tools of connectors reached the model, and what the definitions of a request cost. */
+  toolDefinitions: {
+    mode: string | null;
+    connectorTools: number;
+    requests: number;
+    lastRequest: {
+      definitions: number;
+      deferred: number;
+      estimatedTokens: number;
+      loadedTokens: number;
+    } | null;
+  };
 }
 
 export function describeRun(run: Run, bot: Bot | null, extra: DescribeExtras): string[] {
@@ -242,6 +272,12 @@ export function describeRun(run: Run, bot: Bot | null, extra: DescribeExtras): s
         `  seq ${e.seq}: ${e.kind}, tentativa ${e.attempt}${e.retryable ? " (retentável)" : ""}: ${oneLine(e.message, 160)}`,
       );
     }
+  }
+  const defs = extra.toolDefinitions;
+  if (defs.lastRequest !== null) {
+    lines.push(
+      `Definições de ferramentas por pedido: ${defs.lastRequest.definitions} (${defs.lastRequest.deferred} adiadas), ~${formatInt(defs.lastRequest.estimatedTokens)} tokens estimados, ~${formatInt(defs.lastRequest.loadedTokens)} no contexto${defs.mode === null ? "" : `; ferramentas de conectores: ${defs.connectorTools}, modo ${defs.mode}`}`,
+    );
   }
   lines.push(
     `Uso: ${run.turns} turno${run.turns === 1 ? "" : "s"}, ${formatInt(run.inputTokens)} tokens de entrada, ${formatInt(run.outputTokens)} de saída, custo ${formatUsd(run.costUsd)}`,

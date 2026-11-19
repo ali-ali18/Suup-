@@ -5,6 +5,7 @@ import type {
   RunEventPayload,
   RunStatus,
   SecretInfo,
+  ToolCatalog,
 } from "../events.js";
 import type { Block, JsonValue, Message, ToolCallBlock } from "../messages.js";
 import type { GenerateResult, StopReason } from "../provider.js";
@@ -128,6 +129,10 @@ export interface RunState {
   startSeq: number;
   /** The `context_loaded` event is in the log. */
   contextLoaded: boolean;
+  /** How the run offers its connector tools (the `tool_catalog` event), or null (none decided). */
+  toolCatalog: ToolCatalog | null;
+  /** An agent `model_request` was recorded: the tools of the run can no longer be decided. */
+  sawRequest: boolean;
   /** The rules and profile of the run, for the system prompt; null without a `context_loaded`. */
   context: { rules: ContextItem[]; profile: ContextItem[]; secrets: SecretInfo[] } | null;
   lastSeq: number;
@@ -198,6 +203,8 @@ export function createRunState(): RunState {
     responses: 0,
     pending: null,
     pendingCalls: [],
+    toolCatalog: null,
+    sawRequest: false,
     turnOutcomes: [],
     waiting: null,
     acceptedFinish: null,
@@ -317,9 +324,19 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
       break;
     }
 
+    case "tool_catalog":
+      state.toolCatalog = structuredClone(event.payload);
+      break;
+
     case "tool_call": {
       const call = state.pendingCalls.find((c) => c.id === event.payload.callId);
-      if (call !== undefined) call.started = true;
+      if (call !== undefined) {
+        call.started = true;
+        // A call made through `use_tool` is logged as the REAL tool it runs: from here on the
+        // run knows it (digests, repeats, denials) by that name and those arguments.
+        call.name = event.payload.name;
+        call.args = event.payload.args as JsonValue;
+      }
       if (event.payload.name === "finish") {
         state.currentReview = null;
         state.reviewRounds = [];
@@ -342,6 +359,9 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
           callId: call.id,
           content,
           ...(isError ? { isError: true } : {}),
+          ...(event.payload.toolReferences === undefined
+            ? {}
+            : { toolReferences: [...event.payload.toolReferences] }),
         },
         event.seq,
       );
@@ -523,6 +543,7 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
     }
 
     case "model_request": {
+      if (event.payload.purpose === undefined) state.sawRequest = true;
       // The STATE REMINDER sent with an agent request becomes a permanent part of that user
       // message, so later requests extend this one instead of rewriting it.
       if (event.payload.purpose !== undefined) break;

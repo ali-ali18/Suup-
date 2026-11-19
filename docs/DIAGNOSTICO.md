@@ -12,7 +12,7 @@ Nos exemplos, `3f2a9c1d` é o começo do id de uma execução (a CLI aceita o in
 suup show 3f2a9c1d
 ```
 
-Mostra a situação, o plano, o resultado ou a falha, o uso e os tempos. Em toda execução que não termina bem, a **origem da falha** aparece logo no alto, com uma linha dizendo o que ela significa:
+Mostra a situação, o plano, o resultado ou a falha, o uso e os tempos, e, quando a execução teve conectores, **quantas definições de ferramenta** iam em cada pedido e o custo estimado delas (`Definições de ferramentas por pedido: 7 (0 adiadas), ~2.630 tokens estimados...`, com o modo: `direct`, `hosted`, `client` ou `meta`). Em toda execução que não termina bem, a **origem da falha** aparece logo no alto, com uma linha dizendo o que ela significa:
 
 | Origem | O que significa | Para onde ir |
 |---|---|---|
@@ -115,6 +115,8 @@ Reenvia o mesmo pedido a **outro modelo configurado**. Compare com o desfecho gr
 ## Conectores
 
 Uma ferramenta de um conector MCP ([CONECTORES.md](CONECTORES.md)) que falha dá um resultado de erro que **começa com `Conector "nome":`** (o desfecho no log é `tool_error`): o problema é do conector, não do modelo. `suup doctor` liga cada conector ligado do zero e dá uma linha por conector (`Conector nome`); `suup connectors test <nome>` faz o mesmo para um e lista as ferramentas, com o risco de cada uma e o motivo de as que ficaram de fora.
+
+**Definições de ferramentas.** Cada `model_request` grava `toolStats` (definições enviadas, adiadas, tokens estimados de todas e dos que entram no contexto) e `suup inspect` mostra isso na linha do pedido; o evento `tool_catalog` mostra como a execução ofereceu as ferramentas de conectores. `suup doctor` imprime **por bot** (`Ferramentas do bot <nome>`): ferramentas embutidas e de controle, de conectores concedidas, quantas carregadas direto ou adiadas (e por qual mecanismo), definições e tokens estimados por pedido. Se uma ferramenta mudou de definição, a linha `Conector <nome>: definições` avisa (`AVISO: ... esperando revisão`, falha do doctor) e `suup connectors review <nome>` mostra o antes e o agora.
 
 ## Quando os comandos acima não bastam
 

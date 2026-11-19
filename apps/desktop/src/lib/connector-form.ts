@@ -177,7 +177,11 @@ export function buildCreateBody(form: ConnectorForm, secrets: readonly string[])
       scope: form.scope,
       ...(form.description.trim() === "" ? {} : { description: form.description.trim() }),
       ...(timeoutMs === undefined ? {} : { timeoutMs }),
-      ...(form.grantBotIds.length === 0 ? {} : { grantBotIds: form.grantBotIds }),
+      // The screen still grants the whole connector (every tool) to the bots ticked here; the
+      // per-tool choice is described in docs/FRONTEND.md and waits for its own screen.
+      ...(form.grantBotIds.length === 0
+        ? {}
+        : { grants: form.grantBotIds.map((botId) => ({ botId, tools: "all" as const })) }),
     },
   };
 }

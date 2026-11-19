@@ -34,7 +34,7 @@ describe.skipIf(!DATABASE_URL)(
   () => {
     const ctx = useIsolatedDb();
 
-    async function open(script: unknown) {
+    async function open(script: unknown, extraConfig: Record<string, unknown> = {}) {
       // The tests share one schema and the same connector names: start from none.
       await ctx.db.sql`delete from connectors`;
       await ctx.db.sql`delete from secrets`;
@@ -42,7 +42,14 @@ describe.skipIf(!DATABASE_URL)(
       await writeJson(join(dir, "script.json"), script);
       const env = { DATABASE_URL: ctx.url, TEST_VAULT_KEY: generateKeyText() };
       const runtime = createRuntime(
-        parseConfig(rawConfig({ vault: { keyEnv: "TEST_VAULT_KEY" } })),
+        parseConfig(
+          rawConfig({
+            vault: { keyEnv: "TEST_VAULT_KEY" },
+            // The tests that script direct calls of the fake server's 17 tools: search is off.
+            toolSearch: { minTools: 1000, minDefinitionTokens: 1_000_000 },
+            ...extraConfig,
+          }),
+        ),
         { env, baseDir: dir },
       );
       const bot = await createBot(runtime.db, {
@@ -102,7 +109,7 @@ describe.skipIf(!DATABASE_URL)(
       });
       // Not granted yet: the bot sees nothing of it.
       expect((await runtime.connectors.toolsForBot(bot.id)).tools).toEqual([]);
-      await runtime.connectors.grant("fake", bot.id);
+      await runtime.connectors.grant("fake", bot.id, "all");
 
       const run = await runtime.createRun({ botId: bot.id, objective: "Use the connector" });
       const deps = await runtime.buildDeps(run.id, "w-inspect");
@@ -163,7 +170,7 @@ describe.skipIf(!DATABASE_URL)(
       );
       await runtime.vault.set("FAKE_API", VALUE);
       await runtime.connectors.create({ name: "fake", transport });
-      await runtime.connectors.grant("fake", bot.id);
+      await runtime.connectors.grant("fake", bot.id, "all");
       expect((await runtime.connectors.toolsForBot(bot.id)).tools.length).toBeGreaterThan(5);
       await runtime.connectors.update("fake", { enabled: false });
       expect((await runtime.connectors.toolsForBot(bot.id)).tools).toEqual([]);
@@ -206,7 +213,7 @@ describe.skipIf(!DATABASE_URL)(
         transport,
         tools: { echo: { risk: "read" } },
       });
-      await runtime.connectors.grant("fake", bot.id);
+      await runtime.connectors.grant("fake", bot.id, "all");
       expect((await runtime.connectors.test("fake")).ok).toBe(true);
       // Wait for the snapshot written by the listing (it is saved in the background).
       for (let i = 0; i < 100; i++) {

@@ -136,6 +136,24 @@ const samples: RunEventData[] = [
     payload: { approvalId: "a1", callId: "1", decision: "denied", reason: "no", ruleId: "r2" },
   },
   { type: "secret_requested", payload: { callId: "1", name: "GITHUB_TOKEN", reason: "push" } },
+  {
+    type: "tool_catalog",
+    payload: {
+      mode: "meta",
+      settings: { minTools: 10, minDefinitionTokens: 10000 },
+      connectorTools: 1,
+      definitionTokens: 40,
+      deferred: [
+        {
+          name: "conn_erp__search",
+          group: "erp",
+          summary: "Search orders.",
+          spec: { name: "conn_erp__search", description: "d", inputSchema: { type: "object" } },
+        },
+      ],
+      index: "## Connector tools",
+    },
+  },
 ];
 
 describe("parseRunEvent", () => {

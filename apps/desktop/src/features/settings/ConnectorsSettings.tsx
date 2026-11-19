@@ -673,7 +673,7 @@ function ConnectorCard({
                     void grant.run(async () => {
                       const result = await sync.connectorCall(() =>
                         next
-                          ? api.connectors.grant(connector.name, b.id)
+                          ? api.connectors.grant(connector.name, b.id, { tools: "all" })
                           : api.connectors.revoke(connector.name, b.id),
                       );
                       return result.ok ? { ok: true } : { ok: false, message: result.message };

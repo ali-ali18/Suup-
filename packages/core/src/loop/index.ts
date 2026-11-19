@@ -53,3 +53,21 @@ export {
   type StoredEvent,
   type UsageDelta,
 } from "./store.js";
+export {
+  buildIndex,
+  DEFAULT_TOOL_SEARCH,
+  estimateSpecTokens,
+  firstSentence,
+  planToolSearch,
+  SEARCH_TOOL_NAME,
+  type SearchOutcome,
+  type SearchQuery,
+  searchCatalog,
+  type ToolSearchCandidate,
+  type ToolSearchDeps,
+  type ToolSearchSettings,
+  type ToolSearchSetup,
+  toolDefinitionStats,
+  USE_TOOL_NAME,
+  wordsOf,
+} from "./tool-search.js";

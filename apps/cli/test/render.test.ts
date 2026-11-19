@@ -484,6 +484,7 @@ describe("suup show: the failure origin is prominent", () => {
       { seq: 4, kind: "auth", message: "chave inválida", attempt: 1, retryable: false },
     ],
     question: null,
+    toolDefinitions: { mode: null, connectorTools: 0, requests: 0, lastRequest: null },
   };
 
   it("puts the origin, its meaning and the detail up front", () => {

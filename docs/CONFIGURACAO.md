@@ -45,6 +45,7 @@ Opções comuns aos dois adaptadores de rede (as mesmas de `@suup/providers`): `
 | `contextWindow` | Tamanho da janela de contexto, em tokens (inteiro positivo). Dispara a compactação da conversa |
 | `maxOutputTokens` | Limite de tokens de saída por resposta (não pode passar de `contextWindow`) |
 | `pricing` (opcional) | `inputPerMTok`, `outputPerMTok`, `cachedInputPerMTok` (opcional: tokens lidos do cache), `cacheWriteInputPerMTok` (opcional: tokens gravados no cache, que alguns provedores cobram acima do preço normal; padrão `inputPerMTok`): dólares por milhão de tokens. Sem `pricing`, o custo da execução fica em zero |
+| `nativeToolSearch` (opcional) | A busca de ferramentas **nativa** que este modelo aceita, **declarada aqui e nunca adivinhada pelo id**: `true` ou `"bm25"` (o provedor ranqueia por palavras), `"regex"` (o provedor casa um padrão que o **modelo** escreve; exceção em [REGRAS.md](REGRAS.md)), `"client"` (a busca é nossa e devolve as ferramentas a carregar). Só vale se o adaptador do provedor implementa a variante (hoje: `anthropic`; veja [CONECTORES.md](CONECTORES.md), que lista os modelos). Ausente ou `false`: o harness usa o índice e as ferramentas `search_tools`/`use_tool` |
 | `supportsForcedToolChoice` (opcional, padrão `true`) | Se o modelo aceita que o pedido **force** uma ferramenta (`tool_choice`). O revisor força a ferramenta `verdict`; alguns modelos respondem a isso com erro HTTP 400. Com `false`, o revisor pede o veredito só por instrução (`auto`). Mesmo com `true`, se a API recusar a escolha forçada (`invalid_request`), o revisor repete a chamada uma vez sem forçar |
 
 Um bot guarda o provedor e o modelo com que foi criado. Se o modelo sair da configuração, ou passar a pertencer a outro provedor, criar execuções para esse bot falha com uma mensagem que cita o bot e o que falta.
@@ -140,6 +141,18 @@ O cofre de segredos ([COFRE.md](COFRE.md)). Sem esta seção não há cofre.
 ### `untrustedOutputTools` (opcional)
 
 Uma lista de nomes de ferramentas cuja saída chega ao modelo **rotulada como dado não confiável** (o envelope `<<<EXTERNAL_DATA`), além das que já se declaram assim (`web_fetch`). Padrão: nenhuma. Quem faz o bot lidar com conteúdo de fora pode ligar para `["shell", "read_file", "search_files"]`; fica desligado por padrão porque muda o que o modelo lê depois de cada chamada dessas ferramentas.
+
+### `toolSearch` (opcional)
+
+Quando as ferramentas de **conectores** de um bot são **buscadas** em vez de carregadas todas em todo pedido ([CONECTORES.md](CONECTORES.md), "Muitas ferramentas"):
+
+| Campo | Padrão | Significado |
+|---|---|---|
+| `minTools` | `10` | Adia quando o bot tem pelo menos este número de ferramentas de conectores... |
+| `minDefinitionTokens` | `10000` | ...ou quando as definições somam pelo menos estes tokens (estimativa: 1 token a cada 4 caracteres) |
+| `maxIndexChars` | `6000` | Um índice maior que isto vira uma linha por conector |
+
+Abaixo dos dois limites, as ferramentas vão direto. Para desligar a busca, ponha valores enormes. As ferramentas embutidas e de controle nunca são adiadas.
 
 ### Conectores
 

@@ -21,6 +21,21 @@ export interface ReviewCall {
   summary: string;
 }
 
+/**
+ * CONTRACT for every reviewer, today the table and tomorrow one that asks a model (docs/APROVACOES.md,
+ * "Revisor automático"; research: docs/pesquisas/fase-3-aprovacoes-cofre-conectores.md):
+ *
+ * 1. It receives the user's request and the PROPOSED call (`ReviewCall`) and NOTHING ELSE. In
+ *    particular never a tool RESULT: results are where an injection arrives, and a reviewer that reads
+ *    them can be talked into approving. (Claude Code's auto mode removes results from its classifier
+ *    for the same reason.) `ReviewCall` has no field for one, and must not get one.
+ * 2. It is SYNCHRONOUS and BLOCKING: `review` is awaited before anything runs. A reviewer that works
+ *    in parallel with the action (a guardrail that may fire after the tool already ran) is not allowed.
+ * 3. An error, a timeout or a missing or unknown verdict means ASK THE USER, never allow. The gate
+ *    turns a thrown error or an invalid verdict into `sensitive`.
+ * 4. It can only tighten: `stricter(level, review)`. A "safe" never waves through an irreversible
+ *    action; only a rule the user created does.
+ */
 export interface AutoReviewer {
   review(call: ReviewCall): Promise<ReviewVerdict>;
 }

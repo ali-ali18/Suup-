@@ -41,6 +41,7 @@ export const RUN_EVENT_TYPES = [
   "review_evidence",
   "review_reprompt",
   "escalated",
+  "tool_catalog",
   "status_changed",
   "compacted",
   "policy_checked",

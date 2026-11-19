@@ -1,6 +1,8 @@
 import {
+  approveToolBodySchema,
   connectorNameSchema,
   createConnectorBodySchema,
+  grantConnectorBodySchema,
   setToolOutboundBodySchema,
   setToolRiskBodySchema,
   updateConnectorBodySchema,
@@ -8,7 +10,12 @@ import {
 import { getBot } from "@suup/db";
 import { HttpError } from "../errors.js";
 import type { Route } from "../http.js";
-import { toConnectorDto, toConnectorTestDto } from "../mappers.js";
+import {
+  toConnectorDto,
+  toConnectorEventDto,
+  toConnectorReviewDto,
+  toConnectorTestDto,
+} from "../mappers.js";
 
 function nameOf(raw: string): string {
   const parsed = connectorNameSchema.safeParse(raw);
@@ -36,9 +43,9 @@ export const connectorRoutes: Route[] = [
     async handler(ctx) {
       const body = ctx.body(createConnectorBodySchema);
       const { connectors } = ctx.runtime;
-      for (const botId of body.grantBotIds ?? []) {
+      for (const { botId } of body.grants ?? []) {
         if ((await getBot(ctx.runtime.db, botId)) === null) {
-          throw new HttpError("invalid_request", `grantBotIds: bot ${botId} não encontrado.`);
+          throw new HttpError("invalid_request", `grants: bot ${botId} não encontrado.`);
         }
       }
       await connectors.create({
@@ -51,7 +58,7 @@ export const connectorRoutes: Route[] = [
         timeoutMs: body.timeoutMs,
         enabled: body.enabled,
       });
-      for (const botId of body.grantBotIds ?? []) await connectors.grant(body.name, botId);
+      for (const g of body.grants ?? []) await connectors.grant(body.name, g.botId, g.tools);
       const created = await connectors.get(body.name);
       if (created === null) throw new HttpError("internal_error", "Erro interno do servidor.");
       return { status: 201, body: toConnectorDto(created) };
@@ -89,7 +96,12 @@ export const connectorRoutes: Route[] = [
     pattern: "/v1/connectors/:name/grants/:botId",
     async handler(ctx) {
       const name = nameOf(ctx.params.name ?? "");
-      return { body: toConnectorDto(await ctx.runtime.connectors.grant(name, ctx.uuid("botId"))) };
+      const body = ctx.body(grantConnectorBodySchema);
+      return {
+        body: toConnectorDto(
+          await ctx.runtime.connectors.grant(name, ctx.uuid("botId"), body.tools),
+        ),
+      };
     },
   },
   {
@@ -124,6 +136,37 @@ export const connectorRoutes: Route[] = [
           await ctx.runtime.connectors.setToolOutbound(name, ctx.params.tool ?? "", body.outbound),
         ),
       };
+    },
+  },
+  {
+    method: "GET",
+    pattern: "/v1/connectors/:name/review",
+    async handler(ctx) {
+      const name = nameOf(ctx.params.name ?? "");
+      const items = await ctx.runtime.connectors.review(name);
+      return { body: { items: items.map(toConnectorReviewDto) } };
+    },
+  },
+  {
+    method: "POST",
+    pattern: "/v1/connectors/:name/tools/:tool/review",
+    async handler(ctx) {
+      const name = nameOf(ctx.params.name ?? "");
+      const body = ctx.body(approveToolBodySchema);
+      return {
+        body: toConnectorDto(
+          await ctx.runtime.connectors.approveTool(name, ctx.params.tool ?? "", body.fingerprint),
+        ),
+      };
+    },
+  },
+  {
+    method: "GET",
+    pattern: "/v1/connectors/:name/events",
+    async handler(ctx) {
+      const name = nameOf(ctx.params.name ?? "");
+      const items = await ctx.runtime.connectors.events(name);
+      return { body: { items: items.map(toConnectorEventDto) } };
     },
   },
   {

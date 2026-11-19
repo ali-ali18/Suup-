@@ -32,15 +32,28 @@ Uma ferramenta que não declara nada, ou declara um nível que não existe, vale
 
 ## Os três filtros, em ordem
 
+**Precedência (dita por inteiro).** Uma regra de **negar** vence **sempre**, mesmo contra uma de permitir mais específica; depois vem o revisor; uma regra de **permitir** só existe por um **ato explícito do usuário** (Configurações > Aprovações, `suup rules add`, ou "Permitir destinatário" no cartão de uma mensagem a outra pessoa). Uma regra de permitir só libera o que ela descreve por inteiro (ferramenta, bot e igualdade exata dos campos nomeados). Nada que o modelo, uma ferramenta, um conector ou uma mensagem digam cria ou amplia uma regra. A decisão é gravada uma vez no log e nunca refeita.
+
 A decisão é uma função pura (`decidePolicy`, em `core`), testada sozinha: dadas as regras e o veredito do revisor, devolve `allow`, `deny` ou `ask`.
 
 1. **Regras do usuário** (tabela `approval_rules`). Valem para um bot ou para todos, para uma ferramenta (ou `*`) e, opcionalmente, com condições sobre os argumentos: cada uma diz que um campo nomeado é **exatamente igual** a um valor (todas precisam valer). **Não existe outra comparação**: nada de "começa com", "contém", glob ou regex; o que roda sem perguntar é só o que o usuário escreveu por inteiro. **Uma regra sem condições vale para QUALQUER uso da ferramenta** (escolha explícita do usuário, e as telas dizem isso com todas as letras). **Quem proíbe vale mais que quem libera**; entre regras do mesmo efeito, a do bot vem antes da global. Uma regra pode liberar até uma ação irreversível ("pode fazer push neste repositório"). As condições olham os argumentos como o modelo os escreveu (um segredo aparece como `{{secret:NOME}}`, nunca como valor).
-2. **Revisão automática.** Hoje é só a interface (`AutoReviewer`) e um padrão determinístico que apenas traduz o nível (`read` e `write_reversible` são seguros; `external_irreversible` é sensível). **Nenhuma chamada a modelo é feita.** O revisor só pode apertar, nunca afrouxar: um "seguro" dele não deixa passar uma ação irreversível; só uma regra sua faz isso. Um revisor que falha conta como "sensível".
+2. **Revisão automática.** Hoje é só a interface (`AutoReviewer`) e um padrão determinístico que apenas traduz o nível (`read` e `write_reversible` são seguros; `external_irreversible` é sensível). **Nenhuma chamada a modelo é feita.** O revisor só pode apertar, nunca afrouxar: um "seguro" dele não deixa passar uma ação irreversível; só uma regra sua faz isso. Um revisor que falha, ou que não dá um veredito válido, conta como "sensível" (pergunta ao usuário, nunca permite). Veja a regra do revisor por modelo logo abaixo.
 3. **Cartão.** O que sobrou e é sensível espera você.
 
 Sem regra nenhuma: leitura e escrita reversível executam (a escrita fica registrada num evento `policy_checked`); o resto vira cartão.
 
 `approvals.levels` na configuração fixa o nível de uma ferramenta por cima do que ela declara (`{ "shell": "external_irreversible" }` faz todo comando perguntar, mesmo na máquina isolada).
+
+### Revisor automático por modelo: o contrato (a regra, antes de existir)
+
+Pesquisa: [aprovações, cofre e conectores](pesquisas/fase-3-aprovacoes-cofre-conectores.md) (o modo automático do Claude Code e o guardrail paralelo do Agents SDK). Quando um revisor que **usa um modelo** for implementado, atrás da mesma interface `AutoReviewer`, ele deve:
+
+1. **Nunca receber o RESULTADO de uma ferramenta**: só o pedido do usuário e a chamada proposta (`ReviewCall`, que não tem campo para resultado e não pode ganhar um). É nos resultados que a injeção chega; um revisor que os lê pode ser convencido a aprovar.
+2. Ser **síncrono e bloqueante**: o veredito é esperado **antes** de qualquer execução. Um revisor em paralelo com a ação (que pode disparar depois que a ferramenta já rodou) não é permitido.
+3. Tratar **erro, tempo esgotado ou veredito ausente/desconhecido como "perguntar ao usuário"**, nunca como permitir. O portão já faz isso hoje (`packages/core/src/approvals/gate.ts`).
+4. Só **apertar** o nível, nunca afrouxar.
+
+Há testes do contrato no portão (`reviewer-contract.test.ts`). Que o revisor `finish` (conferência da conclusão) lê resultados é outra coisa: é uma conferência de evidências, não uma decisão de permissão.
 
 ## O ciclo de um cartão
 
@@ -102,6 +115,6 @@ A migração 0013 **desativou** (nunca apagou nem ampliou) as regras guardadas c
 ## O que ainda não existe
 
 - No app de desktop, o cartão, o formulário seguro e as telas de regras, cofre e conectores **existem** (README do app, seção "Aprovações, cofre e conectores").
-- Revisão automática por modelo (só a interface).
+- Revisão automática por modelo (só a interface e o contrato acima).
 - Rascunho de mensagens para outras pessoas ("tudo que vai para outra pessoa vira rascunho"): os conectores (MCP) já existem ([CONECTORES.md](CONECTORES.md)) e cada ferramenta deles pergunta por padrão, mas o rascunho como etapa própria ainda não.
 - Mostrar todos os cartões de um turno de uma vez.

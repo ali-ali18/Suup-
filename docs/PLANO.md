@@ -175,6 +175,8 @@ Toda memória tem origem (qual conversa a criou), é visível ao usuário e pode
 
 ### 4.8 Aprovações e cofre
 
+> Pesquisas: [aprovações, cofre e conectores](pesquisas/fase-3-aprovacoes-cofre-conectores.md) (precedência deny > allow, regras só por ato do usuário, regra do revisor automático: nunca vê resultado de ferramenta, é síncrono e bloqueante, erro = perguntar) e [muitas ferramentas de conectores](pesquisas/fase-3-muitas-ferramentas-mcp.md).
+
 Cada ação passa por três filtros, em ordem:
 
 1. **Regras do usuário.** Podem liberar ("pode fazer push neste repositório") ou proibir.
@@ -217,6 +219,8 @@ Requisito de infraestrutura: o servidor na VPS precisa de domínio e HTTPS públ
 **Saída (o bot avisando outros sistemas).** Chamar um endereço externo é uma ação de nível "externa": passa pelo portão de aprovação como qualquer envio, e pode ser liberada por regra para um destino específico.
 
 ### 4.11 Conectores
+
+> Pesquisas: [aprovações, cofre e conectores](pesquisas/fase-3-aprovacoes-cofre-conectores.md) (fixação da definição das ferramentas, descrições não confiáveis) e [muitas ferramentas de conectores sem pesar o contexto](pesquisas/fase-3-muitas-ferramentas-mcp.md) (concessão por ferramenta, busca de ferramentas). Implementação: concessão por ferramenta, fixação da definição e busca de ferramentas em [CONECTORES.md](CONECTORES.md).
 
 - Protocolo MCP, que independe do provedor de modelo.
 - Autorização por conector, com escopo (por exemplo, somente leitura).

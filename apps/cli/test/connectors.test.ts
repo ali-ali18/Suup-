@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fakeServerCommand } from "@suup/connectors/testing";
 import { generateKeyText } from "@suup/runtime";
@@ -38,7 +38,12 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup connectors, end to end"), () =>
   };
 
   it("setup: migrate, a secret, a bot, a script", async () => {
-    await p.config({ approvals: {}, vault: { keyEnv: "CLI_TEST_VAULT_KEY" } });
+    // These tests script direct calls of the fake server's 17 tools: the tool search is off here (it has its own tests).
+    await p.config({
+      approvals: {},
+      vault: { keyEnv: "CLI_TEST_VAULT_KEY" },
+      toolSearch: { minTools: 1000, minDefinitionTokens: 1_000_000 },
+    });
     await p.suup(["db", "migrate"]);
     await ok(["vault", "set", "FAKE_API", "--description", "token do servidor de teste"], {
       ...withVault,
@@ -199,6 +204,9 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup connectors, end to end"), () =>
     await ok(["resume", runId]);
     expect(calls()).toEqual(['write_thing {"name":"nota","body":"oi"}']);
 
+    const summary = await ok(["show", runId]);
+    expect(summary.stdout).toContain("Definições de ferramentas por pedido:");
+    expect(summary.stdout).toContain("modo direct");
     const shown = await ok(["inspect", runId, "--json"]);
     expect(shown.stdout).toContain("[REDACTED:FAKE_API]");
     expect(shown.stdout).not.toContain(VALUE);
@@ -266,6 +274,106 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup connectors, end to end"), () =>
     ).toContain("não é mais");
   });
 
+  it("grant by tool (--tools, --read-only, --all), review of a changed definition, and doctor", async () => {
+    const tweak = join(p.dir, "cli-tweak.txt");
+    await ok([
+      "connectors",
+      "add",
+      "pins",
+      "--command",
+      server.command,
+      ...server.args.map((a) => `--arg=${a}`),
+      "--env",
+      `FAKE_TWEAK=${tweak}`,
+      "--env-secret",
+      "FAKE_TOKEN=FAKE_API",
+      "--read",
+      "echo",
+    ]);
+    // A grant needs a choice: exactly one of --tools, --all, --read-only.
+    const none = await p.suup(["connectors", "grant", "pins", "--bot", "conectado"], withVault);
+    expect(none.code).toBe(2);
+    expect(none.stderr).toContain("exatamente uma destas opções");
+    const two = await p.suup(
+      ["connectors", "grant", "pins", "--bot", "conectado", "--all", "--tools", "echo"],
+      withVault,
+    );
+    expect(two.code).toBe(2);
+
+    const some = await ok([
+      "connectors",
+      "grant",
+      "pins",
+      "--bot",
+      "conectado",
+      "--tools",
+      "echo,typed",
+    ]);
+    expect(some.stdout).toContain("só estas ferramentas do conector pins: echo, typed");
+    expect((await ok(["connectors", "list"])).stdout).toContain("conectado (2 ferramenta(s))");
+    const bad = await p.suup(
+      ["connectors", "grant", "pins", "--bot", "conectado", "--tools", "echo,nao_existe"],
+      withVault,
+    );
+    expect(bad.code).not.toBe(0);
+    expect(bad.stderr + bad.stdout).toContain("nao_existe");
+
+    // --read-only fixes the list of the tools marked as reads right now.
+    const reads = await ok(["connectors", "grant", "pins", "--bot", "conectado", "--read-only"]);
+    expect(reads.stdout).toContain("só estas ferramentas do conector pins:");
+    expect(reads.stdout).toContain("echo");
+    expect(reads.stdout).not.toContain("write_thing");
+
+    await ok(["connectors", "grant", "pins", "--bot", "conectado", "--all"]);
+    expect((await ok(["connectors", "list"])).stdout).toContain("conectado (todas)");
+
+    // The doctor says what the bot carries per request.
+    const before = await p.suup(["doctor"], withVault);
+    expect(before.stdout).toContain("Ferramentas do bot conectado");
+    expect(before.stdout).toMatch(/embutidas e de controle, \d+ de conectores concedidas/);
+
+    // The server changes a definition: it is off until reviewed, doctor warns, review shows both.
+    expect((await ok(["connectors", "review", "pins"])).stdout).toContain("Nenhuma ferramenta");
+    writeFileSync(tweak, "NOVA DESCRIÇÃO do servidor.");
+    await ok(["connectors", "test", "pins"]);
+    const shown = await ok(["connectors", "review", "pins"]);
+    expect(shown.stdout).toContain("echo: a definição MUDOU depois de aprovada");
+    expect(shown.stdout).toContain("Returns the text it was given.");
+    expect(shown.stdout).toContain("NOVA DESCRIÇÃO do servidor.");
+    expect((await ok(["connectors", "tools", "pins"])).stdout).toContain(
+      "MUDOU: desligada até revisar",
+    );
+    const warned = await p.suup(["doctor"], withVault);
+    expect(warned.stdout).toContain("esperando revisão e desligadas para todos os bots");
+    expect(warned.code).toBe(1);
+
+    // Approving needs the fingerprint that was shown.
+    const blind = await p.suup(["connectors", "review", "pins", "--approve", "echo"], withVault);
+    expect(blind.code).toBe(2);
+    const fingerprint = /--fingerprint ([0-9a-f]{12})/.exec(shown.stdout)?.[1] ?? "";
+    expect(fingerprint).toHaveLength(12);
+    const wrong = await p.suup(
+      ["connectors", "review", "pins", "--approve", "echo", "--fingerprint", "deadbeefdead"],
+      withVault,
+    );
+    expect(wrong.code).toBe(2);
+    expect(
+      (
+        await ok([
+          "connectors",
+          "review",
+          "pins",
+          "--approve",
+          "echo",
+          "--fingerprint",
+          fingerprint,
+        ])
+      ).stdout,
+    ).toContain("Definição aprovada");
+    expect((await ok(["connectors", "review", "pins"])).stdout).toContain("Nenhuma ferramenta");
+    await ok(["connectors", "rm", "pins"]);
+  });
+
   it("set-risk, disable, enable, revoke, grant and rm", async () => {
     const risks = async () =>
       new Map(
@@ -299,9 +407,9 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup connectors, end to end"), () =>
     expect((await ok(["connectors", "revoke", "fake", "--bot", "conectado"])).stdout).toContain(
       "não vê mais",
     );
-    expect((await ok(["connectors", "grant", "fake", "--bot", "conectado"])).stdout).toContain(
-      "pode usar",
-    );
+    expect(
+      (await ok(["connectors", "grant", "fake", "--bot", "conectado", "--all"])).stdout,
+    ).toContain("pode usar");
     const noBot = await p.suup(["connectors", "grant", "fake"], withVault);
     expect(noBot.code).toBe(2);
 

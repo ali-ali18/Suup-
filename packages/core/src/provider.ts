@@ -12,8 +12,26 @@ export const toolSpecSchema = z.object({
   name: z.string(),
   description: z.string(),
   inputSchema: jsonObjectSchema,
+  /**
+   * The definition is sent to the provider but kept OUT of the model's context until the model
+   * discovers it with the provider's tool search (see `ProviderCapabilities.toolSearch`). Adapters
+   * without that feature never receive a spec with this flag: the loop only sets it for a provider
+   * and model that declared support.
+   */
+  deferLoading: z.exactOptional(z.literal(true)),
 });
 export type ToolSpec = z.infer<typeof toolSpecSchema>;
+
+/**
+ * The kinds of native tool search a provider adapter may implement:
+ * `bm25` and `regex` are searches run BY the provider on the deferred specs (the model writes the
+ * query; `regex` is a pattern written by the model, never one of ours), `client` is a search run by
+ * the harness whose answer names the tools to load (`tool_reference`).
+ */
+export const NATIVE_TOOL_SEARCH_VARIANTS = ["bm25", "regex", "client"] as const;
+export type NativeToolSearch = (typeof NATIVE_TOOL_SEARCH_VARIANTS)[number];
+/** The variants the provider itself runs. */
+export type HostedToolSearch = Exclude<NativeToolSearch, "client">;
 
 /**
  * Whether the model may, must, or must not skip calling tools:
@@ -32,6 +50,11 @@ export interface GenerateRequest {
   system: string;
   messages: Message[];
   tools: ToolSpec[];
+  /**
+   * Ask the provider to run its own tool search over the specs marked `deferLoading`. Only sent
+   * when the adapter declared the variant in `capabilities.toolSearch`. Absent: no hosted search.
+   */
+  hostedToolSearch?: HostedToolSearch;
   /** Default `auto`. Ignored when `tools` is empty. */
   toolChoice?: ToolChoice;
   maxOutputTokens: number;
@@ -95,6 +118,12 @@ export interface ProviderCapabilities {
   promptCache: boolean;
   parallelTools: boolean;
   vision: boolean;
+  /**
+   * The native tool search variants this adapter implements (deferred loading). A model uses one
+   * only when the configuration declares it for that model: support is never guessed from the id.
+   * Absent: none (the loop falls back to its own index and two tools).
+   */
+  toolSearch?: readonly NativeToolSearch[];
 }
 
 export interface Provider {

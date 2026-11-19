@@ -4,15 +4,23 @@ import { isAbsolute, join, resolve } from "node:path";
 import {
   allowAllGate,
   type BotConfig,
+  CONTROL_TOOL_NAMES,
+  controlToolSpecs,
   createToolGate,
+  DEFAULT_TOOL_SEARCH,
   type Executor,
   type LoopDeps,
+  type NativeToolSearch,
   type Provider,
   ProviderError,
+  planToolSearch,
   type Redactor,
   type ReviewerConfig,
   type RunEnd,
   ToolRegistry,
+  type ToolSearchMode,
+  type ToolSearchSetup,
+  toolDefinitionStats,
   Worker,
 } from "@suup/core";
 import {
@@ -38,7 +46,11 @@ import {
   type RuntimeConfig,
   resolveDatabaseUrl,
 } from "./config.js";
-import { type ConnectorService, createConnectorService } from "./connectors/service.js";
+import {
+  type BotConnectorCandidate,
+  type ConnectorService,
+  createConnectorService,
+} from "./connectors/service.js";
 import { ConfigError, RuntimeError } from "./errors.js";
 import { createMemoryService } from "./memory-service.js";
 import { DEFAULT_HISTORY_CHARS, loadRunContext } from "./run-context.js";
@@ -109,6 +121,12 @@ export interface Runtime {
    */
   readonly connectors: ConnectorService;
   /**
+   * What one bot's requests carry as tool definitions: its built-in and control tools, its
+   * connector tools (granted and approved), how they are offered (loaded, or searched) and the
+   * estimated tokens of the definitions per request. Connects to the connectors, like a run does.
+   */
+  toolReport(botId: string): Promise<BotToolReport>;
+  /**
    * `value` with every known secret value scrubbed out (a copy). It reloads the vault's values
    * when they are older than a few seconds, so a secret saved by another process is covered too.
    * A system without a usable vault returns `value` as it is.
@@ -153,6 +171,27 @@ const SAFE_BOT_ID = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
  * Nothing here reaches the network or Docker at creation: providers, the machine and the
  * database connection are made at the first use.
  */
+/** See `Runtime.toolReport`. */
+export interface BotToolReport {
+  botId: string;
+  /** Built-in tools the bot may use, plus the control tools (plan, finish, escalate...). */
+  builtinTools: number;
+  /** Connector tools granted to the bot and approved (the ones it can use). */
+  connectorTools: number;
+  /** Granted tools that are off until a person reviews their definition. */
+  withheld: number;
+  mode: ToolSearchMode;
+  /** Connector tools whose definitions are in every request. */
+  loadedDirectly: number;
+  /** Connector tools kept out of the context and found by search. */
+  deferred: number;
+  /** Definitions in each request (all the tools sent). */
+  definitionsPerRequest: number;
+  /** Estimated tokens of all the definitions sent, and of the ones that enter the context. */
+  estimatedTokens: number;
+  loadedTokens: number;
+}
+
 export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {}): Runtime {
   const env = options.env ?? process.env;
   const baseDir = resolve(options.baseDir ?? process.cwd());
@@ -402,6 +441,25 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     return dockerExecutor(dockerWorkspace(botId));
   };
 
+  /** How the connector tools of a bot reach its model (see `docs/CONFIGURACAO.md`, `toolSearch`). */
+  const toolSearchSetup = (
+    candidates: BotConnectorCandidate[],
+    modelId: string,
+  ): ToolSearchSetup => {
+    const declared = modelEntries.get(modelId)?.nativeToolSearch;
+    const native: NativeToolSearch | undefined =
+      declared === undefined || declared === false
+        ? undefined
+        : declared === true
+          ? "bm25"
+          : declared;
+    return {
+      settings: { ...DEFAULT_TOOL_SEARCH, ...(config.toolSearch ?? {}) },
+      candidates,
+      native,
+    };
+  };
+
   const buildDeps = async (
     runId: string,
     workerId: string,
@@ -432,6 +490,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     // granted (connected now, lazily). An evaluation (isolated) has no connectors.
     let runTools = tools;
     let botCfg = cfg;
+    let toolSearch: ToolSearchSetup | undefined;
     if (guarded) {
       const offered = await connectors.toolsForBot(bot.id);
       if (offered.tools.length > 0) {
@@ -446,6 +505,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
           }
         }
         botCfg = { ...cfg, allowedTools: [...cfg.allowedTools, ...names] };
+        toolSearch = toolSearchSetup(offered.candidates, bot.modelId);
       }
     }
     return {
@@ -458,6 +518,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
       // Uma execução isolada (uma avaliação) roda sem ninguém para responder e numa máquina
       // descartável: nenhum cartão poderia ser respondido, então ela sai da política pelo nome. Toda
       // outra execução passa pelo portão.
+      ...(toolSearch === undefined ? {} : { toolSearch }),
       gate: guarded ? gateFor(runTools) : allowAllGate(),
       ...(vaultOn ? { secrets: vault.accessFor(bot.id) } : {}),
       // Uma execução isolada não carrega memória: nada do que o usuário contou chega a ela.
@@ -502,6 +563,56 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     tools,
     vault,
     connectors,
+    async toolReport(botId) {
+      const bot = await getBot(runtime.db, botId);
+      if (bot === null) throw new RuntimeError("bot_not_found", `Bot ${botId} não encontrado.`);
+      const cfg = botConfig(bot);
+      const offered = await connectors.toolsForBot(bot.id);
+      const reg = registerBuiltinTools(new ToolRegistry(registryOptions));
+      const connectorNames = new Set<string>();
+      for (const tool of offered.tools) {
+        try {
+          reg.register(tool);
+          connectorNames.add(tool.name);
+        } catch {
+          // a name the registry refuses
+        }
+      }
+      const control = new Set<string>(CONTROL_TOOL_NAMES);
+      const specs = reg.specs([...cfg.allowedTools, ...connectorNames]);
+      const builtin = specs.filter((s) => !connectorNames.has(s.name) && !control.has(s.name));
+      const connectorSpecs = new Map(
+        specs.filter((s) => connectorNames.has(s.name)).map((s) => [s.name, s]),
+      );
+      const catalog = planToolSearch(
+        toolSearchSetup(offered.candidates, bot.modelId),
+        connectorSpecs,
+        getProvider(bot.modelProvider).capabilities,
+      );
+      const sent = [
+        ...controlToolSpecs({ secrets: vault.settings !== undefined, toolSearch: catalog.mode }),
+        ...builtin,
+        ...(catalog.mode === "direct"
+          ? [...connectorSpecs.values()]
+          : catalog.mode === "meta"
+            ? []
+            : catalog.deferred.map((d) => d.spec)),
+      ];
+      const stats = toolDefinitionStats(sent);
+      return {
+        botId,
+        builtinTools:
+          builtin.length + controlToolSpecs({ secrets: vault.settings !== undefined }).length,
+        connectorTools: connectorSpecs.size,
+        withheld: offered.withheld.length,
+        mode: catalog.mode,
+        loadedDirectly: catalog.mode === "direct" ? connectorSpecs.size : 0,
+        deferred: catalog.deferred.length,
+        definitionsPerRequest: stats.definitions,
+        estimatedTokens: stats.estimatedTokens,
+        loadedTokens: stats.loadedTokens,
+      };
+    },
     redactor: vault.redactor,
     async redactJson(value) {
       await vault.refresh(REDACTION_MAX_AGE_MS);

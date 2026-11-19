@@ -486,6 +486,9 @@ export async function startWorld(
     // tests call. Phase 3 also has the vault, and connectors need nothing here.
     approvals: { levels: { shell: "write_reversible", write_file: "external_irreversible" } },
     ...(vault ? { vault: { keyEnv: VAULT_KEY_ENV } } : {}),
+    // The scripts call the fake connector server's tools directly (it has 17): the tool search,
+    // which would defer them, has its own tests (docs/CONECTORES.md).
+    toolSearch: { minTools: 1000, minDefinitionTokens: 10_000_000 },
     worker: { concurrency: 4, leaseRenewMs: 1000, staleAfterMs: 8000, controlPollMs: 100 },
     defaults: { maxTurns: 30 },
   });

@@ -29,11 +29,25 @@ export interface StoredConnector {
   timeoutMs: number | null;
   enabled: boolean;
   origin: ConnectorOrigin;
-  /** The bots that may use it. */
+  /** The bots that may use it (the bots that have a grant). */
   grantedBotIds: string[];
+  /** What each of those bots may use: every tool, or the listed ones (names ON THE SERVER). */
+  grants: ConnectorGrant[];
   createdAt: Date;
   updatedAt: Date;
 }
+
+/** What one bot may use of a connector. */
+export interface ConnectorGrant {
+  botId: string;
+  /** Every tool the connector offers (and that is approved). When false, only `tools`. */
+  all: boolean;
+  /** The tools granted, by the name on the server (empty when `all`). */
+  tools: string[];
+}
+
+/** A grant as a caller writes it: every tool, or an explicit list of tool names on the server. */
+export type ToolGrantSpec = "all" | readonly string[];
 
 /** What the user said about one tool: its risk and/or that it sends a message to another person. */
 export interface StoredToolOverride {
@@ -67,6 +81,7 @@ interface Row {
   enabled: boolean;
   origin: ConnectorOrigin;
   granted: string[] | null;
+  grants: { botId: string; all: boolean; tools: string[] }[] | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -97,6 +112,11 @@ function map(row: Row): StoredConnector {
     enabled: row.enabled,
     origin: row.origin,
     grantedBotIds: row.granted ?? [],
+    grants: (row.grants ?? []).map((g) => ({
+      botId: g.botId,
+      all: g.all,
+      tools: g.all ? [] : [...g.tools],
+    })),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -105,7 +125,10 @@ function map(row: Row): StoredConnector {
 const SELECT = (db: Db) => db.sql`
   select c.*,
          (select coalesce(array_agg(g.bot_id::text order by g.granted_at), '{}')
-            from connector_grants g where g.connector_id = c.id) as granted
+            from connector_grants g where g.connector_id = c.id) as granted,
+         (select coalesce(json_agg(json_build_object('botId', g.bot_id::text, 'all', g.all_tools, 'tools', g.tools)
+                                   order by g.granted_at), '[]'::json)
+            from connector_grants g where g.connector_id = c.id) as grants
   from connectors c`;
 
 export class ConnectorNameTakenError extends Error {
@@ -192,12 +215,23 @@ export async function deleteConnector(db: Db, name: string): Promise<boolean> {
   return rows.length > 0;
 }
 
-/** Lets the bot use the connector. Idempotent. Throws `ConnectorNotFoundError`. */
-export async function grantConnector(db: Db, name: string, botId: string): Promise<void> {
+/**
+ * Lets the bot use the connector: every tool (`"all"`) or exactly the listed ones (names on the
+ * server). Granting again REPLACES what the bot was granted. Throws `ConnectorNotFoundError`.
+ */
+export async function grantConnector(
+  db: Db,
+  name: string,
+  botId: string,
+  grant: ToolGrantSpec = "all",
+): Promise<void> {
+  const all = grant === "all";
+  const tools = all ? [] : [...new Set(grant)].sort();
   const rows = await db.sql`
-    insert into connector_grants (connector_id, bot_id)
-    select id, ${z.uuid().parse(botId)} from connectors where name = ${name}
-    on conflict do nothing returning connector_id`;
+    insert into connector_grants (connector_id, bot_id, all_tools, tools)
+    select id, ${z.uuid().parse(botId)}, ${all}, ${tools}::text[] from connectors where name = ${name}
+    on conflict (connector_id, bot_id) do update set all_tools = excluded.all_tools, tools = excluded.tools
+    returning connector_id`;
   if (rows.length === 0 && (await getConnector(db, name)) === null) {
     throw new ConnectorNotFoundError(name);
   }

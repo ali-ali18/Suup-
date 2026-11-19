@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fakeServerCommand } from "@suup/connectors/testing";
 import { generateKeyText } from "@suup/runtime";
@@ -56,7 +56,12 @@ describe.skipIf(!DATABASE_URL)(
   () => {
     const w = useWorld({
       scripts: SCRIPTS,
-      config: { approvals: {}, vault: { keyEnv: "SERVER_TEST_VAULT_KEY" } },
+      config: {
+        approvals: {},
+        vault: { keyEnv: "SERVER_TEST_VAULT_KEY" },
+        // Scripted direct calls of the fake server's tools: the tool search has its own tests.
+        toolSearch: { minTools: 1000, minDefinitionTokens: 1_000_000 },
+      },
       env: { SERVER_TEST_VAULT_KEY: generateKeyText() },
     });
     const code = (promise: Promise<unknown>) =>
@@ -92,7 +97,7 @@ describe.skipIf(!DATABASE_URL)(
         description: "o servidor de teste",
         transport,
         tools: { needs_secret: { risk: "read" } },
-        grantBotIds: [bot.id],
+        grants: [{ botId: bot.id, tools: "all" }],
       });
       expect(created).toMatchObject({
         name: "fake",
@@ -164,11 +169,15 @@ describe.skipIf(!DATABASE_URL)(
 
       // Grants.
       const other = await api.bots.create({ name: "Outro", modelId: "model-x", allowedTools: [] });
-      expect((await api.connectors.grant("fake", other.id)).grantedBotIds).toContain(other.id);
+      expect(
+        (await api.connectors.grant("fake", other.id, { tools: "all" })).grantedBotIds,
+      ).toContain(other.id);
       expect((await api.connectors.revoke("fake", other.id)).grantedBotIds).toEqual([bot.id]);
-      expect(await code(api.connectors.grant("fake", "00000000-0000-4000-8000-000000000000"))).toBe(
-        "not_found",
-      );
+      expect(
+        await code(
+          api.connectors.grant("fake", "00000000-0000-4000-8000-000000000000", { tools: "all" }),
+        ),
+      ).toBe("not_found");
 
       // Nothing the API returns holds the credential: a connector only names its secrets.
       expect(JSON.stringify(await api.connectors.list())).not.toContain(VALUE);
@@ -224,8 +233,8 @@ describe.skipIf(!DATABASE_URL)(
         modelId: "model-x",
         allowedTools: [],
       });
-      await api.connectors.grant("fake", bot.id);
-      await api.connectors.grant("fake", other.id);
+      await api.connectors.grant("fake", bot.id, { tools: "all" });
+      await api.connectors.grant("fake", other.id, { tools: "all" });
       const conversation = await api.bots.openConversation(bot.id);
       const otherChat = await api.bots.openConversation(other.id);
       const pending = async (runId: string, seen: number) =>
@@ -342,6 +351,60 @@ describe.skipIf(!DATABASE_URL)(
     it("needs the token like every other route", async () => {
       const response = await fetch(`${w.started.url}/v1/connectors`);
       expect(response.status).toBe(401);
+    });
+
+    it("per-tool grants and the review of a changed definition, over the API", async () => {
+      const { api } = w.started;
+      const { command, args } = fakeServerCommand();
+      const tweak = join(w.dir, "tweak-api.txt");
+      await api.vault.set("FAKE_API", { value: VALUE }).catch(() => undefined);
+      const bot = await api.bots.create({ name: "Seletivo", modelId: "model-x", allowedTools: [] });
+      await api.connectors.create({
+        name: "pins",
+        transport: {
+          kind: "stdio",
+          command,
+          args,
+          env: { FAKE_TOKEN: { secret: "FAKE_API" }, FAKE_TWEAK: tweak },
+        },
+      });
+      await api.connectors.test("pins");
+
+      // A grant needs an explicit choice: a body with `tools`. Unknown tools are refused.
+      expect(await code(api.connectors.grant("pins", bot.id, {} as never))).toBe("invalid_request");
+      expect(await code(api.connectors.grant("pins", bot.id, { tools: ["nope"] }))).toBe(
+        "invalid_request",
+      );
+      const granted = await api.connectors.grant("pins", bot.id, { tools: ["echo"] });
+      expect(granted.grants).toEqual([{ botId: bot.id, all: false, tools: ["echo"] }]);
+      expect(granted.tools?.find((t) => t.tool === "echo")).toMatchObject({
+        pin: "approved",
+        fingerprint: expect.stringMatching(/^[0-9a-f]{64}$/),
+      });
+      const all = await api.connectors.grant("pins", bot.id, { tools: "all" });
+      expect(all.grants).toEqual([{ botId: bot.id, all: true, tools: [] }]);
+
+      // The server changes a definition: it shows up for review, nothing is approved by itself.
+      expect(await api.connectors.review("pins")).toEqual([]);
+      writeFileSync(tweak, "Now also does something else.");
+      const after = await api.connectors.test("pins");
+      expect(after.tools.find((t) => t.tool === "echo")?.pin).toBe("changed");
+      const [item] = await api.connectors.review("pins");
+      expect(item).toMatchObject({ tool: "echo", status: "changed" });
+      expect(item?.current.description).toContain("Now also does something else.");
+      expect(item?.approved?.description).toBe("Returns the text it was given.");
+      expect((await api.connectors.get("pins")).pendingReviews).toBe(1);
+      expect(
+        await code(api.connectors.approveTool("pins", "echo", { fingerprint: "f".repeat(64) })),
+      ).toBe("conflict");
+      const approved = await api.connectors.approveTool("pins", "echo", {
+        fingerprint: item?.currentFingerprint as string,
+      });
+      expect(approved.pendingReviews).toBe(0);
+      const events = await api.connectors.events("pins");
+      expect(events.map((e) => e.kind)).toEqual(
+        expect.arrayContaining(["baseline", "changed", "approved"]),
+      );
     });
   },
 );

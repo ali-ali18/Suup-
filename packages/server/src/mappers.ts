@@ -5,6 +5,8 @@ import type {
   Bot,
   Connector,
   ConnectorTest,
+  ConnectorToolEvent,
+  ConnectorToolReview,
   Conversation,
   Memory,
   Message,
@@ -13,7 +15,11 @@ import type {
   Secret,
 } from "@suup/api";
 import { recipientMatchers } from "@suup/core";
-import type { ConnectorTestResult, ConnectorView } from "@suup/runtime";
+import type {
+  ConnectorTestResult,
+  ConnectorView,
+  ConnectorToolReview as ReviewView,
+} from "@suup/runtime";
 import {
   type Approval as ApprovalRow,
   type BotSummary,
@@ -248,6 +254,8 @@ export function toConnectorDto(view: ConnectorView): Connector {
     enabled: view.enabled,
     origin: view.origin,
     grantedBotIds: view.grantedBotIds,
+    grants: view.grants,
+    pendingReviews: view.pendingReviews,
     secretNames: view.secretNames,
     connection: view.connection,
     discovery: {
@@ -274,6 +282,8 @@ function toConnectorToolDto(
     available: tool.available,
     ...(tool.reason === undefined ? {} : { reason: tool.reason }),
     hints: tool.hints === undefined ? null : tool.hints,
+    pin: tool.pin,
+    fingerprint: tool.fingerprint,
   };
 }
 
@@ -285,5 +295,37 @@ export function toConnectorTestDto(result: ConnectorTestResult): ConnectorTest {
     durationMs: result.durationMs,
     error: result.error,
     tools: result.tools.map(toConnectorToolDto),
+  };
+}
+
+export function toConnectorReviewDto(review: ReviewView): ConnectorToolReview {
+  return {
+    tool: review.tool,
+    status: review.status,
+    approvedFingerprint: review.approvedFingerprint,
+    approved: review.approved,
+    currentFingerprint: review.currentFingerprint,
+    current: review.current,
+    seenAt: iso(review.seenAt),
+  };
+}
+
+export function toConnectorEventDto(event: {
+  id: string;
+  tool: string | null;
+  kind: ConnectorToolEvent["kind"];
+  fromFingerprint: string | null;
+  toFingerprint: string | null;
+  detail: string | null;
+  createdAt: Date;
+}): ConnectorToolEvent {
+  return {
+    id: event.id,
+    tool: event.tool,
+    kind: event.kind,
+    fromFingerprint: event.fromFingerprint,
+    toFingerprint: event.toFingerprint,
+    detail: event.detail,
+    createdAt: iso(event.createdAt),
   };
 }

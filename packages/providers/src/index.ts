@@ -5,7 +5,11 @@ import {
   type OpenAICompatibleProviderConfig,
 } from "./openai-compatible.js";
 
-export { type AnthropicProviderConfig, createAnthropicProvider } from "./anthropic.js";
+export {
+  type AnthropicProviderConfig,
+  createAnthropicProvider,
+  HOSTED_TOOL_SEARCH,
+} from "./anthropic.js";
 export {
   createOpenAICompatibleProvider,
   type OpenAICompatibleProviderConfig,

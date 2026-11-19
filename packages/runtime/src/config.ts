@@ -88,6 +88,14 @@ const modelSchema = z.strictObject({
   maxOutputTokens: positiveInt,
   pricing: z.exactOptional(pricingSchema),
   supportsForcedToolChoice: z.exactOptional(z.boolean()),
+  /**
+   * The native tool search this model supports, declared here and never guessed from the id:
+   * `true` or `"bm25"` (the provider ranks by words), `"regex"` (the provider matches a pattern
+   * the MODEL writes at run time), `"client"` (the harness searches and names the tools to load).
+   * Absent or `false`: the harness uses its own index and the `search_tools`/`use_tool` pair.
+   * Only a provider whose adapter implements the variant honours it.
+   */
+  nativeToolSearch: z.exactOptional(z.union([z.boolean(), z.enum(["bm25", "regex", "client"])])),
 });
 
 const sandboxSchema = z.discriminatedUnion(
@@ -178,6 +186,15 @@ const approvalsSchema = z.strictObject({
   levels: z.exactOptional(z.record(z.string().min(1), riskLevelEnum)),
 });
 
+const toolSearchSchema = z.strictObject({
+  /** Defer the connector tools of a bot when it has at least this many (default 10)... */
+  minTools: z.exactOptional(positiveInt),
+  /** ...or when their definitions are estimated at this many tokens or more (default 10000). */
+  minDefinitionTokens: z.exactOptional(positiveInt),
+  /** An index longer than this many characters is shown as one line per connector (default 6000). */
+  maxIndexChars: z.exactOptional(positiveInt),
+});
+
 export const configSchema = z
   .strictObject({
     databaseUrl: z.exactOptional(z.string().min(1)),
@@ -197,6 +214,8 @@ export const configSchema = z
     untrustedOutputTools: z.exactOptional(z.array(z.string().min(1)).max(50)),
     vault: z.exactOptional(vaultSchema),
     approvals: z.exactOptional(approvalsSchema),
+    /** When the connector tools of a bot are searched instead of all loaded (docs/CONFIGURACAO.md). */
+    toolSearch: z.exactOptional(toolSearchSchema),
   })
   .superRefine((config, ctx) => {
     const providerIds = new Set<string>();

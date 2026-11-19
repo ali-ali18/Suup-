@@ -1,5 +1,6 @@
+import type { PinnedDefinition } from "@suup/connectors";
 import { listBots } from "@suup/db";
-import type { ConnectorToolInfo, ConnectorView } from "@suup/runtime";
+import type { ConnectorToolState, ConnectorView } from "@suup/runtime";
 import { flag, list, str } from "../args.js";
 import type { CommandSpec, Ctx } from "../context.js";
 import { CommandError, EXIT_FAILED, EXIT_OK, UsageError } from "../errors.js";
@@ -26,6 +27,13 @@ function view(c: ConnectorView) {
   return { ...c, createdAt: c.createdAt.toISOString(), updatedAt: c.updatedAt.toISOString() };
 }
 
+const PIN_PT: Record<string, string> = {
+  approved: "aprovada",
+  changed: "MUDOU: desligada até revisar",
+  new: "NOVA: desligada até revisar",
+  unseen: "ainda não vista",
+};
+
 /** `NOME=valor` -> [NOME, valor]; the value may hold `=`. */
 function pair(text: string, option: string, command: string): [string, string] {
   const at = text.indexOf("=");
@@ -48,14 +56,22 @@ function secretName(name: string, option: string, command: string): string {
   return name;
 }
 
-function tableOfTools(tools: readonly ConnectorToolInfo[]): string[] {
+function tableOfTools(tools: readonly ConnectorToolState[]): string[] {
   return renderTable(
-    ["FERRAMENTA (nome para o bot)", "RISCO", "ORIGEM DO RISCO", "MENSAGEM", "OFERECIDA"],
+    [
+      "FERRAMENTA (nome para o bot)",
+      "RISCO",
+      "ORIGEM DO RISCO",
+      "MENSAGEM",
+      "DEFINIÇÃO",
+      "OFERECIDA",
+    ],
     tools.map((t) => [
       t.name,
       LEVEL_PT[t.risk] ?? t.risk,
       BASIS_PT[t.riskBasis] ?? t.riskBasis,
       t.outbound === undefined ? "" : `a outra pessoa (${t.outbound.recipientFields.join(", ")})`,
+      PIN_PT[t.pin] ?? t.pin,
       t.available ? "sim" : `não: ${oneLine(t.reason ?? "", 70)}`,
     ]),
   );
@@ -100,13 +116,23 @@ export const connectorsList: CommandSpec = {
           c.transport.kind === "stdio" ? "processo local" : "HTTP",
           c.scope === "read_only" ? "só leitura" : "leitura e escrita",
           c.enabled ? "ligado" : "desligado",
-          c.grantedBotIds.length === 0
+          c.grants.length === 0
             ? "(nenhum)"
-            : c.grantedBotIds.map((id) => bots.get(id) ?? id.slice(0, 8)).join(", "),
+            : c.grants
+                .map(
+                  (g) =>
+                    `${bots.get(g.botId) ?? g.botId.slice(0, 8)} (${g.all ? "todas" : `${g.tools.length} ferramenta(s)`})`,
+                )
+                .join(", "),
           c.tools === null
             ? "(ainda não listadas)"
             : `${c.tools.filter((t) => t.available).length} de ${c.tools.length}`,
-          oneLine(c.discovery.lastError ?? "", 60),
+          oneLine(
+            c.pendingReviews > 0
+              ? `${c.pendingReviews} ferramenta(s) esperando revisão (suup connectors review ${c.name})`
+              : (c.discovery.lastError ?? ""),
+            80,
+          ),
         ]),
       ),
     );
@@ -273,7 +299,8 @@ export const connectorsAdd: CommandSpec = {
       timeoutMs: timeout === undefined ? undefined : Number(timeout),
       enabled: flag(ctx.args, "disabled") ? false : undefined,
     });
-    for (const bot of bots) await runtime.connectors.grant(name, bot.id);
+    // `--bot` on `add` is the user granting the whole connector (every tool it offers, once approved).
+    for (const bot of bots) await runtime.connectors.grant(name, bot.id, "all");
     if (ctx.json) {
       ctx.out.data(view((await runtime.connectors.get(name)) ?? created));
       return EXIT_OK;
@@ -286,7 +313,9 @@ export const connectorsAdd: CommandSpec = {
     }
     ctx.out.line(`Confira se conecta e quais ferramentas oferece: suup connectors test ${name}`);
     if (bots.length === 0)
-      ctx.out.line(`Nenhum bot pode usá-lo ainda: suup connectors grant ${name} --bot <bot>`);
+      ctx.out.line(
+        `Nenhum bot pode usá-lo ainda: suup connectors grant ${name} --bot <bot> --tools a,b | --all | --read-only`,
+      );
     return EXIT_OK;
   },
 };
@@ -338,6 +367,41 @@ export const connectorsDisable: CommandSpec = {
   run: (ctx) => toggle(ctx, false),
 };
 
+async function selection(
+  ctx: Ctx,
+  name: string,
+  command: string,
+): Promise<"all" | readonly string[]> {
+  const tools = str(ctx.args, "tools");
+  const all = flag(ctx.args, "all");
+  const readOnly = flag(ctx.args, "read-only");
+  const chosen = [tools !== undefined, all, readOnly].filter(Boolean).length;
+  if (chosen !== 1) {
+    throw new UsageError(
+      "Diga quais ferramentas o bot pode usar, com exatamente uma destas opções: --tools a,b (nomes no servidor), --all (todas) ou --read-only (só as marcadas como leitura).",
+      command,
+    );
+  }
+  if (all) return "all";
+  if (tools !== undefined) {
+    const names = tools
+      .split(",")
+      .map((t) => t.trim())
+      .filter((t) => t !== "");
+    if (names.length === 0) throw new UsageError("--tools está vazio.", command);
+    return names;
+  }
+  let current = await must(ctx, name);
+  if (current.tools === null) {
+    const result = await ctx.runtime().connectors.test(name);
+    if (!result.ok) throw new CommandError(result.error ?? "falhou");
+    current = await must(ctx, name);
+  }
+  return (current.tools ?? [])
+    .filter((t) => t.available && t.risk === "read")
+    .map((t) => t.serverName);
+}
+
 async function grantOrRevoke(ctx: Ctx, grant: boolean): Promise<number> {
   const command = grant ? "connectors grant" : "connectors revoke";
   const [name] = ctx.args.positionals as [string];
@@ -346,24 +410,47 @@ async function grantOrRevoke(ctx: Ctx, grant: boolean): Promise<number> {
   const runtime = ctx.runtime();
   const bot = await findBot(runtime.db, botRef);
   await must(ctx, name);
-  const updated = grant
-    ? await runtime.connectors.grant(name, bot.id)
-    : await runtime.connectors.revoke(name, bot.id);
+  const chosen = grant ? await selection(ctx, name, command) : undefined;
+  const updated =
+    chosen === undefined
+      ? await runtime.connectors.revoke(name, bot.id)
+      : await runtime.connectors.grant(name, bot.id, chosen);
   if (ctx.json) ctx.out.data(view(updated));
-  else {
+  else if (chosen === undefined) {
+    ctx.out.line(`${bot.name} não vê mais as ferramentas do conector ${name}.`);
+  } else {
     ctx.out.line(
-      grant
-        ? `${bot.name} pode usar as ferramentas do conector ${name} (cada uma pergunta antes, a menos que você a tenha marcado como leitura ou criado uma regra).`
-        : `${bot.name} não vê mais as ferramentas do conector ${name}.`,
+      chosen === "all"
+        ? `${bot.name} pode usar todas as ferramentas do conector ${name} (as aprovadas, inclusive as que ele passar a oferecer).`
+        : chosen.length === 0
+          ? `${bot.name} tem acesso ao conector ${name}, mas a nenhuma ferramenta dele.`
+          : `${bot.name} pode usar só estas ferramentas do conector ${name}: ${chosen.join(", ")}.`,
+    );
+    ctx.out.line(
+      "Cada uma pergunta antes, a menos que você a tenha marcado como leitura ou criado uma regra. Uma ferramenta que não foi concedida não existe para o bot.",
     );
   }
   return EXIT_OK;
 }
 
+const GRANT_OPTIONS = {
+  bot: { type: "string", value: "bot", help: "O bot (id, início do id ou nome)" },
+  tools: {
+    type: "string",
+    value: "a,b",
+    help: "As ferramentas que o bot pode usar (nomes NO SERVIDOR, separados por vírgula)",
+  },
+  all: { type: "boolean", help: "Todas as ferramentas do conector (as aprovadas)" },
+  "read-only": {
+    type: "boolean",
+    help: "Só as ferramentas marcadas como leitura agora (a lista é fixada neste momento)",
+  },
+} as const;
+
 export const connectorsGrant: CommandSpec = {
   name: "connectors grant",
-  summary: "Deixa um bot usar as ferramentas de um conector",
-  options: { bot: { type: "string", value: "bot", help: "O bot (id, início do id ou nome)" } },
+  summary: "Deixa um bot usar ferramentas de um conector (--tools a,b | --all | --read-only)",
+  options: { ...GRANT_OPTIONS },
   positionals: { names: ["nome"] },
   run: (ctx) => grantOrRevoke(ctx, true),
 };
@@ -371,9 +458,98 @@ export const connectorsGrant: CommandSpec = {
 export const connectorsRevoke: CommandSpec = {
   name: "connectors revoke",
   summary: "Tira de um bot o acesso a um conector",
-  options: { bot: { type: "string", value: "bot", help: "O bot (id, início do id ou nome)" } },
+  options: { bot: GRANT_OPTIONS.bot },
   positionals: { names: ["nome"] },
   run: (ctx) => grantOrRevoke(ctx, false),
+};
+
+function definitionLines(label: string, def: PinnedDefinition | null): string[] {
+  if (def === null) return [`${label}: (nunca aprovada)`];
+  const out = [`${label}:`];
+  out.push(`  descrição: ${def.description ?? "(nenhuma)"}`);
+  const hints = def.annotations === null ? "(nenhuma)" : JSON.stringify(def.annotations);
+  out.push(`  dicas: ${hints}`);
+  out.push("  esquema de entrada:");
+  for (const line of (JSON.stringify(def.inputSchema, null, 2) ?? "null").split("\n")) {
+    out.push(`    ${line}`);
+  }
+  return out;
+}
+
+export const connectorsReview: CommandSpec = {
+  name: "connectors review",
+  summary:
+    "Mostra as ferramentas cuja definição mudou (ou que são novas) e aprova uma (--approve ferramenta --fingerprint início)",
+  options: {
+    approve: {
+      type: "string",
+      value: "ferramenta",
+      help: "Aprova a definição atual desta ferramenta (nome no servidor)",
+    },
+    fingerprint: {
+      type: "string",
+      value: "início",
+      help: "Os primeiros 8 ou mais caracteres da impressão digital mostrada: prova que você viu esta versão",
+    },
+  },
+  positionals: { names: ["nome"] },
+  async run(ctx) {
+    const [name] = ctx.args.positionals as [string];
+    const runtime = ctx.runtime();
+    await must(ctx, name);
+    const approve = str(ctx.args, "approve");
+    if (approve !== undefined) {
+      const wanted = str(ctx.args, "fingerprint");
+      const pending = (await runtime.connectors.review(name)).find((r) => r.tool === approve);
+      if (pending === undefined) {
+        throw new CommandError(
+          `A ferramenta ${approve} não espera revisão (veja: suup connectors review ${name}).`,
+        );
+      }
+      if (
+        wanted === undefined ||
+        wanted.length < 8 ||
+        !pending.currentFingerprint.startsWith(wanted)
+      ) {
+        throw new UsageError(
+          `Para aprovar, repita com --fingerprint ${pending.currentFingerprint.slice(0, 12)} (a impressão digital da definição que você viu em "suup connectors review ${name}").`,
+          "connectors review",
+        );
+      }
+      const updated = await runtime.connectors.approveTool(
+        name,
+        approve,
+        pending.currentFingerprint,
+      );
+      if (ctx.json) ctx.out.data(view(updated));
+      else ctx.out.line(`Definição aprovada: ${approve} volta a ser oferecida a quem tem acesso.`);
+      return EXIT_OK;
+    }
+    const pending = await runtime.connectors.review(name);
+    if (ctx.json) {
+      ctx.out.data(pending.map((r) => ({ ...r, seenAt: r.seenAt.toISOString() })));
+      return EXIT_OK;
+    }
+    if (pending.length === 0) {
+      ctx.out.line(`Nenhuma ferramenta do conector ${name} espera revisão.`);
+      return EXIT_OK;
+    }
+    for (const r of pending) {
+      ctx.out.line(
+        `${r.tool}: ${r.status === "changed" ? "a definição MUDOU depois de aprovada" : "ferramenta NOVA, nunca aprovada"} (vista em ${formatDateTime(r.seenAt)})`,
+      );
+      ctx.out.lines(definitionLines("antes (o que você aprovou)", r.approved));
+      ctx.out.lines(definitionLines("agora (o que o servidor mostra)", r.current));
+      ctx.out.line(
+        `Se confia: suup connectors review ${name} --approve ${r.tool} --fingerprint ${r.currentFingerprint.slice(0, 12)}`,
+      );
+      ctx.out.line("");
+    }
+    ctx.out.line(
+      "Enquanto não for aprovada, a ferramenta fica desligada para todos os bots. A descrição é texto do servidor (não confiável): leia como leria um programa que você instala.",
+    );
+    return EXIT_OK;
+  },
 };
 
 export const connectorsTools: CommandSpec = {

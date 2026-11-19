@@ -7,7 +7,7 @@ Leia a seção [O que o conector NÃO protege](#o-que-o-conector-não-protege) a
 ## Como funciona, em seis frases
 
 1. Você cadastra o conector (CLI ou API): como chegar nele (um programa local, ou um endereço HTTP), as credenciais **como referências a segredos do cofre**, o escopo e o que você afirma de cada ferramenta.
-2. Você **concede** o conector a cada bot que pode usá-lo (como no cofre). Sem concessão, o bot não vê nada dele.
+2. Você **concede** a cada bot **as ferramentas** do conector que ele pode usar (por ferramenta, não o conector inteiro; veja "Concessão por ferramenta"). Uma ferramenta que não foi concedida **não existe** para o bot: não é oferecida, não está em nenhum índice e chamá-la dá "ferramenta desconhecida".
 3. No início de uma execução, o worker conecta (na primeira vez; depois reaproveita a conexão), lista as ferramentas do servidor e as registra **só nessa execução**, com o nome `conn_<conector>__<ferramenta>`.
 4. Cada ferramenta é adaptada à interface `Tool` de `core`: ela **declara** o risco, o esquema de entrada e que a saída vem de fora; quem decide é o harness, igual a qualquer ferramenta.
 5. Toda chamada passa pelo portão de aprovação (regras → revisão → cartão). Por padrão **toda ferramenta de conector pergunta**.
@@ -32,11 +32,16 @@ suup connectors test erp          # liga do zero, lista as ferramentas, desliga;
 suup connectors tools erp         # cada ferramenta, o risco e de onde ele veio
 suup connectors set-risk erp search_orders read
 suup connectors set-outbound erp send_message --to to   # "envia mensagem para outra pessoa"
-suup connectors list | enable | disable | grant | revoke | rm
+suup connectors grant erp --bot ajudante --tools search_orders,get_order   # só estas
+suup connectors grant erp --bot ajudante --read-only                       # só as marcadas como leitura agora
+suup connectors grant erp --bot ajudante --all                             # todas as (aprovadas) do conector
+suup connectors review erp        # ferramentas cuja definição mudou, ou novas: antes e agora
+suup connectors list | enable | disable | revoke | rm
 ```
 
 - `--arg` repete, e um argumento que começa com hífen vai com `=` (`--arg=-y`).
 - **Credenciais são sempre referências**: `--env-secret NOME=SEGREDO` (variável de ambiente do processo), `--header-secret Nome=SEGREDO` ou `--bearer SEGREDO` (cabeçalho HTTP). O valor é lido do cofre **na hora de conectar**. Um segredo que não existe no cofre é recusado ao cadastrar. `--env` e `--header` são para valores que **não** são segredo; nunca digite uma credencial neles (ela ficaria em texto no banco; o que o cofre conhece sai das respostas, o resto não).
+- `--bot` em `add` concede **todas** as ferramentas (`--all`) ao bot, por ser você agindo naquele comando; para escolher, omita `--bot` e use `grant --tools`.
 - Adicionar, ligar ou editar um conector, **pela API ou pela CLI, é você agindo**: não há cartão. O caminho "o bot propõe instalar um conector e você aprova num cartão" **não existe ainda** (veja o fim).
 
 ### O que é recusado ao cadastrar
@@ -92,6 +97,57 @@ Para deixar rodar sem cartão uma ferramenta que o servidor diz que escreve, **n
 
 O cartão mostra a linha `Conector <nome> → <ferramenta> <argumentos>` e, em `args`, o conteúdo exato; depois da aprovação o loop executa exatamente esses argumentos.
 
+## Concessão por ferramenta
+
+Uma concessão (bot × conector) guarda **o conjunto de ferramentas** do conector que o bot pode usar: `all` (todas as que o conector oferecer e estiverem aprovadas, inclusive as que passar a oferecer) ou uma lista de nomes **no servidor**. Conceder de novo **substitui** o conjunto; uma lista vazia dá acesso a nenhuma.
+
+| Onde | Como |
+|---|---|
+| API | `PUT /v1/connectors/{nome}/grants/{botId}` com `{ "tools": "all" }` ou `{ "tools": ["a", "b"] }` (o corpo é obrigatório; um nome que o conector não tem é recusado) |
+| CLI | `suup connectors grant <conector> --bot <bot> --tools a,b` · `--all` · `--read-only` (a lista das ferramentas marcadas como leitura **neste momento**, fixada) |
+| App (fluxo desejado) | ao conceder, **nenhuma** ferramenta marcada, com os atalhos "selecionar todas" e "só as de leitura" (veja [FRONTEND.md](FRONTEND.md)) |
+
+Uma ferramenta fora da concessão não entra no registro da execução do bot, não aparece em nenhum índice nem na lista de definições, e uma chamada a ela é "ferramenta desconhecida". As concessões que existiam antes (do conector inteiro) viraram `all` na migração 0014, para que nada deixasse de funcionar em silêncio; `suup connectors list` mostra por bot "todas" ou "N ferramenta(s)". `suup doctor` mostra, por bot, quantas ferramentas de conectores ele tem.
+
+## Fixação da definição das ferramentas
+
+Pesquisa: [aprovações, cofre e conectores](pesquisas/fase-3-aprovacoes-cofre-conectores.md) ("tool poisoning e rug pull"). Um servidor pode mudar a descrição ou o esquema de uma ferramenta **depois** que você a aprovou, para induzir o modelo. Por isso:
+
+- Em cada listagem, para cada ferramenta, guarda-se a **impressão digital**: o SHA-256 da serialização canônica (chaves ordenadas, sem espaços) do nome, da descrição, do esquema de entrada e das dicas (`readOnlyHint`/`destructiveHint`). É **comparação exata** de dois hashes, não padrão de texto.
+- A **primeira listagem** de um conector (mesmo vazia) é a linha de base: tudo que ele mostra então fica aprovado (você vê as ferramentas ao adicionar e conceder; a linha de base depois da migração 0014 é a primeira listagem após a atualização). Conceder explicitamente uma ferramenta nova (`--tools x`) também a aprova.
+- Se a impressão digital de uma ferramenta **mudou**, ela passa a `changed` e fica **desligada para todos os bots** (ninguém a recebe) até você revisar e aprovar de novo. Uma ferramenta que **aparece depois** da linha de base fica `new`, também desligada. Uma que some e volta **idêntica** continua aprovada (e uma `changed` que volta ao que você aprovou volta a valer).
+- `suup connectors review <conector>` mostra, por ferramenta, a definição **antes** (a que você aprovou) e **agora**; aprovar exige a impressão digital que você viu (`--approve <ferramenta> --fingerprint <início>`), para não aprovar uma versão que mudou de novo. Pela API: `GET /v1/connectors/{nome}/review` e `POST /v1/connectors/{nome}/tools/{ferramenta}/review` com `{ "fingerprint": "..." }`.
+- Fica registrado (`connector_tool_events`, `GET /v1/connectors/{nome}/events`): linha de base, mudança, ferramenta nova, volta ao aprovado e aprovação. `suup doctor` avisa e o conector aparece em `suup connectors list` com as ferramentas à espera.
+
+**O limite, dito com honestidade.** A impressão digital cobre o que o servidor **diz** da ferramenta. Um servidor pode mudar o que a ferramenta **faz** sem mudar a definição, e um servidor comprometido pode ter a definição maliciosa desde o início (a linha de base confia no que você viu). Uma mudança legítima (uma atualização do servidor) é indistinguível de um ataque no nível do hash: por isso pede a sua revisão. Também só entram as dicas que o cliente guarda (`readOnlyHint`, `destructiveHint`). Tudo o mais deste documento continua valendo.
+
+## Muitas ferramentas: busca em vez de carregar todas
+
+Pesquisa: [muitas ferramentas de conectores](pesquisas/fase-3-muitas-ferramentas-mcp.md). Mandar a definição de dezenas de ferramentas em todo turno custa contexto e piora a escolha. As ferramentas **embutidas e de controle** (`plan`, `finish`, `escalate`, `request_secret`) ficam sempre carregadas; só as de **conectores concedidas ao bot** entram na regra:
+
+- **Abaixo do limite** (padrão: menos de 10 ferramentas **e** definições abaixo de ~10 mil tokens, estimados a 1 token por 4 caracteres) elas são carregadas direto, como antes.
+- **Acima**, ficam adiadas. A decisão é tomada **uma vez** no início da execução e gravada no evento `tool_catalog`: retomar ou reexecutar lê o log e não decide de novo, então o `tools` de **todos** os pedidos da execução é idêntico byte a byte e na mesma ordem (cache) e a conversa só cresce no fim.
+
+| Mecanismo | Quando | Como |
+|---|---|---|
+| **Nativo, hospedado** (`hosted`) | o modelo declara `nativeToolSearch` e o adaptador implementa | as definições vão no pedido com `defer_loading: true`, por último, mais a ferramenta de busca do provedor. Variantes: `bm25` (padrão; o modelo escreve uma consulta em linguagem natural) e `regex` (o **modelo** escreve o padrão; veja a exceção em [REGRAS.md](REGRAS.md)) |
+| **Nativo, nosso** (`client`) | `nativeToolSearch: "client"` | as definições vão com `defer_loading: true`; a busca é a **nossa** `search_tools` e a resposta devolve blocos `tool_reference`, que o provedor expande |
+| **Alternativa fixa** (`meta`) | qualquer outro caso | um **índice** no prompt do sistema (uma linha por ferramenta: nome registrado e a primeira frase da descrição, cortada por tamanho; uma linha por conector se o índice passar de 6 000 caracteres) e duas ferramentas: `search_tools` (conector e/ou palavras: devolve as definições completas, o esquema em JSON, até 10) e `use_tool` (`tool` e `arguments`) |
+
+Quem suporta o quê é **declarado**, não adivinhado: por modelo, na configuração (`nativeToolSearch`, em [CONFIGURACAO.md](CONFIGURACAO.md)), e por adaptador (`capabilities.toolSearch`; só o da Anthropic implementa hoje). Sem as duas coisas, vale a alternativa fixa.
+
+**A alternativa fixa é transparente para as regras.** `use_tool` só **resolve** a chamada para a ferramenta real; dali em diante é a chamada da ferramenta real: os argumentos são validados contra o esquema real (um erro volta **com o esquema**, para o modelo corrigir), o risco, as regras, a revisão e o **cartão são os da ferramenta real** (o cartão nunca mostra `use_tool`), `{{secret:...}}` só nos campos que a ferramenta declara, o desfecho vem rotulado como dado externo e a declaração "mensagem a outra pessoa" vale. O evento `tool_call` é gravado com o nome e os argumentos reais. O resultado de `search_tools` (que carrega texto do servidor) também vem no envelope de dado não confiável. Uma ferramenta não concedida, ou que não está no catálogo da execução, é "ferramenta desconhecida" por `use_tool`, por nome direto e pela busca; chamar pelo nome uma ferramenta adiada de `meta` também é recusado (use `use_tool`).
+
+**A busca da alternativa fixa não usa regex.** Cada palavra da consulta e de cada ferramenta (nome, conector, descrição, nomes dos argumentos) é obtida dividindo o texto por **classe de caractere** (letra ou dígito de qualquer escrita; o resto separa) e passando para minúsculas; a pontuação é o número de palavras **distintas** da consulta que a ferramenta tem **iguais**; empate fica na ordem do catálogo. Sem radical, sem sinônimo: o modelo lê o resultado e escolhe.
+
+**Medição.** Cada `model_request` grava `toolStats` (definições enviadas, adiadas, tokens estimados de todas e dos que entram no contexto); `suup show` (uma linha) e `suup inspect` (a linha de cada pedido) as mostram, e `suup doctor` imprime por bot: ferramentas embutidas, de conectores concedidas, carregadas direto ou adiadas e os tokens estimados por pedido. Com 77 ferramentas de conector (o servidor de teste mais 60 geradas): 82 definições e ~10 400 tokens por pedido carregando tudo; 7 definições e ~2 600 tokens com a alternativa fixa (mais o índice no prompt do sistema).
+
+**Não verificado.** Nada disto rodou contra um modelo real: a taxa de erro de argumentos da alternativa fixa e a qualidade da busca por palavras iguais não foram medidas (lacuna da pesquisa); os formatos do Anthropic vêm da documentação (veja "Anthropic" abaixo).
+
+### Anthropic: o que foi implementado
+
+Lido em 19/11/2026 em https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-search-tool e https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-use-with-prompt-caching: sem cabeçalho beta; ferramenta de busca `{"type":"tool_search_tool_bm25_20251119","name":"tool_search_tool_bm25"}` (ou `..._regex_20251119` / `tool_search_tool_regex`) na lista `tools`, nunca adiada; as demais com `"defer_loading": true` e **todas** as definições em **todo** pedido; ao menos uma ferramenta não adiada; a resposta traz `server_tool_use` e `tool_search_tool_result` (com `tool_references`), que voltam **sem alteração** na conversa, **sem** `tool_result` para o `srvtoolu_...`; busca do cliente devolve `tool_result` com blocos `{"type":"tool_reference","tool_name":...}`; uma ferramenta adiada não pode ter `cache_control` (o ponto de cache vai na última ferramenta carregada). Modelos listados: Opus 4.5 em diante, Sonnet 4.5 em diante, Haiku 4.5 e os 5.x; **Opus 4.1 e anteriores não suportam**. Quem declara `nativeToolSearch` num modelo é a configuração. Os fixtures em `packages/providers/test/recorded/DOC-DERIVED-*` são **montados a partir da documentação, não capturados de uma chamada real**.
+
 ## Conteúdo não confiável e envenenamento de ferramentas
 
 Há **duas** portas por onde texto de um servidor chega ao modelo, e as duas são tratadas como dado, mas só uma delas dá para rotular:
@@ -103,7 +159,7 @@ Há **duas** portas por onde texto de um servidor chega ao modelo, e as duas sã
 
 - Faz: o dano de uma chamada induzida é limitado pelo que a ferramenta consegue (o cartão mostra o conteúdo exato, e uma ferramenta de conector pergunta por padrão), um servidor não vê os seus segredos (só os que **você** referenciou), e o texto invisível é removido.
 - **Não** faz: impedir que o modelo seja convencido. Um servidor malicioso **com ferramentas marcadas como leitura** pode induzir o modelo a pôr dados sensíveis (que ele leu por outra ferramenta) nos argumentos de uma leitura, e a leitura não pergunta. Por isso: marque como `read` só o que você conhece, mantenha `--scope read_only` quando só precisa ler, e **instale só servidores em que confia** como confiaria num programa que roda no seu computador.
-- Não faz: detectar que a descrição **mudou** depois que você a viu. A lista é lida de novo (cache de 5 minutos por processo) e o que o servidor disser vale; "fixar" uma versão da lista é uma melhoria possível, não existe.
+- Faz: detectar que a **definição** de uma ferramenta já aprovada **mudou** (veja "Fixação da definição"): ela fica desligada para todos os bots até você revisar. **Não** detecta uma mudança de comportamento sem mudança de definição.
 
 ## Segredos
 
@@ -157,6 +213,8 @@ Uma falha de um conector **nunca** derruba o harness: todo erro vira um `Connect
 
 ## O que ainda não existe
 
+- A tela do app para escolher as ferramentas concedidas e para revisar uma definição mudada (o backend existe; veja [FRONTEND.md](FRONTEND.md)).
+- Medir com modelo real a busca e a alternativa fixa; a busca de ferramentas por embeddings.
 - **O bot propor a instalação de um conector** ("Um registro onde o bot procura e propõe instalar conectores novos; a instalação passa por aprovação", plano 4.11). Não está feito. O que já existe para isso: a coluna `origin` (`user` ou `proposal`), e `connectors.create(..., { origin: "proposal" })` nasce **desligado** e fica assim até um cartão de aprovação o ligar. Falta: a ferramenta do bot (`propose_connector`, risco `external_irreversible`, cujo cartão mostraria o comando e os argumentos exatos), o serviço que a ferramenta usaria (hoje o contexto de uma ferramenta não tem um) e o catálogo ("registro") de onde o bot procuraria. Não foi feito porque exige ampliar o contexto das ferramentas em `core` e decidir de onde vem o catálogo; ligar um conector por uma ferramenta sem cartão seria o oposto do que o plano pede.
 - OAuth do protocolo; o transporte antigo por SSE (só o *streamable HTTP* e o `stdio`); recursos (*resources*), *prompts*, amostragem e `elicitation` do protocolo (o cliente não declara nenhuma capacidade, então o servidor não pode pedir nada); aviso do servidor de que a lista de ferramentas mudou (a lista é lida de novo a cada 5 minutos ou ao editar o conector).
 - Um aviso, dentro da conversa, de que um conector estava fora do ar quando a execução começou (hoje aparece no `doctor`, no estado do conector e no erro da chamada).

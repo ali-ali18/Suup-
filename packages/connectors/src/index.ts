@@ -1,5 +1,6 @@
 export {
   type AdaptedConnector,
+  type AdaptOptions,
   adaptConnector,
   type ConnectorToolInfo,
   MAX_TOOL_DESCRIPTION,
@@ -21,6 +22,12 @@ export {
   registeredName,
   TOOL_PREFIX,
 } from "./names.js";
+export {
+  canonicalDefinition,
+  type PinnedDefinition,
+  pinnedDefinition,
+  toolFingerprint,
+} from "./pinning.js";
 export { flattenResult, MAX_RESULT_CHARS } from "./result.js";
 export {
   DEFAULT_CONNECTOR_RISK,

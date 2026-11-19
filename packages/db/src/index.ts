@@ -59,8 +59,24 @@ export {
 } from "./change-feed.js";
 export { type CreateDbOptions, createDb, type Db, withTransaction } from "./client.js";
 export {
+  approvePin,
+  type ConnectorToolEvent,
+  listConnectorEvents,
+  listPins,
+  PIN_EVENT_KINDS,
+  type PinEventKind,
+  PinNotFoundError,
+  type PinObservation,
+  PinStaleError,
+  type PinStatus,
+  type ReconcileResult,
+  reconcilePins,
+  type ToolPin,
+} from "./connector-pins.js";
+export {
   CONNECTOR_TRANSPORTS,
   type ConnectorDiscovery,
+  type ConnectorGrant,
   ConnectorNameTakenError,
   ConnectorNotFoundError,
   type ConnectorOrigin,
@@ -79,6 +95,7 @@ export {
   type StoredConnector,
   type StoredToolOverride,
   saveConnectorDiscovery,
+  type ToolGrantSpec,
 } from "./connectors.js";
 export {
   ACTIVE_RUN_STATUSES,

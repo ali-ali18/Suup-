@@ -11,6 +11,7 @@ import type { Executor, MemoryService, ToolContext } from "../tool.js";
 import type { ModelPricing, ReviewerConfig } from "./reviewer.js";
 import type { RunState } from "./state.js";
 import type { RunRecord, RunStore } from "./store.js";
+import type { ToolSearchDeps } from "./tool-search.js";
 
 export interface BotConfig {
   id: string;
@@ -85,6 +86,13 @@ export interface LoopDeps {
   secrets?: SecretAccess;
   /** The memory the tools of this run may use. Without it the memory tools report an error. */
   memoryFor?(run: RunRecord): MemoryService;
+  /**
+   * The connector tools granted to the bot and how to offer them (all loaded, or searched: see
+   * `tool-search.ts`). Decided once, at the start of the run, and recorded as `tool_catalog`; a
+   * resumed run reads the log instead. Without it every tool is offered directly. A replay passes
+   * `{ replayOf }` with the recorded decision.
+   */
+  toolSearch?: ToolSearchDeps;
   now(): Date;
   sleep(ms: number): Promise<void>;
 }

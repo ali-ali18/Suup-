@@ -5,17 +5,26 @@ import {
   escalateOptionSchema,
   escalateQuestionSchema,
   type PlanStep,
+  type ToolSearchMode,
   type UncheckedItem,
 } from "../events.js";
 import type { JsonObject } from "../messages.js";
 import type { ToolSpec } from "../provider.js";
 import { FINAL_VERDICT_TOOL_DESCRIPTION, openSteps, VERDICT_TOOL_DESCRIPTION } from "./prompts.js";
+import { toolSearchControlSpecs } from "./tool-search.js";
 
 /**
  * Tools the loop handles itself. They are always available, never go through the registry and do
  * not need an executor: they only read and change the run's own state.
  */
-export const CONTROL_TOOL_NAMES = ["plan", "finish", "escalate", "request_secret"] as const;
+export const CONTROL_TOOL_NAMES = [
+  "plan",
+  "finish",
+  "escalate",
+  "request_secret",
+  "search_tools",
+  "use_tool",
+] as const;
 export type ControlToolName = (typeof CONTROL_TOOL_NAMES)[number];
 
 export function isControlTool(name: string): name is ControlToolName {
@@ -336,7 +345,9 @@ function toolSpec(name: string, description: string, schema: z.ZodType): ToolSpe
  * The specs of the control tools, in the order the model sees them. `request_secret` is offered
  * only to a run that has a vault.
  */
-export function controlToolSpecs(options: { secrets?: boolean } = {}): ToolSpec[] {
+export function controlToolSpecs(
+  options: { secrets?: boolean; toolSearch?: ToolSearchMode | undefined } = {},
+): ToolSpec[] {
   return [
     toolSpec("plan", PLAN_DESCRIPTION, planInputSchema),
     toolSpec("finish", FINISH_DESCRIPTION, finishInputSchema),
@@ -344,6 +355,7 @@ export function controlToolSpecs(options: { secrets?: boolean } = {}): ToolSpec[
     ...(options.secrets === true
       ? [toolSpec("request_secret", REQUEST_SECRET_DESCRIPTION, requestSecretInputSchema)]
       : []),
+    ...toolSearchControlSpecs(options.toolSearch),
   ];
 }
 

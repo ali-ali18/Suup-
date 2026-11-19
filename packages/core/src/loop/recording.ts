@@ -134,6 +134,7 @@ export async function recordResult(
     content: string;
     truncated?: boolean;
     durationMs?: number;
+    toolReferences?: string[];
   },
 ): Promise<void> {
   await record(ctx, {
@@ -145,6 +146,7 @@ export async function recordResult(
       isError: r.isError,
       truncated: r.truncated ?? false,
       durationMs: r.durationMs ?? 0,
+      ...(r.toolReferences === undefined ? {} : { toolReferences: r.toolReferences }),
     },
   });
 }

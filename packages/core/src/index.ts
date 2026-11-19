@@ -36,7 +36,13 @@ export {
   runStatusSchema,
   type SecretInfo,
   secretInfoSchema,
+  TOOL_SEARCH_MODES,
+  type ToolCatalog,
+  type ToolSearchMode,
+  type ToolStats,
+  toolCatalogSchema,
   toolOutcomeSchema,
+  toolStatsSchema,
 } from "./events.js";
 export * from "./loop/index.js";
 export {
@@ -71,6 +77,9 @@ export {
   type GenerateResult,
   generateAndCollect,
   generateResultSchema,
+  type HostedToolSearch,
+  NATIVE_TOOL_SEARCH_VARIANTS,
+  type NativeToolSearch,
   PROVIDER_ERROR_KINDS,
   type Provider,
   type ProviderCapabilities,

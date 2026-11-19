@@ -30,12 +30,18 @@ import {
   type UpdateBotBody,
 } from "./bots.js";
 import {
+  type ApproveToolBody,
   type Connector,
   type ConnectorTest,
+  type ConnectorToolEvent,
+  type ConnectorToolReview,
   type CreateConnectorBody,
   connectorListSchema,
+  connectorReviewListSchema,
   connectorSchema,
   connectorTestSchema,
+  connectorToolEventListSchema,
+  type GrantConnectorBody,
   type SetToolOutboundBody,
   type SetToolRiskBody,
   type UpdateConnectorBody,
@@ -206,7 +212,13 @@ export interface SuupClient {
     create(body: CreateConnectorBody): Promise<Connector>;
     update(name: string, body: UpdateConnectorBody): Promise<Connector>;
     remove(name: string): Promise<void>;
-    grant(name: string, botId: string): Promise<Connector>;
+    /** Replaces what the bot may use: `{ tools: "all" }` or `{ tools: ["a", "b"] }` (names on the server). */
+    grant(name: string, botId: string, body: GrantConnectorBody): Promise<Connector>;
+    /** The tools whose definition changed (or that are new): off for every bot until approved. */
+    review(name: string): Promise<ConnectorToolReview[]>;
+    /** Approves the definition the person looked at (`fingerprint` from `review`). */
+    approveTool(name: string, tool: string, body: ApproveToolBody): Promise<Connector>;
+    events(name: string): Promise<ConnectorToolEvent[]>;
     revoke(name: string, botId: string): Promise<Connector>;
     /** What the user says a tool's risk is (`null` clears it). */
     setToolRisk(name: string, tool: string, body: SetToolRiskBody): Promise<Connector>;
@@ -448,8 +460,17 @@ export function createClient(options: ClientOptions): SuupClient {
       remove: async (name) => {
         await call("DELETE", `/v1/connectors/${id(name)}`, deletedSchema);
       },
-      grant: (name, botId) =>
-        call("PUT", `/v1/connectors/${id(name)}/grants/${id(botId)}`, connectorSchema, noBody),
+      grant: (name, botId, body) =>
+        call("PUT", `/v1/connectors/${id(name)}/grants/${id(botId)}`, connectorSchema, { body }),
+      review: async (name) =>
+        (await call("GET", `/v1/connectors/${id(name)}/review`, connectorReviewListSchema)).items,
+      approveTool: (name, tool, body) =>
+        call("POST", `/v1/connectors/${id(name)}/tools/${id(tool)}/review`, connectorSchema, {
+          body,
+        }),
+      events: async (name) =>
+        (await call("GET", `/v1/connectors/${id(name)}/events`, connectorToolEventListSchema))
+          .items,
       revoke: (name, botId) =>
         call("DELETE", `/v1/connectors/${id(name)}/grants/${id(botId)}`, connectorSchema),
       setToolRisk: (name, tool, body) =>

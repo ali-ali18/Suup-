@@ -8,7 +8,12 @@ import type { AssessOptions, ToolAssessment } from "../registry.js";
 import type { RiskLevel } from "../risk.js";
 import type { Executor } from "../tool.js";
 import { decidePolicy, type PolicyOutcome } from "./decide.js";
-import { type AutoReviewer, levelReviewer, type ReviewVerdict } from "./reviewer.js";
+import {
+  type AutoReviewer,
+  levelReviewer,
+  REVIEW_VERDICTS,
+  type ReviewVerdict,
+} from "./reviewer.js";
 import type { ApprovalRule } from "./rules.js";
 
 /** Where the user's rules come from (the database, in the runtime). */
@@ -98,6 +103,10 @@ export function createToolGate(options: ToolGateOptions): ToolGate {
       let review: ReviewVerdict;
       try {
         review = await reviewer.review({ ...ruleCall, level, summary: assessed.summary });
+        // A missing or unknown verdict is no verdict: the user is asked, the call never just runs.
+        if (review === undefined || review === null || !REVIEW_VERDICTS.includes(review.verdict)) {
+          review = { verdict: "sensitive", reason: "the automatic review gave no valid verdict" };
+        }
       } catch {
         review = { verdict: "sensitive", reason: "the automatic review failed" };
       }
