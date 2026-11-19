@@ -10,7 +10,7 @@ export const TAURI_ORIGINS = [
   "https://tauri.localhost",
 ] as const;
 
-export const ALLOWED_METHODS = "GET, POST, PATCH, DELETE, OPTIONS";
+export const ALLOWED_METHODS = "GET, POST, PUT, PATCH, DELETE, OPTIONS";
 export const ALLOWED_HEADERS = "Authorization, Content-Type, Last-Event-ID, X-Request-Id";
 
 export type OriginCheck =

@@ -1,4 +1,37 @@
 export {
+  type CreateRuleInput,
+  createRule,
+  deleteRule,
+  getRule,
+  type ListRulesOptions,
+  listRules,
+  type RuleCreator,
+  RuleError,
+  type RuleErrorCode,
+  rulesForBot,
+  type StoredRule,
+  type UpdateRuleInput,
+  updateRule,
+} from "./approval-rules.js";
+export {
+  APPROVAL_STATUSES,
+  type Approval,
+  ApprovalError,
+  type ApprovalErrorCode,
+  type ApprovalStatus,
+  ackApprovalDecisionRows,
+  cancelPendingApprovals,
+  type DecideApprovalInput,
+  decideApproval,
+  expireOverdueApprovals,
+  getApproval,
+  hasUndeliveredDecision,
+  type ListApprovalsOptions,
+  listApprovals,
+  peekApprovalDecisionRows,
+  projectApprovalRequested,
+} from "./approvals.js";
+export {
   type BotLatestRun,
   type BotSummary,
   getBotSummary,
@@ -25,6 +58,45 @@ export {
   pruneChangeLog,
 } from "./change-feed.js";
 export { type CreateDbOptions, createDb, type Db, withTransaction } from "./client.js";
+export {
+  approvePin,
+  type ConnectorToolEvent,
+  listConnectorEvents,
+  listPins,
+  PIN_EVENT_KINDS,
+  type PinEventKind,
+  PinNotFoundError,
+  type PinObservation,
+  PinStaleError,
+  type PinStatus,
+  type ReconcileResult,
+  reconcilePins,
+  type ToolPin,
+} from "./connector-pins.js";
+export {
+  CONNECTOR_TRANSPORTS,
+  type ConnectorDiscovery,
+  type ConnectorGrant,
+  ConnectorNameTakenError,
+  ConnectorNotFoundError,
+  type ConnectorOrigin,
+  type ConnectorScopeName,
+  type ConnectorTransportKind,
+  type ConnectorWrite,
+  createConnector,
+  deleteConnector,
+  getConnector,
+  getConnectorDiscovery,
+  grantConnector,
+  listConnectors,
+  listConnectorsForBot,
+  replaceConnector,
+  revokeConnector,
+  type StoredConnector,
+  type StoredToolOverride,
+  saveConnectorDiscovery,
+  type ToolGrantSpec,
+} from "./connectors.js";
 export {
   ACTIVE_RUN_STATUSES,
   ConversationSendError,
@@ -124,6 +196,18 @@ export {
   migrate,
   migrationStatus,
 } from "./migrate.js";
+export {
+  activeHostsForBot,
+  addBotHost,
+  grantRunHost,
+  listBotHosts,
+  listNetworkEvents,
+  type NetworkEventInput,
+  type NetworkEventRow,
+  type NetworkHostRow,
+  recordNetworkEvent,
+  removeBotHost,
+} from "./network.js";
 export { PgRunQueue } from "./pg-queue.js";
 export { PgRunStore, type PgRunStoreOptions } from "./pg-store.js";
 export {
@@ -157,6 +241,25 @@ export {
   setRunStatus,
   updateRunPlan,
 } from "./runs.js";
+export {
+  deleteSecret,
+  getSecretMeta,
+  getSecretRowByName,
+  getSecretRowForBot,
+  grantSecret,
+  listSecretInfoForBot,
+  listSecretRows,
+  listSecretRowsForBot,
+  listSecrets,
+  markSecretUsed,
+  type PutSecretInput,
+  putSecret,
+  replaceSecretCipher,
+  revokeSecret,
+  type SecretMeta,
+  SecretNotFoundError,
+  type SecretRow,
+} from "./secrets.js";
 export type {
   Bot,
   BotLimits,

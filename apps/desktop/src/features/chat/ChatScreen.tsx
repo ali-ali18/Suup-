@@ -6,7 +6,13 @@ import { useSettings } from "../../app/settings-store.js";
 import { useUi } from "../../app/ui-store.js";
 import { actionsOf, VISIBLE_ACTIONS, workingPhrase } from "../../data/actions.js";
 import { deriveRunDisplay, planOf } from "../../data/derive.js";
-import { isTerminal, orderedEvents, orderedMessages } from "../../data/reducers.js";
+import {
+  approvalsOfConversation,
+  isTerminal,
+  orderedEvents,
+  orderedMessages,
+} from "../../data/reducers.js";
+import { secretRequestsOf } from "../../data/secret-requests.js";
 import { colorVars, effectiveColor } from "../../lib/mascots.js";
 import { Avatar } from "../../ui/avatar.js";
 import { Composer } from "../../ui/composer.js";
@@ -74,6 +80,9 @@ function ChatForBot({ botId }: { botId: string }) {
   const conversations = useData((s) => s.conversations);
   const messagesByConversation = useData((s) => s.messages);
   const eventsByRun = useData((s) => s.events);
+  const approvals = useData((s) => s.approvals);
+  const connectorsByName = useData((s) => s.connectors);
+  const connectors = useMemo(() => Object.values(connectorsByName), [connectorsByName]);
   const fold = useSettings((s) => s.settings.fold);
   const panelOpen = useUi((s) => s.panelOpen);
   const togglePanel = useUi((s) => s.togglePanel);
@@ -136,7 +145,17 @@ function ChatForBot({ botId }: { botId: string }) {
 
   // The tool calls of the latest run are cards; what is expanded survives new events (keyed by call id).
   const actions = useMemo(
-    () => (latest === undefined ? [] : actionsOf(latest.id, events)),
+    () => (latest === undefined ? [] : actionsOf(latest.id, events, connectors)),
+    [latest, events, connectors],
+  );
+  // The approval cards of the conversation (from the store: the stream and REST) and the secure form
+  // of the run on screen, placed among the actions where they were asked.
+  const cards = useMemo(
+    () => (convId === null ? [] : approvalsOfConversation({ approvals, runs }, convId)),
+    [approvals, runs, convId],
+  );
+  const secretRequests = useMemo(
+    () => (latest === undefined ? [] : secretRequestsOf(latest, latest.id, events)),
     [latest, events],
   );
   const items = useMemo(
@@ -147,8 +166,9 @@ function ChatForBot({ botId }: { botId: string }) {
         actions,
         new Date(),
         fold === "on" ? VISIBLE_ACTIONS : Number.POSITIVE_INFINITY,
+        { approvals: cards, secrets: secretRequests, connectors },
       ),
-    [messages, runs, actions, fold],
+    [messages, runs, actions, fold, cards, secretRequests, connectors],
   );
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const toggle = useCallback(

@@ -20,7 +20,8 @@ export const writeFileTool = defineTool({
     "The result says whether the file was created or replaced and how many bytes were written. Text only; for binary files use the shell.",
   ].join(" "),
   input,
-  risk: "write",
+  risk: "write_reversible",
+  describe: ({ path, content }) => `Write ${path} (${content.length} characters)`,
   async execute({ path, content }, ctx) {
     let existing: Awaited<ReturnType<typeof ctx.executor.stat>>;
     try {

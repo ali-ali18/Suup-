@@ -22,5 +22,8 @@
     "@suup/evals": "workspace:*",
     "@suup/runtime": "workspace:*",
     "@suup/server": "workspace:*"
+  },
+  "devDependencies": {
+    "@suup/connectors": "workspace:*"
   }
 }

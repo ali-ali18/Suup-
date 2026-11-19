@@ -53,7 +53,7 @@ Todo erro tem o mesmo formato, e a lista de códigos é fechada:
 | `too_many_streams` | 429 | Já há `server.maxStreams` (padrão 16) streams abertos |
 | `provider_error` | 502 | O provedor do modelo falhou (rascunho de bot, reenvio) |
 | `internal_error` | 500 | Defeito do servidor; o detalhe fica no log, nunca na resposta |
-| `unavailable` | 503 | O banco ou a máquina dos bots não responde, ou o servidor está desligando |
+| `unavailable` | 503 | O banco ou a máquina dos bots não responde, o servidor está desligando, ou o cofre está sem a chave (a mensagem diz qual variável falta) |
 
 ---
 
@@ -77,7 +77,7 @@ Os modelos da configuração, para o formulário de bot. `200 { "items": [ModelI
 
 ### `GET /v1/tools`
 
-As ferramentas que se pode liberar a um bot. `200 { "items": [ToolInfo], "control": ["plan","finish","escalate"] }`. `ToolInfo`: `name`, `summary` (a primeira frase do que o modelo lê, até 200 caracteres), `risk` (`read`, `write` ou `external`) e `memory` (uma das quatro ferramentas de memória). As de `control` existem em todo bot, seja qual for `allowedTools`.
+As ferramentas que se pode liberar a um bot. `200 { "items": [ToolInfo], "control": ["plan","finish","escalate"] }` (com um cofre configurado, `control` traz também `request_secret`). `ToolInfo`: `name`, `summary` (a primeira frase do que o modelo lê, até 200 caracteres), `risk` (o nível **padrão** de uma chamada: `read`, `write_reversible` ou `external_irreversible`), `dynamicRisk` (a ferramenta classifica cada chamada pelos argumentos e pela máquina: o nível de uma chamada pode ser outro; é o caso do `shell`), `acceptsSecrets` (algum campo aceita `{{secret:NOME}}`), `externalOutput` (a saída chega ao modelo rotulada como dado não confiável) e `memory` (uma das quatro ferramentas de memória). As de `control` existem em todo bot, seja qual for `allowedTools`. A mudança de `write`/`external` para os níveis novos veio com a fase 3.
 
 ---
 
@@ -160,7 +160,7 @@ A mensagem do bot que **é uma pergunta** (o `escalate` do bot, ou o desempate d
 `RunEvent`: `{ seq, type, createdAt, payload }`. Os tipos e o `payload` de cada um estão em [FRONTEND.md](FRONTEND.md), seção 5; `seq` é a posição na execução (1, 2, 3...). Parâmetros: `afterSeq` (padrão 0), `limit` (1 a 1000, padrão 200), `types` (lista separada por vírgula, dos tipos conhecidos) e `view`:
 
 - `full` (padrão): tudo, inclusive o `model_request` inteiro, que carrega a conversa e a lista de ferramentas e **pode ter megabytes**.
-- `chat`: tudo igual, **exceto** que o `payload` de `model_request` vira `{ "omitted": true, "provider", "model", "purpose"?, "messageCount", "toolCount" }`. O corte é feito no banco, então os megabytes nem saem dele. O pedido inteiro está em `GET /v1/runs/{id}/requests/{seq}`.
+- `chat`: tudo igual, **exceto** que o `payload` de `model_request` vira `{ "omitted": true, "provider", "model", "purpose"?, "messageCount", "toolCount", "toolStats"? }` (`toolStats`: `definitions`, `deferred`, `estimatedTokens`, `loadedTokens`, o custo das definições de ferramentas do pedido; só números). O corte é feito no banco, então os megabytes nem saem dele. O pedido inteiro está em `GET /v1/runs/{id}/requests/{seq}`.
 
 `lastSeq` é o `seq` do último evento devolvido (ou o `afterSeq` pedido, se nenhum veio): é o `afterSeq` da próxima página.
 
@@ -196,6 +196,91 @@ Erros: `404` se a execução não existe; `409` para `pause` e `interrupt` numa 
 - Só `rule`, `profile` e `note` são escritas pela pessoa; o diário (`journal`) é escrito pelo sistema ao fim de cada execução. Regras de camada e escopo: perfil é sempre compartilhado; nota é sempre de um bot (`botId` obrigatório); regra é compartilhada, ou de um bot se vier `botId`.
 - Uma memória nova, editada ou esquecida vale **a partir da próxima execução**, nunca no meio de uma ([MEMORIA.md](MEMORIA.md)).
 - **Busca**: em português (radicais: "provas" acha "prova") e **sem diferenciar acentos** ("avaliacao" acha "avaliação") onde o PostgreSQL tem a extensão `unaccent` (a imagem Docker tem; `suup doctor` informa). `excerpt` é o trecho em texto puro e `matches`, os trechos achados nele (`start` inclusive, `end` exclusivo, em caracteres). Quando o texto só casou por causa dos acentos, `matches` pode vir vazio. `botId` na busca de memória diz quem busca (vê as compartilhadas e as dele); sem ele, só as compartilhadas.
+
+---
+
+## Aprovações e regras
+
+Uma chamada de ferramenta que precisa do seu OK vira um **cartão** (`Approval`); a execução fica em `waiting_approval` e libera o worker até você decidir. Como e por quê: [APROVACOES.md](APROVACOES.md).
+
+`Approval`: `id`, `runId`, `botId`, `conversationId` (a da execução, ou `null`), `callId`, `tool`, **`args`** (o conteúdo exato que vai rodar, com segredos como `{{secret:NOME}}`, nunca valores), `level` (`read`, `write_reversible`, `external_irreversible`), `summary` (uma linha: o título do cartão), `secrets` (nomes usados), `source` (`rule`, `reviewer` ou `default`: quem mandou perguntar), `status` (`pending`, `approved`, `denied`, `cancelled`, `expired`), `reason` (o motivo de uma negação), `outbound` (`null`, ou `{ kind: "message", recipientFields, recipients }`: a ferramenta **declarou** que a chamada é uma mensagem a outra pessoa; `recipients` é o que "Permitir destinatário" fixaria, ou `null` se não dá para dizer exatamente), `ruleId` (a regra criada por "Permitir destinatário"), `expiresAt` (só se a configuração faz cartões expirarem), `decidedAt`, `createdAt`.
+
+| Método e caminho | Corpo | Resposta |
+|---|---|---|
+| `GET /v1/approvals?status=&botId=&conversationId=&runId=&limit=` | | `200 { items: [Approval] }`, do mais novo ao mais antigo (`limit` até 200, padrão 50). `status=pending` é a lista de cartões esperando você |
+| `GET /v1/conversations/{id}/approvals?status=&botId=&runId=&limit=` | | O mesmo, só da conversa; `404` |
+| `GET /v1/approvals/{id}` | | `200 Approval`; `404` |
+| `POST /v1/approvals/{id}/decision` | `{ "decision": "approve", "allowRecipient"?: true }` ou `{ "decision": "deny", "reason"?: "..." }` | `200 { approval, rule }` (`rule` é a regra criada, ou `null`); `404`; `409` se já foi decidido, cancelado ou expirado |
+
+- Decidir **volta a execução para a fila** (um worker precisa estar rodando); a decisão é gravada no log da execução (`approval_decided`) por ela mesma, ao retomar. Aprovada, a ferramenta roda **exatamente** com `args`.
+- Negar não falha a execução: o modelo recebe a negação (com `reason`) e continua.
+- "Permitir destinatário": `allowRecipient: true` só vale num cartão com `outbound` (senão `409`) e cria uma regra `allow` para esta ferramenta e **este bot**, com os campos de destinatário **iguais** aos desta chamada (`409` se `recipients` é `null`). O corpo é estrito: `always` e campos desconhecidos dão `400`. Não há outra forma de criar regra por uma decisão.
+- Uma mensagem no chat **não** decide nada.
+- `POST /v1/runs/{id}/cancel` numa execução que espera cancela o cartão (`cancelled`).
+
+`Rule` (regra permanente do usuário): `id`, `botId` (`null` = todos os bots), `tool` (nome, ou `*`), `effect` (`allow` ou `deny`), `matchers` (lista de `{ field, value }`: o campo nomeado dos argumentos precisa ser **exatamente** o valor, todos precisam valer; não há operador (`op` é recusado com `400`); `field` é um caminho com pontos nos argumentos; **vazio = qualquer uso da ferramenta**), `enabled` e `disabledReason` (a migração 0013 desativou as regras que usavam padrões; elas não valem e aparecem aqui com o motivo), `note`, `createdBy` (`user` ou `approval`), `sourceApprovalId`, `createdAt`, `updatedAt`. Quem proíbe vale mais que quem libera.
+
+| Método e caminho | Corpo | Resposta |
+|---|---|---|
+| `GET /v1/approval-rules?botId=` | | `200 { items: [Rule] }`, da mais antiga à mais nova. Com `botId`: as desse bot e as globais |
+| `POST /v1/approval-rules` | `{ tool, effect, botId?, matchers?, note? }` | `201 Rule`; `400` |
+| `PATCH /v1/approval-rules/{id}` | `{ effect?, matchers?, note?, enabled? }` | `200 Rule`; `400`, `404`; `409` ao ativar (`enabled: true`) uma regra que ainda guarda condições antigas (troque `matchers` na mesma chamada) |
+| `DELETE /v1/approval-rules/{id}` | | `200 { deleted: true }`; `404` |
+
+Tempo real: o quadro `approval.changed` (`{ change: "created"\|"updated", approval }`) chega a toda conexão quando um cartão aparece ou muda de situação. As regras e o cofre não têm quadro: leia de novo depois de escrever.
+
+---
+
+## Cofre de segredos
+
+Só **escrita**: não existe rota nem campo que devolva um valor. O que é e o que não protege: [COFRE.md](COFRE.md). Sem a seção `vault` na configuração, ou sem a chave no ambiente, as rotas de escrita respondem `503 unavailable` com a mensagem que diz o que falta (a listagem funciona sem chave).
+
+`Secret`: `name` (letras maiúsculas, números e `_`, começando por letra, até 64), `description`, `keyId` (impressão digital da chave que o cifrou), `grantedBotIds` (quem pode usar), `createdAt`, `updatedAt`, `lastUsedAt`.
+
+| Método e caminho | Corpo | Resposta |
+|---|---|---|
+| `GET /v1/vault` | | `200 { configured, ok, keyEnv, reason }`: o servidor consegue guardar segredos? `configured`: a seção `vault` está na configuração; `ok`: a chave existe no ambiente e é válida; `keyEnv`: o **nome** da variável (nunca a chave); `reason`: o que falta, em português. O app usa para avisar antes de tentar escrever |
+| `GET /v1/secrets` | | `200 { items: [Secret] }` |
+| `PUT /v1/secrets/{nome}` | `{ value, description?, grantBotIds? }` | `200 Secret`. Cria ou **substitui** o valor (as concessões ficam); `value` de 8 a 16 384 caracteres; `400`; `503` |
+| `DELETE /v1/secrets/{nome}` | | `200 { deleted: true }`; `404` |
+| `PUT /v1/secrets/{nome}/grants/{botId}` | | `200 Secret`: o bot passa a poder usar; `404` |
+| `DELETE /v1/secrets/{nome}/grants/{botId}` | | `200 Secret`: o bot deixa de poder; `404` |
+| `GET /v1/runs/{id}/secret-request` | | `200 { request: { runId, botId, name, reason } \| null }`: o segredo que a execução (em `waiting_user`) pediu com `request_secret` |
+| `POST /v1/runs/{id}/secret-request/answer` | `{ value?, declined?, description? }` | `200 { name, provided }`. O valor vai **direto ao cofre**, o bot é concedido e a execução volta à fila; o modelo só fica sabendo que o segredo está disponível. `409` se a execução não espera um segredo |
+
+Qualquer resposta ou quadro do stream que mencione um valor conhecido (por exemplo, um texto digitado no chat antes de o segredo existir) sai com `[REDACTED:NOME]` no lugar.
+
+---
+
+## Conectores (MCP)
+
+Servidores MCP externos cujas ferramentas os bots podem usar, com autorização por conector (concessão por bot), escopo e risco por ferramenta. Como funciona, o que protege e o que não: [CONECTORES.md](CONECTORES.md). **Nenhuma resposta traz uma credencial**: um conector só cita segredos do cofre pelo nome (`secretNames`, e `{ secret, prefix? }` no lugar do valor em `env` e `headers`). Criar, editar ou ligar um conector pela API é o usuário agindo (o token do servidor): não há cartão. (O bot propor um conector, com cartão, não existe ainda.)
+
+`Connector`: `id`, `name` (`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`, até 24), `description`, `transport` (`{ kind: "stdio", command, args, env, cwd? }` ou `{ kind: "http", url, headers }`; um valor de `env`/`headers` é um texto **ou** `{ secret: "NOME", prefix?: "Bearer " }`), `scope` (`read_only` ou `read_write`), `toolOverrides` (`{ "<ferramenta no servidor>": { risk?, outbound? } }`: o que o usuário afirma; `outbound` é `{ kind: "message", recipientFields }`, a marca "envia mensagem para outra pessoa", que **só o usuário** põe), `trustAnnotations`, `timeoutMs`, `enabled`, `origin` (`user`; `proposal` é o gancho do futuro "o bot propõe", sempre criado desligado), `grantedBotIds`, `secretNames`, `connection` (`{ connected, failures, lastError }`: **do processo que respondeu**), `discovery` (`{ discoveredAt, lastError, lastErrorAt }`: o que **qualquer** processo viu por último), `tools` e as datas.
+
+`ConnectorTool` (de `tools`, a última listagem guardada, com o risco recalculado pela configuração de agora): `tool` (nome no servidor), `name` (`conn_<conector>__<ferramenta>`: o que o modelo chama e o que as regras casam), `description` (texto do servidor, limpo e limitado a 800 caracteres: **não confiável**), `risk`, `riskBasis` (`default`, `user`, `trusted_hint`, `tightened_by_hint`, `outbound`), `outbound` (a marca do usuário, ou `null`), `available` (e `reason` quando não: esquema não suportado, escopo somente leitura, nome repetido...), `hints` (`readOnlyHint`, `destructiveHint` como o servidor os declarou). `tools` é `null` até o servidor ser listado uma vez.
+
+| Método e caminho | Corpo | Resposta |
+|---|---|---|
+| `GET /v1/connectors` | | `200 { items: [Connector] }` |
+| `POST /v1/connectors` | `{ name, transport, description?, scope?, tools?, trustAnnotations?, timeoutMs?, enabled?, grants? }` com `grants: [{ botId, tools: "all" \| ["a", "b"] }]` | `201 Connector`; `400` (configuração recusada: shell com `-c`, `http://` fora de localhost, segredo que não existe no cofre...); `409` nome repetido |
+| `GET /v1/connectors/{nome}` | | `200 Connector`; `404` |
+| `PATCH /v1/connectors/{nome}` | `{ description?, transport?, scope?, tools?, trustAnnotations?, timeoutMs? (null: o padrão), enabled? }` | `200 Connector`. `transport` e `tools` **substituem** o que havia; a conexão aberta com a configuração antiga é descartada |
+| `DELETE /v1/connectors/{nome}` | | `200 { deleted: true }`; `404` |
+| `PUT /v1/connectors/{nome}/grants/{botId}` | `{ tools: "all" \| ["a", "b"] }` (obrigatório; nomes **no servidor**) | `200 Connector`: **substitui** o que o bot pode usar do conector (`"all"`: todas as aprovadas; uma lista: só essas; `[]`: nenhuma). Vale a partir da próxima execução. `400` corpo ausente ou ferramenta que o conector não tem (se ele nunca foi listado, o servidor o lista antes de conferir); `404`. Uma ferramenta não concedida não existe para o bot |
+| `DELETE /v1/connectors/{nome}/grants/{botId}` | | `200 Connector`; `404` |
+| `PUT /v1/connectors/{nome}/tools/{ferramenta}/outbound` | `{ outbound: { kind: "message", recipientFields: ["to"] } \| null }` | `200 Connector`: o usuário marca (ou, com `null`, desmarca) a ferramenta como "envia mensagem para outra pessoa" e diz onde está o destinatário. Uma ferramenta marcada nunca é `read` |
+| `PUT /v1/connectors/{nome}/tools/{ferramenta}/risk` | `{ risk: "read" \| "write_reversible" \| "external_irreversible" \| null }` | `200 Connector`: o que o usuário afirma dessa ferramenta (`null` limpa). O servidor pode **apertar** isso por uma dica, nunca afrouxar |
+| `GET /v1/connectors/{nome}/review` | | `200 { items: [{ tool, status: "changed" \| "new", approvedFingerprint, approved, currentFingerprint, current, seenAt }] }`: as ferramentas cuja **definição mudou** depois de aprovada (ou que apareceram depois da primeira listagem). `approved` e `current` são `{ name, description, inputSchema, annotations }` (texto do servidor, não confiável). Enquanto estiver aqui, a ferramenta está **desligada para todos os bots** |
+| `POST /v1/connectors/{nome}/tools/{ferramenta}/review` | `{ fingerprint }` (o `currentFingerprint` que a pessoa viu) | `200 Connector`: aprova a definição atual. `409` se ela mudou de novo desde então; `404` se a ferramenta nunca foi vista. Só o usuário faz isso |
+| `GET /v1/connectors/{nome}/events` | | `200 { items: [{ id, tool, kind, fromFingerprint, toFingerprint, detail, createdAt }] }`, do mais novo ao mais antigo: `baseline`, `pinned_on_grant`, `changed`, `new`, `restored`, `approved` |
+| `POST /v1/connectors/{nome}/test` | | `200 { ok, serverName, serverVersion, durationMs, error, tools }`: liga o servidor **do zero, no processo que atende** (um programa local precisa existir onde o servidor da API roda), lista as ferramentas e desliga. Uma falha do servidor MCP é `ok: false` com `error` (que nomeia o conector), não um erro HTTP |
+
+O objeto `Connector` traz `grants: [{ botId, all, tools }]` (o que cada bot pode usar; `grantedBotIds` continua com os bots que têm concessão), `pendingReviews` (quantas ferramentas esperam revisão) e, em cada ferramenta de `tools`, `pin` (`approved` \| `changed` \| `new` \| `unseen`) e `fingerprint` (SHA-256 da definição que o servidor mostra agora). O evento `model_request` de uma execução traz `toolStats` (`definitions`, `deferred`, `estimatedTokens`, `loadedTokens`) e `hostedToolSearch`; o evento `tool_catalog` diz como as ferramentas de conectores foram oferecidas (`direct`, `hosted`, `client`, `meta`). O `transport` stdio aceita `egressHosts` (nomes exatos de host que o servidor, no contêiner, pode alcançar; veja [REDE.md](REDE.md)), e o `Connector` traz `runsIn` (`container` ou `host`; `null` em HTTP: onde o servidor roda, e `host` é SEM isolamento).
+
+A rede da máquina dos bots ([REDE.md](REDE.md)): `GET /v1/bots/{id}/network` (`defaults`, `hosts` do bot, últimas recusas do proxy), `PUT /v1/bots/{id}/network/hosts/{host}` (libera um host de nome exato para o bot) e `DELETE` no mesmo caminho (`404` se o host não está na lista). Um host pedido pelo bot vale só para a execução e passa por um cartão de aprovação da ferramenta `request_network_access`.
+
+Sem tempo real próprio: o app lê de novo depois de escrever. `GET /v1/doctor` ganha uma linha `Conector <nome>` por conector ligado (e, numa instalação em que a API não roda os bots, diz que não verificou).
 
 ---
 
@@ -245,8 +330,9 @@ data: {"runId":"...","event":{"seq":7,"type":"tool_call","createdAt":"...","payl
 | `conversation.updated` | `{ conversation }` | Mudou a lista de conversas: mensagem nova, lida, arquivada. Vai a `Conversation` inteira, com `unreadCount` e `activeRun` |
 | `memory.changed` | `{ change, memory }` | `change`: `created`, `updated`, `archived`, `restored` |
 | `bot.updated` | `{ bot }` | Bot criado, editado, arquivado ou tornado principal |
+| `approval.changed` | `{ change, approval }` | Um cartão de aprovação apareceu (`created`) ou mudou de situação (`updated`: aprovado, negado, cancelado, expirado). Vai o `Approval` inteiro |
 
-Dos quadros com dados de uma linha (`run.updated`, `message.*`, `conversation.updated`, `bot.updated`) o servidor manda o **estado atual** da linha, lido do banco quando o quadro é montado: várias atualizações seguidas de uma execução podem chegar como uma só, a última. `run.event` é um evento específico do log (que só cresce), nunca fundido.
+Dos quadros com dados de uma linha (`run.updated`, `message.*`, `conversation.updated`, `bot.updated`, `approval.changed`) o servidor manda o **estado atual** da linha, lido do banco quando o quadro é montado: várias atualizações seguidas de uma execução podem chegar como uma só, a última. `run.event` é um evento específico do log (que só cresce), nunca fundido.
 
 ### Garantias e retomada
 

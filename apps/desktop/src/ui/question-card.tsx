@@ -1,5 +1,6 @@
 import { buildAnswerText, parseAnswerText, type Question, type QuestionAnswer } from "@suup/api";
 import { type KeyboardEvent, useEffect, useId, useRef, useState } from "react";
+import { focusOnAppearance } from "../lib/focus.js";
 import { Pill } from "./primitives.js";
 
 const OTHER = "\u0000other";
@@ -50,7 +51,9 @@ export function QuestionCard({
   // The card appears: take the focus, unless the user is typing.
   useEffect(() => {
     if (autoFocus === true && !answered && !userIsTyping()) {
-      ref.current?.querySelector<HTMLElement>('[role="radio"], [role="checkbox"]')?.focus();
+      focusOnAppearance(
+        ref.current?.querySelector<HTMLElement>('[role="radio"], [role="checkbox"]'),
+      );
     }
   }, []);
 

@@ -29,7 +29,8 @@ export const editFileTool = defineTool({
     "The edit fails, and nothing is changed, if old_string is not found or matches more than once; in the second case add surrounding context to make it unique, or set replace_all to true to change every match (useful for renaming).",
   ].join(" "),
   input,
-  risk: "write",
+  risk: "write_reversible",
+  describe: ({ path }) => `Edit ${path}`,
   async execute({ path, old_string, new_string, replace_all }, ctx) {
     if (old_string === new_string) {
       return {

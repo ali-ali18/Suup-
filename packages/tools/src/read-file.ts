@@ -33,6 +33,9 @@ export const readFileTool = defineTool({
   ].join(" "),
   input,
   risk: "read",
+  // Not labelled external by default (a file is usually the bot's own work); `runtime`'s
+  // `untrustedOutputTools` setting turns the label on for tools like this one (see docs/COFRE.md).
+  describe: ({ path }) => `Read ${path}`,
   async execute({ path, offset, limit }, ctx) {
     let info: Awaited<ReturnType<typeof ctx.executor.stat>>;
     try {

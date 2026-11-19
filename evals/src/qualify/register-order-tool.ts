@@ -37,7 +37,7 @@ export const registerOrderTool = defineTool({
   description:
     "Registers a customer order (evaluation tool). Takes the customer (name and tier), the list of items (code, quantity, unit) and the priority. Call it once with every item.",
   input,
-  risk: "write",
+  risk: "write_reversible",
   async execute(order, ctx) {
     await ctx.executor.writeFile(ORDER_FILE, `${JSON.stringify(order, null, 2)}\n`);
     const count = order.items.length;

@@ -2,6 +2,8 @@
 
 Guia para desenhar o app de desktop. Cada item diz se **já existe** (fases 1 e 2, no repositório) ou em que **fase** entra. O que já existe tem os nomes exatos dos campos; o que é futuro pode mudar de nome, mas não de natureza.
 
+**Como desenhar** (cartões, tokens, estados, acessibilidade): [DESIGN.md](DESIGN.md) é o padrão obrigatório; este documento diz só *o que* o backend oferece.
+
 A **API de rede existe** (fase 2): HTTP e tempo real por Server-Sent Events, descritos em [API.md](API.md) e tipados no pacote `@suup/api`, que o app importa (esquemas, tipos, o cliente `createClient` e o `subscribe` do stream). Este documento diz *o que* cada tela precisa; o API.md diz *como* pedir. Onde a API real difere do que este guia prometia antes de ela existir, o texto abaixo já foi corrigido (a seção 12 resume as diferenças).
 
 ## 1. As três camadas de dados
@@ -70,7 +72,7 @@ Ações: criar, editar, arquivar, tornar principal, listar (com ou sem arquivado
 | `queued` | Na fila | "Na fila" ou "Retomando" |
 | `running` | Trabalhando | Indicador de atividade, plano vivo |
 | `waiting_user` | O bot fez uma pergunta | A pergunta em destaque e o campo de resposta |
-| `waiting_approval` | Há uma ação aguardando aprovação (fase 3) | Cartão de aprovação |
+| `waiting_approval` | Há uma ação aguardando aprovação (existe): `GET /v1/approvals?runId=&status=pending` | Cartão de aprovação |
 | `done` | Concluída | Resumo e evidência |
 | `failed` | Falhou | Origem da falha em destaque |
 | `cancelled` | Você mandou parar | "Cancelada" |
@@ -114,17 +116,23 @@ Cada execução tem um log de eventos numerados (`seq`), só de acréscimo. É a
 | `model_error` | `kind`, `message`, `retryable`, `attempt` | "Tentando de novo" ou erro |
 | `compacted` | `summary`, `droppedMessages` | Aviso discreto: "histórico resumido" |
 | `model_request` | A requisição inteira enviada ao modelo | Só no inspetor de diagnóstico |
+| `policy_checked` | `callId`, `tool`, `level`, `outcome` (`allow` ou `deny`), `source` (`rule`, `reviewer`, `default`), `ruleId?`, `reason?` | Selo discreto na linha da ferramenta ("liberada pela regra X", "recusada por regra"). Só existe para o que não foi uma leitura simples |
+| `approval_requested` | `approvalId`, `callId`, `tool`, `args`, `level`, `summary`, `secrets`, `source`, `expiresAt?` | **O cartão de aprovação** (seção 8, fase 3). `args` é o conteúdo exato; segredos aparecem como `{{secret:NOME}}` |
+| `approval_decided` | `approvalId`, `callId`, `decision` (`approved`, `denied`, `cancelled`, `expired`), `reason?`, `ruleId?` | O cartão resolvido; entra no log quando o worker retoma a execução |
+| `secret_requested` | `callId`, `name`, `reason?` | O bot pede um segredo: abre o formulário seguro (seção 8, fase 3). A execução fica em `waiting_user` |
 
 Observações:
 
 - `tool_call` e `tool_result` se ligam pelo `callId`. Entre um e outro, a ferramenta está rodando.
-- Em `GET /v1/runs/{id}/events?view=chat` (e no stream), o `payload` de `model_request` vem **resumido** (`omitted: true`, `provider`, `model`, `purpose`, `messageCount`, `toolCount`): o pedido inteiro pode ter megabytes e só o Inspetor o desenha (`GET /v1/runs/{id}/requests/{seq}`). Todos os outros tipos desta tabela vêm inteiros.
+- Uma chamada **negada** (por você, por regra ou pelo revisor) tem `tool_result` com `outcome: "denied"` e `isError: true`, e as chamadas que vinham depois dela no mesmo turno ganham um `denied` "não foi executada". Uma chamada que espera cartão ainda **não tem `tool_call`**: ele só entra depois da aprovação (o cartão é o `approval_requested`).
+- O conteúdo de um evento nunca tem o valor de um segredo: o que o app vê é `{{secret:NOME}}` ou `[REDACTED:NOME]`.
+- Em `GET /v1/runs/{id}/events?view=chat` (e no stream), o `payload` de `model_request` vem **resumido** (`omitted: true`, `provider`, `model`, `purpose`, `messageCount`, `toolCount` e `toolStats`, só números): o pedido inteiro pode ter megabytes e só o Inspetor o desenha (`GET /v1/runs/{id}/requests/{seq}`). Todos os outros tipos desta tabela vêm inteiros.
 - `model_response`, `model_request` e `model_error` têm `purpose`: `agent` (o bot), `review` (o revisor) ou `compaction` (resumo do histórico). Na conversa, só `agent` aparece.
 - O texto do bot chega **por turno**, inteiro, e não letra por letra.
 - `escalated` com `reason: "review_tie_break"` é o caso em que o revisor recusou duas vezes (ou não conseguiu verificar, `review` com `unverified`, o que inclui reprovar duas vezes sem apontar divergência) e o Suup pede que você decida; o texto da pergunta diz qual dos dois foi.
 - Resultado de ferramenta pode ser grande ou cortado (`truncated`); mostrar recolhido por padrão.
 
-**Ferramentas que existem hoje**, para ícones e rótulos: `shell`, `read_file`, `write_file`, `edit_file`, `list_files`, `search_files`, `web_fetch`, mais as três de controle, `plan`, `finish` e `escalate`. Da fase 2: `remember`, `recall`, `forget` e `search_conversations` (memória; "salvo na memória" quando `remember` dá certo). Entram depois: conectores (fase 3), `delegate` e rotinas (fase 4), navegador (fase 5), dispositivos (fase 6).
+**Ferramentas que existem hoje**, para ícones e rótulos: `shell`, `read_file`, `write_file`, `edit_file`, `list_files`, `search_files`, `web_fetch`, mais as de controle, `plan`, `finish`, `escalate` e (só onde há cofre) `request_secret`. Da fase 2: `remember`, `recall`, `forget` e `search_conversations` (memória; "salvo na memória" quando `remember` dá certo). Entram depois: conectores (fase 3), `delegate` e rotinas (fase 4), navegador (fase 5), dispositivos (fase 6).
 
 ## 6. O que você pode fazer numa execução (existe)
 
@@ -180,12 +188,41 @@ Cada item de memória tem texto, camada, escopo, **autor** (`user` ou `bot`), or
 
 ### Fase 3: aprovações, cofre e conectores
 
-- **Cartão de aprovação:** o que o bot quer fazer, o conteúdo exato (o texto do e-mail, o comando), o nível de risco, e os botões aprovar e recusar. Opção "sempre permitir isso", que vira regra.
-- **Níveis de risco** de uma ação: leitura, escrita reversível, externa ou irreversível.
-- **Rascunho:** tudo o que vai para outra pessoa aparece como rascunho que você envia.
-- **Formulário seguro:** campo de senha dentro do chat; o valor vai para o cofre e nunca aparece na conversa.
-- **Cofre:** lista de segredos por nome, sem mostrar valores.
-- **Conectores:** lista de serviços conectados (Gmail, Agenda, GitHub), estado da conexão, escopo (por exemplo, somente leitura), e instalar ou remover.
+O backend de aprovações e do cofre **existe** (API.md, [APROVACOES.md](APROVACOES.md), [COFRE.md](COFRE.md)); o app o desenha (README do app, "Aprovações, cofre e conectores"). O que ele desenha:
+
+- **Cartão de aprovação** (`Approval`, de `GET /v1/approvals?status=pending`, e ao vivo pelo quadro `approval.changed`). Campos e o que cada um vira na tela:
+  - título: `summary` (uma linha; ex.: "Shell em repo: git push origin main");
+  - conteúdo exato: `args` (mostrar como código, todos os campos; é o que vai rodar, sem retoques). Um marcador `{{secret:NOME}}` vira um selo "usa o segredo NOME" (e `secrets` lista os nomes), nunca um valor;
+  - nível de risco: `level` (`read`, `write_reversible`, `external_irreversible`) como selo; `source` explica por que perguntou (`default`: o nível; `reviewer`: a revisão automática; `rule`: uma regra);
+  - de quem: `botId`; onde: `conversationId` e `runId`; quando: `createdAt`; `expiresAt` (só quando a configuração faz expirar) como contagem regressiva;
+  - botões (regra do dono): numa **ação comum**, só o texto **Recusar** e a pílula **Aprovar** (sem botão dividido, sem menu, sem "sempre permitir"). Só quando `outbound` não é `null` (a ferramenta declarou que é uma mensagem a outra pessoa; o app nunca adivinha pelo nome) o cartão tem **Descartar** e o botão dividido **Enviar**, com o menu "Permitir destinatário" (`allowRecipient: true`; indisponível se `outbound.recipients` é `null`), "Precisa de aprovação" e "Gerenciar regras". Tudo por `POST /v1/approvals/{id}/decision`. Um segundo clique, ou um cartão já cancelado, volta `409`: recarregue o cartão. Regras permanentes só nascem de um ato explícito do usuário (tela de regras, `suup rules`); a tela diz que uma regra **sem condições vale para qualquer uso da ferramenta**, e que a comparação é sempre "exatamente igual";
+  - estados do cartão (`status`): `pending` (botões), `approved`, `denied` (mostra `reason`), `cancelled` (a execução foi cancelada), `expired`. Cartão resolvido vira uma linha do histórico, não some;
+  - o cartão fica **dentro da conversa**, no lugar da chamada da ferramenta (a `Run` está em `waiting_approval`, avatar `waiting`), e também na tela **Pendências** (todos os bots, `GET /v1/approvals?status=pending`) e num contador na barra lateral. Pelo chat, escrever "sim" **não** aprova: só os botões.
+  - Depois de decidir, a execução volta sozinha para `queued` e segue; mostre "retomando", como após uma resposta.
+- **Tela de regras** (`GET/POST/PATCH/DELETE /v1/approval-rules`): uma tabela com efeito (libera/proíbe), de quem (um bot ou "todos"), ferramenta (ou "qualquer"), condições (`campo operador valor`: igual, começa com, contém, padrão `*`/`?`), anotação e origem (`createdBy: "approval"` = criada num cartão, com link para o cartão em `sourceApprovalId`). Editar efeito, condições e anotação; apagar. Uma regra que proíbe vale mais que uma que libera; mostre isso.
+- **Níveis de risco** de uma ação: leitura, escrita reversível, externa ou irreversível. Cada ferramenta de `GET /v1/tools` traz o `risk` padrão e `dynamicRisk` (o nível depende dos argumentos e de onde roda: o `shell`); use no formulário de criar bot para avisar o que pede cartão.
+- **Rascunho:** tudo o que vai para outra pessoa aparece como rascunho que você envia (depende dos conectores: as ferramentas de conector já existem; o rascunho como etapa própria, não).
+- **Formulário seguro** (`secret_requested` no log; `GET /v1/runs/{id}/secret-request` devolve `{ name, reason, botId }` enquanto a execução espera). Aparece **dentro da conversa**, no lugar da pergunta do bot: o nome do segredo, o motivo que o bot deu, um campo de senha (sem eco, sem sugestão do navegador, sem colar no histórico) e os botões **Guardar** e **Recusar**. O valor vai por `POST /v1/runs/{id}/secret-request/answer` (`{ value }` ou `{ declined: true }`) **direto ao cofre**; nunca entra no estado do app, numa mensagem, no log nem em armazenamento local. Depois de guardar, o formulário some e a execução volta sozinha. O bot só fica sabendo que o segredo está disponível.
+- **Cofre** (`GET /v1/vault` diz antes de escrever se o servidor tem cofre e chave; `GET /v1/secrets`, `PUT/DELETE /v1/secrets/{nome}`, `PUT/DELETE /v1/secrets/{nome}/grants/{botId}`): lista de segredos por nome com descrição, `lastUsedAt` e **quais bots podem usar** (interruptor por bot). "Novo segredo" e "Trocar o valor" abrem o mesmo campo de senha; **não existe** "mostrar o valor" (nem na API). Mostre o aviso quando o servidor responder `503 unavailable` (sem chave do cofre) com a mensagem do servidor.
+- **Conectores (MCP)**: o backend **existe** (API.md, [CONECTORES.md](CONECTORES.md)) e o app o desenha. O que ele desenha:
+  - **Tela Conectores** (`GET /v1/connectors`): uma linha por conector com nome, descrição, tipo (`transport.kind`: "programa neste computador" ou "servidor HTTP"), **escopo** (`read_only` como selo "só leitura"), `enabled` (interruptor, `PATCH`), quantos bots têm acesso e a **saúde**: `discovery.lastError` (o último erro que qualquer processo viu, já com o nome do conector) e `connection` (só vale para o processo que respondeu: não mostre "desconectado" como problema, é preguiçoso). Botão **Testar** (`POST /v1/connectors/{nome}/test`) que mostra o resultado na hora, incluindo a mensagem de erro.
+  - **Adicionar conector:** formulário com dois tipos. Programa local: o **executável** (um campo só, sem espaços) e uma lista de **argumentos** (um por linha, nunca um texto de shell), variáveis de ambiente (cada uma é "texto" ou "segredo do cofre": um seletor com a lista de `GET /v1/secrets`, e um atalho para cadastrar um segredo novo). HTTP: URL e cabeçalhos com a mesma escolha texto/segredo, e o atalho "Authorization: Bearer <segredo>". Escopo e tempo limite. **Avisos obrigatórios** no formulário, em texto visível: um programa local roda **no computador do servidor/worker, fora da máquina isolada dos bots, com as permissões do usuário que roda o Suup**; e "só instale servidores em que você confia". As recusas da API (`400`, com a mensagem em português) aparecem junto do campo.
+  - **Por bot e por ferramenta** (no app: dentro de cada conector, em Configurações > Conectores, e dentro de cada segredo, em Configurações > Cofre; não na tela de editar bot): a concessão é **por ferramenta** (`PUT /v1/connectors/{nome}/grants/{botId}` com `{ tools: "all" | [nomes no servidor] }`, que **substitui** o conjunto; `DELETE` tira o acesso; o estado vem de `grants: [{ botId, all, tools }]`). O fluxo que o app deve ter: ao conceder a um bot, **nenhuma ferramenta marcada**, uma caixa por ferramenta (as da lista `tools` com `available: true`) e dois atalhos, **"selecionar todas"** (`tools: "all"`) e **"só as de leitura"** (as marcadas com `risk: "read"`, enviadas como lista). Uma ferramenta não concedida não existe para o bot: mostre-a desmarcada, sem sugerir que "quase" funciona. A mudança vale a partir da **próxima** execução.
+  - **Revisão de definição** (`pin` de cada ferramenta e `pendingReviews` do conector): uma ferramenta `changed` ou `new` está **desligada para todos os bots**. Mostre um selo "definição mudou, esperando sua revisão" na linha da ferramenta e na linha do conector (contagem `pendingReviews`), e uma tela de revisão (`GET /v1/connectors/{nome}/review`): por ferramenta, a descrição e o esquema **antes** (`approved`, o que o usuário aprovou; `null` para uma nova) e **agora** (`current`), lado a lado, como citação de texto do servidor, e um botão **Aprovar esta versão** (`POST /v1/connectors/{nome}/tools/{ferramenta}/review` com `{ fingerprint: currentFingerprint }`; `409` = mudou de novo, recarregue e mostre a nova). Não há botão "aprovar tudo". O histórico (`GET /v1/connectors/{nome}/events`) pode ir num detalhe. O doctor também avisa.
+  - **Custo de definições** (opcional, no Inspetor): cada `model_request` traz `toolStats` (`definitions`, `deferred`, `estimatedTokens`, `loadedTokens`) e o evento `tool_catalog` diz o modo (`direct`, `hosted`, `client`, `meta`); em `meta`, as chamadas aparecem como `search_tools` e como a **ferramenta real** (o `tool_call` de um `use_tool` é gravado com o nome e os argumentos reais, e o cartão é o da ferramenta real).
+  - **Lista de ferramentas de um conector** (`tools` do `Connector`, ou do `test`): nome (`tool`, e `name` em detalhe: é o que aparece nos cartões e nas regras), descrição (texto **do servidor, não confiável**: mostre como citação, com um selo "escrito pelo servidor", nunca como texto do app), o **risco** com o selo igual ao dos cartões e **de onde veio** (`riskBasis`: padrão = "pergunta antes"; definido por você; **mensagem a outra pessoa** (`outbound`, a marca do usuário: caixa "Envia mensagem para outra pessoa" e campo do destinatário por ferramenta); dica do servidor que você aceitou; **apertado pelo servidor**, com o aviso de que ele diz que a ferramenta escreve, e a saída é uma regra criada em Aprovações, não marcar como leitura), as `hints` do servidor, e `available`: as que **não** são oferecidas ficam numa seção própria com o `reason` (esquema não suportado, fora do escopo somente leitura...).
+  - **Marcar uma ferramenta como leitura:** um seletor de risco por ferramenta (`PUT /v1/connectors/{nome}/tools/{ferramenta}/risk`, com `null` para voltar ao padrão), com a explicação de que "leitura" executa **sem cartão**. Uma opção "Confiar nas dicas do servidor" no conector (`trustAnnotations`), com o aviso do que isso afrouxa.
+  - **No cartão de aprovação** de uma ferramenta de conector (`tool` começa com `conn_`): mostre o nome do conector e o da ferramenta separados (a linha `summary` já diz `Conector <nome> → <ferramenta> ...`), e que o conteúdo sai do computador para um servidor externo.
+  - **Na linha do tempo**, o resultado de uma ferramenta de conector vem **dentro do envelope** `<<<EXTERNAL_DATA ... <<<END_EXTERNAL_DATA`: desenhe-o como "dado externo" (recuado, com o selo), nunca como fala do bot. Um erro de conector começa com `Conector "nome":`.
+  - **Propostas do bot** (`origin: "proposal"`, sempre desligadas): ainda não existem; quando existirem, serão cartões de aprovação com o comando e os argumentos exatos, e o app deve distingui-las na lista.
+  - Mudanças de conectores não têm quadro no stream: releia depois de escrever. O cofre continua sendo onde se cria e troca o segredo; o conector só o cita pelo nome.
+- **Rede dos bots** (backend existe e o app desenha: seção "Rede" na edição do bot, `runsIn` e hosts nos conectores, cartão `request_network_access`; [REDE.md](REDE.md), padrões em [DESIGN.md](DESIGN.md) §3b). O que a tela precisa:
+  - **sem isolamento (sandbox local):** a API não tem um campo para isso; o app olha se `GET /v1/tools` lista `request_network_access` (só o sandbox isolado a registra) e, se não lista, diz que não há proxy nem lista de hosts. Se um dia houver um campo `sandbox` declarado, troque a dedução por ele;
+  - dados: `GET /v1/bots/{id}/network` → `defaults` (liberados para todos, vêm da configuração: só leitura), `hosts` (os do bot: `host`, `createdAt`) e `refusals` (as últimas recusas do proxy: `host`, `port`, `reason`, `message`, `createdAt`);
+  - ações: **Liberar host** (`PUT /v1/bots/{id}/network/hosts/{host}`; a API devolve `400` com a mensagem em português para IP, `localhost`, curinga ou texto que não é nome) e **Remover** (`DELETE`, `404` se não está na lista do bot). Cada recusa da lista pode virar um botão "Liberar `{host}`". Dizer na tela que é **nome exato** (liberar `api.exemplo.com` não libera `exemplo.com` nem subdomínios) e que um host liberado é um canal de saída;
+  - **cartão de "acesso à rede"**: é um cartão comum de aprovação da ferramenta `request_network_access` (`args.host`, `args.reason`; `summary` "Allow network access to HOST until the end of this run. Reason: ..."). Mostre o host exato em destaque e o motivo; só **Recusar** / **Aprovar** (aprovar vale só para esta execução). Um botão dividido "Permitir para este bot" depende de decisão do dono (REDE.md);
+  - no conector: o campo novo `runsIn` (`container` ou `host`): para `host`, mostre um aviso visível de que o programa roda **sem isolamento** no computador do worker; para `container`, mostre os hosts (`transport.egressHosts`, mais os padrões) que ele pode alcançar e um campo para editá-los (`PATCH /v1/connectors/{nome}` com `transport.egressHosts`);
+  - `suup doctor`/`GET /v1/doctor` ganharam as linhas "Rede dos bots: sem saída direta" e "Rede dos bots: proxy e lista de hosts" (mostre falha com destaque: "a máquina tem saída direta").
 - **Entrar com ChatGPT:** fluxo de login para usar a assinatura como modelo.
 
 ### Fase 4: rotinas, iniciativa e delegação
@@ -233,9 +270,11 @@ Uma tela separada do chat, para quando algo dá errado. A API serve os mesmos c�
 | Criar e editar bot | `GET /v1/models`, `GET /v1/tools`, `POST /v1/bots`, `PATCH /v1/bots/{id}`, `POST /v1/bots/draft` |
 | Memória | `GET /v1/memories`, `POST`, `PATCH`, `archive`, `restore`, `GET /v1/memories/search` |
 | Rotinas | Rotinas e histórico de disparos |
-| Pendências | Cartões de aprovação, perguntas abertas e iniciativas, de todos os bots |
+| Pendências | Cartões de aprovação (`GET /v1/approvals?status=pending`, quadro `approval.changed`), perguntas abertas, pedidos de segredo (execuções `waiting_user` com `secret-request`) e iniciativas, de todos os bots |
+| Regras de aprovação | `GET/POST/PATCH/DELETE /v1/approval-rules` |
 | Desktop do bot | Vídeo da tela e estado da conexão |
-| Conectores e cofre | Serviços conectados e segredos |
+| Conectores | `GET/POST /v1/connectors`, `PATCH`/`DELETE /v1/connectors/{nome}`, concessões por bot, risco por ferramenta, `POST .../test` |
+| Cofre | Segredos: `GET /v1/secrets`, `PUT`/`DELETE /v1/secrets/{nome}`, concessões por bot |
 | Dispositivos | Seus computadores e celular |
 | Inspetor | Eventos crus, `requests/{seq}`, `replay`, `resend`, `doctor` |
 | Configurações | Modelos e chaves, limites padrão, notificações |
@@ -250,7 +289,7 @@ O rosto é desenhado pelo motor `@suup/avatar` (formatos, cores e estados no `RE
 | Pensando | Execução `queued` ou `running`, aguardando `model_response` | `thinking` |
 | Trabalhando | Entre `tool_call` e `tool_result`; variações por ferramenta | `working` |
 | Com dúvida | `waiting_user` | `asking` |
-| Pedindo permissão | `waiting_approval` | `waiting` |
+| Pedindo permissão | `waiting_approval` (há um cartão em `approval_requested` sem `approval_decided`) | `waiting` |
 | Concluiu | `finish_attempt` com `accepted: true` (status `done`); aparece por alguns segundos e volta a `idle` | `done` |
 | Levou bronca | `finish_attempt` recusado ou `review` com `reject` | `thinking` |
 | Falhou | `status` `failed` | `failed` |
@@ -268,3 +307,5 @@ O rosto é desenhado pelo motor `@suup/avatar` (formatos, cores e estados no `RE
 - **Não lidas** só contam mensagens do bot e do sistema; marcar como lida é uma chamada (`/read`), nunca automática.
 - **Datas** são sempre texto ISO 8601 em UTC; **custos**, texto decimal.
 - **Mensagem para uma execução pausada** fica guardada (`sent`) e é lida depois do `resume`.
+- **`risk` de uma ferramenta** (`GET /v1/tools`) passou de `read`/`write`/`external` para `read`/`write_reversible`/`external_irreversible` (fase 3), e ganhou `dynamicRisk`, `acceptsSecrets` e `externalOutput`.
+- **Uma execução em `waiting_approval` não pode ser pausada** (`409`): ela já não usa um worker. Cancelar funciona e cancela o cartão. Mensagem no chat não aprova nada.

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ActionCard, ActionFold } from "./action-card.js";
 import { Dots, EndedLine, WorkingIndicator } from "./chat-lines.js";
 import { Composer } from "./composer.js";
+import { focusEntry } from "./menu.js";
 import { UserMessage } from "./message.js";
 import { Tabs } from "./primitives.js";
 
@@ -151,6 +152,30 @@ describe("ActionCard", () => {
     expect(screen.queryByText("saída do comando")).toBeNull();
   });
 
+  it("the chevron is drawn (CSS shows it only on hover and focus); a card with no details is a plain row", () => {
+    const { container, rerender } = render(card());
+    expect(container.querySelector(".ui-action__chevron")).not.toBeNull();
+    // The expand affordance is the stacked chevrons, and the matching collapse glyph when open.
+    expect(container.querySelector(".ui-action__chevron.lucide-chevrons-up-down")).not.toBeNull();
+    rerender(card({ expanded: true }));
+    expect(container.querySelector(".ui-action__chevron.lucide-chevrons-down-up")).not.toBeNull();
+    expect(container.querySelector(".lucide-chevron-down, .lucide-chevron-up")).toBeNull();
+    rerender(
+      <ActionCard
+        icon={<span />}
+        kind="Segredos"
+        state="done"
+        stateLabel=""
+        summary="Segredo X disponível"
+        expanded={false}
+        onToggle={() => {}}
+      />,
+    );
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(container.querySelector(".ui-action__chevron")).toBeNull();
+    expect(screen.getByTestId("action-card").textContent).toBe("SegredosSegredo X disponível");
+  });
+
   it("clicking toggles; expanded shows a labelled region with the details in place", () => {
     const onToggle = vi.fn();
     const { rerender } = render(card({ onToggle }));
@@ -256,5 +281,30 @@ describe("ActionFold", () => {
     expect(screen.getByRole("region", { name: "4 ações anteriores" }).textContent).toBe(
       "os cartões",
     );
+  });
+});
+
+describe("focusEntry (menu items)", () => {
+  it("focuses without scrolling the page, and scrolls the list itself to the item", () => {
+    const { container } = render(
+      <div role="menu" style={{ position: "fixed" }}>
+        <button type="button" role="menuitem">
+          a
+        </button>
+        <button type="button" role="menuitem">
+          b
+        </button>
+      </div>,
+    );
+    const items = container.querySelectorAll<HTMLElement>('[role="menuitem"]');
+    const focus = vi.spyOn(items[1] as HTMLElement, "focus");
+    const list = container.querySelector<HTMLElement>('[role="menu"]') as HTMLElement;
+    Object.defineProperty(list, "clientHeight", { value: 40 });
+    Object.defineProperty(items[1], "offsetTop", { value: 60 });
+    Object.defineProperty(items[1], "offsetHeight", { value: 30 });
+    focusEntry(items[1]);
+    expect(focus).toHaveBeenCalledWith({ preventScroll: true });
+    expect(list.scrollTop).toBe(50);
+    focusEntry(undefined);
   });
 });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { replayRun } from "../replay.js";
+import { createRedactor } from "../secrets.js";
 import {
   call,
   createRig,
@@ -20,6 +21,7 @@ import {
   fingerprint,
 } from "./evidence.js";
 import { showWithinBudget } from "./evidence-render.js";
+import { runLoop } from "./loop.js";
 
 const LONG = `${"A".repeat(3000)}MIDDLE-FACT${"Z".repeat(3000)}`;
 
@@ -222,6 +224,11 @@ describe("review: evidence rounds", () => {
     expect(eventsOfType(events, "escalated")[0]?.payload.question).toContain(
       "The CNPJ in the summary",
     );
+    // The event says WHY the user is asked, so the screen can tell "could not verify" from "disagree".
+    expect(eventsOfType(events, "escalated")[0]?.payload).toMatchObject({
+      reason: "review_tie_break",
+      reviewVerdict: "unverified",
+    });
   });
 
   it("an item that does not exist is reported to the reviewer and does not fail the review", async () => {
@@ -338,5 +345,122 @@ describe("evidence helpers", () => {
   it("fingerprints differ for different texts and are stable", () => {
     expect(fingerprint("a")).toBe(fingerprint("a"));
     expect(fingerprint("a")).not.toBe(fingerprint("b"));
+  });
+});
+
+describe("review: evidence and secrets", () => {
+  const value = "sk-live-9f8e7d6c5b4a";
+  const secrets = {
+    redactor: createRedactor({ API_TOKEN: value }),
+    resolve: async () => ({}),
+  };
+
+  it("a file the reviewer asks for is scrubbed in the event and in what the reviewer sees", async () => {
+    const rig = createRig({
+      script: [use(finishCall("c1", "Wrote the config."))],
+      reviewerScript: [
+        needEvidence("v1", "check the config", { files: ["config.env", "missing.txt"] }),
+        verdict("approve"),
+      ],
+    });
+    await rig.executor.writeFile("config.env", `TOKEN=${value}\nREGION=eu\n`);
+    expect(await runLoop(rig.deps({ secrets }), rig.runId)).toBe("done");
+
+    const events = await rig.events();
+    expect(JSON.stringify(events)).not.toContain(value);
+    expect(JSON.stringify(rig.reviewerProvider?.requests)).not.toContain(value);
+    expect(JSON.stringify(rig.provider.requests)).not.toContain(value);
+    // The reviewer still gets the useful part, with the mark where the value was.
+    expect(allText(rig, 1)).toContain("TOKEN=[REDACTED:API_TOKEN]");
+    expect(allText(rig, 1)).toContain("REGION=eu");
+    // The numbers describe the text that was recorded, not the raw file.
+    const [evidence] = eventsOfType(events, "review_evidence");
+    const file = evidence?.payload.supplied[0];
+    expect(file?.kind === "file" && file.chars).toBe(
+      file?.kind === "file" ? file.content.length : -1,
+    );
+    expect(file?.kind === "file" && file.hash).toBe(
+      fingerprint(file?.kind === "file" ? file.content : ""),
+    );
+  });
+
+  it("a tool result that held a value reaches the reviewer scrubbed too", async () => {
+    const rig = createRig({
+      script: [
+        use(call("c1", "echo", { text: `token ${value} ${"x".repeat(5000)} END-MARK` })),
+        use(finishCall("c2", "Echoed the token.")),
+      ],
+      reviewerScript: [
+        needEvidence("v1", "see the whole echo", { results: ["#1"] }),
+        verdict("approve"),
+      ],
+    });
+    expect(await runLoop(rig.deps({ secrets }), rig.runId)).toBe("done");
+    expect(JSON.stringify(await rig.events())).not.toContain(value);
+    expect(JSON.stringify(rig.reviewerProvider?.requests)).not.toContain(value);
+    expect(allText(rig, 1)).toContain("[REDACTED:API_TOKEN]");
+    expect(allText(rig, 1)).toContain("END-MARK");
+  });
+  /** O texto que o revisor recebeu como resposta ao seu último pedido de evidência. */
+  function evidenceReply(rig: Rig, request: number): string {
+    const blocks = (rig.reviewerProvider?.requests[request]?.messages ?? []).flatMap(
+      (m) => m.blocks,
+    );
+    const last = blocks.filter((b) => b.type === "tool_result").at(-1);
+    return last?.type === "tool_result" ? last.content : "";
+  }
+
+  it("the full arguments of a call are scrubbed in the event and in what the reviewer sees", async () => {
+    const rig = createRig({
+      script: [
+        use(call("c1", "echo", { text: `${"x".repeat(400)} TOKEN=${value} END-ARGS` })),
+        use(finishCall("c2", "Echoed with the token.")),
+      ],
+      reviewerScript: [
+        needEvidence("v1", "see the arguments", { calls: ["#1"] }),
+        verdict("approve"),
+      ],
+    });
+    expect(await runLoop(rig.deps({ secrets }), rig.runId)).toBe("done");
+
+    const events = await rig.events();
+    expect(JSON.stringify(events)).not.toContain(value);
+    expect(JSON.stringify(rig.reviewerProvider?.requests)).not.toContain(value);
+    expect(evidenceReply(rig, 1)).toContain("TOKEN=[REDACTED:API_TOKEN] END-ARGS");
+    const [evidence] = eventsOfType(events, "review_evidence");
+    const item = evidence?.payload.supplied[0];
+    expect(item?.kind).toBe("tool_call");
+    // The numbers describe the scrubbed text the reviewer got, not the raw arguments.
+    const shown = evidenceReply(rig, 1);
+    expect(shown).toContain(`(${item?.chars} chars, shown in full)`);
+  });
+
+  it("a value learned only after the call was recorded is still scrubbed from call arguments and results", async () => {
+    // O redator começa vazio: o log guarda o valor cru. Ele é ensinado só quando o revisor pede
+    // a evidência; nem o evento de evidência nem o que o revisor recebe podem trazê-lo.
+    const late = createRedactor();
+    const lateSecrets = { redactor: late, resolve: async () => ({}) };
+    const rig = createRig({
+      script: [
+        use(call("c1", "echo", { text: `${"x".repeat(400)} TOKEN=${value} END-ARGS` })),
+        use(finishCall("c2", "Echoed with the token.")),
+      ],
+      reviewerScript: [
+        () => {
+          late.add("API_TOKEN", value);
+          return needEvidence("v1", "see both", { calls: ["#1"], results: ["#1"] });
+        },
+        verdict("approve"),
+      ],
+    });
+    expect(await runLoop(rig.deps({ secrets: lateSecrets }), rig.runId)).toBe("done");
+
+    const events = await rig.events();
+    expect(JSON.stringify(eventsOfType(events, "review_evidence"))).not.toContain(value);
+    const reply = evidenceReply(rig, 1);
+    expect(reply).not.toContain(value);
+    expect(reply).toContain("TOKEN=[REDACTED:API_TOKEN] END-ARGS");
+    expect(reply).toContain("Tool CALL #1");
+    expect(reply).toContain("Tool RESULT of call #1");
   });
 });

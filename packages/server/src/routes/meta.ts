@@ -44,9 +44,17 @@ export const metaRoutes: Route[] = [
         name: tool.name,
         summary: summaryOf(tool.description),
         risk: tool.risk,
+        dynamicRisk: tool.classify !== undefined,
+        acceptsSecrets: (tool.secretFields?.length ?? 0) > 0,
+        externalOutput: tool.externalOutput === true,
         memory: (MEMORY_TOOL_NAMES as readonly string[]).includes(tool.name),
       }));
-      return { body: { items, control: CONTROL_TOOLS } };
+      // `request_secret` exists only where there is a vault to put the answer in.
+      const control =
+        ctx.runtime.vault.settings === undefined
+          ? CONTROL_TOOLS
+          : [...CONTROL_TOOLS, "request_secret"];
+      return { body: { items, control } };
     },
   },
   {
@@ -58,6 +66,8 @@ export const metaRoutes: Route[] = [
       const checks = await runDoctorChecks(ctx.runtime, {
         live: query.live === true,
         sandbox: ctx.doctorSandbox,
+        // A stdio connector runs where the worker runs: an API-only server cannot vouch for it.
+        connectors: ctx.doctorSandbox,
       });
       return { body: { ok: checks.every((c) => c.ok), checks } };
     },

@@ -1,4 +1,16 @@
-import type { Bot, Conversation, Memory, Message, Run, RunEvent } from "@suup/api";
+import type {
+  Approval,
+  ApprovalRule,
+  Bot,
+  Connector,
+  ConnectorTool,
+  Conversation,
+  Memory,
+  Message,
+  Run,
+  RunEvent,
+  Secret,
+} from "@suup/api";
 
 let n = 0;
 const uuid = (): string => {
@@ -120,4 +132,116 @@ export function makeEvent(
   payload: Record<string, unknown> = {},
 ): RunEvent {
   return { seq, type, createdAt: iso(seq * 1000), payload };
+}
+
+export function makeApproval(over: Partial<Approval> = {}): Approval {
+  return {
+    id: uuid(),
+    runId: uuid(),
+    botId: uuid(),
+    conversationId: null,
+    callId: `call-${n}`,
+    tool: "shell",
+    args: { command: "git push origin main" },
+    level: "external_irreversible",
+    summary: "Shell em repo: git push origin main",
+    secrets: [],
+    source: "default",
+    outbound: null,
+    status: "pending",
+    reason: null,
+    ruleId: null,
+    expiresAt: null,
+    decidedAt: null,
+    createdAt: iso(),
+    ...over,
+  };
+}
+
+export function makeRule(over: Partial<ApprovalRule> = {}): ApprovalRule {
+  return {
+    id: uuid(),
+    botId: null,
+    tool: "shell",
+    effect: "allow",
+    matchers: [],
+    enabled: true,
+    disabledReason: null,
+    note: null,
+    createdBy: "user",
+    sourceApprovalId: null,
+    createdAt: iso(),
+    updatedAt: iso(),
+    ...over,
+  };
+}
+
+export function makeSecret(over: Partial<Secret> = {}): Secret {
+  return {
+    name: "GH_TOKEN",
+    description: "",
+    keyId: "0123456789abcdef",
+    grantedBotIds: [],
+    createdAt: iso(),
+    updatedAt: iso(),
+    lastUsedAt: null,
+    ...over,
+  };
+}
+
+export function makeConnectorTool(over: Partial<ConnectorTool> = {}): ConnectorTool {
+  return {
+    tool: "echo",
+    name: "conn_fake__echo",
+    description: "Returns the text it was given.",
+    risk: "external_irreversible",
+    riskBasis: "default",
+    outbound: null,
+    available: true,
+    hints: null,
+    pin: "approved",
+    fingerprint: null,
+    ...over,
+  };
+}
+
+export function makeConnector(over: Partial<Connector> = {}): Connector {
+  return {
+    id: uuid(),
+    name: "fake",
+    description: "",
+    transport: { kind: "stdio", command: "node", args: [] },
+    scope: "read_write",
+    toolOverrides: {},
+    trustAnnotations: false,
+    timeoutMs: 60_000,
+    enabled: true,
+    origin: "user",
+    grantedBotIds: [],
+    grants: [],
+    pendingReviews: 0,
+    secretNames: [],
+    runsIn: "container",
+    connection: { connected: false, failures: 0, lastError: null },
+    discovery: { discoveredAt: null, lastError: null, lastErrorAt: null },
+    tools: null,
+    createdAt: iso(),
+    updatedAt: iso(),
+    ...over,
+  };
+}
+
+/** An approval of a message to another person: the tool DECLARED it (`outbound`), as the server sends it. */
+export function makeMessageApproval(over: Partial<Approval> = {}): Approval {
+  return makeApproval({
+    tool: "conn_mail__send_email",
+    args: { to: "ana@exemplo.com", subject: "Oi", body: "Tudo bem?" },
+    summary: "Conector mail → send_email",
+    outbound: {
+      kind: "message",
+      recipientFields: ["to"],
+      recipients: [{ field: "to", value: "ana@exemplo.com" }],
+    },
+    ...over,
+  });
 }

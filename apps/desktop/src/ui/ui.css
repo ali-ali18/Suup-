@@ -507,7 +507,7 @@ input.ui-field__control {
 }
 .ui-bubble {
   padding: var(--bubble-pad-y) 18px;
-  border-radius: var(--radius-card);
+  border-radius: var(--radius-bubble);
   min-width: 0;
 }
 .ui-bubble--bot {
@@ -521,7 +521,34 @@ input.ui-field__control {
   max-width: min(100%, 560px);
   background: var(--bot-bubble, var(--color-raised));
   color: var(--bot-on-bubble, var(--color-text));
-  border-radius: var(--radius-card);
+}
+/* Dynamic bubbles (docs/DESIGN.md, Balões): consecutive text bubbles of one sender link on the
+   sender's side (bot: left, user: right) with a small corner; the far side and the group's ends keep
+   the full radius. Cards never carry data-bubble. Only the radius changes when a bubble's position
+   does, so a new message shifts nothing. */
+.ui-msg[data-bubble="middle"],
+.ui-msg[data-bubble="last"] {
+  margin-top: calc(var(--bubble-gap-group) - var(--chat-gap));
+}
+.ui-msg--bot[data-bubble="first"] .ui-bubble--bot {
+  border-bottom-left-radius: var(--radius-bubble-link);
+}
+.ui-msg--bot[data-bubble="middle"] .ui-bubble--bot {
+  border-top-left-radius: var(--radius-bubble-link);
+  border-bottom-left-radius: var(--radius-bubble-link);
+}
+.ui-msg--bot[data-bubble="last"] .ui-bubble--bot {
+  border-top-left-radius: var(--radius-bubble-link);
+}
+.ui-msg--user[data-bubble="first"] .ui-bubble--user {
+  border-bottom-right-radius: var(--radius-bubble-link);
+}
+.ui-msg--user[data-bubble="middle"] .ui-bubble--user {
+  border-top-right-radius: var(--radius-bubble-link);
+  border-bottom-right-radius: var(--radius-bubble-link);
+}
+.ui-msg--user[data-bubble="last"] .ui-bubble--user {
+  border-top-right-radius: var(--radius-bubble-link);
 }
 .ui-bubble--pending {
   opacity: 0.72;
@@ -757,7 +784,7 @@ input.ui-field__control {
   gap: var(--space-4);
   width: min(480px, 100%);
   max-height: 90vh;
-  overflow: auto;
+  overflow: hidden;
   padding: var(--space-6);
   background: var(--color-surface);
   border: 1px solid var(--color-border-strong);
@@ -790,7 +817,16 @@ input.ui-field__control {
   line-height: var(--text-title-line);
   font-weight: var(--text-title-weight);
 }
+/* A tall form scrolls inside the dialog; the title and the buttons stay where they are. */
+.ui-dialog__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px;
+  margin: -2px;
+}
 .ui-dialog__footer {
+  flex: none;
   display: flex;
   justify-content: flex-end;
   gap: var(--space-2);
@@ -833,6 +869,10 @@ input.ui-field__control {
   box-shadow: var(--shadow-popover);
 }
 .ui-menu__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
   padding: 10px var(--space-3);
   border: 0;
   border-radius: var(--radius-inner);
@@ -846,6 +886,23 @@ input.ui-field__control {
 }
 .ui-menu__item:disabled {
   opacity: 0.4;
+}
+.ui-menu__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.ui-menu__desc {
+  font-size: var(--text-small-size);
+  line-height: var(--text-small-line);
+  color: var(--color-text-muted);
+}
+.ui-menu__check {
+  flex: none;
+  color: var(--color-text-muted);
+}
+.ui-menu__list--wide {
+  min-width: 320px;
 }
 .ui-menu__item--danger {
   color: var(--color-danger-text);
@@ -909,6 +966,7 @@ input.ui-field__control {
   max-width: var(--width-reading);
   padding: var(--space-5);
   background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-card);
 }
 .qcard--answered {
@@ -1024,7 +1082,8 @@ input.ui-field__control {
 }
 .ui-action {
   background: var(--color-surface);
-  border-radius: var(--radius-row);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
   min-width: 0;
 }
 .ui-action__row {
@@ -1032,9 +1091,9 @@ input.ui-field__control {
   align-items: center;
   gap: var(--space-3);
   width: 100%;
-  padding: 12px var(--space-4);
+  padding: var(--space-3) var(--space-4);
   border: 0;
-  border-radius: var(--radius-row);
+  border-radius: var(--radius-card);
   background: transparent;
   text-align: left;
   min-width: 0;
@@ -1042,12 +1101,16 @@ input.ui-field__control {
 button.ui-action__row:hover {
   background: var(--color-hover);
 }
-.ui-action__row--static {
-  padding-bottom: 0;
-}
+/* The icon sits in a small rounded square, in the collapsed row and in the header of a card. */
 .ui-action__icon {
   display: inline-flex;
   flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--size-icon-box);
+  height: var(--size-icon-box);
+  border-radius: var(--radius-chip);
+  background: var(--color-raised);
   color: var(--color-text-muted);
 }
 .ui-action__kind {
@@ -1069,7 +1132,17 @@ button.ui-action__row:hover {
 .ui-action__end {
   display: inline-flex;
   flex: none;
+  min-width: var(--size-icon);
   color: var(--color-text-muted);
+}
+/* The expand chevron shows only on hover and on keyboard focus (aria-expanded says it always). */
+.ui-action__chevron {
+  opacity: 0;
+  transition: opacity var(--duration-fast);
+}
+.ui-action__row:hover .ui-action__chevron,
+.ui-action__row:focus-visible .ui-action__chevron {
+  opacity: 1;
 }
 .ui-action--failed .ui-action__summary {
   color: var(--color-danger-text);
@@ -1080,7 +1153,7 @@ button.ui-action__row:hover {
   flex-direction: column;
   gap: var(--space-3);
   padding: var(--space-1) var(--space-4) var(--space-4)
-    calc(var(--space-4) + var(--size-icon) + var(--space-3));
+    calc(var(--space-4) + var(--size-icon-box) + var(--space-3));
 }
 .ui-action__label {
   margin: 0;
@@ -1119,43 +1192,8 @@ button.ui-action__row:hover {
 }
 .ui-action__fold-body .ui-action {
   background: transparent;
+  border-color: transparent;
 }
-.ui-action--needs {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding-bottom: var(--space-4);
-}
-.ui-action__needs {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 0 var(--space-5);
-}
-.ui-action__needs-title {
-  font-size: var(--text-title-size);
-  line-height: var(--text-title-line);
-  font-weight: var(--text-title-weight);
-}
-.ui-action__needs-text {
-  font-size: var(--text-label-size);
-  line-height: var(--text-label-line);
-  color: var(--color-text-muted);
-}
-.ui-action__preview {
-  overflow: hidden;
-}
-.ui-action__preview > * {
-  display: block;
-  width: 100%;
-}
-.ui-action__actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--space-2);
-  padding: 0 var(--space-4);
-}
-
 /* ---- A failed run, in place ------------------------------------------------------------------------------ */
 .ui-ended {
   display: flex;
@@ -1302,4 +1340,276 @@ html[data-resizing] {
 html[data-resizing] * {
   cursor: col-resize !important;
   user-select: none !important;
+}
+
+/* ---- Approval cards, secure form, the content of a call --------------------------------------------------- */
+.ui-action--stopped .ui-action__summary {
+  color: var(--color-text-muted);
+}
+/* The card that waits for you: header, title and one paragraph, the content, the footer. */
+.ui-action--needs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5);
+}
+.ui-action--needs:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: 2px;
+}
+.ui-decision__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.ui-decision__category {
+  font-size: var(--text-small-size);
+  line-height: var(--text-small-line);
+  font-weight: var(--text-title-weight);
+}
+.ui-decision__aside {
+  margin-left: auto;
+  font-size: var(--text-small-size);
+  line-height: var(--text-small-line);
+  color: var(--color-text-muted);
+}
+.ui-decision__intro {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.ui-decision__title {
+  font-size: var(--text-title-size);
+  line-height: var(--text-title-line);
+  font-weight: var(--text-title-weight);
+  overflow-wrap: anywhere;
+}
+.ui-decision__lede {
+  font-size: var(--text-label-size);
+  line-height: var(--text-label-line);
+  color: var(--color-text-muted);
+}
+.ui-decision__content {
+  min-width: 0;
+}
+.ui-decision__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.ui-decision__note {
+  display: flex;
+  flex: 1 1 200px;
+  min-width: 0;
+  font-size: var(--text-small-size);
+  line-height: var(--text-small-line);
+  color: var(--color-text-muted);
+}
+.ui-decision__assure {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.ui-decision__assure > svg {
+  flex: none;
+}
+.ui-decision__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+.ui-decision__deny {
+  min-width: 96px;
+  color: var(--color-text-muted);
+}
+.ui-decision__deny:hover:not(:disabled) {
+  color: var(--color-text);
+}
+/* The primary pill of a card footer: Aprovar, Enviar (secret). */
+.ui-decision__primary {
+  min-width: 112px;
+}
+/* The split button: drawn ONLY for the approval of a message to another person (design-rules.test.ts). */
+.ui-split {
+  display: inline-flex;
+}
+.ui-split__main {
+  min-width: 112px;
+}
+.ui-split > .ui-split__main:not(:last-child) {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.ui-split__more {
+  width: var(--size-control);
+  padding: 0;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  background: color-mix(in srgb, var(--color-bg-inverse) 86%, var(--color-bg));
+}
+.ui-approval__quote {
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+/* The exact content: quiet rows separated by hairlines, label at the left, value after it. */
+.ui-args {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.ui-args__field {
+  display: grid;
+  grid-template-columns: minmax(64px, 120px) minmax(0, 1fr);
+  align-items: baseline;
+  column-gap: var(--space-4);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--color-border);
+  min-width: 0;
+}
+.ui-args__field:last-child {
+  border-bottom: 1px solid var(--color-border);
+}
+.ui-args__key {
+  margin: 0;
+  font-size: var(--text-small-size);
+  line-height: var(--text-small-line);
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+.ui-args__body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  min-width: 0;
+  font-size: var(--text-label-size);
+  line-height: var(--text-label-line);
+}
+.ui-args__value {
+  margin: 0;
+  max-width: 100%;
+  font: inherit;
+  color: var(--color-text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 320px;
+  overflow: auto;
+}
+.ui-args__field[data-code="true"] .ui-args__value {
+  font-family: var(--font-mono);
+  font-size: var(--text-code-size);
+  line-height: var(--text-code-line);
+}
+.ui-args__empty {
+  padding: var(--space-3) 0;
+  grid-column: 1 / -1;
+}
+.ui-args__more {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: var(--text-small-size);
+  line-height: var(--text-small-line);
+  text-decoration: underline;
+}
+.ui-args__more:hover {
+  color: var(--color-text);
+}
+.ui-secret-seal {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  background: var(--color-raised);
+  border: 1px solid var(--color-border-strong);
+  color: var(--color-text);
+  white-space: nowrap;
+}
+.secret-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.secret-field__input {
+  flex: 1;
+  padding-right: 44px;
+  font-family: var(--font-mono);
+}
+.secret-field__reveal {
+  position: absolute;
+  right: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-text-muted);
+}
+.secret-field__reveal:hover:not(:disabled) {
+  background: var(--color-hover);
+  color: var(--color-text);
+}
+.secret-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.ui-notice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-inner);
+  background: var(--color-raised);
+  font-size: var(--text-small-size);
+  line-height: var(--text-small-line);
+  overflow-wrap: anywhere;
+}
+.ui-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-text-muted);
+}
+.ui-icon-button:hover:not(:disabled) {
+  background: var(--color-hover);
+  color: var(--color-text);
+}
+.quote {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  margin: 0;
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--color-border-strong);
+  color: var(--color-text-muted);
+  font-size: var(--text-small-size);
+  line-height: var(--text-small-line);
+}
+.mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-code-size);
+}
+.bullets {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-left: var(--space-5);
+  list-style: disc;
 }

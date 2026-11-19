@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   createRuntime,
   describeOutcome,
+  generateKeyText,
   inspectModelRequest,
   MAX_RESEND_TIMES,
   outcomeKey,
@@ -147,6 +148,43 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("diagnostics shared by the CLI and th
     await runtime.close();
   });
 
+  it("the doctor checks the vault key: missing, invalid, and working with its secrets", async () => {
+    const dir = await tempDir();
+    await writeJson(join(dir, "script.json"), { agent: [{ text: "x" }] });
+    const config = parseConfig(rawConfig({ vault: { keyEnv: "DOCTOR_VAULT_KEY" } }));
+    const checkWith = async (key: string | undefined) => {
+      const runtime = createRuntime(config, {
+        env: { DATABASE_URL: ctx.url, ...(key === undefined ? {} : { DOCTOR_VAULT_KEY: key }) },
+        baseDir: dir,
+      });
+      const checks = await runDoctorChecks(runtime);
+      await runtime.close();
+      return checks.find((c) => c.component === "Cofre");
+    };
+    const missing = await checkWith(undefined);
+    expect(missing).toMatchObject({ ok: false });
+    expect(missing?.detail).toContain("DOCTOR_VAULT_KEY");
+    expect(await checkWith("not-a-key")).toMatchObject({ ok: false });
+
+    const key = generateKeyText();
+    const working = await checkWith(key);
+    expect(working).toMatchObject({ ok: true });
+    expect(working?.detail).toContain("DOCTOR_VAULT_KEY");
+    expect(working?.detail).not.toContain(key);
+
+    // A stored secret that this key cannot read is a failure the doctor names.
+    const other = createRuntime(config, {
+      env: { DATABASE_URL: ctx.url, DOCTOR_VAULT_KEY: generateKeyText() },
+      baseDir: dir,
+    });
+    await other.vault.set("DOCTOR_SECRET", "doctor-secret-value-1");
+    await other.close();
+    const unreadable = await checkWith(key);
+    expect(unreadable).toMatchObject({ ok: false });
+    expect(unreadable?.detail).toContain("DOCTOR_SECRET");
+    expect(unreadable?.detail).not.toContain("doctor-secret-value-1");
+  });
+
   it("runDoctorChecks lists the components and never throws", async () => {
     const runtime = await open();
     const checks = await runDoctorChecks(runtime);
@@ -158,6 +196,9 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("diagnostics shared by the CLI and th
     expect(by.get("Provedor anthropic")).toMatchObject({ ok: false }); // KEY_A is not set
     expect(by.get("Provedor script")?.detail).toContain("NÃO é um modelo de verdade");
     expect(by.get("Ferramentas")?.detail).toContain("shell");
+    expect(by.get("Cofre")).toMatchObject({ ok: true });
+    expect(by.get("Cofre")?.detail).toContain("não configurado");
+    expect(by.get("Aprovações")).toMatchObject({ ok: true, detail: "nenhuma pendente" });
 
     // A broken database does not throw: it is a failed line.
     const broken = createRuntime(parseConfig(rawConfig()), {

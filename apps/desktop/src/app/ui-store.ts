@@ -11,9 +11,13 @@ import type { ToastItem } from "../ui/primitives.js";
 
 export type View = "chat" | "pending" | "memory" | "settings" | "inspector";
 export type PanelTab = "activity" | "library";
+/** The sections of the settings screen. */
+export type SettingsTab = "general" | "approvals" | "vault" | "connectors";
 
 export interface UiState {
   view: View;
+  /** The section of the settings screen that is open. */
+  settingsTab: SettingsTab;
   selectedBotId: string | null;
   panelOpen: boolean;
   panelTab: PanelTab;
@@ -52,6 +56,9 @@ export interface UiState {
   openNewBot(): void;
   closeNewBot(): void;
   go(view: View): void;
+  /** Opens the settings screen on a section. */
+  openSettings(tab: SettingsTab): void;
+  setSettingsTab(tab: SettingsTab): void;
   selectBot(botId: string): void;
   openPanel(tab?: PanelTab): void;
   togglePanel(): void;
@@ -102,6 +109,7 @@ let toastId = 0;
 /** What the person is looking at: screen, selected bot, panel, theme, toasts. Never server data. */
 export const useUi = create<UiState>((set, get) => ({
   view: "chat",
+  settingsTab: "general",
   selectedBotId: null,
   // Closed by default on narrow windows (the layout has no room for three columns there).
   // Quem abriu ou fechou o painel guardou a escolha; sem ela, aberto só em janelas largas.
@@ -152,6 +160,8 @@ export const useUi = create<UiState>((set, get) => ({
   openNewBot: () => set({ newBotOpen: true, editBotId: null, editBotStep: 1 }),
   closeNewBot: () => set({ newBotOpen: false, editBotId: null }),
   go: (view) => set({ view }),
+  openSettings: (settingsTab) => set({ view: "settings", settingsTab }),
+  setSettingsTab: (settingsTab) => set({ settingsTab }),
   selectBot: (botId) => set({ view: "chat", selectedBotId: botId }),
   openPanel: (tab) => set((s) => ({ panelOpen: true, panelTab: tab ?? s.panelTab })),
   togglePanel: () => {

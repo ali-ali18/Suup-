@@ -44,6 +44,7 @@ chmod 600 .env.prod
 #    DOCKER_GID         -> stat -c %g /var/run/docker.sock
 #    ANTHROPIC_API_KEY  -> a chave (ou a variável que o seu suup.config.json citar)
 #    SUUP_SERVER_TOKEN  -> veja "O token", logo abaixo
+#    SUUP_VAULT_KEY     -> (opcional) a chave do cofre de segredos: veja docs/COFRE.md
 
 # 2. Configuração: modelos, limites, sandbox, servidor
 cp suup.config.prod.example.json suup.config.json
@@ -115,6 +116,38 @@ O worker comanda a máquina dos bots com `docker exec`, o que exige falar com o 
 - O **servidor da API não recebe o socket** (é o que fica na frente da rede). É por isso que o `doctor` do servidor não confere a máquina dos bots: peça ao worker.
 - Mantenha a VPS dedicada ao Suup (nada mais de valor nela), com o sistema e o Docker atualizados e as portas fechadas (item acima).
 - Para reduzir ainda mais: Docker em modo *rootless* no host, ou um *proxy de socket* com permissões restritas (só `exec`, `inspect`, `start`, `volume create`, `run`) entre o worker e o daemon. Nenhum dos dois vem pronto aqui.
+
+## Rede dos bots
+
+A máquina dos bots (e cada conector stdio) fica numa rede Docker **interna** e só sai pelo proxy do worker, com uma lista de hosts de nome exato: [REDE.md](REDE.md). No Compose de produção o worker é um contêiner, então ele entra na rede interna com IP fixo e o proxy escuta nesse IP: o `docker-compose.prod.yml` já declara a rede `suup-sandbox-net` (interna, `172.29.77.0/24`, worker em `172.29.77.2`) e o `suup.config.prod.example.json` aponta `sandbox.network.proxy` para esse endereço. Se mudar a sub-rede, mude os dois. A imagem do runner dos conectores (`suup-connector-runner:prod`) é construída pelo serviço `connector-runner-image`.
+
+Contêineres criados antes desta versão (na rede padrão, com saída direta) são **recriados sozinhos** na primeira execução (o volume do workspace é mantido); `suup doctor` confere que a máquina não tem saída direta.
+
+## Construir atrás de um proxy que reassina o TLS
+
+Numa rede com um proxy que intercepta HTTPS (corporativo, ou o ambiente de um agente), `docker build` falha no `apt-get update`/`npm`/`pip`: o build não tem o proxy nem a CA dele. Passe os dois **só durante o build**, sem gravá-los na imagem:
+
+```sh
+# o proxy como build arg predefinido (não entra no histórico nem nas camadas) e a CA como segredo do BuildKit
+docker build --network host \
+  --build-arg HTTPS_PROXY="$HTTPS_PROXY" --build-arg APT_HTTPS=1 \
+  --secret id=build_ca,src=/caminho/ca-bundle.crt \
+  --tag suup-sandbox:dev docker/sandbox
+
+docker build --network host --build-arg HTTPS_PROXY="$HTTPS_PROXY" --secret id=build_ca,src=/caminho/ca-bundle.crt \
+  --tag suup-connector-runner:dev docker/connector-runner
+docker build --network host --build-arg HTTPS_PROXY="$HTTPS_PROXY" --secret id=build_ca,src=/caminho/ca-bundle.crt \
+  -f docker/server/Dockerfile --tag suup:prod .
+```
+
+- `APT_HTTPS=1` troca as fontes do `apt` para https (um proxy que só faz túnel `CONNECT` recusa `http://` puro). Sem a variável o build é o de sempre.
+- `--network host` deixa o build alcançar um proxy em `127.0.0.1`; com um proxy em outro endereço, use esse endereço e tire a opção.
+- A CA só existe dentro do `RUN` que a monta (`--mount=type=secret`, opcional): sem `--secret` nada muda. Verifique: `docker history --no-trunc <imagem>` e `docker run --rm <imagem> env` não mostram o proxy.
+- Se o proxy bloqueia os espelhos do Debian, use `--build-arg BASE_IMAGE=ubuntu:24.04` na imagem da máquina (o `Dockerfile` libera o uid 1000 da base sozinho). Só para ambientes assim: o CI e a produção usam o padrão Debian.
+
+## Conectores MCP
+
+Com o sandbox `docker`, um conector de processo local ([CONECTORES.md](CONECTORES.md)) roda **num contêiner próprio** criado pelo worker, na rede interna, sem os arquivos nem o ambiente do worker. O contêiner do worker segue com acesso ao socket do Docker (veja acima), então o risco do **worker** não muda; o conector, sim, fica fora dele. Prefira fixar a versão do programa e liberar só os hosts de que o servidor precisa (`--egress`). O contêiner do servidor da API não roda conectores: `suup doctor`, nele, diz que não verificou; rode `docker compose ... exec worker suup connectors test <nome>`.
 
 ## Backups
 

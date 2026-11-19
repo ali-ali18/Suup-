@@ -12,7 +12,7 @@ export async function modelTurn(ctx: LoopContext): Promise<RunStatus | undefined
   const { bot, provider } = ctx.deps;
   let overflowRetried = false;
   for (;;) {
-    const { system, tools } = fixedParts(ctx);
+    const { system, tools, hostedToolSearch } = fixedParts(ctx);
     const { messages, problems } = buildRequest(ctx);
     if (problems.length > 0) {
       return fail(
@@ -28,6 +28,7 @@ export async function modelTurn(ctx: LoopContext): Promise<RunStatus | undefined
       system,
       messages,
       tools,
+      ...(hostedToolSearch === undefined ? {} : { hostedToolSearch }),
       retries: MAX_MODEL_RETRIES,
     });
     if (outcome.kind === "ok") return undefined;

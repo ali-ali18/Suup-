@@ -186,6 +186,24 @@ describe("timeline helpers", () => {
     expect(t.readUserMessages).toEqual(["oi"]);
     expect(acceptedFinish([makeEvent(1, "finish_attempt", { accepted: true })])).toBe(true);
   });
+
+  it("notices: a review that could not verify says when it named nothing; the new review events are activity", () => {
+    const t = timelineNotices([
+      makeEvent(1, "review", { verdict: "unverified" }),
+      makeEvent(2, "review", { verdict: "unverified", namedNothing: true }),
+    ]);
+    expect(t.notices.map((n) => n.text)).toEqual([
+      "O revisor não conseguiu verificar a conclusão.",
+      "O revisor não conseguiu verificar a conclusão e não nomeou o que lhe faltou.",
+    ]);
+    // A pergunta de novo ao revisor e a evidência pedida são atividade do bot (avatar), não ruído.
+    for (const type of ["review_reprompt", "review_evidence"]) {
+      const display = deriveRunDisplay(makeRun({ status: "running" }), [
+        makeEvent(1, type, { callId: "v1" }),
+      ]);
+      expect(display).toMatchObject({ chip: "thinking", active: true });
+    }
+  });
 });
 
 describe("formatting", () => {

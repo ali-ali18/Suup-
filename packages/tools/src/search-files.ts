@@ -37,6 +37,7 @@ export const searchFilesTool = defineTool({
   ].join(" "),
   input,
   risk: "read",
+  describe: ({ pattern, path }) => `Search ${path ?? "."} for ${pattern}`,
   timeoutMs: SEARCH_TIMEOUT_MS + 10_000,
   async execute({ pattern, path, glob, ignore_case }, ctx) {
     const target = path ?? ".";

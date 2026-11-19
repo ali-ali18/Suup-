@@ -34,7 +34,9 @@ export { MAX_NO_PROGRESS_TURNS, REPEAT_FAIL_AT, REPEAT_NUDGE_AT } from "./safe-p
  *
  * It can be started on a run that is `queued`, `running` (fresh or resumed after a crash) or
  * `waiting_user` (with an answer in the inbox). It returns immediately, changing nothing, for a
- * terminal run, a run waiting for approval, and a `waiting_user` run with no answer yet. It
+ * terminal run, a run waiting for approval that no worker has taken back (the decision of the
+ * user makes the store queue it again, and the loop then records the decision and goes on), and a
+ * `waiting_user` run with no answer yet. It
  * returns `running` only when interrupted through `opts.signal`.
  *
  * Store errors are not caught: if the store is down the promise rejects and the run stays as it
@@ -82,6 +84,7 @@ async function loop(ctx: LoopContext): Promise<RunStatus> {
     const control = await store.heartbeat(ctx.runId);
 
     const settled = await settle(ctx);
+    if (settled === "again") continue;
     if (settled !== undefined) return settled;
 
     // Soft stop (the worker is shutting down, or the user paused the run): this is the safe point

@@ -19,7 +19,7 @@ export const forgetTool = defineTool({
     "You can only forget memories you can see: shared ones and your own. Get the id from recall (or from remember, if you just saved it). Forget only what the user asked to forget or what is plainly wrong; if you are not sure, ask first. To correct a memory, forget the old one and remember the new text.",
   ].join(" "),
   input,
-  risk: "write",
+  risk: "write_reversible",
   async execute({ id }, ctx) {
     const memory = memoryOf(ctx);
     if (isOutput(memory)) return memory;

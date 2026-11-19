@@ -5,6 +5,7 @@ import { listFilesTool } from "./list-files.js";
 import { readFileTool } from "./read-file.js";
 import { recallTool } from "./recall.js";
 import { rememberTool } from "./remember.js";
+import { requestNetworkAccessTool } from "./request-network-access.js";
 import { searchConversationsTool } from "./search-conversations.js";
 import { searchFilesTool } from "./search-files.js";
 import { shellTool } from "./shell.js";
@@ -18,6 +19,7 @@ export { listFilesTool } from "./list-files.js";
 export { readFileTool } from "./read-file.js";
 export { recallTool } from "./recall.js";
 export { rememberTool } from "./remember.js";
+export { requestNetworkAccessTool } from "./request-network-access.js";
 export { searchConversationsTool } from "./search-conversations.js";
 export { buildSearchCommand, searchFilesTool } from "./search-files.js";
 export { shellTool } from "./shell.js";
@@ -35,6 +37,13 @@ export const builtinTools: readonly Tool<unknown>[] = [
   erase(searchFilesTool),
   erase(webFetchTool),
 ];
+
+/**
+ * The tool that asks the user for a network host. Only the isolated machine has a proxy to allow
+ * hosts on, so the runtime registers it for the docker sandbox only (a local machine and the
+ * evaluations never see it).
+ */
+export const networkTools: readonly Tool<unknown>[] = [erase(requestNetworkAccessTool)];
 
 /**
  * The memory tools (plan section 4.4, phase 2). They only work in a run whose context carries a

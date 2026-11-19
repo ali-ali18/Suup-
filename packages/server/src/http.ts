@@ -34,7 +34,7 @@ export interface Ctx {
 export type Handler = (ctx: Ctx) => Promise<Reply>;
 
 export interface Route {
-  method: "GET" | "POST" | "PATCH" | "DELETE";
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   /** `/v1/bots/:id/archive`: `:name` matches one path segment. */
   pattern: string;
   handler: Handler;
@@ -44,27 +44,46 @@ export interface Route {
 
 export interface Matcher {
   route: Route;
-  regex: RegExp;
+  /** The route's pattern split by `/`: a segment starting with `:` is a parameter, the rest must be equal. */
+  segments: string[];
   keys: string[];
 }
 
 export function compileRoute(route: Route): Matcher {
-  const keys: string[] = [];
-  const source = route.pattern
-    .split("/")
-    .map((segment) => {
-      if (segment.startsWith(":")) {
-        keys.push(segment.slice(1));
-        return "([^/]+)";
-      }
-      return segment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    })
-    .join("/");
-  return { route, regex: new RegExp(`^${source}$`), keys };
+  const segments = route.pattern.split("/");
+  const keys = segments.filter((s) => s.startsWith(":")).map((s) => s.slice(1));
+  return { route, segments, keys };
 }
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-export const isUuid = (value: string): boolean => UUID.test(value);
+/** The captured parameters (raw, in order) when the path has the route's shape, else `null`. Plain comparison, no pattern. */
+export function matchRoute(matcher: Matcher, path: string): string[] | null {
+  const parts = path.split("/");
+  if (parts.length !== matcher.segments.length) return null;
+  const captured: string[] = [];
+  for (const [i, segment] of matcher.segments.entries()) {
+    const part = parts[i] as string;
+    if (segment.startsWith(":")) {
+      if (part === "") return null;
+      captured.push(part);
+    } else if (segment !== part) {
+      return null;
+    }
+  }
+  return captured;
+}
+
+const HEX = "0123456789abcdef";
+const UUID_DASHES = [8, 13, 18, 23];
+
+/** A UUID's fixed shape (8-4-4-4-12 hexadecimal digits), checked position by position. */
+export const isUuid = (value: string): boolean => {
+  if (value.length !== 36) return false;
+  for (let i = 0; i < 36; i += 1) {
+    const ch = value[i]?.toLowerCase() ?? "";
+    if (UUID_DASHES.includes(i) ? ch !== "-" : !HEX.includes(ch)) return false;
+  }
+  return true;
+};
 
 export function newRequestId(): string {
   return randomBytes(6).toString("hex");
@@ -72,7 +91,15 @@ export function newRequestId(): string {
 
 /** An id the client sent in `X-Request-Id`, if it is harmless to echo and log. */
 export function acceptRequestId(header: string | string[] | undefined): string | undefined {
-  return typeof header === "string" && /^[A-Za-z0-9._-]{1,64}$/.test(header) ? header : undefined;
+  if (typeof header !== "string" || header.length < 1 || header.length > 64) return undefined;
+  const harmless = (ch: string): boolean =>
+    (ch >= "a" && ch <= "z") ||
+    (ch >= "A" && ch <= "Z") ||
+    (ch >= "0" && ch <= "9") ||
+    ch === "." ||
+    ch === "_" ||
+    ch === "-";
+  return [...header].every(harmless) ? header : undefined;
 }
 
 export interface BodyLimits {

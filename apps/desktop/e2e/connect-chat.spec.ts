@@ -126,7 +126,7 @@ test.describe("connect and chat", () => {
   test("files: an edit expands to a plain-text diff, with no coloured blocks", async ({ page }) => {
     await openWithBot(page, world, "Arquivos");
     await send(page, "CASE-FLOW faça o arquivo");
-    const edit = page.getByTestId("action-card").filter({ hasText: "Arquivos" });
+    const edit = page.getByTestId("action-card").filter({ hasText: "Arquivo" });
     await expect(edit).toContainText("Concluído · Editar ola.txt", { timeout: 60_000 });
     await edit.getByRole("button").click();
     const diff = edit.getByTestId("diff");

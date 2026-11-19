@@ -3,7 +3,6 @@ import {
   type EscalateQuestion,
   escalatedQuestions,
   type FailureOrigin,
-  redactSecrets,
   runResultSchema,
 } from "@suup/core";
 import {
@@ -41,8 +40,11 @@ const isoDay = (date: Date): string => date.toISOString().slice(0, 10);
  * guardar (e é instruído a não guardar segredos), e o diário seguia o que o usuário digitou, o que
  * vazava uma senha que o bot tinha se recusado a guardar. Aqui só entra o que o próprio bot
  * escreveu (o resumo do `finish`) e metadados neutros. Numa execução sem conversa (`suup run`) o
- * objetivo é uma tarefa dada por quem opera o sistema e entra, cortado. Todo o texto passa por
- * `redactSecrets`, melhor esforço, como segunda linha de defesa.
+ * objetivo é uma tarefa dada por quem opera o sistema e entra, cortado. NÃO há detecção de
+ * "texto que parece segredo" (isso seria reconhecer por padrão): o que protege é (1) o diário nunca
+ * copiar o texto cru do usuário numa conversa, (2) o redator do cofre, que troca os valores EXATOS
+ * dos segredos conhecidos (em `finishRun`, antes do corte) e (3) a regra no prompt do bot de nunca
+ * guardar segredos. Um segredo que o bot repete no resumo e que não está no cofre não é pego.
  */
 export function journalText(run: Run): string {
   const when = isoDay(run.finishedAt ?? run.updatedAt);
@@ -57,7 +59,7 @@ export function journalText(run: Run): string {
     outcome = "cancelada antes de terminar.";
   }
   const what = isConversation ? "Conversa" : `Objetivo: "${clip(run.objective, 200)}"`;
-  return redactSecrets(`${when} · ${what} · Resultado: ${outcome}`);
+  return `${when} · ${what} · Resultado: ${outcome}`;
 }
 
 /** Nomes das ferramentas de controle, para distinguir uma execução que só conversou. */
@@ -101,6 +103,10 @@ async function outcomeMessage(
     case "waiting_user": {
       // The latest question the run asked: its position in the log makes the key, so each
       // question is written once however often the pause is observed.
+      const [asked] = await db.sql<{ seq: number; payload: { name?: string; reason?: string } }[]>`
+        select seq, payload from run_events
+        where run_id = ${run.id} and type in ('escalated', 'secret_requested')
+        order by seq desc limit 1`;
       const [question] = await db.sql<
         {
           seq: number;
@@ -114,6 +120,16 @@ async function outcomeMessage(
         select seq, payload from run_events
         where run_id = ${run.id} and type = 'escalated'
         order by seq desc limit 1`;
+      if (asked !== undefined && (question === undefined || asked.seq > question.seq)) {
+        // The bot asked for a credential: the message says so (the app draws the secure form from
+        // the run's `secret_requested` event); the value never goes through the chat.
+        const name = asked.payload.name ?? "";
+        return {
+          authorKind: "bot",
+          text: `Preciso do segredo ${name}${asked.payload.reason === undefined ? "" : ` (${asked.payload.reason})`}. Guarde-o no cofre pelo formulário seguro; eu nunca vejo o valor.`,
+          key: `run:${run.id}:secret:${asked.seq}`,
+        };
+      }
       const text = question?.payload.question?.trim();
       if (question === undefined || text === undefined || text === "") return null;
       return {
@@ -146,6 +162,25 @@ async function outcomeMessage(
   }
 }
 
+/**
+ * Como o fim de uma execução limpa o texto que vai ao diário. `redact` é o redator do cofre
+ * (`runtime.redactJson`): ele conhece os valores exatos dos segredos e roda sobre o texto cru, ANTES
+ * do corte, porque um corte no meio de um valor deixaria um pedaço que o redator não reconheceria.
+ * Sem ele nada é trocado (não há detecção por padrão).
+ */
+export interface RunEndOptions {
+  redact?: <T>(value: T) => Promise<T>;
+}
+
+/** A execução com os campos que alimentam o diário limpos pelo redator do cofre. */
+async function scrubbedForJournal(run: Run, options: RunEndOptions): Promise<Run> {
+  const { redact } = options;
+  if (redact === undefined) return run;
+  const { objective, failureDetail, result } = run;
+  const safe = await redact({ objective, failureDetail, result });
+  return { ...run, ...safe };
+}
+
 export interface RunEffects {
   /** A bot or system message was written to the conversation now (not already there). */
   messageWritten: boolean;
@@ -169,7 +204,11 @@ export interface RunEffects {
  * - messages posted to a run that ended before reading them become the objective of a new run.
  * - any other status: nothing.
  */
-export async function finishRun(db: Db, runId: string): Promise<RunEffects> {
+export async function finishRun(
+  db: Db,
+  runId: string,
+  options: RunEndOptions = {},
+): Promise<RunEffects> {
   const effects: RunEffects = { messageWritten: false, journalWritten: false, rolledOver: null };
   const run = await getRun(db, runId);
   if (run === null) return effects;
@@ -195,7 +234,7 @@ export async function finishRun(db: Db, runId: string): Promise<RunEffects> {
     if (run.isolated !== true && !(await isPlainChat(db, run))) {
       const journal = await addJournalMemory(db, {
         botId: run.botId,
-        text: journalText(run),
+        text: journalText(await scrubbedForJournal(run, options)),
         sourceRunId: run.id,
         ...(run.conversationId == null ? {} : { sourceConversationId: run.conversationId }),
       });
@@ -214,7 +253,7 @@ export async function finishRun(db: Db, runId: string): Promise<RunEffects> {
  */
 export async function reconcileRunEffects(
   db: Db,
-  options: { sinceDays?: number; limit?: number } = {},
+  options: RunEndOptions & { sinceDays?: number; limit?: number } = {},
 ): Promise<string[]> {
   const days = options.sinceDays ?? 7;
   const limit = options.limit ?? 200;
@@ -256,6 +295,6 @@ export async function reconcileRunEffects(
     ))
     order by r.updated_at
     limit ${limit}`;
-  for (const row of rows) await finishRun(db, row.id);
+  for (const row of rows) await finishRun(db, row.id, options);
   return rows.map((r) => r.id);
 }

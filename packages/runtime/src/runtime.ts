@@ -1,15 +1,27 @@
 import { randomBytes } from "node:crypto";
 import { hostname } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
+import type { StdioLauncher } from "@suup/connectors";
 import {
+  allowAllGate,
   type BotConfig,
+  CONTROL_TOOL_NAMES,
+  controlToolSpecs,
+  createToolGate,
+  DEFAULT_TOOL_SEARCH,
   type Executor,
   type LoopDeps,
+  type NativeToolSearch,
   type Provider,
   ProviderError,
+  planToolSearch,
+  type Redactor,
   type ReviewerConfig,
   type RunEnd,
   ToolRegistry,
+  type ToolSearchMode,
+  type ToolSearchSetup,
+  toolDefinitionStats,
   Worker,
 } from "@suup/core";
 import {
@@ -22,23 +34,42 @@ import {
   PgRunQueue,
   PgRunStore,
   type Run,
+  rulesForBot,
 } from "@suup/db";
 import { createProvider, type ProviderConfig } from "@suup/providers";
-import { DockerExecutor, ensureMachine, LocalExecutor } from "@suup/sandbox";
-import { registerBuiltinTools } from "@suup/tools";
 import {
+  ContainerStdioLauncher,
+  DockerExecutor,
+  EgressProxy,
+  ensureInternalNetwork,
+  ensureMachine,
+  LocalExecutor,
+  type MachineNetwork,
+  NetworkedExecutor,
+} from "@suup/sandbox";
+import { networkTools, registerBuiltinTools, requestNetworkAccessTool } from "@suup/tools";
+import {
+  DEFAULT_CONNECTOR_IMAGE,
   DEFAULT_MAX_TURNS,
+  DEFAULT_NETWORK_NAME,
   DEFAULT_WORKER,
   type ModelEntry,
   type ProviderEntry,
   type RuntimeConfig,
   resolveDatabaseUrl,
 } from "./config.js";
+import {
+  type BotConnectorCandidate,
+  type ConnectorService,
+  createConnectorService,
+} from "./connectors/service.js";
 import { ConfigError, RuntimeError } from "./errors.js";
 import { createMemoryService } from "./memory-service.js";
+import { createNetworkService, type NetworkService } from "./network/service.js";
 import { DEFAULT_HISTORY_CHARS, loadRunContext } from "./run-context.js";
 import { finishRun } from "./run-end.js";
 import { createScriptedProvider } from "./scripted-provider.js";
+import { createVault, DEFAULT_VAULT_KEY_ENV, type Vault } from "./vault/service.js";
 
 type Env = Record<string, string | undefined>;
 
@@ -95,6 +126,37 @@ export interface Runtime {
   /** The database handle. Created at the first use; throws `ConfigError` without a URL. */
   readonly db: Db;
   readonly tools: ToolRegistry;
+  /** The vault: secrets encrypted in the database, with the master key from the environment. */
+  readonly vault: Vault;
+  /**
+   * MCP connectors (plan 4.11): configuration in the database, connections opened lazily by this
+   * process and closed by `close()`. Their tools join a run's registry only for the bots granted.
+   */
+  readonly connectors: ConnectorService;
+  /**
+   * What one bot's requests carry as tool definitions: its built-in and control tools, its
+   * connector tools (granted and approved), how they are offered (loaded, or searched) and the
+   * estimated tokens of the definitions per request. Connects to the connectors, like a run does.
+   */
+  toolReport(botId: string): Promise<BotToolReport>;
+  /**
+   * The network allowlist of the bots' machines and connector containers (docker sandbox): the
+   * global defaults, each bot's hosts, the grants of a run, and what the proxy refused.
+   */
+  readonly network: NetworkService;
+  /**
+   * The egress of the docker sandbox: the internal network and the proxy the machines go out
+   * through, started at the first use. `null` for the `local` sandbox (no isolation, no proxy).
+   */
+  egress(): Promise<EgressRuntime | null>;
+  /**
+   * `value` with every known secret value scrubbed out (a copy). It reloads the vault's values
+   * when they are older than a few seconds, so a secret saved by another process is covered too.
+   * A system without a usable vault returns `value` as it is.
+   */
+  redactJson<T>(value: T): Promise<T>;
+  /** The redactor itself (values as of the last reload), for code that cannot wait. */
+  readonly redactor: Redactor;
   /** Provider by id. Never throws for a missing API key: see `getProvider`. */
   getProvider(id: string): Provider;
   keyStatus(providerId: string): ProviderKeyStatus;
@@ -117,6 +179,13 @@ export interface Runtime {
   close(): Promise<void>;
 }
 
+export interface EgressRuntime {
+  network: MachineNetwork;
+  proxy: EgressProxy;
+  /** Where the machines reach the proxy (host and port). */
+  address: { host: string; port: number };
+}
+
 /** What `DockerExecutor` needs from a machine, built from the `docker` sandbox settings. */
 export function dockerWorkspace(botId: string): string {
   return `/workspace/bots/${botId}`;
@@ -132,6 +201,27 @@ const SAFE_BOT_ID = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
  * Nothing here reaches the network or Docker at creation: providers, the machine and the
  * database connection are made at the first use.
  */
+/** See `Runtime.toolReport`. */
+export interface BotToolReport {
+  botId: string;
+  /** Built-in tools the bot may use, plus the control tools (plan, finish, escalate...). */
+  builtinTools: number;
+  /** Connector tools granted to the bot and approved (the ones it can use). */
+  connectorTools: number;
+  /** Granted tools that are off until a person reviews their definition. */
+  withheld: number;
+  mode: ToolSearchMode;
+  /** Connector tools whose definitions are in every request. */
+  loadedDirectly: number;
+  /** Connector tools kept out of the context and found by search. */
+  deferred: number;
+  /** Definitions in each request (all the tools sent). */
+  definitionsPerRequest: number;
+  /** Estimated tokens of all the definitions sent, and of the ones that enter the context. */
+  estimatedTokens: number;
+  loadedTokens: number;
+}
+
 export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {}): Runtime {
   const env = options.env ?? process.env;
   const baseDir = resolve(options.baseDir ?? process.cwd());
@@ -141,7 +231,97 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
   const providerEntries = new Map(config.providers.map((p) => [p.id, p]));
   const modelEntries = new Map(config.models.map((m) => [m.id, m]));
 
-  const tools = registerBuiltinTools(new ToolRegistry());
+  const registryOptions =
+    config.untrustedOutputTools === undefined
+      ? {}
+      : { externalOutputTools: config.untrustedOutputTools };
+  /** The built-in tools; the isolated machine also has the one that asks for a network host. */
+  const newRegistry = (): ToolRegistry => {
+    const registry = registerBuiltinTools(new ToolRegistry(registryOptions));
+    if (config.sandbox.kind === "docker") for (const tool of networkTools) registry.register(tool);
+    return registry;
+  };
+  const tools = newRegistry();
+  const vaultSettings =
+    config.vault === undefined
+      ? undefined
+      : {
+          keyEnv: config.vault.keyEnv ?? DEFAULT_VAULT_KEY_ENV,
+          ...(config.vault.previousKeyEnvs === undefined
+            ? {}
+            : { previousKeyEnvs: config.vault.previousKeyEnvs }),
+        };
+  const vault = createVault(() => runtime.db, env, vaultSettings);
+  const sandboxConfig = config.sandbox;
+  const networkConfig = sandboxConfig.kind === "docker" ? sandboxConfig.network : undefined;
+  const network = createNetworkService({
+    db: () => runtime.db,
+    defaultHosts: networkConfig?.defaultHosts,
+  });
+  const networkName = networkConfig?.name ?? DEFAULT_NETWORK_NAME;
+  let egressStarted: Promise<EgressRuntime> | undefined;
+  /** The internal network and the proxy: made once, at the first use of the docker sandbox. */
+  const startEgress = (): Promise<EgressRuntime> => {
+    egressStarted ??= (async () => {
+      const net = await ensureInternalNetwork(networkName, {
+        ...(dockerPath === undefined ? {} : { dockerPath }),
+      });
+      const listenHost = networkConfig?.proxy?.listenHost ?? net.gateway;
+      const proxy = new EgressProxy({
+        policy: network.policy,
+        listenHost,
+        listenPort: networkConfig?.proxy?.port ?? 0,
+        ...(networkConfig?.proxy?.advertiseHost === undefined
+          ? {}
+          : { advertiseHost: networkConfig.proxy.advertiseHost }),
+        ...(networkConfig?.ports === undefined ? {} : { ports: networkConfig.ports }),
+        onEvent: (event) => network.record(event),
+      });
+      const address = await proxy.start();
+      return { network: net, proxy, address };
+    })();
+    egressStarted.catch(() => {
+      egressStarted = undefined; // try again at the next use
+    });
+    return egressStarted;
+  };
+  const containerLauncher =
+    sandboxConfig.kind === "docker"
+      ? new ContainerStdioLauncherLazy(
+          {
+            image: sandboxConfig.connectors?.image ?? DEFAULT_CONNECTOR_IMAGE,
+            ...(sandboxConfig.connectors?.memory === undefined
+              ? {}
+              : { memory: sandboxConfig.connectors.memory }),
+            ...(sandboxConfig.connectors?.cpus === undefined
+              ? {}
+              : { cpus: sandboxConfig.connectors.cpus }),
+            ...(dockerPath === undefined ? {} : { dockerPath }),
+          },
+          startEgress,
+        )
+      : undefined;
+  const connectors = createConnectorService({
+    db: () => runtime.db,
+    vault,
+    launcher: containerLauncher,
+    ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+  });
+  // Every tool call goes through the approval policy: the user's rules, the reviewer, then a card.
+  // The gate asks the registry of the RUN (built-in tools plus the connector tools of its bot).
+  const gateFor = (registry: ToolRegistry) =>
+    createToolGate({
+      tools: registry,
+      rules: { rulesFor: (botId) => rulesForBot(runtime.db, botId) },
+      ...(config.approvals?.levels === undefined
+        ? {}
+        : { levelOverrides: config.approvals.levels }),
+      ...(config.approvals?.expireAfterMinutes === undefined
+        ? {}
+        : { expireAfterMs: config.approvals.expireAfterMinutes * 60_000 }),
+      now: () => new Date(),
+    });
+  const REDACTION_MAX_AGE_MS = 5_000;
 
   let db: Db | undefined;
   const providers = new Map<string, Provider>();
@@ -293,24 +473,30 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
   const sandbox = config.sandbox;
   const ensureMachineOnce = (): Promise<void> => {
     if (sandbox.kind !== "docker") return Promise.resolve();
-    machine ??= ensureMachine({
-      name: sandbox.name,
-      image: sandbox.image,
-      volume: sandbox.volume,
-      ...(sandbox.memory === undefined ? {} : { memory: sandbox.memory }),
-      ...(sandbox.cpus === undefined ? {} : { cpus: sandbox.cpus }),
-      ...(dockerPath === undefined ? {} : { dockerPath }),
-    }).then(
-      () => undefined,
-      (error: unknown) => {
-        machine = undefined; // try again at the next use
-        throw new RuntimeError(
-          "sandbox_failed",
-          `Não foi possível preparar a máquina dos bots (contêiner "${sandbox.name}"): ${error instanceof Error ? error.message : String(error)}`,
-          { cause: error },
-        );
-      },
-    );
+    machine ??= startEgress()
+      .then(() => undefined)
+      .then(() =>
+        ensureMachine({
+          network: networkName,
+          name: sandbox.name,
+          image: sandbox.image,
+          volume: sandbox.volume,
+          ...(sandbox.memory === undefined ? {} : { memory: sandbox.memory }),
+          ...(sandbox.cpus === undefined ? {} : { cpus: sandbox.cpus }),
+          ...(dockerPath === undefined ? {} : { dockerPath }),
+        }),
+      )
+      .then(
+        () => undefined,
+        (error: unknown) => {
+          machine = undefined; // try again at the next use
+          throw new RuntimeError(
+            "sandbox_failed",
+            `Não foi possível preparar a máquina dos bots (contêiner "${sandbox.name}"): ${error instanceof Error ? error.message : String(error)}`,
+            { cause: error },
+          );
+        },
+      );
     return machine;
   };
 
@@ -344,7 +530,41 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
         `Não foi possível criar a pasta do bot ${botId} na máquina: ${made.stderr.trim() || `código de saída ${made.exitCode}`}`,
       );
     }
-    return dockerExecutor(dockerWorkspace(botId));
+    const { proxy } = await startEgress();
+    // The bot's commands go out through the proxy, with the bot's own allowlist.
+    return new NetworkedExecutor(dockerExecutor(dockerWorkspace(botId)), proxy, {
+      kind: "bot",
+      id: botId,
+    });
+  };
+
+  /**
+   * On the isolated machine a bot can always ask for a host (the user decides on a card): the tool
+   * is a built-in one, always loaded (never part of the connector catalog, so tool search cannot
+   * defer or hide it). One function for the run and for the measurement, so both count it.
+   */
+  const withNetworkTool = <C extends { allowedTools: string[] }>(botCfg: C): C =>
+    sandbox.kind === "docker" && !botCfg.allowedTools.includes(requestNetworkAccessTool.name)
+      ? { ...botCfg, allowedTools: [...botCfg.allowedTools, requestNetworkAccessTool.name] }
+      : botCfg;
+
+  /** How the connector tools of a bot reach its model (see `docs/CONFIGURACAO.md`, `toolSearch`). */
+  const toolSearchSetup = (
+    candidates: BotConnectorCandidate[],
+    modelId: string,
+  ): ToolSearchSetup => {
+    const declared = modelEntries.get(modelId)?.nativeToolSearch;
+    const native: NativeToolSearch | undefined =
+      declared === undefined || declared === false
+        ? undefined
+        : declared === true
+          ? "bm25"
+          : declared;
+    return {
+      settings: { ...DEFAULT_TOOL_SEARCH, ...(config.toolSearch ?? {}) },
+      candidates,
+      native,
+    };
   };
 
   const buildDeps = async (
@@ -364,22 +584,76 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     }
     const cfg = botConfig(bot);
     const reviewer = reviewerConfig();
+    // Uma única fonte da verdade: a opção explícita, ou então a marca `isolated` da própria
+    // execução. Uma avaliação roda sem ninguém por perto numa máquina descartável: sem diário,
+    // sem memória, sem conectores, portão que permite tudo e sem cofre (não depende do que o
+    // usuário guarda nele).
+    const isolated = (buildOptions.isolated ?? run.isolated) === true;
+    const guarded = !isolated;
+    const vaultOn = guarded && vault.settings !== undefined;
+    if (vaultOn) await vault.refresh(REDACTION_MAX_AGE_MS);
+
+    // The registry of this run: the built-in tools, plus the tools of the connectors this bot was
+    // granted (connected now, lazily). An evaluation (isolated) has no connectors.
+    let runTools = tools;
+    let botCfg = cfg;
+    let toolSearch: ToolSearchSetup | undefined;
+    if (guarded) {
+      const offered = await connectors.toolsForBot(bot.id);
+      if (offered.tools.length > 0) {
+        runTools = newRegistry();
+        const names: string[] = [];
+        for (const tool of offered.tools) {
+          try {
+            runTools.register(tool);
+            names.push(tool.name);
+          } catch {
+            // a name the registry refuses (it cannot happen with the names this package makes)
+          }
+        }
+        botCfg = { ...cfg, allowedTools: [...cfg.allowedTools, ...names] };
+        toolSearch = toolSearchSetup(offered.candidates, bot.modelId);
+      }
+      botCfg = withNetworkTool(botCfg);
+    }
     return {
       store: new PgRunStore(handle, { workerId }),
       provider: getProvider(bot.modelProvider),
-      tools,
+      tools: runTools,
       executor: await runtime.executorFor(bot.id),
-      bot: cfg,
+      bot: botCfg,
       ...(reviewer === undefined ? {} : { reviewer }),
-      // An isolated run (an evaluation) gets neither: nothing of the user's memory reaches it.
-      ...((buildOptions.isolated ?? run.isolated) === true
+      // Uma execução isolada (uma avaliação) roda sem ninguém para responder e numa máquina
+      // descartável: nenhum cartão poderia ser respondido, então ela sai da política pelo nome. Toda
+      // outra execução passa pelo portão.
+      ...(toolSearch === undefined ? {} : { toolSearch }),
+      gate: guarded ? gateFor(runTools) : allowAllGate(),
+      ...(vaultOn ? { secrets: vault.accessFor(bot.id) } : {}),
+      // Uma execução isolada não carrega memória: nada do que o usuário contou chega a ela.
+      ...(!guarded
         ? {}
         : {
-            loadRunContext: (id: string) =>
-              loadRunContext(handle, id, config.defaults?.historyChars ?? DEFAULT_HISTORY_CHARS),
+            loadRunContext: async (id: string) => {
+              const snapshot = await loadRunContext(
+                handle,
+                id,
+                config.defaults?.historyChars ?? DEFAULT_HISTORY_CHARS,
+              );
+              // The model is told which secrets exist (names and purpose), never their values.
+              return vault.status().ok
+                ? { ...snapshot, secrets: await vault.infoFor(bot.id) }
+                : snapshot;
+            },
             memoryFor: (record: { botId: string; id: string }) =>
               createMemoryService(handle, { botId: record.botId, runId: record.id }),
           }),
+      ...(sandbox.kind === "docker" && guarded
+        ? {
+            networkFor: (record: { botId: string; id: string }) => ({
+              allowForRun: (host: string) => network.allowForRun(record.botId, record.id, host),
+            }),
+          }
+        : {}),
       now: () => new Date(),
       sleep: (ms) => new Promise<void>((done) => setTimeout(done, ms)),
     };
@@ -402,6 +676,67 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
       return db;
     },
     tools,
+    vault,
+    connectors,
+    async toolReport(botId) {
+      const bot = await getBot(runtime.db, botId);
+      if (bot === null) throw new RuntimeError("bot_not_found", `Bot ${botId} não encontrado.`);
+      const cfg = withNetworkTool(botConfig(bot));
+      const offered = await connectors.toolsForBot(bot.id);
+      const reg = newRegistry();
+      const connectorNames = new Set<string>();
+      for (const tool of offered.tools) {
+        try {
+          reg.register(tool);
+          connectorNames.add(tool.name);
+        } catch {
+          // a name the registry refuses
+        }
+      }
+      const control = new Set<string>(CONTROL_TOOL_NAMES);
+      const specs = reg.specs([...cfg.allowedTools, ...connectorNames]);
+      const builtin = specs.filter((s) => !connectorNames.has(s.name) && !control.has(s.name));
+      const connectorSpecs = new Map(
+        specs.filter((s) => connectorNames.has(s.name)).map((s) => [s.name, s]),
+      );
+      const catalog = planToolSearch(
+        toolSearchSetup(offered.candidates, bot.modelId),
+        connectorSpecs,
+        getProvider(bot.modelProvider).capabilities,
+      );
+      const sent = [
+        ...controlToolSpecs({ secrets: vault.settings !== undefined, toolSearch: catalog.mode }),
+        ...builtin,
+        ...(catalog.mode === "direct"
+          ? [...connectorSpecs.values()]
+          : catalog.mode === "meta"
+            ? []
+            : catalog.deferred.map((d) => d.spec)),
+      ];
+      const stats = toolDefinitionStats(sent);
+      return {
+        botId,
+        builtinTools:
+          builtin.length + controlToolSpecs({ secrets: vault.settings !== undefined }).length,
+        connectorTools: connectorSpecs.size,
+        withheld: offered.withheld.length,
+        mode: catalog.mode,
+        loadedDirectly: catalog.mode === "direct" ? connectorSpecs.size : 0,
+        deferred: catalog.deferred.length,
+        definitionsPerRequest: stats.definitions,
+        estimatedTokens: stats.estimatedTokens,
+        loadedTokens: stats.loadedTokens,
+      };
+    },
+    network,
+    async egress() {
+      return sandbox.kind === "docker" ? startEgress() : null;
+    },
+    redactor: vault.redactor,
+    async redactJson(value) {
+      await vault.refresh(REDACTION_MAX_AGE_MS);
+      return vault.redactor.redactJson(value);
+    },
     getProvider,
     keyStatus,
     resolveModel,
@@ -419,7 +754,12 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
         return new LocalExecutor({ root: path(sandbox.root), iUnderstandThisIsNotIsolated: true });
       }
       await ensureMachineOnce();
-      return dockerExecutor("/workspace");
+      const { proxy } = await startEgress();
+      // The harness subject has an EMPTY allowlist: whatever it asks of the network is refused.
+      return new NetworkedExecutor(dockerExecutor("/workspace"), proxy, {
+        kind: "harness",
+        id: "doctor",
+      });
     },
     botConfig,
     reviewerConfig,
@@ -455,16 +795,19 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
       const settings = { ...DEFAULT_WORKER, ...config.worker };
       return new Worker({
         workerId,
-        queue: new PgRunQueue(
-          runtime.db,
-          opts.onlyRunId === undefined ? {} : { onlyRunId: opts.onlyRunId },
-        ),
+        queue: new PgRunQueue(runtime.db, {
+          ...(opts.onlyRunId === undefined ? {} : { onlyRunId: opts.onlyRunId }),
+          // What crashed the harness may have had a secret in its message: scrub it first.
+          redact: (text) => runtime.redactJson(text),
+        }),
         buildDeps: (runId) => buildDeps(runId, workerId),
         // What must follow a run (the bot's message in the conversation, the journal) is derived
         // from the stored run, so it also happens for a run another worker finished after a crash.
         afterRun: async (end) => {
           if (end.outcome === "settled" || end.outcome === "failed") {
-            await finishRun(runtime.db, end.runId);
+            await finishRun(runtime.db, end.runId, {
+              redact: (value) => runtime.redactJson(value),
+            });
           }
         },
         concurrency: opts.concurrency ?? settings.concurrency,
@@ -477,6 +820,13 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
       });
     },
     async close() {
+      await connectors.close();
+      await containerLauncher?.closeAll();
+      if (egressStarted !== undefined) {
+        const started = await egressStarted.catch(() => undefined);
+        egressStarted = undefined;
+        await started?.proxy.stop();
+      }
       const open = db;
       db = undefined;
       if (open !== undefined) await open.close();
@@ -499,4 +849,40 @@ function unavailableProvider(id: string, message: string): Provider {
       throw new ProviderError("auth", message, { retryable: false });
     },
   };
+}
+
+/**
+ * The container launcher of stdio connectors, which needs the egress proxy to be up before it can
+ * say what to run: it starts it (once) at the first connection.
+ */
+class ContainerStdioLauncherLazy implements StdioLauncher {
+  readonly where = "container" as const;
+  #inner: ContainerStdioLauncher | undefined;
+  constructor(
+    private readonly base: Omit<
+      ConstructorParameters<typeof ContainerStdioLauncher>[0],
+      "network" | "egress"
+    >,
+    private readonly start: () => Promise<EgressRuntime>,
+  ) {}
+
+  async #launcher(): Promise<ContainerStdioLauncher> {
+    if (this.#inner === undefined) {
+      const { network, proxy } = await this.start();
+      this.#inner = new ContainerStdioLauncher({
+        ...this.base,
+        network: network.name,
+        egress: proxy,
+      });
+    }
+    return this.#inner;
+  }
+
+  async wrap(input: Parameters<StdioLauncher["wrap"]>[0]) {
+    return (await this.#launcher()).wrap(input);
+  }
+
+  async closeAll(): Promise<void> {
+    await this.#inner?.closeAll();
+  }
 }

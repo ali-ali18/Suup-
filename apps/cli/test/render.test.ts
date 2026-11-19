@@ -233,6 +233,19 @@ describe("renderers: the live view", () => {
     expect(
       render({ type: "escalated", payload: { question: "decida", reason: "review_tie_break" } }),
     ).toContain("não chegaram a um acordo");
+    // The reviewer that could not verify is not a disagreement: the header says so.
+    const unverified = render({
+      type: "escalated",
+      payload: { question: "decida", reason: "review_tie_break", reviewVerdict: "unverified" },
+    });
+    expect(unverified).toContain("O revisor não conseguiu verificar");
+    expect(unverified).not.toContain("não chegaram a um acordo");
+    expect(
+      render({
+        type: "escalated",
+        payload: { question: "decida", reason: "review_tie_break", reviewVerdict: "reject" },
+      }),
+    ).toContain("não chegaram a um acordo");
   });
 
   it("shows finish attempts with the rejection reasons, and the reviewer's verdict", () => {
@@ -272,6 +285,17 @@ describe("renderers: the live view", () => {
         payload: { verdict: "unverified", notes: "o CNPJ não foi checado" },
       }),
     ).toContain("Revisor não conseguiu verificar: o CNPJ não foi checado");
+    const named = render({
+      type: "review",
+      payload: {
+        verdict: "unverified",
+        notes: "faltou o contrato",
+        unchecked: [{ what: "o contrato", kind: "file", ref: "contrato.md" }],
+        namedNothing: true,
+      },
+    });
+    expect(named).toContain("sem verificar (file contrato.md): o contrato");
+    expect(named).toContain("não nomeou nada que lhe faltasse");
     const round = render({
       type: "review_evidence",
       payload: {
@@ -460,6 +484,7 @@ describe("suup show: the failure origin is prominent", () => {
       { seq: 4, kind: "auth", message: "chave inválida", attempt: 1, retryable: false },
     ],
     question: null,
+    toolDefinitions: { mode: null, connectorTools: 0, requests: 0, lastRequest: null },
   };
 
   it("puts the origin, its meaning and the detail up front", () => {

@@ -5,6 +5,7 @@ import type { Message } from "../messages.js";
 import {
   type GenerateResult,
   generateAndCollect,
+  type HostedToolSearch,
   type Provider,
   ProviderError,
   type ToolChoice,
@@ -14,6 +15,7 @@ import {
 import { record } from "./recording.js";
 import type { ModelPricing } from "./reviewer.js";
 import type { LoopContext } from "./run-context.js";
+import { toolDefinitionStats } from "./tool-search.js";
 
 /** Loop-level retries of a retryable provider error (the adapter already retried). */
 export const MAX_MODEL_RETRIES = 2;
@@ -31,6 +33,8 @@ export interface CallSpec {
   system: string;
   messages: Message[];
   tools: ToolSpec[];
+  /** The search the provider runs over the deferred specs (see `GenerateRequest`). */
+  hostedToolSearch?: HostedToolSearch;
   toolChoice?: ToolChoice;
   retries: number;
   /**
@@ -58,6 +62,8 @@ export async function callModel(ctx: LoopContext, spec: CallSpec): Promise<CallO
   }
   const purposeField = spec.purpose === "agent" ? {} : { purpose: spec.purpose };
   const choiceField = spec.toolChoice === undefined ? {} : { toolChoice: spec.toolChoice };
+  const hostedField =
+    spec.hostedToolSearch === undefined ? {} : { hostedToolSearch: spec.hostedToolSearch };
   await record(ctx, {
     type: "model_request",
     payload: {
@@ -66,6 +72,8 @@ export async function callModel(ctx: LoopContext, spec: CallSpec): Promise<CallO
       system: spec.system,
       messages: spec.messages,
       tools: spec.tools,
+      ...hostedField,
+      toolStats: toolDefinitionStats(spec.tools),
       ...choiceField,
       maxOutputTokens: spec.model.maxOutputTokens,
       ...purposeField,
@@ -82,6 +90,7 @@ export async function callModel(ctx: LoopContext, spec: CallSpec): Promise<CallO
         system: spec.system,
         messages: spec.messages,
         tools: spec.tools,
+        ...hostedField,
         ...choiceField,
         maxOutputTokens: spec.model.maxOutputTokens,
         ...(ctx.signal === undefined ? {} : { signal: ctx.signal }),

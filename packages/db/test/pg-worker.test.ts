@@ -1,5 +1,13 @@
-import { type LoopDeps, type RunEnd, ToolRegistry, Worker, type WorkerOptions } from "@suup/core";
 import {
+  createRedactor,
+  type LoopDeps,
+  type RunEnd,
+  ToolRegistry,
+  Worker,
+  type WorkerOptions,
+} from "@suup/core";
+import {
+  allowAllGate,
   call,
   FakeProvider,
   hangingAt,
@@ -52,6 +60,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("Worker on PgRunQueue"), { timeout: 6
             tools: registry,
             executor: new MemoryExecutor(),
             bot: testBot(),
+            gate: allowAllGate(),
             now: () => new Date(),
             sleep: (ms) => new Promise((r) => setTimeout(r, Math.min(ms, 5))),
           };
@@ -210,6 +219,29 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("Worker on PgRunQueue"), { timeout: 6
     });
     expect(await eventTypes(run.id)).toEqual(["status_changed"]);
     expect(kit.ends).toEqual([expect.objectContaining({ runId: run.id, outcome: "failed" })]);
+    await kit.stopAll();
+  });
+
+  it("scrubs known secret values out of the failure detail before it is written", async () => {
+    while (await claimNextRun(ctx.db, "drain")) {}
+    const value = "postgres://suup:hunter2-hunter2@db.internal/suup";
+    const redactor = createRedactor({ DATABASE_PASSWORD: value });
+    const run = await makeRun(ctx.db, { objective: "crashes with a secret in the message" });
+    const kit = build(new Map());
+    const worker = kit.make({
+      queue: new PgRunQueue(ctx.db, { redact: async (text) => redactor.redact(text) }),
+      buildDeps: async () => {
+        throw new Error(`could not connect to ${value}`);
+      },
+    });
+    worker.start();
+    await until(async () => (await statusOf(run.id)) === "failed");
+    const stored = await getRun(ctx.db, run.id);
+    expect(stored?.failureOrigin).toBe("harness");
+    expect(stored?.failureDetail).toBe("could not connect to [REDACTED:DATABASE_PASSWORD]");
+    // The status_changed event of the log is scrubbed too, not only the row.
+    const events = await new PgRunStore(ctx.db, { workerId: "reader" }).listEvents(run.id);
+    expect(JSON.stringify(events)).not.toContain("hunter2");
     await kit.stopAll();
   });
 

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { blockSchema, messageSchema } from "./messages.js";
+import { outboundMessageSchema } from "./outbound.js";
 import {
   PROVIDER_ERROR_KINDS,
   stopReasonSchema,
@@ -8,6 +9,7 @@ import {
   usageSchema,
 } from "./provider.js";
 import { TOOL_OUTCOMES } from "./registry.js";
+import { RISK_LEVELS } from "./risk.js";
 
 export const planStepSchema = z.object({
   id: z.string(),
@@ -51,6 +53,73 @@ export function escalatedQuestions(payload: {
     ? [{ question: payload.question }]
     : [...payload.questions];
 }
+
+export const riskLevelSchema = z.enum(RISK_LEVELS);
+
+/**
+ * What the tool definitions of one model request cost, estimated at one token per four characters
+ * (a simple estimate, not a provider count): how many definitions were sent, how many of them stay
+ * out of the model's context until it searches (`deferred`), and the tokens of all of them and of
+ * the ones that are loaded.
+ */
+export const toolStatsSchema = z.object({
+  definitions: z.number().int().nonnegative(),
+  deferred: z.number().int().nonnegative(),
+  estimatedTokens: z.number().int().nonnegative(),
+  loadedTokens: z.number().int().nonnegative(),
+});
+export type ToolStats = z.infer<typeof toolStatsSchema>;
+
+/** How the connector tools of the run reach the model. */
+export const TOOL_SEARCH_MODES = ["direct", "hosted", "client", "meta"] as const;
+export type ToolSearchMode = (typeof TOOL_SEARCH_MODES)[number];
+
+/**
+ * The decision of how this run offers its connector tools, taken ONCE (see `tool_catalog`):
+ * `direct` every definition is sent on every request; `hosted` / `client` the provider's native
+ * deferred loading; `meta` the harness's own index plus `search_tools` and `use_tool`.
+ */
+export const toolCatalogSchema = z.object({
+  mode: z.enum(TOOL_SEARCH_MODES),
+  /** With `hosted`: the search the provider runs. */
+  variant: z.exactOptional(z.enum(["bm25", "regex"])),
+  settings: z.object({
+    minTools: z.number().int().nonnegative(),
+    minDefinitionTokens: z.number().int().nonnegative(),
+  }),
+  /** The connector tools granted to the bot, and what their definitions would cost (estimated). */
+  connectorTools: z.number().int().nonnegative(),
+  definitionTokens: z.number().int().nonnegative(),
+  /** The tools kept out of the request's context (empty with `direct`), in a fixed order. */
+  deferred: z.array(
+    z.object({
+      name: z.string(),
+      /** The connector the tool belongs to. */
+      group: z.string(),
+      /** What the server says it does, cleaned and bounded (untrusted text). */
+      summary: z.string(),
+      /** The definition, exactly as it goes in the request. */
+      spec: toolSpecSchema,
+    }),
+  ),
+  /** The section of the system prompt that lists what can be searched; fixed for the run. */
+  index: z.exactOptional(z.string()),
+});
+export type ToolCatalog = z.infer<typeof toolCatalogSchema>;
+
+/** Which of the three filters (section 4.8) decided: a user rule, the automatic reviewer, or the level's default. */
+export const POLICY_SOURCES = ["rule", "reviewer", "default"] as const;
+export const policySourceSchema = z.enum(POLICY_SOURCES);
+export type PolicySource = z.infer<typeof policySourceSchema>;
+
+/** How an approval ended: the user answered, the run was cancelled, or a configured limit expired it. */
+export const APPROVAL_DECISIONS = ["approved", "denied", "cancelled", "expired"] as const;
+export const approvalDecisionSchema = z.enum(APPROVAL_DECISIONS);
+export type ApprovalDecision = z.infer<typeof approvalDecisionSchema>;
+
+/** A secret the bot may use, as the model is told about it: the name, never the value. */
+export const secretInfoSchema = z.object({ name: z.string(), description: z.string() });
+export type SecretInfo = z.infer<typeof secretInfoSchema>;
 
 /** One concrete discrepancy named by the reviewer: what the work claims, what the evidence shows, where. */
 export const discrepancySchema = z.object({
@@ -155,6 +224,8 @@ export const runEventSchema = z.discriminatedUnion("type", [
       history: z.array(messageSchema),
       /** Said alongside the history, e.g. that older messages were left out. */
       historyNote: z.exactOptional(z.string()),
+      /** The secrets the bot may use (names and what they are for; never values). */
+      secrets: z.exactOptional(z.array(secretInfoSchema)),
     }),
   }),
   z.object({
@@ -171,6 +242,10 @@ export const runEventSchema = z.discriminatedUnion("type", [
       maxOutputTokens: z.number().int().positive(),
       temperature: z.exactOptional(z.number()),
       purpose: z.exactOptional(modelCallPurposeSchema),
+      /** The hosted tool search asked of the provider (the specs marked `deferLoading` are searched). */
+      hostedToolSearch: z.exactOptional(z.enum(["bm25", "regex"])),
+      /** What the tool definitions of this request cost (estimated); see `toolDefinitionStats`. */
+      toolStats: z.exactOptional(toolStatsSchema),
     }),
   }),
   z.object({
@@ -210,6 +285,70 @@ export const runEventSchema = z.discriminatedUnion("type", [
       durationMs: z.number().nonnegative(),
       /** Set on the answer to an `escalate` call: the inbox items this result delivers. */
       inboxIds: z.exactOptional(z.array(z.string())),
+      /** Set on the answer to `search_tools` with client-side tool search: the tools it loads. */
+      toolReferences: z.exactOptional(z.array(z.string())),
+    }),
+  }),
+  z.object({
+    /**
+     * The verdict of the approval policy on a call that was neither plainly allowed as a read nor
+     * sent to the user: allowed or denied by a rule, the reviewer, or the default of its level.
+     * A resumed or replayed run reads it instead of deciding again.
+     */
+    type: z.literal("policy_checked"),
+    payload: z.object({
+      callId: z.string(),
+      tool: z.string(),
+      level: riskLevelSchema,
+      outcome: z.enum(["allow", "deny"]),
+      source: policySourceSchema,
+      ruleId: z.exactOptional(z.string()),
+      reason: z.exactOptional(z.string()),
+    }),
+  }),
+  z.object({
+    /**
+     * A call waits for the user. `args` is EXACTLY what will run if it is approved (the secret
+     * placeholders as the model wrote them, never values); the call is not executed until an
+     * `approval_decided` says so.
+     */
+    type: z.literal("approval_requested"),
+    payload: z.object({
+      approvalId: z.string(),
+      callId: z.string(),
+      tool: z.string(),
+      args: z.json(),
+      level: riskLevelSchema,
+      /** One line for the card. */
+      summary: z.string(),
+      /** The secret names the call uses. */
+      secrets: z.array(z.string()),
+      source: policySourceSchema,
+      /** Present only when the tool declares the call as a message to another person. */
+      outbound: z.exactOptional(outboundMessageSchema),
+      /** Present only when a configured limit makes the request expire. */
+      expiresAt: z.exactOptional(z.string()),
+    }),
+  }),
+  z.object({
+    type: z.literal("approval_decided"),
+    payload: z.object({
+      approvalId: z.string(),
+      callId: z.string(),
+      decision: approvalDecisionSchema,
+      /** The user's reason for a denial. */
+      reason: z.exactOptional(z.string()),
+      /** The rule an "approve and always allow" created. */
+      ruleId: z.exactOptional(z.string()),
+    }),
+  }),
+  z.object({
+    /** The bot asks the user for a credential; the answer is only that it is now available. */
+    type: z.literal("secret_requested"),
+    payload: z.object({
+      callId: z.string(),
+      name: z.string(),
+      reason: z.exactOptional(z.string()),
     }),
   }),
   z.object({
@@ -367,7 +506,23 @@ export const runEventSchema = z.discriminatedUnion("type", [
       callId: z.exactOptional(z.string()),
       /** `review_tie_break`: the reviewer rejected too often and a human must decide. */
       reason: z.exactOptional(z.enum(["review_tie_break"])),
+      /**
+       * With `review_tie_break`: why the review sent it to the user. `reject`: the bot and the
+       * reviewer disagree. `unverified`: the reviewer could not verify part of the work. Absent in
+       * older logs (read as `reject`).
+       */
+      reviewVerdict: z.exactOptional(z.enum(["reject", "unverified"])),
     }),
+  }),
+  z.object({
+    /**
+     * How the run offers the tools of its connectors (all loaded, or deferred and found by search).
+     * Decided ONCE, right after `context_loaded`, from the tools granted to the bot at that moment:
+     * resume and replay read it from here, so the tools of every request of the run stay the same
+     * (byte for byte) and the prompt cache holds. Absent in runs without connector tools.
+     */
+    type: z.literal("tool_catalog"),
+    payload: toolCatalogSchema,
   }),
   z.object({
     type: z.literal("status_changed"),

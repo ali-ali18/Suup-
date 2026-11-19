@@ -3,6 +3,7 @@ import {
   changeChannel,
   changeLogBounds,
   type Db,
+  getApproval,
   getBotSummary,
   getConversation,
   getMemory,
@@ -13,6 +14,7 @@ import {
   listRunEvents,
 } from "@suup/db";
 import {
+  toApprovalDto,
   toBotDto,
   toConversationDto,
   toMemoryDto,
@@ -23,7 +25,7 @@ import {
 import type { ChangeSource, Notifier, Resolved, WireEvent } from "./hub.js";
 
 /** Kinds whose events are snapshots of the row: several changes in a batch need only the last. */
-const COALESCE = new Set<Change["kind"]>(["run", "conversation", "bot"]);
+const COALESCE = new Set<Change["kind"]>(["run", "conversation", "bot", "approval"]);
 
 /**
  * The hub's view of the database: the change log as the source, and the rows it points at read
@@ -31,7 +33,11 @@ const COALESCE = new Set<Change["kind"]>(["run", "conversation", "bot"]);
  * three quick updates shows the last state), except `run.event`, which is one specific event of
  * the append-only log.
  */
-export function createDbSource(db: Db): ChangeSource<Change> {
+export function createDbSource(
+  db: Db,
+  /** Scrubs known secret values out of what is about to be sent (see `Runtime.redactJson`). */
+  redact: <T>(value: T) => Promise<T> = async (value) => value,
+): ChangeSource<Change> {
   return {
     bounds: () => changeLogBounds(db),
     read: (afterId, limit) => listChanges(db, afterId, limit),
@@ -46,7 +52,7 @@ export function createDbSource(db: Db): ChangeSource<Change> {
         if (COALESCE.has(change.kind) && lastOf.get(`${change.kind}:${change.ref}`) !== index) {
           continue;
         }
-        const events = await eventsOf(db, change, wantRun);
+        const events = await redact(await eventsOf(db, change, wantRun));
         if (events.length > 0) out.push({ id: change.id, events });
       }
       return out;
@@ -127,6 +133,22 @@ async function eventsOf(
           data: { conversation: toConversationDto(view, active) },
         },
       ];
+    }
+    case "approval": {
+      const approval = await getApproval(db, change.ref);
+      return approval === null
+        ? []
+        : [
+            {
+              type: "approval.changed",
+              key: `approval:${approval.id}`,
+              version: (approval.decidedAt ?? approval.createdAt).getTime(),
+              data: {
+                change: change.op === "created" ? "created" : "updated",
+                approval: toApprovalDto(approval),
+              },
+            },
+          ];
     }
     case "bot": {
       const summary = await getBotSummary(db, change.ref);

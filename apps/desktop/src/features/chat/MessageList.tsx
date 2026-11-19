@@ -1,6 +1,6 @@
 import type { Run } from "@suup/api";
 import { ArrowDown } from "lucide-react";
-import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useServices } from "../../app/context.js";
 import { useSettings } from "../../app/settings-store.js";
 import { failureOriginLabel, ORIGIN_EXPLANATION } from "../../data/derive.js";
@@ -9,8 +9,8 @@ import { EndedLine, WorkingIndicator } from "../../ui/chat-lines.js";
 import { BotMessage, EventLine, UserMessage } from "../../ui/message.js";
 import { Pill, RoundButton } from "../../ui/primitives.js";
 import { QuestionCard } from "../../ui/question-card.js";
-import { ActionRow } from "./ActionRow.js";
-import type { TimelineItem } from "./timeline.js";
+import { ApprovalRow, CallRow, callKey, SecretRequestRow } from "./ApprovalRows.js";
+import { bubblePositions, isChoiceCard, type TimelineItem } from "./timeline.js";
 
 const NEAR_BOTTOM = 80;
 const FAR_FROM_BOTTOM = 240;
@@ -60,6 +60,7 @@ export function MessageList({
   const anchor = useRef<{ height: number; top: number } | null>(null);
   const [away, setAway] = useState(false);
   const firstKey = items[0]?.key;
+  const positions = useMemo(() => bubblePositions(items), [items]);
 
   const onScroll = () => {
     const el = ref.current;
@@ -143,12 +144,13 @@ export function MessageList({
                   <UserMessage
                     key={item.key}
                     text={item.text}
+                    position={positions.get(item.key)}
                     {...(item.state === undefined ? {} : { state: item.state })}
                   />
                 );
               case "bot":
                 // A question with choices is a card; an open one is an ordinary bubble.
-                return item.ask?.questions.some((q) => q.options !== undefined) ? (
+                return isChoiceCard(item) && item.ask !== undefined ? (
                   <BotMessage key={item.key}>
                     <QuestionCard
                       questions={item.ask.questions}
@@ -161,6 +163,7 @@ export function MessageList({
                   <BotMessage
                     key={item.key}
                     text={item.text}
+                    position={positions.get(item.key)}
                     openUrl={platform.openUrl}
                     favicons={favicons}
                   />
@@ -171,11 +174,11 @@ export function MessageList({
                     <div className="ui-actions" data-testid="actions">
                       {item.entries.map((entry) =>
                         entry.kind === "action" ? (
-                          <ActionRow
-                            key={entry.item.callId}
+                          <CallRow
+                            key={callKey(entry.item)}
                             item={entry.item}
-                            expanded={expanded.has(entry.item.callId)}
-                            onToggle={() => onToggle(entry.item.callId)}
+                            clicked={expanded}
+                            onToggle={onToggle}
                           />
                         ) : (
                           <ActionFold
@@ -185,16 +188,42 @@ export function MessageList({
                             onToggle={() => onToggle(entry.key)}
                           >
                             {entry.items.map((it) => (
-                              <ActionRow
-                                key={it.callId}
+                              <CallRow
+                                key={callKey(it)}
                                 item={it}
-                                expanded={expanded.has(it.callId)}
-                                onToggle={() => onToggle(it.callId)}
+                                clicked={expanded}
+                                onToggle={onToggle}
                               />
                             ))}
                           </ActionFold>
                         ),
                       )}
+                    </div>
+                  </BotMessage>
+                );
+              case "approval":
+                return (
+                  <BotMessage key={item.key}>
+                    <div className="ui-actions">
+                      <ApprovalRow
+                        approval={item.approval}
+                        clicked={expanded}
+                        onToggle={onToggle}
+                        autoFocus={item.approval.status === "pending"}
+                      />
+                    </div>
+                  </BotMessage>
+                );
+              case "secret":
+                return (
+                  <BotMessage key={item.key}>
+                    <div className="ui-actions">
+                      <SecretRequestRow
+                        request={item.request}
+                        clicked={expanded}
+                        onToggle={onToggle}
+                        autoFocus={item.request.state === "open"}
+                      />
                     </div>
                   </BotMessage>
                 );

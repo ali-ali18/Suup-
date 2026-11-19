@@ -4,6 +4,8 @@ import type {
   PlanStep,
   RunEventPayload,
   RunStatus,
+  SecretInfo,
+  ToolCatalog,
 } from "../events.js";
 import type { Block, JsonValue, Message, ToolCallBlock } from "../messages.js";
 import type { GenerateResult, StopReason } from "../provider.js";
@@ -48,7 +50,17 @@ export interface PendingResponse {
 /** Why the run is paused waiting for a person. */
 export type Waiting =
   | { kind: "escalate"; callId: string; question: string; questions?: EscalateQuestion[] }
-  | { kind: "review_tie_break"; question: string };
+  | { kind: "review_tie_break"; question: string }
+  /** A call waits for the user's decision on the approval card. */
+  | { kind: "approval"; callId: string; approvalId: string }
+  /** The bot asked the user for a credential. */
+  | { kind: "secret"; callId: string; name: string };
+
+/** The approval of one call, as the log tells it. */
+export interface ApprovalRecord {
+  requested: RunEventPayload<"approval_requested">;
+  decided?: RunEventPayload<"approval_decided">;
+}
 
 export interface ToolLogEntry {
   callId: string;
@@ -117,8 +129,12 @@ export interface RunState {
   startSeq: number;
   /** The `context_loaded` event is in the log. */
   contextLoaded: boolean;
+  /** How the run offers its connector tools (the `tool_catalog` event), or null (none decided). */
+  toolCatalog: ToolCatalog | null;
+  /** An agent `model_request` was recorded: the tools of the run can no longer be decided. */
+  sawRequest: boolean;
   /** The rules and profile of the run, for the system prompt; null without a `context_loaded`. */
-  context: { rules: ContextItem[]; profile: ContextItem[] } | null;
+  context: { rules: ContextItem[]; profile: ContextItem[]; secrets: SecretInfo[] } | null;
   lastSeq: number;
   /** Agent model responses seen. */
   responses: number;
@@ -162,6 +178,12 @@ export interface RunState {
   sideResponse: SideResponse | null;
   /** Ids of the inbox items the log already delivers (see `RunStore`). */
   deliveredInbox: Set<string>;
+  /** Approvals by call id: the request and, once it is in the log, the decision. */
+  approvals: Map<string, ApprovalRecord>;
+  /** The verdicts the policy gave (allow or deny), by call id. A resumed loop reuses them. */
+  policies: Map<string, RunEventPayload<"policy_checked">>;
+  /** A call of the turn in progress was denied: the calls after it are not run. */
+  denied: { callId: string; name: string } | null;
 }
 
 export function createRunState(): RunState {
@@ -181,6 +203,8 @@ export function createRunState(): RunState {
     responses: 0,
     pending: null,
     pendingCalls: [],
+    toolCatalog: null,
+    sawRequest: false,
     turnOutcomes: [],
     waiting: null,
     acceptedFinish: null,
@@ -199,6 +223,9 @@ export function createRunState(): RunState {
     charsSince: 0,
     sideResponse: null,
     deliveredInbox: new Set(),
+    approvals: new Map(),
+    policies: new Map(),
+    denied: null,
   };
 }
 
@@ -238,6 +265,7 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
       state.context = {
         rules: structuredClone(event.payload.rules),
         profile: structuredClone(event.payload.profile),
+        secrets: structuredClone(event.payload.secrets ?? []),
       };
       const history = historyMessages(event.payload.history, event.payload.historyNote);
       if (history.length === 0) break;
@@ -290,14 +318,25 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
         started: false,
       }));
       state.turnOutcomes = [];
+      state.denied = null;
       state.usageAnchor = usage.inputTokens + usage.outputTokens;
       state.charsSince = 0;
       break;
     }
 
+    case "tool_catalog":
+      state.toolCatalog = structuredClone(event.payload);
+      break;
+
     case "tool_call": {
       const call = state.pendingCalls.find((c) => c.id === event.payload.callId);
-      if (call !== undefined) call.started = true;
+      if (call !== undefined) {
+        call.started = true;
+        // A call made through `use_tool` is logged as the REAL tool it runs: from here on the
+        // run knows it (digests, repeats, denials) by that name and those arguments.
+        call.name = event.payload.name;
+        call.args = event.payload.args as JsonValue;
+      }
       if (event.payload.name === "finish") {
         state.currentReview = null;
         state.reviewRounds = [];
@@ -320,22 +359,70 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
           callId: call.id,
           content,
           ...(isError ? { isError: true } : {}),
+          ...(event.payload.toolReferences === undefined
+            ? {}
+            : { toolReferences: [...event.payload.toolReferences] }),
         },
         event.seq,
       );
-      if (state.waiting?.kind === "escalate" && state.waiting.callId === call.id) {
+      if (
+        (state.waiting?.kind === "escalate" || state.waiting?.kind === "secret") &&
+        state.waiting.callId === call.id
+      ) {
         state.waiting = null;
+      }
+      if (outcome === "denied" && state.denied === null) {
+        state.denied = { callId: call.id, name: call.name };
       }
       state.turnOutcomes.push({
         name: call.name,
-        failed: isError && (call.name === "finish" || call.name === "escalate"),
+        failed:
+          isError &&
+          (call.name === "finish" || call.name === "escalate" || call.name === "request_secret"),
       });
       trackRepeat(state, call, content, isError);
-      if (call.name === "escalate" && !isError) logUser(state, "answer", content);
+      if ((call.name === "escalate" || call.name === "request_secret") && !isError) {
+        logUser(state, "answer", content);
+      }
       if (!isControlTool(call.name)) logTool(state, call, event.payload, outcome);
       if (state.pendingCalls.length === 0) completeToolTurn(state);
       break;
     }
+
+    case "policy_checked":
+      state.policies.set(event.payload.callId, event.payload);
+      break;
+
+    case "approval_requested":
+      state.approvals.set(event.payload.callId, { requested: event.payload });
+      state.waiting = {
+        kind: "approval",
+        callId: event.payload.callId,
+        approvalId: event.payload.approvalId,
+      };
+      break;
+
+    case "approval_decided": {
+      const record = state.approvals.get(event.payload.callId);
+      if (record !== undefined) record.decided = event.payload;
+      if (state.waiting?.kind === "approval" && state.waiting.callId === event.payload.callId) {
+        state.waiting = null;
+      }
+      break;
+    }
+
+    case "secret_requested":
+      state.waiting = {
+        kind: "secret",
+        callId: event.payload.callId,
+        name: event.payload.name,
+      };
+      logUser(
+        state,
+        "question",
+        `Asked the user for the secret ${event.payload.name}${event.payload.reason === undefined ? "" : ` (${event.payload.reason})`}.`,
+      );
+      break;
 
     case "plan_updated":
       state.plan = structuredClone(event.payload.plan);
@@ -456,6 +543,7 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
     }
 
     case "model_request": {
+      if (event.payload.purpose === undefined) state.sawRequest = true;
       // The STATE REMINDER sent with an agent request becomes a permanent part of that user
       // message, so later requests extend this one instead of rewriting it.
       if (event.payload.purpose !== undefined) break;

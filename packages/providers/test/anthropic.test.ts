@@ -424,6 +424,11 @@ describe("anthropic adapter", () => {
   it("is built by createProvider and exposes its id and capabilities", () => {
     const provider = createProvider({ kind: "anthropic", id: "primary", apiKey: "k" });
     expect(provider.id).toBe("primary");
-    expect(provider.capabilities).toEqual({ promptCache: true, parallelTools: true, vision: true });
+    expect(provider.capabilities).toEqual({
+      promptCache: true,
+      parallelTools: true,
+      vision: true,
+      toolSearch: ["bm25", "regex", "client"],
+    });
   });
 });

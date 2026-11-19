@@ -20,6 +20,8 @@ x-app: &app
     DATABASE_URL: postgres://${POSTGRES_USER:-suup}:${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env.prod}@db:5432/${POSTGRES_DB:-suup}
     SUUP_CONFIG: /app/suup.config.json
     SUUP_SERVER_TOKEN: ${SUUP_SERVER_TOKEN:?defina SUUP_SERVER_TOKEN no .env.prod (gere um com suup server --generate-token)}
+    # A chave mestra do cofre de segredos (opcional; só vale se o suup.config.json tem "vault"). Gere com: suup vault key generate
+    SUUP_VAULT_KEY: ${SUUP_VAULT_KEY:-}
     # As chaves dos provedores: acrescente aqui cada variável que o suup.config.json cita em apiKeyEnv.
     ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   cap_drop: [ALL]
@@ -56,6 +58,14 @@ services:
     image: suup-sandbox:prod
     build:
       context: ./docker/sandbox
+    command: ["true"]
+    restart: "no"
+
+  # A imagem do runner dos conectores stdio (docker/connector-runner); o worker a usa ao conectar.
+  connector-runner-image:
+    image: suup-connector-runner:prod
+    build:
+      context: ./docker/connector-runner
     command: ["true"]
     restart: "no"
 
@@ -105,6 +115,12 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     read_only: true
     tmpfs: [/tmp]
+    # Entra na rede INTERNA dos bots, com IP fixo: o proxy de saída (docs/REDE.md) escuta nesse IP, e é o
+    # único caminho dos bots para a internet. O IP vai em sandbox.network.proxy do suup.config.json.
+    networks:
+      default: {}
+      sandbox-net:
+        ipv4_address: 172.29.77.2
     # O worker não tem HTTP: sem o teste de /health da imagem.
     healthcheck:
       disable: true
@@ -117,6 +133,18 @@ services:
         condition: service_completed_successfully
       sandbox-image:
         condition: service_completed_successfully
+      connector-runner-image:
+        condition: service_completed_successfully
+
+networks:
+  # A rede da máquina dos bots e dos conectores: SEM rota para fora (internal). O worker é o único
+  # serviço dela. O nome fixo é o que o worker procura (sandbox.network.name).
+  sandbox-net:
+    name: suup-sandbox-net
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.29.77.0/24
 
 volumes:
   pgdata:

@@ -1,5 +1,20 @@
 import { z } from "zod";
 import {
+  type Approval,
+  type ApprovalRule,
+  approvalListSchema,
+  approvalSchema,
+  type CreateRuleBody,
+  type DecideApprovalBody,
+  type DecideApprovalResult,
+  decideApprovalResultSchema,
+  type ListApprovalsQuery,
+  type ListRulesQuery,
+  ruleListSchema,
+  ruleSchema,
+  type UpdateRuleBody,
+} from "./approvals.js";
+import {
   type Bot,
   type BotDraft,
   botDraftSchema,
@@ -14,6 +29,23 @@ import {
   toolListSchema,
   type UpdateBotBody,
 } from "./bots.js";
+import {
+  type ApproveToolBody,
+  type Connector,
+  type ConnectorTest,
+  type ConnectorToolEvent,
+  type ConnectorToolReview,
+  type CreateConnectorBody,
+  connectorListSchema,
+  connectorReviewListSchema,
+  connectorSchema,
+  connectorTestSchema,
+  connectorToolEventListSchema,
+  type GrantConnectorBody,
+  type SetToolOutboundBody,
+  type SetToolRiskBody,
+  type UpdateConnectorBody,
+} from "./connectors.js";
 import {
   type Conversation,
   conversationListSchema,
@@ -49,6 +81,7 @@ import {
   type SearchMemoriesQuery,
   type SearchMessagesQuery,
 } from "./memory.js";
+import { type BotNetwork, botNetworkSchema } from "./network.js";
 import {
   type ListRunsQuery,
   type Run,
@@ -59,6 +92,19 @@ import {
   runSchema,
 } from "./runs.js";
 import { errorOf, type SubscribeOptions, type Subscription, subscribe } from "./subscribe.js";
+import {
+  type AnswerSecretRequestBody,
+  type AnswerSecretRequestResult,
+  answerSecretRequestResultSchema,
+  type Secret,
+  type SecretRequest,
+  type SetSecretBody,
+  secretListSchema,
+  secretRequestSchema,
+  secretSchema,
+  type VaultStatus,
+  vaultStatusSchema,
+} from "./vault.js";
 
 export interface ClientOptions {
   /** Where the server is, e.g. `http://127.0.0.1:8787`. */
@@ -85,6 +131,8 @@ function queryString(query: Query | undefined): string {
 }
 
 const healthSchema = z.object({ status: z.literal("ok") });
+const deletedSchema = z.object({ deleted: z.literal(true) });
+const secretRequestAnswerSchema = z.object({ request: secretRequestSchema.nullable() });
 
 export interface SuupClient {
   /** `GET /health`: no token needed. */
@@ -146,6 +194,63 @@ export interface SuupClient {
   };
   /** Follows the realtime stream, reconnecting and resuming by itself. */
   subscribe(options: SubscribeOptions): Subscription;
+  approvals: {
+    /** Newest first. `status: "pending"` is the list of cards waiting for you. */
+    list(query?: ListApprovalsQuery): Promise<Approval[]>;
+    get(id: string): Promise<Approval>;
+    /** Approves (optionally "and always allow") or denies (with a reason). A card is decided once. */
+    decide(id: string, body: DecideApprovalBody): Promise<DecideApprovalResult>;
+  };
+  rules: {
+    list(query?: ListRulesQuery): Promise<ApprovalRule[]>;
+    create(body: CreateRuleBody): Promise<ApprovalRule>;
+    update(id: string, body: UpdateRuleBody): Promise<ApprovalRule>;
+    remove(id: string): Promise<void>;
+  };
+  connectors: {
+    list(): Promise<Connector[]>;
+    get(name: string): Promise<Connector>;
+    create(body: CreateConnectorBody): Promise<Connector>;
+    update(name: string, body: UpdateConnectorBody): Promise<Connector>;
+    remove(name: string): Promise<void>;
+    /** Replaces what the bot may use: `{ tools: "all" }` or `{ tools: ["a", "b"] }` (names on the server). */
+    grant(name: string, botId: string, body: GrantConnectorBody): Promise<Connector>;
+    /** The tools whose definition changed (or that are new): off for every bot until approved. */
+    review(name: string): Promise<ConnectorToolReview[]>;
+    /** Approves the definition the person looked at (`fingerprint` from `review`). */
+    approveTool(name: string, tool: string, body: ApproveToolBody): Promise<Connector>;
+    events(name: string): Promise<ConnectorToolEvent[]>;
+    revoke(name: string, botId: string): Promise<Connector>;
+    /** What the user says a tool's risk is (`null` clears it). */
+    setToolRisk(name: string, tool: string, body: SetToolRiskBody): Promise<Connector>;
+    /** Marks a tool as sending a message to another person, naming the recipient fields (`null` clears it). */
+    setToolOutbound(name: string, tool: string, body: SetToolOutboundBody): Promise<Connector>;
+    /** Starts the server from scratch where THIS server runs, lists its tools and closes. */
+    test(name: string): Promise<ConnectorTest>;
+  };
+  network: {
+    /** The hosts a bot's machine may reach (defaults, its own) and what the proxy refused lately. */
+    forBot(botId: string): Promise<BotNetwork>;
+    /** Allows one exact host for the bot (an act of the user). */
+    allow(botId: string, host: string): Promise<BotNetwork>;
+    /** Takes the host away from the bot's own list. */
+    remove(botId: string, host: string): Promise<BotNetwork>;
+  };
+  vault: {
+    /** Whether the server has a vault it can write to (the section and the key), and why not. */
+    status(): Promise<VaultStatus>;
+    /** Names and metadata. There is no way to read a value back. */
+    list(): Promise<Secret[]>;
+    /** Creates or replaces a secret (write-only). */
+    set(name: string, body: SetSecretBody): Promise<Secret>;
+    remove(name: string): Promise<void>;
+    grant(name: string, botId: string): Promise<Secret>;
+    revoke(name: string, botId: string): Promise<Secret>;
+    /** The credential a run is waiting for, or `null`. */
+    request(runId: string): Promise<SecretRequest | null>;
+    /** Answers it: the value goes straight to the vault; the bot is told only that it is available. */
+    answerRequest(runId: string, body: AnswerSecretRequestBody): Promise<AnswerSecretRequestResult>;
+  };
 }
 
 /** A typed client for every endpoint of the server and its realtime stream. */
@@ -155,7 +260,7 @@ export function createClient(options: ClientOptions): SuupClient {
   const timeoutMs = options.timeoutMs ?? 60_000;
 
   async function call<T extends z.ZodType>(
-    method: "GET" | "POST" | "PATCH",
+    method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE",
     path: string,
     schema: T,
     config: {
@@ -328,6 +433,94 @@ export function createClient(options: ClientOptions): SuupClient {
     },
     subscribe: (subscribeOptions) =>
       subscribe({ baseUrl, token: options.token, fetch: doFetch }, subscribeOptions),
+    approvals: {
+      list: async (query) =>
+        (
+          await call("GET", "/v1/approvals", approvalListSchema, {
+            query: query as Query | undefined,
+          })
+        ).items,
+      get: (approvalId) => call("GET", `/v1/approvals/${id(approvalId)}`, approvalSchema),
+      decide: (approvalId, body) =>
+        call("POST", `/v1/approvals/${id(approvalId)}/decision`, decideApprovalResultSchema, {
+          body,
+        }),
+    },
+    rules: {
+      list: async (query) =>
+        (
+          await call("GET", "/v1/approval-rules", ruleListSchema, {
+            query: query as Query | undefined,
+          })
+        ).items,
+      create: (body) => call("POST", "/v1/approval-rules", ruleSchema, { body }),
+      update: (ruleId, body) =>
+        call("PATCH", `/v1/approval-rules/${id(ruleId)}`, ruleSchema, { body }),
+      remove: async (ruleId) => {
+        await call("DELETE", `/v1/approval-rules/${id(ruleId)}`, deletedSchema);
+      },
+    },
+    connectors: {
+      list: async () => (await call("GET", "/v1/connectors", connectorListSchema)).items,
+      get: (name) => call("GET", `/v1/connectors/${id(name)}`, connectorSchema),
+      create: (body) => call("POST", "/v1/connectors", connectorSchema, { body }),
+      update: (name, body) =>
+        call("PATCH", `/v1/connectors/${id(name)}`, connectorSchema, { body }),
+      remove: async (name) => {
+        await call("DELETE", `/v1/connectors/${id(name)}`, deletedSchema);
+      },
+      grant: (name, botId, body) =>
+        call("PUT", `/v1/connectors/${id(name)}/grants/${id(botId)}`, connectorSchema, { body }),
+      review: async (name) =>
+        (await call("GET", `/v1/connectors/${id(name)}/review`, connectorReviewListSchema)).items,
+      approveTool: (name, tool, body) =>
+        call("POST", `/v1/connectors/${id(name)}/tools/${id(tool)}/review`, connectorSchema, {
+          body,
+        }),
+      events: async (name) =>
+        (await call("GET", `/v1/connectors/${id(name)}/events`, connectorToolEventListSchema))
+          .items,
+      revoke: (name, botId) =>
+        call("DELETE", `/v1/connectors/${id(name)}/grants/${id(botId)}`, connectorSchema),
+      setToolRisk: (name, tool, body) =>
+        call("PUT", `/v1/connectors/${id(name)}/tools/${id(tool)}/risk`, connectorSchema, {
+          body,
+        }),
+      setToolOutbound: (name, tool, body) =>
+        call("PUT", `/v1/connectors/${id(name)}/tools/${id(tool)}/outbound`, connectorSchema, {
+          body,
+        }),
+      test: (name) => call("POST", `/v1/connectors/${id(name)}/test`, connectorTestSchema, noBody),
+    },
+    network: {
+      forBot: (botId) => call("GET", `/v1/bots/${id(botId)}/network`, botNetworkSchema),
+      allow: (botId, host) =>
+        call("PUT", `/v1/bots/${id(botId)}/network/hosts/${id(host)}`, botNetworkSchema, noBody),
+      remove: (botId, host) =>
+        call("DELETE", `/v1/bots/${id(botId)}/network/hosts/${id(host)}`, botNetworkSchema),
+    },
+    vault: {
+      status: () => call("GET", "/v1/vault", vaultStatusSchema),
+      list: async () => (await call("GET", "/v1/secrets", secretListSchema)).items,
+      set: (name, body) => call("PUT", `/v1/secrets/${id(name)}`, secretSchema, { body }),
+      remove: async (name) => {
+        await call("DELETE", `/v1/secrets/${id(name)}`, deletedSchema);
+      },
+      grant: (name, botId) =>
+        call("PUT", `/v1/secrets/${id(name)}/grants/${id(botId)}`, secretSchema, noBody),
+      revoke: (name, botId) =>
+        call("DELETE", `/v1/secrets/${id(name)}/grants/${id(botId)}`, secretSchema),
+      request: async (runId) =>
+        (await call("GET", `/v1/runs/${id(runId)}/secret-request`, secretRequestAnswerSchema))
+          .request,
+      answerRequest: (runId, body) =>
+        call(
+          "POST",
+          `/v1/runs/${id(runId)}/secret-request/answer`,
+          answerSecretRequestResultSchema,
+          { body },
+        ),
+    },
   };
 }
 

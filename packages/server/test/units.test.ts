@@ -1,12 +1,14 @@
 import { ERROR_CODES, ERROR_STATUS, MEMORY_LAYERS, WRITABLE_MEMORY_LAYERS } from "@suup/api";
 import {
+  ApprovalError,
   ConversationNotFoundError,
   ConversationRuleError,
   MEMORY_LAYERS as DB_LAYERS,
   RunControlError,
   RunNotFoundError,
+  SecretNotFoundError,
 } from "@suup/db";
-import { RuntimeError } from "@suup/runtime";
+import { RuntimeError, VaultError } from "@suup/runtime";
 import { describe, expect, it } from "vitest";
 import { type ZodError, z } from "zod";
 import {
@@ -234,5 +236,27 @@ describe("the contract follows the database", () => {
   it("memory layers are the database's, and the writable ones are all but the diary", () => {
     expect([...MEMORY_LAYERS]).toEqual([...DB_LAYERS]);
     expect([...WRITABLE_MEMORY_LAYERS]).toEqual(DB_LAYERS.filter((l) => l !== "journal"));
+  });
+});
+
+describe("approvals and the vault in the error mapping", () => {
+  it("maps approval and vault failures to the documented codes, with their own message", () => {
+    const code = (error: unknown) => toHttpError(error).code;
+    expect(code(new ApprovalError("not_found", "x"))).toBe("not_found");
+    expect(code(new ApprovalError("conflict", "x"))).toBe("conflict");
+    expect(code(new SecretNotFoundError("TOKEN"))).toBe("not_found");
+    expect(code(new VaultError("value_invalid", "x"))).toBe("invalid_request");
+    for (const unavailable of [
+      "not_configured",
+      "key_missing",
+      "key_invalid",
+      "key_unknown",
+    ] as const) {
+      expect(code(new VaultError(unavailable, "x"))).toBe("unavailable");
+    }
+    expect(code(new VaultError("decrypt_failed", "x"))).toBe("internal_error");
+    expect(toHttpError(new VaultError("key_missing", "defina SUUP_VAULT_KEY")).message).toContain(
+      "SUUP_VAULT_KEY",
+    );
   });
 });

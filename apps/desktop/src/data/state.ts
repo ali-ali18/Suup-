@@ -1,4 +1,17 @@
-import type { Bot, Conversation, Memory, Message, Run, RunEvent } from "@suup/api";
+import type {
+  Approval,
+  ApprovalRule,
+  Bot,
+  BotNetwork,
+  Connector,
+  Conversation,
+  Memory,
+  Message,
+  Run,
+  RunEvent,
+  Secret,
+  VaultStatus,
+} from "@suup/api";
 
 /** Where the connection to the server is (what the realtime stream says, nothing more). */
 export type ConnectionPhase =
@@ -46,6 +59,22 @@ export interface DataState {
   events: Record<string, EventsSlice>;
   memories: Record<string, Memory>;
   memoriesLoaded: boolean;
+  /** The approval cards, by id: the pending ones and the ones already decided that were fetched. */
+  approvals: Record<string, Approval>;
+  approvalsLoaded: boolean;
+  /** The user's permanent approval rules, by id (no stream frame: read again after writing). */
+  rules: Record<string, ApprovalRule>;
+  rulesLoaded: boolean;
+  /** The vault: secret NAMES and metadata, never a value. By name. */
+  secrets: Record<string, Secret>;
+  secretsLoaded: boolean;
+  /** Whether the server can write secrets (`null`: not asked yet). */
+  vault: VaultStatus | null;
+  /** The MCP connectors, by name. */
+  connectors: Record<string, Connector>;
+  connectorsLoaded: boolean;
+  /** What each bot's machine may reach (the server's answer to the last read or write), by bot id. */
+  networks: Record<string, BotNetwork>;
 }
 
 export const emptyData = (): DataState => ({
@@ -58,6 +87,16 @@ export const emptyData = (): DataState => ({
   events: {},
   memories: {},
   memoriesLoaded: false,
+  approvals: {},
+  approvalsLoaded: false,
+  rules: {},
+  rulesLoaded: false,
+  secrets: {},
+  secretsLoaded: false,
+  vault: null,
+  connectors: {},
+  connectorsLoaded: false,
+  networks: {},
 });
 
 export const emptyMessages = (): MessagesSlice => ({ byId: {}, hasOlder: false, loaded: false });

@@ -1,4 +1,5 @@
 import type { FailureOrigin, RunQueue } from "@suup/core";
+import { expireOverdueApprovals } from "./approvals.js";
 import { type Db, withTransaction } from "./client.js";
 import { appendRunEvent } from "./events.js";
 import { releaseLeasedRun, requeueStaleRuns } from "./queue.js";
@@ -19,11 +20,21 @@ export class PgRunQueue implements RunQueue {
   readonly #db: Db;
   readonly #onlyRunId: string | undefined;
   readonly #claimedBy = new Map<string, string>();
+  readonly #redact: ((text: string) => string | Promise<string>) | undefined;
 
-  /** With `onlyRunId`, the queue only ever hands out that one run (when it is queued). */
-  constructor(db: Db, options: { onlyRunId?: string } = {}) {
+  /**
+   * With `onlyRunId`, the queue only ever hands out that one run (when it is queued). `redact`
+   * scrubs known secret values out of the failure detail before it is written: the detail is the
+   * message of whatever crashed, and an error message can carry a value (a connection string, a
+   * token echoed by a server).
+   */
+  constructor(
+    db: Db,
+    options: { onlyRunId?: string; redact?: (text: string) => string | Promise<string> } = {},
+  ) {
     this.#db = db;
     this.#onlyRunId = options.onlyRunId;
+    this.#redact = options.redact;
   }
 
   async claimNext(workerId: string): Promise<{ runId: string } | null> {
@@ -48,6 +59,9 @@ export class PgRunQueue implements RunQueue {
   }
 
   async requeueStale(olderThanMs: number): Promise<number> {
+    // The same periodic pass lets the cards expire whose configured limit has passed (none does
+    // unless the configuration sets a limit: nothing expires silently).
+    await expireOverdueApprovals(this.#db);
     return (await requeueStaleRuns(this.#db, { olderThanMs })).length;
   }
 
@@ -55,6 +69,9 @@ export class PgRunQueue implements RunQueue {
   async fail(runId: string, failure: { origin: FailureOrigin; detail: string }): Promise<void> {
     const workerId = this.#claimedBy.get(runId);
     if (workerId === undefined) return;
+    // Scrubbed BEFORE the transaction: a redactor that reloads the vault must not hold the row lock.
+    const detail = this.#redact === undefined ? failure.detail : await this.#redact(failure.detail);
+    failure = { origin: failure.origin, detail };
     await withTransaction(this.#db, async (tx) => {
       const [row] = await tx.sql<{ status: string; locked_by: string | null }[]>`
         select status, locked_by from runs where id = ${runId} for no key update`;

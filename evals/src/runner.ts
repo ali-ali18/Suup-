@@ -292,6 +292,12 @@ class ScriptedInboxStore implements RunStore {
   ackInbox(runId: string, ids: readonly string[]) {
     return this.inner.ackInbox(runId, ids);
   }
+  peekApprovalDecisions(runId: string) {
+    return this.inner.peekApprovalDecisions(runId);
+  }
+  ackApprovalDecisions(runId: string, ids: readonly string[]) {
+    return this.inner.ackApprovalDecisions(runId, ids);
+  }
   heartbeat(runId: string) {
     return this.inner.heartbeat(runId);
   }

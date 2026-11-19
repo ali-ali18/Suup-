@@ -231,6 +231,8 @@ describe("runtime: the machine of each bot", () => {
             volume: "test-volume",
             memory: "512m",
             cpus: 1,
+            // The fake docker has no bridge: the proxy listens on loopback in this test.
+            network: { proxy: { listenHost: "127.0.0.1" } },
           },
         }),
         { env: {}, dockerPath },
@@ -257,6 +259,9 @@ describe("runtime: the machine of each bot", () => {
       expect(run).toEqual(
         expect.arrayContaining(["--volume", "test-volume:/workspace", "suup-sandbox:dev"]),
       );
+      // No direct network: the machine joins the internal network only.
+      expect(run).toEqual(expect.arrayContaining(["--network", "suup-sandbox-net"]));
+      await runtime.close();
       const exec = sent.find((c) => c[0] === "exec");
       expect(exec).toContain("test-machine");
       expect(exec?.at(-2)).toBe("mkdir -p bots/bot-1");

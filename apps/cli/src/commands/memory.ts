@@ -19,7 +19,7 @@ import { flag, posInt, str } from "../args.js";
 import type { CommandSpec, Ctx } from "../context.js";
 import { CommandError, EXIT_OK, UsageError } from "../errors.js";
 import { formatDateTime, oneLine } from "../format.js";
-import { findBot } from "../lookup.js";
+import { findBot, isIdPrefix } from "../lookup.js";
 import { renderTable } from "../table.js";
 
 const LAYERS = ["rule", "profile", "note", "journal"] as const;
@@ -59,7 +59,7 @@ function layerOption(ctx: Ctx, command: string): MemoryLayer | undefined {
 async function findMemory(db: Db, ref: string): Promise<Memory> {
   const rows = await db.sql<{ id: string }[]>`
     select id from memories where id::text like ${`${ref.toLowerCase()}%`} order by created_at limit 5`;
-  if (!/^[0-9a-f][0-9a-f-]{3,35}$/i.test(ref) || rows.length === 0) {
+  if (!isIdPrefix(ref) || rows.length === 0) {
     throw new CommandError(
       `Memória não encontrada: ${JSON.stringify(ref)}. Veja os ids com: suup memory list --all`,
     );

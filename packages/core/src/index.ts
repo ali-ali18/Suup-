@@ -1,4 +1,8 @@
+export * from "./approvals/index.js";
 export {
+  APPROVAL_DECISIONS,
+  type ApprovalDecision,
+  approvalDecisionSchema,
   type ContextItem,
   contextItemSchema,
   type EscalateOption,
@@ -12,8 +16,11 @@ export {
   MODEL_CALL_PURPOSES,
   type ModelCallPurpose,
   type PlanStep,
+  POLICY_SOURCES,
+  type PolicySource,
   parseRunEvent,
   planStepSchema,
+  policySourceSchema,
   RUN_EVENT_TYPES,
   RUN_ORIGINS,
   type RunEventData,
@@ -22,11 +29,20 @@ export {
   type RunOrigin,
   type RunResult,
   type RunStatus,
+  riskLevelSchema,
   runEventSchema,
   runOriginSchema,
   runResultSchema,
   runStatusSchema,
+  type SecretInfo,
+  secretInfoSchema,
+  TOOL_SEARCH_MODES,
+  type ToolCatalog,
+  type ToolSearchMode,
+  type ToolStats,
+  toolCatalogSchema,
   toolOutcomeSchema,
+  toolStatsSchema,
 } from "./events.js";
 export * from "./loop/index.js";
 export {
@@ -49,11 +65,37 @@ export {
   validateConversation,
 } from "./messages.js";
 export {
+  type AddressFamily,
+  DEFAULT_ALLOWED_PORTS,
+  decideHost,
+  describeHostProblem,
+  type HostDecision,
+  type HostProblem,
+  type HostRequest,
+  ipVersion,
+  isForbiddenAddress,
+  MAX_HOST_LENGTH,
+  type NormalizedHost,
+  normalizeHost,
+  parseAllowlistHost,
+  type RefusalReason,
+} from "./network/index.js";
+export {
+  MAX_RECIPIENT_FIELDS,
+  type OutboundMessage,
+  outboundMessage,
+  outboundMessageSchema,
+  recipientFieldSchema,
+} from "./outbound.js";
+export {
   collect,
   type GenerateRequest,
   type GenerateResult,
   generateAndCollect,
   generateResultSchema,
+  type HostedToolSearch,
+  NATIVE_TOOL_SEARCH_VARIANTS,
+  type NativeToolSearch,
   PROVIDER_ERROR_KINDS,
   type Provider,
   type ProviderCapabilities,
@@ -72,12 +114,14 @@ export {
   usageSchema,
 } from "./provider.js";
 export {
+  type AssessOptions,
   type BeforeExecuteResult,
   DEFAULT_MAX_OUTPUT_CHARS,
   DEFAULT_TOOL_TIMEOUT_MS,
   type InvokeOptions,
   TOOL_NAME_PATTERN,
   TOOL_OUTCOMES,
+  type ToolAssessment,
   type ToolInvocation,
   type ToolOutcome,
   ToolRegistry,
@@ -99,8 +143,34 @@ export {
   type RequestDiff,
   replayRun,
 } from "./replay.js";
-export { REDACTED, redactSecrets, SECRET_PATTERNS } from "./secrets.js";
 export {
+  classifyCall,
+  isRiskLevel,
+  maxRisk,
+  RISK_LEVELS,
+  type RiskLevel,
+} from "./risk.js";
+export {
+  createRedactor,
+  findPlaceholders,
+  isSecretName,
+  MIN_REDACTED_LENGTH,
+  type MutableRedactor,
+  noRedaction,
+  type PlaceholderSite,
+  pathAllowed,
+  placeholderFor,
+  placeholderSites,
+  type Redactor,
+  redactionMark,
+  SECRET_NAME_PATTERN,
+  type SecretAccess,
+  SecretUnavailableError,
+  secretForms,
+  substituteSecrets,
+} from "./secrets.js";
+export {
+  type ClassifyEnv,
   type DirEntry,
   defineTool,
   type ExecOptions,
@@ -110,6 +180,7 @@ export {
   type MemoryLayerName,
   MemoryRuleError,
   type MemoryService,
+  type NetworkAccess,
   type RecallLayerName,
   resolveWorkspacePath,
   type Tool,
@@ -118,6 +189,7 @@ export {
   type ToolRisk,
   WorkspaceEscapeError,
 } from "./tool.js";
+export { EXTERNAL_CLOSE, EXTERNAL_OPEN, wrapUntrusted } from "./untrusted.js";
 export {
   type RunEnd,
   type RunQueue,

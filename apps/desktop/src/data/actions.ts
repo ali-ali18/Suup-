@@ -1,20 +1,30 @@
-import type { PlanStep, Run, RunEvent } from "@suup/api";
-import { CONTROL_TOOLS, currentStep, toolLabel } from "./derive.js";
+import type { Approval, PlanStep, Run, RunEvent } from "@suup/api";
+import { type CategoryIcon, NETWORK_TOOL, STATUS_LABEL, toolCategory } from "./approval-text.js";
+import { CONTROL_TOOLS, currentStep, resolveToolCall, SEARCH_TOOLS, toolLabel } from "./derive.js";
 
 // What the bot DID, as the chat shows it: one card per tool call of a run, built from the run's
-// events (`tool_call` + `tool_result`). The control tools (`plan`, `finish`, `escalate`) are not
+// events (`tool_call` + `tool_result`). A call that had an approval card is still ONE row: the
+// approval (linked by the call id the approval carries) merges into it. The control tools (`plan`, `finish`, `escalate`) are not
 // cards: the plan shows in the working indicator, and the other two become the bot's message.
 
 export type ActionKind = "terminal" | "files" | "web" | "memory" | "other";
-export type ActionState = "running" | "done" | "failed";
+/** `stopped`: never executed (denied, expired or cancelled before it ran). */
+export type ActionState = "running" | "done" | "failed" | "stopped";
+
+type ConnectorRefs = readonly {
+  name: string;
+  tools?: readonly { name: string; tool: string }[] | null;
+}[];
 
 export interface ActionItem {
   callId: string;
   runId: string;
   name: string;
   kind: ActionKind;
-  /** The bold word of the card: "Terminal", "Arquivos", "Web", "Memória"... */
+  /** The bold word of the card, from `toolCategory`: "Terminal", "Arquivo", "Web", "Memória"... */
   kindLabel: string;
+  /** The icon of the same category. */
+  icon: CategoryIcon;
   /** What it did, in one line (for the collapsed card). */
   summary: string;
   /** What it is doing, in one line (for the working indicator). */
@@ -27,6 +37,12 @@ export interface ActionItem {
   durationMs?: number;
   /** When the tool was called (ISO), to place the card among the messages. */
   startedAt: string;
+  /** The approval card of this call, once decided (linked by call id). */
+  approval?: Approval;
+  /** The call was built from the approval alone: the events of its run are not loaded. */
+  fromApproval?: true;
+  /** A rule of the user let the call through with no card (`policy_checked`, allow, rule). */
+  allowedByRule?: true;
 }
 
 const str = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
@@ -55,20 +71,23 @@ const MEMORY_TOOLS = new Set(["remember", "recall", "forget", "search_conversati
 export function describeAction(
   name: string,
   args: Record<string, unknown>,
-): Pick<ActionItem, "kind" | "kindLabel" | "summary" | "doing"> {
+  connectors: ConnectorRefs = [],
+): Pick<ActionItem, "kind" | "kindLabel" | "icon" | "summary" | "doing"> {
+  const category = toolCategory(name, connectors);
+  const label = { kindLabel: category.label, icon: category.icon };
   const text = (key: string): string | undefined => {
     const value = str(args[key]);
     return value === undefined || value.trim() === "" ? undefined : value;
   };
   const files = (summary: string, doing: string) => ({
     kind: "files" as const,
-    kindLabel: "Arquivos",
+    ...label,
     summary,
     doing,
   });
   const memory = (summary: string, doing: string) => ({
     kind: "memory" as const,
-    kindLabel: "Memória",
+    ...label,
     summary,
     doing,
   });
@@ -79,7 +98,7 @@ export function describeAction(
         text("command") === undefined ? undefined : clip(text("command") as string, 80);
       return {
         kind: "terminal",
-        kindLabel: "Terminal",
+        ...label,
         summary: command === undefined ? "Rodar um comando" : `Rodar o comando ${command}`,
         doing: command === undefined ? "Rodando um comando" : `Rodando o comando ${command}`,
       };
@@ -116,9 +135,35 @@ export function describeAction(
       const where = text("url") === undefined ? undefined : host(text("url") as string);
       return {
         kind: "web",
-        kindLabel: "Web",
+        ...label,
         summary: where === undefined ? "Acessar uma página" : `Acessar ${where}`,
         doing: where === undefined ? "Acessando uma página" : `Acessando ${where}`,
+      };
+    }
+    case NETWORK_TOOL: {
+      const where = text("host") === undefined ? undefined : clip(text("host") as string, 60);
+      return {
+        kind: "other",
+        ...label,
+        summary: where === undefined ? "Acessar um host" : `Acessar ${where}`,
+        doing: where === undefined ? "Pedindo acesso a um host" : `Pedindo acesso a ${where}`,
+      };
+    }
+    case SEARCH_TOOLS: {
+      const words = text("words") === undefined ? undefined : clip(text("words") as string, 40);
+      const connector =
+        text("connector") === undefined ? undefined : clip(text("connector") as string, 40);
+      const what =
+        words === undefined
+          ? connector === undefined
+            ? ""
+            : ` do conector ${connector}`
+          : ` “${words}”${connector === undefined ? "" : ` no conector ${connector}`}`;
+      return {
+        kind: "other",
+        ...label,
+        summary: `Procurar ferramentas${what}`,
+        doing: `Procurando ferramentas${what}`,
       };
     }
     case "remember":
@@ -132,7 +177,7 @@ export function describeAction(
     default:
       return {
         kind: "other",
-        kindLabel: toolLabel(name),
+        ...label,
         summary: `Usar ${toolLabel(name).toLowerCase()}`,
         doing: `Usando ${toolLabel(name).toLowerCase()}`,
       };
@@ -143,28 +188,44 @@ export const isFileTool = (name: string): boolean => FILE_TOOLS.has(name);
 export const isMemoryTool = (name: string): boolean => MEMORY_TOOLS.has(name);
 
 /** One card per tool call of a run, in the order they were made; the result fills in when it arrives. */
-export function actionsOf(runId: string, events: readonly RunEvent[]): ActionItem[] {
+export function actionsOf(
+  runId: string,
+  events: readonly RunEvent[],
+  connectors: ConnectorRefs = [],
+): ActionItem[] {
   const items: ActionItem[] = [];
   const byCall = new Map<string, ActionItem>();
+  // The calls a rule of the user let through without a card.
+  const byRule = new Set<string>();
+  for (const event of events) {
+    if (
+      event.type === "policy_checked" &&
+      event.payload.outcome === "allow" &&
+      event.payload.source === "rule"
+    ) {
+      const callId = str(event.payload.callId);
+      if (callId !== undefined) byRule.add(callId);
+    }
+  }
   for (const event of events) {
     if (event.type === "tool_call") {
       const callId = str(event.payload.callId);
-      const name = str(event.payload.name);
-      if (callId === undefined || name === undefined || CONTROL_TOOLS.has(name)) continue;
+      const logged = str(event.payload.name);
+      if (callId === undefined || logged === undefined) continue;
+      // A call through `use_tool` is the REAL tool: its row is that tool's, never the wrapper's.
+      const { name, args } = resolveToolCall(logged, event.payload.args);
+      if (CONTROL_TOOLS.has(name)) continue;
       if (byCall.has(callId)) continue;
-      const args =
-        typeof event.payload.args === "object" && event.payload.args !== null
-          ? (event.payload.args as Record<string, unknown>)
-          : {};
       const item: ActionItem = {
         callId,
         runId,
         name,
-        ...describeAction(name, args),
+        ...describeAction(name, args, connectors),
         state: "running",
         args,
         truncated: false,
         startedAt: event.createdAt,
+        ...(byRule.has(callId) ? { allowedByRule: true as const } : {}),
       };
       byCall.set(callId, item);
       items.push(item);
@@ -178,6 +239,103 @@ export function actionsOf(runId: string, events: readonly RunEvent[]): ActionIte
     }
   }
   return items;
+}
+
+const asArgs = (value: unknown): Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+
+/**
+ * One row per tool call. The approval cards join the calls of the run by the call id the approval
+ * carries (and its run), never by text: a decided approval merges INTO its call (the call keeps its
+ * place and result, gains the decision, and a call that was never executed is `stopped`); a decided
+ * approval whose call is not among `actions` (an older run) becomes a call of its own; a pending
+ * approval stays a decision card (`pending`) and its call is not a row yet.
+ */
+/** An approval that DECLARES a message to another person reads as one in the chat (never guessed). */
+function outboundLook(
+  approval: Approval,
+  connectors: ConnectorRefs,
+): Partial<Pick<ActionItem, "kindLabel" | "icon">> {
+  if (approval.outbound === null) return {};
+  const category = toolCategory(approval.tool, connectors, true);
+  return { kindLabel: category.label, icon: category.icon };
+}
+
+export function mergeApprovals(
+  actions: readonly ActionItem[],
+  approvals: readonly Approval[],
+  connectors: ConnectorRefs = [],
+): { calls: ActionItem[]; pending: Approval[] } {
+  const key = (runId: string, callId: string) => `${runId}\u0000${callId}`;
+  const byCall = new Map(approvals.map((a) => [key(a.runId, a.callId), a]));
+  const used = new Set<string>();
+  const calls: ActionItem[] = [];
+  const pending: Approval[] = [];
+  for (const action of actions) {
+    const approval = byCall.get(key(action.runId, action.callId));
+    if (approval === undefined) {
+      calls.push(action);
+      continue;
+    }
+    used.add(approval.id);
+    if (approval.status === "pending") {
+      pending.push(approval);
+      continue;
+    }
+    // Denied, expired or cancelled: it never ran, whatever the log says about the refusal.
+    const ran = approval.status === "approved";
+    const { output: _output, durationMs: _duration, ...rest } = action;
+    const look = outboundLook(approval, connectors);
+    calls.push(
+      ran
+        ? { ...action, ...look, approval }
+        : { ...rest, ...look, state: "stopped", truncated: false, approval },
+    );
+  }
+  for (const approval of approvals) {
+    if (used.has(approval.id)) continue;
+    if (approval.status === "pending") {
+      pending.push(approval);
+      continue;
+    }
+    const args = asArgs(approval.args);
+    calls.push({
+      callId: approval.callId,
+      runId: approval.runId,
+      name: approval.tool,
+      ...describeAction(approval.tool, args, connectors),
+      ...outboundLook(approval, connectors),
+      state: approval.status === "approved" ? "done" : "stopped",
+      args,
+      truncated: false,
+      startedAt: approval.createdAt,
+      approval,
+      fromApproval: true,
+    });
+  }
+  return { calls, pending };
+}
+
+/**
+ * The muted word before the summary of a call's row, in Portuguese, saying the decision and the
+ * execution together ("Aprovado e concluído", "Recusado"). `undefined`: no approval, the row says
+ * what the state says ("Rodando", "Concluído", "Falhou").
+ */
+export function callStateLabel(item: ActionItem): string | undefined {
+  const { approval } = item;
+  if (approval === undefined) return undefined;
+  if (approval.status !== "approved") return STATUS_LABEL[approval.status] ?? approval.status;
+  if (item.fromApproval === true) return "Aprovado";
+  switch (item.state) {
+    case "running":
+      return "Aprovado, rodando";
+    case "failed":
+      return "Aprovado, mas falhou";
+    default:
+      return "Aprovado e concluído";
+  }
 }
 
 export type ActionEntry =

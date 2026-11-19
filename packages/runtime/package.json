@@ -13,6 +13,7 @@
     "dist"
   ],
   "dependencies": {
+    "@suup/connectors": "workspace:*",
     "@suup/core": "workspace:*",
     "@suup/db": "workspace:*",
     "@suup/providers": "workspace:*",

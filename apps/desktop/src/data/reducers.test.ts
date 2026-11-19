@@ -2,29 +2,50 @@ import type { StreamEvent } from "@suup/api";
 import { describe, expect, it } from "vitest";
 import {
   at,
+  makeApproval,
   makeBot,
+  makeConnector,
   makeConversation,
   makeEvent,
   makeMemory,
   makeMessage,
+  makeRule,
   makeRun,
+  makeSecret,
 } from "../test-fixtures.js";
 import {
   addOptimisticMessage,
   applyStreamEvent,
+  approvalsOfConversation,
   contiguousSeq,
+  mergeApproval,
+  mergeApprovals,
   mergeBot,
+  mergeConnector,
   mergeConversation,
   mergeMessagePage,
+  mergeRule,
   mergeRun,
   mergeRunEvents,
+  mergeSecret,
   orderedEvents,
   orderedMessages,
+  orderedRules,
+  pendingApprovals,
+  removeConnector,
+  removeRule,
+  removeSecret,
   resolveOptimisticMessage,
   rollbackOptimisticMessage,
+  setBotNetwork,
   setBots,
   setConnection,
+  setConnectors,
   setMemories,
+  setRules,
+  setSecrets,
+  setVaultStatus,
+  stalePendingIds,
   upsertMessage,
 } from "./reducers.js";
 import { type DataState, emptyData } from "./state.js";
@@ -252,5 +273,151 @@ describe("connection", () => {
     const s: DataState = setConnection(emptyData(), { phase: "online" });
     expect(setConnection(s, { phase: "online" })).toBe(s);
     expect(setConnection(s, { phase: "reconnecting" }).connection.phase).toBe("reconnecting");
+  });
+});
+
+describe("approval cards", () => {
+  const frameOf = (
+    approval: ReturnType<typeof makeApproval>,
+    change: "created" | "updated" = "created",
+    id = 1,
+  ) => frame("approval.changed", { change, approval }, id);
+
+  it("approval.changed stores the card; the same frame twice changes nothing", () => {
+    const card = makeApproval();
+    const once = applyStreamEvent(emptyData(), frameOf(card));
+    expect(once.approvals[card.id]).toEqual(card);
+    expect(applyStreamEvent(once, frameOf(card, "created", 2))).toBe(once);
+  });
+
+  it("pending becomes decided, and a decided card is final: a late pending frame cannot reopen it", () => {
+    const card = makeApproval();
+    const decided = { ...card, status: "approved" as const, decidedAt: at(5000) };
+    let s = applyStreamEvent(emptyData(), frameOf(card));
+    s = applyStreamEvent(s, frameOf(decided, "updated", 2));
+    expect(s.approvals[card.id]?.status).toBe("approved");
+    // The REST read that started before the decision answers late, still pending.
+    expect(mergeApproval(s, card)).toBe(s);
+    expect(mergeApprovals(s, [card]).approvals[card.id]?.status).toBe("approved");
+    // Nor can another decision overwrite it (it is decided once).
+    expect(mergeApproval(s, { ...decided, status: "denied", reason: "x" })).toBe(s);
+  });
+
+  it("the pending list is the cards waiting, oldest first, of bots that exist", () => {
+    const bot = makeBot();
+    const a = makeApproval({ botId: bot.id, createdAt: at(2000) });
+    const b = makeApproval({ botId: bot.id, createdAt: at(1000) });
+    const decided = makeApproval({ botId: bot.id, status: "denied" });
+    const orphan = makeApproval({ botId: makeBot().id });
+    let s = setBots(emptyData(), [bot]);
+    s = mergeApprovals(s, [a, b, decided, orphan]);
+    expect(pendingApprovals(s).map((c) => c.id)).toEqual([b.id, a.id]);
+    expect(s.approvalsLoaded).toBe(true);
+  });
+
+  it("after reading the whole pending list, a card held as pending that is missing was decided elsewhere", () => {
+    const a = makeApproval();
+    const b = makeApproval();
+    const s = mergeApprovals(emptyData(), [a, b]);
+    expect(stalePendingIds(s, [a])).toEqual([b.id]);
+    expect(stalePendingIds(s, [a, b])).toEqual([]);
+    const decided = mergeApproval(s, { ...b, status: "cancelled" });
+    expect(stalePendingIds(decided, [a])).toEqual([]);
+  });
+
+  it("the cards of a conversation, oldest first; one without a conversation belongs to its run's", () => {
+    const run = makeRun({ conversationId: "conv-1" });
+    const mine = makeApproval({ conversationId: "conv-1", createdAt: at(2000) });
+    const viaRun = makeApproval({ conversationId: null, runId: run.id, createdAt: at(1000) });
+    const other = makeApproval({ conversationId: "conv-2" });
+    const s = mergeApprovals(mergeRun(emptyData(), run), [mine, other, viaRun]);
+    expect(approvalsOfConversation(s, "conv-1").map((c) => c.id)).toEqual([viaRun.id, mine.id]);
+  });
+});
+
+describe("rules, vault and connectors (no stream frame: read again after writing)", () => {
+  it("a list read replaces the set, but keeps a row the screen holds in a newer version", () => {
+    const older = makeRule({ updatedAt: at(1000) });
+    const gone = makeRule();
+    let s = setRules(emptyData(), [older, gone]);
+    expect(s.rulesLoaded).toBe(true);
+    const edited = { ...older, effect: "deny" as const, updatedAt: at(5000) };
+    s = mergeRule(s, edited);
+    // A list that was read before the edit came back.
+    s = setRules(s, [older]);
+    expect(Object.keys(s.rules)).toEqual([older.id]);
+    expect(s.rules[older.id]?.effect).toBe("deny");
+  });
+
+  it("merge and remove a rule; a stale write answer does not go back in time; same data is same state", () => {
+    const rule = makeRule({ updatedAt: at(3000) });
+    const s = mergeRule(emptyData(), rule);
+    expect(mergeRule(s, rule)).toBe(s);
+    expect(mergeRule(s, { ...rule, updatedAt: at(1000), effect: "deny" })).toBe(s);
+    expect(removeRule(s, "nope")).toBe(s);
+    expect(Object.keys(removeRule(s, rule.id).rules)).toEqual([]);
+  });
+
+  it("rules keep the server's order: the oldest first", () => {
+    const first = makeRule({ createdAt: at(1000) });
+    const second = makeRule({ createdAt: at(2000) });
+    expect(orderedRules(setRules(emptyData(), [second, first])).map((r) => r.id)).toEqual([
+      first.id,
+      second.id,
+    ]);
+  });
+
+  it("secrets are held by name with their metadata only, and removed by name", () => {
+    const secret = makeSecret({ name: "GH_TOKEN", grantedBotIds: ["b1"] });
+    let s = setSecrets(emptyData(), [secret]);
+    expect(s.secretsLoaded).toBe(true);
+    s = mergeSecret(s, { ...secret, grantedBotIds: [], updatedAt: at(9000) });
+    expect(s.secrets.GH_TOKEN?.grantedBotIds).toEqual([]);
+    expect(Object.keys(s.secrets.GH_TOKEN ?? {})).not.toContain("value");
+    expect(Object.keys(removeSecret(s, "GH_TOKEN").secrets)).toEqual([]);
+    expect(removeSecret(s, "OUTRO")).toBe(s);
+  });
+
+  it("the vault status is stored once; the same status is the same state", () => {
+    const status = { configured: false, ok: false, keyEnv: null, reason: "cofre não configurado" };
+    const s = setVaultStatus(emptyData(), status);
+    expect(s.vault).toEqual(status);
+    expect(setVaultStatus(s, { ...status })).toBe(s);
+  });
+
+  it("connectors are held by name; a grant answer replaces the row; removing drops it", () => {
+    const connector = makeConnector({ name: "fake", updatedAt: at(1000) });
+    let s = setConnectors(emptyData(), [connector]);
+    expect(s.connectorsLoaded).toBe(true);
+    s = mergeConnector(s, { ...connector, grantedBotIds: ["b1"], updatedAt: at(2000) });
+    expect(s.connectors.fake?.grantedBotIds).toEqual(["b1"]);
+    // A list read before the grant must not take the grant back.
+    s = setConnectors(s, [connector]);
+    expect(s.connectors.fake?.grantedBotIds).toEqual(["b1"]);
+    expect(Object.keys(removeConnector(s, "fake").connectors)).toEqual([]);
+    expect(removeConnector(s, "outro")).toBe(s);
+  });
+});
+
+describe("the network of a bot's machine", () => {
+  const view = (hosts: string[]) => ({
+    defaults: ["registry.npmjs.org"],
+    hosts: hosts.map((host) => ({ host, createdBy: "user" as const, createdAt: at(0) })),
+    refusals: [],
+  });
+
+  it("keeps what the server last said, by bot, and replaces it whole", () => {
+    const one = setBotNetwork(emptyData(), "b1", view(["a.com"]));
+    expect(one.networks.b1?.hosts.map((h) => h.host)).toEqual(["a.com"]);
+    const two = setBotNetwork(one, "b2", view([]));
+    expect(Object.keys(two.networks).sort()).toEqual(["b1", "b2"]);
+    const after = setBotNetwork(two, "b1", view([]));
+    expect(after.networks.b1?.hosts).toEqual([]);
+    expect(after.networks.b2).toBe(two.networks.b2);
+  });
+
+  it("the same answer twice changes nothing", () => {
+    const once = setBotNetwork(emptyData(), "b1", view(["a.com"]));
+    expect(setBotNetwork(once, "b1", view(["a.com"]))).toBe(once);
   });
 });

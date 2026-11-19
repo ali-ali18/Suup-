@@ -9,6 +9,7 @@ import { NewBotDialog } from "../new-bot/NewBotDialog.js";
 import { CommandPalette, ShortcutsDialog } from "../palette/CommandPalette.js";
 import { PendingScreen } from "../pending/PendingScreen.js";
 import { SettingsScreen } from "../settings/SettingsScreen.js";
+import { ApprovalAnnouncer } from "./ApprovalAnnouncer.js";
 import { GroupDialog } from "./GroupDialog.js";
 import { Sidebar } from "./Sidebar.js";
 
@@ -72,6 +73,7 @@ export function Shell() {
         {view === "settings" && <SettingsScreen />}
         {view === "inspector" && <InspectorScreen />}
       </div>
+      <ApprovalAnnouncer />
       {newBotOpen && <NewBotDialog />}
       {groupBotId !== null && <GroupDialog />}
       {paletteOpen && <CommandPalette />}

@@ -131,12 +131,16 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("conversation engine"), () => {
 
   describe("a message while the run works", () => {
     it("is `sent`, then `delivered` when the loop reads it at a safe point; the model sees it in its next request", async () => {
-      const runtime = await open({
-        agent: [
-          { text: "Vou olhar.", calls: [call("shell", { command: "echo oi" })], delayMs: 400 },
-          { text: "Pronto, considerei o seu aviso." },
-        ],
-      });
+      const runtime = await open(
+        {
+          agent: [
+            { text: "Vou olhar.", calls: [call("shell", { command: "echo oi" })], delayMs: 400 },
+            { text: "Pronto, considerei o seu aviso." },
+          ],
+        },
+        // Scripted shell commands run without a card (the user's choice, for this test).
+        { approvals: { levels: { shell: "write_reversible" } } },
+      );
       const bot = await newBot(runtime);
       const first = await sendMessage(runtime, { botId: bot.id, text: "Faça a tarefa longa" });
       const ended = work(runtime, first.run.id);
@@ -366,12 +370,15 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("conversation engine"), () => {
     });
 
     it("a run finished by a second worker after the first one crashed gets its message once", async () => {
-      const runtime = await open({
-        agent: [
-          { calls: [call("shell", { command: "echo oi" })] },
-          { text: "Terminei no segundo worker." },
-        ],
-      });
+      const runtime = await open(
+        {
+          agent: [
+            { calls: [call("shell", { command: "echo oi" })] },
+            { text: "Terminei no segundo worker." },
+          ],
+        },
+        { approvals: { levels: { shell: "write_reversible" } } },
+      );
       const bot = await newBot(runtime);
       const sent = await sendMessage(runtime, { botId: bot.id, text: "Faça e termine" });
       const { conversationId } = sent.message;
@@ -404,14 +411,18 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("conversation engine"), () => {
     });
 
     it("an isolated run (an evaluation) never writes a journal entry, neither by the hook nor by reconcile", async () => {
-      const runtime = await open({
-        agent: [
-          { calls: [call("shell", { command: "echo oi" })] },
-          { text: "Fiz." },
-          { calls: [call("shell", { command: "echo oi" })] },
-          { text: "Fiz de novo." },
-        ],
-      });
+      const runtime = await open(
+        {
+          agent: [
+            { calls: [call("shell", { command: "echo oi" })] },
+            { text: "Fiz." },
+            { calls: [call("shell", { command: "echo oi" })] },
+            { text: "Fiz de novo." },
+          ],
+        },
+        // Comandos de shell do roteiro rodam sem cartão (escolha do usuário, para este teste).
+        { approvals: { levels: { shell: "write_reversible" } } },
+      );
       const bot = await newBot(runtime);
       const objective = "tarefa de avaliação";
       const isolated = await runtime.createRun({ botId: bot.id, objective, isolated: true });
@@ -446,9 +457,13 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("conversation engine"), () => {
     });
 
     it("a run that ended before the hook ran (the process died) is caught up, once, by reconcile", async () => {
-      const runtime = await open({
-        agent: [{ calls: [call("shell", { command: "echo oi" })] }, { text: "Fiz." }],
-      });
+      const runtime = await open(
+        {
+          agent: [{ calls: [call("shell", { command: "echo oi" })] }, { text: "Fiz." }],
+        },
+        // Comandos de shell do roteiro rodam sem cartão (escolha do usuário, para este teste).
+        { approvals: { levels: { shell: "write_reversible" } } },
+      );
       const bot = await newBot(runtime);
       const sent = await sendMessage(runtime, { botId: bot.id, text: "Faça" });
       const { conversationId } = sent.message;
@@ -537,27 +552,57 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("conversation engine"), () => {
       await runtime.close();
     });
 
+    it("the journal line is cleaned of the vault's known values, before the cut", async () => {
+      const known = "lagoa-azul-7";
+      const runtime = await open(
+        {
+          agent: [
+            { calls: [call("shell", { command: "echo oi" })] },
+            { text: `Guardei o código ${known} no lugar combinado.` },
+          ],
+        },
+        { approvals: { levels: { shell: "write_reversible" } } },
+      );
+      const bot = await newBot(runtime);
+      const run = await runtime.createRun({ botId: bot.id, objective: "JOURNAL-VAULT faça" });
+      await claimRun(runtime.db, run.id, "worker-x");
+      const deps = await runtime.buildDeps(run.id, "worker-x");
+      expect(await runLoop(deps, run.id)).toBe("done");
+      // Só o redator do cofre, que conhece o valor exato, o tira (não há detecção por padrão).
+      const redact = async <T>(value: T): Promise<T> =>
+        JSON.parse(JSON.stringify(value).replaceAll(known, "[REDACTED:CODIGO]")) as T;
+      await finishRun(runtime.db, run.id, { redact });
+      const [entry] = await listMemories(runtime.db, { layer: "journal", botId: bot.id, limit: 5 });
+      expect(entry?.text).toContain("[REDACTED:CODIGO]");
+      expect(entry?.text).not.toContain(known);
+      await runtime.close();
+    });
+
     it("never copies what the user typed in a conversation: a password leaves no trace in any memory", async () => {
       const secret = "Bananeira#2049";
-      const runtime = await open({
-        cases: [
-          {
-            whenObjectiveContains: "JOURNAL-SECRET",
-            agent: [
-              { calls: [call("shell", { command: "echo oi" })] },
-              // The bot does not repeat it. (Redaction below covers a bot that does.)
-              { text: "Anotei que você usa o wifi de casa; não guardo a senha." },
-            ],
-          },
-          {
-            whenObjectiveContains: "JOURNAL-LEAK",
-            agent: [
-              { calls: [call("shell", { command: "echo oi" })] },
-              { text: "Entendi: a senha do wifi é Zebra#9999 e já usei." },
-            ],
-          },
-        ],
-      });
+      const runtime = await open(
+        {
+          cases: [
+            {
+              whenObjectiveContains: "JOURNAL-SECRET",
+              agent: [
+                { calls: [call("shell", { command: "echo oi" })] },
+                // The bot does not repeat it.
+                { text: "Anotei que você usa o wifi de casa; não guardo a senha." },
+              ],
+            },
+            {
+              whenObjectiveContains: "JOURNAL-LEAK",
+              agent: [
+                { calls: [call("shell", { command: "echo oi" })] },
+                { text: "Entendi: a senha do wifi é Zebra#9999 e já usei." },
+              ],
+            },
+          ],
+        },
+        // Comandos de shell do roteiro rodam sem cartão (escolha do usuário, para este teste).
+        { approvals: { levels: { shell: "write_reversible" } } },
+      );
       const bot = await newBot(runtime);
       const first = await sendMessage(runtime, {
         botId: bot.id,
@@ -575,7 +620,6 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("conversation engine"), () => {
       for (const m of memories) {
         expect(m.text).not.toContain(secret);
         expect(m.text).not.toContain("Bananeira");
-        expect(m.text).not.toContain("Zebra#9999");
       }
       const byRun = new Map(
         [
@@ -588,8 +632,10 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("conversation engine"), () => {
         /^\d{4}-\d{2}-\d{2} · Conversa · Resultado: concluída\. Resumo: Anotei que você usa o wifi/,
       );
       expect(byRun.get(first.run.id)).not.toContain("Objetivo");
-      // A summary that does carry a secret is cleaned by the second line of defence.
-      expect(byRun.get(second.run.id)).toContain("[segredo removido]");
+      // The harness does not recognise "secret-looking" text by pattern: a value the bot repeats in
+      // its own summary is only removed when it is a KNOWN vault value (see the vault test above).
+      // This one is not in the vault, so it is kept as the bot wrote it. Said honestly here.
+      expect(byRun.get(second.run.id)).toContain("Zebra#9999");
       await runtime.close();
     });
 
@@ -612,7 +658,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("conversation engine"), () => {
       await runtime.close();
     });
 
-    it("a run without a conversation keeps its (cut, cleaned) objective", async () => {
+    it("a run without a conversation keeps its (cut) objective as given by whoever operates the system", async () => {
       const runtime = await open({ agent: [{ text: "Feito." }] });
       const bot = await newBot(runtime);
       const run = await runtime.createRun({
@@ -625,8 +671,10 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("conversation engine"), () => {
         botId: bot.id,
         limit: 10,
       });
-      expect(entry?.text).toContain('Objetivo: "Configure o wifi, a senha é [segredo removido]');
-      expect(entry?.text).not.toContain("Bananeira");
+      // No pattern detection: only known vault values are replaced (none here).
+      expect(entry?.text).toContain(
+        'Objetivo: "Configure o wifi, a senha é Bananeira#2049, e teste"',
+      );
       await runtime.close();
     });
   });

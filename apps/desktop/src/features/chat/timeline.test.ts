@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { type ActionItem, describeAction } from "../../data/actions.js";
-import { makeMessage, makeRun } from "../../test-fixtures.js";
-import { buildTimeline, dayLabel } from "./timeline.js";
+import type { SecretRequestItem } from "../../data/secret-requests.js";
+import { makeApproval, makeMessage, makeRun } from "../../test-fixtures.js";
+import type { BubblePosition } from "../../ui/message.js";
+import { bubblePositions, buildTimeline, dayLabel, type TimelineItem } from "./timeline.js";
 
 const NOW = new Date(2026, 10, 18, 15, 0, 0);
 const local = (h: number, m = 0, d = 18) => new Date(2026, 10, d, h, m, 0).toISOString();
@@ -308,5 +310,308 @@ describe("buildTimeline", () => {
       expect.objectContaining({ kind: "ended", runId: cancelled.id, text: "Execução cancelada" }),
       expect.objectContaining({ kind: "notice", text: "Outro aviso" }),
     ]);
+  });
+});
+
+describe("buildTimeline: approval cards and secure forms among the bot's actions", () => {
+  const run = makeRun({ status: "waiting_approval" });
+  const conversationId = makeMessage().conversationId;
+  const opener = makeMessage({
+    conversationId,
+    seq: 1,
+    createdAt: local(14, 0),
+    runId: run.id,
+  });
+  const action = (callId: string, minute: number): ActionItem => ({
+    callId,
+    runId: run.id,
+    name: "shell",
+    ...describeAction("shell", { command: callId }),
+    state: "done",
+    args: {},
+    truncated: false,
+    startedAt: local(14, minute),
+  });
+
+  it("the card sits where it was asked: tool calls before it and after it are separate groups", () => {
+    const card = makeApproval({ runId: run.id, createdAt: local(14, 5) });
+    const items = buildTimeline(
+      [opener],
+      { [run.id]: run },
+      [action("c1", 2), action("c2", 3), action("c3", 8)],
+      NOW,
+      3,
+      { approvals: [card] },
+    );
+    expect(kinds(items)).toEqual(["separator", "user", "actions", "approval", "actions"]);
+    const approval = items.find((i) => i.kind === "approval") as Extract<
+      ReturnType<typeof buildTimeline>[number],
+      { kind: "approval" }
+    >;
+    expect(approval.approval.id).toBe(card.id);
+    expect(approval.key).toBe(`approval-${card.id}`);
+  });
+
+  it("a run waiting for approval has no working indicator: the card is what it waits for", () => {
+    const card = makeApproval({ runId: run.id, createdAt: local(14, 5) });
+    const items = buildTimeline([opener], { [run.id]: run }, none, NOW, 3, { approvals: [card] });
+    expect(kinds(items)).toEqual(["separator", "user", "approval"]);
+  });
+
+  it("a card of a run no message opened yet still shows at the end", () => {
+    const card = makeApproval({ runId: "other-run", createdAt: local(14, 5) });
+    const items = buildTimeline([opener], {}, none, NOW, 3, { approvals: [card] });
+    expect(kinds(items)).toEqual(["separator", "user", "approval"]);
+  });
+
+  it("the secure form of a secret request is an item of its own, in order with the actions", () => {
+    const request: SecretRequestItem = {
+      callId: "s1",
+      runId: run.id,
+      name: "GH_TOKEN",
+      reason: null,
+      startedAt: local(14, 4),
+      state: "open",
+    };
+    const items = buildTimeline(
+      [opener],
+      { [run.id]: { ...run, status: "waiting_user" } },
+      [action("c1", 2)],
+      NOW,
+      3,
+      { secrets: [request] },
+    );
+    expect(kinds(items)).toEqual(["separator", "user", "actions", "secret"]);
+  });
+
+  describe("one row per tool call: the approval merges into its call", () => {
+    const rowsOf = (items: ReturnType<typeof buildTimeline>) =>
+      items.flatMap((i) =>
+        i.kind === "actions"
+          ? i.entries.flatMap((e) => (e.kind === "fold" ? e.items : [e.item]))
+          : [],
+      );
+
+    it("a decided approval and its call are one row, in the call's place", () => {
+      const done = makeApproval({
+        runId: run.id,
+        callId: "c2",
+        tool: "shell",
+        status: "approved",
+        createdAt: local(14, 3),
+        decidedAt: local(14, 4),
+      });
+      const items = buildTimeline(
+        [opener],
+        { [run.id]: { ...run, status: "running" } },
+        [action("c1", 2), action("c2", 3), action("c3", 8)],
+        NOW,
+        Number.POSITIVE_INFINITY,
+        { approvals: [done] },
+      );
+      expect(kinds(items)).toEqual(["separator", "user", "actions", "working"]);
+      const rows = rowsOf(items);
+      expect(rows.map((r) => r.callId)).toEqual(["c1", "c2", "c3"]);
+      expect(rows[1]?.approval?.id).toBe(done.id);
+    });
+
+    it("while it waits the decision card shows and the call has no row", () => {
+      const waiting = makeApproval({ runId: run.id, callId: "c2", createdAt: local(14, 3) });
+      const items = buildTimeline(
+        [opener],
+        { [run.id]: run },
+        [action("c1", 2), { ...action("c2", 3), state: "running" }],
+        NOW,
+        3,
+        { approvals: [waiting] },
+      );
+      expect(kinds(items)).toEqual(["separator", "user", "actions", "approval"]);
+      expect(rowsOf(items).map((r) => r.callId)).toEqual(["c1"]);
+    });
+
+    it("the fold counts calls, not rows: approved calls fold with the rest", () => {
+      const approved = ["c1", "c2"].map((callId, n) =>
+        makeApproval({
+          runId: run.id,
+          callId,
+          status: "approved",
+          createdAt: local(14, 2 + n),
+          decidedAt: local(14, 3 + n),
+        }),
+      );
+      const items = buildTimeline(
+        [opener],
+        { [run.id]: { ...run, status: "running" } },
+        [1, 2, 3, 4, 5].map((n) => action(`c${n}`, 1 + n)),
+        NOW,
+        3,
+        { approvals: approved },
+      );
+      const group = items.find((i) => i.kind === "actions") as Extract<
+        ReturnType<typeof buildTimeline>[number],
+        { kind: "actions" }
+      >;
+      expect(group.entries.map((e) => (e.kind === "fold" ? e.items.length : 1))).toEqual([
+        2, 1, 1, 1,
+      ]);
+    });
+
+    it("an approval of a run with no events loaded still gets its one row", () => {
+      const old = makeApproval({
+        runId: "run-antigo",
+        status: "denied",
+        createdAt: local(13, 0),
+        decidedAt: local(13, 1),
+      });
+      const items = buildTimeline([opener], {}, none, NOW, 3, { approvals: [old] });
+      expect(kinds(items)).toEqual(["separator", "user", "actions"]);
+      expect(rowsOf(items)).toHaveLength(1);
+      expect(rowsOf(items)[0]?.state).toBe("stopped");
+    });
+  });
+});
+
+describe("bubblePositions: consecutive text bubbles of one sender form a group", () => {
+  const user = (key: string, state: "sending" | "sent" | "delivered" | undefined = undefined) =>
+    ({ kind: "user", key, text: key, state }) as TimelineItem;
+  const bot = (key: string, text = key) => ({ kind: "bot", key, text }) as TimelineItem;
+  const choice = (key: string) =>
+    ({
+      kind: "bot",
+      key,
+      text: key,
+      ask: {
+        questions: [{ question: "Qual?", options: [{ label: "A" }, { label: "B" }] }],
+        answer: undefined,
+        open: true,
+        tieBreak: false,
+      },
+    }) as TimelineItem;
+  const open = (key: string) =>
+    ({
+      kind: "bot",
+      key,
+      text: key,
+      ask: {
+        questions: [{ question: "E então?" }],
+        answer: undefined,
+        open: true,
+        tieBreak: false,
+      },
+    }) as TimelineItem;
+  const card = (key: string) => ({ kind: "actions", key, entries: [] }) as TimelineItem;
+  const separator = (key: string) =>
+    ({ kind: "separator", key, text: "Hoje · 10:00" }) as TimelineItem;
+  const of = (items: TimelineItem[]): Record<string, BubblePosition> =>
+    Object.fromEntries(bubblePositions(items));
+
+  it("a lone bubble is single, and nothing at all has no groups", () => {
+    expect(of([bot("a")])).toEqual({ a: "single" });
+    expect(of([user("u")])).toEqual({ u: "single" });
+    expect(of([])).toEqual({});
+  });
+
+  it("a pair is first + last; three are first, middle, last; four have two middles", () => {
+    expect(of([bot("a"), bot("b")])).toEqual({ a: "first", b: "last" });
+    expect(of([bot("a"), bot("b"), bot("c")])).toEqual({ a: "first", b: "middle", c: "last" });
+    expect(of([user("a"), user("b"), user("c"), user("d")])).toEqual({
+      a: "first",
+      b: "middle",
+      c: "middle",
+      d: "last",
+    });
+  });
+
+  it("alternating senders never group", () => {
+    expect(of([user("u1"), bot("b1"), user("u2"), bot("b2")])).toEqual({
+      u1: "single",
+      b1: "single",
+      u2: "single",
+      b2: "single",
+    });
+  });
+
+  it("a different sender ends the group; the next one starts another", () => {
+    expect(of([bot("a"), bot("b"), user("u"), bot("c"), bot("d")])).toEqual({
+      a: "first",
+      b: "last",
+      u: "single",
+      c: "first",
+      d: "last",
+    });
+  });
+
+  it("a card between two bubbles of one sender breaks the group and is not in the result", () => {
+    const positions = of([bot("a"), bot("b"), card("k"), bot("c"), bot("d"), bot("e")]);
+    expect(positions).toEqual({ a: "first", b: "last", c: "first", d: "middle", e: "last" });
+    expect(positions).not.toHaveProperty("k");
+    // Every kind of card or line breaks it, even a lone bubble around it.
+    expect(of([bot("a"), choice("q"), bot("b")])).toEqual({ a: "single", b: "single" });
+    expect(
+      of([
+        bot("a"),
+        { kind: "approval", key: "p" } as unknown as TimelineItem,
+        bot("b"),
+        { kind: "secret", key: "s" } as unknown as TimelineItem,
+        bot("c"),
+        { kind: "ended", key: "e", runId: "r", text: "falhou" } as TimelineItem,
+        bot("d"),
+        { kind: "notice", key: "n", text: "aviso" } as TimelineItem,
+        bot("f"),
+        { kind: "working", key: "w", runId: "r" } as TimelineItem,
+      ]),
+    ).toEqual({ a: "single", b: "single", c: "single", d: "single", f: "single" });
+  });
+
+  it("a separator (a new day, or a gap of half an hour) breaks the group", () => {
+    expect(of([bot("a"), separator("d"), bot("b")])).toEqual({ a: "single", b: "single" });
+    expect(of([user("a"), user("b"), separator("d"), user("c"), user("e")])).toEqual({
+      a: "first",
+      b: "last",
+      c: "first",
+      e: "last",
+    });
+  });
+
+  it("a user message still being sent (optimistic) groups like any other", () => {
+    expect(of([user("a", "delivered"), user("b", "sending")])).toEqual({
+      a: "first",
+      b: "last",
+    });
+    expect(of([user("a", "sent"), user("b", "sending"), user("c", "sending")])).toEqual({
+      a: "first",
+      b: "middle",
+      c: "last",
+    });
+  });
+
+  it("bubbles with lists or code are bubbles like the others; an open question is a bubble, a question with choices is a card", () => {
+    const rich = bot("r", "- um\n- dois\n\n```ts\nconst a = 1;\n```");
+    expect(of([bot("a"), rich, bot("c")])).toEqual({ a: "first", r: "middle", c: "last" });
+    expect(of([bot("a"), open("o"), bot("c")])).toEqual({ a: "first", o: "middle", c: "last" });
+  });
+
+  it("is computed over what buildTimeline returns: only the position of a bubble changes when another arrives", () => {
+    const conversationId = makeMessage().conversationId;
+    const message = (seq: number, authorKind: "user" | "bot") =>
+      makeMessage({
+        conversationId,
+        seq,
+        authorKind,
+        authorBotId: authorKind === "bot" ? "bot-1" : null,
+        createdAt: local(14, seq),
+        text: `m${seq}`,
+      });
+    const two = buildTimeline([message(1, "bot"), message(2, "bot")], {}, [], NOW);
+    const three = buildTimeline(
+      [message(1, "bot"), message(2, "bot"), message(3, "bot")],
+      {},
+      [],
+      NOW,
+    );
+    const before = [...bubblePositions(two).values()];
+    const after = [...bubblePositions(three).values()];
+    expect(before).toEqual(["first", "last"]);
+    expect(after).toEqual(["first", "middle", "last"]);
   });
 });

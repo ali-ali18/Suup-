@@ -1,6 +1,10 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
-import { DATABASE_URL, SKIP_REASON, startWorld, type World } from "./harness.js";
-import { connect, selectBot, send } from "./helpers.js";
+import { recordNetworkEvent } from "@suup/db";
+import { DATABASE_URL, fakeMcpCommand, SKIP_REASON, startWorld, type World } from "./harness.js";
+import { connect, freshBot, selectBot, send } from "./helpers.js";
 
 // Takes a screenshot of each main screen from a real run of the app, for the visual review against
 // the owner's references (1920x1080) and for the design review (1440x900 at 2x).
@@ -13,8 +17,10 @@ const SIZES = [
 test.describe("screenshots", () => {
   test.skip(DATABASE_URL === undefined, SKIP_REASON);
   /** Each size gets a world of its own: the scripted runs cannot be repeated in one conversation. */
-  async function seed(): Promise<World> {
-    const world = await startWorld();
+  async function seed(): Promise<World & { dir: string }> {
+    // `networkTool`: the isolated machine has the tool that asks for a host (the card is real).
+    const world = await startWorld({ networkTool: true });
+    const dir = await mkdtemp(join(tmpdir(), "suup-shots-"));
     const base = {
       modelId: "model-x",
       allowedTools: ["shell", "read_file", "write_file", "edit_file"],
@@ -75,9 +81,140 @@ test.describe("screenshots", () => {
     await talk("Cookie", "CASE-MD mostre um resumo");
     await talk("Sênior", "CASE-OPTIONS escolha uma cor");
     await talk("Contas", "CASE-QUIZ pergunte");
+    // Phase 3: a card waiting for approval, a secret request, the vault, rules and a connector.
+    await api.bots.create({
+      ...base,
+      name: "Escriba",
+      description: "Escreve e organiza as notas",
+      avatar: "mascot:star",
+      color: "laranja",
+    });
+    await api.bots.create({
+      ...base,
+      name: "Chaveiro",
+      description: "Cuida das integrações",
+      avatar: "mascot:clover",
+      color: "rosa",
+    });
+    const phase3 = await api.bots.list();
+    const phase3Id = (name: string) => phase3.find((b) => b.name === name)?.id as string;
+    await api.vault.set("GITHUB_TOKEN", {
+      value: "ghp_screenshot_value_000111",
+      description: "push no repositório da loja",
+      grantBotIds: [phase3Id("Nova"), phase3Id("Escriba")],
+    });
+    await api.vault.set("ERP_TOKEN", {
+      value: "erp_screenshot_value_222333",
+      description: "API do ERP (somente leitura)",
+    });
+    await api.rules.create({
+      tool: "write_file",
+      effect: "allow",
+      botId: phase3Id("Nova"),
+      matchers: [{ field: "path", value: "notas/ideias.md" }],
+      note: "Só este arquivo, sem perguntar",
+    });
+    await api.rules.create({
+      tool: "web_fetch",
+      effect: "deny",
+      matchers: [{ field: "url", value: "https://exemplo-ruim.com/" }],
+    });
+    const mcp = fakeMcpCommand();
+    await api.connectors.create({
+      name: "fake",
+      description: "Servidor de teste do Suup",
+      transport: { kind: "stdio", command: mcp.command, args: mcp.args },
+      scope: "read_write",
+      grants: [{ botId: phase3Id("Nova"), tools: "all" }],
+    });
+    await api.connectors.test("fake");
+    await api.connectors.setToolRisk("fake", "echo", { risk: "read" });
+    // The user marks the e-mail tool of the connector as a message to another person.
+    await api.connectors.setToolOutbound("fake", "send_email", {
+      outbound: { kind: "message", recipientFields: ["to"] },
+    });
+    await api.bots.create({
+      ...base,
+      name: "Carteiro",
+      description: "Escreve e envia e-mails",
+      avatar: "mascot:clover",
+      color: "azul",
+    });
+    const mailer = (await api.bots.list()).find((b) => b.name === "Carteiro")?.id as string;
+    // The mailer may use three of the tools (a list); Nova has them all (`all`).
+    await api.connectors.grant("fake", mailer, {
+      tools: ["echo", "send_email", "write_thing"],
+    });
+    {
+      const conversation = await api.bots.openConversation(mailer);
+      await api.conversations.send(conversation.id, "CASE-EMAIL-MARCADO envie o e-mail");
+    }
+    for (const [name, text] of [
+      ["Escriba", "CASE-APPROVE escreva o arquivo de notas"],
+      ["Chaveiro", "CASE-SECRET preciso do token"],
+    ] as const) {
+      const conversation = await api.bots.openConversation(phase3Id(name));
+      await api.conversations.send(conversation.id, text);
+    }
+    // A connector whose server changed a definition and added a tool: they wait for a review.
+    const tweak = join(dir, "tweak.txt");
+    const late = join(dir, "late.txt");
+    await api.connectors.create({
+      name: "revisao",
+      description: "Servidor cujas definições mudaram",
+      transport: {
+        kind: "stdio",
+        command: mcp.command,
+        args: mcp.args,
+        env: { FAKE_TWEAK: tweak, FAKE_LATE: late },
+      },
+      scope: "read_write",
+    });
+    await api.connectors.test("revisao");
+    await api.connectors.setToolRisk("revisao", "echo", { risk: "read" });
+    await api.connectors.grant("revisao", phase3Id("Escriba"), { tools: ["echo", "write_thing"] });
+    await writeFile(
+      tweak,
+      "Now it also sends a copy of the text to an address of the server's choosing.",
+    );
+    await writeFile(late, "x");
+    await api.connectors.test("revisao");
+    // The network of Nova's machine: a host of its own, and what the proxy refused lately.
+    await api.network.allow(phase3Id("Nova"), "api.exemplo.com");
+    for (const [host, reason, message] of [
+      ["api.novo.com", "not_allowed", "host api.novo.com is not allowed for this bot"],
+      [
+        "registry.exemplo.org",
+        "not_allowed",
+        "host registry.exemplo.org is not allowed for this bot",
+      ],
+    ] as const) {
+      await recordNetworkEvent(world.db, {
+        subjectKind: "bot",
+        subjectId: phase3Id("Nova"),
+        host,
+        port: 443,
+        reason,
+        message,
+      });
+    }
+    // A bot that asks to reach one more host: a card waits for the user.
+    await api.bots.create({
+      ...base,
+      name: "Pedinte",
+      description: "Baixa relatórios de serviços externos",
+      avatar: "mascot:leaf",
+      color: "laranja",
+      allowedTools: [...base.allowedTools, "request_network_access"],
+    });
+    {
+      const requester = (await api.bots.list()).find((b) => b.name === "Pedinte")?.id as string;
+      const conversation = await api.bots.openConversation(requester);
+      await api.conversations.send(conversation.id, "CASE-NETWORK baixe o relatório");
+    }
     await api.memories.add({ layer: "rule", text: "Responda sempre em português." });
     await api.memories.add({ layer: "profile", text: "Moro em São Paulo e estudo à noite." });
-    return world;
+    return Object.assign(world, { dir });
   }
 
   for (const size of SIZES) {
@@ -93,6 +230,8 @@ test.describe("screenshots", () => {
         page.screenshot({ path: `screenshots/${size.dir}/${name}.png` });
       const settle = async () => {
         await page.evaluate(() => document.fonts.ready);
+        // Past the short transitions of buttons and cards.
+        await page.waitForTimeout(250);
       };
 
       await page.goto(world.appUrl);
@@ -193,8 +332,168 @@ test.describe("screenshots", () => {
       await expect(page.getByTestId("inspector-events").locator("li").first()).toBeVisible();
       await shot("16-inspetor");
 
-      // Light theme, once.
+      // Phase 3: the approval card, the secure form, and the settings sections.
       await page.getByRole("button", { name: "Voltar" }).click();
+      await selectBot(page, "Escriba");
+      const approval = page.getByTestId("approval-card");
+      await expect(approval).toHaveAttribute("data-state", "needs-action");
+      await settle();
+      await shot("18-aprovacao-cartao");
+      // A normal action: only Recusar and Aprovar, nothing else.
+      expect(await approval.getByRole("button").allTextContents()).toEqual(["Recusar", "Aprovar"]);
+      await approval.getByTestId("approval-approve").click();
+      await expect(
+        page.getByTestId("message-bot").filter({ hasText: "Escrevi o arquivo aprovado." }),
+      ).toBeVisible();
+      // One row for the call: the approval merged into it.
+      const approved = page.getByTestId("action-card");
+      await expect(approved).toHaveCount(1);
+      await expect(approved).toHaveAttribute("data-state", "done");
+      // Collapsed to one row, chevron hidden at rest; then on hover; then opened.
+      await page.mouse.move(0, 0);
+      await settle();
+      await shot("18c-aprovacao-resolvida-recolhida");
+      await approved.getByRole("button", { name: /Aprovado/ }).hover();
+      await settle();
+      await shot("18d-aprovacao-resolvida-hover");
+      await approved.getByRole("button", { name: /Aprovado/ }).click();
+      await page.mouse.move(0, 0);
+      await settle();
+      await shot("18e-aprovacao-resolvida-aberta");
+      // A message to another person (the user marked the tool): Descartar, and the split button Enviar.
+      await selectBot(page, "Carteiro");
+      const message = page.getByTestId("approval-card");
+      await expect(message).toHaveAttribute("data-state", "needs-action");
+      await expect(message.getByTestId("approval-approve")).toHaveText("Enviar");
+      await settle();
+      await shot("18f-mensagem-cartao");
+      await message.getByTestId("approval-more").click();
+      await expect(page.getByRole("menu")).toBeVisible();
+      await expect(page.getByRole("menuitem", { name: /Permitir destinatário/ })).toBeVisible();
+      await settle();
+      await shot("18g-mensagem-menu");
+      await page.keyboard.press("Escape");
+      await message.getByTestId("approval-deny").click();
+      await expect(page.getByTestId("approval-card")).toHaveCount(0);
+      await selectBot(page, "Chaveiro");
+      const secret = page.getByTestId("secret-card");
+      await expect(secret).toHaveAttribute("data-state", "needs-action");
+      await secret.getByTestId("secret-input").fill("valor-so-para-a-captura");
+      await settle();
+      await shot("19-segredo-formulario");
+      await secret.getByTestId("secret-input").fill("");
+      await expect(secret.getByTestId("secret-save")).toBeDisabled();
+      await settle();
+      await shot("19a-segredo-vazio");
+      await page.getByTestId("owner-menu").click();
+      await page.getByRole("menuitem", { name: /Pendências/ }).click();
+      await expect(page.getByTestId("pending-secret")).toHaveCount(1);
+      await page.getByTestId("pending-secret").scrollIntoViewIfNeeded();
+      await settle();
+      await shot("19b-pendencias-segredo");
+      // The card that asks for a host, and the one line it becomes.
+      await selectBot(page, "Pedinte");
+      const network = page.getByTestId("approval-card");
+      await expect(network).toHaveAttribute("data-state", "needs-action");
+      await expect(network.locator(".ui-decision__category")).toHaveText("Rede");
+      expect(await network.getByRole("button").allTextContents()).toEqual(["Recusar", "Aprovar"]);
+      await settle();
+      await shot("18h-rede-cartao");
+      await network.getByTestId("approval-approve").click();
+      await expect(
+        page.getByTestId("message-bot").filter({ hasText: "Tentei liberar o host." }),
+      ).toBeVisible();
+      await page.mouse.move(0, 0);
+      await settle();
+      await shot("18i-rede-cartao-resolvido");
+      // The "Rede" of a bot, in its edit surface: defaults, its own hosts, what the proxy refused.
+      await selectBot(page, "Nova");
+      await page.getByTestId("bot-chip").click({ button: "right" });
+      await page.getByRole("menuitem", { name: /Editar o bot/ }).click();
+      await page
+        .getByRole("dialog")
+        .getByRole("button", { name: "Descrever o que ele faz" })
+        .click();
+      await expect(page.getByTestId("network-refusals")).toBeVisible();
+      await page.getByTestId("bot-network").scrollIntoViewIfNeeded();
+      await settle();
+      await shot("11b-editar-bot-rede");
+      await page.getByRole("dialog").getByRole("button", { name: "Voltar" }).click();
+      await page.getByRole("dialog").getByRole("button", { name: "Cancelar" }).click();
+      await page.getByTestId("owner-menu").click();
+      await page.getByRole("menuitem", { name: "Configurações" }).click();
+      await page.getByRole("tab", { name: "Aprovações" }).click();
+      await expect(page.getByTestId("rule-row")).toHaveCount(2);
+      await settle();
+      await shot("20-config-aprovacoes");
+      await page.getByTestId("rule-new").click();
+      await page.getByTestId("rule-effect-deny").click();
+      await page.getByRole("button", { name: "Adicionar condição" }).click();
+      await page
+        .getByTestId("rule-condition")
+        .getByLabel("Campo dos argumentos (ex.: command)")
+        .fill("path");
+      await page.getByTestId("rule-condition").getByLabel("Valor exato").fill("/etc/passwd");
+      await settle();
+      await shot("20b-config-nova-regra");
+      await page.getByRole("button", { name: "Cancelar" }).click();
+      await page.getByRole("tab", { name: "Cofre" }).click();
+      await expect(page.getByTestId("secret-row")).toHaveCount(2);
+      await page.getByTestId("secret-row").first().getByTestId("secret-grants-toggle").click();
+      await settle();
+      await shot("21-config-cofre");
+      await page.getByTestId("secret-new").click();
+      await settle();
+      await shot("21b-config-novo-segredo");
+      await page.getByRole("button", { name: "Cancelar" }).click();
+      await page.getByRole("tab", { name: "Conectores" }).click();
+      const connector = page.getByTestId("connector-row").filter({ hasText: "fake" });
+      await expect(connector).toBeVisible();
+      await connector.getByTestId("connector-details").click();
+      await expect(connector.getByTestId("connector-tools")).toBeVisible();
+      await settle();
+      await shot("22-config-conectores");
+      await connector.getByTestId("connector-tools").scrollIntoViewIfNeeded();
+      await connector.getByTestId("connector-tools-unavailable").scrollIntoViewIfNeeded();
+      await settle();
+      await shot("22b-config-conectores-ferramentas");
+      // Per tool: a bot's row collapsed ("3 de N"), then opened with the ticks.
+      const grants = connector.getByTestId("connector-grants");
+      await grants.scrollIntoViewIfNeeded();
+      await settle();
+      await shot("22c-config-conectores-quem-pode-usar");
+      const mailer = grants.locator('[data-testid="grant-row"][data-bot="Carteiro"]');
+      await mailer.getByRole("button", { name: /Carteiro/ }).click();
+      await mailer.scrollIntoViewIfNeeded();
+      await page.mouse.move(0, 0);
+      await settle();
+      await shot("22d-config-conectores-ferramentas-por-bot");
+      await mailer.getByRole("button", { name: /Carteiro/ }).click();
+      // Where the program runs, and the hosts it may reach.
+      await connector.getByTestId("connector-network").scrollIntoViewIfNeeded();
+      await settle();
+      await shot("22e-config-conectores-onde-roda");
+      // A connector with tools waiting for a review: the calm notice, then the comparison.
+      const reviewed = page.getByTestId("connector-row").filter({ hasText: "revisao" });
+      await reviewed.scrollIntoViewIfNeeded();
+      await expect(reviewed.getByTestId("review-notice")).toContainText("mudou");
+      await settle();
+      await shot("22f-config-conectores-aviso-de-revisao");
+      await reviewed.getByTestId("connector-review").click();
+      await expect(page.getByTestId("review-item")).toHaveCount(2);
+      await settle();
+      await shot("22g-revisao-de-definicao");
+      await page.getByTestId("review-item").first().getByTestId("review-keep").click();
+      await settle();
+      await shot("22h-revisao-mantida-desligada");
+      await page.getByTestId("review-close").click();
+      await page.getByTestId("connector-new").click();
+      await settle();
+      await shot("23-adicionar-conector");
+      await page.getByRole("button", { name: "Cancelar" }).click();
+      await page.getByRole("tab", { name: "Geral" }).click();
+
+      // Light theme, once.
       await page.getByTestId("owner-menu").click();
       await page.getByRole("menuitem", { name: "Configurações" }).click();
       await page.getByRole("radio", { name: "Claro" }).click();
@@ -203,6 +502,76 @@ test.describe("screenshots", () => {
       await page.getByTestId("owner-menu").click();
       await page.getByRole("menuitem", { name: "Configurações" }).click();
       await page.getByRole("radio", { name: "Escuro" }).click();
+      await context.close();
+      await world.stop();
+      await rm(world.dir, { recursive: true, force: true });
+    });
+
+    test(`the network on the local sandbox and the tool search at ${size.dir}`, async ({
+      browser,
+    }) => {
+      // The default server: commands on its own machine (no isolation), tool search on.
+      const world = await startWorld({ toolSearch: { minTools: 5, minDefinitionTokens: 1 } });
+      await freshBot(world, "Pesquisador", { allowedTools: [] });
+      const finder = (await world.api.bots.list()).find((b) => b.name === "Pesquisador")
+        ?.id as string;
+      const mcp = fakeMcpCommand();
+      await world.api.connectors.create({
+        name: "fake",
+        transport: {
+          kind: "stdio",
+          command: mcp.command,
+          args: mcp.args,
+          env: { FAKE_MANY: "30" },
+        },
+        scope: "read_write",
+      });
+      await world.api.connectors.test("fake");
+      await world.api.connectors.setToolRisk("fake", "gen_3", { risk: "read" });
+      await world.api.connectors.grant("fake", finder, { tools: "all" });
+      await recordNetworkEvent(world.db, {
+        subjectKind: "bot",
+        subjectId: finder,
+        host: "api.novo.com",
+        port: 443,
+        reason: "not_allowed",
+        message: "host api.novo.com is not allowed for this bot",
+      });
+      const context = await browser.newContext({
+        viewport: size.viewport,
+        deviceScaleFactor: size.scale,
+        locale: "pt-BR",
+      });
+      const page = await context.newPage();
+      const shot = (name: string) =>
+        page.screenshot({ path: `screenshots/${size.dir}/${name}.png` });
+      await connect(page, world);
+      await expect(page.getByTestId("sidebar")).toBeVisible();
+      await selectBot(page, "Pesquisador");
+      await send(page, "CASE-META consulte o registro");
+      await expect(
+        page.getByTestId("message-bot").filter({ hasText: "Consultei o registro 7." }),
+      ).toBeVisible();
+      await page.evaluate(() => document.fonts.ready);
+      await page.waitForTimeout(250);
+      await shot("24-pesquisa-de-ferramentas-chat");
+      await page.getByTestId("bot-chip").click({ button: "right" });
+      await page.getByRole("menuitem", { name: /Abrir o inspetor/ }).click();
+      await expect(page.getByTestId("tool-catalog")).toHaveAttribute("data-mode", "meta");
+      await page.getByTestId("tool-stats-card").scrollIntoViewIfNeeded();
+      await page.waitForTimeout(250);
+      await shot("24b-inspetor-definicoes-de-ferramentas");
+      await page.getByRole("button", { name: "Voltar" }).click();
+      await page.getByTestId("bot-chip").click({ button: "right" });
+      await page.getByRole("menuitem", { name: /Editar o bot/ }).click();
+      await page
+        .getByRole("dialog")
+        .getByRole("button", { name: "Descrever o que ele faz" })
+        .click();
+      await expect(page.getByTestId("network-local-note")).toBeVisible();
+      await page.getByTestId("bot-network").scrollIntoViewIfNeeded();
+      await page.waitForTimeout(250);
+      await shot("11c-editar-bot-rede-sandbox-local");
       await context.close();
       await world.stop();
     });

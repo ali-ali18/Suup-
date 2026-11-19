@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { cancelPendingApprovals } from "./approvals.js";
 import { type Db, withTransaction } from "./client.js";
 import { appendRunEvent } from "./events.js";
 import { postInbox } from "./inbox.js";
@@ -109,6 +110,14 @@ export async function cancelRun(db: Db, runId: string): Promise<Run> {
       throw new RunControlError("finished", "A execução já terminou e não pode ser cancelada.");
     }
     if (run.status === "waiting_approval") {
+      // The pending cards end with the run; the log says so before the run does.
+      for (const card of await cancelPendingApprovals(tx, run.id)) {
+        await appendRunEvent(tx, run.id, "approval_decided", {
+          approvalId: card.id,
+          callId: card.callId,
+          decision: "cancelled",
+        });
+      }
       await appendRunEvent(tx, run.id, "status_changed", {
         from: "waiting_approval",
         to: "cancelled",

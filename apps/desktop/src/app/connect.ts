@@ -3,6 +3,7 @@ import { createDataStore } from "../data/store.js";
 import { Sync } from "../data/sync.js";
 import type { Connection, Platform } from "../lib/platform.js";
 import type { Services } from "./context.js";
+import { useSettings } from "./settings-store.js";
 import { useUi } from "./ui-store.js";
 
 /** `localhost:8787` -> `http://localhost:8787`; no trailing slash. */
@@ -58,14 +59,19 @@ export async function connect(
     onNotice: (notice) => {
       // Only when the person is not looking at the window.
       if (typeof document !== "undefined" && document.hasFocus()) return;
+      if (notice.kind === "approval" && useSettings.getState().settings.notifyApprovals === "off") {
+        return;
+      }
       const bot = notice.botId === null ? undefined : data.getState().bots[notice.botId];
       const name = bot?.name ?? "Suup";
       const title =
         notice.kind === "question"
           ? `${name} tem uma pergunta`
-          : notice.kind === "done"
-            ? `${name} terminou`
-            : `${name} não conseguiu concluir`;
+          : notice.kind === "approval"
+            ? `${name} pede a sua aprovação`
+            : notice.kind === "done"
+              ? `${name} terminou`
+              : `${name} não conseguiu concluir`;
       void platform.notify({ title, body: notice.text.slice(0, 160) });
     },
     onRefused: (error) => {

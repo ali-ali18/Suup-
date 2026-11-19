@@ -3,16 +3,33 @@ import { type Bot, type Db, getRun, listBots, listRunEvents, type Run } from "@s
 import { CommandError } from "./errors.js";
 import type { RawEvent } from "./render.js";
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const HEX_PREFIX = /^[0-9a-f][0-9a-f-]{3,35}$/i;
+const HEX = "0123456789abcdef";
+const UUID_DASHES = [8, 13, 18, 23];
+
+/** A UUID's fixed shape (8-4-4-4-12 hexadecimal digits), checked position by position. */
+function isFullId(ref: string): boolean {
+  if (ref.length !== 36) return false;
+  for (let i = 0; i < 36; i += 1) {
+    const ch = ref[i]?.toLowerCase() ?? "";
+    if (UUID_DASHES.includes(i) ? ch !== "-" : !HEX.includes(ch)) return false;
+  }
+  return true;
+}
+
+/** The start of an id: 4 to 36 hexadecimal digits or dashes, beginning with a digit (so "-" or "%" never reach a query). */
+export function isIdPrefix(ref: string): boolean {
+  if (ref.length < 4 || ref.length > 36) return false;
+  const lower = ref.toLowerCase();
+  return (
+    HEX.includes(lower[0] as string) && [...lower].every((ch) => HEX.includes(ch) || ch === "-")
+  );
+}
 
 /** A bot by full id, id prefix or exact name. Archived bots are found too. */
 export async function findBot(db: Db, ref: string): Promise<Bot> {
   const all = await listBots(db, { includeArchived: true });
   const byId = all.filter((b) => b.id === ref.toLowerCase());
-  const byPrefix = HEX_PREFIX.test(ref)
-    ? all.filter((b) => b.id.startsWith(ref.toLowerCase()))
-    : [];
+  const byPrefix = isIdPrefix(ref) ? all.filter((b) => b.id.startsWith(ref.toLowerCase())) : [];
   const byName = all.filter((b) => b.name === ref);
   const found = byId.length > 0 ? byId : byName.length > 0 ? byName : byPrefix;
   if (found.length === 0) {
@@ -30,13 +47,13 @@ export async function findBot(db: Db, ref: string): Promise<Bot> {
 
 /** A run by full id or unique id prefix. */
 export async function findRun(db: Db, ref: string): Promise<Run> {
-  if (UUID.test(ref)) {
+  if (isFullId(ref)) {
     const run = await getRun(db, ref.toLowerCase());
     if (run === null)
       throw new CommandError(`Execução não encontrada: ${ref}. Veja as recentes com: suup runs`);
     return run;
   }
-  if (!HEX_PREFIX.test(ref)) {
+  if (!isIdPrefix(ref)) {
     throw new CommandError(
       `${JSON.stringify(ref)} não parece um id de execução (use o id completo ou o início dele, com pelo menos 4 caracteres).`,
     );

@@ -24,6 +24,7 @@ export type RuntimeErrorCode =
   | "conversation_not_found"
   | "conversation_unsupported"
   | "draft_failed"
+  | "conflict"
   | "run_not_found"
   | "event_not_found"
   | "not_a_model_request"
@@ -31,7 +32,8 @@ export type RuntimeErrorCode =
   | "replay_failed"
   | "invalid_input"
   | "memory_not_found"
-  | "memory_rule";
+  | "memory_rule"
+  | "connector_not_found";
 
 /**
  * Something the configuration or the registered data does not allow (a bot whose model is not in

@@ -1,9 +1,13 @@
+export type { ConnectorToolInfo } from "@suup/connectors";
 export { MEMORY_TOOL_NAMES } from "@suup/core";
 export {
   configPath,
   configSchema,
+  DEFAULT_ALLOWED_HOSTS,
   DEFAULT_CONFIG_FILE,
+  DEFAULT_CONNECTOR_IMAGE,
   DEFAULT_MAX_TURNS,
+  DEFAULT_NETWORK_NAME,
   DEFAULT_SERVER,
   DEFAULT_WORKER,
   describeIssues,
@@ -18,6 +22,23 @@ export {
   type SandboxEntry,
   type ServerConfig,
 } from "./config.js";
+export {
+  type BotConnectorCandidate,
+  type BotConnectorTools,
+  type ConnectorGrantView,
+  type ConnectorInput,
+  type ConnectorPatch,
+  type ConnectorService,
+  type ConnectorTestResult,
+  type ConnectorToolReview,
+  type ConnectorToolState,
+  type ConnectorView,
+  createConnectorService,
+  grantAllows,
+  specOf,
+  type ToolPinState,
+  type ToolSelection,
+} from "./connectors/service.js";
 export {
   type BotDraft,
   botDraftSchema,
@@ -57,19 +78,27 @@ export {
 } from "./diagnostics.js";
 export { ConfigError, RuntimeError, type RuntimeErrorCode } from "./errors.js";
 export { createMemoryService } from "./memory-service.js";
+export {
+  type BotNetworkView,
+  createNetworkService,
+  type NetworkService,
+} from "./network/service.js";
 export { DEFAULT_HISTORY_CHARS, loadRunContext } from "./run-context.js";
 export {
   finishRun,
   journalText,
   ORIGIN_TEXT_PT,
   type RunEffects,
+  type RunEndOptions,
   reconcileRunEffects,
 } from "./run-end.js";
 export {
+  type BotToolReport,
   type BuildDepsOptions,
   type CreateWorkerOptions,
   createRuntime,
   dockerWorkspace,
+  type EgressRuntime,
   type ProviderKeyStatus,
   type ResolvedModel,
   type Runtime,
@@ -83,3 +112,32 @@ export {
   type ScriptFile,
   type ScriptStep,
 } from "./scripted-provider.js";
+export {
+  answerSecretRequest,
+  type PendingSecretRequest,
+  pendingSecretRequest,
+  type SecretAnswer,
+} from "./secret-request.js";
+export {
+  decrypt,
+  encrypt,
+  fingerprint,
+  generateKeyText,
+  KEY_BYTES,
+  parseKey,
+  type Sealed,
+  VaultError,
+  type VaultErrorCode,
+  type VaultKey,
+} from "./vault/crypto.js";
+export {
+  createVault,
+  DEFAULT_VAULT_KEY_ENV,
+  MAX_SECRET_LENGTH,
+  MIN_SECRET_LENGTH,
+  type RotateResult,
+  type Vault,
+  type VaultSettings,
+  type VaultStatus,
+  type VerifyResult,
+} from "./vault/service.js";

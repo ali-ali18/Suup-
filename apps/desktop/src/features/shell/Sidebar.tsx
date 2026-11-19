@@ -5,6 +5,7 @@ import { useData, useServices } from "../../app/context.js";
 import { botDisplay, pendingQuestions, unreadOf } from "../../app/selectors.js";
 import { useUi } from "../../app/ui-store.js";
 import { arrangeBots, flatBots } from "../../data/botlist.js";
+import { pendingApprovals } from "../../data/reducers.js";
 import { plainText } from "../../lib/markdown.js";
 import { SIDEBAR_SPEC } from "../../lib/pane-size.js";
 import { Avatar } from "../../ui/avatar.js";
@@ -40,15 +41,28 @@ function BotEntry({
 }: EntryProps) {
   const runs = useData((s) => s.runs);
   const conversations = useData((s) => s.conversations);
+  const approvals = useData((s) => s.approvals);
   const display = botDisplay(bot, runs);
   const unread = unreadOf(bot, conversations);
+  // The cards waiting for you from this bot: the count is the badge (the same "question" kind).
+  const waitingCards = Object.values(approvals).filter(
+    (a) => a.botId === bot.id && a.status === "pending",
+  ).length;
   let badge: { kind: BadgeKind; text: string } | undefined;
-  if (display.chip === "doubt" || display.chip === "permission")
+  if (waitingCards > 0)
+    badge = { kind: "question", text: waitingCards > 9 ? "9+" : String(waitingCards) };
+  else if (display.chip === "doubt" || display.chip === "permission")
     badge = { kind: "question", text: "?" };
   else if (display.chip === "paused") badge = { kind: "paused", text: "" };
   else if (unread > 0) badge = { kind: "unread", text: unread > 9 ? "9+" : String(unread) };
   else if (display.chip === "failed") badge = { kind: "failed", text: "!" };
-  const status = [display.label, unread > 0 ? `${unread} não lida${unread === 1 ? "" : "s"}` : ""]
+  const status = [
+    display.label,
+    waitingCards > 0
+      ? `${waitingCards} ${waitingCards === 1 ? "aprovação esperando" : "aprovações esperando"} você`
+      : "",
+    unread > 0 ? `${unread} não lida${unread === 1 ? "" : "s"}` : "",
+  ]
     .filter(Boolean)
     .join(", ");
   const label = status === "" ? bot.name : `${bot.name} — ${status}`;
@@ -141,6 +155,7 @@ export function Sidebar() {
   const bots = useData((s) => s.bots);
   const runs = useData((s) => s.runs);
   const conversations = useData((s) => s.conversations);
+  const approvals = useData((s) => s.approvals);
   const collapsed = useUi((s) => s.sidebarCollapsed);
   const sidebarWidth = useUi((s) => s.sidebarWidth);
   const view = useUi((s) => s.view);
@@ -155,7 +170,11 @@ export function Sidebar() {
 
   const layout = useMemo(() => arrangeBots(bots), [bots]);
   const flat = useMemo(() => flatBots(layout), [layout]);
-  const pending = useMemo(() => pendingQuestions({ runs, bots }).length, [runs, bots]);
+  // Questions, secret requests and approval cards: everything that waits for you.
+  const pending = useMemo(
+    () => pendingQuestions({ runs, bots }).length + pendingApprovals({ approvals, bots }).length,
+    [runs, bots, approvals],
+  );
   const activeId = view === "chat" ? selected : null;
   const tabStop = flat.some((b) => b.id === activeId) ? activeId : flat[0]?.id;
 

@@ -6,6 +6,7 @@
 
 import type { RunEventPayload, UncheckedItem } from "../events.js";
 import type { JsonValue } from "../messages.js";
+import { scrub } from "./recording.js";
 import type { LoopContext } from "./run-context.js";
 import { ARGS_SNIPPET, type ToolLogEntry } from "./state.js";
 
@@ -145,13 +146,20 @@ export interface Logged {
   args: Map<string, JsonValue>;
 }
 
+/**
+ * Lê o log para a evidência. TODO tipo de evidência (resultados, argumentos de chamadas e, abaixo,
+ * arquivos e motivos) passa pelo redator do cofre antes de ser medido, impresso, gravado ou enviado:
+ * o log já foi limpo do que se conhecia quando cada evento foi escrito, mas um valor aprendido depois
+ * (um segredo salvo no meio da execução) não pode chegar ao revisor nem ao evento `review_evidence`,
+ * que carrega o mesmo texto.
+ */
 export async function loadLogged(ctx: LoopContext): Promise<Logged> {
   const out: Logged = { results: new Map(), args: new Map() };
   for (const event of await ctx.deps.store.listEvents(ctx.runId)) {
     if (event.type === "tool_result" && !out.results.has(event.payload.callId)) {
-      out.results.set(event.payload.callId, event.payload.content);
+      out.results.set(event.payload.callId, scrub(ctx, event.payload.content));
     } else if (event.type === "tool_call" && !out.args.has(event.payload.callId)) {
-      out.args.set(event.payload.callId, event.payload.args as JsonValue);
+      out.args.set(event.payload.callId, scrub(ctx, event.payload.args as JsonValue));
     }
   }
   return out;
@@ -202,18 +210,26 @@ export async function gatherEvidence(
       const read = await readWorkspaceFile(ctx, ref.trim());
       if ("reason" in read) {
         logged ??= await loadLogged(ctx);
-        missing.push({ item: ref, reason: read.reason, hint: fileHint(log, logged, ref.trim()) });
+        missing.push({
+          item: ref,
+          reason: scrub(ctx, read.reason),
+          hint: fileHint(log, logged, ref.trim()),
+        });
         continue;
       }
+      // Um arquivo pode ter um valor que o cofre conhece (um token num arquivo de configuração):
+      // ele é limpo AQUI, antes de medir, de tirar a impressão e de repartir o orçamento, para que
+      // o gravado e o enviado ao revisor sejam o mesmo texto e os números o descrevam.
+      const content = scrub(ctx, read.content);
       candidates.push({
         asked: ref,
         item: {
           kind: "file",
           ref: ref.trim(),
-          chars: read.content.length,
-          sent: read.content.length,
-          hash: fingerprint(read.content),
-          content: read.content,
+          chars: content.length,
+          sent: content.length,
+          hash: fingerprint(content),
+          content,
         },
       });
       continue;

@@ -36,7 +36,18 @@ export const shellTool = defineTool({
     "A non-zero exit code is reported, not treated as a tool failure: read stderr and decide.",
   ].join(" "),
   input,
-  risk: "write",
+  // The command is arbitrary and is NOT parsed (no heuristic pretends to be security). What
+  // decides is where it runs: on the isolated machine of the bot it can only change a disposable
+  // machine; on the user's own computer (the `local` sandbox) it reaches everything. A command that
+  // carries a secret placeholder is raised to `external_irreversible` by the registry.
+  risk: "external_irreversible",
+  classify: (_input, { executor }) =>
+    executor.isolated === true ? "write_reversible" : "external_irreversible",
+  describe: ({ command, cwd }) =>
+    `Shell${cwd === undefined ? "" : ` in ${cwd}`}: ${command.length > 500 ? `${command.slice(0, 500)}…` : command}`,
+  secretFields: ["command"],
+  // What a command prints may have come from the network, but labelling every output would change
+  // what the model reads on every call: `untrustedOutputTools` in the configuration turns it on.
   timeoutMs: (SHELL_MAX_TIMEOUT_SECONDS + 15) * 1000,
   async execute({ command, cwd, timeout_seconds }, ctx) {
     const seconds = timeout_seconds ?? SHELL_DEFAULT_TIMEOUT_SECONDS;

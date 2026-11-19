@@ -11,9 +11,11 @@ import {
   formatInt,
   formatUsd,
   indent,
+  levelPt,
   oneLine,
   originExplanation,
   outcomePt,
+  SOURCE_PT,
   statusPt,
 } from "./format.js";
 import { optionLines } from "./questionnaire.js";
@@ -125,6 +127,29 @@ export function summarizeArgs(name: string, args: unknown, max = 100): string {
     if (parts.join(" ").length >= max) break;
   }
   return oneLine(parts.join(" "), max);
+}
+
+/** An approval card for the terminal: what will run, how risky it is, which secrets it uses. */
+export function renderApprovalCard(card: {
+  id: string;
+  tool: string;
+  level: string;
+  summary: string;
+  args: unknown;
+  secrets: readonly string[];
+}): string[] {
+  const args = JSON.stringify(card.args, null, 2) ?? "null";
+  return [
+    `┌ Aprovação ${card.id.slice(0, 8)} · ${levelPt(card.level)}`,
+    `│ ${card.summary}`,
+    `│ ferramenta: ${card.tool}`,
+    ...(card.secrets.length === 0
+      ? []
+      : [`│ usa segredos: ${card.secrets.join(", ")} (o valor nunca é mostrado)`]),
+    "│ conteúdo exato que será executado:",
+    ...args.split("\n").map((line) => `│   ${line}`),
+    "└",
+  ];
 }
 
 const NUDGE_PT: Record<string, string> = {
@@ -246,6 +271,12 @@ export function renderEvent(event: RawEvent, state: RenderState): string[] {
           (d) =>
             `  - ${oneLine(d.claimed, 80)} → ${oneLine(d.shows, 80)} (${oneLine(d.where, 40)})`,
         ),
+        ...(e.payload.unchecked ?? []).map(
+          (u) => `  - sem verificar (${u.kind} ${oneLine(u.ref, 40)}): ${oneLine(u.what, 80)}`,
+        ),
+        ...(e.payload.namedNothing === true
+          ? ["  ! o revisor não nomeou nada que lhe faltasse (nem depois de perguntado de novo)"]
+          : []),
         ...(e.payload.warning === undefined ? [] : [`  ! aviso: ${e.payload.warning}`]),
       ];
     }
@@ -263,9 +294,11 @@ export function renderEvent(event: RawEvent, state: RenderState): string[] {
       ];
     case "escalated":
       return [
-        e.payload.reason === "review_tie_break"
-          ? "? O bot e o revisor não chegaram a um acordo e precisam da sua decisão:"
-          : "? O bot precisa de você:",
+        e.payload.reason !== "review_tie_break"
+          ? "? O bot precisa de você:"
+          : e.payload.reviewVerdict === "unverified"
+            ? "? O revisor não conseguiu verificar parte do trabalho e precisa da sua decisão:"
+            : "? O bot e o revisor não chegaram a um acordo e precisam da sua decisão:",
         ...renderQuestions(escalatedQuestions(e.payload)),
       ];
     case "status_changed": {
@@ -297,6 +330,26 @@ export function renderEvent(event: RawEvent, state: RenderState): string[] {
       return [
         `· contexto compactado: ${e.payload.droppedMessages} mensagens resumidas${e.payload.degraded === true ? " (sem resumo: o modelo falhou ao resumir)" : ""}`,
       ];
+    case "policy_checked":
+      return [
+        `· política: ${e.payload.tool} (${levelPt(e.payload.level)}) ${e.payload.outcome === "allow" ? "liberada" : "recusada"} por ${SOURCE_PT[e.payload.source]}${e.payload.reason === undefined ? "" : `: ${oneLine(e.payload.reason, 120)}`}`,
+      ];
+    case "approval_requested":
+      return [
+        `? Aprovação necessária (${levelPt(e.payload.level)}): ${oneLine(e.payload.summary, 160)}`,
+      ];
+    case "approval_decided":
+      return [
+        e.payload.decision === "approved"
+          ? "● aprovada"
+          : `● ${e.payload.decision === "denied" ? "negada" : e.payload.decision === "expired" ? "expirada" : "cancelada"}${e.payload.reason === undefined ? "" : `: ${oneLine(e.payload.reason, 160)}`}`,
+      ];
+    case "secret_requested":
+      return [
+        `? O bot pede o segredo ${e.payload.name}${e.payload.reason === undefined ? "" : ` (${oneLine(e.payload.reason, 120)})`}`,
+      ];
+    case "tool_catalog":
+      return [`· ferramentas de conectores: ${summarizeEvent(event)}`];
   }
 }
 
@@ -311,7 +364,12 @@ export function summarizeEvent(event: RawEvent): string {
       return `${e.payload.rules.length} regras · ${e.payload.profile.length} fatos do perfil · ${e.payload.history.length} mensagens de histórico${e.payload.historyNote === undefined ? "" : " (com aviso de mensagens omitidas)"}`;
     case "model_request": {
       const purpose = e.payload.purpose ?? "agent";
-      return `${purpose} ${e.payload.provider}/${e.payload.model} · ${e.payload.messages.length} msgs · ${e.payload.tools.length} ferramentas`;
+      const stats = e.payload.toolStats;
+      const defs =
+        stats === undefined
+          ? ""
+          : ` (definições: ${stats.definitions} enviadas, ${stats.deferred} adiadas, ~${formatInt(stats.estimatedTokens)} tok no total, ~${formatInt(stats.loadedTokens)} no contexto)`;
+      return `${purpose} ${e.payload.provider}/${e.payload.model} · ${e.payload.messages.length} msgs · ${e.payload.tools.length} ferramentas${defs}`;
     }
     case "model_response": {
       const calls = e.payload.blocks
@@ -353,8 +411,25 @@ export function summarizeEvent(event: RawEvent): string {
     }
     case "compacted":
       return `${e.payload.droppedMessages} mensagens resumidas até seq ${e.payload.uptoSeq}${e.payload.degraded === true ? " (degradado)" : ""}`;
+    case "policy_checked":
+      return `${e.payload.callId} ${e.payload.tool} ${e.payload.level} → ${e.payload.outcome} (${e.payload.source}${e.payload.ruleId === undefined ? "" : ` ${e.payload.ruleId.slice(0, 8)}`})`;
+    case "approval_requested":
+      return `${e.payload.callId} ${e.payload.tool} ${e.payload.level} · ${oneLine(e.payload.summary, 80)}${e.payload.secrets.length === 0 ? "" : ` · segredos: ${e.payload.secrets.join(", ")}`}`;
+    case "approval_decided":
+      return `${e.payload.callId} ${e.payload.decision}${e.payload.reason === undefined ? "" : `: ${oneLine(e.payload.reason, 80)}`}`;
+    case "secret_requested":
+      return `${e.payload.callId} ${e.payload.name}`;
+    case "tool_catalog":
+      return `${MODE_PT[e.payload.mode]}: ${e.payload.connectorTools} ferramenta(s) de conectores, ~${formatInt(e.payload.definitionTokens)} tok de definições${e.payload.deferred.length > 0 ? `, ${e.payload.deferred.length} adiada(s)` : ""}`;
   }
 }
+
+const MODE_PT = {
+  direct: "carregadas direto",
+  hosted: "busca do provedor",
+  client: "busca nossa + carregamento do provedor",
+  meta: "índice + search_tools/use_tool",
+} as const;
 
 export interface RunFooter {
   id: string;

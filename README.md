@@ -2,7 +2,7 @@
 
 Assistente pessoal de uso geral, formado por uma equipe de bots que conversam, lembram, agem em um computador próprio e terminam o que começam.
 
-O plano de arquitetura e as fases de construção estão em [docs/PLANO.md](docs/PLANO.md). Já existem o núcleo (loop, worker, replay), o banco, os provedores, a máquina dos bots, as ferramentas, a montagem em tempo de execução (`@suup/runtime`), a CLI `suup`, conversas e memória, e o **servidor** (`@suup/server`: API HTTP e tempo real, com o contrato e o cliente tipado em `@suup/api`) com o empacotamento para uma VPS; o app de desktop ainda não.
+O plano de arquitetura e as fases de construção estão em [docs/PLANO.md](docs/PLANO.md). Já existem o núcleo (loop, worker, replay), o banco, os provedores, a máquina dos bots, as ferramentas, a montagem em tempo de execução (`@suup/runtime`), a CLI `suup`, conversas e memória, aprovações (cartões, regras, níveis de risco) o cofre de segredos e os conectores MCP ([docs/APROVACOES.md](docs/APROVACOES.md), [docs/COFRE.md](docs/COFRE.md), [docs/CONECTORES.md](docs/CONECTORES.md); só o backend: o app ainda não os desenha), e o **servidor** (`@suup/server`: API HTTP e tempo real, com o contrato e o cliente tipado em `@suup/api`) com o empacotamento para uma VPS; o app de desktop ainda não.
 
 ## Desenvolvimento
 
@@ -53,7 +53,14 @@ docker build --tag suup-sandbox:dev docker/sandbox
 SUUP_DOCKER_TESTS=1 SUUP_SANDBOX_IMAGE=suup-sandbox:dev pnpm vitest run packages/sandbox
 ```
 
-Sem `SUUP_DOCKER_TESTS=1`, esses testes são pulados. O CI faz o build da imagem e roda com a variável ligada.
+Sem `SUUP_DOCKER_TESTS=1`, esses testes são pulados. O CI faz o build da imagem e roda com a variável ligada. Os testes de rede (proxy, rede interna, conectores em contêiner) também usam a imagem dos conectores:
+
+```sh
+docker build --tag suup-connector-runner:dev docker/connector-runner
+SUUP_DOCKER_TESTS=1 SUUP_SANDBOX_IMAGE=suup-sandbox:dev SUUP_CONNECTOR_IMAGE=suup-connector-runner:dev pnpm test
+```
+
+Atrás de um proxy que reassina o TLS (corporativo): veja "Construir atrás de um proxy que reassina o TLS" em [docs/IMPLANTACAO.md](docs/IMPLANTACAO.md).
 
 ### Primeiro uso (CLI)
 

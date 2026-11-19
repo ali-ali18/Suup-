@@ -49,12 +49,30 @@ const VENDOR = "anthropic";
 const DEFAULT_BASE_URL = "https://api.anthropic.com";
 const CACHE = { type: "ephemeral" } as const;
 
+/**
+ * The server tool of the API's own tool search, as the documentation of the tool search tool gives
+ * it (https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-search-tool): no beta
+ * header, `defer_loading: true` on the tools to keep out of the context, and this entry in `tools`
+ * (never deferred itself).
+ */
+export const HOSTED_TOOL_SEARCH = {
+  bm25: { type: "tool_search_tool_bm25_20251119", name: "tool_search_tool_bm25" },
+  regex: { type: "tool_search_tool_regex_20251119", name: "tool_search_tool_regex" },
+} as const;
+
 type Wire = Record<string, unknown>;
 
 export function createAnthropicProvider(config: AnthropicProviderConfig): Provider {
   const transport = resolveTransport(config);
   const promptCache = config.promptCache ?? true;
-  const capabilities: ProviderCapabilities = { promptCache, parallelTools: true, vision: true };
+  const capabilities: ProviderCapabilities = {
+    promptCache,
+    parallelTools: true,
+    vision: true,
+    // Deferred loading with the search the API runs (bm25, regex) or one the harness runs (client).
+    // Which models take it is the configuration's call (docs list them); the adapter never guesses.
+    toolSearch: ["bm25", "regex", "client"],
+  };
   const base = (config.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, "");
   const url = base.endsWith("/v1") ? `${base}/messages` : `${base}/v1/messages`;
   const headers = mergeHeaders(
@@ -102,9 +120,20 @@ export function buildAnthropicBody(
     name: tool.name,
     description: tool.description,
     input_schema: tool.inputSchema,
+    ...(tool.deferLoading === true ? { defer_loading: true } : {}),
   }));
+  if (req.hostedToolSearch !== undefined) {
+    // After the tools that load, before the deferred ones: the order never changes in a run.
+    const firstDeferred = tools.findIndex((t) => t.defer_loading === true);
+    const entry: Wire = { ...HOSTED_TOOL_SEARCH[req.hostedToolSearch] };
+    if (firstDeferred === -1) tools.push(entry);
+    else tools.splice(firstDeferred, 0, entry);
+  }
   if (promptCache) {
-    const lastTool = tools[tools.length - 1];
+    // The breakpoint goes on the last tool that loads: a deferred tool cannot carry one (the API
+    // answers 400), and the search tool is a server tool.
+    let lastTool: Wire | undefined;
+    for (const t of tools) if (t.defer_loading !== true && t.type === undefined) lastTool = t;
     if (lastTool !== undefined) lastTool.cache_control = CACHE;
     const lastMessage = messages[messages.length - 1];
     if (lastMessage?.role === "user") {
@@ -172,7 +201,11 @@ function toAnthropicMessages(messages: readonly Message[], providerId: string) {
           results.push({
             type: "tool_result",
             tool_use_id: block.callId,
-            content: block.content,
+            // Client-side tool search: the answer names the tools to load (`tool_reference`).
+            content:
+              block.toolReferences === undefined || block.toolReferences.length === 0
+                ? block.content
+                : block.toolReferences.map((tool_name) => ({ type: "tool_reference", tool_name })),
             ...(block.isError === true ? { is_error: true } : {}),
           });
           break;
@@ -264,6 +297,8 @@ type BlockState =
   | { kind: "tool"; id: string; name: string; startInput: unknown; json: string }
   | { kind: "thinking"; thinking: string; signature: string }
   | { kind: "redacted"; block: Wire }
+  /** A server tool call (the API's tool search) or its result: echoed back unchanged. */
+  | { kind: "server"; block: Wire; json: string }
   | { kind: "ignored" };
 
 function parseData(message: SseMessage): Wire {
@@ -345,6 +380,11 @@ export async function* parseAnthropicStream(
           case "redacted_thinking":
             blocks.set(index, { kind: "redacted", block: block as Wire });
             break;
+          case "server_tool_use":
+          case "tool_search_tool_result":
+            // Kept as the API sent them: the next request must carry them back unchanged.
+            blocks.set(index, { kind: "server", block: block as Wire, json: "" });
+            break;
           default:
             blocks.set(index, { kind: "ignored" });
         }
@@ -357,6 +397,8 @@ export async function* parseAnthropicStream(
           const text = asString(delta.text);
           if (text !== undefined && text !== "") yield { type: "text_delta", text };
         } else if (delta.type === "input_json_delta" && state?.kind === "tool") {
+          state.json += asString(delta.partial_json) ?? "";
+        } else if (delta.type === "input_json_delta" && state?.kind === "server") {
           state.json += asString(delta.partial_json) ?? "";
         } else if (delta.type === "thinking_delta" && state?.kind === "thinking") {
           state.thinking += asString(delta.thinking) ?? "";
@@ -384,6 +426,8 @@ export async function* parseAnthropicStream(
           };
         } else if (state?.kind === "redacted") {
           yield { type: "provider_data", data: state.block as JsonValue };
+        } else if (state?.kind === "server") {
+          yield { type: "provider_data", data: serverBlock(state) as JsonValue };
         }
         break;
       }
@@ -447,6 +491,20 @@ export async function* parseAnthropicStream(
     stopReason: mapped,
     modelVersion: model ?? requestedModel,
   };
+}
+
+/** The server tool block with its streamed `input` filled in. */
+function serverBlock(state: Extract<BlockState, { kind: "server" }>): Wire {
+  if (state.json.trim() === "") return state.block;
+  try {
+    return { ...state.block, input: JSON.parse(state.json) };
+  } catch {
+    throw new ProviderError(
+      "unknown",
+      `anthropic: server tool call has invalid JSON input: ${truncate(state.json, 200)}`,
+      { retryable: false },
+    );
+  }
 }
 
 function toolArgs(state: Extract<BlockState, { kind: "tool" }>): JsonValue {

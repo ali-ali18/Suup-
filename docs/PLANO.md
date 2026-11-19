@@ -27,6 +27,8 @@ Convenção: código, tabelas e identificadores em inglês; documentação e tex
 5. **Agir exige permissão proporcional ao risco.** Ler é livre; o que sai para o mundo ou não tem volta espera aprovação.
 6. **Conteúdo externo é dado, nunca ordem.**
 7. **Cada fase é utilizável sozinha.** Nada de construir oito camadas antes de ver funcionar.
+8. **Nada de regex que identifica, classifica ou barra.** Entender texto é do modelo; o harness usa estrutura declarada e comparação exata. Regex só para formato formal, e na dúvida se pergunta ao dono ([REGRAS.md](REGRAS.md)).
+9. **Cada fase ganha uma pesquisa confiável antes de ser implementada**, com fontes primárias, URL e data, salva em `docs/pesquisas/` e ligada à seção que ela valida ([REGRAS.md](REGRAS.md)).
 
 ## 3. Visão geral
 
@@ -173,6 +175,8 @@ Toda memória tem origem (qual conversa a criou), é visível ao usuário e pode
 
 ### 4.8 Aprovações e cofre
 
+> Pesquisas: [aprovações, cofre e conectores](pesquisas/fase-3-aprovacoes-cofre-conectores.md) (precedência deny > allow, regras só por ato do usuário, regra do revisor automático: nunca vê resultado de ferramenta, é síncrono e bloqueante, erro = perguntar) e [muitas ferramentas de conectores](pesquisas/fase-3-muitas-ferramentas-mcp.md).
+
 Cada ação passa por três filtros, em ordem:
 
 1. **Regras do usuário.** Podem liberar ("pode fazer push neste repositório") ou proibir.
@@ -216,9 +220,13 @@ Requisito de infraestrutura: o servidor na VPS precisa de domínio e HTTPS públ
 
 ### 4.11 Conectores
 
+> Pesquisas: [aprovações, cofre e conectores](pesquisas/fase-3-aprovacoes-cofre-conectores.md) (fixação da definição das ferramentas, descrições não confiáveis) e [muitas ferramentas de conectores sem pesar o contexto](pesquisas/fase-3-muitas-ferramentas-mcp.md) (concessão por ferramenta, busca de ferramentas). Implementação: concessão por ferramenta, fixação da definição e busca de ferramentas em [CONECTORES.md](CONECTORES.md).
+
 - Protocolo MCP, que independe do provedor de modelo.
 - Autorização por conector, com escopo (por exemplo, somente leitura).
 - Um registro onde o bot procura e propõe instalar conectores novos; a instalação passa por aprovação.
+
+**Estado (fase 3, backend):** feitos o protocolo (cliente do SDK oficial em `packages/connectors`, `stdio` e *streamable HTTP*), a autorização por conector e por bot com escopo e risco por ferramenta, e a passagem pelo mesmo registro, aprovação, cofre e rótulo de conteúdo não confiável das ferramentas embutidas. **Não feito:** o bot propor a instalação (e o registro onde procura). Como funciona e o que não protege: [CONECTORES.md](CONECTORES.md).
 
 ### 4.12 App e agente local
 
@@ -357,6 +365,8 @@ A mensagem é sempre gravada na hora e aparece no chat. O que varia é quando o 
 ### 4.16 Assinaturas que o usuário já paga
 
 **Decisão (18/11/2026):** a única assinatura que o Suup usa é a do ChatGPT. Todos os outros fornecedores entram por chave de API, pela camada de provedores.
+
+**Situação (19/11/2026): não validado; implementação suspensa.** A pesquisa em [pesquisas/fase-3-provedor-chatgpt.md](pesquisas/fase-3-provedor-chatgpt.md) não conseguiu ler as páginas oficiais e, no código do Codex, não achou nada que diga que um app de terceiros pode usar esse login nem o identificador de cliente dele; o endpoint que o Codex chama é interno do produto, não a API pública. O que este texto afirma abaixo sobre "caminho oficial" fica como hipótese até o dono ler a página oficial de autenticação e os termos, ou perguntar à OpenAI. Sem permissão escrita, o provedor não entra.
 
 O motivo é que só a OpenAI oferece um caminho oficial em que o app recebe um token e chama o modelo por conta própria. Assim a assinatura funciona como um provedor comum e o loop continua sendo o do Suup, com plano, conclusão com evidência, revisor, replay e retomada intactos. Nos demais fornecedores, usar a assinatura exigiria rodar a ferramenta deles, com o loop deles, ou violaria os termos.
 

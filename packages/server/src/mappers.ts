@@ -1,6 +1,27 @@
 // Database rows to the wire types of `@suup/api`: ISO dates, no internal columns.
-import type { Bot, Conversation, Memory, Message, Run, RunEvent } from "@suup/api";
+import type {
+  Approval,
+  ApprovalRule,
+  Bot,
+  Connector,
+  ConnectorTest,
+  ConnectorToolEvent,
+  ConnectorToolReview,
+  Conversation,
+  Memory,
+  Message,
+  Run,
+  RunEvent,
+  Secret,
+} from "@suup/api";
+import { recipientMatchers } from "@suup/core";
+import type {
+  ConnectorTestResult,
+  ConnectorView,
+  ConnectorToolReview as ReviewView,
+} from "@suup/runtime";
 import {
+  type Approval as ApprovalRow,
   type BotSummary,
   type ConversationView,
   type Memory as MemoryRow,
@@ -8,9 +29,11 @@ import {
   type RunEvent as RunEventRow,
   type Run as RunRow,
   runResultOrNull,
+  type SecretMeta,
+  type StoredRule,
 } from "./db-types.js";
 
-const iso = (date: Date): string => date.toISOString();
+export const iso = (date: Date): string => date.toISOString();
 const isoOrNull = (date: Date | null | undefined): string | null =>
   date === null || date === undefined ? null : date.toISOString();
 
@@ -150,3 +173,160 @@ export function toRunEventDto(event: RunEventRow): RunEvent {
 }
 
 export type { MemoryRow };
+
+/** What "Permitir destinatário" would pin for this call, or `null` when it cannot be said exactly. */
+function recipientsOf(
+  args: ApprovalRow["args"],
+  outbound: NonNullable<ApprovalRow["outbound"]>,
+): { field: string; value: string }[] | null {
+  return recipientMatchers(args, outbound);
+}
+
+export function toApprovalDto(approval: ApprovalRow): Approval {
+  return {
+    id: approval.id,
+    runId: approval.runId,
+    botId: approval.botId,
+    conversationId: approval.conversationId,
+    callId: approval.callId,
+    tool: approval.tool,
+    args: approval.args,
+    level: approval.level,
+    summary: approval.summary,
+    secrets: approval.secrets,
+    source: approval.source,
+    outbound:
+      approval.outbound === null
+        ? null
+        : {
+            ...approval.outbound,
+            recipients: recipientsOf(approval.args, approval.outbound),
+          },
+    status: approval.status,
+    reason: approval.reason,
+    ruleId: approval.ruleId,
+    expiresAt: isoOrNull(approval.expiresAt),
+    decidedAt: isoOrNull(approval.decidedAt),
+    createdAt: iso(approval.createdAt),
+  };
+}
+
+export function toRuleDto(rule: StoredRule): ApprovalRule {
+  return {
+    id: rule.id,
+    botId: rule.botId,
+    tool: rule.tool,
+    effect: rule.effect,
+    matchers: rule.matchers,
+    enabled: rule.enabled,
+    disabledReason: rule.disabledReason,
+    note: rule.note,
+    createdBy: rule.createdBy,
+    sourceApprovalId: rule.sourceApprovalId,
+    createdAt: iso(rule.createdAt),
+    updatedAt: iso(rule.updatedAt),
+  };
+}
+
+/** A secret's metadata. There is no value to map: the database never has one in the clear. */
+export function toSecretDto(secret: SecretMeta): Secret {
+  return {
+    name: secret.name,
+    description: secret.description,
+    keyId: secret.keyId,
+    grantedBotIds: secret.grantedBotIds,
+    createdAt: iso(secret.createdAt),
+    updatedAt: iso(secret.updatedAt),
+    lastUsedAt: isoOrNull(secret.lastUsedAt),
+  };
+}
+
+export function toConnectorDto(view: ConnectorView): Connector {
+  return {
+    id: view.id,
+    name: view.name,
+    description: view.description,
+    transport: view.transport,
+    scope: view.scope,
+    toolOverrides: view.toolOverrides,
+    trustAnnotations: view.trustAnnotations,
+    timeoutMs: view.timeoutMs,
+    enabled: view.enabled,
+    origin: view.origin,
+    grantedBotIds: view.grantedBotIds,
+    grants: view.grants,
+    pendingReviews: view.pendingReviews,
+    secretNames: view.secretNames,
+    runsIn: view.runsIn,
+    connection: view.connection,
+    discovery: {
+      discoveredAt: isoOrNull(view.discovery.discoveredAt),
+      lastError: view.discovery.lastError,
+      lastErrorAt: isoOrNull(view.discovery.lastErrorAt),
+    },
+    tools: view.tools === null ? null : view.tools.map(toConnectorToolDto),
+    createdAt: iso(view.createdAt),
+    updatedAt: iso(view.updatedAt),
+  };
+}
+
+function toConnectorToolDto(
+  tool: NonNullable<ConnectorView["tools"]>[number],
+): Connector["tools"] extends (infer T)[] | null ? T : never {
+  return {
+    tool: tool.tool,
+    name: tool.name,
+    description: tool.description,
+    risk: tool.risk,
+    riskBasis: tool.riskBasis,
+    outbound: tool.outbound === undefined ? null : tool.outbound,
+    available: tool.available,
+    ...(tool.reason === undefined ? {} : { reason: tool.reason }),
+    hints: tool.hints === undefined ? null : tool.hints,
+    pin: tool.pin,
+    fingerprint: tool.fingerprint,
+  };
+}
+
+export function toConnectorTestDto(result: ConnectorTestResult): ConnectorTest {
+  return {
+    ok: result.ok,
+    serverName: result.serverName,
+    serverVersion: result.serverVersion,
+    durationMs: result.durationMs,
+    error: result.error,
+    tools: result.tools.map(toConnectorToolDto),
+  };
+}
+
+export function toConnectorReviewDto(review: ReviewView): ConnectorToolReview {
+  return {
+    tool: review.tool,
+    status: review.status,
+    approvedFingerprint: review.approvedFingerprint,
+    approved: review.approved,
+    currentFingerprint: review.currentFingerprint,
+    current: review.current,
+    seenAt: iso(review.seenAt),
+  };
+}
+
+export function toConnectorEventDto(event: {
+  id: string;
+  tool: string | null;
+  kind: ConnectorToolEvent["kind"];
+  fromFingerprint: string | null;
+  toFingerprint: string | null;
+  detail: string | null;
+  createdAt: Date;
+}): ConnectorToolEvent {
+  return {
+    id: event.id,
+    tool: event.tool,
+    kind: event.kind,
+    fromFingerprint: event.fromFingerprint,
+    toFingerprint: event.toFingerprint,
+    detail: event.detail,
+    createdAt: iso(event.createdAt),
+  };
+}

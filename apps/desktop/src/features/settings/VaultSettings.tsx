@@ -1,0 +1,395 @@
+import type { Secret } from "@suup/api";
+import { KeyRound, Plus } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useData, useServices } from "../../app/context.js";
+import { sortedBots } from "../../app/selectors.js";
+import { orderedConnectors, orderedSecrets } from "../../data/reducers.js";
+import { nameProblem, writeSecret } from "../../lib/secret-form.js";
+import { Card, Dialog, EmptyState, Pill, Tag, TextField, Toggle } from "../../ui/primitives.js";
+import { SecretInput, type SecretInputHandle } from "../../ui/secret-input.js";
+import { formatWhen } from "./formatting.js";
+import { useTask } from "./use-task.js";
+
+/**
+ * Create or replace a secret. Write-only: the value goes from the field to the server and the field
+ * is cleared at once; the screen keeps the name and the metadata the server answers, never the value.
+ */
+export function SecretDialog({
+  existing,
+  onClose,
+  onSaved,
+}: {
+  /** The name of the secret being replaced; `undefined`: a new one. */
+  existing: string | undefined;
+  onClose(): void;
+  onSaved?(secret: Secret): void;
+}) {
+  const { api, sync } = useServices();
+  const bots = useData((s) => s.bots);
+  const vault = useData((s) => s.vault);
+  const field = useRef<SecretInputHandle>(null);
+  const [name, setName] = useState(existing ?? "");
+  const [description, setDescription] = useState("");
+  const [grants, setGrants] = useState<string[]>([]);
+  const [problem, setProblem] = useState<{ field: "name" | "value"; text: string } | undefined>(
+    undefined,
+  );
+  const task = useTask();
+  const blocked = vault !== null && !vault.ok;
+
+  const save = async () => {
+    setProblem(undefined);
+    // The name is checked first, while the value is still in the field (nothing to retype).
+    const nameError = existing === undefined ? nameProblem(name) : undefined;
+    if (nameError !== undefined) {
+      setProblem({ field: "name", text: nameError });
+      return;
+    }
+    const value = field.current?.take() ?? "";
+    field.current?.clear();
+    let saved: Secret | undefined;
+    const ok = await task.run(async () => {
+      const outcome = await writeSecret(api.vault, name, {
+        value,
+        ...(description.trim() === "" ? {} : { description: description.trim() }),
+        ...(existing === undefined ? { grantBotIds: grants } : {}),
+      });
+      if (!outcome.ok) return { ok: false, message: outcome.message };
+      saved = outcome.result;
+      sync.mergeSecretNow(outcome.result);
+      return { ok: true };
+    });
+    if (ok && saved !== undefined) {
+      onSaved?.(saved);
+      onClose();
+    }
+  };
+
+  return (
+    <Dialog
+      title={existing === undefined ? "Novo segredo" : `Trocar o valor de ${existing}`}
+      onClose={onClose}
+      footer={
+        <>
+          <Pill tone="secondary" onClick={onClose} disabled={task.busy}>
+            Cancelar
+          </Pill>
+          <Pill
+            tone="primary"
+            onClick={() => void save()}
+            disabled={task.busy || blocked}
+            data-testid="secret-write"
+          >
+            {task.busy ? "Guardando…" : "Guardar"}
+          </Pill>
+        </>
+      }
+    >
+      <form
+        className="form"
+        autoComplete="off"
+        data-testid="secret-write-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save();
+        }}
+      >
+        {blocked && (
+          <p className="ui-notice" role="alert">
+            O servidor não consegue guardar segredos agora: {vault.reason}
+          </p>
+        )}
+        {existing === undefined ? (
+          <TextField
+            label="Nome"
+            value={name}
+            onChange={(v) => setName(v.toUpperCase())}
+            placeholder="GITHUB_TOKEN"
+            error={problem?.field === "name" ? problem.text : undefined}
+            hint="Letras maiúsculas, números e sublinhado. O bot escreve {{secret:NOME}} onde o valor deve entrar."
+            name="secret-name"
+            autoFocus
+          />
+        ) : (
+          <p className="muted small">
+            O valor atual não pode ser mostrado, nem por aqui nem pela API. Quem já pode usar o
+            segredo continua podendo.
+          </p>
+        )}
+        <SecretInput
+          ref={field}
+          label="Valor"
+          disabled={task.busy}
+          error={problem?.field === "value" ? problem.text : task.error}
+          hint="De 8 a 16 384 caracteres. Fica cifrado no servidor e nunca volta para esta tela."
+          onEnter={() => void save()}
+          autoFocus={existing !== undefined}
+        />
+        <TextField
+          label="Para que serve (opcional)"
+          value={description}
+          onChange={setDescription}
+          hint="Os bots que podem usá-lo veem esta descrição."
+        />
+        {existing === undefined && sortedBots(bots).length > 0 && (
+          <fieldset className="form__row">
+            <legend className="ui-field__label">Quem pode usar já na criação</legend>
+            {sortedBots(bots).map((b) => (
+              <label key={b.id} className="grant-check">
+                <input
+                  type="checkbox"
+                  checked={grants.includes(b.id)}
+                  onChange={(e) =>
+                    setGrants(
+                      e.target.checked ? [...grants, b.id] : grants.filter((g) => g !== b.id),
+                    )
+                  }
+                />
+                <span>{b.name}</span>
+              </label>
+            ))}
+          </fieldset>
+        )}
+      </form>
+    </Dialog>
+  );
+}
+
+/** The vault: secret names and who may use them. Values can be written and replaced, never read. */
+export function VaultSettings() {
+  const { sync, api } = useServices();
+  const bots = useData((s) => s.bots);
+  const secretsByName = useData((s) => s.secrets);
+  const loaded = useData((s) => s.secretsLoaded);
+  const vault = useData((s) => s.vault);
+  const connectorsByName = useData((s) => s.connectors);
+  const secrets = useMemo(() => orderedSecrets({ secrets: secretsByName }), [secretsByName]);
+  const connectors = useMemo(
+    () => orderedConnectors({ connectors: connectorsByName }),
+    [connectorsByName],
+  );
+  const botList = useMemo(() => sortedBots(bots), [bots]);
+  const [dialog, setDialog] = useState<{ existing: string | undefined } | null>(null);
+  const [deleting, setDeleting] = useState<Secret | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
+  const grant = useTask();
+  const removal = useTask();
+
+  useEffect(() => {
+    void sync.loadVault();
+    void sync.loadConnectors();
+  }, [sync]);
+
+  const blocked = vault !== null && !vault.ok;
+  return (
+    <>
+      <Card aria-label="Estado do cofre" data-testid="vault-status">
+        <h2 className="section-label">Cofre de segredos</h2>
+        <p className="muted small">
+          Guarda credenciais (tokens, senhas) cifradas no servidor. Os bots usam o segredo pelo
+          nome, com o marcador <code>{"{{secret:NOME}}"}</code>, e nunca veem o valor. O valor só
+          pode ser escrito ou trocado: não existe “mostrar o valor”.
+        </p>
+        {vault === null ? (
+          <p className="muted">Consultando o servidor…</p>
+        ) : vault.ok ? (
+          <p data-testid="vault-ok">
+            <Tag>Pronto</Tag> O cofre está configurado
+            {vault.keyEnv !== null && (
+              <>
+                {" "}
+                (a chave está na variável <code>{vault.keyEnv}</code> do servidor)
+              </>
+            )}
+            .
+          </p>
+        ) : (
+          <div className="ui-notice" role="status" data-testid="vault-missing">
+            <strong>
+              {vault.configured
+                ? "O cofre não tem a chave"
+                : "Este servidor não tem cofre configurado"}
+            </strong>
+            <p>{vault.reason}.</p>
+            <p>
+              Sem o cofre não dá para guardar segredos nem para um bot pedir um. Para ligar: gere
+              uma chave (<code>suup vault key generate</code>), ponha na variável de ambiente do
+              servidor e do worker, e inclua a seção <code>vault</code> no arquivo de configuração
+              (veja <code>docs/COFRE.md</code>).
+            </p>
+          </div>
+        )}
+      </Card>
+      <Card aria-label="Segredos" data-testid="vault-list-card">
+        <div className="row-between">
+          <h2 className="section-label">Segredos</h2>
+          <Pill
+            tone="secondary"
+            icon={<Plus size={16} aria-hidden="true" />}
+            disabled={blocked}
+            data-testid="secret-new"
+            onClick={() => setDialog({ existing: undefined })}
+          >
+            Novo segredo
+          </Pill>
+        </div>
+        {!loaded ? (
+          <p className="muted">Carregando…</p>
+        ) : secrets.length === 0 ? (
+          <EmptyState
+            icon={<KeyRound size={16} />}
+            title="Nenhum segredo"
+            text="Cadastre um aqui, ou espere um bot pedir: o formulário seguro aparece na conversa."
+          />
+        ) : (
+          <ul className="rule-list" data-testid="secret-list">
+            {secrets.map((secret) => {
+              const usedBy = connectors.filter((c) => c.secretNames.includes(secret.name));
+              const expanded = open === secret.name;
+              return (
+                <li
+                  key={secret.name}
+                  className="rule-row"
+                  data-testid="secret-row"
+                  data-name={secret.name}
+                >
+                  <div className="rule-row__main">
+                    <p>
+                      <strong className="mono">{secret.name}</strong>
+                    </p>
+                    {secret.description !== "" && (
+                      <p className="muted small wrap">{secret.description}</p>
+                    )}
+                    <p className="muted small">
+                      {secret.lastUsedAt === null
+                        ? "Nunca usado"
+                        : `Usado pela última vez em ${formatWhen(secret.lastUsedAt)}`}
+                      {" · "}
+                      {secret.grantedBotIds.length === 0
+                        ? "nenhum bot pode usar"
+                        : `${secret.grantedBotIds.length} ${secret.grantedBotIds.length === 1 ? "bot pode usar" : "bots podem usar"}`}
+                      {usedBy.length > 0 &&
+                        ` · usado pelo conector ${usedBy.map((c) => c.name).join(", ")}`}
+                    </p>
+                    {expanded && (
+                      <fieldset className="grants" data-testid="secret-grants">
+                        <legend className="ui-field__label">Quem pode usar</legend>
+                        {botList.length === 0 && <p className="muted small">Nenhum bot.</p>}
+                        {botList.map((b) => {
+                          const on = secret.grantedBotIds.includes(b.id);
+                          return (
+                            <div key={b.id} className="grant-row">
+                              <span>{b.name}</span>
+                              <Toggle
+                                checked={on}
+                                disabled={grant.busy}
+                                label={`${b.name} pode usar ${secret.name}`}
+                                onChange={(next) =>
+                                  void grant.run(() =>
+                                    sync.secretCall(() =>
+                                      next
+                                        ? api.vault.grant(secret.name, b.id)
+                                        : api.vault.revoke(secret.name, b.id),
+                                    ),
+                                  )
+                                }
+                              />
+                            </div>
+                          );
+                        })}
+                        {grant.error !== undefined && (
+                          <p className="ui-field__error" role="alert">
+                            {grant.error}
+                          </p>
+                        )}
+                        <p className="muted small">A mudança vale a partir da próxima execução.</p>
+                      </fieldset>
+                    )}
+                  </div>
+                  <div className="rule-row__actions">
+                    <Pill
+                      tone="ghost"
+                      aria-expanded={expanded}
+                      data-testid="secret-grants-toggle"
+                      onClick={() => setOpen(expanded ? null : secret.name)}
+                    >
+                      Quem pode usar
+                    </Pill>
+                    <Pill
+                      tone="secondary"
+                      disabled={blocked}
+                      data-testid="secret-replace"
+                      onClick={() => setDialog({ existing: secret.name })}
+                    >
+                      Trocar o valor
+                    </Pill>
+                    <Pill
+                      tone="danger"
+                      data-testid="secret-delete"
+                      onClick={() => setDeleting(secret)}
+                    >
+                      Apagar
+                    </Pill>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Card>
+      {dialog !== null && (
+        <SecretDialog existing={dialog.existing} onClose={() => setDialog(null)} />
+      )}
+      {deleting !== null && (
+        <Dialog
+          title={`Apagar ${deleting.name}?`}
+          onClose={() => setDeleting(null)}
+          footer={
+            <>
+              <Pill tone="secondary" onClick={() => setDeleting(null)} disabled={removal.busy}>
+                Cancelar
+              </Pill>
+              <Pill
+                tone="danger"
+                disabled={removal.busy}
+                data-testid="secret-delete-confirm"
+                onClick={() =>
+                  void removal
+                    .run(() => sync.deleteSecret(deleting.name))
+                    .then((ok) => ok && setDeleting(null))
+                }
+              >
+                {removal.busy ? "Apagando…" : "Apagar o segredo"}
+              </Pill>
+            </>
+          }
+        >
+          <p>
+            O valor some do cofre e não dá para recuperá-lo. Quem usa{" "}
+            <strong>{deleting.name}</strong> deixa de funcionar:
+          </p>
+          <ul className="bullets">
+            <li>
+              os bots que usam o marcador <code>{`{{secret:${deleting.name}}}`}</code>
+            </li>
+            {connectors.some((c) => c.secretNames.includes(deleting.name)) && (
+              <li>
+                os conectores{" "}
+                {connectors
+                  .filter((c) => c.secretNames.includes(deleting.name))
+                  .map((c) => c.name)
+                  .join(", ")}
+                , que citam este segredo.
+              </li>
+            )}
+          </ul>
+          {removal.error !== undefined && (
+            <p className="ui-field__error" role="alert">
+              {removal.error}
+            </p>
+          )}
+        </Dialog>
+      )}
+    </>
+  );
+}

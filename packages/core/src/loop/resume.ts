@@ -1,10 +1,12 @@
 // Owns starting and resuming a run: the terminal/approval gate, logging `run_started`, reconciling
 // a status the log announced but the store never applied, and picking a `waiting_user` run back up
 // from the inbox (an answer, extra messages, or a stop).
+import { deliverApprovalDecisions } from "./approval-flow.js";
 import { freshInbox, recordUserMessage } from "./inbox.js";
 import { record, transition } from "./recording.js";
 import type { LoopContext } from "./run-context.js";
 import type { RunStatus } from "./store.js";
+import { planToolSearch } from "./tool-search.js";
 
 /**
  * Brings a freshly loaded run to the point where the loop can start. `undefined` means the run is
@@ -34,6 +36,7 @@ export async function startOrResume(ctx: LoopContext): Promise<RunStatus | undef
   }
 
   await ensureContext(ctx);
+  await ensureToolCatalog(ctx);
 
   // The log is the truth. If the process died after logging a status change but before the
   // store applied it, apply it now.
@@ -58,6 +61,18 @@ export async function startOrResume(ctx: LoopContext): Promise<RunStatus | undef
     if (ctx.run.status !== "waiting_user") return ctx.run.status;
   }
 
+  // The run paused for an approval and its decision made it claimable again (or a crash left the
+  // store behind the log): put the store where the log is, then take the decision in.
+  if (
+    (ctx.run.status === "running" || ctx.run.status === "queued") &&
+    ctx.state.status === "waiting_approval"
+  ) {
+    await store.setStatus(runId, { from: [ctx.run.status], to: "waiting_approval" });
+    ctx.run = await store.getRun(runId);
+    if (ctx.run.status !== "waiting_approval") return ctx.run.status;
+    return resumeFromApproval(ctx);
+  }
+
   if (ctx.run.status === "queued") {
     if (!(await transition(ctx, "queued", "running"))) {
       return (await store.getRun(runId)).status;
@@ -67,6 +82,15 @@ export async function startOrResume(ctx: LoopContext): Promise<RunStatus | undef
     if (resumed !== undefined) return resumed;
   }
   return undefined;
+}
+
+/** `undefined` means the run is running again and the loop should go on. */
+async function resumeFromApproval(ctx: LoopContext): Promise<RunStatus | undefined> {
+  await deliverApprovalDecisions(ctx);
+  // Still no answer for the call the run waits for: it stays where it is.
+  if (ctx.state.waiting?.kind === "approval") return "waiting_approval";
+  const ok = await transition(ctx, "waiting_approval", "running");
+  return ok ? undefined : (await ctx.deps.store.getRun(ctx.runId)).status;
 }
 
 /** `undefined` means the run is running again and the loop should go on. */
@@ -86,8 +110,8 @@ async function resumeFromWaiting(ctx: LoopContext): Promise<RunStatus | undefine
       return ok ? "cancelled" : (await store.getRun(ctx.runId)).status;
     }
     if (messages.length === 0) return "waiting_user";
-    if (waiting.kind === "escalate") {
-      // The answer is the result of the pending escalate call.
+    if (waiting.kind === "escalate" || waiting.kind === "secret") {
+      // The answer is the result of the pending escalate (or request_secret) call.
       await record(ctx, {
         type: "tool_result",
         payload: {
@@ -130,6 +154,30 @@ async function ensureContext(ctx: LoopContext): Promise<void> {
       profile: snapshot.profile,
       history: snapshot.history,
       ...(snapshot.historyNote === undefined ? {} : { historyNote: snapshot.historyNote }),
+      ...(snapshot.secrets === undefined ? {} : { secrets: snapshot.secrets }),
     },
+  });
+}
+
+/**
+ * Decides, once, how the connector tools of this run reach the model, and records it. Only before
+ * the first request of the run: afterwards the tools can no longer change under it (a run that
+ * began without the event keeps offering every tool directly).
+ */
+async function ensureToolCatalog(ctx: LoopContext): Promise<void> {
+  const setup = ctx.deps.toolSearch;
+  const { state } = ctx;
+  if (setup === undefined || state.toolCatalog !== null || state.sawRequest) return;
+  if ("replayOf" in setup) {
+    await record(ctx, { type: "tool_catalog", payload: structuredClone(setup.replayOf) });
+    return;
+  }
+  if (setup.candidates.length === 0) return;
+  const specs = new Map(
+    ctx.deps.tools.specs(ctx.deps.bot.allowedTools).map((spec) => [spec.name, spec]),
+  );
+  await record(ctx, {
+    type: "tool_catalog",
+    payload: planToolSearch(setup, specs, ctx.deps.provider.capabilities),
   });
 }

@@ -256,6 +256,12 @@ export function CommandPalette() {
         aria-label="Busca e ações"
         className="palette"
         data-testid="palette"
+        // A modal surface keeps the focus: if something else takes it while the palette is open,
+        // the field gets it back.
+        onBlur={(e) => {
+          if (e.relatedTarget instanceof Node && !e.currentTarget.contains(e.relatedTarget))
+            inputRef.current?.focus();
+        }}
         onKeyDown={(e) => {
           if (e.key === "Escape") {
             e.stopPropagation();

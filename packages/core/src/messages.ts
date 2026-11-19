@@ -29,6 +29,11 @@ export const toolResultBlockSchema = z.object({
   callId: z.string().min(1),
   content: z.string(),
   isError: z.exactOptional(z.boolean()),
+  /**
+   * Tools this result loads into the model's context (client-side tool search): names of tools
+   * sent with `deferLoading`. Adapters of providers without that feature ignore it.
+   */
+  toolReferences: z.exactOptional(z.array(z.string())),
 });
 
 /**

@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { parseAllowlistHost } from "@suup/core";
 import { z } from "zod";
 import { ConfigError } from "./errors.js";
 
@@ -88,6 +89,61 @@ const modelSchema = z.strictObject({
   maxOutputTokens: positiveInt,
   pricing: z.exactOptional(pricingSchema),
   supportsForcedToolChoice: z.exactOptional(z.boolean()),
+  /**
+   * The native tool search this model supports, declared here and never guessed from the id:
+   * `true` or `"bm25"` (the provider ranks by words), `"regex"` (the provider matches a pattern
+   * the MODEL writes at run time), `"client"` (the harness searches and names the tools to load).
+   * Absent or `false`: the harness uses its own index and the `search_tools`/`use_tool` pair.
+   * Only a provider whose adapter implements the variant honours it.
+   */
+  nativeToolSearch: z.exactOptional(z.union([z.boolean(), z.enum(["bm25", "regex", "client"])])),
+});
+
+/** The hosts the bots' machines may reach out of the box: the package registries, by exact name. */
+export const DEFAULT_ALLOWED_HOSTS: readonly string[] = [
+  "registry.npmjs.org",
+  "pypi.org",
+  "files.pythonhosted.org",
+];
+export const DEFAULT_NETWORK_NAME = "suup-sandbox-net";
+export const DEFAULT_CONNECTOR_IMAGE = "suup-connector-runner:dev";
+
+const memorySize = z.string().regex(/^[1-9][0-9]*[bkmg]?$/i, 'ex.: "2g" ou "512m"');
+
+/** A host name of the allowlist, stored in its normal form (lower case, no trailing dot). */
+const hostEntry = z
+  .string({ error: "esperado um nome de host (texto)" })
+  .transform((value, ctx) => {
+    const parsed = parseAllowlistHost(value);
+    if (!parsed.ok) {
+      ctx.addIssue({ code: "custom", message: parsed.message });
+      return z.NEVER;
+    }
+    return parsed.host;
+  });
+
+/**
+ * The network of the bots' machines (docker sandbox). The container has no route of its own: it
+ * reaches the internet only through a proxy of the harness, to the exact host names listed here
+ * (global defaults) plus the ones added per bot. See docs/REDE.md.
+ */
+const networkSchema = z.strictObject({
+  /** Name of the internal Docker network the machine and the connector containers join. */
+  name: z.exactOptional(z.string().min(1)),
+  /** Exact host names every bot may reach. Default: the package registries (`DEFAULT_ALLOWED_HOSTS`). `[]`: none. */
+  defaultHosts: z.exactOptional(z.array(hostEntry).max(100)),
+  /** Ports the proxy lets through. Default 80 and 443. */
+  ports: z.exactOptional(z.array(z.number().int().min(1).max(65535)).min(1).max(10)),
+  proxy: z.exactOptional(
+    z.strictObject({
+      /** Where the proxy listens. Default: the host's address on the internal network. */
+      listenHost: z.exactOptional(z.string().min(1)),
+      /** The address written into the machines' proxy settings. Default: `listenHost`. */
+      advertiseHost: z.exactOptional(z.string().min(1)),
+      /** Default: any free port. */
+      port: z.exactOptional(z.number().int().min(0).max(65535)),
+    }),
+  ),
 });
 
 const sandboxSchema = z.discriminatedUnion(
@@ -98,8 +154,17 @@ const sandboxSchema = z.discriminatedUnion(
       image: z.string().min(1),
       name: z.string().min(1),
       volume: z.string().min(1),
-      memory: z.exactOptional(z.string().regex(/^[1-9][0-9]*[bkmg]?$/i, 'ex.: "2g" ou "512m"')),
+      memory: z.exactOptional(memorySize),
       cpus: z.exactOptional(z.number().positive()),
+      network: z.exactOptional(networkSchema),
+      /** Where stdio connectors run: a container of this image, on the same internal network. */
+      connectors: z.exactOptional(
+        z.strictObject({
+          image: z.exactOptional(z.string().min(1)),
+          memory: z.exactOptional(memorySize),
+          cpus: z.exactOptional(z.number().positive()),
+        }),
+      ),
     }),
     z.strictObject({ kind: z.literal("local"), root: z.string().min(1) }),
   ],
@@ -150,6 +215,43 @@ const defaultsSchema = z.strictObject({
   historyChars: z.exactOptional(positiveInt),
 });
 
+const riskLevelEnum = z.enum(["read", "write_reversible", "external_irreversible"]);
+
+const vaultSchema = z.strictObject({
+  /**
+   * NAME of the environment variable that holds the master key (32 bytes, base64 or hex). The key
+   * itself never goes in the file or the database; generate one with `suup vault key generate`.
+   */
+  keyEnv: z.exactOptional(envName),
+  /**
+   * NAMES of variables holding older master keys, so values written with them can still be read
+   * and re-encrypted (`suup vault rotate`).
+   */
+  previousKeyEnvs: z.exactOptional(z.array(envName).max(8)),
+});
+
+const approvalsSchema = z.strictObject({
+  /**
+   * Pending approval cards expire after this many minutes (the run is told, and goes on). Absent:
+   * a card waits for ever; nothing times out silently.
+   */
+  expireAfterMinutes: z.exactOptional(positiveInt),
+  /**
+   * A risk level fixed for a tool, over what the tool declares: e.g. `{ "shell":
+   * "external_irreversible" }` makes every shell command ask, even in the isolated machine.
+   */
+  levels: z.exactOptional(z.record(z.string().min(1), riskLevelEnum)),
+});
+
+const toolSearchSchema = z.strictObject({
+  /** Defer the connector tools of a bot when it has at least this many (default 10)... */
+  minTools: z.exactOptional(positiveInt),
+  /** ...or when their definitions are estimated at this many tokens or more (default 10000). */
+  minDefinitionTokens: z.exactOptional(positiveInt),
+  /** An index longer than this many characters is shown as one line per connector (default 6000). */
+  maxIndexChars: z.exactOptional(positiveInt),
+});
+
 export const configSchema = z
   .strictObject({
     databaseUrl: z.exactOptional(z.string().min(1)),
@@ -160,6 +262,17 @@ export const configSchema = z
     worker: z.exactOptional(workerSchema),
     server: z.exactOptional(serverSchema),
     defaults: z.exactOptional(defaultsSchema),
+    /**
+     * Tools whose output is labelled as untrusted data for the model, besides the ones that
+     * declare it themselves (`web_fetch`). Typical choice: `["shell", "read_file", "search_files"]`
+     * when the bot handles content from outside. Off by default: it changes what the model reads
+     * after every call of those tools.
+     */
+    untrustedOutputTools: z.exactOptional(z.array(z.string().min(1)).max(50)),
+    vault: z.exactOptional(vaultSchema),
+    approvals: z.exactOptional(approvalsSchema),
+    /** When the connector tools of a bot are searched instead of all loaded (docs/CONFIGURACAO.md). */
+    toolSearch: z.exactOptional(toolSearchSchema),
   })
   .superRefine((config, ctx) => {
     const providerIds = new Set<string>();
@@ -277,6 +390,9 @@ function describeIssue(issue: z.core.$ZodIssue, path: readonly (string | number)
       const secret = keys.find((k) => SECRET_KEYS.has(k));
       if (secret !== undefined && path[0] === "server") {
         return `"${secret}" não é aceito: o token do servidor nunca fica no arquivo. Use "tokenEnv" com o NOME da variável de ambiente que guarda o token (gere um token com: suup server --generate-token)`;
+      }
+      if (secret !== undefined && path[0] === "vault") {
+        return `"${secret}" não é aceito: a chave do cofre nunca fica no arquivo. Use "keyEnv" com o NOME da variável de ambiente que guarda a chave (gere uma com: suup vault key generate)`;
       }
       if (secret !== undefined) {
         return `"${secret}" não é aceito: chaves de API nunca ficam no arquivo. Use "apiKeyEnv" com o NOME da variável de ambiente que guarda a chave`;

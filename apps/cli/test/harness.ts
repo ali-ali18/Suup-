@@ -34,6 +34,8 @@ export interface RunOptions {
   cwd?: string;
   /** Whether stdin is a terminal (the CLI only reads answers and messages from a terminal). */
   tty?: boolean;
+  /** Text piped to stdin (and stdin closed), as in `echo value | suup ...`. */
+  input?: string;
   /** Runs alongside the command; the command's result is returned when both are done. */
   during?: (handle: Handle) => Promise<void>;
 }
@@ -103,6 +105,7 @@ export async function runCli(argv: string[], options: RunOptions = {}): Promise<
     },
   };
 
+  if (options.input !== undefined) stdin.end(options.input);
   const running = main(argv, io);
   const side = options.during?.(handle);
   // If the side script fails, the command may wait for ever: interrupt it, then report the failure.
@@ -116,7 +119,11 @@ export async function runCli(argv: string[], options: RunOptions = {}): Promise<
   );
   const code = await running;
   const failure = await sideFailure;
-  if (failure !== undefined) throw failure;
+  if (failure !== undefined) {
+    // Say what the command itself printed: the side script usually fails because of it.
+    if (failure instanceof Error) failure.message += `\n--- stderr of the command:\n${err}`;
+    throw failure;
+  }
   return { code, stdout: out, stderr: err };
 }
 
@@ -165,6 +172,9 @@ export const DEFAULT_CONFIG = {
   ],
   reviewer: { model: "model-x" },
   sandbox: { kind: "local", root: "workspace" },
+  // These tests drive the harness with scripted shell commands on the (not isolated) local machine:
+  // the user's rule is "shell may run", so no card stops them. The approval flow has its own tests.
+  approvals: { levels: { shell: "write_reversible" } },
   worker: { concurrency: 2, leaseRenewMs: 1000, staleAfterMs: 5000 },
   defaults: { maxTurns: 20 },
 };

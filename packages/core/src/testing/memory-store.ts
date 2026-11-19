@@ -1,5 +1,6 @@
 import { type PlanStep, type RunEventData, runEventSchema } from "../events.js";
 import {
+  type ApprovalDecisionItem,
   type InboxItem,
   type InboxItemInput,
   LeaseLostError,
@@ -32,6 +33,8 @@ interface Entry {
   record: RunRecord;
   events: StoredEvent[];
   inbox: { item: InboxItem; acked: boolean }[];
+  /** Decisions made from outside, until the loop records them in the log. */
+  approvals: { item: ApprovalDecisionItem; acked: boolean }[];
   failure?: { origin: string; detail: string };
   result?: RunResult;
   heartbeats: number;
@@ -79,6 +82,7 @@ export class InMemoryRunStore implements RunStore {
       record,
       events: [],
       inbox: [],
+      approvals: [],
       heartbeats: 0,
       control: { pause: false, interrupt: false },
       lease: null,
@@ -95,6 +99,31 @@ export class InMemoryRunStore implements RunStore {
     // claimable again.
     if (entry.record.status === "waiting_user") this.#requeue(entry);
     return id;
+  }
+
+  /**
+   * Plays the user answering an approval card: the decision is held until the loop records it,
+   * and a run waiting for it becomes claimable again, as in the database. The approval id is the
+   * one in the `approval_requested` event. Returns the id of the call it concerns.
+   */
+  decideApproval(
+    runId: string,
+    approvalId: string,
+    decision: Omit<ApprovalDecisionItem, "approvalId" | "callId">,
+  ): string {
+    const entry = this.#entry(runId);
+    const requested = entry.events.find(
+      (e) => e.type === "approval_requested" && e.payload.approvalId === approvalId,
+    );
+    if (requested === undefined || requested.type !== "approval_requested") {
+      throw new Error(`run "${runId}" has no approval "${approvalId}"`);
+    }
+    entry.approvals.push({
+      item: { ...decision, approvalId, callId: requested.payload.callId },
+      acked: false,
+    });
+    if (entry.record.status === "waiting_approval") this.#requeue(entry);
+    return requested.payload.callId;
   }
 
   /**
@@ -163,6 +192,13 @@ export class InMemoryRunStore implements RunStore {
     ) {
       this.#requeue(entry);
     }
+    if (
+      change.requeueIfDecided === true &&
+      change.to === "waiting_approval" &&
+      entry.approvals.some((e) => !e.acked)
+    ) {
+      this.#requeue(entry);
+    }
     return true;
   }
 
@@ -187,6 +223,17 @@ export class InMemoryRunStore implements RunStore {
   async ackInbox(runId: string, ids: readonly string[]): Promise<void> {
     const wanted = new Set(ids);
     for (const e of this.#entry(runId).inbox) if (wanted.has(e.item.id)) e.acked = true;
+  }
+
+  async peekApprovalDecisions(runId: string): Promise<ApprovalDecisionItem[]> {
+    return this.#entry(runId)
+      .approvals.filter((e) => !e.acked)
+      .map((e) => structuredClone(e.item));
+  }
+
+  async ackApprovalDecisions(runId: string, ids: readonly string[]): Promise<void> {
+    const wanted = new Set(ids);
+    for (const e of this.#entry(runId).approvals) if (wanted.has(e.item.approvalId)) e.acked = true;
   }
 
   async heartbeat(runId: string): Promise<RunControl> {
@@ -281,6 +328,11 @@ export class InMemoryRunStore implements RunStore {
       ackInbox: async (runId, ids) => {
         check(runId);
         return this.ackInbox(runId, ids);
+      },
+      peekApprovalDecisions: (runId) => this.peekApprovalDecisions(runId),
+      ackApprovalDecisions: async (runId, ids) => {
+        check(runId);
+        return this.ackApprovalDecisions(runId, ids);
       },
       heartbeat: async (runId) => {
         const entry = check(runId);

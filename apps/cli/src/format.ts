@@ -111,3 +111,17 @@ export function indent(text: string, prefix: string): string[] {
 export function plural(n: number, one: string, many: string): string {
   return n === 1 ? one : many;
 }
+
+const LEVEL_PT: Record<string, string> = {
+  read: "leitura",
+  write_reversible: "escrita reversível",
+  external_irreversible: "externa ou irreversível",
+};
+
+export const levelPt = (level: string): string => LEVEL_PT[level] ?? level;
+
+export const SOURCE_PT: Record<string, string> = {
+  rule: "regra sua",
+  reviewer: "revisão automática",
+  default: "o nível de risco",
+};

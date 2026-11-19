@@ -41,6 +41,9 @@
   --radius-card: 24px;
   --radius-row: 16px;
   --radius-inner: 14px;
+  --radius-bubble: var(--radius-card); /* a bubble's outer corners */
+  --radius-bubble-link: 6px; /* a bubble corner that touches the next bubble of the same sender (~1/4 of the outer one, measured on the owner's reference) */
+  --radius-chip: 8px; /* the small rounded square behind a card's icon */
 
   /* Type: App/v2 Título 16/24 600, Corpo 15/24, Rótulo 14/20 500, Pequeno 13/20, Seção 12/16 500 +0.72px, Prancha 22/28 600, Código 12/18 */
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -75,6 +78,7 @@
   --size-control: 40px;
   --size-icon-circle: 36px;
   --size-icon: 16px;
+  --size-icon-box: 24px;
   --size-avatar-sm: 28px;
   --size-avatar-md: 36px;
   --size-avatar-lg: 48px;
@@ -90,6 +94,9 @@
 
   --chat-gap: var(--space-4);
   --bubble-pad-y: 12px;
+  --bubble-gap-group: var(
+    --space-1
+  ); /* between bubbles of one group; between groups it is --chat-gap */
   --color-bubble-neutral: var(--color-raised);
   --shadow-popover: 0 12px 32px rgba(0, 0, 0, 0.45);
   --duration-fast: 120ms;

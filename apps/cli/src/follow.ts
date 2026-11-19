@@ -1,12 +1,14 @@
 import { createInterface } from "node:readline";
 import type { Readable } from "node:stream";
 import { escalatedQuestions } from "@suup/core";
-import { getRun, postInbox, type Run } from "@suup/db";
+import { getRun, hasPendingInbox, postInbox, type Run } from "@suup/db";
+import { pendingCards, printCards } from "./approval-prompt.js";
 import type { Ctx } from "./context.js";
 import { CommandError, EXIT_FAILED, EXIT_OK } from "./errors.js";
 import { readEvents } from "./lookup.js";
 import { needsQuestionnaire, Questionnaire } from "./questionnaire.js";
 import { primedRenderState, type RawEvent, renderEvent, renderFooter } from "./render.js";
+import { isReallyWaiting } from "./waiting.js";
 
 const POLL_MS = 120;
 /** How long a soft stop waits for the current turn before it gives up (a second Ctrl+C aborts sooner). */
@@ -219,12 +221,37 @@ export async function followRunCore(
       const run = await getRun(db, runId); // status first: its events are all in the log already
       if (run === null) throw new CommandError(`A execução ${short} sumiu do banco.`);
       emit(await readEvents(db, runId, afterSeq));
-      if (workerStopped || TERMINAL.has(run.status) || run.status === "waiting_approval") break;
-      if (run.status === "waiting_user") {
+      if (workerStopped || TERMINAL.has(run.status)) break;
+      // Esperar de verdade é haver algo pendente: um cartão sem decisão ou uma pergunta sem
+      // resposta no log (`waiting.ts`). Uma linha com status de espera sem isso é o instante em que
+      // uma execução retomada é recolocada onde o log está, antes de absorver a resposta que ele já
+      // tem (alguns milissegundos, mais numa máquina ocupada): o worker está prestes a seguir.
+      // A caixa de entrada é lida ANTES do log: uma resposta absorvida entre as duas leituras já
+      // está no log (o evento é gravado antes de a caixa ser baixada), e uma ainda na caixa
+      // aparece como pendente. Na ordem inversa haveria uma janela em que o log é antigo e a caixa
+      // já está vazia.
+      const inboxPending = run.status === "waiting_user" ? await hasPendingInbox(db, runId) : false;
+      const waitingLog =
+        run.status === "waiting_user" || run.status === "waiting_approval"
+          ? await readEvents(db, runId)
+          : [];
+      const cards = run.status === "waiting_approval" ? (await pendingCards(db, runId)).length : 0;
+      if (isReallyWaiting(run.status, waitingLog, cards, inboxPending)) {
+        if (run.status === "waiting_approval") break;
         if (!interactive) break;
         if (!prompted) {
           await options.beforePrompt?.();
-          const asked = (await readEvents(db, runId)).filter((e) => e.type === "escalated").at(-1);
+          const log = waitingLog;
+          const secret = log
+            .filter((e) => e.type === "escalated" || e.type === "secret_requested")
+            .at(-1);
+          if (secret?.type === "secret_requested") {
+            const name = (secret.payload as { name?: string }).name ?? "?";
+            out.line(
+              `O bot pediu o segredo ${name}. Guarde-o sem passar pelo chat: suup vault set ${name} --run ${short}   (ou responda aqui para recusar).`,
+            );
+          }
+          const asked = log.filter((e) => e.type === "escalated").at(-1);
           const questions =
             asked === undefined
               ? []
@@ -237,6 +264,8 @@ export async function followRunCore(
           }
           prompted = true;
         }
+      } else if (run.status === "waiting_user" || run.status === "waiting_approval") {
+        // A transição acima: nada pendente ainda; só espera o laço seguir.
       } else {
         prompted = false;
         questionnaire = undefined;
@@ -318,9 +347,12 @@ export async function followRun(ctx: Ctx, runId: string, fromSeq: number): Promi
       out.line(`  suup say ${short} "<sua resposta>"`);
       out.line(`  suup resume ${short}   (ou deixe um worker em execução continuar)`);
       return EXIT_OK;
-    case "waiting_approval":
-      out.line("A execução espera uma aprovação (ainda não há como aprovar pela CLI).");
+    case "waiting_approval": {
+      out.line("A execução espera a sua aprovação:");
+      printCards(ctx, await pendingCards(ctx.runtime().db, run.id));
+      out.line(`Depois de decidir, a execução volta à fila: suup resume ${short}`);
       return EXIT_OK;
+    }
     default:
       out.line(
         `Execução pausada: o estado está guardado e nada se perdeu. Retome com: suup resume ${short}`,

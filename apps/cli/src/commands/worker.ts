@@ -59,7 +59,9 @@ export const workerCommand: CommandSpec = {
         ),
     });
     // Runs that ended while no worker was looking (a crash) still owe the conversation and the diary.
-    const caught = await reconcileRunEffects(runtime.db);
+    const caught = await reconcileRunEffects(runtime.db, {
+      redact: (value) => runtime.redactJson(value),
+    });
     if (caught.length > 0) {
       ctx.out.line(
         `Pendências de execuções que terminaram sem aviso: ${caught.length} acertada(s).`,

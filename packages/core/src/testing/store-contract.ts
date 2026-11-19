@@ -30,6 +30,15 @@ export interface StoreHarness {
   takeLease(runId: string): Promise<void>;
   /** Whether a worker holds the run (false after a requeue or a terminal status). */
   leased(runId: string): Promise<boolean>;
+  /**
+   * The user answers an approval card of the run, as the server does: `approvalId` is the one in
+   * the run's `approval_requested` event. A run waiting for it becomes claimable again.
+   */
+  decideApproval(
+    runId: string,
+    approvalId: string,
+    decision: { decision: "approved" | "denied"; reason?: string },
+  ): Promise<void>;
 }
 
 const nudge = (text: string): RunEventData => ({ type: "nudge", payload: { reason: "r", text } });
@@ -286,6 +295,95 @@ export function describeRunStoreContract(
         await h.post(again, { kind: "user_message", text: "x" });
         await h.store.setStatus(again, { from: ["running"], to: "waiting_user" });
         expect(await h.statusOf(again)).toBe("waiting_user");
+      });
+    });
+
+    describe("approvals", () => {
+      const request = (approvalId: string, callId: string): RunEventData => ({
+        type: "approval_requested",
+        payload: {
+          approvalId,
+          callId,
+          tool: "send",
+          args: { to: "ana" },
+          level: "external_irreversible",
+          summary: "Send a message to ana",
+          secrets: [],
+          source: "default",
+        },
+      });
+      // Fresh ids per test: a real database keeps the cards of every test of the file.
+      const newIds = () => [crypto.randomUUID(), crypto.randomUUID()] as const;
+
+      it("hands decisions to the loop once, in order, and forgets them when acknowledged", async () => {
+        const h = await make();
+        const IDS = newIds();
+        const id = await h.createRun({ objective: "o" });
+        await h.store.appendEvent(id, request(IDS[0], "c1"));
+        expect(await h.store.peekApprovalDecisions(id)).toEqual([]);
+        await h.decideApproval(id, IDS[0], { decision: "denied", reason: "not now" });
+        const first = await h.store.peekApprovalDecisions(id);
+        expect(first).toEqual([
+          { approvalId: IDS[0], callId: "c1", decision: "denied", reason: "not now" },
+        ]);
+        // Peeking does not consume: the same decision, the same id.
+        expect(await h.store.peekApprovalDecisions(id)).toEqual(first);
+        await h.store.ackApprovalDecisions(id, [IDS[0]]);
+        expect(await h.store.peekApprovalDecisions(id)).toEqual([]);
+        // Acknowledging again, or something unknown, is harmless.
+        await h.store.ackApprovalDecisions(id, [IDS[0], IDS[1]]);
+        await h.store.ackApprovalDecisions(id, []);
+      });
+
+      it("makes a run that waits for the decision claimable again", async () => {
+        const h = await make();
+        const IDS = newIds();
+        const id = await h.createRun({ objective: "o" });
+        await h.store.appendEvent(id, request(IDS[0], "c1"));
+        await h.store.setStatus(id, { from: ["running"], to: "waiting_approval" });
+        expect(await h.statusOf(id)).toBe("waiting_approval");
+        await h.decideApproval(id, IDS[0], { decision: "approved" });
+        expect(await h.statusOf(id)).toBe("queued");
+        expect(await h.leased(id)).toBe(false);
+      });
+
+      it("does not let a run go to sleep on a decision that arrived on its way to waiting", async () => {
+        const h = await make();
+        const IDS = newIds();
+        const calm = await h.createRun({ objective: "o" });
+        await h.store.appendEvent(calm, request(IDS[0], "c1"));
+        await h.store.setStatus(calm, {
+          from: ["running"],
+          to: "waiting_approval",
+          requeueIfDecided: true,
+        });
+        expect(await h.statusOf(calm)).toBe("waiting_approval");
+
+        const busy = await h.createRun({ objective: "o" });
+        await h.store.appendEvent(busy, request(IDS[1], "c9"));
+        await h.decideApproval(busy, IDS[1], { decision: "approved" });
+        expect(await h.statusOf(busy)).toBe("running"); // it had not paused yet: nothing to wake
+        expect(
+          await h.store.setStatus(busy, {
+            from: ["running"],
+            to: "waiting_approval",
+            requeueIfDecided: true,
+          }),
+        ).toBe(true);
+        expect(await h.statusOf(busy)).toBe("queued");
+        expect(await h.store.peekApprovalDecisions(busy)).toHaveLength(1);
+      });
+
+      it("fences acknowledgements by the lease", async () => {
+        const h = await make();
+        const IDS = newIds();
+        const id = await h.createRun({ objective: "o" });
+        await h.store.appendEvent(id, request(IDS[0], "c1"));
+        await h.decideApproval(id, IDS[0], { decision: "approved" });
+        await h.takeLease(id);
+        await expect(h.store.ackApprovalDecisions(id, [IDS[0]])).rejects.toBeInstanceOf(
+          LeaseLostError,
+        );
       });
     });
 

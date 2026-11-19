@@ -81,7 +81,8 @@ export const runRoutes: Route[] = [
       const run = await cancelRun(db, ctx.uuid("id"));
       // A run nobody holds (waiting for an approval) is cancelled right here: the conversation
       // gets its notice now. Any other is cancelled by the worker, which writes the notice itself.
-      if (run.status === "cancelled") await finishRun(db, run.id);
+      if (run.status === "cancelled")
+        await finishRun(db, run.id, { redact: (value) => ctx.runtime.redactJson(value) });
       return { body: toRunDto(run) };
     },
   },

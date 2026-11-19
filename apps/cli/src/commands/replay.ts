@@ -14,6 +14,7 @@ const FIELD_PT: Record<RequestChange["field"], string> = {
   system: "prompt do sistema",
   messages: "mensagens",
   tools: "ferramentas",
+  hostedToolSearch: "busca de ferramentas do provedor",
   toolChoice: "escolha de ferramenta",
   maxOutputTokens: "limite de saída",
   temperature: "temperatura",

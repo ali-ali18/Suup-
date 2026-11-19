@@ -45,6 +45,7 @@ Opções comuns aos dois adaptadores de rede (as mesmas de `@suup/providers`): `
 | `contextWindow` | Tamanho da janela de contexto, em tokens (inteiro positivo). Dispara a compactação da conversa |
 | `maxOutputTokens` | Limite de tokens de saída por resposta (não pode passar de `contextWindow`) |
 | `pricing` (opcional) | `inputPerMTok`, `outputPerMTok`, `cachedInputPerMTok` (opcional: tokens lidos do cache), `cacheWriteInputPerMTok` (opcional: tokens gravados no cache, que alguns provedores cobram acima do preço normal; padrão `inputPerMTok`): dólares por milhão de tokens. Sem `pricing`, o custo da execução fica em zero |
+| `nativeToolSearch` (opcional) | A busca de ferramentas **nativa** que este modelo aceita, **declarada aqui e nunca adivinhada pelo id**: `true` ou `"bm25"` (o provedor ranqueia por palavras), `"regex"` (o provedor casa um padrão que o **modelo** escreve; exceção em [REGRAS.md](REGRAS.md)), `"client"` (a busca é nossa e devolve as ferramentas a carregar). Só vale se o adaptador do provedor implementa a variante (hoje: `anthropic`; veja [CONECTORES.md](CONECTORES.md), que lista os modelos). Ausente ou `false`: o harness usa o índice e as ferramentas `search_tools`/`use_tool` |
 | `supportsForcedToolChoice` (opcional, padrão `true`) | Se o modelo aceita que o pedido **force** uma ferramenta (`tool_choice`). O revisor força a ferramenta `verdict`; alguns modelos respondem a isso com erro HTTP 400. Com `false`, o revisor pede o veredito só por instrução (`auto`). Mesmo com `true`, se a API recusar a escolha forçada (`invalid_request`), o revisor repete a chamada uma vez sem forçar |
 
 Um bot guarda o provedor e o modelo com que foi criado. Se o modelo sair da configuração, ou passar a pertencer a outro provedor, criar execuções para esse bot falha com uma mensagem que cita o bot e o que falta.
@@ -68,6 +69,8 @@ A máquina dos bots. Cada bot trabalha na própria subpasta `bots/<id do bot>` d
 | `volume` | Volume do workspace (sobrevive ao contêiner) |
 | `memory` (opcional) | Limite de memória, por exemplo `"2g"` (padrão `2g`) |
 | `cpus` (opcional) | Limite de CPUs (padrão 2) |
+| `network` (opcional) | A rede dos bots: o contêiner **não tem rede própria** e sai por um proxy do harness, só para os hosts da lista. `name` (rede interna, padrão `suup-sandbox-net`), `defaultHosts` (nomes exatos liberados a todos; padrão `registry.npmjs.org`, `pypi.org`, `files.pythonhosted.org`; `[]` = nenhum), `ports` (padrão `[80, 443]`), `proxy` (`listenHost`, `advertiseHost`, `port`: só se o worker não roda no host). Veja [REDE.md](REDE.md) |
+| `connectors` (opcional) | Onde rodam os conectores stdio: `image` (padrão `suup-connector-runner:dev`, de `docker/connector-runner`), `memory` (padrão 512m), `cpus` (padrão 1). Veja [CONECTORES.md](CONECTORES.md) |
 
 **`local`** (só para desenvolvimento e testes): `{ "kind": "local", "root": "<pasta>" }`. Os comandos dos bots rodam **diretamente neste computador, sem nenhum isolamento**, dentro de `<root>/bots/<id>`. Toda vez que esse modo está em uso, a CLI imprime um aviso visível (`AVISO: sandbox LOCAL em uso ...`), e `suup doctor` o marca.
 
@@ -107,6 +110,56 @@ Limites usados quando o bot não define os próprios (`suup bot create --max-tur
 
 Passar de um limite termina a execução como `failed` com origem `limit`.
 
+### `approvals` (opcional)
+
+Como as ações dos bots pedem o seu OK ([APROVACOES.md](APROVACOES.md)). Sem esta seção valem os padrões: leitura e escrita reversível executam, o que sai para o mundo ou não tem volta vira cartão, e um cartão espera para sempre.
+
+| Campo | Padrão | Significado |
+|---|---|---|
+| `levels` | nenhum | Fixa o nível de risco de uma ferramenta, por cima do que ela declara: `{ "shell": "external_irreversible" }` faz todo comando perguntar, mesmo na máquina isolada; `{ "shell": "write_reversible" }` libera o shell mesmo na máquina `local`. Valores: `read`, `write_reversible`, `external_irreversible` |
+| `expireAfterMinutes` | nunca | Um cartão que ninguém decidiu em tanto tempo vira `expired`: o bot é avisado e segue. Sem o campo, **nada expira em silêncio** |
+
+```json
+"approvals": { "levels": { "shell": "external_irreversible" }, "expireAfterMinutes": 1440 }
+```
+
+Com a máquina `local` (sem isolamento) o `shell` pergunta a cada comando; para um uso diário sem Docker, a regra `suup rules add --tool shell --effect allow` (ou `levels`) diz que você aceita o risco.
+
+### `vault` (opcional)
+
+O cofre de segredos ([COFRE.md](COFRE.md)). Sem esta seção não há cofre.
+
+| Campo | Padrão | Significado |
+|---|---|---|
+| `keyEnv` | `SUUP_VAULT_KEY` | O **nome** da variável de ambiente com a chave mestra (32 bytes em base64 ou hexadecimal; gere com `suup vault key generate`). A chave nunca fica no arquivo nem no banco: um campo `key` aqui é recusado |
+| `previousKeyEnvs` | nenhum | Nomes de variáveis com chaves antigas, para ler e recifrar (`suup vault rotate`) o que foi escrito com elas |
+
+```json
+"vault": { "keyEnv": "SUUP_VAULT_KEY" }
+```
+
+`suup doctor` confere a chave (presente, válida) e se todo segredo guardado é legível com as chaves configuradas.
+
+### `untrustedOutputTools` (opcional)
+
+Uma lista de nomes de ferramentas cuja saída chega ao modelo **rotulada como dado não confiável** (o envelope `<<<EXTERNAL_DATA`), além das que já se declaram assim (`web_fetch`). Padrão: nenhuma. Quem faz o bot lidar com conteúdo de fora pode ligar para `["shell", "read_file", "search_files"]`; fica desligado por padrão porque muda o que o modelo lê depois de cada chamada dessas ferramentas.
+
+### `toolSearch` (opcional)
+
+Quando as ferramentas de **conectores** de um bot são **buscadas** em vez de carregadas todas em todo pedido ([CONECTORES.md](CONECTORES.md), "Muitas ferramentas"):
+
+| Campo | Padrão | Significado |
+|---|---|---|
+| `minTools` | `10` | Adia quando o bot tem pelo menos este número de ferramentas de conectores... |
+| `minDefinitionTokens` | `10000` | ...ou quando as definições somam pelo menos estes tokens (estimativa: 1 token a cada 4 caracteres) |
+| `maxIndexChars` | `6000` | Um índice maior que isto vira uma linha por conector |
+
+Abaixo dos dois limites, as ferramentas vão direto. Para desligar a busca, ponha valores enormes. As ferramentas embutidas e de controle nunca são adiadas.
+
+### Conectores
+
+Não há seção de conectores neste arquivo: eles ficam no banco (`suup connectors ...`, [CONECTORES.md](CONECTORES.md)), porque são criados em tempo de execução e carregam referências a segredos do cofre. A seção `vault` é necessária para um conector que use credenciais.
+
 ## Variáveis de ambiente
 
 | Variável | Uso |
@@ -114,6 +167,7 @@ Passar de um limite termina a execução como `failed` com origem `limit`.
 | `DATABASE_URL` | URL do Postgres (vale mais que `databaseUrl`). `pnpm suup` lê também o arquivo `.env` |
 | `SUUP_CONFIG` | Caminho do arquivo de configuração (vale menos que `--config`) |
 | `SUUP_SERVER_TOKEN` | O token do servidor (o nome é o de `server.tokenEnv`) |
+| `SUUP_VAULT_KEY` | A chave mestra do cofre (o nome é o de `vault.keyEnv`). Precisa estar no ambiente do servidor, do worker e da CLI que mexem em segredos |
 | as de `apiKeyEnv` | As chaves de API dos provedores (nomes à sua escolha, por exemplo `ANTHROPIC_API_KEY`) |
 | `SUUP_DOCKER_PATH` | Caminho do executável `docker` (padrão: o do `PATH`) |
 | `SUUP_DEBUG` | Com qualquer valor, erros inesperados mostram a pilha |
