@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { type ActionItem, describeAction } from "../../data/actions.js";
-import { makeMessage, makeRun } from "../../test-fixtures.js";
+import type { SecretRequestItem } from "../../data/secret-requests.js";
+import { makeApproval, makeMessage, makeRun } from "../../test-fixtures.js";
 import { buildTimeline, dayLabel } from "./timeline.js";
 
 const NOW = new Date(2026, 10, 18, 15, 0, 0);
@@ -308,5 +309,77 @@ describe("buildTimeline", () => {
       expect.objectContaining({ kind: "ended", runId: cancelled.id, text: "Execução cancelada" }),
       expect.objectContaining({ kind: "notice", text: "Outro aviso" }),
     ]);
+  });
+});
+
+describe("buildTimeline: approval cards and secure forms among the bot's actions", () => {
+  const run = makeRun({ status: "waiting_approval" });
+  const conversationId = makeMessage().conversationId;
+  const opener = makeMessage({
+    conversationId,
+    seq: 1,
+    createdAt: local(14, 0),
+    runId: run.id,
+  });
+  const action = (callId: string, minute: number): ActionItem => ({
+    callId,
+    runId: run.id,
+    name: "shell",
+    ...describeAction("shell", { command: callId }),
+    state: "done",
+    args: {},
+    truncated: false,
+    startedAt: local(14, minute),
+  });
+
+  it("the card sits where it was asked: tool calls before it and after it are separate groups", () => {
+    const card = makeApproval({ runId: run.id, createdAt: local(14, 5) });
+    const items = buildTimeline(
+      [opener],
+      { [run.id]: run },
+      [action("c1", 2), action("c2", 3), action("c3", 8)],
+      NOW,
+      3,
+      { approvals: [card] },
+    );
+    expect(kinds(items)).toEqual(["separator", "user", "actions", "approval", "actions"]);
+    const approval = items.find((i) => i.kind === "approval") as Extract<
+      ReturnType<typeof buildTimeline>[number],
+      { kind: "approval" }
+    >;
+    expect(approval.approval.id).toBe(card.id);
+    expect(approval.key).toBe(`approval-${card.id}`);
+  });
+
+  it("a run waiting for approval has no working indicator: the card is what it waits for", () => {
+    const card = makeApproval({ runId: run.id, createdAt: local(14, 5) });
+    const items = buildTimeline([opener], { [run.id]: run }, none, NOW, 3, { approvals: [card] });
+    expect(kinds(items)).toEqual(["separator", "user", "approval"]);
+  });
+
+  it("a card of a run no message opened yet still shows at the end", () => {
+    const card = makeApproval({ runId: "other-run", createdAt: local(14, 5) });
+    const items = buildTimeline([opener], {}, none, NOW, 3, { approvals: [card] });
+    expect(kinds(items)).toEqual(["separator", "user", "approval"]);
+  });
+
+  it("the secure form of a secret request is an item of its own, in order with the actions", () => {
+    const request: SecretRequestItem = {
+      callId: "s1",
+      runId: run.id,
+      name: "GH_TOKEN",
+      reason: null,
+      startedAt: local(14, 4),
+      state: "open",
+    };
+    const items = buildTimeline(
+      [opener],
+      { [run.id]: { ...run, status: "waiting_user" } },
+      [action("c1", 2)],
+      NOW,
+      3,
+      { secrets: [request] },
+    );
+    expect(kinds(items)).toEqual(["separator", "user", "actions", "secret"]);
   });
 });

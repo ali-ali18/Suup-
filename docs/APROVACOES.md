@@ -95,7 +95,7 @@ No `suup chat` interativo o cartão aparece com `Aprovar? [s] sim · [n] não (n
 
 ## O que ainda não existe
 
-- O app de desktop não desenha cartões nem a tela de regras (o que ele precisa está em FRONTEND.md, seção 8).
+- No app de desktop, o cartão, o formulário seguro e as telas de regras, cofre e conectores **existem** (README do app, seção "Aprovações, cofre e conectores").
 - Revisão automática por modelo (só a interface).
 - Rascunho de mensagens para outras pessoas ("tudo que vai para outra pessoa vira rascunho"): os conectores (MCP) já existem ([CONECTORES.md](CONECTORES.md)) e cada ferramenta deles pergunta por padrão, mas o rascunho como etapa própria ainda não.
 - Mostrar todos os cartões de um turno de uma vez.

@@ -116,7 +116,7 @@ export function Tag({
   tone = "neutral",
 }: {
   children: ReactNode;
-  tone?: "neutral" | "outline";
+  tone?: "neutral" | "outline" | "danger";
 }) {
   return <span className={`ui-tag ui-tag--${tone}`}>{children}</span>;
 }

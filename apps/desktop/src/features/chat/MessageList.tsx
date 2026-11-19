@@ -10,6 +10,7 @@ import { BotMessage, EventLine, UserMessage } from "../../ui/message.js";
 import { Pill, RoundButton } from "../../ui/primitives.js";
 import { QuestionCard } from "../../ui/question-card.js";
 import { ActionRow } from "./ActionRow.js";
+import { ApprovalRow, SecretRequestRow } from "./ApprovalRows.js";
 import type { TimelineItem } from "./timeline.js";
 
 const NEAR_BOTTOM = 80;
@@ -195,6 +196,32 @@ export function MessageList({
                           </ActionFold>
                         ),
                       )}
+                    </div>
+                  </BotMessage>
+                );
+              case "approval":
+                return (
+                  <BotMessage key={item.key}>
+                    <div className="ui-actions">
+                      <ApprovalRow
+                        approval={item.approval}
+                        clicked={expanded}
+                        onToggle={onToggle}
+                        autoFocus={item.approval.status === "pending"}
+                      />
+                    </div>
+                  </BotMessage>
+                );
+              case "secret":
+                return (
+                  <BotMessage key={item.key}>
+                    <div className="ui-actions">
+                      <SecretRequestRow
+                        request={item.request}
+                        clicked={expanded}
+                        onToggle={onToggle}
+                        autoFocus={item.request.state === "open"}
+                      />
                     </div>
                   </BotMessage>
                 );

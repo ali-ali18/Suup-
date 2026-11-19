@@ -334,6 +334,12 @@ describe.skipIf(!DATABASE_URL)(
       await api.rules.remove(global.id);
     });
 
+    it("the vault status says the server can write secrets, and never shows the key", async () => {
+      const status = await w.started.api.vault.status();
+      expect(status).toMatchObject({ configured: true, ok: true, keyEnv: "SERVER_TEST_VAULT_KEY" });
+      expect(Object.keys(status).sort()).toEqual(["configured", "keyEnv", "ok", "reason"]);
+    });
+
     it("the vault is write-only: no route brings a value back, and grants are per bot", async () => {
       const { api } = w.started;
       const bot = await api.bots.create({
@@ -477,3 +483,20 @@ describe.skipIf(!DATABASE_URL)(
     });
   },
 );
+
+describe.skipIf(!DATABASE_URL)(dbSuiteName("a server without a vault"), { timeout: 60_000 }, () => {
+  const w = useWorld({ scripts: SCRIPTS, config: { approvals: {} } });
+  const code = (promise: Promise<unknown>) =>
+    promise.then(
+      () => "no error",
+      (error: { code?: string }) => error.code ?? String(error),
+    );
+  it("says so before anyone tries to write, and writes answer 503 with the reason", async () => {
+    const { api } = w.started;
+    const status = await api.vault.status();
+    expect(status).toMatchObject({ configured: false, ok: false, keyEnv: null });
+    expect(status.reason).toContain("vault");
+    expect(await api.vault.list()).toEqual([]);
+    expect(await code(api.vault.set("NO_VAULT_TOKEN", { value: "12345678" }))).toBe("unavailable");
+  });
+});

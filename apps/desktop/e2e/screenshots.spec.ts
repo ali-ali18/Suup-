@@ -1,5 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
-import { DATABASE_URL, SKIP_REASON, startWorld, type World } from "./harness.js";
+import { DATABASE_URL, fakeMcpCommand, SKIP_REASON, startWorld, type World } from "./harness.js";
 import { connect, selectBot, send } from "./helpers.js";
 
 // Takes a screenshot of each main screen from a real run of the app, for the visual review against
@@ -75,6 +75,61 @@ test.describe("screenshots", () => {
     await talk("Cookie", "CASE-MD mostre um resumo");
     await talk("Sênior", "CASE-OPTIONS escolha uma cor");
     await talk("Contas", "CASE-QUIZ pergunte");
+    // Phase 3: a card waiting for approval, a secret request, the vault, rules and a connector.
+    await api.bots.create({
+      ...base,
+      name: "Escriba",
+      description: "Escreve e organiza as notas",
+      avatar: "mascot:star",
+      color: "laranja",
+    });
+    await api.bots.create({
+      ...base,
+      name: "Chaveiro",
+      description: "Cuida das integrações",
+      avatar: "mascot:clover",
+      color: "rosa",
+    });
+    const phase3 = await api.bots.list();
+    const phase3Id = (name: string) => phase3.find((b) => b.name === name)?.id as string;
+    await api.vault.set("GITHUB_TOKEN", {
+      value: "ghp_screenshot_value_000111",
+      description: "push no repositório da loja",
+      grantBotIds: [phase3Id("Nova"), phase3Id("Escriba")],
+    });
+    await api.vault.set("ERP_TOKEN", {
+      value: "erp_screenshot_value_222333",
+      description: "API do ERP (somente leitura)",
+    });
+    await api.rules.create({
+      tool: "write_file",
+      effect: "allow",
+      botId: phase3Id("Nova"),
+      matchers: [{ field: "path", op: "starts_with", value: "notas/" }],
+      note: "A pasta notas/ é só minha",
+    });
+    await api.rules.create({
+      tool: "web_fetch",
+      effect: "deny",
+      matchers: [{ field: "url", op: "contains", value: "exemplo-ruim.com" }],
+    });
+    const mcp = fakeMcpCommand();
+    await api.connectors.create({
+      name: "fake",
+      description: "Servidor de teste do Suup",
+      transport: { kind: "stdio", command: mcp.command, args: mcp.args },
+      scope: "read_write",
+      grantBotIds: [phase3Id("Nova")],
+    });
+    await api.connectors.test("fake");
+    await api.connectors.setToolRisk("fake", "echo", { risk: "read" });
+    for (const [name, text] of [
+      ["Escriba", "CASE-APPROVE escreva o arquivo de notas"],
+      ["Chaveiro", "CASE-SECRET preciso do token"],
+    ] as const) {
+      const conversation = await api.bots.openConversation(phase3Id(name));
+      await api.conversations.send(conversation.id, text);
+    }
     await api.memories.add({ layer: "rule", text: "Responda sempre em português." });
     await api.memories.add({ layer: "profile", text: "Moro em São Paulo e estudo à noite." });
     return world;
@@ -93,6 +148,8 @@ test.describe("screenshots", () => {
         page.screenshot({ path: `screenshots/${size.dir}/${name}.png` });
       const settle = async () => {
         await page.evaluate(() => document.fonts.ready);
+        // Past the short transitions of buttons and cards.
+        await page.waitForTimeout(250);
       };
 
       await page.goto(world.appUrl);
@@ -193,8 +250,82 @@ test.describe("screenshots", () => {
       await expect(page.getByTestId("inspector-events").locator("li").first()).toBeVisible();
       await shot("16-inspetor");
 
-      // Light theme, once.
+      // Phase 3: the approval card, the secure form, and the settings sections.
       await page.getByRole("button", { name: "Voltar" }).click();
+      await selectBot(page, "Escriba");
+      const approval = page.getByTestId("approval-card");
+      await expect(approval).toHaveAttribute("data-state", "needs-action");
+      await settle();
+      await shot("18-aprovacao-cartao");
+      await approval.getByTestId("approval-always-toggle").click();
+      await settle();
+      await shot("18b-aprovacao-sempre-permitir");
+      await approval.getByTestId("approval-always-toggle").click();
+      await approval.getByTestId("approval-approve").click();
+      await expect(approval).toHaveAttribute("data-state", "done");
+      await approval.getByRole("button", { name: /Aprovado/ }).click();
+      await expect(
+        page.getByTestId("message-bot").filter({ hasText: "Escrevi o arquivo aprovado." }),
+      ).toBeVisible();
+      await settle();
+      await shot("18c-aprovacao-resolvida");
+      await selectBot(page, "Chaveiro");
+      const secret = page.getByTestId("secret-card");
+      await expect(secret).toHaveAttribute("data-state", "needs-action");
+      await secret.getByTestId("secret-input").fill("valor-so-para-a-captura");
+      await settle();
+      await shot("19-segredo-formulario");
+      await secret.getByTestId("secret-input").fill("");
+      await page.getByTestId("owner-menu").click();
+      await page.getByRole("menuitem", { name: /Pendências/ }).click();
+      await expect(page.getByTestId("pending-secret")).toHaveCount(1);
+      await page.getByTestId("pending-secret").scrollIntoViewIfNeeded();
+      await settle();
+      await shot("19b-pendencias-segredo");
+      await page.getByTestId("owner-menu").click();
+      await page.getByRole("menuitem", { name: "Configurações" }).click();
+      await page.getByRole("tab", { name: "Aprovações" }).click();
+      await expect(page.getByTestId("rule-row")).toHaveCount(2);
+      await settle();
+      await shot("20-config-aprovacoes");
+      await page.getByTestId("rule-new").click();
+      await page.getByTestId("rule-effect-deny").click();
+      await page.getByRole("button", { name: "Adicionar condição" }).click();
+      await page
+        .getByTestId("rule-condition")
+        .getByLabel("Campo dos argumentos (ex.: command)")
+        .fill("path");
+      await page.getByTestId("rule-condition").getByLabel("Valor").fill("/etc/");
+      await settle();
+      await shot("20b-config-nova-regra");
+      await page.getByRole("button", { name: "Cancelar" }).click();
+      await page.getByRole("tab", { name: "Cofre" }).click();
+      await expect(page.getByTestId("secret-row")).toHaveCount(2);
+      await page.getByTestId("secret-row").first().getByTestId("secret-grants-toggle").click();
+      await settle();
+      await shot("21-config-cofre");
+      await page.getByTestId("secret-new").click();
+      await settle();
+      await shot("21b-config-novo-segredo");
+      await page.getByRole("button", { name: "Cancelar" }).click();
+      await page.getByRole("tab", { name: "Conectores" }).click();
+      const connector = page.getByTestId("connector-row").filter({ hasText: "fake" });
+      await expect(connector).toBeVisible();
+      await connector.getByTestId("connector-details").click();
+      await expect(connector.getByTestId("connector-tools")).toBeVisible();
+      await settle();
+      await shot("22-config-conectores");
+      await connector.getByTestId("connector-tools").scrollIntoViewIfNeeded();
+      await connector.getByTestId("connector-tools-unavailable").scrollIntoViewIfNeeded();
+      await settle();
+      await shot("22b-config-conectores-ferramentas");
+      await page.getByTestId("connector-new").click();
+      await settle();
+      await shot("23-adicionar-conector");
+      await page.getByRole("button", { name: "Cancelar" }).click();
+      await page.getByRole("tab", { name: "Geral" }).click();
+
+      // Light theme, once.
       await page.getByTestId("owner-menu").click();
       await page.getByRole("menuitem", { name: "Configurações" }).click();
       await page.getByRole("radio", { name: "Claro" }).click();

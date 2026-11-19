@@ -239,6 +239,7 @@ Só **escrita**: não existe rota nem campo que devolva um valor. O que é e o q
 
 | Método e caminho | Corpo | Resposta |
 |---|---|---|
+| `GET /v1/vault` | | `200 { configured, ok, keyEnv, reason }`: o servidor consegue guardar segredos? `configured`: a seção `vault` está na configuração; `ok`: a chave existe no ambiente e é válida; `keyEnv`: o **nome** da variável (nunca a chave); `reason`: o que falta, em português. O app usa para avisar antes de tentar escrever |
 | `GET /v1/secrets` | | `200 { items: [Secret] }` |
 | `PUT /v1/secrets/{nome}` | `{ value, description?, grantBotIds? }` | `200 Secret`. Cria ou **substitui** o valor (as concessões ficam); `value` de 8 a 16 384 caracteres; `400`; `503` |
 | `DELETE /v1/secrets/{nome}` | | `200 { deleted: true }`; `404` |

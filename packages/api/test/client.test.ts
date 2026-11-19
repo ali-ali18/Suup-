@@ -194,7 +194,7 @@ describe("client", () => {
   it("the vault client has no call that reads a value, and its schema has no field for one", async () => {
     const { vault } = client(() => new Response("{}")).api;
     expect(Object.keys(vault).sort()).toEqual(
-      ["answerRequest", "grant", "list", "remove", "request", "revoke", "set"].sort(),
+      ["answerRequest", "grant", "list", "remove", "request", "revoke", "set", "status"].sort(),
     );
     const { secretSchema } = await import("../src/index.js");
     expect(Object.keys(secretSchema.shape)).not.toEqual(expect.arrayContaining(["value"]));
@@ -289,6 +289,7 @@ describe("client", () => {
       ["POST /v1/approval-rules", () => api.rules.create({ tool: "t", effect: "allow" })],
       [`PATCH /v1/approval-rules/${uuid}`, () => api.rules.update(uuid, { effect: "deny" })],
       [`DELETE /v1/approval-rules/${uuid}`, () => api.rules.remove(uuid)],
+      ["GET /v1/vault", () => api.vault.status()],
       ["GET /v1/secrets", () => api.vault.list()],
       ["PUT /v1/secrets/API_TOKEN", () => api.vault.set("API_TOKEN", { value: "12345678" })],
       ["DELETE /v1/secrets/API_TOKEN", () => api.vault.remove("API_TOKEN")],

@@ -70,7 +70,13 @@ export const TOOL_LABEL: Record<string, string> = {
   search_conversations: "Buscar nas conversas",
 };
 
-export const CONTROL_TOOLS: ReadonlySet<string> = new Set(["plan", "finish", "escalate"]);
+/** The control tools are not cards: `request_secret` is the secure form, not an "action". */
+export const CONTROL_TOOLS: ReadonlySet<string> = new Set([
+  "plan",
+  "finish",
+  "escalate",
+  "request_secret",
+]);
 
 export const toolLabel = (name: string): string => TOOL_LABEL[name] ?? name;
 

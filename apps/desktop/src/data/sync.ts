@@ -1,9 +1,14 @@
 import {
   ApiError,
+  type Approval,
+  type ApprovalRule,
   type Bot,
+  type Connector,
   type Conversation,
+  type DecideApprovalBody,
   type Message,
   type Run,
+  type Secret,
   type StreamEvent,
   type Subscription,
   type SuupClient,
@@ -13,25 +18,38 @@ import {
   applyStreamEvent,
   contiguousSeq,
   isTerminal,
+  mergeApproval,
+  mergeApprovals,
   mergeBot,
+  mergeConnector,
   mergeConversation,
   mergeConversations,
   mergeMemory,
   mergeMessagePage,
+  mergeRule,
   mergeRun,
   mergeRunEvents,
   mergeRuns,
+  mergeSecret,
+  removeConnector,
+  removeRule,
+  removeSecret,
   resolveOptimisticMessage,
   rollbackOptimisticMessage,
   setBots,
   setConnection,
+  setConnectors,
   setMemories,
+  setRules,
+  setSecrets,
+  setVaultStatus,
+  stalePendingIds,
   upsertMessage,
 } from "./reducers.js";
 import { type DataStore, update } from "./store.js";
 
 export interface SyncNotice {
-  kind: "question" | "done" | "failed";
+  kind: "question" | "approval" | "done" | "failed";
   botId: string | null;
   text: string;
 }
@@ -58,6 +76,16 @@ export const messageOf = (error: unknown): string =>
 
 const EVENT_PAGE = 500;
 
+/** What happened to a decision the person made on an approval card. Nothing is shown before it. */
+export type DecideOutcome =
+  /** The server confirmed (`rule` is the rule an "always allow" created). */
+  | { ok: true; approval: Approval; rule: ApprovalRule | null }
+  /** The card was already decided (or cancelled, or expired) somewhere else; `approval` is how it is now. */
+  | { ok: false; reason: "decided_elsewhere"; approval: Approval | undefined }
+  /** A decision on this card is already on its way. */
+  | { ok: false; reason: "busy" }
+  | { ok: false; reason: "error"; message: string };
+
 /**
  * Keeps the store equal to the server: stream first, REST after, reconnects, resync. The screen
  * tells it what it is looking at (`watchConversation`, `follow`) and reads the store; it never
@@ -74,6 +102,8 @@ export class Sync {
   /** Event loads in flight, so two callers do not fetch the same run at once. */
   private readonly loading = new Map<string, Promise<void>>();
   private readyWaiters: ((ok: boolean) => void)[] = [];
+  /** Cards whose decision is on its way (a card is decided once: no second request meanwhile). */
+  private readonly deciding = new Set<string>();
 
   constructor(private readonly deps: SyncDeps) {
     this.pageSize = deps.pageSize ?? 50;
@@ -160,7 +190,12 @@ export class Sync {
   /** What a bot-side event means for someone who is not looking: only questions and endings. */
   private notify(event: StreamEvent): void {
     const state = this.store.getState();
-    if (event.type === "message.created") {
+    if (event.type === "approval.changed") {
+      const card = event.data.approval;
+      if (card.status === "pending" && state.approvals[card.id] === undefined) {
+        this.deps.onNotice?.({ kind: "approval", botId: card.botId, text: card.summary });
+      }
+    } else if (event.type === "message.created") {
       const m = event.data.message;
       if (m.authorKind === "bot" && m.question !== undefined) {
         this.deps.onNotice?.({
@@ -195,6 +230,7 @@ export class Sync {
       ...[...this.watched].map((id) => this.refreshConversation(id)),
       ...this.followed.map((id) => this.loadRunEvents(id)),
       this.memoryWatched ? this.loadMemories() : Promise.resolve(),
+      this.loadPendingApprovals(),
     ]);
   }
 
@@ -260,6 +296,7 @@ export class Sync {
       this.loadNewestMessages(conversationId),
       this.loadConversationRuns(conversationId),
       this.refreshConversationRow(conversationId),
+      this.loadConversationApprovals(conversationId),
     ]);
   }
 
@@ -424,6 +461,185 @@ export class Sync {
       update(this.store, (s) => mergeConversation(s, conversation));
     } catch (error) {
       this.fail(error);
+    }
+  }
+
+  // -------------------------------------------------------------- approvals
+
+  /**
+   * Every card waiting for the person, of every bot. A card the app held as pending that is not in
+   * the list was decided somewhere else (the list cannot say how), so each of those is read by id.
+   */
+  async loadPendingApprovals(): Promise<void> {
+    try {
+      const items = await this.deps.api.approvals.list({ status: "pending", limit: 200 });
+      const stale = stalePendingIds(this.store.getState(), items);
+      update(this.store, (s) => mergeApprovals(s, items));
+      await Promise.all(stale.map((id) => this.loadApproval(id)));
+    } catch (error) {
+      this.fail(error);
+    }
+  }
+
+  /** The cards of a conversation (decided ones too): what the chat draws among its messages. */
+  async loadConversationApprovals(conversationId: string): Promise<void> {
+    try {
+      const items = await this.deps.api.approvals.list({ conversationId, limit: 200 });
+      update(this.store, (s) => mergeApprovals(s, items));
+    } catch (error) {
+      this.fail(error);
+    }
+  }
+
+  async loadApproval(id: string): Promise<Approval | undefined> {
+    try {
+      const card = await this.deps.api.approvals.get(id);
+      update(this.store, (s) => mergeApproval(s, card));
+      return this.store.getState().approvals[id];
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Sends the person's decision. Not optimistic: the store changes only with what the server
+   * answers (or, when the card turns out to have been decided elsewhere, with how it stands now).
+   */
+  async decideApproval(id: string, body: DecideApprovalBody): Promise<DecideOutcome> {
+    if (this.deciding.has(id)) return { ok: false, reason: "busy" };
+    this.deciding.add(id);
+    try {
+      const result = await this.deps.api.approvals.decide(id, body);
+      update(this.store, (s) => {
+        const next = mergeApproval(s, result.approval);
+        return result.rule === null ? next : mergeRule(next, result.rule);
+      });
+      return { ok: true, approval: result.approval, rule: result.rule };
+    } catch (error) {
+      if (error instanceof ApiError && (error.code === "conflict" || error.code === "not_found")) {
+        const approval = await this.loadApproval(id);
+        return { ok: false, reason: "decided_elsewhere", approval };
+      }
+      return { ok: false, reason: "error", message: messageOf(error) };
+    } finally {
+      this.deciding.delete(id);
+    }
+  }
+
+  // --------------------------------------------- rules, vault and connectors
+  // No stream frame for these: the screen reads them when it opens, and the server answers each write
+  // with the new row (merged here), so nothing is guessed.
+
+  async loadRules(): Promise<void> {
+    try {
+      const items = await this.deps.api.rules.list();
+      update(this.store, (s) => setRules(s, items));
+    } catch (error) {
+      this.fail(error);
+    }
+  }
+
+  /** Runs a write that answers with the rule, merges it, and says whether it worked (the error is shown by the caller). */
+  async ruleCall(
+    call: () => Promise<ApprovalRule>,
+  ): Promise<{ ok: true } | { ok: false; message: string }> {
+    try {
+      const rule = await call();
+      update(this.store, (s) => mergeRule(s, rule));
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, message: messageOf(error) };
+    }
+  }
+
+  async deleteRule(id: string): Promise<{ ok: true } | { ok: false; message: string }> {
+    try {
+      await this.deps.api.rules.remove(id);
+      update(this.store, (s) => removeRule(s, id));
+      return { ok: true };
+    } catch (error) {
+      if (error instanceof ApiError && error.code === "not_found") {
+        update(this.store, (s) => removeRule(s, id));
+        return { ok: true };
+      }
+      return { ok: false, message: messageOf(error) };
+    }
+  }
+
+  async loadVault(): Promise<void> {
+    try {
+      const [status, items] = await Promise.all([
+        this.deps.api.vault.status(),
+        this.deps.api.vault.list(),
+      ]);
+      update(this.store, (s) => setSecrets(setVaultStatus(s, status), items));
+    } catch (error) {
+      this.fail(error);
+    }
+  }
+
+  /** Merges the metadata of a secret the screen just wrote (never a value: the API has none). */
+  mergeSecretNow(secret: Secret): void {
+    update(this.store, (s) => mergeSecret(s, secret));
+  }
+
+  async secretCall(
+    call: () => Promise<Secret>,
+  ): Promise<{ ok: true } | { ok: false; message: string }> {
+    try {
+      this.mergeSecretNow(await call());
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, message: messageOf(error) };
+    }
+  }
+
+  async deleteSecret(name: string): Promise<{ ok: true } | { ok: false; message: string }> {
+    try {
+      await this.deps.api.vault.remove(name);
+      update(this.store, (s) => removeSecret(s, name));
+      return { ok: true };
+    } catch (error) {
+      if (error instanceof ApiError && error.code === "not_found") {
+        update(this.store, (s) => removeSecret(s, name));
+        return { ok: true };
+      }
+      return { ok: false, message: messageOf(error) };
+    }
+  }
+
+  async loadConnectors(): Promise<void> {
+    try {
+      const items = await this.deps.api.connectors.list();
+      update(this.store, (s) => setConnectors(s, items));
+    } catch (error) {
+      this.fail(error);
+    }
+  }
+
+  async connectorCall(
+    call: () => Promise<Connector>,
+  ): Promise<{ ok: true; connector: Connector } | { ok: false; message: string }> {
+    try {
+      const connector = await call();
+      update(this.store, (s) => mergeConnector(s, connector));
+      return { ok: true, connector };
+    } catch (error) {
+      return { ok: false, message: messageOf(error) };
+    }
+  }
+
+  async deleteConnector(name: string): Promise<{ ok: true } | { ok: false; message: string }> {
+    try {
+      await this.deps.api.connectors.remove(name);
+      update(this.store, (s) => removeConnector(s, name));
+      return { ok: true };
+    } catch (error) {
+      if (error instanceof ApiError && error.code === "not_found") {
+        update(this.store, (s) => removeConnector(s, name));
+        return { ok: true };
+      }
+      return { ok: false, message: messageOf(error) };
     }
   }
 

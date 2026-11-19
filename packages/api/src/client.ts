@@ -94,6 +94,8 @@ import {
   secretListSchema,
   secretRequestSchema,
   secretSchema,
+  type VaultStatus,
+  vaultStatusSchema,
 } from "./vault.js";
 
 export interface ClientOptions {
@@ -211,6 +213,8 @@ export interface SuupClient {
     test(name: string): Promise<ConnectorTest>;
   };
   vault: {
+    /** Whether the server has a vault it can write to (the section and the key), and why not. */
+    status(): Promise<VaultStatus>;
     /** Names and metadata. There is no way to read a value back. */
     list(): Promise<Secret[]>;
     /** Creates or replaces a secret (write-only). */
@@ -452,6 +456,7 @@ export function createClient(options: ClientOptions): SuupClient {
       test: (name) => call("POST", `/v1/connectors/${id(name)}/test`, connectorTestSchema, noBody),
     },
     vault: {
+      status: () => call("GET", "/v1/vault", vaultStatusSchema),
       list: async () => (await call("GET", "/v1/secrets", secretListSchema)).items,
       set: (name, body) => call("PUT", `/v1/secrets/${id(name)}`, secretSchema, { body }),
       remove: async (name) => {

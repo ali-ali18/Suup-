@@ -13,6 +13,15 @@ function nameOf(raw: string): string {
 
 export const vaultRoutes: Route[] = [
   {
+    // Can the server write secrets? (the section is configured and the key is present and valid)
+    method: "GET",
+    pattern: "/v1/vault",
+    async handler(ctx) {
+      const { configured, ok, keyEnv, reason } = ctx.runtime.vault.status();
+      return { body: { configured, ok, keyEnv, reason } };
+    },
+  },
+  {
     method: "GET",
     pattern: "/v1/secrets",
     async handler(ctx) {

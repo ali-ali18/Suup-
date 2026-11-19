@@ -1,12 +1,18 @@
 import type {
+  Approval,
+  ApprovalRule,
+  ApprovalStatus,
   Bot,
+  Connector,
   Conversation,
   Memory,
   Message,
   Run,
   RunEvent,
   RunStatus,
+  Secret,
   StreamEvent,
+  VaultStatus,
 } from "@suup/api";
 import {
   type Connection,
@@ -283,6 +289,162 @@ export function setMemories(state: DataState, items: readonly Memory[]): DataSta
   return { ...state, memories, memoriesLoaded: true };
 }
 
+// --------------------------------------------------------------- approvals
+
+/** A card is `pending` until it is decided; after that it never changes (a card is decided once). */
+export const isDecided = (status: ApprovalStatus): boolean => status !== "pending";
+
+/**
+ * A decided card is final: a late frame or a REST answer that still says `pending` (it was read
+ * before the decision) changes nothing, and neither does a second decided version. Two versions of
+ * a pending card are the same card.
+ */
+export function mergeApproval(state: DataState, approval: Approval): DataState {
+  const current = state.approvals[approval.id];
+  if (current !== undefined && isDecided(current.status)) return state;
+  if (current !== undefined && sameJson(current, approval)) return state;
+  return { ...state, approvals: { ...state.approvals, [approval.id]: approval } };
+}
+
+export function mergeApprovals(state: DataState, items: readonly Approval[]): DataState {
+  const next = items.reduce(mergeApproval, state);
+  return next.approvalsLoaded ? next : { ...next, approvalsLoaded: true };
+}
+
+/** The approvals waiting for the user, oldest first (the one that waits longest comes first). */
+export function pendingApprovals(state: Pick<DataState, "approvals" | "bots">): Approval[] {
+  return Object.values(state.approvals)
+    .filter((a) => a.status === "pending" && state.bots[a.botId] !== undefined)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+}
+
+/**
+ * After reading the whole list of pending cards: the cards held as pending that are not in it were
+ * decided somewhere else (or cancelled, or expired). The list cannot say how, so the caller reads
+ * each one by id.
+ */
+export function stalePendingIds(
+  state: Pick<DataState, "approvals">,
+  listed: readonly Approval[],
+): string[] {
+  const ids = new Set(listed.map((a) => a.id));
+  return Object.values(state.approvals)
+    .filter((a) => a.status === "pending" && !ids.has(a.id))
+    .map((a) => a.id);
+}
+
+/** The cards of a conversation, oldest first: what the chat draws among the messages. */
+export function approvalsOfConversation(
+  state: Pick<DataState, "approvals" | "runs">,
+  conversationId: string,
+): Approval[] {
+  return Object.values(state.approvals)
+    .filter(
+      (a) =>
+        a.conversationId === conversationId ||
+        (a.conversationId === null && state.runs[a.runId]?.conversationId === conversationId),
+    )
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+}
+
+// ----------------------------------------------------- rules, vault, connectors
+// None of these has a stream frame: the screen reads them when it opens and again after each write
+// (the server answers every write with the new row). A list read replaces the set, but keeps a row
+// the screen already holds in a newer version than the list's (the write answered while it was in
+// flight).
+
+function replaceSet<T extends { updatedAt: string }>(
+  held: Record<string, T>,
+  items: readonly T[],
+  key: (item: T) => string,
+): Record<string, T> {
+  const next: Record<string, T> = {};
+  for (const item of items) {
+    const current = held[key(item)];
+    next[key(item)] = current !== undefined && current.updatedAt > item.updatedAt ? current : item;
+  }
+  return next;
+}
+
+export function setRules(state: DataState, items: readonly ApprovalRule[]): DataState {
+  return { ...state, rules: replaceSet(state.rules, items, (r) => r.id), rulesLoaded: true };
+}
+
+export function mergeRule(state: DataState, rule: ApprovalRule): DataState {
+  const current = state.rules[rule.id];
+  if (current !== undefined && current.updatedAt > rule.updatedAt) return state;
+  if (current !== undefined && sameJson(current, rule)) return state;
+  return { ...state, rules: { ...state.rules, [rule.id]: rule } };
+}
+
+export function removeRule(state: DataState, id: string): DataState {
+  if (state.rules[id] === undefined) return state;
+  const { [id]: _gone, ...rest } = state.rules;
+  return { ...state, rules: rest };
+}
+
+/** Rules in the order the screen lists them: the oldest first, as the server does. */
+export function orderedRules(state: Pick<DataState, "rules">): ApprovalRule[] {
+  return Object.values(state.rules).sort(
+    (a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id),
+  );
+}
+
+export function setSecrets(state: DataState, items: readonly Secret[]): DataState {
+  return {
+    ...state,
+    secrets: replaceSet(state.secrets, items, (s) => s.name),
+    secretsLoaded: true,
+  };
+}
+
+export function mergeSecret(state: DataState, secret: Secret): DataState {
+  const current = state.secrets[secret.name];
+  if (current !== undefined && current.updatedAt > secret.updatedAt) return state;
+  if (current !== undefined && sameJson(current, secret)) return state;
+  return { ...state, secrets: { ...state.secrets, [secret.name]: secret } };
+}
+
+export function removeSecret(state: DataState, name: string): DataState {
+  if (state.secrets[name] === undefined) return state;
+  const { [name]: _gone, ...rest } = state.secrets;
+  return { ...state, secrets: rest };
+}
+
+export function orderedSecrets(state: Pick<DataState, "secrets">): Secret[] {
+  return Object.values(state.secrets).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export function setVaultStatus(state: DataState, vault: VaultStatus): DataState {
+  if (state.vault !== null && sameJson(state.vault, vault)) return state;
+  return { ...state, vault };
+}
+
+export function setConnectors(state: DataState, items: readonly Connector[]): DataState {
+  return {
+    ...state,
+    connectors: replaceSet(state.connectors, items, (c) => c.name),
+    connectorsLoaded: true,
+  };
+}
+
+export function mergeConnector(state: DataState, connector: Connector): DataState {
+  const current = state.connectors[connector.name];
+  if (current !== undefined && current.updatedAt > connector.updatedAt) return state;
+  if (current !== undefined && sameJson(current, connector)) return state;
+  return { ...state, connectors: { ...state.connectors, [connector.name]: connector } };
+}
+
+export function removeConnector(state: DataState, name: string): DataState {
+  if (state.connectors[name] === undefined) return state;
+  const { [name]: _gone, ...rest } = state.connectors;
+  return { ...state, connectors: rest };
+}
+
+export function orderedConnectors(state: Pick<DataState, "connectors">): Connector[] {
+  return Object.values(state.connectors).sort((a, b) => a.name.localeCompare(b.name));
+}
+
 // -------------------------------------------------------------- connection
 
 export function setConnection(state: DataState, connection: Connection): DataState {
@@ -310,8 +472,7 @@ export function applyStreamEvent(state: DataState, event: StreamEvent): DataStat
     case "bot.updated":
       return mergeBot(state, event.data.bot);
     case "approval.changed":
-      // The approval cards have no screen yet (they come with the desktop work of phase 3).
-      return state;
+      return mergeApproval(state, event.data.approval);
     case "ready":
     case "resync":
       return state;

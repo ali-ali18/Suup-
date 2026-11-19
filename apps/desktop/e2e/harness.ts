@@ -9,7 +9,13 @@ import { fileURLToPath } from "node:url";
 import { createClient, type SuupClient } from "@suup/api";
 import type { Worker } from "@suup/core";
 import { createDb, type Db, migrate } from "@suup/db";
-import { createRuntime, parseConfig, type Runtime, type RuntimeConfig } from "@suup/runtime";
+import {
+  createRuntime,
+  generateKeyText,
+  parseConfig,
+  type Runtime,
+  type RuntimeConfig,
+} from "@suup/runtime";
 import { createServer, generateToken, type SuupServer } from "@suup/server";
 
 // A real Suup server in this process, for the browser to talk to: Postgres (one schema per file),
@@ -22,6 +28,20 @@ export const SKIP_REASON =
 
 const DIST = fileURLToPath(new URL("../dist/", import.meta.url));
 
+/**
+ * The in-repo fake MCP server (`packages/connectors/src/testing/fake-server.ts`), as the command a
+ * connector runs: Node itself, from the sources (type stripping), the same path a real server takes.
+ */
+export function fakeMcpCommand(): { command: string; args: string[] } {
+  const file = fileURLToPath(
+    new URL("../../../packages/connectors/src/testing/fake-server.ts", import.meta.url),
+  );
+  return { command: process.execPath, args: ["--experimental-strip-types", "--no-warnings", file] };
+}
+
+/** The name of the environment variable that holds the vault's master key in the test servers. */
+export const VAULT_KEY_ENV = "SUUP_E2E_VAULT_KEY";
+
 const usage = { inputTokens: 1000, outputTokens: 100 };
 const s = <T extends object>(step: T) => ({ ...step, usage });
 const plan = (...steps: [string, string, string][]) => ({
@@ -29,6 +49,10 @@ const plan = (...steps: [string, string, string][]) => ({
   args: { steps: steps.map(([id, title, status]) => ({ id, title, status })) },
 });
 const shell = (command: string) => ({ name: "shell", args: { command } });
+const writeCall = (path: string, content: string) => ({
+  name: "write_file",
+  args: { path, content },
+});
 const finish = (summary: string) => ({ name: "finish", args: { summary, evidence: [] } });
 
 /** The scripts of the scripted provider: each case is chosen by a word in the message. */
@@ -219,6 +243,110 @@ export const SCRIPTS = {
           }),
         ],
       },
+      // ---- Phase 3: approvals, the vault and connectors. `write_file` asks (see `approvals.levels`).
+      {
+        whenObjectiveContains: "CASE-APPROVE",
+        agent: [
+          s({
+            text: "Vou gravar o arquivo.",
+            calls: [writeCall("aprovado.txt", "conteúdo aprovado\nsegunda linha")],
+          }),
+          s({ text: "Escrevi o arquivo aprovado." }),
+        ],
+      },
+      {
+        whenObjectiveContains: "CASE-DENY",
+        agent: [
+          s({ calls: [writeCall("negado.txt", "isto não deve ser escrito")] }),
+          s({ text: "Entendi, não escrevi o arquivo." }),
+        ],
+      },
+      {
+        // The second message of that conversation (matched before CASE-ALWAYS, which the whole
+        // conversation still contains). The history counts as one earlier answer of the bot, so the
+        // call is the second step of the script, and the run ends on the third.
+        whenObjectiveContains: "CASE-AGAIN",
+        agent: [
+          s({ text: "(esta etapa pertence ao primeiro pedido)" }),
+          s({ calls: [writeCall("sempre.txt", "pode sempre")] }),
+          s({ text: "Segundo arquivo escrito, sem perguntar." }),
+        ],
+      },
+      {
+        // The same call twice, in two messages of the conversation: "always allow" on the first one
+        // must make the second run without a card (see CASE-AGAIN).
+        whenObjectiveContains: "CASE-ALWAYS",
+        agent: [
+          s({ calls: [writeCall("sempre.txt", "pode sempre")] }),
+          s({ text: "Primeiro arquivo escrito." }),
+        ],
+      },
+      {
+        whenObjectiveContains: "CASE-BIGARGS",
+        agent: [
+          s({
+            calls: [
+              writeCall(
+                "longo.txt",
+                Array.from({ length: 30 }, (_, i) => `linha ${i + 1} do arquivo longo`).join("\n"),
+              ),
+            ],
+          }),
+          s({ text: "Arquivo longo escrito." }),
+        ],
+      },
+      {
+        // A rule of the user forbids this path: no card, the bot is told and goes on.
+        whenObjectiveContains: "CASE-RULEDENY",
+        agent: [
+          s({ calls: [writeCall("proibido/segredo.txt", "não")] }),
+          s({ text: "A regra não deixou eu escrever lá." }),
+        ],
+      },
+      {
+        whenObjectiveContains: "CASE-SECRET-NO",
+        agent: [
+          s({
+            calls: [
+              {
+                name: "request_secret",
+                args: { name: "E2E_RECUSADO", reason: "para o teste de recusa" },
+              },
+            ],
+          }),
+          s({ text: "Sem o segredo, sigo de outro jeito." }),
+        ],
+      },
+      {
+        whenObjectiveContains: "CASE-SECRET",
+        agent: [
+          s({
+            calls: [
+              {
+                name: "request_secret",
+                args: { name: "E2E_TOKEN", reason: "para acessar a API de teste" },
+              },
+            ],
+          }),
+          s({ calls: [shell("echo token-recebido={{secret:E2E_TOKEN}}")] }),
+          s({ text: "Recebi o segredo e usei." }),
+        ],
+      },
+      {
+        // A tool of the connector `fake` (granted to the bot in the test): it writes, so it asks.
+        whenObjectiveContains: "CASE-CONNECTOR",
+        agent: [
+          s({
+            calls: [
+              {
+                name: "conn_fake__write_thing",
+                args: { name: "coisa", body: "corpo enviado pelo conector" },
+              },
+            ],
+          }),
+          s({ text: "Criei a coisa no conector." }),
+        ],
+      },
       { whenObjectiveContains: "OI-SIMPLES", agent: [s({ text: "Olá! Como posso ajudar?" })] },
     ],
   },
@@ -274,7 +402,11 @@ async function serveDist(): Promise<{ server: Server; origin: string }> {
 }
 
 export async function startWorld(
-  options: { scripts?: Record<string, unknown> } = {},
+  options: {
+    scripts?: Record<string, unknown>;
+    /** A vault with its master key (default). `false`: a server with no vault configured. */
+    vault?: boolean;
+  } = {},
 ): Promise<World> {
   if (DATABASE_URL === undefined) throw new Error(SKIP_REASON);
   const schema = `e2e_${randomBytes(6).toString("hex")}`;
@@ -287,7 +419,11 @@ export async function startWorld(
   });
   const url = new URL(DATABASE_URL);
   url.searchParams.set("search_path", schema);
-  const env = { DATABASE_URL: url.toString() };
+  const vault = options.vault ?? true;
+  const env: Record<string, string> = {
+    DATABASE_URL: url.toString(),
+    ...(vault ? { [VAULT_KEY_ENV]: generateKeyText() } : {}),
+  };
   const db = createDb(DATABASE_URL, { schema });
   cleanups.unshift(() => db.close());
   await migrate(db);
@@ -317,7 +453,10 @@ export async function startWorld(
       { id: "model-y", provider: "outro", contextWindow: 100_000, maxOutputTokens: 4096 },
     ],
     sandbox: { kind: "local", root: "workspace" },
-    approvals: { levels: { shell: "write_reversible" } },
+    // The shell does not ask (most scripts use it); writing a file does, which is what the approval
+    // tests call. Phase 3 also has the vault, and connectors need nothing here.
+    approvals: { levels: { shell: "write_reversible", write_file: "external_irreversible" } },
+    ...(vault ? { vault: { keyEnv: VAULT_KEY_ENV } } : {}),
     worker: { concurrency: 4, leaseRenewMs: 1000, staleAfterMs: 8000, controlPollMs: 100 },
     defaults: { maxTurns: 30 },
   });

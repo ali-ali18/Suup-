@@ -1,4 +1,4 @@
-import type { Question, Run } from "@suup/api";
+import type { Approval, Question, Run } from "@suup/api";
 import {
   type ActionEntry,
   type ActionItem,
@@ -6,6 +6,7 @@ import {
   VISIBLE_ACTIONS,
 } from "../../data/actions.js";
 import { failureLine } from "../../data/derive.js";
+import type { SecretRequestItem } from "../../data/secret-requests.js";
 import type { LocalMessage } from "../../data/state.js";
 import type { UserMessageState } from "../../ui/message.js";
 
@@ -28,6 +29,10 @@ export type TimelineItem =
     }
   /** The tool calls made between two messages, as cards (older finished ones folded). */
   | { kind: "actions"; key: string; entries: ActionEntry[] }
+  /** An action that waits for the user (or was decided): the approval card. */
+  | { kind: "approval"; key: string; approval: Approval }
+  /** The bot asked for a credential: the secure form (or, once answered, one line). */
+  | { kind: "secret"; key: string; request: SecretRequestItem }
   /** A run that failed or was cancelled: one line that expands in place. */
   | { kind: "ended"; key: string; runId: string; text: string }
   | { kind: "notice"; key: string; text: string }
@@ -71,29 +76,80 @@ export function buildTimeline(
   now: Date,
   /** How many of the latest cards stay visible before older finished ones fold (Infinity: never fold). */
   keep: number = VISIBLE_ACTIONS,
+  /** The approval cards of the conversation and the secure forms of the run, among the actions. */
+  extras: { approvals?: readonly Approval[]; secrets?: readonly SecretRequestItem[] } = {},
 ): TimelineItem[] {
   const items: TimelineItem[] = [];
   const opened = new Set<string>();
-  const waiting = [...actions].sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+  // Everything the bot did, in the order it happened: tool calls, approval cards, secure forms.
+  type Placed =
+    | { kind: "action"; at: string; runId: string; action: ActionItem }
+    | { kind: "approval"; at: string; runId: string; approval: Approval }
+    | { kind: "secret"; at: string; runId: string; request: SecretRequestItem };
+  const waiting: Placed[] = [
+    ...actions.map(
+      (action): Placed => ({
+        kind: "action",
+        at: action.startedAt,
+        runId: action.runId,
+        action,
+      }),
+    ),
+    ...(extras.approvals ?? []).map(
+      (approval): Placed => ({
+        kind: "approval",
+        at: approval.createdAt,
+        runId: approval.runId,
+        approval,
+      }),
+    ),
+    ...(extras.secrets ?? []).map(
+      (request): Placed => ({
+        kind: "secret",
+        at: request.startedAt,
+        runId: request.runId,
+        request,
+      }),
+    ),
+  ].sort((a, b) => a.at.localeCompare(b.at));
   let previous: Date | undefined;
 
-  // The cards due before `until` (all that remain, when `until` is undefined), as one group.
+  // What is due before `until` (all that remains, when `until` is undefined): the tool calls that
+  // follow each other as one group of cards, and each approval card or form on its own.
   const flush = (until?: string) => {
-    const due: ActionItem[] = [];
-    while (waiting.length > 0) {
-      const next = waiting[0] as ActionItem;
-      const ready = opened.has(next.runId) || until === undefined;
-      if (!ready || (until !== undefined && next.startedAt > until)) break;
-      due.push(next);
-      waiting.shift();
-    }
-    if (due.length > 0) {
+    let group: ActionItem[] = [];
+    const closeGroup = () => {
+      if (group.length === 0) return;
       items.push({
         kind: "actions",
-        key: `actions-${(due[0] as ActionItem).callId}`,
-        entries: foldActions(due, keep),
+        key: `actions-${(group[0] as ActionItem).callId}`,
+        entries: foldActions(group, keep),
       });
+      group = [];
+    };
+    while (waiting.length > 0) {
+      const next = waiting[0] as Placed;
+      const ready = opened.has(next.runId) || until === undefined;
+      if (!ready || (until !== undefined && next.at > until)) break;
+      waiting.shift();
+      if (next.kind === "action") group.push(next.action);
+      else {
+        closeGroup();
+        if (next.kind === "approval")
+          items.push({
+            kind: "approval",
+            key: `approval-${next.approval.id}`,
+            approval: next.approval,
+          });
+        else
+          items.push({
+            kind: "secret",
+            key: `secret-${next.request.callId}`,
+            request: next.request,
+          });
+      }
     }
+    closeGroup();
   };
 
   messages.forEach((message, index) => {

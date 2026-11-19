@@ -1,28 +1,62 @@
-import { ShieldCheck } from "lucide-react";
-import { useEffect, useMemo } from "react";
+import { KeyRound, ShieldCheck } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { pendingQuestions, questionMessageOf } from "../../app/selectors.js";
 import { useUi } from "../../app/ui-store.js";
-import { orderedMessages } from "../../data/reducers.js";
+import { orderedEvents, orderedMessages, pendingApprovals } from "../../data/reducers.js";
+import { openSecretRequest } from "../../data/secret-requests.js";
 import { Avatar } from "../../ui/avatar.js";
 import { EmptyState, Pill } from "../../ui/primitives.js";
 import { QuestionCard } from "../../ui/question-card.js";
+import { ApprovalRow, SecretRequestRow } from "../chat/ApprovalRows.js";
 
-/** What waits for you, across every bot: open questions now; approvals come in phase 3. */
+/**
+ * What waits for you, across every bot: open questions, approval cards and secret requests. The
+ * approval cards are the same ones the chat shows (a decision here is a decision there).
+ */
 export function PendingScreen() {
   const { sync } = useServices();
   const runs = useData((s) => s.runs);
   const bots = useData((s) => s.bots);
   const messages = useData((s) => s.messages);
+  const events = useData((s) => s.events);
+  const approvals = useData((s) => s.approvals);
   const selectBot = useUi((s) => s.selectBot);
-  const pending = useMemo(() => pendingQuestions({ runs, bots }), [runs, bots]);
+  const waiting = useMemo(() => pendingQuestions({ runs, bots }), [runs, bots]);
+  const cards = useMemo(() => pendingApprovals({ approvals, bots }), [approvals, bots]);
+  const [clicked, setClicked] = useState<ReadonlySet<string>>(new Set());
+  const toggle = useCallback(
+    (key: string) =>
+      setClicked((current) => {
+        const next = new Set(current);
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+        return next;
+      }),
+    [],
+  );
 
-  // The question is the bot's message: make sure we have each conversation's latest messages.
-  const key = pending.map((r) => r.conversationId).join(",");
+  // The cards are read again when the screen opens (the stream may have missed some while away).
   useEffect(() => {
-    for (const run of pending)
+    void sync.loadPendingApprovals();
+  }, [sync]);
+
+  // A run that waits for the user waits for a question (the bot's message) or a secret (an event of
+  // the run): read both, to tell which it is.
+  const key = waiting.map((r) => `${r.id}:${r.conversationId}`).join(",");
+  useEffect(() => {
+    for (const run of waiting) {
       if (run.conversationId !== null) void sync.loadNewestMessages(run.conversationId);
+      void sync.loadRunEvents(run.id);
+    }
   }, [key, sync]);
+
+  const secrets = waiting.flatMap((run) => {
+    const request = openSecretRequest(run, run.id, orderedEvents(events[run.id]));
+    return request === undefined ? [] : [{ run, request }];
+  });
+  const secretRuns = new Set(secrets.map((s) => s.run.id));
+  const pending = waiting.filter((run) => !secretRuns.has(run.id));
 
   return (
     <div className="screen" data-testid="pending-screen">
@@ -82,11 +116,66 @@ export function PendingScreen() {
         </section>
         <section aria-label="Aprovações" className="pending__section">
           <h2 className="section-label">Aprovações</h2>
-          <EmptyState
-            icon={<ShieldCheck size={16} />}
-            title="Nenhuma aprovação"
-            text="Quando um bot precisar da sua permissão para uma ação, o pedido vai aparecer aqui. Esse recurso chega em uma fase futura."
-          />
+          {cards.length === 0 ? (
+            <EmptyState
+              icon={<ShieldCheck size={16} />}
+              title="Nenhuma aprovação"
+              text="Quando um bot precisar da sua permissão para uma ação, o pedido aparece aqui, com o conteúdo exato que vai rodar."
+            />
+          ) : (
+            cards.map((card, index) => {
+              const bot = bots[card.botId];
+              if (bot === undefined) return null;
+              return (
+                <div key={card.id} className="pending__item" data-testid="pending-approval">
+                  <p className="pending__bot small muted">
+                    <Avatar avatar={bot.avatar} color={bot.color} seed={bot.id} size="sm" />{" "}
+                    {bot.name}
+                  </p>
+                  <div className="ui-actions">
+                    <ApprovalRow
+                      approval={card}
+                      clicked={clicked}
+                      onToggle={toggle}
+                      autoFocus={index === 0}
+                    />
+                  </div>
+                  <Pill tone="ghost" onClick={() => selectBot(bot.id)}>
+                    Abrir a conversa
+                  </Pill>
+                </div>
+              );
+            })
+          )}
+        </section>
+        <section aria-label="Segredos" className="pending__section">
+          <h2 className="section-label">Segredos</h2>
+          {secrets.length === 0 ? (
+            <EmptyState
+              icon={<KeyRound size={16} />}
+              title="Nenhum segredo pedido"
+              text="Quando um bot precisar de uma credencial, o formulário seguro aparece aqui. O valor vai direto para o cofre."
+            />
+          ) : (
+            secrets.map(({ run, request }) => {
+              const bot = bots[run.botId];
+              if (bot === undefined) return null;
+              return (
+                <div key={request.callId} className="pending__item" data-testid="pending-secret">
+                  <p className="pending__bot small muted">
+                    <Avatar avatar={bot.avatar} color={bot.color} seed={bot.id} size="sm" />{" "}
+                    {bot.name}
+                  </p>
+                  <div className="ui-actions">
+                    <SecretRequestRow request={request} clicked={clicked} onToggle={toggle} />
+                  </div>
+                  <Pill tone="ghost" onClick={() => selectBot(bot.id)}>
+                    Abrir a conversa
+                  </Pill>
+                </div>
+              );
+            })
+          )}
         </section>
       </div>
     </div>

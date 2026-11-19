@@ -1,12 +1,14 @@
 import { ChevronDown, ChevronUp, LoaderCircle } from "lucide-react";
-import { type ReactNode, useId } from "react";
+import { type ReactNode, type Ref, useId } from "react";
 
-export type ActionCardState = "running" | "done" | "failed" | "needs-action";
+/** `stopped`: ended without being done and without being a failure (denied, expired, cancelled). */
+export type ActionCardState = "running" | "done" | "failed" | "needs-action" | "stopped";
 
 const STATE_LABEL: Record<Exclude<ActionCardState, "needs-action">, string> = {
   running: "Rodando",
   done: "Concluído",
   failed: "Falhou",
+  stopped: "Encerrado",
 };
 
 /** What a card that needs the user shows: a title and instruction, a preview, and the buttons. */
@@ -15,6 +17,10 @@ export interface NeedsAction {
   instruction: string;
   /** Edge to edge, under the instruction (the screen of the bot's computer). */
   preview?: ReactNode;
+  /** More of the card between the preview and the buttons (a form, a panel). */
+  extra?: ReactNode;
+  /** Next to the bold kind, in the header (a risk seal, the bot). */
+  header?: ReactNode;
   actions: ReactNode;
 }
 
@@ -31,6 +37,14 @@ export interface ActionCardProps {
   children?: ReactNode;
   /** For `needs-action`. */
   needsAction?: NeedsAction;
+  /** The word before the summary (default: by state). Empty: the summary stands alone. */
+  stateLabel?: string;
+  /** Default `action-card`: other kinds of card name themselves. */
+  testId?: string;
+  /** For `needs-action`: the card as a named group, which can take the focus when it appears. */
+  rootRef?: Ref<HTMLDivElement>;
+  groupLabel?: string;
+  busy?: boolean;
 }
 
 /**
@@ -48,20 +62,31 @@ export function ActionCard({
   onToggle,
   children,
   needsAction,
+  stateLabel,
+  testId = "action-card",
+  rootRef,
+  groupLabel,
+  busy,
 }: ActionCardProps) {
   const bodyId = useId();
   if (state === "needs-action" && needsAction !== undefined) {
     return (
       <div
+        ref={rootRef}
         className="ui-action ui-action--needs"
-        data-testid="action-card"
+        data-testid={testId}
         data-state="needs-action"
+        role="group"
+        aria-label={groupLabel}
+        aria-busy={busy === true ? true : undefined}
+        tabIndex={rootRef === undefined ? undefined : -1}
       >
         <div className="ui-action__row ui-action__row--static">
           <span className="ui-action__icon" aria-hidden="true">
             {icon}
           </span>
           <strong className="ui-action__kind">{kind}</strong>
+          {needsAction.header}
         </div>
         <div className="ui-action__needs">
           <p className="ui-action__needs-title">{needsAction.title}</p>
@@ -70,15 +95,16 @@ export function ActionCard({
         {needsAction.preview !== undefined && (
           <div className="ui-action__preview">{needsAction.preview}</div>
         )}
+        {needsAction.extra}
         <div className="ui-action__actions">{needsAction.actions}</div>
       </div>
     );
   }
-  const label = STATE_LABEL[state === "needs-action" ? "done" : state];
+  const label = stateLabel ?? STATE_LABEL[state === "needs-action" ? "done" : state];
   return (
     <div
       className={`ui-action ui-action--${state}`}
-      data-testid="action-card"
+      data-testid={testId}
       data-state={state}
       data-expanded={expanded}
     >
@@ -94,7 +120,7 @@ export function ActionCard({
         </span>
         <strong className="ui-action__kind">{kind}</strong>
         <span className="ui-action__summary">
-          {label} · {summary}
+          {label === "" ? summary : `${label} · ${summary}`}
         </span>
         <span className="ui-action__end" aria-hidden="true">
           {state === "running" ? (

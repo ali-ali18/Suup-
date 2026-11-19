@@ -24,6 +24,20 @@ export const secretSchema = z.object({
 export type Secret = z.infer<typeof secretSchema>;
 export const secretListSchema = z.object({ items: z.array(secretSchema) });
 
+/**
+ * Whether the server can store secrets: the `vault` section is in its configuration and the master
+ * key is present and valid. `reason` says what is missing, in Portuguese. Writes answer `503` when
+ * `ok` is false; the list works either way.
+ */
+export const vaultStatusSchema = z.object({
+  configured: z.boolean(),
+  ok: z.boolean(),
+  /** The NAME of the environment variable that holds the key (never the key). */
+  keyEnv: z.string().nullable(),
+  reason: z.string(),
+});
+export type VaultStatus = z.infer<typeof vaultStatusSchema>;
+
 export const setSecretBodySchema = z.object({
   /** The value. At least 8 characters. It is never returned. */
   value: z.string().min(8).max(16_384),
