@@ -345,13 +345,20 @@ export async function hasUndeliveredDecision(db: Db, runId: string): Promise<boo
 /**
  * Cancels the pending cards of a run that is being cancelled. Returns what was cancelled, so the
  * caller can write the matching `approval_decided` events in the same transaction.
+ *
+ * With `deliver: false` the cancellation is left as a decision the log does not hold yet (the
+ * same state as a decision of the user): used when a worker still holds the run, which then
+ * records `approval_decided` itself, and cannot park the run for an approval nobody can answer.
  */
 export async function cancelPendingApprovals(
   tx: Db,
   runId: string,
+  options: { deliver?: boolean } = {},
 ): Promise<{ id: string; callId: string }[]> {
+  const deliver = options.deliver ?? true;
   const rows = await tx.sql<{ id: string; call_id: string }[]>`
-    update approvals set status = 'cancelled', decided_at = now(), delivered_at = now()
+    update approvals set status = 'cancelled', decided_at = now(),
+      delivered_at = ${deliver ? tx.sql`now()` : null}
     where run_id = ${runId} and status = 'pending'
     returning id, call_id`;
   return rows.map((r) => ({ id: r.id, callId: r.call_id }));

@@ -15,10 +15,13 @@ import {
   getApproval,
   getRule,
   getRun,
+  hasUndeliveredDecision,
   listApprovals,
   listChanges,
   listRules,
   listRunEvents,
+  peekApprovalDecisionRows,
+  peekInboxEntries,
   rulesForBot,
   setRunStatus,
   updateRule,
@@ -290,6 +293,23 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("approvals and rules"), () => {
       ).rejects.toMatchObject({
         code: "conflict",
       });
+    });
+
+    it("cancelling a run that is still running (the card exists, the run is not parked yet) ends the card as a decision the loop has not recorded, and the run is not left waiting", async () => {
+      const run = await makeRun(ctx.db, { status: "running", leasedTo: "w1" });
+      const asked = request("c1");
+      await appendRunEvent(ctx.db, run.id, "approval_requested", asked, { leaseHolder: "w1" });
+      const answer = await cancelRun(ctx.db, run.id);
+      expect(answer.status).toBe("running");
+      expect(await getApproval(ctx.db, asked.approvalId)).toMatchObject({ status: "cancelled" });
+      // The worker still holds the run: it must find the decision (so it records it and does not
+      // park the run for a card nobody can answer), and the stop in its inbox.
+      expect(await peekApprovalDecisionRows(ctx.db, run.id)).toEqual([
+        { approvalId: asked.approvalId, callId: "c1", decision: "cancelled" },
+      ]);
+      expect(await peekInboxEntries(ctx.db, run.id)).toMatchObject([{ kind: "stop" }]);
+      // And if the loop parks the run right then, the undelivered decision requeues it.
+      expect(await hasUndeliveredDecision(ctx.db, run.id)).toBe(true);
     });
 
     it("nothing expires on its own: only a card with a limit does, and then it wakes the run", async () => {

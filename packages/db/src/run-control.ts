@@ -138,6 +138,11 @@ export async function cancelRun(db: Db, runId: string): Promise<Run> {
         if (done !== null) return done;
       }
     }
+    // A card of this run may already exist while the run is still `running` (the loop logs the
+    // request, then parks the run a moment later). Parked with the stop only in its inbox, nobody
+    // would ever read it: the card would wait for ever. So the cards end now, as a decision the
+    // worker has not recorded yet: the loop reads it, settles the call, then reads the stop.
+    await cancelPendingApprovals(tx, run.id, { deliver: false });
     await postInbox(tx, run.id, { kind: "stop" });
     const [row] = await tx.sql<RunRow[]>`
       update runs set

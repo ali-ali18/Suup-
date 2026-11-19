@@ -266,6 +266,25 @@ describe.skipIf(!DATABASE_URL)(
       f.close();
     });
 
+    it("cancelling a run the moment its card exists (the run may not be parked yet) never leaves the card or the run waiting", async () => {
+      const { api, conversation, f } = await setup("Apressado");
+      // The card is written a moment before the run is parked for it: cancel as soon as it shows.
+      for (let round = 0; round < 8; round++) {
+        const sent = await api.conversations.send(conversation.id, "CASE-CANCEL");
+        const card = await pendingOf(sent.run.id);
+        await api.runs.cancel(sent.run.id);
+        await until(
+          async () => (await api.runs.get(sent.run.id)).status === "cancelled" || undefined,
+          `run ${round} cancelled`,
+        );
+        expect((await api.approvals.get(card.id)).status).toBe("cancelled");
+        const events = (await api.runs.events(sent.run.id, { limit: 100 })).items;
+        expect(JSON.stringify(events)).not.toContain("nunca-roda\\n");
+        expect(events.filter((e) => e.type === "approval_decided")).toHaveLength(1);
+      }
+      f.close();
+    });
+
     it("rules: create, validate, edit, list by bot, delete", async () => {
       const { api } = w.started;
       const bot = await api.bots.create({
