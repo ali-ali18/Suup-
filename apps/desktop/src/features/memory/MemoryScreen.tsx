@@ -7,7 +7,15 @@ import { useUi } from "../../app/ui-store.js";
 import { fold } from "../../data/botlist.js";
 import { Dropdown } from "../../ui/dropdown.js";
 import { MemoryItem } from "../../ui/memory-item.js";
-import { Dialog, EmptyState, Pill, Tabs, TextField, Toggle } from "../../ui/primitives.js";
+import {
+  Dialog,
+  EmptyState,
+  FieldLabel,
+  Pill,
+  Tabs,
+  TextField,
+  Toggle,
+} from "../../ui/primitives.js";
 import {
   authorLabel,
   dateLabel,
@@ -214,7 +222,7 @@ function AddMemoryDialog({
     >
       <div className="form">
         <div className="form__row">
-          <span className="ui-field__label">Camada</span>
+          <FieldLabel as="span">Camada</FieldLabel>
           <Dropdown
             variant="field"
             label="Camada"
@@ -232,7 +240,7 @@ function AddMemoryDialog({
         </div>
         {layer !== "profile" && (
           <div className="form__row">
-            <span className="ui-field__label">Vale para</span>
+            <FieldLabel as="span">Vale para</FieldLabel>
             <Dropdown
               variant="field"
               label="Vale para"

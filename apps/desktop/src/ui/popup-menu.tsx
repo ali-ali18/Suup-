@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
-import { type MenuItem, MenuItemBody } from "./menu.js";
+import { cx } from "../lib/cx.js";
+import { MENU_PANEL, type MenuItem, MenuItemBody, menuItemClass } from "./menu.js";
 
 /** A menu at a point of the screen (a context menu), with the same keyboard behaviour as `MenuButton`. */
 export function PopupMenu({
@@ -35,7 +36,7 @@ export function PopupMenu({
       ref={ref}
       role="menu"
       aria-label={label}
-      className="ui-menu__list ui-menu__list--popup"
+      className={cx(MENU_PANEL, "fixed z-60")}
       style={{ left, top }}
       onKeyDown={(e) => {
         if (e.key === "Escape") {
@@ -64,7 +65,7 @@ export function PopupMenu({
           type="button"
           role="menuitem"
           disabled={item.disabled}
-          className={`ui-menu__item${item.danger ? " ui-menu__item--danger" : ""}`}
+          className={menuItemClass(item.danger)}
           onClick={() => {
             onClose();
             item.onSelect();

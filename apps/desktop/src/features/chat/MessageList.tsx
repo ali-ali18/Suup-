@@ -4,7 +4,7 @@ import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState }
 import { useServices } from "../../app/context.js";
 import { useSettings } from "../../app/settings-store.js";
 import { failureOriginLabel, ORIGIN_EXPLANATION } from "../../data/derive.js";
-import { ActionFold } from "../../ui/action-card.js";
+import { ActionFold, ActionList, ActionPre } from "../../ui/action-card.js";
 import { EndedLine, WorkingIndicator } from "../../ui/chat-lines.js";
 import { BotMessage, EventLine, UserMessage } from "../../ui/message.js";
 import { Pill, RoundButton } from "../../ui/primitives.js";
@@ -120,18 +120,18 @@ export function MessageList({
           aria-relevant="additions text"
         >
           {hasOlder && (
-            <p className="ui-event" data-testid="loading-older">
+            <EventLine testId="loading-older" title={false}>
               Carregando mensagens anteriores…
-            </p>
+            </EventLine>
           )}
           {items.length === 0 && empty}
           {items.map((item) => {
             switch (item.kind) {
               case "separator":
                 return (
-                  <p key={item.key} className="ui-event" data-testid="separator">
+                  <EventLine key={item.key} testId="separator" title={false}>
                     {item.text}
-                  </p>
+                  </EventLine>
                 );
               case "notice":
                 return (
@@ -171,7 +171,7 @@ export function MessageList({
               case "actions":
                 return (
                   <BotMessage key={item.key}>
-                    <div className="ui-actions" data-testid="actions">
+                    <ActionList data-testid="actions">
                       {item.entries.map((entry) =>
                         entry.kind === "action" ? (
                           <CallRow
@@ -198,33 +198,33 @@ export function MessageList({
                           </ActionFold>
                         ),
                       )}
-                    </div>
+                    </ActionList>
                   </BotMessage>
                 );
               case "approval":
                 return (
                   <BotMessage key={item.key}>
-                    <div className="ui-actions">
+                    <ActionList>
                       <ApprovalRow
                         approval={item.approval}
                         clicked={expanded}
                         onToggle={onToggle}
                         autoFocus={item.approval.status === "pending"}
                       />
-                    </div>
+                    </ActionList>
                   </BotMessage>
                 );
               case "secret":
                 return (
                   <BotMessage key={item.key}>
-                    <div className="ui-actions">
+                    <ActionList>
                       <SecretRequestRow
                         request={item.request}
                         clicked={expanded}
                         onToggle={onToggle}
                         autoFocus={item.request.state === "open"}
                       />
-                    </div>
+                    </ActionList>
                   </BotMessage>
                 );
               case "ended": {
@@ -243,9 +243,7 @@ export function MessageList({
                           {ORIGIN_EXPLANATION[run.failureOrigin ?? "harness"]}
                         </p>
                         {run.failureDetail !== null && (
-                          <pre className="ui-action__pre ui-action__pre--error">
-                            {run.failureDetail}
-                          </pre>
+                          <ActionPre error>{run.failureDetail}</ActionPre>
                         )}
                       </>
                     )}

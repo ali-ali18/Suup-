@@ -43,6 +43,170 @@ describe("tokens: no literal colour, radius or font size outside tokens.css", ()
   });
 });
 
+describe("Tailwind: classes name tokens, never a colour, a palette or a pixel", () => {
+  const components = files(SRC, /\.tsx$/).filter((f) => !f.endsWith("design-rules.test.ts"));
+  const tokens = read(join(SRC, "styles", "tokens.css"));
+  const theme = read(join(SRC, "styles", "theme.css"));
+
+  /** The class-like words of a source file: what sits between quotes, spaces and braces. */
+  const words = (source: string): string[] => {
+    const separators = new Set([
+      " ",
+      "\n",
+      "\t",
+      '"',
+      "'",
+      "`",
+      "{",
+      "}",
+      "(",
+      ")",
+      ",",
+      ";",
+      "<",
+      ">",
+    ]);
+    const out: string[] = [];
+    let current = "";
+    for (const ch of source) {
+      if (separators.has(ch)) {
+        if (current !== "") out.push(current);
+        current = "";
+      } else current += ch;
+    }
+    if (current !== "") out.push(current);
+    return out;
+  };
+  /** The variable names a stylesheet defines with a prefix (`--color-`), read line by line. */
+  const defined = (css: string, prefix: string): string[] =>
+    css
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(
+        (line) =>
+          line.startsWith(prefix) &&
+          line.includes(":") &&
+          !line.slice(0, line.indexOf(":")).includes("*"),
+      )
+      .map((line) => line.slice(0, line.indexOf(":")));
+
+  // The one arbitrary value with a pixel size that is allowed: the 1.5 px ring of a selected option
+  // (Tailwind's `border-<n>` takes whole pixels only). Anything else with a size goes in tokens.css.
+  const PIXEL_ALLOWLIST: ReadonlySet<string> = new Set(["border-[1.5px]"]);
+  // Tailwind's default palette. It is removed (`--color-*: initial`), so a class with one of these
+  // names would simply not exist: the test says so before the screen does.
+  const PALETTE = [
+    "slate",
+    "gray",
+    "zinc",
+    "neutral",
+    "stone",
+    "red",
+    "orange",
+    "amber",
+    "yellow",
+    "lime",
+    "green",
+    "emerald",
+    "teal",
+    "cyan",
+    "sky",
+    "blue",
+    "indigo",
+    "violet",
+    "purple",
+    "fuchsia",
+    "pink",
+    "rose",
+  ];
+  const COLOUR_PREFIXES = [
+    "bg-",
+    "text-",
+    "border-",
+    "outline-",
+    "ring-",
+    "fill-",
+    "stroke-",
+    "from-",
+    "via-",
+    "to-",
+    "divide-",
+    "decoration-",
+    "shadow-",
+    "accent-",
+    "caret-",
+  ];
+
+  it("the theme maps every token of tokens.css, exactly, and empties the default scales", () => {
+    for (const reset of ["--color-*", "--radius-*", "--text-*", "--shadow-*", "--font-*"])
+      expect(theme, reset).toContain(`${reset}: initial;`);
+    for (const prefix of ["--color-", "--radius-", "--shadow-", "--font-sans", "--font-mono"]) {
+      for (const name of defined(tokens, prefix)) {
+        // A token is exposed by name, pointing at itself: `--color-bg: var(--color-bg);`.
+        expect(theme, name).toContain(`${name}: var(${name});`);
+      }
+    }
+    // ...and the theme names no colour or radius that tokens.css does not have (the bot's colour,
+    // which the chat sets from the bot, is the one source outside tokens.css).
+    const known = new Set(defined(tokens, "--"));
+    for (const prefix of ["--color-", "--radius-"]) {
+      for (const name of defined(theme, prefix)) {
+        if (name.startsWith("--color-bot-")) continue;
+        expect(known.has(name), `${name} is not a token`).toBe(true);
+      }
+    }
+  });
+
+  it("no arbitrary colour in a class, and no arbitrary pixel value outside the allowlist", () => {
+    const offenders: string[] = [];
+    for (const file of components) {
+      for (const word of words(read(file))) {
+        if (!word.includes("[")) continue;
+        const inside = word.slice(word.indexOf("["));
+        if (inside.startsWith("[#") || inside.includes("rgb(") || inside.includes("hsl("))
+          offenders.push(`${rel(file)}: ${word}`);
+        else if (inside.includes("px") && !PIXEL_ALLOWLIST.has(word))
+          offenders.push(`${rel(file)}: ${word}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("no class names a colour of the default palette (it does not exist here)", () => {
+    const offenders: string[] = [];
+    for (const file of components) {
+      for (const word of words(read(file))) {
+        // the utility is what follows the last variant colon
+        let utility = word.slice(word.lastIndexOf(":") + 1);
+        while (utility.startsWith("-") || utility.startsWith("!")) utility = utility.slice(1);
+        const prefix = COLOUR_PREFIXES.find((p) => utility.startsWith(p));
+        if (prefix === undefined) continue;
+        const name = utility.slice(prefix.length).split("/")[0] ?? "";
+        const isPalette = PALETTE.some((c) => name === c || name.startsWith(`${c}-`));
+        if (isPalette || name === "white" || name === "black")
+          offenders.push(`${rel(file)}: ${word}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("a screen does not restyle a shared piece: the class names of src/ui are not repeated in features", () => {
+    // The old hooks (`ui-pill`, `ui-card`, `section-label`...) are gone from the screens; what is left
+    // is the `ui-*` hook classes that carry no style (tests and layout hooks).
+    const styled = [
+      ".ui-pill",
+      ".ui-card",
+      ".ui-field",
+      ".ui-dialog",
+      ".ui-menu",
+      ".srow",
+      ".scard",
+    ];
+    const css = read(join(SRC, "features", "features.css"));
+    for (const selector of styled) expect(css.includes(selector), selector).toBe(false);
+  });
+});
+
 describe("chat cards share one chrome and one collapsed row", () => {
   const ui = (name: string) => read(join(SRC, "ui", name));
 
@@ -76,19 +240,16 @@ describe("chat cards share one chrome and one collapsed row", () => {
   });
 
   it("the chrome of every chat card is the same: 1px border and the card radius", () => {
-    const css = read(join(SRC, "ui", "ui.css"));
-    const block = (selector: string): string => {
-      const start = css.indexOf(`\n${selector} {`);
-      expect(start, selector).toBeGreaterThan(-1);
-      return css.slice(start, css.indexOf("}", start));
-    };
-    for (const selector of [".ui-action", ".qcard", ".ui-bubble--bot"]) {
-      expect(block(selector), selector).toContain("border: 1px solid var(--color-border)");
-      // (the bot bubble takes its radius from `.ui-bubble`)
-      if (selector !== ".ui-bubble--bot")
-        expect(block(selector), selector).toContain("border-radius: var(--radius-card)");
-    }
-    expect(block(".ui-bubble")).toContain("border-radius: var(--radius-bubble)");
+    // The action card and the decision card share one constant; the question card writes the same.
+    expect(ui("decision-card.tsx")).toContain(
+      'CARD_CHROME = "ui-action min-w-0 rounded-card border border-border bg-surface"',
+    );
+    expect(ui("action-card.tsx")).toContain("CARD_CHROME");
+    expect(ui("question-card.tsx")).toContain("rounded-card border border-border bg-surface");
+    // The bot bubble has the border of a card and the radius of a bubble (itself a card radius).
+    const message = ui("message.tsx");
+    expect(message).toContain('"max-w-full self-start border border-border bg-surface"');
+    expect(message).toContain("rounded-bubble");
   });
 
   it("dynamic bubbles: the outer radius is the card's, the linking one is a smaller token, and only bubbles carry the position", () => {
@@ -96,19 +257,16 @@ describe("chat cards share one chrome and one collapsed row", () => {
     expect(tokens).toContain("--radius-bubble: var(--radius-card);");
     expect(tokens).toContain("--radius-bubble-link:");
     expect(tokens).toContain("--bubble-gap-group:");
-    const css = read(join(SRC, "ui", "ui.css"));
-    // Linking corners use the link token; no bubble rule uses a literal or the card radius for them.
-    expect(css).toContain("border-bottom-left-radius: var(--radius-bubble-link)");
-    expect(css).toContain("border-top-right-radius: var(--radius-bubble-link)");
     // The position is set by the two text bubbles and by nothing else: cards keep their chrome.
     const message = read(join(SRC, "ui", "message.tsx"));
+    // Linking corners use the link token; no bubble class uses a literal or the card radius for them.
+    expect(message).toContain("rounded-bl-bubble-link");
+    expect(message).toContain("rounded-tr-bubble-link");
     expect(message.split("data-bubble={position}").length - 1).toBe(2);
     for (const name of ["decision-card.tsx", "action-card.tsx", "question-card.tsx"])
       expect(read(join(SRC, "ui", name)), name).not.toContain("data-bubble");
     // The radius of a bubble is never animated: a new message must not move anything.
-    const start = css.indexOf("/* Dynamic bubbles");
-    const rules = css.slice(start, css.indexOf(".ui-bubble--pending {", start));
-    expect(rules).not.toContain("transition");
+    expect(message).not.toContain("transition");
   });
 
   it("the expand affordance is the stacked chevrons, never a single chevron", () => {
@@ -119,11 +277,11 @@ describe("chat cards share one chrome and one collapsed row", () => {
   });
 
   it("the expand chevron is hidden at rest and shown on hover and on keyboard focus", () => {
-    const css = read(join(SRC, "ui", "ui.css"));
-    expect(css).toMatch(/\.ui-action__chevron \{[^}]*opacity: 0/);
-    expect(css).toMatch(
-      /\.ui-action__row:hover \.ui-action__chevron,\s*\.ui-action__row:focus-visible \.ui-action__chevron \{[^}]*opacity: 1/,
-    );
+    const src = read(join(SRC, "ui", "action-card.tsx"));
+    const chevron = src.slice(src.indexOf("const CHEVRON ="), src.indexOf("const CHEVRON =") + 220);
+    expect(chevron).toContain("opacity-0");
+    expect(chevron).toContain("group-hover:opacity-100");
+    expect(chevron).toContain("group-focus-visible:opacity-100");
   });
 });
 
@@ -144,7 +302,7 @@ describe("approval buttons: normal = Aprovar / Recusar; the split button is only
       .map(rel);
     expect(offenders).toEqual(["ui/approval-card.tsx"]);
     const messageFooter = between(card, "function MessageFooter(", "function ResolvedCard(");
-    expect(messageFooter).toContain('className="ui-split"');
+    expect(messageFooter).toContain('className="ui-split inline-flex"');
     // every use of the split button in the file is inside the message footer
     expect(card.split("ui-split").length - 1).toBe(messageFooter.split("ui-split").length - 1);
   });
@@ -200,13 +358,8 @@ describe("connectors: per-tool grants, the review of a definition, the network",
     expect(review).toContain("Linha removida");
     expect(review).toContain("Linha nova");
     expect(review).toContain("Texto escrito pelo servidor");
-    const css = read(join(SRC, "features", "features.css"));
-    const word = css.slice(
-      css.indexOf(".diff-word {"),
-      css.indexOf("}", css.indexOf(".diff-word {")),
-    );
-    expect(word).toContain("font-weight");
-    expect(word).toContain("text-decoration: underline");
+    // The changed words are bold and underlined.
+    expect(review).toContain('className="diff-word font-bold underline"');
     // Approving is one tool at a time: there is no "approve all".
     expect(review.toLowerCase()).not.toContain("aprovar tudo");
     expect(review.toLowerCase()).not.toContain("aprovar todas");
@@ -240,7 +393,7 @@ describe("the settings dialog: a modal with a left nav, groups of simple rows, n
     expect(dialog).toContain('role="dialog"');
     expect(dialog).toContain('role="tablist"');
     expect(dialog).toContain("useModalFocus(");
-    expect(settings("parts.tsx")).toContain('aria-label="Fechar as configurações"');
+    expect(settings("parts.tsx")).toContain('label="Fechar as configurações"');
     // It is a dialog over the screen, not a screen of its own.
     expect(read(join(SRC, "app", "ui-store.ts"))).not.toContain('"settings"');
     expect(read(join(SRC, "features", "shell", "Shell.tsx"))).toContain("<SettingsDialog />");
@@ -267,9 +420,9 @@ describe("the settings dialog: a modal with a left nav, groups of simple rows, n
       expect(source, name).not.toContain("<Card");
       expect(source, name).not.toContain('className="section-label"');
     }
-    const css = read(join(SRC, "features", "settings", "settings.css"));
-    for (const part of [".sdialog", ".snav", ".sgroup__label", ".scard", ".srow"])
-      expect(css, part).toContain(`${part} {`);
+    const parts = settings("parts.tsx");
+    for (const part of ["SettingsGroup", "SettingsCard", "SettingsRow", "RowShell", "PaneHead"])
+      expect(parts, part).toContain(`export function ${part}(`);
     // Sizes come from tokens.
     const tokens = read(join(SRC, "styles", "tokens.css"));
     for (const token of ["--width-settings:", "--height-settings:", "--width-settings-nav:"])
@@ -309,7 +462,7 @@ describe("the settings dialog: a modal with a left nav, groups of simple rows, n
     expect(offenders.map(rel)).toEqual([]);
     // The quiet row control of Geral is that same dropdown.
     expect(settings("parts.tsx")).toContain("<Dropdown");
-    expect(read(join(SRC, "ui", "ui.css"))).toContain(".ui-dropdown {");
+    expect(dropdown).toContain("const TRIGGER =");
   });
 
   it("every section is made of the pieces of Geral, and a row action has one style", () => {
@@ -341,18 +494,15 @@ describe("the settings dialog: a modal with a left nav, groups of simple rows, n
   });
 
   it("separators run the card's full width, and a row has one optional leading icon slot", () => {
-    const css = read(join(SRC, "features", "settings", "settings.css"));
-    // The line between rows is drawn out to the card's edges (it reaches back over the card's padding).
-    expect(css).toContain("--scard-pad: var(--space-4)");
-    expect(css).toContain("left: calc(-1 * var(--scard-pad))");
-    expect(css).toContain("right: calc(-1 * var(--scard-pad))");
-    expect(css).not.toContain("> * + * {\n  border-top");
-    // One icon slot, in `SettingsRow` (and a group's label): a lucide icon at the nav's size, muted.
     const parts = settings("parts.tsx");
+    // The line between rows is drawn out to the card's edges (it reaches back over the card's padding).
+    expect(parts).toContain("[--scard-pad:var(--space-4)]");
+    expect(parts).toContain("inset-x-[calc(-1*var(--scard-pad))]");
+    expect(parts).not.toContain("[&>*+*]:border-t ");
+    // One icon slot, in `SettingsRow` (and a group's label): a lucide icon at the nav's size, muted.
     expect(parts).toContain("icon?: LucideIcon");
-    expect(parts).toContain('className="srow__icon"');
+    expect(parts).toContain('className="inline-flex flex-none text-text-muted"');
     expect(parts).toContain("<Icon size={16}");
-    expect(css).toContain(".srow__icon {");
     expect(settings("SettingsDialog.tsx")).toContain("size={16}");
     // Geral's rows all carry one.
     const general = settings("GeneralSettings.tsx");

@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { type ActionItem, blockedRuleText, callStateLabel } from "../../data/actions.js";
 import { type RuleContext, ruleSentence, STATUS_DETAIL } from "../../data/approval-text.js";
 import { diffLines } from "../../lib/diff.js";
-import { ActionCard } from "../../ui/action-card.js";
+import { ActionCard, ActionLabel, ActionPre, DiffLine } from "../../ui/action-card.js";
 import { ArgsView } from "../../ui/args-view.js";
 import { categoryGlyph } from "../../ui/category-icon.js";
 
@@ -27,15 +27,11 @@ export function ActionDetail({ item, context = {} }: { item: ActionItem; context
   // A call that never ran has no result to show.
   const output = item.state === "stopped" ? undefined : item.output;
   const blocks: ReactNode[] = [];
-  const label = (text: string, key: string) => (
-    <p key={key} className="ui-action__label">
-      {text}
-    </p>
-  );
+  const label = (text: string, key: string) => <ActionLabel key={key}>{text}</ActionLabel>;
   const pre = (text: string, key: string, error = false) => (
-    <pre key={key} className={`ui-action__pre${error ? " ui-action__pre--error" : ""}`}>
+    <ActionPre key={key} error={error}>
       {text}
-    </pre>
+    </ActionPre>
   );
   const oldText = str(args.old_string);
   const newText = str(args.new_string);
@@ -43,17 +39,17 @@ export function ActionDetail({ item, context = {} }: { item: ActionItem; context
     // What was approved: the exact content, as the card showed it (a secret stays its placeholder).
     const decided = approval.decidedAt === null ? undefined : new Date(approval.decidedAt);
     blocks.push(
-      <p key="approval" className="ui-action__label" data-testid="approval-detail">
+      <ActionLabel key="approval" data-testid="approval-detail">
         {STATUS_DETAIL[approval.status] ?? ""}
         {decided !== undefined &&
           ` Decidido às ${decided.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}.`}
-      </p>,
+      </ActionLabel>,
     );
     if (approval.status === "denied" && approval.reason !== null && approval.reason !== "") {
       blocks.push(
-        <p key="denial" className="ui-action__label" data-testid="approval-denial">
-          Motivo da recusa: <span className="ui-approval__quote">{approval.reason}</span>
-        </p>,
+        <ActionLabel key="denial" data-testid="approval-denial">
+          Motivo da recusa: <span className="wrap-anywhere text-text">{approval.reason}</span>
+        </ActionLabel>,
       );
     }
     blocks.push(
@@ -66,28 +62,28 @@ export function ActionDetail({ item, context = {} }: { item: ActionItem; context
     );
     if (approval.ruleId !== null) {
       blocks.push(
-        <p key="rule" className="ui-action__label" data-testid="approval-rule">
+        <ActionLabel key="rule" data-testid="approval-rule">
           {context.rule === undefined
             ? "Criou uma regra para este destinatário."
             : `Criou a regra: ${ruleSentence(context.rule, {
                 botName: context.botName,
                 ...(context.connectors === undefined ? {} : { connectors: context.connectors }),
               })}`}
-        </p>,
+        </ActionLabel>,
       );
     }
   } else if (item.blocked !== undefined) {
     blocks.push(
-      <p key="blocked" className="ui-action__label" data-testid="action-blocked-detail">
+      <ActionLabel key="blocked" data-testid="action-blocked-detail">
         Não rodou: uma regra que você escreveu proíbe isto (“
         {blockedRuleText(item.blocked, context.writtenRule)}”). O bot recebeu o aviso e seguiu.
-      </p>,
+      </ActionLabel>,
     );
   } else if (item.allowedByRule === true) {
     blocks.push(
-      <p key="allowed" className="ui-action__label" data-testid="action-rule-allowed">
+      <ActionLabel key="allowed" data-testid="action-rule-allowed">
         Permitido por uma regra sua: rodou sem pedir aprovação.
-      </p>,
+      </ActionLabel>,
     );
   }
   if (approval !== undefined) {
@@ -97,16 +93,16 @@ export function ActionDetail({ item, context = {} }: { item: ActionItem; context
   } else if (item.name === "edit_file" && oldText !== undefined && newText !== undefined) {
     blocks.push(label(str(args.path) ?? "Arquivo", "path"));
     blocks.push(
-      <pre key="diff" className="ui-action__pre" data-testid="diff">
+      <ActionPre key="diff" data-testid="diff">
         {diffLines(oldText, newText).map((line, i) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: the lines of a diff have no identity
-          <span key={`${i}-${line.kind}`} className={`ui-action__line--${line.kind}`}>
+          <DiffLine key={`${i}-${line.kind}`} kind={line.kind}>
             {line.kind === "removed" ? "- " : line.kind === "added" ? "+ " : "  "}
             {line.text}
             {"\n"}
-          </span>
+          </DiffLine>
         ))}
-      </pre>,
+      </ActionPre>,
     );
   } else if (item.kind === "files") {
     const where = str(args.path) ?? str(args.pattern);
@@ -131,14 +127,10 @@ export function ActionDetail({ item, context = {} }: { item: ActionItem; context
       ),
     );
     blocks.push(
-      <pre
-        key="out"
-        className={`ui-action__pre${item.state === "failed" ? " ui-action__pre--error" : ""}`}
-        data-testid="action-output"
-      >
+      <ActionPre key="out" error={item.state === "failed"} data-testid="action-output">
         {shown}
         {item.truncated ? "\n(saída cortada)" : ""}
-      </pre>,
+      </ActionPre>,
     );
   }
   if (blocks.length === 0)

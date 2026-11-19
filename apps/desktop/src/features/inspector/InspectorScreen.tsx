@@ -12,7 +12,7 @@ import {
   requestToolStats,
 } from "../../data/tool-stats.js";
 import { Dropdown } from "../../ui/dropdown.js";
-import { Card, Pill, RoundButton, TextField } from "../../ui/primitives.js";
+import { Card, FieldError, FieldLabel, Pill, RoundButton, TextField } from "../../ui/primitives.js";
 
 const json = (value: unknown): string => JSON.stringify(value, null, 2);
 
@@ -84,11 +84,7 @@ export function InspectorScreen() {
         </div>
       </header>
       <div className="screen__body inspector">
-        {error !== undefined && (
-          <p role="alert" className="ui-field__error">
-            {error}
-          </p>
-        )}
+        {error !== undefined && <FieldError>{error}</FieldError>}
         <Card aria-label="Linha do tempo">
           <h2 className="section-label">
             Linha do tempo ({shown.length}/{events.length})
@@ -207,7 +203,7 @@ export function InspectorScreen() {
           <h2 className="section-label">O que o modelo viu</h2>
           <div className="inspector__row">
             <div className="form__row">
-              <span className="ui-field__label">Chamada ao modelo</span>
+              <FieldLabel as="span">Chamada ao modelo</FieldLabel>
               <Dropdown
                 variant="field"
                 label="Chamada ao modelo"
@@ -270,7 +266,7 @@ export function InspectorScreen() {
           <div className="inspector__row">
             <TextField label="Quantas vezes" value={times} onChange={setTimes} type="text" />
             <div className="form__row">
-              <span className="ui-field__label">Modelo</span>
+              <FieldLabel as="span">Modelo</FieldLabel>
               <Dropdown
                 variant="field"
                 label="Modelo para reenviar"

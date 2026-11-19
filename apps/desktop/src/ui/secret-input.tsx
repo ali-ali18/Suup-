@@ -1,5 +1,7 @@
 import { Eye, EyeOff } from "lucide-react";
 import { type Ref, useId, useImperativeHandle, useRef, useState } from "react";
+import { cx } from "../lib/cx.js";
+import { FieldError, FieldHint, fieldControlClass, IconButton } from "./primitives.js";
 
 /** What a screen can do with the field: take the value once, and clear it. It is never held in state. */
 export interface SecretInputHandle {
@@ -59,15 +61,15 @@ export function SecretInput({
   const describedBy =
     error !== undefined ? `${id}-err` : hint !== undefined ? `${id}-hint` : undefined;
   return (
-    <div className={`ui-field${error !== undefined ? " ui-field--error" : ""}`}>
-      <label htmlFor={id} className="ui-field__label">
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor={id} className="text-small text-text-muted">
         {label}
       </label>
-      <div className="secret-field">
+      <div className="relative flex items-center">
         <input
           ref={input}
           id={id}
-          className="ui-field__control secret-field__input"
+          className={cx("flex-1", fieldControlClass({ secret: true, error: error !== undefined }))}
           type={revealed ? "text" : "password"}
           autoComplete="off"
           autoCapitalize="off"
@@ -89,11 +91,10 @@ export function SecretInput({
             }
           }}
         />
-        <button
-          type="button"
-          className="secret-field__reveal"
+        <IconButton
+          label={revealed ? "Esconder o valor" : "Mostrar o valor"}
+          className="absolute right-1"
           aria-pressed={revealed}
-          aria-label={revealed ? "Esconder o valor" : "Mostrar o valor"}
           title={revealed ? "Esconder o valor" : "Mostrar o valor"}
           disabled={disabled}
           onClick={() => setRevealed(!revealed)}
@@ -103,16 +104,12 @@ export function SecretInput({
           ) : (
             <Eye size={16} aria-hidden="true" />
           )}
-        </button>
+        </IconButton>
       </div>
       {error !== undefined ? (
-        <p id={`${id}-err`} className="ui-field__error" role="alert">
-          {error}
-        </p>
+        <FieldError id={`${id}-err`}>{error}</FieldError>
       ) : hint !== undefined ? (
-        <p id={`${id}-hint`} className="ui-field__hint">
-          {hint}
-        </p>
+        <FieldHint id={`${id}-hint`}>{hint}</FieldHint>
       ) : null}
     </div>
   );

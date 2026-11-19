@@ -7,7 +7,7 @@ import { avatarOf, colorVars, effectiveColor, mascotValue, SHAPES } from "../../
 import { Avatar } from "../../ui/avatar.js";
 import { Dropdown } from "../../ui/dropdown.js";
 import { Mascot } from "../../ui/mascot.js";
-import { Dialog, Pill, Tag, TextField } from "../../ui/primitives.js";
+import { Dialog, FieldError, FieldLabel, Pill, Tag, TextField } from "../../ui/primitives.js";
 import { BotNetwork } from "./BotNetwork.js";
 
 const COLOR_NAME: Record<BotColor, string> = {
@@ -184,12 +184,13 @@ export function NewBotDialog() {
               avatar={mascotValue(mascot)}
               color={shownColor}
               seed={editing?.id ?? "new"}
-              size="xl"
+              size="preview"
             />
           </div>
           <TextField
             label="Dê um nome ao seu bot"
             name="name"
+            align="center"
             value={name}
             onChange={setName}
             autoFocus
@@ -242,7 +243,7 @@ export function NewBotDialog() {
             placeholder="Descreva em uma ou duas frases."
           />
           <div className="form__row">
-            <span className="ui-field__label">Modelo</span>
+            <FieldLabel as="span">Modelo</FieldLabel>
             <Dropdown
               variant="field"
               label="Modelo"
@@ -259,11 +260,7 @@ export function NewBotDialog() {
             >
               {drafting ? "Gerando…" : "Gerar sugestão"}
             </Pill>
-            {draftError !== undefined && (
-              <p role="alert" className="ui-field__error">
-                {draftError}
-              </p>
-            )}
+            {draftError !== undefined && <FieldError>{draftError}</FieldError>}
           </div>
           <TextField
             label="Personalidade"
@@ -274,7 +271,7 @@ export function NewBotDialog() {
             rows={5}
           />
           <fieldset className="newbot__tools">
-            <legend className="ui-field__label">Ferramentas</legend>
+            <FieldLabel as="legend">Ferramentas</FieldLabel>
             <div className="newbot__tool-tags">
               {toolInfo.map((t) => {
                 const on = selectedTools.includes(t.name);

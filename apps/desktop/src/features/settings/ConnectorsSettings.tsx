@@ -21,14 +21,44 @@ import {
   STDIO_WARNING,
   TIGHTENED_HELP,
 } from "../../lib/connector-form.js";
+import { cx } from "../../lib/cx.js";
 import { RUNS_IN_LABEL } from "../../lib/network.js";
 import { reviewNotice } from "../../lib/tool-review.js";
 import { Dropdown, type DropdownOption } from "../../ui/dropdown.js";
-import { Dialog, Pill, Tag, TextField, Toggle } from "../../ui/primitives.js";
+import {
+  Dialog,
+  FieldError,
+  FieldHint,
+  FieldLabel,
+  FormRow,
+  FormStack,
+  fieldControlClass,
+  IconButton,
+  Notice,
+  Pill,
+  PlainText,
+  Tag,
+  TextField,
+  Toggle,
+} from "../../ui/primitives.js";
 import { ConnectorGrants } from "./ConnectorGrants.js";
 import { ConnectorNetwork } from "./ConnectorNetwork.js";
 import { formatWhen } from "./formatting.js";
-import { PaneHead, RowAction, type SectionProps, SettingsGroup, SettingsRow } from "./parts.js";
+import {
+  PaneBody,
+  PaneHead,
+  RowAction,
+  RowValue,
+  type SectionProps,
+  SettingsCard,
+  SettingsEmpty,
+  SettingsFold,
+  SettingsGroup,
+  SettingsHint,
+  SettingsList,
+  SettingsRow,
+  SettingsStack,
+} from "./parts.js";
 import { ReviewDialog, ToolHistory } from "./ToolReview.js";
 import { useTask } from "./use-task.js";
 import { SecretDialog } from "./VaultSettings.js";
@@ -69,11 +99,11 @@ function RefRows({
   const set = (id: string, patch: Partial<RefRow>) =>
     onChange(rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   return (
-    <div className="form__row">
+    <FormRow>
       {rows.map((row) => (
         <div key={row.id} className="cond-row cond-row--ref" data-testid="ref-row">
           <input
-            className="ui-field__control"
+            className={fieldControlClass()}
             aria-label={`Nome d${noun === "variável" ? "a" : "o"} ${noun}`}
             placeholder={noun === "variável" ? "NOME_DA_VARIAVEL" : "Nome-do-cabecalho"}
             value={row.key}
@@ -88,7 +118,7 @@ function RefRows({
           />
           {row.mode === "text" ? (
             <input
-              className="ui-field__control"
+              className={fieldControlClass()}
               aria-label="Valor (texto)"
               placeholder="valor"
               value={row.text}
@@ -103,17 +133,15 @@ function RefRows({
               onChange={(secret) => set(row.id, { secret })}
             />
           )}
-          <button
-            type="button"
-            className="ui-icon-button"
-            aria-label={`Remover ${noun}`}
+          <IconButton
+            label={`Remover ${noun}`}
             onClick={() => onChange(rows.filter((r) => r.id !== row.id))}
           >
             <Trash2 size={16} aria-hidden="true" />
-          </button>
+          </IconButton>
         </div>
       ))}
-      <div className="settings__row">
+      <div className="flex gap-2">
         <Pill
           tone="secondary"
           icon={<Plus size={16} aria-hidden="true" />}
@@ -126,14 +154,14 @@ function RefRows({
         </Pill>
         {extra}
       </div>
-      <p className="ui-field__hint">
+      <FieldHint>
         {noun === "variável"
           ? "Só estas variáveis chegam ao programa"
           : "Estes cabeçalhos vão em toda requisição"}
         . Um valor em <strong>texto</strong> fica visível para quem usa a API do servidor: para
         credenciais, escolha <strong>segredo do cofre</strong>.
-      </p>
-    </div>
+      </FieldHint>
+    </FormRow>
   );
 }
 
@@ -184,20 +212,20 @@ function AddConnectorDialog({ onClose, onNewSecret }: { onClose(): void; onNewSe
         </>
       }
     >
-      <div className="form" data-testid="connector-form">
-        <div className="ui-notice" role="note" data-testid="connector-warning">
+      <FormStack data-testid="connector-form">
+        <Notice role="note" data-testid="connector-warning">
           <strong>
             {form.kind === "stdio"
               ? "Atenção: isto roda um programa"
               : "Atenção: isto fala com um servidor"}
           </strong>
           <p>{form.kind === "stdio" ? STDIO_WARNING : HTTP_WARNING}</p>
-        </div>
-        <div className="form__row">
-          <span className="ui-field__label" id="connector-kind">
+        </Notice>
+        <FormRow>
+          <FieldLabel as="span" id="connector-kind">
             Tipo
-          </span>
-          <div className="settings__row" role="radiogroup" aria-labelledby="connector-kind">
+          </FieldLabel>
+          <div className="flex gap-2" role="radiogroup" aria-labelledby="connector-kind">
             {(["stdio", "http"] as const).map((kind) => (
               <Pill
                 key={kind}
@@ -211,7 +239,7 @@ function AddConnectorDialog({ onClose, onNewSecret }: { onClose(): void; onNewSe
               </Pill>
             ))}
           </div>
-        </div>
+        </FormRow>
         <TextField
           label="Nome"
           value={form.name}
@@ -247,8 +275,8 @@ function AddConnectorDialog({ onClose, onNewSecret }: { onClose(): void; onNewSe
               hint="Cada linha é um argumento, entregue ao programa sem passar por um shell."
               name="connector-args"
             />
-            <div className="form__row">
-              <span className="ui-field__label">Variáveis de ambiente</span>
+            <FormRow>
+              <FieldLabel as="span">Variáveis de ambiente</FieldLabel>
               <RefRows
                 rows={form.env}
                 onChange={(env) => set({ env })}
@@ -256,12 +284,8 @@ function AddConnectorDialog({ onClose, onNewSecret }: { onClose(): void; onNewSe
                 noun="variável"
                 onNewSecret={onNewSecret}
               />
-              {errors.env !== undefined && (
-                <p className="ui-field__error" role="alert">
-                  {errors.env}
-                </p>
-              )}
-            </div>
+              {errors.env !== undefined && <FieldError>{errors.env}</FieldError>}
+            </FormRow>
           </>
         ) : (
           <>
@@ -274,8 +298,8 @@ function AddConnectorDialog({ onClose, onNewSecret }: { onClose(): void; onNewSe
               error={errors.url}
               name="connector-url"
             />
-            <div className="form__row">
-              <span className="ui-field__label">Cabeçalhos</span>
+            <FormRow>
+              <FieldLabel as="span">Cabeçalhos</FieldLabel>
               <RefRows
                 rows={form.headers}
                 onChange={(headers) => set({ headers })}
@@ -294,18 +318,12 @@ function AddConnectorDialog({ onClose, onNewSecret }: { onClose(): void; onNewSe
                   </Pill>
                 }
               />
-              {errors.headers !== undefined && (
-                <p className="ui-field__error" role="alert">
-                  {errors.headers}
-                </p>
-              )}
-            </div>
+              {errors.headers !== undefined && <FieldError>{errors.headers}</FieldError>}
+            </FormRow>
           </>
         )}
-        <div className="form__row">
-          <label className="ui-field__label" htmlFor="connector-scope">
-            Escopo
-          </label>
+        <FormRow>
+          <FieldLabel htmlFor="connector-scope">Escopo</FieldLabel>
           <Dropdown
             id="connector-scope"
             variant="field"
@@ -314,7 +332,7 @@ function AddConnectorDialog({ onClose, onNewSecret }: { onClose(): void; onNewSe
             options={SCOPE_OPTIONS}
             onChange={(scope) => set({ scope })}
           />
-        </div>
+        </FormRow>
         <TextField
           label="Tempo limite de cada chamada, em segundos (opcional)"
           value={form.timeoutSec}
@@ -322,16 +340,14 @@ function AddConnectorDialog({ onClose, onNewSecret }: { onClose(): void; onNewSe
           error={errors.timeout}
           hint="Em branco: o padrão do servidor (60 s)."
         />
-        <p className="ui-field__hint" data-testid="connector-grant-hint">
+        <FieldHint data-testid="connector-grant-hint">
           Nenhum bot recebe o conector ao criá-lo. Depois de “Testar”, você escolhe, bot a bot,
           quais ferramentas cada um pode usar.
-        </p>
+        </FieldHint>
         {task.error !== undefined && (
-          <p className="ui-field__error" role="alert" data-testid="connector-error">
-            {task.error}
-          </p>
+          <FieldError data-testid="connector-error">{task.error}</FieldError>
         )}
-      </div>
+      </FormStack>
     </Dialog>
   );
 }
@@ -392,7 +408,7 @@ function OutboundMark({ connector, tool }: { connector: Connector; tool: Connect
           control={
             <input
               id={id}
-              className="ui-field__control sinput"
+              className={fieldControlClass({ size: "sm" })}
               aria-labelledby={`${id}-label`}
               placeholder="ex.: to (separe vários por vírgula)"
               value={fields}
@@ -427,12 +443,7 @@ function ToolRow({ connector, tool }: { connector: Connector; tool: ConnectorToo
   const [open, setOpen] = useState(false);
   const chosen = connector.toolOverrides[tool.tool]?.risk ?? "";
   return (
-    <li
-      className="tool-row"
-      data-testid="connector-tool"
-      data-tool={tool.tool}
-      data-available={tool.available}
-    >
+    <li data-testid="connector-tool" data-tool={tool.tool} data-available={tool.available}>
       <SettingsRow
         title={tool.tool}
         description={
@@ -446,7 +457,7 @@ function ToolRow({ connector, tool }: { connector: Connector; tool: ConnectorToo
         }
         control={
           <>
-            <span className="srow__value">
+            <RowValue>
               <Tag
                 tone={
                   tool.risk === "external_irreversible"
@@ -458,7 +469,7 @@ function ToolRow({ connector, tool }: { connector: Connector; tool: ConnectorToo
               >
                 {LEVEL_LABEL[tool.risk]}
               </Tag>
-            </span>
+            </RowValue>
             <RowAction
               aria-expanded={open}
               data-testid="connector-tool-toggle"
@@ -470,19 +481,22 @@ function ToolRow({ connector, tool }: { connector: Connector; tool: ConnectorToo
         }
       />
       {open && (
-        <div className="sfold">
-          <p className="sgroup__hint">
+        <SettingsFold>
+          <SettingsHint>
             Nome registrado: <code>{tool.name}</code>
-          </p>
+          </SettingsHint>
           {tool.description !== "" && (
-            <blockquote className="quote" data-testid="tool-description">
+            <blockquote
+              className="m-0 flex flex-col items-start gap-1 border-l-2 border-border-strong pl-3 text-small text-text-muted"
+              data-testid="tool-description"
+            >
               <Tag tone="outline">escrito pelo servidor</Tag>
-              <p className="wrap">{tool.description}</p>
+              <PlainText>{tool.description}</PlainText>
             </blockquote>
           )}
           {tool.available ? (
             <>
-              <p className="sgroup__hint" data-testid="tool-basis">
+              <SettingsHint data-testid="tool-basis">
                 {RISK_BASIS_TEXT[tool.riskBasis]}
                 {tool.hints !== null && (
                   <>
@@ -501,13 +515,11 @@ function ToolRow({ connector, tool }: { connector: Connector; tool: ConnectorToo
                     .
                   </>
                 )}
-              </p>
+              </SettingsHint>
               {tool.riskBasis === "tightened_by_hint" && (
-                <p className="ui-notice" role="note">
-                  {TIGHTENED_HELP}
-                </p>
+                <Notice role="note">{TIGHTENED_HELP}</Notice>
               )}
-              <div className="scard">
+              <SettingsCard>
                 <SettingsRow
                   title="O que você afirma"
                   control={
@@ -531,19 +543,15 @@ function ToolRow({ connector, tool }: { connector: Connector; tool: ConnectorToo
                   }
                 />
                 <OutboundMark connector={connector} tool={tool} />
-              </div>
-              {task.error !== undefined && (
-                <p className="ui-field__error" role="alert">
-                  {task.error}
-                </p>
-              )}
+              </SettingsCard>
+              {task.error !== undefined && <FieldError>{task.error}</FieldError>}
             </>
           ) : (
-            <p className="sgroup__hint" data-testid="tool-unavailable-reason">
+            <SettingsHint data-testid="tool-unavailable-reason">
               Não é oferecida aos bots: {tool.reason ?? "motivo não informado"}.
-            </p>
+            </SettingsHint>
           )}
-        </div>
+        </SettingsFold>
       )}
     </li>
   );
@@ -607,11 +615,7 @@ function ConnectorRow({
           </>
         }
       />
-      {toggling.error !== undefined && (
-        <p className="ui-field__error" role="alert">
-          {toggling.error}
-        </p>
-      )}
+      {toggling.error !== undefined && <FieldError>{toggling.error}</FieldError>}
     </div>
   );
 }
@@ -654,7 +658,7 @@ function ConnectorDetail({
 
   return (
     <div
-      className="sroot"
+      className="contents"
       data-testid="connector-row"
       data-name={connector.name}
       data-enabled={connector.enabled}
@@ -664,7 +668,7 @@ function ConnectorDetail({
           Remover
         </RowAction>
       </PaneHead>
-      <div className="spane__body">
+      <PaneBody>
         <SettingsGroup>
           <SettingsRow
             icon={Power}
@@ -748,13 +752,11 @@ function ConnectorDetail({
           )}
         </SettingsGroup>
         {(toggling.error ?? testing.error) !== undefined && (
-          <p className="ui-field__error" role="alert">
-            {toggling.error ?? testing.error}
-          </p>
+          <FieldError>{toggling.error ?? testing.error}</FieldError>
         )}
         {testLine !== undefined && test !== undefined && (
           <p
-            className={test.ok ? "small" : "ui-field__error small"}
+            className={cx("text-small", !test.ok && "text-danger-text")}
             role="status"
             data-testid="connector-test-result"
             data-ok={test.ok}
@@ -762,7 +764,7 @@ function ConnectorDetail({
             {testLine}
           </p>
         )}
-        <div className="sdetail" data-testid="connector-panel">
+        <SettingsStack data-testid="connector-panel">
           <ConnectorGrants connector={connector} onReview={() => setReviewing(true)} />
           <SettingsGroup label="Ajustes" icon={SlidersHorizontal}>
             <SettingsRow
@@ -807,15 +809,13 @@ function ConnectorDetail({
             />
           </SettingsGroup>
           {(scope.error ?? trust.error) !== undefined && (
-            <p className="ui-field__error" role="alert">
-              {scope.error ?? trust.error}
-            </p>
+            <FieldError>{scope.error ?? trust.error}</FieldError>
           )}
           {connector.secretNames.length > 0 && (
-            <p className="sgroup__hint">
+            <SettingsHint>
               Usa os segredos do cofre:{" "}
-              <span className="mono">{connector.secretNames.join(", ")}</span>
-            </p>
+              <span className="font-mono text-code">{connector.secretNames.join(", ")}</span>
+            </SettingsHint>
           )}
           <ConnectorNetwork connector={connector} />
           <ToolHistory connector={connector} />
@@ -828,24 +828,24 @@ function ConnectorDetail({
             ) : available.length === 0 ? (
               <SettingsRow title="Nenhuma ferramenta é oferecida aos bots" />
             ) : (
-              <ul className="sroot-list" data-testid="connector-tools">
+              <SettingsList as="ul" data-testid="connector-tools">
                 {available.map((tool) => (
                   <ToolRow key={tool.name} connector={connector} tool={tool} />
                 ))}
-              </ul>
+              </SettingsList>
             )}
           </SettingsGroup>
           {unavailable.length > 0 && (
             <SettingsGroup label="Não oferecidas aos bots" icon={Ban}>
-              <ul className="sroot-list" data-testid="connector-tools-unavailable">
+              <SettingsList as="ul" data-testid="connector-tools-unavailable">
                 {unavailable.map((tool) => (
                   <ToolRow key={tool.name} connector={connector} tool={tool} />
                 ))}
-              </ul>
+              </SettingsList>
             </SettingsGroup>
           )}
-        </div>
-      </div>
+        </SettingsStack>
+      </PaneBody>
       {reviewing && <ReviewDialog connector={connector} onClose={() => setReviewing(false)} />}
       {removing && (
         <Dialog
@@ -875,11 +875,7 @@ function ConnectorDetail({
             Os bots deixam de ter as ferramentas deste conector na próxima execução. Os segredos do
             cofre que ele cita continuam guardados.
           </p>
-          {removal.error !== undefined && (
-            <p className="ui-field__error" role="alert">
-              {removal.error}
-            </p>
-          )}
+          {removal.error !== undefined && <FieldError>{removal.error}</FieldError>}
         </Dialog>
       )}
     </div>
@@ -923,24 +919,24 @@ export function ConnectorsSettings({ title, titleId, onClose }: SectionProps) {
           <PaneHead title={title} titleId={titleId} onClose={onClose}>
             <Pill
               tone="primary"
-              className="spill"
+              size="sm"
               data-testid="connector-new"
               onClick={() => setAdding(true)}
             >
               Adicionar conector
             </Pill>
           </PaneHead>
-          <div className="spane__body" data-testid="connectors-card">
+          <PaneBody data-testid="connectors-card">
             {!loaded ? (
-              <p className="sempty">Carregando…</p>
+              <SettingsEmpty>Carregando…</SettingsEmpty>
             ) : connectors.length === 0 ? (
-              <p className="sempty">
+              <SettingsEmpty>
                 Nenhum conector. Adicione um servidor MCP, dê a um bot e veja as ferramentas dele
                 aqui.
-              </p>
+              </SettingsEmpty>
             ) : (
               <SettingsGroup hint="Um conector liga um servidor externo (MCP) aos seus bots. Cada ferramenta pede um cartão de aprovação antes de rodar, a não ser que você diga o contrário.">
-                <div className="sroot-list" data-testid="connector-list">
+                <SettingsList data-testid="connector-list">
                   {connectors.map((c) => (
                     <ConnectorRow
                       key={c.name}
@@ -949,10 +945,10 @@ export function ConnectorsSettings({ title, titleId, onClose }: SectionProps) {
                       onAskEnable={setEnabling}
                     />
                   ))}
-                </div>
+                </SettingsList>
               </SettingsGroup>
             )}
-          </div>
+          </PaneBody>
         </>
       )}
       {adding && (
@@ -991,19 +987,15 @@ export function ConnectorsSettings({ title, titleId, onClose }: SectionProps) {
             </>
           }
         >
-          <div className="ui-notice" role="note" data-testid="connector-enable-warning">
+          <Notice role="note" data-testid="connector-enable-warning">
             <strong>Isto roda um programa</strong>
             <p>{STDIO_WARNING}</p>
-          </div>
-          <p className="mono wrap small">
+          </Notice>
+          <p className="font-mono text-code leading-small wrap-anywhere whitespace-pre-wrap">
             {enabling.transport.kind === "stdio" &&
               [enabling.transport.command, ...(enabling.transport.args ?? [])].join(" ")}
           </p>
-          {enable.error !== undefined && (
-            <p className="ui-field__error" role="alert">
-              {enable.error}
-            </p>
-          )}
+          {enable.error !== undefined && <FieldError>{enable.error}</FieldError>}
         </Dialog>
       )}
     </>

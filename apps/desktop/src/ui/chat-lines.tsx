@@ -1,5 +1,29 @@
 import { ChevronDown, ChevronUp, CircleAlert } from "lucide-react";
-import { type ReactNode, useId } from "react";
+import { type ButtonHTMLAttributes, type ReactNode, useId } from "react";
+import { cx } from "../lib/cx.js";
+import { EVENT_LINE_CLASS } from "./message.js";
+
+/** The same line as a button (a run that ended: it opens its details in place). */
+export function EventLineButton({
+  children,
+  className,
+  type,
+  ...rest
+}: { children: ReactNode } & ButtonHTMLAttributes<HTMLButtonElement>) {
+  return (
+    <button
+      type={type ?? "button"}
+      className={cx(
+        EVENT_LINE_CLASS,
+        "w-full cursor-pointer border-0 bg-transparent hover:text-text",
+        className,
+      )}
+      {...rest}
+    >
+      {children}
+    </button>
+  );
+}
 
 /**
  * A run that failed or was cancelled: one centred line. Clicking it expands the details IN PLACE
@@ -18,10 +42,8 @@ export function EndedLine({
 }) {
   const bodyId = useId();
   return (
-    <div className="ui-ended" data-testid="ended-line-wrap">
-      <button
-        type="button"
-        className="ui-event ui-event--button"
+    <div className="flex flex-col items-center gap-2" data-testid="ended-line-wrap">
+      <EventLineButton
         data-testid="ended-line"
         aria-expanded={expanded}
         aria-controls={bodyId}
@@ -29,17 +51,17 @@ export function EndedLine({
         title={text}
       >
         <CircleAlert size={13} aria-hidden="true" />
-        <span className="ui-event__text">{text}</span>
+        <span className="overflow-hidden text-ellipsis">{text}</span>
         {expanded ? (
           <ChevronUp size={13} aria-hidden="true" />
         ) : (
           <ChevronDown size={13} aria-hidden="true" />
         )}
-      </button>
+      </EventLineButton>
       {expanded && (
         <div
           id={bodyId}
-          className="ui-ended__body"
+          className="flex max-w-reading flex-col items-center gap-2 text-center text-small text-text-muted"
           role="region"
           aria-label="Detalhes da execução"
           data-testid="ended-detail"
@@ -51,16 +73,34 @@ export function EndedLine({
   );
 }
 
+/** The three dots: the first two fade, the last one is the brightest. */
+const DOTS = ["opacity-40 bg-text-muted", "opacity-70 bg-text-muted", "bg-text"] as const;
+const DOT_DELAY = ["", "[animation-delay:0.2s]", "[animation-delay:0.4s]"] as const;
+
 /** Three dots, the last one brightest. `animated` false (paused) leaves them still. */
 export function Dots({ animated = true, size = "md" }: { animated?: boolean; size?: "md" | "lg" }) {
   return (
     <span
-      className={`ui-dots ui-dots--${size}${animated ? " ui-dots--animated" : ""}`}
+      className={cx(
+        "inline-flex items-center",
+        size === "lg" ? "gap-1.5" : "gap-1",
+        animated && "ui-dots--animated",
+      )}
       aria-hidden="true"
     >
-      <span className="ui-dots__dot" />
-      <span className="ui-dots__dot" />
-      <span className="ui-dots__dot" />
+      {DOTS.map((tone, i) => (
+        <span
+          // biome-ignore lint/suspicious/noArrayIndexKey: three fixed dots
+          key={i}
+          className={cx(
+            "ui-dots__dot rounded-pill",
+            size === "lg" ? "size-3.25" : "size-2",
+            tone,
+            animated && "animate-dot",
+            animated && DOT_DELAY[i],
+          )}
+        />
+      ))}
     </span>
   );
 }
@@ -77,9 +117,15 @@ export function WorkingIndicator({
   animated?: boolean;
 }) {
   return (
-    <div className="ui-working" role="status" data-testid="working-indicator" data-phrase={phrase}>
+    <div
+      className="flex min-h-6 items-center gap-3 px-2"
+      role="status"
+      data-testid="working-indicator"
+      data-phrase={phrase}
+    >
       <Dots animated={animated} />
-      <span className="ui-working__phrase">{phrase}</span>
+      {/* "Discreet" (a setting) keeps the phrase for screen readers only. */}
+      <span className="truncate text-label text-text-muted phrase-discreet:sr-only">{phrase}</span>
     </div>
   );
 }

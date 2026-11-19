@@ -1,0 +1,151 @@
+/*
+ * The Tailwind theme of the app: ONLY what tokens.css defines (docs/DESIGN.md §2). Every name below
+ * points at a variable of tokens.css, so a utility reads the variable when it is used and the light
+ * theme (`data-theme`) switches everything with no second set of classes. The default palette,
+ * radii, type scale and shadows are removed (`initial`): `bg-red-500` or `rounded-xl` simply do not
+ * exist. Colours, radii and sizes are never written in a class, only named from here.
+ *
+ * `inline`: the theme name and the token have the SAME name (`--color-bg`), so the utility must use
+ * `var(--color-bg)` itself and not a theme variable that would point at itself. The values are
+ * defined, once, in tokens.css (it is not in a layer, so it wins over anything Tailwind emits).
+ */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+@custom-variant light (&:where([data-theme="light"], [data-theme="light"] *));
+/* Appearance settings that reshape a piece (lib/settings.ts): the root carries them as data-*. */
+/* The window is narrow (the settings dialog stacks its nav over its pane). */
+@custom-variant narrow (@media (max-width: 640px));
+@custom-variant bubble-neutral (:root[data-bubble="neutral"] &);
+@custom-variant phrase-discreet (:root[data-phrase="discreet"] &);
+
+@theme inline {
+  --color-*: initial;
+  --color-bg: var(--color-bg);
+  --color-surface: var(--color-surface);
+  --color-raised: var(--color-raised);
+  --color-hover: var(--color-hover);
+  --color-border: var(--color-border);
+  --color-border-strong: var(--color-border-strong);
+  --color-text: var(--color-text);
+  --color-text-muted: var(--color-text-muted);
+  --color-text-inverse: var(--color-text-inverse);
+  --color-bg-inverse: var(--color-bg-inverse);
+  --color-bg-inverse-dim: var(--color-bg-inverse-dim);
+  --color-danger-text: var(--color-danger-text);
+  --color-danger-subtle: var(--color-danger-subtle);
+  --color-success-text: var(--color-success-text);
+  --color-success-subtle: var(--color-success-subtle);
+  --color-focus: var(--color-focus);
+  --color-scrim: var(--color-scrim);
+  --color-bubble-neutral: var(--color-bubble-neutral);
+  /* The one place colour enters the chrome: the bot's colour (set on the chat by the screen). */
+  --color-bot-bubble: var(--bot-bubble, var(--color-raised));
+  --color-bot-on-bubble: var(--bot-on-bubble, var(--color-text));
+  --color-bot-fill: var(--bot-fill, var(--color-bg-inverse));
+  --color-bot-on-fill: var(--bot-on-fill, var(--color-text-inverse));
+
+  --radius-*: initial;
+  --radius-pill: var(--radius-pill);
+  --radius-full: var(--radius-full);
+  --radius-card: var(--radius-card);
+  --radius-row: var(--radius-row);
+  --radius-inner: var(--radius-inner);
+  --radius-bubble: var(--radius-bubble);
+  --radius-bubble-link: var(--radius-bubble-link);
+  --radius-chip: var(--radius-chip);
+  --radius-composer: var(--radius-composer);
+  --radius-xs: var(--radius-xs);
+  --radius-hairline: var(--radius-hairline);
+
+  --font-*: initial;
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  --font-weight-*: initial;
+  --font-weight-label: var(--text-label-weight);
+  --font-weight-title: var(--text-title-weight);
+  --tracking-*: initial;
+  --tracking-section: var(--text-section-tracking);
+
+  --text-*: initial;
+  --text-title: var(--text-title-size);
+  --text-title--line-height: var(--text-title-line);
+  --text-body: var(--text-body-size);
+  --text-body--line-height: var(--text-body-line);
+  --text-label: var(--text-label-size);
+  --text-label--line-height: var(--text-label-line);
+  --text-small: var(--text-small-size);
+  --text-small--line-height: var(--text-small-line);
+  --text-section: var(--text-section-size);
+  --text-section--line-height: var(--text-section-line);
+  --text-heading: var(--text-heading-size);
+  --text-heading--line-height: var(--text-heading-line);
+  --text-code: var(--text-code-size);
+  --text-code--line-height: var(--text-code-line);
+  --text-settings-title: var(--text-settings-title-size);
+  --text-settings-title--line-height: var(--text-heading-line);
+  --text-glyph-xs: var(--text-glyph-xs-size);
+  --text-glyph-xl: var(--text-glyph-xl-size);
+  --text-glyph-tile: var(--text-glyph-tile-size);
+
+  --leading-*: initial;
+  --leading-none: 1;
+  --leading-inherit: inherit; /* the line height of the parent, where the old rule set only the size */
+  --leading-label: var(--text-label-line);
+  --leading-body: var(--text-body-line);
+  --leading-small: var(--text-small-line);
+  --leading-section: var(--text-section-line);
+  --leading-title: var(--text-title-line);
+  --leading-code: var(--text-code-line);
+
+  --shadow-*: initial;
+  --shadow-popover: var(--shadow-popover);
+
+  /* Spacing: the 4 px grid of --space-1, so p-4 is 16 px (--space-4) and p-2.5 is 10 px. */
+  --spacing: var(--space-1);
+  --spacing-control: var(--size-control);
+  --spacing-icon-circle: var(--size-icon-circle);
+  --spacing-icon: var(--size-icon);
+  --spacing-icon-box: var(--size-icon-box);
+  --spacing-avatar-sm: var(--size-avatar-sm);
+  --spacing-avatar-md: var(--size-avatar-md);
+  --spacing-avatar-lg: var(--size-avatar-lg);
+  --spacing-rail-avatar: var(--size-rail-avatar);
+  --spacing-panel-avatar: var(--size-panel-avatar);
+  --spacing-settings-height: var(--height-settings);
+
+  /* Widths for w-*, max-w-*, min-w-*. */
+  --container-*: initial;
+  --container-reading: var(--width-reading);
+  --container-content: var(--width-content);
+  --container-settings: var(--width-settings);
+  --container-settings-nav: var(--width-settings-nav);
+  --container-dialog: var(--width-dialog);
+  --container-dialog-wide: var(--width-dialog-wide);
+  --container-toast: var(--width-toast);
+  --container-bubble-user: var(--width-bubble-user);
+  --container-menu: var(--width-menu);
+  --container-menu-wide: var(--width-menu-wide);
+  --container-dropdown: var(--width-dropdown);
+  --container-empty-text: var(--width-empty-text);
+  --container-input: var(--width-input);
+
+  --default-transition-duration: var(--duration-fast);
+  --default-transition-timing-function: ease;
+}
+
+/* The one animation of the app that is not Tailwind's own: the three dots of "working". */
+@theme {
+  --animate-dot: ui-dot 1.2s ease-in-out infinite;
+
+  @keyframes ui-dot {
+    0%,
+    100% {
+      transform: translateY(0);
+      opacity: 0.45;
+    }
+    40% {
+      transform: translateY(-3px);
+      opacity: 1;
+    }
+  }
+}

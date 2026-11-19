@@ -78,6 +78,10 @@ pre {
   font-size: var(--text-small-size);
   line-height: var(--text-small-line);
 }
+.mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-code-size);
+}
 .wrap {
   overflow-wrap: anywhere;
   white-space: pre-wrap;

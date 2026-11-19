@@ -7,6 +7,7 @@ import {
 import { History } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useServices } from "../../app/context.js";
+import { cx } from "../../lib/cx.js";
 import {
   type Cell,
   CHANGED_AGAIN,
@@ -15,33 +16,59 @@ import {
   EVENT_LABEL,
   type Section,
 } from "../../lib/tool-review.js";
-import { Dialog, Pill, Tag } from "../../ui/primitives.js";
+import {
+  Dialog,
+  FieldError,
+  FormStack,
+  MutedText,
+  Notice,
+  Pill,
+  Tag,
+} from "../../ui/primitives.js";
 import { formatWhen } from "./formatting.js";
-import { RowAction, SettingsGroup, SettingsRow } from "./parts.js";
+import { RowAction, SettingsFold, SettingsGroup, SettingsHint, SettingsRow } from "./parts.js";
 import { useTask } from "./use-task.js";
 
 // The review of a definition: what the server showed when you approved it next to what it shows now.
 // Differences are marked by a sign in front of the line and by bold underlined words, never by colour
 // alone, and the whole comparison says it is text written by the connector's server.
 
-function CellView({ cell, side }: { cell: Cell | null; side: "left" | "right" }) {
-  if (cell === null) return <div className="diff-cell diff-cell--empty" aria-hidden="true" />;
+/** A cell of the comparison; the description is prose, the rest is code. */
+const cellClass = (side: "left" | "right", prose: boolean, mark?: Cell["mark"]): string =>
+  cx(
+    "flex min-w-0 gap-2 px-3 py-1 wrap-anywhere whitespace-pre-wrap",
+    prose ? "font-sans text-small" : "font-mono text-code",
+    side === "right" && "border-l border-border",
+    mark === "removed" && "bg-danger-subtle",
+    mark === "added" && "bg-success-subtle",
+  );
+
+function CellView({
+  cell,
+  side,
+  prose,
+}: {
+  cell: Cell | null;
+  side: "left" | "right";
+  prose: boolean;
+}) {
+  if (cell === null) return <div className={cellClass(side, prose)} aria-hidden="true" />;
   const sign = cell.mark === "removed" ? "−" : cell.mark === "added" ? "+" : " ";
   const spoken =
     cell.mark === "removed" ? "Linha removida: " : cell.mark === "added" ? "Linha nova: " : "";
   return (
-    <div className={`diff-cell diff-cell--${cell.mark}`} data-side={side} data-mark={cell.mark}>
-      <span className="diff-cell__sign" aria-hidden="true">
+    <div className={cellClass(side, prose, cell.mark)} data-side={side} data-mark={cell.mark}>
+      <span className="w-[1ch] flex-none text-text-muted" aria-hidden="true">
         {sign}
       </span>
-      <span className="diff-cell__text">
+      <span>
         {spoken !== "" && <span className="sr-only">{spoken}</span>}
         {cell.parts === undefined
           ? cell.text
           : cell.parts.map((part, i) =>
               part.changed ? (
                 // biome-ignore lint/suspicious/noArrayIndexKey: the words never reorder
-                <strong key={i} className="diff-word">
+                <strong key={i} className="diff-word font-bold underline">
                   {part.text}
                 </strong>
               ) : (
@@ -56,19 +83,28 @@ function CellView({ cell, side }: { cell: Cell | null; side: "left" | "right" })
 
 function SectionView({ section, isNew }: { section: Section; isNew: boolean }) {
   return (
-    <div className="diff-section" data-testid="review-section" data-section={section.id}>
-      <div className="diff-section__head">
-        <h4 className="diff-section__title">{section.title}</h4>
-        <span className="muted small" data-testid="review-changes">
+    <div className="flex flex-col gap-1" data-testid="review-section" data-section={section.id}>
+      <div className="flex items-baseline justify-between gap-3">
+        <h4 className="m-0 text-section font-label tracking-section text-text-muted uppercase">
+          {section.title}
+        </h4>
+        <MutedText data-testid="review-changes">
           {isNew ? "tudo é novo" : changeSummary(section)}
-        </span>
+        </MutedText>
       </div>
-      <div className="diff-grid" role="group" aria-label={`${section.title}: antes e agora`}>
+      <div
+        className="flex min-w-0 flex-col overflow-hidden rounded-inner border border-border"
+        role="group"
+        aria-label={`${section.title}: antes e agora`}
+      >
         {section.rows.map((row, i) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: rows are positional
-          <div key={i} className="diff-row">
-            <CellView cell={row.left} side="left" />
-            <CellView cell={row.right} side="right" />
+          <div
+            // biome-ignore lint/suspicious/noArrayIndexKey: rows are positional
+            key={i}
+            className={cx("grid min-w-0 grid-cols-2", i > 0 && "border-t border-border")}
+          >
+            <CellView cell={row.left} side="left" prose={section.id === "description"} />
+            <CellView cell={row.right} side="right" prose={section.id === "description"} />
           </div>
         ))}
       </div>
@@ -138,38 +174,33 @@ function ReviewItem({
     >
       {!kept && (
         <>
-          <p className="ui-notice" role="note" data-testid="review-server-text">
+          <Notice role="note" data-testid="review-server-text">
             <strong>Texto escrito pelo servidor</strong>
             Descrição e esquema abaixo vêm do servidor do conector, não do Suup. Leia o que mudou
             antes de aprovar.
-          </p>
-          <div className="diff-heads" aria-hidden="true">
+          </Notice>
+          <div
+            className="grid grid-cols-2 gap-2 pl-[calc(var(--space-4)+var(--space-1))] text-label leading-inherit font-label"
+            aria-hidden="true"
+          >
             <span>
-              Antes <span className="muted">(o que você aprovou)</span>
+              Antes <span className="text-text-muted">(o que você aprovou)</span>
             </span>
             <span>
-              Agora <span className="muted">(o que o servidor mostra)</span>
+              Agora <span className="text-text-muted">(o que o servidor mostra)</span>
             </span>
           </div>
           {isNew && (
-            <p className="muted small" data-testid="review-new">
+            <MutedText as="p" data-testid="review-new">
               Ferramenta nova: nada foi aprovado antes, então o lado esquerdo está vazio.
-            </p>
+            </MutedText>
           )}
           {sections.map((section) => (
             <SectionView key={section.id} section={section} isNew={isNew} />
           ))}
-          {note !== undefined && (
-            <p className="ui-field__error" role="alert" data-testid="review-again">
-              {note}
-            </p>
-          )}
-          {task.error !== undefined && (
-            <p className="ui-field__error" role="alert">
-              {task.error}
-            </p>
-          )}
-          <div className="grant-footer">
+          {note !== undefined && <FieldError data-testid="review-again">{note}</FieldError>}
+          {task.error !== undefined && <FieldError>{task.error}</FieldError>}
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <Pill
               tone="ghost"
               disabled={task.busy}
@@ -211,22 +242,26 @@ function ReviewFrame({
 }) {
   return (
     <section
-      className="review-item"
+      className="flex flex-col gap-3 rounded-row border border-border p-4"
       data-testid="review-item"
       data-tool={testTool}
       aria-label={`Revisão de ${title}`}
     >
-      <div className="row-between">
-        <h3 className="review-item__title">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h3 className="m-0 text-title font-title">
           {title} <Tag tone="outline">{status}</Tag>
         </h3>
         {kept && (
-          <span className="muted small" data-testid="review-kept">
+          <MutedText data-testid="review-kept">
             Mantida desligada. Nada foi enviado ao servidor.{" "}
-            <button type="button" className="link-button" onClick={onReopen}>
+            <button
+              type="button"
+              className="cursor-pointer border-0 bg-transparent p-0 text-inherit underline [font:inherit]"
+              onClick={onReopen}
+            >
               Rever
             </button>
-          </span>
+          </MutedText>
         )}
       </div>
       {children}
@@ -264,18 +299,14 @@ export function ReviewDialog({ connector, onClose }: { connector: Connector; onC
         </Pill>
       }
     >
-      <div className="review" data-testid="review-dialog">
-        <p className="muted small">
+      <FormStack data-testid="review-dialog">
+        <MutedText as="p">
           Uma ferramenta cuja definição mudou, ou que é nova, fica desligada para todos os bots até
           você aprovar. Aprovar vale só para a definição que está na tela.
-        </p>
-        {error !== undefined && (
-          <p className="ui-field__error" role="alert">
-            {error}
-          </p>
-        )}
+        </MutedText>
+        {error !== undefined && <FieldError>{error}</FieldError>}
         {items === undefined ? (
-          <p className="muted">Carregando…</p>
+          <MutedText as="p">Carregando…</MutedText>
         ) : items.length === 0 ? (
           <p data-testid="review-empty" role="status">
             Nada mais para revisar neste conector.
@@ -300,7 +331,7 @@ export function ReviewDialog({ connector, onClose }: { connector: Connector; onC
             />
           ))
         )}
-      </div>
+      </FormStack>
     </Dialog>
   );
 }
@@ -340,7 +371,7 @@ export function ToolHistory({ connector }: { connector: Connector }) {
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .slice(0, EVENTS_SHOWN);
   return (
-    <div className="sroot" data-testid="tool-history">
+    <div className="contents" data-testid="tool-history">
       <SettingsGroup label="Histórico" icon={History}>
         <SettingsRow
           testId="tool-history-card"
@@ -353,21 +384,21 @@ export function ToolHistory({ connector }: { connector: Connector }) {
           }
         />
         {open && (
-          <div className="sfold">
-            {error !== undefined && (
-              <p className="ui-field__error" role="alert">
-                {error}
-              </p>
-            )}
+          <SettingsFold>
+            {error !== undefined && <FieldError>{error}</FieldError>}
             {events === undefined && error === undefined ? (
-              <p className="sgroup__hint">Carregando…</p>
+              <SettingsHint>Carregando…</SettingsHint>
             ) : recent.length === 0 ? (
-              <p className="sgroup__hint">Nada registrado ainda.</p>
+              <SettingsHint>Nada registrado ainda.</SettingsHint>
             ) : (
-              <ul className="history-list" data-testid="tool-history-list">
+              <ul className="m-0 flex list-none flex-col gap-2 p-0" data-testid="tool-history-list">
                 {recent.map((e) => (
-                  <li key={e.id} className="history-row" data-kind={e.kind}>
-                    <span className="muted small">{formatWhen(e.createdAt)}</span>
+                  <li
+                    key={e.id}
+                    className="flex flex-wrap items-baseline gap-x-3 gap-y-2"
+                    data-kind={e.kind}
+                  >
+                    <MutedText>{formatWhen(e.createdAt)}</MutedText>
                     <span>
                       {EVENT_LABEL[e.kind]}
                       {e.tool !== null && (
@@ -378,13 +409,15 @@ export function ToolHistory({ connector }: { connector: Connector }) {
                       )}
                     </span>
                     {e.detail !== null && e.detail !== "" && (
-                      <span className="muted small wrap">{e.detail}</span>
+                      <MutedText className="wrap-anywhere whitespace-pre-wrap">
+                        {e.detail}
+                      </MutedText>
                     )}
                   </li>
                 ))}
               </ul>
             )}
-          </div>
+          </SettingsFold>
         )}
       </SettingsGroup>
     </div>

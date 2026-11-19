@@ -12,11 +12,14 @@ import { useUi } from "../../app/ui-store.js";
 import { ruleSentence } from "../../data/approval-text.js";
 import { orderedRules, writtenRulesOf } from "../../data/reducers.js";
 import { messageOf } from "../../data/sync.js";
-import { Dialog, Pill, Toggle } from "../../ui/primitives.js";
+import { Dialog, FieldError, MutedText, Pill, PlainText, Toggle } from "../../ui/primitives.js";
 import {
+  PaneBody,
   PaneHead,
   RowAction,
+  RowLine,
   type SectionProps,
+  SettingsCard,
   SettingsGroup,
   SettingsRow,
   SettingsSelect,
@@ -75,14 +78,14 @@ function WrittenRuleRow({
         titleTestId="written-rule-sentence"
         description={
           <>
-            <span className="srow__line" data-testid="written-rule-for">
+            <RowLine data-testid="written-rule-for">
               {botName ?? "Todos os bots"}
               {!rule.enabled && " · desligada"}
-            </span>
+            </RowLine>
             {toggling.error !== undefined && (
-              <span className="srow__line ui-field__error" role="alert">
+              <RowLine className="text-danger-text" role="alert">
                 {toggling.error}
-              </span>
+              </RowLine>
             )}
           </>
         }
@@ -135,12 +138,12 @@ function ExactRulesDialog({ rules, onClose }: { rules: ApprovalRule[]; onClose()
           </Pill>
         }
       >
-        <p className="muted small">
+        <MutedText as="p">
           São as regras de antes, que comparam um campo com um valor exato. Valem como sempre; aqui
           você só as vê e as remove.
-        </p>
-        <div className="sgroup" data-testid="rules-exact-list">
-          <div className="scard">
+        </MutedText>
+        <div className="flex flex-col gap-2" data-testid="rules-exact-list">
+          <SettingsCard>
             {rules.length === 0 && <SettingsRow title="Nenhuma regra exata." />}
             {rules.map((rule) => (
               <div key={rule.id} data-testid="rule-row" data-effect={rule.effect}>
@@ -150,13 +153,11 @@ function ExactRulesDialog({ rules, onClose }: { rules: ApprovalRule[]; onClose()
                   description={
                     <>
                       {!rule.enabled && (
-                        <span className="srow__line" data-testid="rule-disabled-reason">
+                        <RowLine data-testid="rule-disabled-reason">
                           Desativada: {rule.disabledReason}
-                        </span>
+                        </RowLine>
                       )}
-                      {rule.note !== null && rule.note !== "" && (
-                        <span className="srow__line">{rule.note}</span>
-                      )}
+                      {rule.note !== null && rule.note !== "" && <RowLine>{rule.note}</RowLine>}
                     </>
                   }
                   control={
@@ -167,7 +168,7 @@ function ExactRulesDialog({ rules, onClose }: { rules: ApprovalRule[]; onClose()
                 />
               </div>
             ))}
-          </div>
+          </SettingsCard>
         </div>
       </Dialog>
       {deleting !== null && (
@@ -194,16 +195,12 @@ function ExactRulesDialog({ rules, onClose }: { rules: ApprovalRule[]; onClose()
             </>
           }
         >
-          <p className="wrap">{ruleSentence(deleting, context(deleting))}</p>
-          <p className="muted small">
+          <PlainText>{ruleSentence(deleting, context(deleting))}</PlainText>
+          <MutedText as="p">
             Depois de removida, as próximas chamadas voltam a seguir o nível da ferramenta: o que
             sai para o mundo volta a pedir cartão.
-          </p>
-          {removal.error !== undefined && (
-            <p className="ui-field__error" role="alert">
-              {removal.error}
-            </p>
-          )}
+          </MutedText>
+          {removal.error !== undefined && <FieldError>{removal.error}</FieldError>}
         </Dialog>
       )}
     </>
@@ -265,7 +262,7 @@ export function PermissionsSettings({ title, titleId, onClose }: SectionProps) {
   return (
     <>
       <PaneHead title={title} titleId={titleId} onClose={onClose} />
-      <div className="spane__body">
+      <PaneBody>
         <SettingsGroup label="Aprovações">
           <SettingsRow
             icon={ShieldCheck}
@@ -273,14 +270,12 @@ export function PermissionsSettings({ title, titleId, onClose }: SectionProps) {
             description={
               <>
                 {mode !== undefined && (
-                  <span className="srow__line" data-testid="approval-mode-description">
-                    {mode.description}
-                  </span>
+                  <RowLine data-testid="approval-mode-description">{mode.description}</RowLine>
                 )}
                 {reviewerNote !== undefined && (
-                  <span className="srow__line" data-testid="reviewer-unavailable">
+                  <RowLine data-testid="reviewer-unavailable">
                     {reviewerNote} Por enquanto vale o nível de risco de cada ação.
-                  </span>
+                  </RowLine>
                 )}
               </>
             }
@@ -303,7 +298,7 @@ export function PermissionsSettings({ title, titleId, onClose }: SectionProps) {
             />
           )}
         </SettingsGroup>
-        <div className="sroot" data-testid="rules-card">
+        <div className="contents" data-testid="rules-card">
           {GROUPS.map(({ kind, icon, header }, index) => {
             const mine = writtenRulesOf({ writtenRules: writtenById }, kind);
             return (
@@ -370,7 +365,7 @@ export function PermissionsSettings({ title, titleId, onClose }: SectionProps) {
             />
           </SettingsGroup>
         )}
-      </div>
+      </PaneBody>
       {editing !== null && (
         <WrittenRuleDialog
           kind={editing.kind}
@@ -403,15 +398,11 @@ export function PermissionsSettings({ title, titleId, onClose }: SectionProps) {
             </>
           }
         >
-          <p className="wrap">{deleting.text}</p>
-          <p className="muted small">
+          <PlainText>{deleting.text}</PlainText>
+          <MutedText as="p">
             Depois de removida, o revisor deixa de usar esta regra nas próximas chamadas.
-          </p>
-          {removal.error !== undefined && (
-            <p className="ui-field__error" role="alert">
-              {removal.error}
-            </p>
-          )}
+          </MutedText>
+          {removal.error !== undefined && <FieldError>{removal.error}</FieldError>}
         </Dialog>
       )}
     </>

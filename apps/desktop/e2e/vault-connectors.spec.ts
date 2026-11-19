@@ -572,7 +572,7 @@ test.describe("connectors", () => {
     const item = page.getByTestId("connector-item").filter({ hasText: "navega" });
     await expect(item).toBeVisible();
     // The connector row has the plug icon in the one icon slot.
-    await expect(item.locator(".srow__icon svg")).toHaveCount(1);
+    await expect(item.locator('span[aria-hidden="true"] > svg')).toHaveCount(1);
     await item.getByTestId("connector-details").click();
     const dialog = page.getByTestId("settings-screen");
     // Detail: the pane title is the connector's name; there is no back pill (nothing says "Conectores" as a button).
@@ -592,7 +592,7 @@ test.describe("connectors", () => {
     const card = page
       .getByTestId("connector-panel")
       .locator("section", { has: page.locator("h3", { hasText: "Ajustes" }) })
-      .locator(".scard");
+      .locator(":scope > div");
     const second = card.locator(":scope > * + *").first();
     const edges = await second.evaluate((el) => {
       const rect = el.getBoundingClientRect();

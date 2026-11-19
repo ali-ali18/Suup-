@@ -68,7 +68,7 @@ function BotEntry({
   const label = status === "" ? bot.name : `${bot.name} — ${status}`;
   // Enquanto o bot trabalha o rosto vira o indicador de pontos (`data-working`, `data-state`).
   const working = ["working", "thinking", "resuming", "queued"].includes(display.chip ?? "");
-  const size = variant === "tile" ? "tile" : variant === "row" ? "md" : "lg";
+  const size = variant === "tile" ? "tile" : variant === "row" ? "row" : "lg";
   const openMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     onMenu(bot, e.clientX, e.clientY);

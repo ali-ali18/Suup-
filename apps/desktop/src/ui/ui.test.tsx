@@ -193,10 +193,10 @@ describe("ActionCard", () => {
   it("the three states say so in words; a running card has a spinner instead of the chevron", () => {
     const { container, rerender } = render(card({ state: "running" }));
     expect(screen.getByRole("button").textContent).toContain("Rodando · ");
-    expect(container.querySelector(".ui-spin")).not.toBeNull();
+    expect(container.querySelector(".animate-spin")).not.toBeNull();
     rerender(card({ state: "failed" }));
     expect(screen.getByRole("button").textContent).toContain("Falhou · ");
-    expect(container.querySelector(".ui-spin")).toBeNull();
+    expect(container.querySelector(".animate-spin")).toBeNull();
   });
 
   it("the variant that needs the user: title, instruction, a preview and the pills; no collapse row", () => {

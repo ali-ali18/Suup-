@@ -21,7 +21,7 @@ import { useUi } from "../../app/ui-store.js";
 import { arrangeBots, filterBots, flatBots, fold } from "../../data/botlist.js";
 import { plainText } from "../../lib/markdown.js";
 import { Avatar } from "../../ui/avatar.js";
-import { Dialog, Pill } from "../../ui/primitives.js";
+import { Dialog, Pill, Scrim } from "../../ui/primitives.js";
 
 interface Entry {
   id: string;
@@ -246,10 +246,7 @@ export function CommandPalette() {
 
   const sections = ["Bots", "Conversas", "Ações"] as const;
   return (
-    <div
-      className="ui-scrim ui-scrim--top"
-      onMouseDown={(e) => e.target === e.currentTarget && close()}
-    >
+    <Scrim top onClose={close}>
       <div
         role="dialog"
         aria-modal="true"
@@ -354,7 +351,7 @@ export function CommandPalette() {
           )}
         </div>
       </div>
-    </div>
+    </Scrim>
   );
 }
 

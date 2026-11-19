@@ -1,6 +1,6 @@
 import { FileText, Image as ImageIcon, LayoutPanelTop } from "lucide-react";
 import { useState } from "react";
-import { EmptyState, Pill } from "./primitives.js";
+import { EmptyState, IconCircle, MutedText, Pill, SectionLabel, tabClass } from "./primitives.js";
 
 export type LibraryKind = "page" | "media" | "file";
 export interface LibraryItem {
@@ -62,13 +62,13 @@ export function LibraryList({
   const visible = items.filter((i) => filter === "all" || i.kind === filter);
   const groups = groupByRecency(visible, now);
   return (
-    <div className="ui-library">
-      <div className="ui-library__filters" role="group" aria-label="Filtrar biblioteca">
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap gap-1" role="group" aria-label="Filtrar biblioteca">
         {LIBRARY_FILTERS.map((f) => (
           <button
             key={f.id}
             type="button"
-            className={`ui-tab${filter === f.id ? " ui-tab--active" : ""}`}
+            className={tabClass(filter === f.id)}
             aria-pressed={filter === f.id}
             onClick={() => setFilter(f.id)}
           >
@@ -88,23 +88,26 @@ export function LibraryList({
           return (
             <section
               key={group.id}
-              className="ui-library__group"
+              className="flex flex-col items-start gap-2"
               aria-label={LIBRARY_GROUP_LABEL[group.id]}
             >
-              <p className="section-label">{LIBRARY_GROUP_LABEL[group.id]}</p>
-              <ul className="ui-library__items">
+              <SectionLabel>{LIBRARY_GROUP_LABEL[group.id]}</SectionLabel>
+              <ul className="flex w-full flex-col gap-2">
                 {group.items.slice(0, limit).map((item) => {
                   const Icon = ICON[item.kind];
                   return (
-                    <li key={item.id} className="ui-library__item">
-                      <span className="ui-icon-circle" aria-hidden="true">
+                    <li
+                      key={item.id}
+                      className="flex items-center gap-3 rounded-row border border-border bg-surface p-3"
+                    >
+                      <IconCircle>
                         <Icon size={16} />
-                      </span>
-                      <span className="ui-library__text">
-                        <span className="ui-library__title">{item.title}</span>
-                        {item.subtitle !== undefined && (
-                          <span className="small muted">{item.subtitle}</span>
-                        )}
+                      </IconCircle>
+                      <span className="flex min-w-0 flex-col">
+                        <span className="text-label leading-inherit font-label wrap-anywhere">
+                          {item.title}
+                        </span>
+                        {item.subtitle !== undefined && <MutedText>{item.subtitle}</MutedText>}
                       </span>
                     </li>
                   );

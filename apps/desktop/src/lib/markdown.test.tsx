@@ -114,7 +114,7 @@ describe("links in a message", () => {
 
   it("no accent colour: the link is the text colour, underlined, with a neutral glyph and NO image", () => {
     const { container, anchors } = links("[doc](https://example.com/docs)");
-    expect(anchors[0]?.className).toBe("md__link");
+    expect(anchors[0]?.className).toContain("md__link");
     expect(container.querySelector("img")).toBeNull();
     expect(container.querySelector(".md__ico svg")).not.toBeNull();
   });

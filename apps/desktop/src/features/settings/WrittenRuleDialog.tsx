@@ -2,8 +2,17 @@ import { MAX_WRITTEN_RULE_CHARS, type WrittenRule, type WrittenRuleKind } from "
 import { type KeyboardEvent, useId, useMemo, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { sortedBots } from "../../app/selectors.js";
+import { cx } from "../../lib/cx.js";
 import { Dropdown } from "../../ui/dropdown.js";
-import { Dialog, Pill } from "../../ui/primitives.js";
+import {
+  Dialog,
+  FieldError,
+  FieldHint,
+  FieldLabel,
+  FormStack,
+  fieldControlClass,
+  Pill,
+} from "../../ui/primitives.js";
 import { useTask } from "./use-task.js";
 
 /** The three kinds of written rule: the name the owner knows, and the example that teaches the sentence. */
@@ -98,14 +107,15 @@ export function WrittenRuleDialog({
         </>
       }
     >
-      <div className="srule-form" data-testid="written-rule-form" data-kind={kind}>
-        <div className={`ui-field${task.error === undefined ? "" : " ui-field--error"}`}>
-          <label className="ui-field__label" htmlFor={textId}>
-            Aplica-se a
-          </label>
+      <FormStack data-testid="written-rule-form" data-kind={kind}>
+        <div className="flex flex-col gap-1.5">
+          <FieldLabel htmlFor={textId}>Aplica-se a</FieldLabel>
           <textarea
             id={textId}
-            className="ui-field__control srule-text"
+            className={cx(
+              fieldControlClass({ multiline: true, error: task.error !== undefined }),
+              "min-h-28",
+            )}
             rows={4}
             value={text}
             placeholder={KIND_TEXT[kind].placeholder}
@@ -117,22 +127,24 @@ export function WrittenRuleDialog({
             }}
             onKeyDown={onKey}
           />
-          <div className="srule-hint">
-            <span className="ui-field__hint" id={hintId}>
+          <div className="flex justify-between gap-3">
+            <FieldHint as="span" id={hintId}>
               Diga qual é a ação e quem ou o que ela afeta.
-            </span>
-            {length >= COUNTER_FROM && (
-              <span
-                className={length > MAX_WRITTEN_RULE_CHARS ? "ui-field__error" : "ui-field__hint"}
-                data-testid="written-rule-counter"
-              >
-                {length}/{MAX_WRITTEN_RULE_CHARS}
-              </span>
-            )}
+            </FieldHint>
+            {length >= COUNTER_FROM &&
+              (length > MAX_WRITTEN_RULE_CHARS ? (
+                <FieldError as="span" alert={false} data-testid="written-rule-counter">
+                  {length}/{MAX_WRITTEN_RULE_CHARS}
+                </FieldError>
+              ) : (
+                <FieldHint as="span" data-testid="written-rule-counter">
+                  {length}/{MAX_WRITTEN_RULE_CHARS}
+                </FieldHint>
+              ))}
           </div>
         </div>
-        <div className="ui-field">
-          <span className="ui-field__label">Para qual bot</span>
+        <div className="flex flex-col gap-1.5">
+          <FieldLabel as="span">Para qual bot</FieldLabel>
           <Dropdown
             variant="field"
             label="Para qual bot"
@@ -147,11 +159,9 @@ export function WrittenRuleDialog({
           />
         </div>
         {task.error !== undefined && (
-          <p className="ui-field__error" role="alert" data-testid="written-rule-error">
-            {task.error}
-          </p>
+          <FieldError data-testid="written-rule-error">{task.error}</FieldError>
         )}
-      </div>
+      </FormStack>
     </Dialog>
   );
 }

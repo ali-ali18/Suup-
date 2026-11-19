@@ -1,6 +1,6 @@
 import { Pencil, RotateCcw, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { Pill, RoundButton, Tag, TextField } from "./primitives.js";
+import { MutedText, Pill, RoundButton, Tag, TextField } from "./primitives.js";
 
 export interface MemoryItemProps {
   text: string;
@@ -23,11 +23,11 @@ export function MemoryItem(p: MemoryItemProps) {
   const [draft, setDraft] = useState(p.text);
   return (
     <li
-      className={`ui-memory${p.archived ? " ui-memory--archived" : ""}`}
+      className="flex flex-col gap-3 rounded-row border border-border bg-surface p-4"
       data-testid="memory-item"
     >
       {editing ? (
-        <div className="ui-memory__edit">
+        <div className="flex flex-col gap-3">
           <TextField
             label="Texto da memória"
             value={draft}
@@ -36,7 +36,7 @@ export function MemoryItem(p: MemoryItemProps) {
             rows={3}
             autoFocus
           />
-          <div className="ui-memory__actions">
+          <div className="ml-auto inline-flex gap-1">
             <Pill
               tone="ghost"
               onClick={() => {
@@ -60,17 +60,19 @@ export function MemoryItem(p: MemoryItemProps) {
         </div>
       ) : (
         <>
-          <p className="ui-memory__text wrap">{p.text}</p>
-          <div className="ui-memory__foot">
-            <span className="ui-memory__tags">
+          <p className="text-body wrap-anywhere whitespace-pre-wrap text-text-muted line-through">
+            {p.text}
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex flex-wrap gap-1">
               <Tag>{p.layerLabel}</Tag>
               <Tag tone="outline">{p.scopeLabel}</Tag>
               {p.archived && <Tag tone="outline">Esquecida</Tag>}
             </span>
-            <span className="ui-memory__meta small muted">
+            <MutedText className="min-w-0 flex-1">
               {p.authorLabel} · {p.dateLabel}
-            </span>
-            <span className="ui-memory__actions">
+            </MutedText>
+            <span className="ml-auto inline-flex gap-1">
               {p.archived ? (
                 <Pill
                   tone="secondary"

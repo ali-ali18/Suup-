@@ -26,8 +26,10 @@ import { useSettings } from "../../app/settings-store.js";
 import type { Settings } from "../../lib/settings.js";
 import { Toggle } from "../../ui/primitives.js";
 import {
+  PaneBody,
   PaneHead,
   RowAction,
+  RowValue,
   type SectionProps,
   SettingsGroup,
   SettingsRow,
@@ -229,7 +231,7 @@ export function GeneralSettings({ title, titleId, onClose }: SectionProps) {
   return (
     <>
       <PaneHead title={title} titleId={titleId} onClose={onClose} />
-      <div className="spane__body">
+      <PaneBody>
         <SettingsGroup label="Servidor" testId="server-group">
           <SettingsRow
             icon={Server}
@@ -286,10 +288,10 @@ export function GeneralSettings({ title, titleId, onClose }: SectionProps) {
                   : `${m.provider} · ${m.unavailableReason}`
               }
               control={
-                <span className="srow__value">
+                <RowValue>
                   {m.available ? "Disponível" : "Indisponível"}
                   {!m.priced && " · sem preço"}
-                </span>
+                </RowValue>
               }
             />
           ))}
@@ -304,17 +306,17 @@ export function GeneralSettings({ title, titleId, onClose }: SectionProps) {
               icon={icon}
               title={label}
               control={
-                <span className="srow__value">
+                <RowValue>
                   {String(
                     (main?.limits as Record<string, unknown> | undefined)?.[key] ??
                       "padrão do servidor",
                   )}
-                </span>
+                </RowValue>
               }
             />
           ))}
         </SettingsGroup>
-      </div>
+      </PaneBody>
     </>
   );
 }

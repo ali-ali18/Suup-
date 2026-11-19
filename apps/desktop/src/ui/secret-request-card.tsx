@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { SecretRequestState } from "../data/secret-requests.js";
 import { modalOpen } from "../lib/focus.js";
 import type { SecretOutcome } from "../lib/secret-form.js";
-import { ActionCard } from "./action-card.js";
+import { ActionCard, ActionLabel } from "./action-card.js";
 import { DecisionCard } from "./decision-card.js";
 import { Pill } from "./primitives.js";
 import { userIsTyping } from "./question-card.js";
@@ -114,7 +114,7 @@ function OpenForm({
           : `Motivo dado pelo bot: ${reason}`
       }
       footerNote={
-        <span className="ui-decision__assure">
+        <span className="inline-flex items-center gap-2 [&>svg]:flex-none">
           <ShieldCheck size={14} aria-hidden="true" />
           Guardado no cofre; o bot nunca vê o valor.
         </span>
@@ -122,15 +122,15 @@ function OpenForm({
       footer={
         <>
           <Pill
-            tone="ghost"
-            className="ui-decision__deny"
+            tone="quiet"
+            className="min-w-24"
             disabled={waiting}
             data-testid="secret-decline"
             onClick={() => void decline()}
           >
             {busy === "decline" ? (
               <>
-                <LoaderCircle size={16} className="ui-spin" aria-hidden="true" />
+                <LoaderCircle size={16} className="animate-spin" aria-hidden="true" />
                 Recusando…
               </>
             ) : (
@@ -139,14 +139,14 @@ function OpenForm({
           </Pill>
           <Pill
             tone="primary"
-            className="ui-decision__primary"
+            className="min-w-28"
             disabled={waiting || empty}
             data-testid="secret-save"
             onClick={() => void save()}
           >
             {busy === "save" ? (
               <>
-                <LoaderCircle size={16} className="ui-spin" aria-hidden="true" />
+                <LoaderCircle size={16} className="animate-spin" aria-hidden="true" />
                 Enviando…
               </>
             ) : (
@@ -157,7 +157,7 @@ function OpenForm({
       }
     >
       <form
-        className="secret-form"
+        className="flex flex-col gap-2"
         data-testid="secret-form"
         autoComplete="off"
         onSubmit={(e) => {
@@ -191,14 +191,14 @@ function Answered({ name, reason, state, expanded, onToggle }: SecretRequestCard
       expanded={expanded}
       onToggle={onToggle}
     >
-      <p className="ui-action__label">
+      <ActionLabel>
         {state === "provided"
           ? `O bot recebeu só o aviso de que ${name} está disponível. O valor está cifrado no cofre e não aparece em lugar nenhum.`
           : state === "declined"
             ? "Você recusou, e o bot seguiu sem o segredo."
             : "A execução terminou sem que o segredo fosse respondido."}
         {reason !== null && reason !== "" && ` Motivo dado pelo bot: ${reason}`}
-      </p>
+      </ActionLabel>
     </ActionCard>
   );
 }

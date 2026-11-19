@@ -2,7 +2,7 @@ import { KeyRound, Plug, Settings, ShieldCheck } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 import { type SettingsTab, useUi } from "../../app/ui-store.js";
-import { useModalFocus } from "../../ui/primitives.js";
+import { Scrim, useModalFocus } from "../../ui/primitives.js";
 import { ConnectorsSettings } from "./ConnectorsSettings.js";
 import { GeneralSettings } from "./GeneralSettings.js";
 import { PermissionsSettings } from "./PermissionsSettings.js";
@@ -47,18 +47,23 @@ export function SettingsDialog() {
     refs.current[target.id]?.focus();
   };
   return createPortal(
-    <div className="ui-scrim" onMouseDown={(e) => e.target === e.currentTarget && close()}>
+    <Scrim onClose={close}>
       <div
         ref={ref}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className="sdialog"
+        className="flex h-[min(var(--height-settings),100%)] w-[min(var(--width-settings),100%)] overflow-hidden rounded-card border border-border-strong bg-bg shadow-popover focus-visible:outline-none narrow:flex-col"
         data-testid="settings-screen"
         onKeyDown={onKeyDown}
       >
-        <div role="tablist" aria-orientation="vertical" aria-label="Seções" className="snav">
+        <div
+          role="tablist"
+          aria-orientation="vertical"
+          aria-label="Seções"
+          className="flex w-settings-nav flex-none flex-col gap-1 border-r border-border p-3 narrow:w-auto narrow:flex-row narrow:overflow-x-auto narrow:border-r-0 narrow:border-b"
+        >
           {SECTIONS.map((section, i) => (
             <button
               key={section.id}
@@ -71,7 +76,7 @@ export function SettingsDialog() {
               aria-selected={section.id === tab}
               aria-controls="settings-panel"
               tabIndex={section.id === tab ? 0 : -1}
-              className="snav__item"
+              className="flex min-h-9 items-center gap-3 rounded-inner border-0 bg-transparent px-3 py-0 text-left text-label text-text hover:bg-raised focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus aria-selected:bg-raised narrow:flex-none"
               onClick={() => setTab(section.id)}
               onKeyDown={(e) => move(e, i)}
             >
@@ -81,7 +86,7 @@ export function SettingsDialog() {
           ))}
         </div>
         <div
-          className="spane"
+          className="flex min-w-0 flex-1 flex-col"
           role="tabpanel"
           id="settings-panel"
           aria-labelledby={`settings-tab-${tab}`}
@@ -101,7 +106,7 @@ export function SettingsDialog() {
           )}
         </div>
       </div>
-    </div>,
+    </Scrim>,
     document.body,
   );
 }

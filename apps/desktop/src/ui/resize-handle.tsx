@@ -1,4 +1,5 @@
 import { type KeyboardEvent, type PointerEvent, useLayoutEffect, useRef } from "react";
+import { cx } from "../lib/cx.js";
 import {
   ariaValue,
   type PaneLayout,
@@ -124,7 +125,13 @@ export function ResizeHandle({
   return (
     <div
       ref={ref}
-      className={`resize-handle resize-handle--${edge}`}
+      className={cx(
+        "absolute inset-y-0 z-6 w-2.5 cursor-col-resize touch-none outline-none",
+        edge === "end" ? "-right-1.25" : "-left-1.25",
+        // The line shows only on hover, on focus and while dragging.
+        "after:absolute after:inset-y-0 after:left-1/2 after:-ml-px after:w-0.5 after:rounded-hairline after:bg-focus after:opacity-0 after:transition-opacity after:content-['']",
+        "hover:after:opacity-70 focus-visible:after:opacity-70 data-[dragging=true]:after:opacity-70",
+      )}
       role="separator"
       aria-orientation="vertical"
       aria-label={label}

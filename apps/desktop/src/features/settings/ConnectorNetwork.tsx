@@ -10,8 +10,8 @@ import {
   RUNS_IN_LABEL,
   sameHosts,
 } from "../../lib/network.js";
-import { TextField } from "../../ui/primitives.js";
-import { RowAction, SettingsGroup, SettingsRow } from "./parts.js";
+import { FieldError, TextField } from "../../ui/primitives.js";
+import { RowAction, RowControl, SettingsFold, SettingsGroup, SettingsRow } from "./parts.js";
 import { useTask } from "./use-task.js";
 
 /**
@@ -61,7 +61,7 @@ export function ConnectorNetwork({ connector }: { connector: Connector }) {
     });
 
   return (
-    <div className="sroot" data-testid="connector-network" data-runs-in={runsIn}>
+    <div className="contents" data-testid="connector-network" data-runs-in={runsIn}>
       <SettingsGroup
         label="Onde roda e que hosts alcança"
         icon={Globe}
@@ -88,7 +88,7 @@ export function ConnectorNetwork({ connector }: { connector: Connector }) {
             description={defaults.length === 0 ? "nenhum" : defaults.join(", ")}
           />
         )}
-        <div className="sfold">
+        <SettingsFold>
           <TextField
             label="Hosts liberados só para este conector (um por linha)"
             value={text}
@@ -99,11 +99,9 @@ export function ConnectorNetwork({ connector }: { connector: Connector }) {
             name="connector-egress"
           />
           {task.error !== undefined && (
-            <p className="ui-field__error" role="alert" data-testid="egress-error">
-              {task.error}
-            </p>
+            <FieldError data-testid="egress-error">{task.error}</FieldError>
           )}
-          <div className="srow__control">
+          <RowControl end>
             {dirty && (
               <RowAction disabled={task.busy} onClick={() => setText(hostsText(saved))}>
                 Descartar
@@ -116,8 +114,8 @@ export function ConnectorNetwork({ connector }: { connector: Connector }) {
             >
               {task.busy ? "Salvando…" : "Salvar hosts"}
             </RowAction>
-          </div>
-        </div>
+          </RowControl>
+        </SettingsFold>
       </SettingsGroup>
     </div>
   );

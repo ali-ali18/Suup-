@@ -225,10 +225,6 @@
 .bot-entry--row .bot-entry__main {
   padding-right: 36px;
 }
-.bot-entry--row .ui-avatar {
-  width: 42px;
-  height: 42px;
-}
 .bot-entry--tile .bot-entry__main {
   flex-direction: column;
   gap: var(--space-2);
@@ -466,7 +462,7 @@
   flex: none;
   padding: 56px var(--space-5) var(--space-5);
 }
-.panel__head > .ui-round {
+.panel__head > button {
   position: absolute;
   top: var(--space-3);
   right: var(--space-3);
@@ -612,33 +608,10 @@
   align-items: flex-start;
   gap: var(--space-2);
 }
-.pending__item > .ui-card {
-  width: 100%;
-}
 .pending__bot {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-}
-.settings__row {
-  display: flex;
-  gap: var(--space-2);
-}
-.settings__list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-.settings__model {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-}
-.settings__model-tags {
-  display: inline-flex;
-  gap: var(--space-1);
 }
 .form {
   display: flex;
@@ -649,11 +622,6 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-}
-select.ui-field__control {
-  height: var(--size-control);
-  padding-block: 0;
-  border-radius: var(--radius-pill);
 }
 .inspector {
   max-width: 980px;
@@ -678,9 +646,6 @@ select.ui-field__control {
 }
 
 /* ---- New bot dialog ----------------------------------------------------------------------------------- */
-.ui-dialog--wide {
-  width: min(560px, 100%);
-}
 .newbot {
   display: flex;
   flex-direction: column;
@@ -689,10 +654,6 @@ select.ui-field__control {
 .newbot__preview {
   display: flex;
   justify-content: center;
-}
-.newbot__preview .ui-avatar {
-  width: 120px;
-  height: 120px;
 }
 .newbot__grid,
 .newbot__swatches {
@@ -721,9 +682,6 @@ select.ui-field__control {
     drop-shadow(0 2px 0 var(--color-raised)) drop-shadow(0 -2px 0 var(--color-raised))
     drop-shadow(1.5px 0 0 var(--color-text)) drop-shadow(-1.5px 0 0 var(--color-text))
     drop-shadow(0 1.5px 0 var(--color-text)) drop-shadow(0 -1.5px 0 var(--color-text));
-}
-.newbot .ui-field__control {
-  text-align: center;
 }
 .newbot__mascot svg {
   width: 100%;
@@ -773,10 +731,6 @@ select.ui-field__control {
 }
 
 /* ---- Command palette ---------------------------------------------------------------------------------------- */
-.ui-scrim--top {
-  align-items: flex-start;
-  padding-top: 12vh;
-}
 .palette {
   display: flex;
   flex-direction: column;
@@ -881,289 +835,6 @@ kbd {
 }
 .newbot__more:hover {
   color: var(--color-text);
-}
-
-.settings__setting {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  flex-wrap: wrap;
-  padding: var(--space-2) 0;
-}
-.settings__setting-text {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  max-width: 420px;
-}
-
-/* ---- Settings: tabs, rules, vault, connectors --------------------------------------------------------- */
-.settings__tabs {
-  flex: none;
-  padding: 0 var(--space-6) var(--space-2);
-  overflow-x: auto;
-}
-.row-between {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-}
-.inline-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1);
-}
-.rule-list,
-.connector-list,
-.tool-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-.rule-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-4);
-  flex-wrap: wrap;
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--color-border);
-}
-.rule-row:first-child {
-  padding-top: 0;
-  border-top: 0;
-}
-.rule-row__main {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  flex: 1;
-  min-width: 240px;
-}
-.rule-row__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-.cond-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(150px, 1.1fr) minmax(0, 1.3fr) auto;
-  gap: var(--space-2);
-  align-items: center;
-}
-.cond-row--ref {
-  grid-template-columns: minmax(0, 1fr) minmax(150px, 0.9fr) minmax(0, 1.3fr) auto;
-}
-.cond-row select.ui-field__control {
-  height: var(--size-control);
-}
-.grants {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-.grants legend {
-  padding: 0;
-  margin-bottom: var(--space-1);
-}
-.grant-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-.grant-check {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-fieldset.form__row {
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-fieldset.form__row legend {
-  padding: 0;
-  margin-bottom: var(--space-1);
-}
-.connector {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--color-border);
-  min-width: 0;
-}
-.connector:first-child {
-  padding-top: 0;
-  border-top: 0;
-}
-.connector__title {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-  font-size: var(--text-title-size);
-}
-.connector__error {
-  color: var(--color-danger-text);
-}
-.connector__actions {
-  flex-wrap: wrap;
-}
-.connector__details {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding-top: var(--space-3);
-}
-/* ---- Connectors: per-tool grants, review of a definition, history, network ----------------------------- */
-.grant-footer {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-}
-.link-button {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-decoration: underline;
-  cursor: pointer;
-}
-.ui-notice.review-notice {
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-}
-.review {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-.review-item {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-4);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-row);
-}
-.review-item__title {
-  margin: 0;
-  font-size: var(--text-title-size);
-  line-height: var(--text-title-line);
-  font-weight: var(--text-title-weight);
-}
-.diff-heads {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-2);
-  padding-left: calc(var(--space-4) + var(--space-1));
-  font-weight: var(--text-label-weight);
-  font-size: var(--text-label-size);
-}
-.diff-section {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-.diff-section__head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-.diff-section__title {
-  margin: 0;
-  font-size: var(--text-section-size);
-  line-height: var(--text-section-line);
-  font-weight: var(--text-section-weight);
-  letter-spacing: var(--text-section-tracking);
-  text-transform: uppercase;
-  color: var(--color-text-muted);
-}
-.diff-grid {
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-inner);
-  overflow: hidden;
-  min-width: 0;
-}
-.diff-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  min-width: 0;
-}
-.diff-row + .diff-row {
-  border-top: 1px solid var(--color-border);
-}
-.diff-cell {
-  display: flex;
-  gap: var(--space-2);
-  min-width: 0;
-  padding: var(--space-1) var(--space-3);
-  font-family: var(--font-mono);
-  font-size: var(--text-code-size);
-  line-height: var(--text-code-line);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-.diff-cell + .diff-cell {
-  border-left: 1px solid var(--color-border);
-}
-.diff-section[data-section="description"] .diff-cell {
-  font-family: var(--font-sans);
-  font-size: var(--text-small-size);
-  line-height: var(--text-small-line);
-}
-.diff-cell__sign {
-  flex: none;
-  width: 1ch;
-  color: var(--color-text-muted);
-}
-.diff-cell--removed {
-  background: var(--color-danger-subtle);
-}
-.diff-cell--added {
-  background: var(--color-success-subtle);
-}
-.diff-word {
-  font-weight: 700;
-  text-decoration: underline;
-}
-.history-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.history-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-2) var(--space-3);
-}
-.connector-network {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
 }
 .botnet {
   display: flex;

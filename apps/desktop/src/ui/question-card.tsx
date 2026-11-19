@@ -6,8 +6,13 @@ import {
   type QuestionAnswer,
 } from "@suup/api";
 import { type KeyboardEvent, useEffect, useId, useRef, useState } from "react";
+import { cx } from "../lib/cx.js";
 import { focusOnAppearance } from "../lib/focus.js";
-import { Pill } from "./primitives.js";
+import { fieldControlClass, Pill } from "./primitives.js";
+
+/** The chrome of a chat card (docs/DESIGN.md §3): one border, one radius, the width of reading. */
+const CARD =
+  "qcard flex w-full max-w-reading flex-col gap-4 rounded-card border border-border bg-surface p-5";
 
 const OTHER = "\u0000other";
 const letter = optionLetter;
@@ -132,19 +137,22 @@ export function QuestionCard({
     const multiple = q.multiple === true;
     const selected = picks[qi] ?? [];
     return (
-      <div className="qcard__question" key={`${rootId}-${qi}`} data-testid="question-block">
-        <p className="qcard__title wrap" id={`${rootId}-q${qi}`}>
+      <div className="flex flex-col gap-2" key={`${rootId}-${qi}`} data-testid="question-block">
+        <p
+          className="text-title font-title wrap-anywhere whitespace-pre-wrap"
+          id={`${rootId}-q${qi}`}
+        >
           {q.question}
         </p>
         {multiple && !readOnly && (
-          <p className="qcard__helper">Selecione todas as opções aplicáveis</p>
+          <p className="text-label text-text-muted">Selecione todas as opções aplicáveis</p>
         )}
         {q.options !== undefined && (
           // biome-ignore lint/a11y/useAriaPropsSupportedByRole: both roles named here are labelled groups
           <div
             role={multiple ? "group" : "radiogroup"}
             aria-labelledby={`${rootId}-q${qi}`}
-            className="qcard__options"
+            className="mt-2 flex flex-col gap-1"
           >
             {options.map((o, oi) => {
               const on = readOnly ? chosenBefore.includes(o.label) : selected.includes(o.key);
@@ -157,17 +165,28 @@ export function QuestionCard({
                   aria-checked={on}
                   disabled={disabled === true || readOnly}
                   tabIndex={readOnly ? -1 : on || (selected.length === 0 && oi === 0) ? 0 : -1}
-                  className={`qcard__option${on ? " qcard__option--on" : ""}`}
+                  className={cx(
+                    "group flex w-full items-center gap-3 border-0 bg-transparent px-0 py-1.5 text-left",
+                    on && "qcard__option--on",
+                  )}
                   data-testid="question-option"
                   onClick={() => choose(qi, o.key)}
                 >
-                  <span className="qcard__chip" aria-hidden="true">
+                  <span
+                    className={cx(
+                      "inline-flex size-7.5 flex-none items-center justify-center rounded-inner border text-small font-label group-enabled:group-hover:border-border-strong",
+                      on
+                        ? "border-bg-inverse bg-bg-inverse text-text-inverse"
+                        : "border-border bg-raised text-text-muted",
+                    )}
+                    aria-hidden="true"
+                  >
                     {letter(oi)}
                   </span>
-                  <span className="qcard__text">
-                    <span className="qcard__label">{o.label}</span>
+                  <span className="flex min-w-0 flex-col">
+                    <span className="text-body wrap-anywhere">{o.label}</span>
                     {o.description !== undefined && o.description !== "" && (
-                      <span className="qcard__detail">{o.description}</span>
+                      <span className="text-small text-text-muted">{o.description}</span>
                     )}
                   </span>
                 </button>
@@ -177,7 +196,7 @@ export function QuestionCard({
         )}
         {!readOnly && (q.options === undefined || selected.includes(OTHER)) && (
           <input
-            className="qcard__other ui-field__control"
+            className={cx("mt-1", fieldControlClass())}
             aria-label={`Sua resposta para: ${q.question}`}
             placeholder="Escreva a sua resposta"
             value={others[qi] ?? ""}
@@ -197,7 +216,7 @@ export function QuestionCard({
   if (answered) {
     return (
       <div
-        className="qcard qcard--answered"
+        className={cx(CARD, "pointer-events-none opacity-55 [&>*+*]:mt-3")}
         data-testid="question-card"
         data-state="answered"
         inert
@@ -213,14 +232,14 @@ export function QuestionCard({
   return (
     <div
       ref={ref}
-      className="qcard"
+      className={CARD}
       data-testid="question-card"
       data-state="open"
       onKeyDown={onKeyDown}
     >
       {renderQuestion(questions[page] as Question, page, false)}
       {quick && questions[0]?.allowOther === true && (picks[0] ?? []).includes(OTHER) && (
-        <div className="qcard__footer">
+        <div className="flex items-center justify-between gap-3">
           <span />
           <Pill
             tone="primary"
@@ -232,10 +251,10 @@ export function QuestionCard({
         </div>
       )}
       {showFooter && (
-        <div className="qcard__footer">
+        <div className="flex items-center justify-between gap-3">
           {count > 1 ? (
             <span
-              className="qcard__dots"
+              className="inline-flex gap-2 pl-2"
               role="img"
               aria-label={`Pergunta ${page + 1} de ${count}`}
             >
@@ -243,14 +262,17 @@ export function QuestionCard({
                 <span
                   // biome-ignore lint/suspicious/noArrayIndexKey: static dots, never reordered
                   key={`${rootId}-dot-${i}`}
-                  className={`qcard__dot${i === page ? " qcard__dot--on" : ""}`}
+                  className={cx(
+                    "size-1.75 rounded-pill",
+                    i === page ? "bg-text-muted" : "bg-border-strong",
+                  )}
                 />
               ))}
             </span>
           ) : (
             <span />
           )}
-          <span className="qcard__actions">
+          <span className="inline-flex gap-2">
             {page === 0 ? (
               <Pill tone="secondary" disabled={disabled === true} onClick={() => advance(true)}>
                 Pular

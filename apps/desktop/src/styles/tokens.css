@@ -26,6 +26,11 @@
   --color-text-muted: #9a9a9a; /* v2-text-muted */
   --color-text-inverse: #0b0b0c; /* text-inverse */
   --color-bg-inverse: #ffffff; /* bg-inverse: the white of the primary pill */
+  --color-bg-inverse-dim: color-mix(
+    in srgb,
+    var(--color-bg-inverse) 86%,
+    var(--color-bg)
+  ); /* the arrow half of the split button */
 
   /* Semantic (only where the design uses colour: diff, errors) */
   --color-danger-text: #f87171;
@@ -44,6 +49,9 @@
   --radius-bubble: var(--radius-card); /* a bubble's outer corners */
   --radius-bubble-link: 6px; /* a bubble corner that touches the next bubble of the same sender (~1/4 of the outer one, measured on the owner's reference) */
   --radius-chip: 8px; /* the small rounded square behind a card's icon */
+  --radius-composer: 28px; /* the message composer (half of its minimum height) */
+  --radius-xs: 3px; /* a favicon in a text */
+  --radius-hairline: 1px; /* the line of the resize handle */
 
   /* Type: App/v2 Título 16/24 600, Corpo 15/24, Rótulo 14/20 500, Pequeno 13/20, Seção 12/16 500 +0.72px, Prancha 22/28 600, Código 12/18 */
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -66,8 +74,12 @@
   --text-heading-line: 28px;
   --text-code-size: 12px;
   --text-code-line: 18px;
+  --text-glyph-xs-size: 10px; /* the emoji of a 16 px avatar */
+  --text-glyph-tile-size: 28px; /* the emoji of a tile avatar */
+  --text-glyph-xl-size: 32px; /* the emoji of the large avatar */
 
   /* Spacing and sizes read from the components (card padding 20, gaps 8/12/16, buttons 40, round icon 36) */
+  --space-0: 0px;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -89,6 +101,18 @@
   --width-reading: 700px; /* the widest a bot bubble gets */
   --width-content: 1200px; /* the widest the chat column (messages and composer) gets */
   --width-settings: 880px; /* the settings dialog: nav + pane (docs/DESIGN.md §3c) */
+  --width-dialog: min(480px, 100%); /* a plain dialog (Dialog) */
+  --width-dialog-wide: min(560px, 100%); /* a dialog with a form (Dialog wide) */
+  --width-toast: min(420px, calc(100vw - 40px));
+  --width-bubble-user: min(100%, 560px); /* the widest a user bubble gets */
+  --width-menu: 240px;
+  --width-menu-wide: 320px;
+  --width-dropdown: min(380px, calc(100vw - 16px));
+  --width-empty-text: 280px;
+  --width-input: 260px; /* the field of a settings row */
+  --width-ref-col: 150px; /* the middle column of a name / source / value row of a connector */
+  --width-arg-key-min: 64px; /* the label column of the exact content of a call */
+  --width-arg-key-max: 120px;
   --height-settings: 720px; /* ...and its height; it never passes the window */
   --width-settings-nav: 208px; /* the narrow left nav of the settings dialog */
   --text-settings-title-size: 20px; /* the section title in the settings dialog (reference: ~1.3x the body) */
@@ -103,6 +127,7 @@
   ); /* between bubbles of one group; between groups it is --chat-gap */
   --color-bubble-neutral: var(--color-raised);
   --shadow-popover: 0 12px 32px rgba(0, 0, 0, 0.45);
+  --menu-gap: 6px; /* between a menu button and its menu */
   --duration-fast: 120ms;
   --duration-base: 200ms;
 }

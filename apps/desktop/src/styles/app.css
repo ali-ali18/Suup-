@@ -1,0 +1,39 @@
+/*
+ * The one stylesheet of the app. The order of the layers is the order of the cascade (last wins):
+ *  - legacy:    the plain CSS that is not yet migrated to Tailwind (base.css and the screens in
+ *               features.css). Everything in src/ui and the settings dialog is Tailwind classes;
+ *  - theme:     Tailwind's default theme variables, then OUR theme (theme.css), which empties the
+ *               default palette, radii, type scale and shadows;
+ *  - utilities: the classes of the components. Preflight (Tailwind's reset) is NOT loaded: base.css
+ *               is still the reset of the app.
+ * tokens.css is outside any layer on purpose: the variables it defines are the source of the theme.
+ */
+@layer legacy, theme, base, components, utilities;
+
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities) source(none);
+@import "./theme.css";
+@import "./tokens.css";
+@import "./base.css" layer(legacy);
+@import "../features/features.css" layer(legacy);
+
+/* Only the components are read for class names (not the tests, which quote them in prose). */
+@source "../**/*.tsx";
+@source not "../**/*.test.tsx";
+
+/*
+ * What Tailwind classes cannot express on one element: the whole page while a pane is being resized
+ * (no text selection, one cursor even outside the handle). `!important` in a layer beats the
+ * layers after it, so the cursor wins over every component.
+ */
+@layer base {
+  html[data-resizing] {
+    user-select: none;
+    -webkit-user-select: none;
+    cursor: col-resize;
+  }
+  html[data-resizing] * {
+    cursor: col-resize !important;
+    user-select: none !important;
+  }
+}

@@ -56,7 +56,7 @@ test.describe("connect and chat", () => {
     const running = page.locator('[data-testid="action-card"][data-state="running"]');
     await expect(running).toContainText("Terminal");
     await expect(running).toContainText("Rodando · Rodar o comando sleep 3; echo primeiro");
-    await expect(running.locator(".ui-spin")).toBeVisible();
+    await expect(running.locator(".animate-spin")).toBeVisible();
     // When it is done, the card collapses to "Concluído · ..." with a chevron.
     const first = page.getByTestId("action-card").first();
     await expect(first).toHaveAttribute("data-state", "done");
@@ -69,7 +69,7 @@ test.describe("connect and chat", () => {
     await expect(region).toContainText("$ sleep 3; echo primeiro");
     await expect(region.getByTestId("action-output")).toContainText("primeiro");
     const flat = await first.evaluate((card) => {
-      const pre = card.querySelector(".ui-action__pre") as HTMLElement;
+      const pre = card.querySelector("pre") as HTMLElement;
       const style = getComputedStyle(pre);
       return {
         cardBackground: getComputedStyle(card).backgroundColor,

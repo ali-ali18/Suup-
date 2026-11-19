@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { cx } from "../lib/cx.js";
 import { RoundButton } from "./primitives.js";
 
 export interface MenuItem {
@@ -31,6 +32,18 @@ export interface MenuTriggerProps {
   "aria-expanded": boolean;
   "aria-controls": string | undefined;
   onClick(): void;
+}
+
+/** The panel of every menu (a menu button, a context menu, the list of a dropdown). */
+export const MENU_PANEL =
+  "flex min-w-menu flex-col rounded-row border border-border-strong bg-raised p-1 shadow-popover";
+
+/** One entry of a menu or one option of a dropdown (`aria-selected` marks the chosen one). */
+export function menuItemClass(danger?: boolean): string {
+  return cx(
+    "flex items-center justify-between gap-3 rounded-inner border-0 bg-transparent px-3 py-2.5 text-left text-label leading-inherit focus-visible:bg-hover enabled:hover:bg-hover disabled:opacity-40 aria-selected:bg-hover",
+    danger === true && "text-danger-text",
+  );
 }
 
 const ENTRY = '[role^="menuitem"]:not([disabled])';
@@ -55,13 +68,15 @@ export function focusEntry(el: HTMLElement | null | undefined): void {
 export function MenuItemBody({ item }: { item: MenuItem }) {
   return (
     <>
-      <span className="ui-menu__text">
+      <span className="flex min-w-0 flex-col">
         <span className="ui-menu__label">{item.label}</span>
         {item.description !== undefined && (
-          <span className="ui-menu__desc">{item.description}</span>
+          <span className="text-small text-text-muted">{item.description}</span>
         )}
       </span>
-      {item.checked === true && <Check size={16} className="ui-menu__check" aria-hidden="true" />}
+      {item.checked === true && (
+        <Check size={16} className="flex-none text-text-muted" aria-hidden="true" />
+      )}
     </>
   );
 }
@@ -170,7 +185,7 @@ export function MenuButton({
     onClick: () => setOpen((v) => !v),
   };
   return (
-    <div className="ui-menu" ref={rootRef} onKeyDown={onKeyDown}>
+    <div className="relative" ref={rootRef} onKeyDown={onKeyDown}>
       {trigger !== undefined ? (
         trigger(triggerProps)
       ) : (
@@ -183,7 +198,10 @@ export function MenuButton({
           id={menuId}
           role="menu"
           aria-label={label}
-          className="ui-menu__list ui-menu__list--wide"
+          className={cx(
+            MENU_PANEL,
+            "absolute top-[calc(100%+var(--menu-gap))] right-0 z-30 min-w-menu-wide",
+          )}
           {...(pos === undefined ? {} : { style: pos })}
         >
           {items.map((item) => (
@@ -195,7 +213,7 @@ export function MenuButton({
                 : { role: "menuitemcheckbox", "aria-checked": item.checked })}
               disabled={item.disabled}
               data-testid={item.testId}
-              className={`ui-menu__item${item.danger ? " ui-menu__item--danger" : ""}`}
+              className={menuItemClass(item.danger)}
               onClick={() => {
                 setOpen(false);
                 buttonRef.current?.focus();

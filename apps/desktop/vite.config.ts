@@ -1,4 +1,5 @@
 import { fileURLToPath } from "node:url";
+import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
@@ -16,7 +17,7 @@ export const workspaceAliases = [
 ];
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [tailwindcss(), react()],
   resolve: { alias: workspaceAliases },
   // Tauri expects a fixed port in development (the server allows this origin in CORS).
   server: { port: 1420, strictPort: true, host: "127.0.0.1" },

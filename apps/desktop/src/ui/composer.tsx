@@ -1,5 +1,6 @@
 import { ArrowUp, Plus } from "lucide-react";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { cx } from "../lib/cx.js";
 import { focusOnAppearance } from "../lib/focus.js";
 import { RoundButton } from "./primitives.js";
 
@@ -63,14 +64,19 @@ export function Composer({
   };
 
   return (
-    <div className={`ui-composer${disabled ? " ui-composer--disabled" : ""}`}>
+    <div
+      className={cx(
+        "flex min-h-14 items-end gap-2 rounded-composer border border-border bg-raised py-2 pr-2 pl-5 focus-within:border-border-strong",
+        disabled && "opacity-60",
+      )}
+    >
       <RoundButton label="Anexar (ainda não disponível)" tone="ghost" disabled>
         <Plus size={18} aria-hidden="true" />
       </RoundButton>
       <textarea
         ref={ref}
         rows={1}
-        className="ui-composer__input"
+        className="max-h-50 min-w-0 flex-1 resize-none border-0 bg-transparent px-0 py-2 text-body text-text outline-none placeholder:text-text-muted"
         aria-label="Mensagem"
         placeholder={disabled && disabledReason !== undefined ? disabledReason : placeholder}
         value={text}
@@ -78,7 +84,7 @@ export function Composer({
         onChange={(e) => setText(e.target.value)}
         onKeyDown={onKeyDown}
       />
-      <RoundButton label="Enviar mensagem" tone="primary" disabled={!canSend} onClick={send}>
+      <RoundButton label="Enviar mensagem" tone="bot" disabled={!canSend} onClick={send}>
         <ArrowUp size={16} aria-hidden="true" />
       </RoundButton>
     </div>

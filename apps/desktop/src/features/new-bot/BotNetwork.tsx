@@ -3,7 +3,14 @@ import { useEffect, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { NETWORK_TOOL } from "../../data/approval-text.js";
 import { EXACT_HOST_NOTE, hostInput, LOCAL_SANDBOX_NOTE, refusalLabel } from "../../lib/network.js";
-import { Pill, TextField } from "../../ui/primitives.js";
+import {
+  FieldError,
+  FieldLabel,
+  IconButton,
+  Notice,
+  Pill,
+  TextField,
+} from "../../ui/primitives.js";
 import { formatWhen } from "../settings/formatting.js";
 import { useTask } from "../settings/use-task.js";
 
@@ -56,18 +63,16 @@ export function BotNetwork({ botId }: { botId: string }) {
 
   return (
     <section className="botnet" data-testid="bot-network" aria-label="Rede">
-      <h3 className="ui-field__label">Rede</h3>
+      <FieldLabel as="h3">Rede</FieldLabel>
       {isolated === false && (
-        <p className="ui-notice" role="note" data-testid="network-local-note">
+        <Notice role="note" data-testid="network-local-note">
           <strong>Sem isolamento de rede</strong>
           {LOCAL_SANDBOX_NOTE}
-        </p>
+        </Notice>
       )}
       {network === undefined ? (
         load.error !== undefined ? (
-          <p className="ui-field__error" role="alert">
-            {load.error}
-          </p>
+          <FieldError>{load.error}</FieldError>
         ) : (
           <p className="muted small">Carregando…</p>
         )
@@ -102,10 +107,8 @@ export function BotNetwork({ botId }: { botId: string }) {
                   <li key={h.host} className="botnet__host" data-host={h.host}>
                     <span className="mono">{h.host}</span>
                     <span className="muted small">desde {formatWhen(h.createdAt)}</span>
-                    <button
-                      type="button"
-                      className="ui-icon-button"
-                      aria-label={`Remover ${h.host}`}
+                    <IconButton
+                      label={`Remover ${h.host}`}
                       disabled={remove.busy}
                       data-testid="network-remove"
                       onClick={() =>
@@ -115,15 +118,13 @@ export function BotNetwork({ botId }: { botId: string }) {
                       }
                     >
                       <Trash2 size={16} aria-hidden="true" />
-                    </button>
+                    </IconButton>
                   </li>
                 ))}
               </ul>
             )}
             {remove.error !== undefined && (
-              <p className="ui-field__error" role="alert" data-testid="network-remove-error">
-                {remove.error}
-              </p>
+              <FieldError data-testid="network-remove-error">{remove.error}</FieldError>
             )}
           </div>
           <div className="botnet__add">

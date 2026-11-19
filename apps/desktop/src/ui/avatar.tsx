@@ -1,14 +1,41 @@
 import type { BotColor } from "@suup/api";
 import type { AvatarStateId } from "@suup/avatar";
+import { cx } from "../lib/cx.js";
 import { avatarOf, effectiveColor } from "../lib/mascots.js";
 import { Mascot, type MascotSize } from "./mascot.js";
+
+/** `row` is the bots list row (42 px), `preview` the big face of the new-bot dialog (120 px). */
+const AVATAR_SIZE = {
+  xs: "size-4 text-glyph-xs",
+  sm: "size-7.25",
+  md: "size-avatar-md",
+  row: "size-10.5",
+  lg: "size-rail-avatar",
+  xl: "size-18.5 text-glyph-xl",
+  preview: "size-30 text-glyph-xl",
+  tile: "size-16.5 text-glyph-tile",
+} as const;
+
+export type AvatarSize = keyof typeof AVATAR_SIZE;
+
+/** The size of the mascot inside (it moves less in the small ones): `row` and `preview` borrow one. */
+const MASCOT_OF: Record<AvatarSize, MascotSize> = {
+  xs: "xs",
+  sm: "sm",
+  md: "md",
+  row: "md",
+  lg: "lg",
+  xl: "xl",
+  preview: "xl",
+  tile: "tile",
+};
 
 export interface AvatarProps {
   /** `bot.avatar` (opaco), `bot.color` e uma semente (o id do bot) para o que o bot não tem. */
   avatar: string | null;
   color?: BotColor | null;
   seed: string;
-  size?: MascotSize;
+  size?: AvatarSize;
   /** O que o bot está fazendo (ver `avatarStateOf`); o emoji não reage. */
   state?: AvatarStateId;
   /** Sempre imagem parada. */
@@ -29,7 +56,10 @@ export function Avatar({
   const spec = avatarOf(avatar, seed);
   return (
     <span
-      className={`ui-avatar ui-avatar--${size}`}
+      className={cx(
+        "inline-flex flex-none items-center justify-center rounded-full",
+        AVATAR_SIZE[size],
+      )}
       {...(title === undefined ? { "aria-hidden": true } : { role: "img", "aria-label": title })}
     >
       {spec.kind === "mascot" && spec.id !== undefined ? (
@@ -37,12 +67,12 @@ export function Avatar({
           shape={spec.id}
           color={effectiveColor(color, seed)}
           state={state}
-          size={size}
+          size={MASCOT_OF[size]}
           seed={seed}
           still={still}
         />
       ) : (
-        <span className="ui-avatar__emoji">{spec.text}</span>
+        <span className="text-[1.1em] leading-none">{spec.text}</span>
       )}
     </span>
   );

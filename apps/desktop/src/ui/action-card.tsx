@@ -1,6 +1,74 @@
 import { ChevronsDownUp, ChevronsUpDown, LoaderCircle } from "lucide-react";
-import { type ReactNode, type Ref, useId } from "react";
-import { DecisionCard } from "./decision-card.js";
+import { type HTMLAttributes, type ReactNode, type Ref, useId } from "react";
+import { cx } from "../lib/cx.js";
+import { CARD_CHROME, DecisionCard } from "./decision-card.js";
+import { IconBox } from "./icon-box.js";
+
+/** The line of detail of an open card: small and muted ("Motivo da recusa", "Permitido por uma regra"). */
+export function ActionLabel({
+  children,
+  ...rest
+}: { children: ReactNode } & HTMLAttributes<HTMLParagraphElement>) {
+  return (
+    <p className="m-0 text-small text-text-muted" {...rest}>
+      {children}
+    </p>
+  );
+}
+
+/**
+ * The text of what a call did (its output, a diff): plain on the card itself, no inner box, no
+ * border, no other background. `error` is the colour of a failure. `ui-action__pre--error` is a
+ * hook for tests.
+ */
+export function ActionPre({
+  error,
+  className,
+  children,
+  ...rest
+}: { error?: boolean; children?: ReactNode } & HTMLAttributes<HTMLPreElement>) {
+  return (
+    <pre
+      className={cx(
+        "m-0 max-h-60 overflow-auto border-0 bg-transparent p-0 wrap-anywhere whitespace-pre-wrap",
+        error === true ? "ui-action__pre--error text-danger-text" : "text-text",
+        className,
+      )}
+      {...rest}
+    >
+      {children}
+    </pre>
+  );
+}
+
+/** The column of collapsed cards in the bot's side of the chat: flat, one under the other. */
+export function ActionList({
+  children,
+  ...rest
+}: { children: ReactNode } & HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div className="flex w-full max-w-reading flex-col gap-1" {...rest}>
+      {children}
+    </div>
+  );
+}
+
+const DIFF_LINE = {
+  removed: "text-danger-text",
+  added: "text-success-text",
+  context: "text-text-muted",
+} as const;
+
+/** One line of a diff, coloured by what happened to it (the sign in front says it too). */
+export function DiffLine({
+  kind,
+  children,
+}: {
+  kind: keyof typeof DIFF_LINE;
+  children: ReactNode;
+}) {
+  return <span className={cx(`ui-action__line--${kind}`, DIFF_LINE[kind])}>{children}</span>;
+}
 
 /** `stopped`: ended without being done and without being a failure (denied, expired, cancelled). */
 export type ActionCardState = "running" | "done" | "failed" | "needs-action" | "stopped";
@@ -11,6 +79,14 @@ const STATE_LABEL: Record<Exclude<ActionCardState, "needs-action">, string> = {
   failed: "Falhou",
   stopped: "Encerrado",
 };
+
+/** The collapsed row: icon, bold kind, muted summary, and the chevron at the end. */
+const ROW =
+  "flex w-full min-w-0 items-center gap-3 rounded-card border-0 bg-transparent px-4 py-3 text-left";
+
+/** The expand chevron shows only on hover and on keyboard focus (`aria-expanded` says it always). */
+const CHEVRON =
+  "ui-action__chevron opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100";
 
 /** What a card that needs the user shows: a title and instruction, a preview, and the buttons. */
 export interface NeedsAction {
@@ -91,25 +167,30 @@ export function ActionCard({
   const openable = children !== undefined;
   const content = (
     <>
-      <span className="ui-action__icon" aria-hidden="true">
-        {icon}
+      <IconBox>{icon}</IconBox>
+      <strong className="ui-action__kind flex-none text-label font-title">{kind}</strong>
+      <span
+        className={cx(
+          "min-w-0 flex-1 truncate text-label",
+          state === "failed" ? "text-danger-text" : "text-text-muted",
+        )}
+      >
+        {label === "" ? summary : `${label} · ${summary}`}
       </span>
-      <strong className="ui-action__kind">{kind}</strong>
-      <span className="ui-action__summary">{label === "" ? summary : `${label} · ${summary}`}</span>
-      <span className="ui-action__end" aria-hidden="true">
+      <span className="inline-flex min-w-icon flex-none text-text-muted" aria-hidden="true">
         {state === "running" ? (
-          <LoaderCircle size={16} className="ui-spin" />
+          <LoaderCircle size={16} className="animate-spin" />
         ) : children === undefined ? null : expanded ? (
-          <ChevronsDownUp size={16} className="ui-action__chevron" />
+          <ChevronsDownUp size={16} className={CHEVRON} />
         ) : (
-          <ChevronsUpDown size={16} className="ui-action__chevron" />
+          <ChevronsUpDown size={16} className={CHEVRON} />
         )}
       </span>
     </>
   );
   return (
     <div
-      className={`ui-action ui-action--${state}`}
+      className={cx(CARD_CHROME)}
       data-testid={testId}
       data-state={state}
       data-expanded={expanded}
@@ -117,7 +198,7 @@ export function ActionCard({
       {openable ? (
         <button
           type="button"
-          className="ui-action__row"
+          className={cx(ROW, "group hover:bg-hover")}
           aria-expanded={expanded}
           aria-controls={bodyId}
           onClick={onToggle}
@@ -125,12 +206,12 @@ export function ActionCard({
           {content}
         </button>
       ) : (
-        <div className="ui-action__row ui-action__row--static">{content}</div>
+        <div className={ROW}>{content}</div>
       )}
       {expanded && children !== undefined && (
         <div
           id={bodyId}
-          className="ui-action__body"
+          className="flex flex-col gap-3 pt-1 pr-4 pb-4 pl-[calc(var(--space-4)+var(--size-icon-box)+var(--space-3))]"
           role="region"
           aria-label={`Detalhes: ${kind}, ${summary}`}
         >
@@ -155,28 +236,31 @@ export function ActionFold({
 }) {
   const bodyId = useId();
   return (
-    <div className="ui-action ui-action--fold" data-testid="action-fold" data-expanded={expanded}>
+    <div className={CARD_CHROME} data-testid="action-fold" data-expanded={expanded}>
       <button
         type="button"
-        className="ui-action__row"
+        className={cx(ROW, "group hover:bg-hover")}
         aria-expanded={expanded}
         aria-controls={bodyId}
         onClick={onToggle}
       >
-        <strong className="ui-action__kind">Mais {count} ações</strong>
-        <span className="ui-action__summary">Concluídas</span>
-        <span className="ui-action__end" aria-hidden="true">
+        <strong className="ui-action__kind flex-none text-label font-title">
+          Mais {count} ações
+        </strong>
+        <span className="min-w-0 flex-1 truncate text-label text-text-muted">Concluídas</span>
+        <span className="inline-flex min-w-icon flex-none text-text-muted" aria-hidden="true">
           {expanded ? (
-            <ChevronsDownUp size={16} className="ui-action__chevron" />
+            <ChevronsDownUp size={16} className={CHEVRON} />
           ) : (
-            <ChevronsUpDown size={16} className="ui-action__chevron" />
+            <ChevronsUpDown size={16} className={CHEVRON} />
           )}
         </span>
       </button>
       {expanded && (
         <div
           id={bodyId}
-          className="ui-action__fold-body"
+          // The cards inside the fold lose their chrome: the fold is the card.
+          className="flex flex-col gap-1 px-1 pb-1 [&_.ui-action]:border-transparent [&_.ui-action]:bg-transparent"
           role="region"
           aria-label={`${count} ações anteriores`}
         >

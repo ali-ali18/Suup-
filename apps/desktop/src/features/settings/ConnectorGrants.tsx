@@ -21,7 +21,21 @@ import {
   selectReadOnly,
   toggleTool,
 } from "../../lib/tool-grants.js";
-import { RowAction, SettingsGroup, SettingsRow } from "./parts.js";
+import { FieldError } from "../../ui/primitives.js";
+import {
+  RowAction,
+  RowControl,
+  RowDescription,
+  RowShell,
+  RowText,
+  RowTitle,
+  RowValue,
+  SettingsCard,
+  SettingsFold,
+  SettingsGroup,
+  SettingsHint,
+  SettingsRow,
+} from "./parts.js";
 import { useTask } from "./use-task.js";
 
 /** One bot of the connector: a collapsed row ("Nova · 3 de 14") that opens the ticks of its tools. */
@@ -82,8 +96,12 @@ function BotGrant({
         }
       />
       {open && (
-        <div className="sfold">
-          <div className="grant-shortcuts" role="group" aria-label={`Atalhos para ${bot.name}`}>
+        <SettingsFold>
+          <div
+            className="flex flex-wrap gap-2"
+            role="group"
+            aria-label={`Atalhos para ${bot.name}`}
+          >
             <RowAction
               disabled={task.busy}
               data-testid="grant-all"
@@ -107,18 +125,16 @@ function BotGrant({
             </RowAction>
           </div>
           {list.length === 0 ? (
-            <p className="sgroup__hint">Este conector não oferece ferramentas aos bots.</p>
+            <SettingsHint>Este conector não oferece ferramentas aos bots.</SettingsHint>
           ) : (
-            <ul
-              className="scard grant-tools"
-              aria-label={`Ferramentas de ${connector.name} para ${bot.name}`}
-            >
+            <SettingsCard as="ul" aria-label={`Ferramentas de ${connector.name} para ${bot.name}`}>
               {list.map((item) => {
                 const checkId = `${id}-${item.tool.tool}`;
                 return (
-                  <li
+                  <RowShell
+                    as="li"
+                    tight
                     key={item.tool.name}
-                    className="srow grant-tool"
                     data-testid="grant-tool"
                     data-tool={item.tool.tool}
                     data-blocked={item.blocked ?? undefined}
@@ -131,45 +147,43 @@ function BotGrant({
                       aria-describedby={`${checkId}-why`}
                       onChange={() => setDraft(toggleTool(draft, list, item.tool.tool))}
                     />
-                    <div className="srow__text">
-                      <label className="srow__title" htmlFor={checkId}>
+                    <RowText grow>
+                      <RowTitle as="label" htmlFor={checkId}>
                         {item.tool.tool}
-                      </label>
-                      <span id={`${checkId}-why`} className="srow__desc" data-testid="grant-basis">
+                      </RowTitle>
+                      <RowDescription id={`${checkId}-why`} data-testid="grant-basis">
                         {item.blocked === null
                           ? RISK_BASIS_TEXT[item.tool.riskBasis]
                           : BLOCKED_TEXT[item.blocked]}
-                      </span>
-                    </div>
-                    <div className="srow__control">
-                      <span className="srow__value" data-testid="grant-risk">
+                      </RowDescription>
+                    </RowText>
+                    <RowControl>
+                      <RowValue data-testid="grant-risk">
                         <span className="sr-only">Risco: </span>
                         {LEVEL_LABEL[item.tool.risk]}
-                      </span>
+                      </RowValue>
                       {item.blocked !== null && (
                         <RowAction data-testid="grant-review" onClick={onReview}>
                           Revisar
                         </RowAction>
                       )}
-                    </div>
-                  </li>
+                    </RowControl>
+                  </RowShell>
                 );
               })}
-            </ul>
+            </SettingsCard>
           )}
           {blocked > 0 && (
-            <p className="sgroup__hint">
+            <SettingsHint>
               Uma ferramenta com a definição mudada ou nova só pode ser marcada depois da sua
               revisão.
-            </p>
+            </SettingsHint>
           )}
-          <p className="sgroup__hint">A mudança vale a partir da próxima execução do bot.</p>
+          <SettingsHint>A mudança vale a partir da próxima execução do bot.</SettingsHint>
           {task.error !== undefined && (
-            <p className="ui-field__error" role="alert" data-testid="grant-error">
-              {task.error}
-            </p>
+            <FieldError data-testid="grant-error">{task.error}</FieldError>
           )}
-          <div className="srow__control">
+          <RowControl end>
             {dirty && (
               <RowAction
                 disabled={task.busy}
@@ -186,8 +200,8 @@ function BotGrant({
             >
               {task.busy ? "Salvando…" : "Salvar"}
             </RowAction>
-          </div>
-        </div>
+          </RowControl>
+        </SettingsFold>
       )}
     </div>
   );

@@ -21,12 +21,12 @@ import {
 } from "../data/approval-text.js";
 import type { DecideOutcome } from "../data/sync.js";
 import { focusOnAppearance } from "../lib/focus.js";
-import { ActionCard } from "./action-card.js";
+import { ActionCard, ActionLabel } from "./action-card.js";
 import { ArgRow, ArgsView } from "./args-view.js";
 import { categoryGlyph } from "./category-icon.js";
 import { DecisionCard } from "./decision-card.js";
 import { MenuButton, type MenuItem } from "./menu.js";
-import { Pill } from "./primitives.js";
+import { FieldError, Pill } from "./primitives.js";
 import { userIsTyping } from "./question-card.js";
 
 type ConnectorRefs = readonly {
@@ -152,11 +152,7 @@ function PendingCard({
       : undefined;
   const note = (): ReactNode => {
     if (error !== undefined) {
-      return (
-        <span className="ui-field__error" role="alert" data-testid="approval-error">
-          {error}
-        </span>
-      );
+      return <FieldError data-testid="approval-error">{error}</FieldError>;
     }
     if (outbound !== null && !needsApproval && recipients !== null) {
       return (
@@ -183,15 +179,15 @@ function PendingCard({
 
   const denyButton = (
     <Pill
-      tone="ghost"
-      className="ui-decision__deny"
+      tone="quiet"
+      className="min-w-24"
       disabled={waiting}
       data-testid="approval-deny"
       onClick={() => void send("deny", { decision: "deny" })}
     >
       {busy === "deny" ? (
         <>
-          <LoaderCircle size={16} className="ui-spin" aria-hidden="true" />
+          <LoaderCircle size={16} className="animate-spin" aria-hidden="true" />
           {outbound === null ? "Recusando…" : "Descartando…"}
         </>
       ) : (
@@ -234,14 +230,14 @@ function PendingCard({
             {denyButton}
             <Pill
               tone="primary"
-              className="ui-decision__primary"
+              className="min-w-28"
               disabled={waiting}
               data-testid="approval-approve"
               onClick={() => void send("approve", { decision: "approve" })}
             >
               {approving ? (
                 <>
-                  <LoaderCircle size={16} className="ui-spin" aria-hidden="true" />
+                  <LoaderCircle size={16} className="animate-spin" aria-hidden="true" />
                   Aprovando…
                 </>
               ) : (
@@ -278,8 +274,10 @@ function PendingCard({
         )}
       </ArgsView>
       {repeated.size > 0 && (
-        <details className="ui-args__raw" data-testid="approval-raw">
-          <summary>Ver o conteúdo exato</summary>
+        <details className="mt-2 text-small text-text-muted" data-testid="approval-raw">
+          <summary className="w-fit cursor-pointer underline hover:text-text">
+            Ver o conteúdo exato
+          </summary>
           <ArgsView args={approval.args} collapse={collapseLong} testId="approval-raw-args" />
         </details>
       )}
@@ -348,10 +346,11 @@ function MessageFooter({
   return (
     <>
       {deny}
-      <div className="ui-split">
+      <div className="ui-split inline-flex">
         <Pill
           tone="primary"
-          className="ui-split__main"
+          attach="start"
+          className="min-w-28"
           disabled={waiting}
           data-testid="approval-approve"
           onClick={() =>
@@ -363,7 +362,7 @@ function MessageFooter({
         >
           {approving ? (
             <>
-              <LoaderCircle size={16} className="ui-spin" aria-hidden="true" />
+              <LoaderCircle size={16} className="animate-spin" aria-hidden="true" />
               Enviando…
             </>
           ) : allowing ? (
@@ -377,16 +376,17 @@ function MessageFooter({
           items={items}
           placement="above"
           trigger={(props) => (
-            <button
-              type="button"
-              className="ui-pill ui-pill--primary ui-split__more"
+            <Pill
+              tone="split"
+              size="icon"
+              attach="end"
               aria-label="Mais opções de envio"
               disabled={waiting}
               data-testid="approval-more"
               {...props}
             >
               <ChevronDown size={16} aria-hidden="true" />
-            </button>
+            </Pill>
           )}
         />
       </div>
@@ -418,23 +418,23 @@ function ResolvedCard({
       expanded={expanded}
       onToggle={onToggle}
     >
-      <p className="ui-action__label" data-testid="approval-detail">
+      <ActionLabel data-testid="approval-detail">
         {toolTitle(approval.tool, connectors)} · {botName}. {STATUS_DETAIL[approval.status] ?? ""}
         {decided !== undefined &&
           ` Decidido às ${decided.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}.`}
-      </p>
+      </ActionLabel>
       {approval.status === "denied" && approval.reason !== null && approval.reason !== "" && (
-        <p className="ui-action__label" data-testid="approval-denial">
-          Motivo da recusa: <span className="ui-approval__quote">{approval.reason}</span>
-        </p>
+        <ActionLabel data-testid="approval-denial">
+          Motivo da recusa: <span className="wrap-anywhere text-text">{approval.reason}</span>
+        </ActionLabel>
       )}
       <ArgsView args={approval.args} collapse={collapseLong} />
       {approval.ruleId !== null && (
-        <p className="ui-action__label" data-testid="approval-rule">
+        <ActionLabel data-testid="approval-rule">
           {rule === undefined
             ? "Criou uma regra para este destinatário."
             : `Criou a regra: ${ruleSentence(rule, { botName, connectors })}`}
-        </p>
+        </ActionLabel>
       )}
     </ActionCard>
   );

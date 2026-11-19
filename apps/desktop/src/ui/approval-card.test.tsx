@@ -151,7 +151,7 @@ describe("ApprovalCard waiting for you", () => {
       ],
     });
     expect(screen.getByTestId("approval-connector").textContent).toBe("Conectorfake");
-    expect(screen.getByText("write_thing", { selector: ".ui-args__body" })).toBeTruthy();
+    expect(screen.getByText("Ferramenta").parentElement?.textContent).toBe("Ferramentawrite_thing");
     // The category of a connector tool is the connector.
     expect(document.querySelector(".ui-decision__category")?.textContent).toBe("fake");
     expect(screen.getByText(/sai deste computador para um servidor externo/)).toBeTruthy();

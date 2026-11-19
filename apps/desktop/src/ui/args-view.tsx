@@ -1,5 +1,6 @@
 import { Lock } from "lucide-react";
 import { type ReactNode, useId, useState } from "react";
+import { cx } from "../lib/cx.js";
 import {
   type ArgField,
   collapsedText,
@@ -7,11 +8,16 @@ import {
   type Segment,
   splitSecrets,
 } from "../lib/format-args.js";
+import { ActionLabel } from "./action-card.js";
 
 /** A secret as the card shows it: its placeholder, with a lock. Never a value (the card has none). */
 export function SecretSeal({ name }: { name: string }) {
   return (
-    <span className="ui-secret-seal" data-testid="secret-seal" title={`Usa o segredo ${name}`}>
+    <span
+      className="inline-flex items-center gap-1 rounded-pill border border-border-strong bg-raised px-2 whitespace-nowrap text-text"
+      data-testid="secret-seal"
+      title={`Usa o segredo ${name}`}
+    >
       <Lock size={12} aria-hidden="true" />
       <span>{`{{secret:${name}}}`}</span>
     </span>
@@ -54,6 +60,12 @@ const CODE_KEYS: ReadonlySet<string> = new Set([
 const isCodeLike = (field: ArgField): boolean =>
   field.json || field.lines > 1 || (field.key !== null && CODE_KEYS.has(field.key.toLowerCase()));
 
+/** One quiet row: a hairline above, the label at the left and the value after it. */
+const FIELD_ROW =
+  "grid min-w-0 grid-cols-[minmax(var(--width-arg-key-min),var(--width-arg-key-max))_minmax(0,1fr)] items-baseline gap-x-4 border-t border-border py-3 last:border-b";
+const KEY = "m-0 text-small text-text-muted wrap-anywhere";
+const BODY = "flex min-w-0 flex-col items-start gap-1 text-label";
+
 /** One quiet row: its label at the left, its value after it, a hairline above. */
 export function ArgRow({
   label,
@@ -65,9 +77,9 @@ export function ArgRow({
   testId?: string;
 }) {
   return (
-    <div className="ui-args__field" data-testid={testId}>
-      {label !== null && <p className="ui-args__key">{label}</p>}
-      <div className="ui-args__body">{children}</div>
+    <div className={FIELD_ROW} data-testid={testId}>
+      {label !== null && <p className={KEY}>{label}</p>}
+      <div className={BODY}>{children}</div>
     </div>
   );
 }
@@ -79,21 +91,29 @@ function FieldView({ field, collapse }: { field: ArgField; collapse: boolean }) 
   const shown = folded ? collapsedText(field.text) : { head: field.text, hiddenLines: 0 };
   return (
     <div
-      className="ui-args__field"
+      className={FIELD_ROW}
       data-testid="arg-field"
       data-key={field.key ?? ""}
       data-code={isCodeLike(field)}
     >
-      {field.key !== null && <p className="ui-args__key">{field.key}</p>}
-      <div className="ui-args__body">
-        <pre id={bodyId} className="ui-args__value" data-testid="arg-value">
+      {field.key !== null && <p className={KEY}>{field.key}</p>}
+      <div className={BODY}>
+        <pre
+          id={bodyId}
+          className={cx(
+            "m-0 max-h-80 max-w-full overflow-auto wrap-anywhere whitespace-pre-wrap text-text",
+            // Monospace only for what is code: the rest keeps the text of the row.
+            isCodeLike(field) ? "font-mono text-code" : "[font:inherit]",
+          )}
+          data-testid="arg-value"
+        >
           <Segments text={shown.head} />
           {folded ? "…" : ""}
         </pre>
         {collapse && field.long && (
           <button
             type="button"
-            className="ui-args__more"
+            className="border-0 bg-transparent p-0 text-small text-text-muted underline hover:text-text"
             aria-expanded={open}
             aria-controls={bodyId}
             onClick={() => setOpen(!open)}
@@ -135,10 +155,10 @@ export function ArgsView({
   const all = formatArgs(args);
   const fields = all.filter((f) => f.key === null || omitKeys?.has(f.key) !== true);
   return (
-    <div className="ui-args" data-testid={testId}>
+    <div className="flex min-w-0 flex-col" data-testid={testId}>
       {children}
       {all.length === 0 && (
-        <p className="ui-action__label ui-args__empty">Esta ação não leva argumentos.</p>
+        <ActionLabel className="py-3">Esta ação não leva argumentos.</ActionLabel>
       )}
       {fields.map((field, i) => (
         <FieldView key={field.key ?? `field-${i}`} field={field} collapse={collapse} />

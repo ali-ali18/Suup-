@@ -15,6 +15,7 @@ import {
 import { secretRequestsOf } from "../../data/secret-requests.js";
 import { colorVars, effectiveColor } from "../../lib/mascots.js";
 import { Avatar } from "../../ui/avatar.js";
+import { EventLineButton } from "../../ui/chat-lines.js";
 import { Composer } from "../../ui/composer.js";
 import type { MenuItem } from "../../ui/menu.js";
 import { PopupMenu } from "../../ui/popup-menu.js";
@@ -288,14 +289,12 @@ function ChatForBot({ botId }: { botId: string }) {
           announce={announce}
           empty={
             needsPersonality ? (
-              <button
-                type="button"
-                className="ui-event ui-event--button"
+              <EventLineButton
                 data-testid="personality-hint"
                 onClick={() => openEditBot(bot.id, 2)}
               >
                 {bot.name} ainda não tem uma personalidade. Descrever o que ele faz
-              </button>
+              </EventLineButton>
             ) : undefined
           }
         />

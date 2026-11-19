@@ -20,6 +20,13 @@
       "preset": "recommended"
     }
   },
+  "tailwind": {
+    "mergeFunctions": ["cx"],
+    "stylesheet": "apps/desktop/src/styles/app.css"
+  },
+  "css": {
+    "parser": { "tailwindDirectives": true }
+  },
   "javascript": {
     "formatter": {
       "quoteStyle": "double"
@@ -48,6 +55,20 @@
           },
           "complexity": {
             "noImportantStyles": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "apps/desktop/src/ui/**",
+        "apps/desktop/src/features/settings/**",
+        "apps/desktop/src/lib/markdown.tsx"
+      ],
+      "linter": {
+        "rules": {
+          "nursery": {
+            "useTailwindSortedClasses": "error"
           }
         }
       }

@@ -5,10 +5,32 @@ import { useData, useServices } from "../../app/context.js";
 import { sortedBots } from "../../app/selectors.js";
 import { orderedConnectors, orderedSecrets } from "../../data/reducers.js";
 import { nameProblem, writeSecret } from "../../lib/secret-form.js";
-import { Dialog, Pill, TextField, Toggle } from "../../ui/primitives.js";
+import {
+  BulletList,
+  Dialog,
+  FieldError,
+  FieldLabel,
+  FormRow,
+  MutedText,
+  Notice,
+  Pill,
+  TextField,
+  Toggle,
+} from "../../ui/primitives.js";
 import { SecretInput, type SecretInputHandle } from "../../ui/secret-input.js";
 import { formatWhen } from "./formatting.js";
-import { PaneHead, RowAction, type SectionProps, SettingsGroup, SettingsRow } from "./parts.js";
+import {
+  PaneBody,
+  PaneHead,
+  RowAction,
+  RowControl,
+  type SectionProps,
+  SettingsEmpty,
+  SettingsFold,
+  SettingsGroup,
+  SettingsHint,
+  SettingsRow,
+} from "./parts.js";
 import { useTask } from "./use-task.js";
 
 /**
@@ -87,7 +109,7 @@ export function SecretDialog({
       }
     >
       <form
-        className="form"
+        className="flex flex-col gap-4"
         autoComplete="off"
         data-testid="secret-write-form"
         onSubmit={(e) => {
@@ -96,9 +118,9 @@ export function SecretDialog({
         }}
       >
         {blocked && (
-          <p className="ui-notice" role="alert">
+          <Notice role="alert">
             O servidor não consegue guardar segredos agora: {vault.reason}
-          </p>
+          </Notice>
         )}
         {existing === undefined ? (
           <TextField
@@ -112,10 +134,10 @@ export function SecretDialog({
             autoFocus
           />
         ) : (
-          <p className="muted small">
+          <MutedText as="p">
             O valor atual não pode ser mostrado, nem por aqui nem pela API. Quem já pode usar o
             segredo continua podendo.
-          </p>
+          </MutedText>
         )}
         <SecretInput
           ref={field}
@@ -133,10 +155,12 @@ export function SecretDialog({
           hint="Os bots que podem usá-lo veem esta descrição."
         />
         {existing === undefined && sortedBots(bots).length > 0 && (
-          <fieldset className="form__row">
-            <legend className="ui-field__label">Quem pode usar já na criação</legend>
+          <FormRow as="fieldset">
+            <FieldLabel as="legend" className="mb-1 p-0">
+              Quem pode usar já na criação
+            </FieldLabel>
             {sortedBots(bots).map((b) => (
-              <label key={b.id} className="grant-check">
+              <label key={b.id} className="flex items-center gap-2">
                 <input
                   type="checkbox"
                   checked={grants.includes(b.id)}
@@ -149,7 +173,7 @@ export function SecretDialog({
                 <span>{b.name}</span>
               </label>
             ))}
-          </fieldset>
+          </FormRow>
         )}
       </form>
     </Dialog>
@@ -197,7 +221,7 @@ export function VaultSettings({ title, titleId, onClose }: SectionProps) {
       <PaneHead title={title} titleId={titleId} onClose={onClose}>
         <Pill
           tone="primary"
-          className="spill"
+          size="sm"
           disabled={blocked}
           data-testid="secret-new"
           onClick={() => setDialog({ existing: undefined })}
@@ -205,9 +229,9 @@ export function VaultSettings({ title, titleId, onClose }: SectionProps) {
           Novo item
         </Pill>
       </PaneHead>
-      <div className="spane__body" data-testid="vault-list-card">
+      <PaneBody data-testid="vault-list-card">
         {vault !== null && !vault.ok && (
-          <div className="ui-notice" role="status" data-testid="vault-missing">
+          <Notice role="status" data-testid="vault-missing">
             <strong>
               {vault.configured
                 ? "O cofre não tem a chave"
@@ -220,9 +244,9 @@ export function VaultSettings({ title, titleId, onClose }: SectionProps) {
               servidor e do worker, e inclua a seção <code>vault</code> no arquivo de configuração
               (veja <code>docs/COFRE.md</code>).
             </p>
-          </div>
+          </Notice>
         )}
-        <p className="sgroup__hint" data-testid="vault-status">
+        <SettingsHint data-testid="vault-status">
           O valor só se escreve ou se troca: nunca é mostrado. Os bots usam o segredo pelo nome.
           {vault?.ok === true && vault.keyEnv !== null && (
             <span className="sr-only" data-testid="vault-ok">
@@ -230,12 +254,13 @@ export function VaultSettings({ title, titleId, onClose }: SectionProps) {
               A chave está na variável {vault.keyEnv} do servidor.
             </span>
           )}
-        </p>
+        </SettingsHint>
         {secrets.length > 0 && (
-          <div className="stoolbar">
-            <label className="ssearch">
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <label className="flex h-9 items-center gap-2 rounded-pill border border-border-strong px-4 text-text-muted focus-within:outline-2 focus-within:outline-focus">
               <Search size={16} aria-hidden="true" />
               <input
+                className="min-w-0 flex-1 border-0 bg-transparent text-label text-text focus-visible:outline-none"
                 type="search"
                 aria-label="Pesquisar no cofre"
                 placeholder="Pesquisar no cofre"
@@ -247,14 +272,14 @@ export function VaultSettings({ title, titleId, onClose }: SectionProps) {
           </div>
         )}
         {!loaded ? (
-          <p className="sempty">Carregando…</p>
+          <SettingsEmpty>Carregando…</SettingsEmpty>
         ) : secrets.length === 0 ? (
-          <p className="sempty" data-testid="vault-empty">
+          <SettingsEmpty data-testid="vault-empty">
             Nada guardado ainda. Adicione uma credencial com Novo item, ou espere um bot pedir: o
             formulário seguro aparece na conversa.
-          </p>
+          </SettingsEmpty>
         ) : shown.length === 0 ? (
-          <p className="sempty">Nenhum item com “{query.trim()}”.</p>
+          <SettingsEmpty>Nenhum item com “{query.trim()}”.</SettingsEmpty>
         ) : (
           <SettingsGroup>
             {shown.map((secret) => {
@@ -290,7 +315,7 @@ export function VaultSettings({ title, titleId, onClose }: SectionProps) {
                     }
                   />
                   {expanded && (
-                    <div className="sfold">
+                    <SettingsFold>
                       <SettingsGroup label="Quem pode usar" icon={Users} testId="secret-grants">
                         {botList.length === 0 && <SettingsRow title="Nenhum bot" />}
                         {botList.map((b) => {
@@ -319,13 +344,9 @@ export function VaultSettings({ title, titleId, onClose }: SectionProps) {
                           );
                         })}
                       </SettingsGroup>
-                      {grant.error !== undefined && (
-                        <p className="ui-field__error" role="alert">
-                          {grant.error}
-                        </p>
-                      )}
-                      <p className="sgroup__hint">A mudança vale a partir da próxima execução.</p>
-                      <div className="srow__control">
+                      {grant.error !== undefined && <FieldError>{grant.error}</FieldError>}
+                      <SettingsHint>A mudança vale a partir da próxima execução.</SettingsHint>
+                      <RowControl end>
                         <RowAction
                           disabled={blocked}
                           data-testid="secret-replace"
@@ -340,15 +361,15 @@ export function VaultSettings({ title, titleId, onClose }: SectionProps) {
                         >
                           Apagar
                         </RowAction>
-                      </div>
-                    </div>
+                      </RowControl>
+                    </SettingsFold>
                   )}
                 </div>
               );
             })}
           </SettingsGroup>
         )}
-      </div>
+      </PaneBody>
       {dialog !== null && (
         <SecretDialog existing={dialog.existing} onClose={() => setDialog(null)} />
       )}
@@ -380,7 +401,7 @@ export function VaultSettings({ title, titleId, onClose }: SectionProps) {
             O valor some do cofre e não dá para recuperá-lo. Quem usa{" "}
             <strong>{deleting.name}</strong> deixa de funcionar:
           </p>
-          <ul className="bullets">
+          <BulletList>
             <li>
               os bots que usam o marcador <code>{`{{secret:${deleting.name}}}`}</code>
             </li>
@@ -394,12 +415,8 @@ export function VaultSettings({ title, titleId, onClose }: SectionProps) {
                 , que citam este segredo.
               </li>
             )}
-          </ul>
-          {removal.error !== undefined && (
-            <p className="ui-field__error" role="alert">
-              {removal.error}
-            </p>
-          )}
+          </BulletList>
+          {removal.error !== undefined && <FieldError>{removal.error}</FieldError>}
         </Dialog>
       )}
     </>

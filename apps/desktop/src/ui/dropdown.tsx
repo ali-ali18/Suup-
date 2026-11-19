@@ -9,6 +9,8 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { cx } from "../lib/cx.js";
+import { MENU_PANEL, menuItemClass } from "./menu.js";
 
 export interface DropdownOption<V extends string = string> {
   value: V;
@@ -21,6 +23,13 @@ export interface DropdownOption<V extends string = string> {
 export const DROPDOWN_FILTER_AFTER = 8;
 
 const OPTION = '[role="option"]';
+
+/** `quiet`: text and chevron, no box until hover; `field`: the bordered control of a form. */
+const TRIGGER = {
+  quiet:
+    "h-8 rounded-pill border-transparent bg-transparent px-3 text-small aria-expanded:bg-raised enabled:hover:bg-raised",
+  field: "h-control w-full rounded-pill border-border bg-bg px-4 text-body",
+} as const;
 
 /**
  * The app's one dropdown (docs/DESIGN.md §3c): never a native select element. A button with the current
@@ -198,7 +207,10 @@ export function Dropdown<V extends string>({
         ref={buttonRef}
         id={id}
         type="button"
-        className={`ui-dropdown ui-dropdown--${variant}`}
+        className={cx(
+          "inline-flex max-w-full items-center justify-between gap-2 border text-left text-text focus-visible:border-border-strong focus-visible:outline-2 focus-visible:outline-focus disabled:opacity-40",
+          TRIGGER[variant],
+        )}
         aria-label={label}
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -209,21 +221,22 @@ export function Dropdown<V extends string>({
         onClick={() => (open ? close(false) : setOpen(true))}
         onKeyDown={onButtonKey}
       >
-        <span className="ui-dropdown__value">{current?.label ?? placeholder ?? ""}</span>
-        <ChevronDown size={14} className="ui-dropdown__chevron" aria-hidden="true" />
+        <span className="min-w-0 truncate">{current?.label ?? placeholder ?? ""}</span>
+        <ChevronDown size={14} className="flex-none text-text-muted" aria-hidden="true" />
       </button>
       {open &&
         createPortal(
           <div
             ref={panelRef}
-            className="ui-menu__list ui-dropdown__panel"
+            className={cx(MENU_PANEL, "fixed z-60 max-w-dropdown overflow-hidden")}
             style={pos ?? { position: "fixed", visibility: "hidden" }}
             onKeyDown={onPanelKey}
           >
             {filtered && (
-              <label className="ui-dropdown__filter">
+              <label className="mb-1 flex h-9 flex-none items-center gap-2 border-b border-border px-3 text-text-muted">
                 <Search size={14} aria-hidden="true" />
                 <input
+                  className="min-w-0 flex-1 border-0 bg-transparent text-small text-text focus-visible:outline-none"
                   ref={filterRef}
                   type="text"
                   aria-label={`Filtrar: ${label}`}
@@ -234,7 +247,12 @@ export function Dropdown<V extends string>({
                 />
               </label>
             )}
-            <div id={listId} role="listbox" aria-label={label} className="ui-dropdown__list">
+            <div
+              id={listId}
+              role="listbox"
+              aria-label={label}
+              className="relative flex min-h-0 flex-col overflow-y-auto"
+            >
               {shown.map((o) => (
                 <button
                   key={o.value}
@@ -243,22 +261,22 @@ export function Dropdown<V extends string>({
                   aria-selected={o.value === value}
                   tabIndex={-1}
                   data-value={o.value}
-                  className="ui-menu__item"
+                  className={menuItemClass()}
                   onClick={() => choose(o.value)}
                 >
-                  <span className="ui-menu__text">
+                  <span className="flex min-w-0 flex-col">
                     <span className="ui-menu__label">{o.label}</span>
                     {o.description !== undefined && (
-                      <span className="ui-menu__desc">{o.description}</span>
+                      <span className="text-small text-text-muted">{o.description}</span>
                     )}
                   </span>
                   {o.value === value && (
-                    <Check size={16} className="ui-menu__check" aria-hidden="true" />
+                    <Check size={16} className="flex-none text-text-muted" aria-hidden="true" />
                   )}
                 </button>
               ))}
               {shown.length === 0 && (
-                <p className="ui-dropdown__none">Nada com “{query.trim()}”.</p>
+                <p className="p-3 text-small text-text-muted">Nada com “{query.trim()}”.</p>
               )}
             </div>
           </div>,

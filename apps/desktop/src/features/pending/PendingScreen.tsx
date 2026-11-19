@@ -5,7 +5,9 @@ import { pendingQuestions, questionMessageOf } from "../../app/selectors.js";
 import { useUi } from "../../app/ui-store.js";
 import { orderedEvents, orderedMessages, pendingApprovals } from "../../data/reducers.js";
 import { openSecretRequest } from "../../data/secret-requests.js";
+import { ActionList } from "../../ui/action-card.js";
 import { Avatar } from "../../ui/avatar.js";
+import { BotBubble } from "../../ui/message.js";
 import { EmptyState, Pill } from "../../ui/primitives.js";
 import { QuestionCard } from "../../ui/question-card.js";
 import { ApprovalRow, SecretRequestRow } from "../chat/ApprovalRows.js";
@@ -99,12 +101,9 @@ export function PendingScreen() {
                       }
                     />
                   ) : (
-                    <div
-                      className="ui-bubble ui-bubble--bot pending__bubble"
-                      data-testid="pending-text"
-                    >
-                      <p className="ui-bubble__text wrap">{ask.text}</p>
-                    </div>
+                    <BotBubble data-testid="pending-text">
+                      <p className="text-body wrap-anywhere whitespace-pre-wrap">{ask.text}</p>
+                    </BotBubble>
                   )}
                   <Pill tone="ghost" onClick={() => selectBot(bot.id)}>
                     Abrir a conversa
@@ -132,14 +131,14 @@ export function PendingScreen() {
                     <Avatar avatar={bot.avatar} color={bot.color} seed={bot.id} size="sm" />{" "}
                     {bot.name}
                   </p>
-                  <div className="ui-actions">
+                  <ActionList>
                     <ApprovalRow
                       approval={card}
                       clicked={clicked}
                       onToggle={toggle}
                       autoFocus={index === 0}
                     />
-                  </div>
+                  </ActionList>
                   <Pill tone="ghost" onClick={() => selectBot(bot.id)}>
                     Abrir a conversa
                   </Pill>
@@ -166,9 +165,9 @@ export function PendingScreen() {
                     <Avatar avatar={bot.avatar} color={bot.color} seed={bot.id} size="sm" />{" "}
                     {bot.name}
                   </p>
-                  <div className="ui-actions">
+                  <ActionList>
                     <SecretRequestRow request={request} clicked={clicked} onToggle={toggle} />
-                  </div>
+                  </ActionList>
                   <Pill tone="ghost" onClick={() => selectBot(bot.id)}>
                     Abrir a conversa
                   </Pill>

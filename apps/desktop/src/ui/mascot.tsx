@@ -213,7 +213,9 @@ export function Mascot({
   return (
     <span
       ref={root}
-      className={`ui-mascot ui-mascot--${size}`}
+      // The engine leaves room around the body for the animation: the scale makes the body fill the box.
+      // `ui-mascot` is a hook (the picker of the new-bot dialog outlines the chosen one), not a style.
+      className="ui-mascot inline-flex size-full items-center justify-center [&_svg]:block [&_svg]:size-full [&_svg]:scale-140"
       data-mascot={shape}
       data-color={color}
       data-state={shown}

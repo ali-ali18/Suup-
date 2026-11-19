@@ -82,7 +82,10 @@ const INLINE = /(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|(\*[^*\n]+\*)|(\[[^\]\n]+\]\([^)\s
 function LinkMark({ src }: { src: string | null }) {
   const [failed, setFailed] = useState(false);
   return (
-    <span className="md__ico" aria-hidden="true">
+    <span
+      className="md__ico mr-1 inline-flex align-[calc(var(--space-1)/-2)] text-text-muted [&_img]:rounded-xs"
+      aria-hidden="true"
+    >
       {src === null || failed ? (
         <Link2 size={12} />
       ) : (
@@ -113,7 +116,12 @@ export function renderInline(
     const index = match.index ?? 0;
     if (index > last) out.push(text.slice(last, index));
     const token = match[0];
-    if (match[1] !== undefined) out.push(<code key={key++}>{token.slice(1, -1)}</code>);
+    if (match[1] !== undefined)
+      out.push(
+        <code key={key++} className="rounded-chip bg-raised px-1.5 py-px">
+          {token.slice(1, -1)}
+        </code>,
+      );
     else if (match[2] !== undefined) out.push(<strong key={key++}>{token.slice(2, -2)}</strong>);
     else if (match[3] !== undefined) out.push(<em key={key++}>{token.slice(1, -1)}</em>);
     else {
@@ -125,7 +133,7 @@ export function renderInline(
         out.push(
           <a
             key={key++}
-            className="md__link"
+            className="md__link text-inherit underline underline-offset-3"
             href={safe.href}
             // The real destination, as the browser sees it (a lookalike domain shows its ASCII form).
             title={safe.href}
@@ -149,6 +157,8 @@ export function renderInline(
   return out;
 }
 
+const LIST = "flex flex-col gap-1 pl-5";
+
 /** The text of a bot message as React elements. */
 export function Markdown({
   text,
@@ -160,25 +170,25 @@ export function Markdown({
   favicons?: boolean;
 }) {
   return (
-    <div className="md">
+    <div className="flex min-w-0 flex-col gap-3 text-body">
       {parseBlocks(text).map((block, i) => {
         const key = i;
         switch (block.kind) {
           case "p":
             return (
-              <p key={key} className="wrap">
+              <p key={key} className="wrap-anywhere whitespace-pre-wrap">
                 {renderInline(block.text, openUrl, favicons)}
               </p>
             );
           case "h":
             return (
-              <p key={key} className="md__heading">
+              <p key={key} className="font-title">
                 {renderInline(block.text, openUrl, favicons)}
               </p>
             );
           case "ul":
             return (
-              <ul key={key} className="md__list">
+              <ul key={key} className={`${LIST} list-disc`}>
                 {block.items.map((item, j) => (
                   // biome-ignore lint/suspicious/noArrayIndexKey: static
                   <li key={j}>{renderInline(item, openUrl, favicons)}</li>
@@ -187,7 +197,7 @@ export function Markdown({
             );
           case "ol":
             return (
-              <ol key={key} className="md__list md__list--ordered">
+              <ol key={key} className={`${LIST} my-[1em] list-decimal`}>
                 {block.items.map((item, j) => (
                   // biome-ignore lint/suspicious/noArrayIndexKey: static
                   <li key={j}>{renderInline(item, openUrl, favicons)}</li>
@@ -196,7 +206,10 @@ export function Markdown({
             );
           case "code":
             return (
-              <pre key={key} className="md__code">
+              <pre
+                key={key}
+                className="m-0 max-h-80 overflow-auto rounded-inner border border-border bg-bg px-3.5 py-3"
+              >
                 <code>{block.text}</code>
               </pre>
             );
