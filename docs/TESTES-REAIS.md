@@ -185,13 +185,12 @@ Bots `Estudinha` e `Chef Prático` (criados por descrição com Sonnet). Fatos d
 | A | Revisor: resumo truncado leva a rejeições falsas e a escalar trabalho correto (acima) | **não corrigido**; descrito com sugestões |
 | B | Bot não guarda sozinho fato duradouro dito sem a palavra "guarde" (Haiku; Sonnet guardou) | comportamento do modelo/prompt; não corrigido |
 | C | `suup chat` sem TTY não mostra as opções de um questionário | pequeno; não corrigido |
-| D | Texto de memória gravado com "guarde:" em minúscula quando o usuário escreve "Sim, guarde: ...": o bot copiou o trecho cru para o perfil em um caso (`Beatriz é filha...` foi bem formatado, então foi só no diário) | irrelevante; sem ação |
 
 Nenhum erro de ferramenta nem argumento inválido nas execuções de conversa e do servidor. Nenhuma correção de código foi feita nesta rodada; nenhum teste foi pulado ou alterado.
 
 ## Verificações do repositório
 
-`pnpm lint` limpo, `pnpm typecheck` limpo, `pnpm test` com `DATABASE_URL` no PostgreSQL descartável: 113 arquivos passaram, 1 pulado; 2050 testes passaram, 54 pulados (os pulados são os de suítes que dependem de serviços ausentes aqui, como Docker e provedores ao vivo).
+`pnpm lint` limpo, `pnpm typecheck` limpo, `pnpm test` com `DATABASE_URL` no PostgreSQL descartável: 113 arquivos passaram, 1 pulado; 2050 testes passaram, 54 pulados (não investiguei um a um quais são os pulados; o número é o mesmo tipo de contagem da suíte condicional por ambiente).
 
 ## O que continua sem verificação
 
