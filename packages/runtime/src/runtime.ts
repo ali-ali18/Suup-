@@ -3,10 +3,12 @@ import { hostname } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import {
   type BotConfig,
+  createToolGate,
   type Executor,
   type LoopDeps,
   type Provider,
   ProviderError,
+  type Redactor,
   type ReviewerConfig,
   type RunEnd,
   ToolRegistry,
@@ -22,6 +24,7 @@ import {
   PgRunQueue,
   PgRunStore,
   type Run,
+  rulesForBot,
 } from "@suup/db";
 import { createProvider, type ProviderConfig } from "@suup/providers";
 import { DockerExecutor, ensureMachine, LocalExecutor } from "@suup/sandbox";
@@ -39,6 +42,7 @@ import { createMemoryService } from "./memory-service.js";
 import { DEFAULT_HISTORY_CHARS, loadRunContext } from "./run-context.js";
 import { finishRun } from "./run-end.js";
 import { createScriptedProvider } from "./scripted-provider.js";
+import { createVault, DEFAULT_VAULT_KEY_ENV, type Vault } from "./vault/service.js";
 
 type Env = Record<string, string | undefined>;
 
@@ -95,6 +99,16 @@ export interface Runtime {
   /** The database handle. Created at the first use; throws `ConfigError` without a URL. */
   readonly db: Db;
   readonly tools: ToolRegistry;
+  /** The vault: secrets encrypted in the database, with the master key from the environment. */
+  readonly vault: Vault;
+  /**
+   * `value` with every known secret value scrubbed out (a copy). It reloads the vault's values
+   * when they are older than a few seconds, so a secret saved by another process is covered too.
+   * A system without a usable vault returns `value` as it is.
+   */
+  redactJson<T>(value: T): Promise<T>;
+  /** The redactor itself (values as of the last reload), for code that cannot wait. */
+  readonly redactor: Redactor;
   /** Provider by id. Never throws for a missing API key: see `getProvider`. */
   getProvider(id: string): Provider;
   keyStatus(providerId: string): ProviderKeyStatus;
@@ -139,7 +153,34 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
   const providerEntries = new Map(config.providers.map((p) => [p.id, p]));
   const modelEntries = new Map(config.models.map((m) => [m.id, m]));
 
-  const tools = registerBuiltinTools(new ToolRegistry());
+  const tools = registerBuiltinTools(
+    new ToolRegistry(
+      config.untrustedOutputTools === undefined
+        ? {}
+        : { externalOutputTools: config.untrustedOutputTools },
+    ),
+  );
+  const vaultSettings =
+    config.vault === undefined
+      ? undefined
+      : {
+          keyEnv: config.vault.keyEnv ?? DEFAULT_VAULT_KEY_ENV,
+          ...(config.vault.previousKeyEnvs === undefined
+            ? {}
+            : { previousKeyEnvs: config.vault.previousKeyEnvs }),
+        };
+  const vault = createVault(() => runtime.db, env, vaultSettings);
+  // Every tool call goes through the approval policy: the user's rules, the reviewer, then a card.
+  const gate = createToolGate({
+    tools,
+    rules: { rulesFor: (botId) => rulesForBot(runtime.db, botId) },
+    ...(config.approvals?.levels === undefined ? {} : { levelOverrides: config.approvals.levels }),
+    ...(config.approvals?.expireAfterMinutes === undefined
+      ? {}
+      : { expireAfterMs: config.approvals.expireAfterMinutes * 60_000 }),
+    now: () => new Date(),
+  });
+  const REDACTION_MAX_AGE_MS = 5_000;
 
   let db: Db | undefined;
   const providers = new Map<string, Provider>();
@@ -362,6 +403,11 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     }
     const cfg = botConfig(bot);
     const reviewer = reviewerConfig();
+    // An evaluation runs unattended on a disposable machine: no card could ever be answered, and
+    // it must not depend on what the user keeps in the vault.
+    const guarded = buildOptions.isolated !== true;
+    const vaultOn = guarded && vault.settings !== undefined;
+    if (vaultOn) await vault.refresh(REDACTION_MAX_AGE_MS);
     return {
       store: new PgRunStore(handle, { workerId }),
       provider: getProvider(bot.modelProvider),
@@ -370,11 +416,22 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
       bot: cfg,
       ...(reviewer === undefined ? {} : { reviewer }),
       // An isolated run (an evaluation) gets neither: nothing of the user's memory reaches it.
+      ...(guarded ? { gate } : {}),
+      ...(vaultOn ? { secrets: vault.accessFor(bot.id) } : {}),
       ...(buildOptions.isolated === true
         ? {}
         : {
-            loadRunContext: (id: string) =>
-              loadRunContext(handle, id, config.defaults?.historyChars ?? DEFAULT_HISTORY_CHARS),
+            loadRunContext: async (id: string) => {
+              const snapshot = await loadRunContext(
+                handle,
+                id,
+                config.defaults?.historyChars ?? DEFAULT_HISTORY_CHARS,
+              );
+              // The model is told which secrets exist (names and purpose), never their values.
+              return vault.status().ok
+                ? { ...snapshot, secrets: await vault.infoFor(bot.id) }
+                : snapshot;
+            },
             memoryFor: (record: { botId: string; id: string }) =>
               createMemoryService(handle, { botId: record.botId, runId: record.id }),
           }),
@@ -400,6 +457,12 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
       return db;
     },
     tools,
+    vault,
+    redactor: vault.redactor,
+    async redactJson(value) {
+      await vault.refresh(REDACTION_MAX_AGE_MS);
+      return vault.redactor.redactJson(value);
+    },
     getProvider,
     keyStatus,
     resolveModel,

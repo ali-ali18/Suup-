@@ -24,6 +24,7 @@ export type RuntimeErrorCode =
   | "conversation_not_found"
   | "conversation_unsupported"
   | "draft_failed"
+  | "conflict"
   | "run_not_found"
   | "event_not_found"
   | "not_a_model_request"

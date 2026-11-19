@@ -62,6 +62,8 @@ const BASE_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
  * Use `DockerExecutor` for anything that runs model-chosen commands for real.
  */
 export class LocalExecutor implements Executor {
+  /** The commands run directly on this computer: nothing isolates them. */
+  readonly isolated = false;
   readonly root: string;
   readonly #maxOutputBytes: number;
   readonly #maxFileBytes: number;

@@ -11,9 +11,11 @@ import {
   formatInt,
   formatUsd,
   indent,
+  levelPt,
   oneLine,
   originExplanation,
   outcomePt,
+  SOURCE_PT,
   statusPt,
 } from "./format.js";
 
@@ -135,6 +137,29 @@ export function summarizeArgs(name: string, args: unknown, max = 100): string {
     if (parts.join(" ").length >= max) break;
   }
   return oneLine(parts.join(" "), max);
+}
+
+/** An approval card for the terminal: what will run, how risky it is, which secrets it uses. */
+export function renderApprovalCard(card: {
+  id: string;
+  tool: string;
+  level: string;
+  summary: string;
+  args: unknown;
+  secrets: readonly string[];
+}): string[] {
+  const args = JSON.stringify(card.args, null, 2) ?? "null";
+  return [
+    `┌ Aprovação ${card.id.slice(0, 8)} · ${levelPt(card.level)}`,
+    `│ ${card.summary}`,
+    `│ ferramenta: ${card.tool}`,
+    ...(card.secrets.length === 0
+      ? []
+      : [`│ usa segredos: ${card.secrets.join(", ")} (o valor nunca é mostrado)`]),
+    "│ conteúdo exato que será executado:",
+    ...args.split("\n").map((line) => `│   ${line}`),
+    "└",
+  ];
 }
 
 const NUDGE_PT: Record<string, string> = {
@@ -287,6 +312,24 @@ export function renderEvent(event: RawEvent, state: RenderState): string[] {
       return [
         `· contexto compactado: ${e.payload.droppedMessages} mensagens resumidas${e.payload.degraded === true ? " (sem resumo: o modelo falhou ao resumir)" : ""}`,
       ];
+    case "policy_checked":
+      return [
+        `· política: ${e.payload.tool} (${levelPt(e.payload.level)}) ${e.payload.outcome === "allow" ? "liberada" : "recusada"} por ${SOURCE_PT[e.payload.source]}${e.payload.reason === undefined ? "" : `: ${oneLine(e.payload.reason, 120)}`}`,
+      ];
+    case "approval_requested":
+      return [
+        `? Aprovação necessária (${levelPt(e.payload.level)}): ${oneLine(e.payload.summary, 160)}`,
+      ];
+    case "approval_decided":
+      return [
+        e.payload.decision === "approved"
+          ? "● aprovada"
+          : `● ${e.payload.decision === "denied" ? "negada" : e.payload.decision === "expired" ? "expirada" : "cancelada"}${e.payload.reason === undefined ? "" : `: ${oneLine(e.payload.reason, 160)}`}`,
+      ];
+    case "secret_requested":
+      return [
+        `? O bot pede o segredo ${e.payload.name}${e.payload.reason === undefined ? "" : ` (${oneLine(e.payload.reason, 120)})`}`,
+      ];
   }
 }
 
@@ -339,6 +382,14 @@ export function summarizeEvent(event: RawEvent): string {
     }
     case "compacted":
       return `${e.payload.droppedMessages} mensagens resumidas até seq ${e.payload.uptoSeq}${e.payload.degraded === true ? " (degradado)" : ""}`;
+    case "policy_checked":
+      return `${e.payload.callId} ${e.payload.tool} ${e.payload.level} → ${e.payload.outcome} (${e.payload.source}${e.payload.ruleId === undefined ? "" : ` ${e.payload.ruleId.slice(0, 8)}`})`;
+    case "approval_requested":
+      return `${e.payload.callId} ${e.payload.tool} ${e.payload.level} · ${oneLine(e.payload.summary, 80)}${e.payload.secrets.length === 0 ? "" : ` · segredos: ${e.payload.secrets.join(", ")}`}`;
+    case "approval_decided":
+      return `${e.payload.callId} ${e.payload.decision}${e.payload.reason === undefined ? "" : `: ${oneLine(e.payload.reason, 80)}`}`;
+    case "secret_requested":
+      return `${e.payload.callId} ${e.payload.name}`;
   }
 }
 

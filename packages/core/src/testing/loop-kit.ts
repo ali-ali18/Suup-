@@ -8,6 +8,7 @@ import {
   runLoop,
 } from "../loop/loop.js";
 import type {
+  ApprovalDecisionItem,
   InboxItem,
   RunRecord,
   RunStatus,
@@ -92,7 +93,7 @@ export function testTools(): Tool[] {
       name: "write_note",
       description: "Writes a file.",
       input: z.object({ name: z.string(), body: z.string() }),
-      risk: "write",
+      risk: "write_reversible",
       execute: async ({ name, body }, ctx) => {
         await ctx.executor.writeFile(name, body);
         return { content: `wrote ${name}` };
@@ -323,6 +324,14 @@ export class CrashingStore implements RunStore {
   async ackInbox(runId: string, ids: readonly string[]) {
     this.#alive();
     return this.#inner.ackInbox(runId, ids);
+  }
+  async peekApprovalDecisions(runId: string): Promise<ApprovalDecisionItem[]> {
+    this.#alive();
+    return this.#inner.peekApprovalDecisions(runId);
+  }
+  async ackApprovalDecisions(runId: string, ids: readonly string[]) {
+    this.#alive();
+    return this.#inner.ackApprovalDecisions(runId, ids);
   }
   async heartbeat(runId: string) {
     this.#alive();

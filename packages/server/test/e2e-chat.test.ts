@@ -185,7 +185,17 @@ describe.skipIf(!DATABASE_URL)(
       expect(tools.items.find((t) => t.name === "remember")).toMatchObject({ memory: true });
       expect(tools.items.find((t) => t.name === "shell")).toMatchObject({
         memory: false,
-        risk: "write",
+        // The default of a tool that classifies each call: where the commands run decides.
+        risk: "external_irreversible",
+        dynamicRisk: true,
+        acceptsSecrets: true,
+        externalOutput: false,
+      });
+      expect(tools.items.find((t) => t.name === "web_fetch")).toMatchObject({
+        risk: "read",
+        dynamicRisk: false,
+        acceptsSecrets: true,
+        externalOutput: true,
       });
       expect(tools.items.every((t) => t.summary.length > 0 && t.summary.length <= 200)).toBe(true);
     });

@@ -24,12 +24,14 @@ import {
   readJsonBody,
   writerFor,
 } from "./http.js";
+import { approvalRoutes } from "./routes/approvals.js";
 import { botRoutes } from "./routes/bots.js";
 import { conversationRoutes } from "./routes/conversations.js";
 import { diagnosticsRoutes } from "./routes/diagnostics.js";
 import { memoryRoutes } from "./routes/memories.js";
 import { metaRoutes } from "./routes/meta.js";
 import { runRoutes } from "./routes/runs.js";
+import { vaultRoutes } from "./routes/vault.js";
 import { createDbSource, createPgNotifier } from "./stream/db-source.js";
 import {
   type Clock,
@@ -117,7 +119,14 @@ export function createServer(runtime: Runtime, options: ServerOptions): SuupServ
   assertToken(options.token, "a variável de ambiente do token (server.tokenEnv)");
   const host = options.host ?? DEFAULT_SERVER.host;
   const port = options.port ?? DEFAULT_SERVER.port;
-  const log = options.logger ?? silent;
+  // No log line carries a known secret value, whatever put it in the message or the error.
+  const sink = options.logger ?? silent;
+  const scrub = (text: string): string => runtime.redactor.redact(text);
+  const log: Logger = {
+    info: (message) => sink.info(scrub(message)),
+    warn: (message) => sink.warn(scrub(message)),
+    error: (message, error) => sink.error(scrub(message), scrubError(error, scrub)),
+  };
   const allowedOrigins = new Set(options.allowedOrigins ?? []);
   const maxBodyBytes = options.maxBodyBytes ?? DEFAULT_SERVER.maxBodyBytes;
   const requestTimeoutMs = options.requestTimeoutMs ?? 30_000;
@@ -131,12 +140,14 @@ export function createServer(runtime: Runtime, options: ServerOptions): SuupServ
     ...runRoutes,
     ...diagnosticsRoutes,
     ...memoryRoutes,
+    ...approvalRoutes,
+    ...vaultRoutes,
     ...metaRoutes,
   ].map(compileRoute);
 
   const database = runtime.db;
   const hub = new StreamHub({
-    source: createDbSource(database),
+    source: createDbSource(database, (value) => runtime.redactJson(value)),
     notifier: createPgNotifier(database),
     maxStreams: options.maxStreams ?? DEFAULT_SERVER.maxStreams,
     onError: (error, context) => log.error(`stream: ${context}`, error),
@@ -233,7 +244,7 @@ export function createServer(runtime: Runtime, options: ServerOptions): SuupServ
       const found = findRoute(path, method);
       const route = found.route;
       const rawBody =
-        method === "POST" || method === "PATCH" || method === "DELETE"
+        method === "POST" || method === "PUT" || method === "PATCH" || method === "DELETE"
           ? await readJsonBody(req, { maxBytes: maxBodyBytes, timeoutMs: requestTimeoutMs })
           : undefined;
       const abort = new AbortController();
@@ -264,7 +275,8 @@ export function createServer(runtime: Runtime, options: ServerOptions): SuupServ
       } finally {
         clearTimeout(timer);
       }
-      out.json(reply.status ?? 200, reply.body);
+      // Nothing leaves the server holding a known secret value, whatever put it there.
+      out.json(reply.status ?? 200, await runtime.redactJson(reply.body));
     } catch (caught) {
       const error = toHttpError(caught);
       if (error.code === "internal_error" || error.code === "unavailable") {
@@ -471,4 +483,16 @@ export function createServer(runtime: Runtime, options: ServerOptions): SuupServ
     hub,
   };
   return handle_;
+}
+
+/** The same error with its message and stack scrubbed (an `Error`'s own fields are not text a filter reaches). */
+function scrubError(error: unknown, scrub: (text: string) => string): unknown {
+  if (!(error instanceof Error)) return typeof error === "string" ? scrub(error) : error;
+  const copy = new Error(
+    scrub(error.message),
+    error.cause === undefined ? {} : { cause: scrubError(error.cause, scrub) },
+  );
+  copy.name = error.name;
+  if (error.stack !== undefined) copy.stack = scrub(error.stack);
+  return copy;
 }

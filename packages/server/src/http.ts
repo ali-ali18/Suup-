@@ -34,7 +34,7 @@ export interface Ctx {
 export type Handler = (ctx: Ctx) => Promise<Reply>;
 
 export interface Route {
-  method: "GET" | "POST" | "PATCH" | "DELETE";
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   /** `/v1/bots/:id/archive`: `:name` matches one path segment. */
   pattern: string;
   handler: Handler;

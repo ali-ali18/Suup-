@@ -158,7 +158,16 @@ export const toolInfoSchema = z.object({
   name: z.string(),
   /** The first sentence of what the model is told about the tool. */
   summary: z.string(),
-  risk: z.enum(["read", "write", "external"]),
+  /**
+   * The default level of a call: `read`, `write_reversible` or `external_irreversible`. A tool
+   * with `dynamicRisk` classifies each call from its arguments (the level can differ per call).
+   */
+  risk: z.enum(["read", "write_reversible", "external_irreversible"]),
+  dynamicRisk: z.boolean(),
+  /** Some argument of the tool accepts a secret placeholder (`{{secret:NAME}}`). */
+  acceptsSecrets: z.boolean(),
+  /** Its output comes from outside and reaches the model labelled as untrusted data. */
+  externalOutput: z.boolean(),
   /** One of the memory tools. */
   memory: z.boolean(),
 });

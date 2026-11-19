@@ -214,7 +214,7 @@ describe("ToolRegistry.invoke outcomes", () => {
         name: "danger",
         description: "d",
         input: z.object({ n: z.coerce.number() }),
-        risk: "external",
+        risk: "external_irreversible",
         async execute() {
           ran = true;
           return { content: "ran" };
@@ -231,7 +231,7 @@ describe("ToolRegistry.invoke outcomes", () => {
     expect(denied.outcome).toBe("denied");
     expect(denied.output).toMatchObject({ isError: true });
     expect(denied.output.content).toContain("user said no");
-    expect(seen).toEqual(["danger", "external", { n: 5 }]);
+    expect(seen).toEqual(["danger", "external_irreversible", { n: 5 }]);
     expect(ran).toBe(false);
 
     const allowed = await registry.invoke("danger", { n: 1 }, makeCtx(), {

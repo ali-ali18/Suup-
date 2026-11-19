@@ -2,6 +2,7 @@ import { createInterface } from "node:readline";
 import type { Readable } from "node:stream";
 import { escalatedQuestions } from "@suup/core";
 import { getRun, postInbox, type Run } from "@suup/db";
+import { pendingCards, printCards } from "./approval-prompt.js";
 import type { Ctx } from "./context.js";
 import { CommandError, EXIT_FAILED, EXIT_OK } from "./errors.js";
 import { readEvents } from "./lookup.js";
@@ -224,7 +225,17 @@ export async function followRunCore(
         if (!interactive) break;
         if (!prompted) {
           await options.beforePrompt?.();
-          const asked = (await readEvents(db, runId)).filter((e) => e.type === "escalated").at(-1);
+          const log = await readEvents(db, runId);
+          const secret = log
+            .filter((e) => e.type === "escalated" || e.type === "secret_requested")
+            .at(-1);
+          if (secret?.type === "secret_requested") {
+            const name = (secret.payload as { name?: string }).name ?? "?";
+            out.line(
+              `O bot pediu o segredo ${name}. Guarde-o sem passar pelo chat: suup vault set ${name} --run ${short}   (ou responda aqui para recusar).`,
+            );
+          }
+          const asked = log.filter((e) => e.type === "escalated").at(-1);
           const questions =
             asked === undefined
               ? []
@@ -318,9 +329,12 @@ export async function followRun(ctx: Ctx, runId: string, fromSeq: number): Promi
       out.line(`  suup say ${short} "<sua resposta>"`);
       out.line(`  suup resume ${short}   (ou deixe um worker em execução continuar)`);
       return EXIT_OK;
-    case "waiting_approval":
-      out.line("A execução espera uma aprovação (ainda não há como aprovar pela CLI).");
+    case "waiting_approval": {
+      out.line("A execução espera a sua aprovação:");
+      printCards(ctx, await pendingCards(ctx.runtime().db, run.id));
+      out.line(`Depois de decidir, a execução volta à fila: suup resume ${short}`);
       return EXIT_OK;
+    }
     default:
       out.line(
         `Execução pausada: o estado está guardado e nada se perdeu. Retome com: suup resume ${short}`,

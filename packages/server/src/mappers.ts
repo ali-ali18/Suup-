@@ -1,6 +1,17 @@
 // Database rows to the wire types of `@suup/api`: ISO dates, no internal columns.
-import type { Bot, Conversation, Memory, Message, Run, RunEvent } from "@suup/api";
+import type {
+  Approval,
+  ApprovalRule,
+  Bot,
+  Conversation,
+  Memory,
+  Message,
+  Run,
+  RunEvent,
+  Secret,
+} from "@suup/api";
 import {
+  type Approval as ApprovalRow,
   type BotSummary,
   type ConversationView,
   type Memory as MemoryRow,
@@ -8,6 +19,8 @@ import {
   type RunEvent as RunEventRow,
   type Run as RunRow,
   runResultOrNull,
+  type SecretMeta,
+  type StoredRule,
 } from "./db-types.js";
 
 const iso = (date: Date): string => date.toISOString();
@@ -150,3 +163,53 @@ export function toRunEventDto(event: RunEventRow): RunEvent {
 }
 
 export type { MemoryRow };
+
+export function toApprovalDto(approval: ApprovalRow): Approval {
+  return {
+    id: approval.id,
+    runId: approval.runId,
+    botId: approval.botId,
+    conversationId: approval.conversationId,
+    callId: approval.callId,
+    tool: approval.tool,
+    args: approval.args,
+    level: approval.level,
+    summary: approval.summary,
+    secrets: approval.secrets,
+    source: approval.source,
+    status: approval.status,
+    reason: approval.reason,
+    ruleId: approval.ruleId,
+    expiresAt: isoOrNull(approval.expiresAt),
+    decidedAt: isoOrNull(approval.decidedAt),
+    createdAt: iso(approval.createdAt),
+  };
+}
+
+export function toRuleDto(rule: StoredRule): ApprovalRule {
+  return {
+    id: rule.id,
+    botId: rule.botId,
+    tool: rule.tool,
+    effect: rule.effect,
+    matchers: rule.matchers,
+    note: rule.note,
+    createdBy: rule.createdBy,
+    sourceApprovalId: rule.sourceApprovalId,
+    createdAt: iso(rule.createdAt),
+    updatedAt: iso(rule.updatedAt),
+  };
+}
+
+/** A secret's metadata. There is no value to map: the database never has one in the clear. */
+export function toSecretDto(secret: SecretMeta): Secret {
+  return {
+    name: secret.name,
+    description: secret.description,
+    keyId: secret.keyId,
+    grantedBotIds: secret.grantedBotIds,
+    createdAt: iso(secret.createdAt),
+    updatedAt: iso(secret.updatedAt),
+    lastUsedAt: isoOrNull(secret.lastUsedAt),
+  };
+}

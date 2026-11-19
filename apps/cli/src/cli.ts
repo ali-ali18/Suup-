@@ -1,4 +1,5 @@
 import { GLOBAL_OPTIONS, type OptionSpec, parseCommandArgs } from "./args.js";
+import { approvalsCommand, approveCommand, denyCommand } from "./commands/approvals.js";
 import { botArchive, botCreate, botDraft, botList, botShow } from "./commands/bot.js";
 import { chatCommand } from "./commands/chat.js";
 import { dbMigrate } from "./commands/db.js";
@@ -16,9 +17,19 @@ import {
 import { sayCommand, stopCommand } from "./commands/messages.js";
 import { replayCommand } from "./commands/replay.js";
 import { resendCommand } from "./commands/resend.js";
+import { rulesAdd, rulesEdit, rulesList, rulesRemove } from "./commands/rules.js";
 import { resumeCommand, runCommand } from "./commands/run.js";
 import { runsCommand, showCommand } from "./commands/runs.js";
 import { serverCommand } from "./commands/server.js";
+import {
+  vaultGrant,
+  vaultKeyGenerate,
+  vaultList,
+  vaultRemove,
+  vaultRevoke,
+  vaultRotate,
+  vaultSet,
+} from "./commands/vault.js";
 import { workerCommand } from "./commands/worker.js";
 import { type CommandSpec, makeCtx } from "./context.js";
 import { CommandError, EXIT_FAILED, EXIT_OK, EXIT_USAGE, UsageError } from "./errors.js";
@@ -39,6 +50,20 @@ export const COMMANDS: readonly CommandSpec[] = [
   memoryForget,
   memoryRestore,
   memorySearch,
+  approvalsCommand,
+  approveCommand,
+  denyCommand,
+  rulesList,
+  rulesAdd,
+  rulesEdit,
+  rulesRemove,
+  vaultSet,
+  vaultList,
+  vaultRemove,
+  vaultGrant,
+  vaultRevoke,
+  vaultRotate,
+  vaultKeyGenerate,
   runCommand,
   workerCommand,
   serverCommand,
@@ -59,6 +84,8 @@ const GROUPS: Record<string, string> = {
   db: "Banco de dados",
   bot: "Bots",
   memory: "Memória",
+  rules: "Regras de aprovação",
+  vault: "Cofre de segredos",
 };
 
 function usageLine(spec: CommandSpec): string {
@@ -128,8 +155,13 @@ function groupHelp(group: string): string[] {
 function resolveCommand(
   words: readonly string[],
 ): { spec: CommandSpec; consumed: number } | { group: string } | undefined {
-  const [first, second] = words;
+  const [first, second, third] = words;
   if (first === undefined) return undefined;
+  const three =
+    second === undefined || third === undefined
+      ? undefined
+      : COMMANDS.find((c) => c.name === `${first} ${second} ${third}`);
+  if (three !== undefined) return { spec: three, consumed: 3 };
   const two =
     second === undefined ? undefined : COMMANDS.find((c) => c.name === `${first} ${second}`);
   if (two !== undefined) return { spec: two, consumed: 2 };
@@ -162,6 +194,8 @@ export async function main(rawArgv: readonly string[], io: CliIo): Promise<numbe
   const stdoutLines = (lines: readonly string[]) => io.stdout.write(`${lines.join("\n")}\n`);
   const closers: (() => Promise<void>)[] = [];
   let json = false;
+  // What is printed for a failure is scrubbed of the vault's values like everything else.
+  let scrub = (text: string): string => text;
   try {
     // Global flags may come before the command word: `suup --json runs`.
     let i = 0;
@@ -222,9 +256,12 @@ export async function main(rawArgv: readonly string[], io: CliIo): Promise<numbe
       spec.positionals,
     );
     const ctx = makeCtx(io, spec.name, args, closers);
+    scrub = (text) => ctx.out.scrub(text);
+    // Whatever the command prints is scrubbed of the vault's values (when there is a vault).
+    await ctx.primeRedaction();
     return await spec.run(ctx);
   } catch (error) {
-    return reportError(io, error, json);
+    return reportError(io, error, json, scrub);
   } finally {
     for (const close of closers) {
       try {
@@ -236,7 +273,16 @@ export async function main(rawArgv: readonly string[], io: CliIo): Promise<numbe
   }
 }
 
-function reportError(io: CliIo, error: unknown, json: boolean): number {
+function reportError(
+  rawIo: CliIo,
+  error: unknown,
+  json: boolean,
+  scrub: (text: string) => string,
+): number {
+  const io: CliIo = {
+    ...rawIo,
+    stderr: { write: (chunk: string) => rawIo.stderr.write(scrub(chunk)) },
+  };
   if (error instanceof UsageError) {
     if (json) io.stderr.write(`${JSON.stringify({ error: error.message, usage: true })}\n`);
     else {

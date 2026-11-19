@@ -1,3 +1,4 @@
+export { SKIPPED_AFTER_DENIAL } from "./approval-flow.js";
 export {
   CONTROL_TOOL_NAMES,
   type ControlToolName,
@@ -25,15 +26,23 @@ export {
   runLoop,
   type ToolInvoker,
 } from "./loop.js";
-export { buildSystemPrompt, MEMORY_TOOL_NAMES, renderStateReminder } from "./prompts.js";
 export {
+  APPROVALS_PROMPT_MARK,
+  buildSystemPrompt,
+  MEMORY_TOOL_NAMES,
+  renderStateReminder,
+} from "./prompts.js";
+export {
+  type ApprovalRecord,
   applyEvent,
   createRunState,
   type PendingCall,
   type RunState,
   rebuildState,
+  type Waiting,
 } from "./state.js";
 export {
+  type ApprovalDecisionItem,
   type InboxItem,
   type InboxItemInput,
   LeaseLostError,

@@ -11,8 +11,20 @@ const CURL_TIME_LIMIT_SECONDS = 30;
 const CONNECT_TIMEOUT_SECONDS = 10;
 const USER_AGENT = "suup-bot/0.1 (+web_fetch)";
 
+const HEADER_NAME = /^[A-Za-z0-9-]{1,64}$/;
+
 const input = z.object({
   url: z.string().min(1).describe("Absolute http:// or https:// URL to fetch."),
+  headers: z
+    .record(
+      z.string().regex(HEADER_NAME, "a header name is letters, digits and hyphens"),
+      z.string().max(4000),
+    )
+    .refine((h) => Object.keys(h).length <= 10, "at most 10 headers")
+    .optional()
+    .describe(
+      'Extra request headers, e.g. `{ "Authorization": "Bearer {{secret:API_TOKEN}}" }`. A secret is written as the placeholder {{secret:NAME}}; the harness puts the value in. Still a GET.',
+    ),
 });
 
 export const webFetchTool = defineTool({
@@ -25,9 +37,13 @@ export const webFetchTool = defineTool({
     "For files that are not text (PDF, images, archives, binaries) use the shell: `curl -L -o file URL`.",
   ].join(" "),
   input,
+  // Always a GET: it only reads. A call that carries a secret is raised by the registry.
   risk: "read",
+  describe: ({ url }) => `Fetch ${url}`,
+  secretFields: ["url", "headers.*"],
+  externalOutput: true,
   timeoutMs: (CURL_TIME_LIMIT_SECONDS + 30) * 1000,
-  async execute({ url }, ctx) {
+  async execute({ url, headers }, ctx) {
     let parsed: URL;
     try {
       parsed = new URL(url.trim());
@@ -47,9 +63,15 @@ export const webFetchTool = defineTool({
       return { isError: true, content: `${JSON.stringify(url)} has no host name.` };
     }
 
+    for (const [name, value] of Object.entries(headers ?? {})) {
+      if (/[\r\n\0]/.test(value)) {
+        return { isError: true, content: `The value of header ${name} has a line break.` };
+      }
+    }
+
     let result: Awaited<ReturnType<typeof ctx.executor.exec>>;
     try {
-      result = await ctx.executor.exec(buildCurlCommand(parsed.href), {
+      result = await ctx.executor.exec(buildCurlCommand(parsed.href, headers), {
         timeoutMs: (CURL_TIME_LIMIT_SECONDS + 20) * 1000,
         signal: ctx.signal,
       });
@@ -129,8 +151,11 @@ export const webFetchTool = defineTool({
 });
 
 /** `curl` command line for one GET. The URL is the only model-controlled value and is quoted. */
-export function buildCurlCommand(url: string): string {
+export function buildCurlCommand(url: string, headers: Record<string, string> = {}): string {
   const limit = WEB_FETCH_MAX_DOWNLOAD_BYTES;
+  const extra = Object.entries(headers).map(
+    ([name, value]) => `--header ${shellQuote(`${name}: ${value}`)}`,
+  );
   return [
     "tmp=$(mktemp) || exit 70; trap 'rm -f \"$tmp\"' EXIT;",
     "meta=$(curl --silent --show-error --location",
@@ -140,6 +165,7 @@ export function buildCurlCommand(url: string): string {
     `--max-filesize ${limit}`,
     `--user-agent ${shellQuote(USER_AGENT)}`,
     "--header 'Accept: text/html,application/xhtml+xml,application/json,text/plain;q=0.9,*/*;q=0.5'",
+    ...extra,
     '--compressed --output "$tmp"',
     "--write-out '%{http_code}\\t%{url_effective}\\t%{num_redirects}\\t%{content_type}'",
     `--url ${shellQuote(url)});`,

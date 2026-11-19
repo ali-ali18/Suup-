@@ -1,10 +1,8 @@
 import type { z } from "zod";
+import type { RiskLevel } from "./risk.js";
 
-/**
- * How much a tool can hurt: `read` observes only, `write` changes state inside the bot's own
- * workspace, `external` has effects outside it (sends, posts, pays) and is usually irreversible.
- */
-export type ToolRisk = "read" | "write" | "external";
+/** Compatibility name of `RiskLevel` (see `risk.ts`). */
+export type ToolRisk = RiskLevel;
 
 export interface ExecOptions {
   /** Working directory, relative to the workspace root. Defaults to the root. */
@@ -42,6 +40,12 @@ export interface FileStat {
  * it needs the real filesystem.
  */
 export interface Executor {
+  /**
+   * `true` when the machine is isolated from the user's own computer (a container). A tool may
+   * read it to classify its risk (`shell` in a container only changes a disposable machine).
+   * Absent or `false`: assume the commands reach the real computer.
+   */
+  readonly isolated?: boolean;
   /** Runs a shell command. Resolves (never rejects) for non-zero exits and timeouts. */
   exec(command: string, opts?: ExecOptions): Promise<ExecResult>;
   /** Reads a UTF-8 text file. Rejects if it does not exist. */
@@ -181,14 +185,22 @@ export interface ToolOutput {
   isError?: boolean;
   /**
    * The content came from outside (web pages, emails, files fetched from elsewhere). The registry
-   * wraps it in an envelope marking it as data, not instructions.
+   * wraps it in an envelope marking it as data, not instructions (`wrapUntrusted`). A tool whose
+   * whole output is external declares `externalOutput` instead.
    */
   untrusted?: boolean;
 }
 
+/** What `classify` may look at besides the arguments: the machine the call would run on. */
+export interface ClassifyEnv {
+  executor: Executor;
+}
+
 /**
  * A capability exposed to the model. A tool implements only the action: validation, risk gating,
- * timeouts, truncation and event logging are done around it by the registry.
+ * secrets, timeouts, truncation and event logging are done around it by the registry and the
+ * loop. A tool only DECLARES (its risk, which fields may receive secrets, whether its output comes
+ * from outside); it never decides anything about permissions.
  */
 export interface Tool<I = unknown> {
   /** `^[a-z][a-z0-9_]{0,63}$`. */
@@ -197,7 +209,31 @@ export interface Tool<I = unknown> {
   description: string;
   /** Input schema. Its JSON Schema form is what the model sees; it must describe an object. */
   input: z.ZodType<I>;
-  risk: ToolRisk;
+  /**
+   * The default risk level of a call (plan, section 4.8). A call whose level depends on its
+   * arguments also gives `classify`; a tool that declares neither is treated as
+   * `external_irreversible`.
+   */
+  risk: RiskLevel;
+  /**
+   * The level of THIS call, from its (validated) arguments. It may only refine `risk`; if it
+   * throws, the call counts as `external_irreversible`.
+   */
+  classify?(input: I, env: ClassifyEnv): RiskLevel;
+  /** One line for the approval card: what exactly this call does. Default: the tool and its arguments. */
+  describe?(input: I): string;
+  /**
+   * The argument fields that may carry a secret placeholder (`{{secret:NAME}}`), as dotted paths
+   * into the input (`command`, `headers.*`: `*` stands for every key or item). The registry puts
+   * the real value in at the moment of execution; a placeholder anywhere else is refused.
+   */
+  secretFields?: readonly string[];
+  /**
+   * The output comes from outside the system (web pages, files fetched from elsewhere, the output
+   * of programs that may have fetched them). The registry labels it as untrusted data. A result
+   * can also set `ToolOutput.untrusted` itself.
+   */
+  externalOutput?: boolean;
   /** Overrides the registry's default timeout. */
   timeoutMs?: number;
   /**

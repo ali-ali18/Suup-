@@ -1,10 +1,12 @@
 // Owns the shared vocabulary of the loop: the public configuration types (`BotConfig`, `LoopDeps`,
 // `RunLoopOptions`, `ToolInvoker`), the `LoopContext` object every loop module receives instead of
 // a long parameter list, and the `Interrupted` signal used to unwind on a hard interruption.
-import type { ContextItem } from "../events.js";
+import type { ToolGate } from "../approvals/gate.js";
+import type { ContextItem, SecretInfo } from "../events.js";
 import type { Message } from "../messages.js";
 import type { Provider, ToolSpec } from "../provider.js";
 import type { InvokeOptions, ToolInvocation } from "../registry.js";
+import type { SecretAccess } from "../secrets.js";
 import type { Executor, MemoryService, ToolContext } from "../tool.js";
 import type { ModelPricing, ReviewerConfig } from "./reviewer.js";
 import type { RunState } from "./state.js";
@@ -49,6 +51,8 @@ export interface RunContextSnapshot {
   history: Message[];
   /** Told to the model with the history, e.g. that older messages were left out. */
   historyNote?: string;
+  /** The secrets the bot may use: names and what they are for, never values. */
+  secrets?: SecretInfo[];
 }
 
 export interface LoopDeps {
@@ -66,6 +70,18 @@ export interface LoopDeps {
    * run has no outside context.
    */
   loadRunContext?(runId: string): Promise<RunContextSnapshot>;
+  /**
+   * The approval policy (section 4.8): decides, for every tool call, whether it runs, is refused or
+   * waits for the user. Without it every call runs: only for tests and evaluations in a disposable
+   * machine; the runtime always provides one.
+   */
+  gate?: ToolGate;
+  /**
+   * The vault seam: where `{{secret:NAME}}` placeholders get their values at the moment of the
+   * action, and what scrubs known values out of everything the run records or hands to the model.
+   * Without it a call that names a secret is refused and nothing is scrubbed.
+   */
+  secrets?: SecretAccess;
   /** The memory the tools of this run may use. Without it the memory tools report an error. */
   memoryFor?(run: RunRecord): MemoryService;
   now(): Date;

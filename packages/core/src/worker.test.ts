@@ -486,6 +486,8 @@ describe("Worker: failures", () => {
       setStatus: (id, c) => store.setStatus(id, c),
       updatePlan: (id, p) => store.updatePlan(id, p),
       ackInbox: (id, ids) => store.ackInbox(id, ids),
+      peekApprovalDecisions: (id) => store.peekApprovalDecisions(id),
+      ackApprovalDecisions: (id, ids) => store.ackApprovalDecisions(id, ids),
       heartbeat: (id) => store.heartbeat(id),
       addUsage: async () => {
         throw new Error("disk quota exceeded");
@@ -781,6 +783,8 @@ function afterSetStatus(
     updatePlan: (id, p) => store.updatePlan(id, p),
     addUsage: (id, u) => store.addUsage(id, u),
     ackInbox: (id, ids) => store.ackInbox(id, ids),
+    peekApprovalDecisions: (id) => store.peekApprovalDecisions(id),
+    ackApprovalDecisions: (id, ids) => store.ackApprovalDecisions(id, ids),
     heartbeat: (id) => store.heartbeat(id),
     setStatus: async (id, change) => {
       const applied = await store.setStatus(id, change);

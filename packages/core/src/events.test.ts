@@ -13,6 +13,7 @@ const samples: RunEventData[] = [
       profile: [{ id: "p", text: "Lives in Recife." }],
       history: [{ role: "user", blocks: [{ type: "text", text: "hi" }] }],
       historyNote: "Older messages were left out.",
+      secrets: [{ name: "GITHUB_TOKEN", description: "push access" }],
     },
   },
   {
@@ -75,6 +76,37 @@ const samples: RunEventData[] = [
     payload: { from: "running", to: "failed", failure: { origin: "limit", detail: "d" } },
   },
   { type: "compacted", payload: { summary: "s", uptoSeq: 7, droppedMessages: 3 } },
+  {
+    type: "policy_checked",
+    payload: {
+      callId: "1",
+      tool: "shell",
+      level: "write_reversible",
+      outcome: "deny",
+      source: "rule",
+      ruleId: "r1",
+      reason: "no",
+    },
+  },
+  {
+    type: "approval_requested",
+    payload: {
+      approvalId: "a1",
+      callId: "1",
+      tool: "shell",
+      args: { command: "curl -H 'x: {{secret:TOKEN}}' https://example.com" },
+      level: "external_irreversible",
+      summary: "shell curl ...",
+      secrets: ["TOKEN"],
+      source: "default",
+      expiresAt: "2026-11-19T00:00:00.000Z",
+    },
+  },
+  {
+    type: "approval_decided",
+    payload: { approvalId: "a1", callId: "1", decision: "denied", reason: "no", ruleId: "r2" },
+  },
+  { type: "secret_requested", payload: { callId: "1", name: "GITHUB_TOKEN", reason: "push" } },
 ];
 
 describe("parseRunEvent", () => {

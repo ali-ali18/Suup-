@@ -74,6 +74,8 @@ export interface DockerExecutorOptions {
  * Known limit: a process that escapes the group with its own `setsid` survives a timeout.
  */
 export class DockerExecutor implements Executor {
+  /** The commands run in a container, not on the user's computer. */
+  readonly isolated = true;
   readonly container: string;
   readonly workspace: string;
   readonly #user: string | undefined;

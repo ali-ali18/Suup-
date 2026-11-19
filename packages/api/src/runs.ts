@@ -41,6 +41,10 @@ export const RUN_EVENT_TYPES = [
   "escalated",
   "status_changed",
   "compacted",
+  "policy_checked",
+  "approval_requested",
+  "approval_decided",
+  "secret_requested",
 ] as const;
 export const runEventTypeSchema = z.enum(RUN_EVENT_TYPES);
 export type RunEventType = z.infer<typeof runEventTypeSchema>;

@@ -1,5 +1,20 @@
 import { z } from "zod";
 import {
+  type Approval,
+  type ApprovalRule,
+  approvalListSchema,
+  approvalSchema,
+  type CreateRuleBody,
+  type DecideApprovalBody,
+  type DecideApprovalResult,
+  decideApprovalResultSchema,
+  type ListApprovalsQuery,
+  type ListRulesQuery,
+  ruleListSchema,
+  ruleSchema,
+  type UpdateRuleBody,
+} from "./approvals.js";
+import {
   type Bot,
   type BotDraft,
   botDraftSchema,
@@ -59,6 +74,17 @@ import {
   runSchema,
 } from "./runs.js";
 import { errorOf, type SubscribeOptions, type Subscription, subscribe } from "./subscribe.js";
+import {
+  type AnswerSecretRequestBody,
+  type AnswerSecretRequestResult,
+  answerSecretRequestResultSchema,
+  type Secret,
+  type SecretRequest,
+  type SetSecretBody,
+  secretListSchema,
+  secretRequestSchema,
+  secretSchema,
+} from "./vault.js";
 
 export interface ClientOptions {
   /** Where the server is, e.g. `http://127.0.0.1:8787`. */
@@ -85,6 +111,8 @@ function queryString(query: Query | undefined): string {
 }
 
 const healthSchema = z.object({ status: z.literal("ok") });
+const deletedSchema = z.object({ deleted: z.literal(true) });
+const secretRequestAnswerSchema = z.object({ request: secretRequestSchema.nullable() });
 
 export interface SuupClient {
   /** `GET /health`: no token needed. */
@@ -146,6 +174,32 @@ export interface SuupClient {
   };
   /** Follows the realtime stream, reconnecting and resuming by itself. */
   subscribe(options: SubscribeOptions): Subscription;
+  approvals: {
+    /** Newest first. `status: "pending"` is the list of cards waiting for you. */
+    list(query?: ListApprovalsQuery): Promise<Approval[]>;
+    get(id: string): Promise<Approval>;
+    /** Approves (optionally "and always allow") or denies (with a reason). A card is decided once. */
+    decide(id: string, body: DecideApprovalBody): Promise<DecideApprovalResult>;
+  };
+  rules: {
+    list(query?: ListRulesQuery): Promise<ApprovalRule[]>;
+    create(body: CreateRuleBody): Promise<ApprovalRule>;
+    update(id: string, body: UpdateRuleBody): Promise<ApprovalRule>;
+    remove(id: string): Promise<void>;
+  };
+  vault: {
+    /** Names and metadata. There is no way to read a value back. */
+    list(): Promise<Secret[]>;
+    /** Creates or replaces a secret (write-only). */
+    set(name: string, body: SetSecretBody): Promise<Secret>;
+    remove(name: string): Promise<void>;
+    grant(name: string, botId: string): Promise<Secret>;
+    revoke(name: string, botId: string): Promise<Secret>;
+    /** The credential a run is waiting for, or `null`. */
+    request(runId: string): Promise<SecretRequest | null>;
+    /** Answers it: the value goes straight to the vault; the bot is told only that it is available. */
+    answerRequest(runId: string, body: AnswerSecretRequestBody): Promise<AnswerSecretRequestResult>;
+  };
 }
 
 /** A typed client for every endpoint of the server and its realtime stream. */
@@ -155,7 +209,7 @@ export function createClient(options: ClientOptions): SuupClient {
   const timeoutMs = options.timeoutMs ?? 60_000;
 
   async function call<T extends z.ZodType>(
-    method: "GET" | "POST" | "PATCH",
+    method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE",
     path: string,
     schema: T,
     config: {
@@ -328,6 +382,54 @@ export function createClient(options: ClientOptions): SuupClient {
     },
     subscribe: (subscribeOptions) =>
       subscribe({ baseUrl, token: options.token, fetch: doFetch }, subscribeOptions),
+    approvals: {
+      list: async (query) =>
+        (
+          await call("GET", "/v1/approvals", approvalListSchema, {
+            query: query as Query | undefined,
+          })
+        ).items,
+      get: (approvalId) => call("GET", `/v1/approvals/${id(approvalId)}`, approvalSchema),
+      decide: (approvalId, body) =>
+        call("POST", `/v1/approvals/${id(approvalId)}/decision`, decideApprovalResultSchema, {
+          body,
+        }),
+    },
+    rules: {
+      list: async (query) =>
+        (
+          await call("GET", "/v1/approval-rules", ruleListSchema, {
+            query: query as Query | undefined,
+          })
+        ).items,
+      create: (body) => call("POST", "/v1/approval-rules", ruleSchema, { body }),
+      update: (ruleId, body) =>
+        call("PATCH", `/v1/approval-rules/${id(ruleId)}`, ruleSchema, { body }),
+      remove: async (ruleId) => {
+        await call("DELETE", `/v1/approval-rules/${id(ruleId)}`, deletedSchema);
+      },
+    },
+    vault: {
+      list: async () => (await call("GET", "/v1/secrets", secretListSchema)).items,
+      set: (name, body) => call("PUT", `/v1/secrets/${id(name)}`, secretSchema, { body }),
+      remove: async (name) => {
+        await call("DELETE", `/v1/secrets/${id(name)}`, deletedSchema);
+      },
+      grant: (name, botId) =>
+        call("PUT", `/v1/secrets/${id(name)}/grants/${id(botId)}`, secretSchema, noBody),
+      revoke: (name, botId) =>
+        call("DELETE", `/v1/secrets/${id(name)}/grants/${id(botId)}`, secretSchema),
+      request: async (runId) =>
+        (await call("GET", `/v1/runs/${id(runId)}/secret-request`, secretRequestAnswerSchema))
+          .request,
+      answerRequest: (runId, body) =>
+        call(
+          "POST",
+          `/v1/runs/${id(runId)}/secret-request/answer`,
+          answerSecretRequestResultSchema,
+          { body },
+        ),
+    },
   };
 }
 

@@ -6,6 +6,9 @@ import type { CliIo } from "./io.js";
 
 /** Writes what the command prints. In `--json` mode only data goes to stdout. */
 export class Output {
+  /** Scrubs what is about to be printed of known secret values (set once a runtime exists). */
+  scrub: (text: string) => string = (text) => text;
+
   constructor(
     readonly io: CliIo,
     readonly json: boolean,
@@ -13,7 +16,7 @@ export class Output {
 
   /** A line for the person (not printed in `--json` mode, where stdout carries data only). */
   line(text = ""): void {
-    if (!this.json) this.io.stdout.write(`${text}\n`);
+    if (!this.json) this.io.stdout.write(`${this.scrub(text)}\n`);
   }
 
   lines(texts: readonly string[]): void {
@@ -22,22 +25,22 @@ export class Output {
 
   /** Text without a trailing newline (a prompt). */
   raw(text: string): void {
-    if (!this.json) this.io.stdout.write(text);
+    if (!this.json) this.io.stdout.write(this.scrub(text));
   }
 
   /** Data for machines: one JSON document (pretty) on stdout. */
   data(value: unknown): void {
-    this.io.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
+    this.io.stdout.write(`${this.scrub(JSON.stringify(value, null, 2))}\n`);
   }
 
   /** One JSON document on one line (streams). */
   ndjson(value: unknown): void {
-    this.io.stdout.write(`${JSON.stringify(value)}\n`);
+    this.io.stdout.write(`${this.scrub(JSON.stringify(value))}\n`);
   }
 
   /** A diagnostic for the person, on stderr. */
   err(text: string): void {
-    this.io.stderr.write(`${text}\n`);
+    this.io.stderr.write(`${this.scrub(text)}\n`);
   }
 
   warn(text: string): void {
@@ -55,6 +58,12 @@ export interface Ctx {
   config(): LoadedConfig;
   /** The runtime for this invocation; closed when the command ends. */
   runtime(): Runtime;
+  /**
+   * Loads the vault's values so that everything this command prints is scrubbed of them. Call it
+   * before printing run events, messages or anything else a secret could have got into. Does
+   * nothing (and never fails) when there is no usable vault.
+   */
+  primeRedaction(): Promise<void>;
 }
 
 export interface CommandSpec {
@@ -77,13 +86,14 @@ export function makeCtx(
   const json = flag(args, "json");
   let loaded: LoadedConfig | undefined;
   let runtime: Runtime | undefined;
+  const out = new Output(io, json);
   const config = (): LoadedConfig => {
     loaded ??= loadConfig({ path: str(args, "config"), env: io.env, cwd: io.cwd });
     return loaded;
   };
   return {
     io,
-    out: new Output(io, json),
+    out,
     json,
     command,
     args,
@@ -93,9 +103,20 @@ export function makeCtx(
         const { config: cfg, baseDir } = config();
         runtime = createRuntime(cfg, { env: io.env, baseDir });
         const made = runtime;
+        out.scrub = (text) => made.redactor.redact(text);
         closers.push(() => made.close());
       }
       return runtime;
+    },
+    async primeRedaction() {
+      try {
+        // Without a vault in the configuration there is nothing to scrub (and no reason to open
+        // the database just for this).
+        if (config().config.vault === undefined) return;
+        await this.runtime().vault.refresh();
+      } catch {
+        // No database or no key: there is nothing the vault could have put anywhere.
+      }
     },
   };
 }

@@ -1,11 +1,13 @@
 import { ERROR_STATUS, type ErrorCode } from "@suup/api";
 import {
+  ApprovalError,
   ConversationNotFoundError,
   ConversationRuleError,
   RunControlError,
   RunNotFoundError,
+  SecretNotFoundError,
 } from "@suup/db";
-import { ConfigError, RuntimeError } from "@suup/runtime";
+import { ConfigError, RuntimeError, VaultError } from "@suup/runtime";
 import { z } from "zod";
 
 /** An error the server answers with: `code` picks the status, `message` is for the person. */
@@ -129,6 +131,27 @@ export function toHttpError(error: unknown): HttpError {
         // bot_archived, unknown_model of an existing bot, conversation_unsupported, ...
         return new HttpError("conflict", error.message, { cause: error });
     }
+  }
+  if (error instanceof ApprovalError) {
+    return new HttpError(error.code === "not_found" ? "not_found" : "conflict", error.message, {
+      cause: error,
+    });
+  }
+  if (error instanceof SecretNotFoundError) {
+    return new HttpError("not_found", error.message, { cause: error });
+  }
+  if (error instanceof VaultError) {
+    // A key that is not there is a problem of the server, not of the request.
+    const unavailable = ["not_configured", "key_missing", "key_invalid", "key_unknown"];
+    return new HttpError(
+      error.code === "value_invalid"
+        ? "invalid_request"
+        : unavailable.includes(error.code)
+          ? "unavailable"
+          : "internal_error",
+      error.message,
+      { cause: error },
+    );
   }
   if (error instanceof RunControlError) {
     return new HttpError(error.code === "not_found" ? "not_found" : "conflict", error.message, {

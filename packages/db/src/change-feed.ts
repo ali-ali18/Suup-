@@ -8,6 +8,7 @@ export const CHANGE_KINDS = [
   "memory",
   "conversation",
   "bot",
+  "approval",
 ] as const;
 export type ChangeKind = (typeof CHANGE_KINDS)[number];
 

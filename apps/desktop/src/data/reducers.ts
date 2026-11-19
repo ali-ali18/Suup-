@@ -309,6 +309,9 @@ export function applyStreamEvent(state: DataState, event: StreamEvent): DataStat
       return mergeMemory(state, event.data.memory);
     case "bot.updated":
       return mergeBot(state, event.data.bot);
+    case "approval.changed":
+      // The approval cards have no screen yet (they come with the desktop work of phase 3).
+      return state;
     case "ready":
     case "resync":
       return state;

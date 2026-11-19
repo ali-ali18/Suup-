@@ -191,6 +191,51 @@ describe("client", () => {
     await expect(pending).rejects.toMatchObject({ code: "aborted" });
   });
 
+  it("the vault client has no call that reads a value, and its schema has no field for one", async () => {
+    const { vault } = client(() => new Response("{}")).api;
+    expect(Object.keys(vault).sort()).toEqual(
+      ["answerRequest", "grant", "list", "remove", "request", "revoke", "set"].sort(),
+    );
+    const { secretSchema } = await import("../src/index.js");
+    expect(Object.keys(secretSchema.shape)).not.toEqual(expect.arrayContaining(["value"]));
+    expect(Object.keys(secretSchema.shape)).not.toContain("ciphertext");
+  });
+
+  it("sends a decision and parses the card it gets back", async () => {
+    const card = {
+      id: BOT_ID,
+      runId: BOT_ID,
+      botId: BOT_ID,
+      conversationId: null,
+      callId: "c1",
+      tool: "shell",
+      args: { command: "ls" },
+      level: "external_irreversible",
+      summary: "Shell: ls",
+      secrets: [],
+      source: "default",
+      status: "approved",
+      reason: null,
+      ruleId: null,
+      expiresAt: null,
+      decidedAt: "2026-11-18T20:00:00.000Z",
+      createdAt: "2026-11-18T20:00:00.000Z",
+    };
+    const { api, calls } = client(() => Response.json({ approval: card, rule: null }));
+    const result = await api.approvals.decide(BOT_ID, {
+      decision: "approve",
+      always: { scope: "global" },
+    });
+    expect(result.approval.status).toBe("approved");
+    expect(calls[0]?.body).toEqual({ decision: "approve", always: { scope: "global" } });
+    const bad = client(() =>
+      Response.json({ approval: { ...card, level: "nuclear" }, rule: null }),
+    );
+    await expect(bad.api.approvals.decide(BOT_ID, { decision: "deny" })).rejects.toMatchObject({
+      code: "invalid_response",
+    });
+  });
+
   it("covers every endpoint of the API with the documented method and path", async () => {
     const uuid = BOT_ID;
     const sink = client(() => new Response("{}", { status: 500 }));
@@ -234,6 +279,26 @@ describe("client", () => {
       [`POST /v1/runs/${uuid}/replay`, () => api.diagnostics.replay(uuid)],
       [`POST /v1/runs/${uuid}/resend`, () => api.diagnostics.resend(uuid, { seq: 1 })],
       ["GET /v1/doctor", () => api.diagnostics.doctor()],
+      ["GET /v1/approvals", () => api.approvals.list()],
+      [`GET /v1/approvals/${uuid}`, () => api.approvals.get(uuid)],
+      [
+        `POST /v1/approvals/${uuid}/decision`,
+        () => api.approvals.decide(uuid, { decision: "approve" }),
+      ],
+      ["GET /v1/approval-rules", () => api.rules.list()],
+      ["POST /v1/approval-rules", () => api.rules.create({ tool: "t", effect: "allow" })],
+      [`PATCH /v1/approval-rules/${uuid}`, () => api.rules.update(uuid, { effect: "deny" })],
+      [`DELETE /v1/approval-rules/${uuid}`, () => api.rules.remove(uuid)],
+      ["GET /v1/secrets", () => api.vault.list()],
+      ["PUT /v1/secrets/API_TOKEN", () => api.vault.set("API_TOKEN", { value: "12345678" })],
+      ["DELETE /v1/secrets/API_TOKEN", () => api.vault.remove("API_TOKEN")],
+      [`PUT /v1/secrets/API_TOKEN/grants/${uuid}`, () => api.vault.grant("API_TOKEN", uuid)],
+      [`DELETE /v1/secrets/API_TOKEN/grants/${uuid}`, () => api.vault.revoke("API_TOKEN", uuid)],
+      [`GET /v1/runs/${uuid}/secret-request`, () => api.vault.request(uuid)],
+      [
+        `POST /v1/runs/${uuid}/secret-request/answer`,
+        () => api.vault.answerRequest(uuid, { declined: true }),
+      ],
     ];
     for (const [expected, call] of table) {
       const seen = await attempt(call);

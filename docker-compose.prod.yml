@@ -20,6 +20,8 @@ x-app: &app
     DATABASE_URL: postgres://${POSTGRES_USER:-suup}:${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env.prod}@db:5432/${POSTGRES_DB:-suup}
     SUUP_CONFIG: /app/suup.config.json
     SUUP_SERVER_TOKEN: ${SUUP_SERVER_TOKEN:?defina SUUP_SERVER_TOKEN no .env.prod (gere um com suup server --generate-token)}
+    # A chave mestra do cofre de segredos (opcional; só vale se o suup.config.json tem "vault"). Gere com: suup vault key generate
+    SUUP_VAULT_KEY: ${SUUP_VAULT_KEY:-}
     # As chaves dos provedores: acrescente aqui cada variável que o suup.config.json cita em apiKeyEnv.
     ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   cap_drop: [ALL]

@@ -317,6 +317,7 @@ export async function startWorld(
       { id: "model-y", provider: "outro", contextWindow: 100_000, maxOutputTokens: 4096 },
     ],
     sandbox: { kind: "local", root: "workspace" },
+    approvals: { levels: { shell: "write_reversible" } },
     worker: { concurrency: 4, leaseRenewMs: 1000, staleAfterMs: 8000, controlPollMs: 100 },
     defaults: { maxTurns: 30 },
   });

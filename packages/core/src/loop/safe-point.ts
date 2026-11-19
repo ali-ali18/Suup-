@@ -1,6 +1,7 @@
 // Owns the checks made at the safe point (every result recorded, no model call in flight) that
 // can end or pause the run: acting on decisions the log already holds, the turn/cost/duration
 // limits, and the no-progress and repetition guards.
+import { deliverApprovalDecisions } from "./approval-flow.js";
 import { repetitionNudge } from "./prompts.js";
 import { end, fail, nudge, transition } from "./recording.js";
 import type { LoopContext } from "./run-context.js";
@@ -13,12 +14,21 @@ export const REPEAT_NUDGE_AT = 3;
 /** ... and this many fails the run. */
 export const REPEAT_FAIL_AT = 5;
 
-/** Acts on decisions the log already holds but the store does not reflect yet. */
-export async function settle(ctx: LoopContext): Promise<RunStatus | undefined> {
+/**
+ * Acts on decisions the log already holds but the store does not reflect yet. `"again"` means a
+ * decision of the user arrived just now: the call it concerns is worked on before anything else.
+ */
+export async function settle(ctx: LoopContext): Promise<RunStatus | "again" | undefined> {
   const state = ctx.state;
   if (state.acceptedFinish !== null) {
     const { summary, evidence } = state.acceptedFinish;
     return end(ctx, "done", { result: { summary, evidence } });
+  }
+  if (state.waiting?.kind === "approval") {
+    // The user may have answered while the loop was getting here: then it does not pause at all.
+    if (await deliverApprovalDecisions(ctx)) return "again";
+    const ok = await transition(ctx, "running", "waiting_approval", { requeueIfDecided: true });
+    return ok ? "waiting_approval" : (await ctx.deps.store.getRun(ctx.runId)).status;
   }
   if (state.waiting !== null) {
     const ok = await transition(ctx, "running", "waiting_user", { requeueIfInbox: true });

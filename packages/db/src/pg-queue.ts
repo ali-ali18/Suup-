@@ -1,4 +1,5 @@
 import type { FailureOrigin, RunQueue } from "@suup/core";
+import { expireOverdueApprovals } from "./approvals.js";
 import { type Db, withTransaction } from "./client.js";
 import { appendRunEvent } from "./events.js";
 import { releaseLeasedRun, requeueStaleRuns } from "./queue.js";
@@ -48,6 +49,9 @@ export class PgRunQueue implements RunQueue {
   }
 
   async requeueStale(olderThanMs: number): Promise<number> {
+    // The same periodic pass lets the cards expire whose configured limit has passed (none does
+    // unless the configuration sets a limit: nothing expires silently).
+    await expireOverdueApprovals(this.#db);
     return (await requeueStaleRuns(this.#db, { olderThanMs })).length;
   }
 

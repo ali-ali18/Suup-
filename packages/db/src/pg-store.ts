@@ -1,4 +1,5 @@
 import {
+  type ApprovalDecisionItem,
   type InboxItem,
   LeaseLostError,
   type PlanStep,
@@ -10,6 +11,11 @@ import {
   type StoredEvent,
   type UsageDelta,
 } from "@suup/core";
+import {
+  ackApprovalDecisionRows,
+  hasUndeliveredDecision,
+  peekApprovalDecisionRows,
+} from "./approvals.js";
 import { type Db, withTransaction } from "./client.js";
 import { appendRunEvent, listRunEvents, RunNotFoundError } from "./events.js";
 import { ackInboxEntries, hasPendingInbox, type InboxEntry, peekInboxEntries } from "./inbox.js";
@@ -120,6 +126,16 @@ export class PgRunStore implements RunStore {
           update runs set status = 'queued', locked_by = null, locked_at = null
           where id = ${runId} and status = 'waiting_user'`;
       }
+      if (
+        change.requeueIfDecided === true &&
+        change.to === "waiting_approval" &&
+        (await hasUndeliveredDecision(tx, runId))
+      ) {
+        // The user answered while the loop was on its way to waiting: do not sleep on it.
+        await tx.sql`
+          update runs set status = 'queued', locked_by = null, locked_at = null
+          where id = ${runId} and status = 'waiting_approval'`;
+      }
       return true;
     });
   }
@@ -139,6 +155,15 @@ export class PgRunStore implements RunStore {
   async ackInbox(runId: string, ids: readonly string[]): Promise<void> {
     if (ids.length === 0) return;
     await this.#leased(runId, (tx) => ackInboxEntries(tx, runId, ids));
+  }
+
+  async peekApprovalDecisions(runId: string): Promise<ApprovalDecisionItem[]> {
+    return peekApprovalDecisionRows(this.#db, runId);
+  }
+
+  async ackApprovalDecisions(runId: string, ids: readonly string[]): Promise<void> {
+    if (ids.length === 0) return;
+    await this.#leased(runId, (tx) => ackApprovalDecisionRows(tx, runId, ids));
   }
 
   async heartbeat(runId: string): Promise<RunControl> {

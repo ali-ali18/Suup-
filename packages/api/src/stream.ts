@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { approvalSchema } from "./approvals.js";
 import { botSchema } from "./bots.js";
 import { uuid } from "./common.js";
 import { conversationSchema, messageSchema } from "./conversations.js";
@@ -28,6 +29,7 @@ export const STREAM_EVENT_TYPES = [
   "conversation.updated",
   "memory.changed",
   "bot.updated",
+  "approval.changed",
 ] as const;
 
 /**
@@ -63,6 +65,11 @@ const frames = {
     memory: memorySchema,
   }),
   "bot.updated": z.object({ bot: botSchema }),
+  /** An approval card appeared or changed (pending, decided, cancelled). The whole card is sent. */
+  "approval.changed": z.object({
+    change: z.enum(["created", "updated"]),
+    approval: approvalSchema,
+  }),
 } as const;
 
 export const streamFrameSchemas = frames;
@@ -94,6 +101,11 @@ export const streamEventSchema = z.discriminatedUnion("type", [
     data: frames["memory.changed"],
   }),
   z.object({ type: z.literal("bot.updated"), id: z.number().int(), data: frames["bot.updated"] }),
+  z.object({
+    type: z.literal("approval.changed"),
+    id: z.number().int(),
+    data: frames["approval.changed"],
+  }),
 ]);
 export type StreamEvent = z.infer<typeof streamEventSchema>;
 export type StreamEventType = StreamEvent["type"];

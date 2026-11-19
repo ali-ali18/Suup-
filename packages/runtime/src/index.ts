@@ -83,3 +83,32 @@ export {
   type ScriptFile,
   type ScriptStep,
 } from "./scripted-provider.js";
+export {
+  answerSecretRequest,
+  type PendingSecretRequest,
+  pendingSecretRequest,
+  type SecretAnswer,
+} from "./secret-request.js";
+export {
+  decrypt,
+  encrypt,
+  fingerprint,
+  generateKeyText,
+  KEY_BYTES,
+  parseKey,
+  type Sealed,
+  VaultError,
+  type VaultErrorCode,
+  type VaultKey,
+} from "./vault/crypto.js";
+export {
+  createVault,
+  DEFAULT_VAULT_KEY_ENV,
+  MAX_SECRET_LENGTH,
+  MIN_SECRET_LENGTH,
+  type RotateResult,
+  type Vault,
+  type VaultSettings,
+  type VaultStatus,
+  type VerifyResult,
+} from "./vault/service.js";

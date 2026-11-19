@@ -1,3 +1,4 @@
+import { createReplayGate } from "./approvals/gate.js";
 import type { PlanStep } from "./events.js";
 import { parseRunEvent, type RunEventData, type RunStatus } from "./events.js";
 import { CONTROL_TOOL_NAMES } from "./loop/control-tools.js";
@@ -9,8 +10,15 @@ import {
   runLoop,
   type ToolInvoker,
 } from "./loop/loop.js";
+import { APPROVALS_PROMPT_MARK } from "./loop/prompts.js";
 import { canonicalJson } from "./loop/state.js";
-import type { InboxItem, RunStore, StatusChange, UsageDelta } from "./loop/store.js";
+import type {
+  ApprovalDecisionItem,
+  InboxItem,
+  RunStore,
+  StatusChange,
+  UsageDelta,
+} from "./loop/store.js";
 import {
   type GenerateRequest,
   type Provider,
@@ -20,6 +28,7 @@ import {
   type ToolSpec,
 } from "./provider.js";
 import type { InvokeOptions, ToolInvocation } from "./registry.js";
+import { noRedaction } from "./secrets.js";
 import { InMemoryRunStore } from "./testing/memory-store.js";
 import type { Executor, ToolContext } from "./tool.js";
 
@@ -469,6 +478,19 @@ export async function replayRun(
       ? async (): Promise<RunContextSnapshot> => structuredClone(recordedContext.payload)
       : undefined;
 
+  // The run was gated if the recording says so: it holds verdicts, or its prompt tells the model
+  // about approvals. Same for the vault: the model was offered `request_secret`.
+  const firstRequest = recorded.find(
+    (e) => e.type === "model_request" && (e.payload.purpose ?? "agent") === "agent",
+  );
+  const gated =
+    recorded.some((e) => e.type === "policy_checked" || e.type === "approval_requested") ||
+    (firstRequest?.type === "model_request" &&
+      firstRequest.payload.system.includes(APPROVALS_PROMPT_MARK));
+  const hadVault =
+    firstRequest?.type === "model_request" &&
+    firstRequest.payload.tools.some((t) => t.name === "request_secret");
+
   const deps: LoopDeps = {
     store,
     provider,
@@ -477,6 +499,16 @@ export async function replayRun(
     bot: options.bot,
     ...(reviewer === undefined ? {} : { reviewer }),
     ...(loadRunContext === undefined ? {} : { loadRunContext }),
+    ...(gated ? { gate: createReplayGate(recorded) } : {}),
+    ...(hadVault
+      ? {
+          // Nothing is resolved in a replay: tools never run, and the log holds placeholders only.
+          secrets: {
+            redactor: noRedaction,
+            resolve: async () => ({}),
+          },
+        }
+      : {}),
     now: clock,
     sleep: async () => {},
   };
@@ -494,6 +526,12 @@ export async function replayRun(
     // next look at the inbox finds the recorded delivery. If nothing moved, the replay is stuck
     // and the comparison below reports where.
     if (status === "waiting_user" && appended < recorded.length && appended > before) continue;
+    if (status === "waiting_approval" && appended < recorded.length && appended > before) {
+      // The decision was made by the user, outside the loop: the store is handed back as a worker
+      // would claim it, and the loop finds the recorded decision.
+      await memory.setStatus(run.id, { from: ["waiting_approval"], to: "running" });
+      continue;
+    }
     break;
   }
 
@@ -587,8 +625,27 @@ class ReplayStore implements RunStore {
     return this.#inner.addUsage(runId, usage);
   }
   async ackInbox(): Promise<void> {}
+  async ackApprovalDecisions(): Promise<void> {}
   async heartbeat(): Promise<void> {
     this.#guard();
+  }
+
+  /** The decisions the recording recorded at this very position of the log. */
+  async peekApprovalDecisions(): Promise<ApprovalDecisionItem[]> {
+    const items: ApprovalDecisionItem[] = [];
+    for (let i = this.#position(); ; i++) {
+      const event = this.#recorded[i];
+      if (event?.type !== "approval_decided") break;
+      const p = event.payload;
+      items.push({
+        approvalId: p.approvalId,
+        callId: p.callId,
+        decision: p.decision,
+        ...(p.reason === undefined ? {} : { reason: p.reason }),
+        ...(p.ruleId === undefined ? {} : { ruleId: p.ruleId }),
+      });
+    }
+    return items;
   }
 
   /** The items the recording delivered at this very position of the log, with their ids. */

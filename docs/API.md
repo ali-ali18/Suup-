@@ -53,7 +53,7 @@ Todo erro tem o mesmo formato, e a lista de códigos é fechada:
 | `too_many_streams` | 429 | Já há `server.maxStreams` (padrão 16) streams abertos |
 | `provider_error` | 502 | O provedor do modelo falhou (rascunho de bot, reenvio) |
 | `internal_error` | 500 | Defeito do servidor; o detalhe fica no log, nunca na resposta |
-| `unavailable` | 503 | O banco ou a máquina dos bots não responde, ou o servidor está desligando |
+| `unavailable` | 503 | O banco ou a máquina dos bots não responde, o servidor está desligando, ou o cofre está sem a chave (a mensagem diz qual variável falta) |
 
 ---
 
@@ -77,7 +77,7 @@ Os modelos da configuração, para o formulário de bot. `200 { "items": [ModelI
 
 ### `GET /v1/tools`
 
-As ferramentas que se pode liberar a um bot. `200 { "items": [ToolInfo], "control": ["plan","finish","escalate"] }`. `ToolInfo`: `name`, `summary` (a primeira frase do que o modelo lê, até 200 caracteres), `risk` (`read`, `write` ou `external`) e `memory` (uma das quatro ferramentas de memória). As de `control` existem em todo bot, seja qual for `allowedTools`.
+As ferramentas que se pode liberar a um bot. `200 { "items": [ToolInfo], "control": ["plan","finish","escalate"] }` (com um cofre configurado, `control` traz também `request_secret`). `ToolInfo`: `name`, `summary` (a primeira frase do que o modelo lê, até 200 caracteres), `risk` (o nível **padrão** de uma chamada: `read`, `write_reversible` ou `external_irreversible`), `dynamicRisk` (a ferramenta classifica cada chamada pelos argumentos e pela máquina: o nível de uma chamada pode ser outro; é o caso do `shell`), `acceptsSecrets` (algum campo aceita `{{secret:NOME}}`), `externalOutput` (a saída chega ao modelo rotulada como dado não confiável) e `memory` (uma das quatro ferramentas de memória). As de `control` existem em todo bot, seja qual for `allowedTools`. A mudança de `write`/`external` para os níveis novos veio com a fase 3.
 
 ---
 
@@ -199,6 +199,58 @@ Erros: `404` se a execução não existe; `409` para `pause` e `interrupt` numa 
 
 ---
 
+## Aprovações e regras
+
+Uma chamada de ferramenta que precisa do seu OK vira um **cartão** (`Approval`); a execução fica em `waiting_approval` e libera o worker até você decidir. Como e por quê: [APROVACOES.md](APROVACOES.md).
+
+`Approval`: `id`, `runId`, `botId`, `conversationId` (a da execução, ou `null`), `callId`, `tool`, **`args`** (o conteúdo exato que vai rodar, com segredos como `{{secret:NOME}}`, nunca valores), `level` (`read`, `write_reversible`, `external_irreversible`), `summary` (uma linha: o título do cartão), `secrets` (nomes usados), `source` (`rule`, `reviewer` ou `default`: quem mandou perguntar), `status` (`pending`, `approved`, `denied`, `cancelled`, `expired`), `reason` (o motivo de uma negação), `ruleId` (a regra criada por "aprovar e sempre permitir"), `expiresAt` (só se a configuração faz cartões expirarem), `decidedAt`, `createdAt`.
+
+| Método e caminho | Corpo | Resposta |
+|---|---|---|
+| `GET /v1/approvals?status=&botId=&conversationId=&runId=&limit=` | | `200 { items: [Approval] }`, do mais novo ao mais antigo (`limit` até 200, padrão 50). `status=pending` é a lista de cartões esperando você |
+| `GET /v1/conversations/{id}/approvals?status=&botId=&runId=&limit=` | | O mesmo, só da conversa; `404` |
+| `GET /v1/approvals/{id}` | | `200 Approval`; `404` |
+| `POST /v1/approvals/{id}/decision` | `{ "decision": "approve", "always"?: { "scope"?: "bot"\|"global", "matchers"?: [ArgMatcher] } }` ou `{ "decision": "deny", "reason"?: "..." }` | `200 { approval, rule }` (`rule` é a regra criada, ou `null`); `404`; `409` se já foi decidido, cancelado ou expirado |
+
+- Decidir **volta a execução para a fila** (um worker precisa estar rodando); a decisão é gravada no log da execução (`approval_decided`) por ela mesma, ao retomar. Aprovada, a ferramenta roda **exatamente** com `args`.
+- Negar não falha a execução: o modelo recebe a negação (com `reason`) e continua.
+- "Aprovar e sempre permitir": `always` cria uma regra `allow` para esta ferramenta, para o bot do cartão (`scope: "bot"`, padrão) ou todos. Sem `matchers`, vale para chamadas com os mesmos argumentos de texto; com `matchers: []`, para qualquer chamada da ferramenta.
+- Uma mensagem no chat **não** decide nada.
+- `POST /v1/runs/{id}/cancel` numa execução que espera cancela o cartão (`cancelled`).
+
+`Rule` (regra permanente do usuário): `id`, `botId` (`null` = todos os bots), `tool` (nome, ou `*`), `effect` (`allow` ou `deny`), `matchers` (lista de `{ field, op, value }`, todos precisam valer; `op`: `equals`, `starts_with`, `contains`, `glob`; `field` é um caminho com pontos nos argumentos; vazio = qualquer chamada), `note`, `createdBy` (`user` ou `approval`), `sourceApprovalId`, `createdAt`, `updatedAt`. Quem proíbe vale mais que quem libera.
+
+| Método e caminho | Corpo | Resposta |
+|---|---|---|
+| `GET /v1/approval-rules?botId=` | | `200 { items: [Rule] }`, da mais antiga à mais nova. Com `botId`: as desse bot e as globais |
+| `POST /v1/approval-rules` | `{ tool, effect, botId?, matchers?, note? }` | `201 Rule`; `400` |
+| `PATCH /v1/approval-rules/{id}` | `{ effect?, matchers?, note? }` | `200 Rule`; `400`, `404` |
+| `DELETE /v1/approval-rules/{id}` | | `200 { deleted: true }`; `404` |
+
+Tempo real: o quadro `approval.changed` (`{ change: "created"\|"updated", approval }`) chega a toda conexão quando um cartão aparece ou muda de situação. As regras e o cofre não têm quadro: leia de novo depois de escrever.
+
+---
+
+## Cofre de segredos
+
+Só **escrita**: não existe rota nem campo que devolva um valor. O que é e o que não protege: [COFRE.md](COFRE.md). Sem a seção `vault` na configuração, ou sem a chave no ambiente, as rotas de escrita respondem `503 unavailable` com a mensagem que diz o que falta (a listagem funciona sem chave).
+
+`Secret`: `name` (letras maiúsculas, números e `_`, começando por letra, até 64), `description`, `keyId` (impressão digital da chave que o cifrou), `grantedBotIds` (quem pode usar), `createdAt`, `updatedAt`, `lastUsedAt`.
+
+| Método e caminho | Corpo | Resposta |
+|---|---|---|
+| `GET /v1/secrets` | | `200 { items: [Secret] }` |
+| `PUT /v1/secrets/{nome}` | `{ value, description?, grantBotIds? }` | `200 Secret`. Cria ou **substitui** o valor (as concessões ficam); `value` de 8 a 16 384 caracteres; `400`; `503` |
+| `DELETE /v1/secrets/{nome}` | | `200 { deleted: true }`; `404` |
+| `PUT /v1/secrets/{nome}/grants/{botId}` | | `200 Secret`: o bot passa a poder usar; `404` |
+| `DELETE /v1/secrets/{nome}/grants/{botId}` | | `200 Secret`: o bot deixa de poder; `404` |
+| `GET /v1/runs/{id}/secret-request` | | `200 { request: { runId, botId, name, reason } \| null }`: o segredo que a execução (em `waiting_user`) pediu com `request_secret` |
+| `POST /v1/runs/{id}/secret-request/answer` | `{ value?, declined?, description? }` | `200 { name, provided }`. O valor vai **direto ao cofre**, o bot é concedido e a execução volta à fila; o modelo só fica sabendo que o segredo está disponível. `409` se a execução não espera um segredo |
+
+Qualquer resposta ou quadro do stream que mencione um valor conhecido (por exemplo, um texto digitado no chat antes de o segredo existir) sai com `[REDACTED:NOME]` no lugar.
+
+---
+
 ## Diagnóstico (o Inspetor)
 
 Os mesmos cálculos de `suup inspect --request`, `replay`, `resend` e `doctor`, que a CLI e o servidor compartilham (um código só, em `@suup/runtime`).
@@ -245,8 +297,9 @@ data: {"runId":"...","event":{"seq":7,"type":"tool_call","createdAt":"...","payl
 | `conversation.updated` | `{ conversation }` | Mudou a lista de conversas: mensagem nova, lida, arquivada. Vai a `Conversation` inteira, com `unreadCount` e `activeRun` |
 | `memory.changed` | `{ change, memory }` | `change`: `created`, `updated`, `archived`, `restored` |
 | `bot.updated` | `{ bot }` | Bot criado, editado, arquivado ou tornado principal |
+| `approval.changed` | `{ change, approval }` | Um cartão de aprovação apareceu (`created`) ou mudou de situação (`updated`: aprovado, negado, cancelado, expirado). Vai o `Approval` inteiro |
 
-Dos quadros com dados de uma linha (`run.updated`, `message.*`, `conversation.updated`, `bot.updated`) o servidor manda o **estado atual** da linha, lido do banco quando o quadro é montado: várias atualizações seguidas de uma execução podem chegar como uma só, a última. `run.event` é um evento específico do log (que só cresce), nunca fundido.
+Dos quadros com dados de uma linha (`run.updated`, `message.*`, `conversation.updated`, `bot.updated`, `approval.changed`) o servidor manda o **estado atual** da linha, lido do banco quando o quadro é montado: várias atualizações seguidas de uma execução podem chegar como uma só, a última. `run.event` é um evento específico do log (que só cresce), nunca fundido.
 
 ### Garantias e retomada
 

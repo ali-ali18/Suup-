@@ -44,6 +44,7 @@ chmod 600 .env.prod
 #    DOCKER_GID         -> stat -c %g /var/run/docker.sock
 #    ANTHROPIC_API_KEY  -> a chave (ou a variável que o seu suup.config.json citar)
 #    SUUP_SERVER_TOKEN  -> veja "O token", logo abaixo
+#    SUUP_VAULT_KEY     -> (opcional) a chave do cofre de segredos: veja docs/COFRE.md
 
 # 2. Configuração: modelos, limites, sandbox, servidor
 cp suup.config.prod.example.json suup.config.json

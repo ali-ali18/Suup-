@@ -8,6 +8,7 @@ import {
   type Message,
 } from "@suup/db";
 import { ensureDefaultBot, reconcileRunEffects, sendMessage } from "@suup/runtime";
+import { askInline, pendingCards, printCards } from "../approval-prompt.js";
 import { str } from "../args.js";
 import { type CommandSpec, type Ctx, warnIfLocalSandbox } from "../context.js";
 import { CommandError, EXIT_FAILED, EXIT_OK, UsageError } from "../errors.js";
@@ -196,7 +197,24 @@ export const chatCommand: CommandSpec = {
           continue; // a message that arrived as the run ended may have opened the next one
         }
         if (status === "waiting_approval") {
-          out.line("A execução espera uma aprovação (ainda não há como aprovar pela CLI).");
+          const cards = await pendingCards(db, run.id);
+          if (lines === undefined || json) {
+            // No terminal to ask on: the card is printed, and answered with `suup approve`.
+            printCards(ctx, cards);
+            return "idle";
+          }
+          let answered = false;
+          for (const card of cards) {
+            const answer = await askInline(ctx, lines, card, bot.name);
+            if (answer === "later") {
+              out.line(
+                "Fica pendente: decida depois com suup approve / suup deny (ou abra o chat de novo).",
+              );
+              return "idle";
+            }
+            answered = true;
+          }
+          if (answered) continue; // the answer made the run claimable: follow it again
           return "idle";
         }
         // Without a terminal a question waits in the conversation; with one, the person left.

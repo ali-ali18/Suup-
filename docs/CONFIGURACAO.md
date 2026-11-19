@@ -105,6 +105,40 @@ Limites usados quando o bot não define os próprios (`suup bot create --max-tur
 
 Passar de um limite termina a execução como `failed` com origem `limit`.
 
+### `approvals` (opcional)
+
+Como as ações dos bots pedem o seu OK ([APROVACOES.md](APROVACOES.md)). Sem esta seção valem os padrões: leitura e escrita reversível executam, o que sai para o mundo ou não tem volta vira cartão, e um cartão espera para sempre.
+
+| Campo | Padrão | Significado |
+|---|---|---|
+| `levels` | nenhum | Fixa o nível de risco de uma ferramenta, por cima do que ela declara: `{ "shell": "external_irreversible" }` faz todo comando perguntar, mesmo na máquina isolada; `{ "shell": "write_reversible" }` libera o shell mesmo na máquina `local`. Valores: `read`, `write_reversible`, `external_irreversible` |
+| `expireAfterMinutes` | nunca | Um cartão que ninguém decidiu em tanto tempo vira `expired`: o bot é avisado e segue. Sem o campo, **nada expira em silêncio** |
+
+```json
+"approvals": { "levels": { "shell": "external_irreversible" }, "expireAfterMinutes": 1440 }
+```
+
+Com a máquina `local` (sem isolamento) o `shell` pergunta a cada comando; para um uso diário sem Docker, a regra `suup rules add --tool shell --effect allow` (ou `levels`) diz que você aceita o risco.
+
+### `vault` (opcional)
+
+O cofre de segredos ([COFRE.md](COFRE.md)). Sem esta seção não há cofre.
+
+| Campo | Padrão | Significado |
+|---|---|---|
+| `keyEnv` | `SUUP_VAULT_KEY` | O **nome** da variável de ambiente com a chave mestra (32 bytes em base64 ou hexadecimal; gere com `suup vault key generate`). A chave nunca fica no arquivo nem no banco: um campo `key` aqui é recusado |
+| `previousKeyEnvs` | nenhum | Nomes de variáveis com chaves antigas, para ler e recifrar (`suup vault rotate`) o que foi escrito com elas |
+
+```json
+"vault": { "keyEnv": "SUUP_VAULT_KEY" }
+```
+
+`suup doctor` confere a chave (presente, válida) e se todo segredo guardado é legível com as chaves configuradas.
+
+### `untrustedOutputTools` (opcional)
+
+Uma lista de nomes de ferramentas cuja saída chega ao modelo **rotulada como dado não confiável** (o envelope `<<<EXTERNAL_DATA`), além das que já se declaram assim (`web_fetch`). Padrão: nenhuma. Quem faz o bot lidar com conteúdo de fora pode ligar para `["shell", "read_file", "search_files"]`; fica desligado por padrão porque muda o que o modelo lê depois de cada chamada dessas ferramentas.
+
 ## Variáveis de ambiente
 
 | Variável | Uso |
@@ -112,6 +146,7 @@ Passar de um limite termina a execução como `failed` com origem `limit`.
 | `DATABASE_URL` | URL do Postgres (vale mais que `databaseUrl`). `pnpm suup` lê também o arquivo `.env` |
 | `SUUP_CONFIG` | Caminho do arquivo de configuração (vale menos que `--config`) |
 | `SUUP_SERVER_TOKEN` | O token do servidor (o nome é o de `server.tokenEnv`) |
+| `SUUP_VAULT_KEY` | A chave mestra do cofre (o nome é o de `vault.keyEnv`). Precisa estar no ambiente do servidor, do worker e da CLI que mexem em segredos |
 | as de `apiKeyEnv` | As chaves de API dos provedores (nomes à sua escolha, por exemplo `ANTHROPIC_API_KEY`) |
 | `SUUP_DOCKER_PATH` | Caminho do executável `docker` (padrão: o do `PATH`) |
 | `SUUP_DEBUG` | Com qualquer valor, erros inesperados mostram a pilha |

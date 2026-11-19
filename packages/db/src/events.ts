@@ -1,5 +1,6 @@
 import { LeaseLostError } from "@suup/core";
 import { z } from "zod";
+import { projectApprovalRequested } from "./approvals.js";
 import type { Db } from "./client.js";
 import { type EventPayload, eventPayloadSchema, type RunEvent } from "./types.js";
 
@@ -83,6 +84,14 @@ export async function appendRunEvent(
             select message_id from run_inbox
             where run_id = ${runId} and id = any(${delivered}::bigint[]) and message_id is not null
           )`;
+    }
+    // The card the user will see is a projection of this event, written in the same transaction.
+    if (type === "approval_requested") {
+      await projectApprovalRequested(
+        { sql: tx as unknown as Db["sql"], close: async () => {} },
+        runId,
+        body,
+      );
     }
     return mapRunEvent(row);
   });

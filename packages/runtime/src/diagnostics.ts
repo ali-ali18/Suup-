@@ -22,6 +22,7 @@ import { type Db, getBot, getRun, listRunEvents, migrationStatus } from "@suup/d
 import { RuntimeError } from "./errors.js";
 import type { Runtime } from "./runtime.js";
 import { loadScript } from "./scripted-provider.js";
+import { checkVaultAndApprovals } from "./vault/doctor.js";
 
 // ---------------------------------------------------------------------------------------------
 // Reading a run's events
@@ -704,6 +705,7 @@ export async function runDoctorChecks(
   checks.push(
     ...(await guarded("Provedores", () => checkProviders(runtime, options.live === true))),
   );
+  checks.push(...(await guarded("Cofre", () => checkVaultAndApprovals(runtime))));
   checks.push(
     ...(await guarded("Ferramentas", async () => {
       const names = runtime.tools.list().map((t) => t.name);

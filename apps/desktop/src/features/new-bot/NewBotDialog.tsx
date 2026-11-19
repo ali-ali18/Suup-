@@ -296,7 +296,9 @@ export function NewBotDialog() {
                   >
                     {t.name}
                     {t.risk !== "read" && (
-                      <Tag tone="outline">{t.risk === "write" ? "escreve" : "externa"}</Tag>
+                      <Tag tone="outline">
+                        {t.risk === "write_reversible" ? "escreve" : "externa"}
+                      </Tag>
                     )}
                   </button>
                 );

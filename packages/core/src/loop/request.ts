@@ -17,14 +17,18 @@ export function fixedParts(ctx: LoopContext): { system: string; tools: ToolSpec[
   const { bot, tools } = ctx.deps;
   const control = new Set<string>(CONTROL_TOOL_NAMES);
   const offered = [
-    ...controlToolSpecs(),
+    ...controlToolSpecs({ secrets: ctx.deps.secrets !== undefined }),
     ...tools.specs(bot.allowedTools).filter((spec) => !control.has(spec.name)),
   ];
   const memoryTools = offered.some((spec) =>
     (MEMORY_TOOL_NAMES as readonly string[]).includes(spec.name),
   );
   return {
-    system: buildSystemPrompt(bot, ctx.state.context ?? undefined, { memoryTools }),
+    system: buildSystemPrompt(bot, ctx.state.context ?? undefined, {
+      memoryTools,
+      secrets: ctx.deps.secrets !== undefined,
+      approvals: ctx.deps.gate !== undefined,
+    }),
     tools: offered,
   };
 }

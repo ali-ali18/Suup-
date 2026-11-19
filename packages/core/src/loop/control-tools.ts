@@ -13,7 +13,7 @@ import { openSteps, VERDICT_TOOL_DESCRIPTION } from "./prompts.js";
  * Tools the loop handles itself. They are always available, never go through the registry and do
  * not need an executor: they only read and change the run's own state.
  */
-export const CONTROL_TOOL_NAMES = ["plan", "finish", "escalate"] as const;
+export const CONTROL_TOOL_NAMES = ["plan", "finish", "escalate", "request_secret"] as const;
 export type ControlToolName = (typeof CONTROL_TOOL_NAMES)[number];
 
 export function isControlTool(name: string): name is ControlToolName {
@@ -56,6 +56,17 @@ Pass \`options\` (2 to 5 items for \`question\`, 2 to 6 per entry of \`questions
 The reply comes back as plain text. For one question it is the chosen label(s) (separated by "; ") or what the user typed. For a questionnaire it is one line per question, \`1. <question> → <chosen labels, separated by "; ">\`, with \`→ (pulou)\` for a question the user skipped.
 
 Call it ALONE in its turn. The run pauses until the user replies; the reply comes back as this tool's result, and you continue from there.`;
+
+export const REQUEST_SECRET_DESCRIPTION = `Ask the user for a credential you need (an API token, a password) that is not in your list of secrets. The user types it into a secure form that stores it in the vault: you NEVER see the value, now or later. When the user answers, you are told only that the secret is now available (or that they declined).
+
+To USE a secret, write the placeholder \`{{secret:NAME}}\` where the value belongs, in a field of a tool that accepts it (for example inside a shell command or a request header). The harness puts the real value in at the moment of the action. Never try to read, print, store or repeat a secret value. A call that uses a secret may need the user's approval.
+
+Arguments: \`name\` (capital letters, digits and underscores, e.g. GITHUB_TOKEN) and \`reason\` (one sentence the user reads: what it is for). Call it ALONE in its turn; the run pauses until the user answers.`;
+
+export const requestSecretInputSchema = z.object({
+  name: z.string().describe("The secret's name, e.g. GITHUB_TOKEN."),
+  reason: z.exactOptional(z.string()).describe("What it is for, in one sentence, for the user."),
+});
 
 const planStepInput = z.object({
   id: z.string().describe("Short stable identifier, e.g. 's1'. Reuse it for the same step."),
@@ -184,12 +195,18 @@ function toolSpec(name: string, description: string, schema: z.ZodType): ToolSpe
   return { name, description, inputSchema };
 }
 
-/** The specs of the three control tools, in the order the model sees them. */
-export function controlToolSpecs(): ToolSpec[] {
+/**
+ * The specs of the control tools, in the order the model sees them. `request_secret` is offered
+ * only to a run that has a vault.
+ */
+export function controlToolSpecs(options: { secrets?: boolean } = {}): ToolSpec[] {
   return [
     toolSpec("plan", PLAN_DESCRIPTION, planInputSchema),
     toolSpec("finish", FINISH_DESCRIPTION, finishInputSchema),
     toolSpec("escalate", ESCALATE_DESCRIPTION, escalateInputSchema),
+    ...(options.secrets === true
+      ? [toolSpec("request_secret", REQUEST_SECRET_DESCRIPTION, requestSecretInputSchema)]
+      : []),
   ];
 }
 

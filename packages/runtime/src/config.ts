@@ -150,6 +150,34 @@ const defaultsSchema = z.strictObject({
   historyChars: z.exactOptional(positiveInt),
 });
 
+const riskLevelEnum = z.enum(["read", "write_reversible", "external_irreversible"]);
+
+const vaultSchema = z.strictObject({
+  /**
+   * NAME of the environment variable that holds the master key (32 bytes, base64 or hex). The key
+   * itself never goes in the file or the database; generate one with `suup vault key generate`.
+   */
+  keyEnv: z.exactOptional(envName),
+  /**
+   * NAMES of variables holding older master keys, so values written with them can still be read
+   * and re-encrypted (`suup vault rotate`).
+   */
+  previousKeyEnvs: z.exactOptional(z.array(envName).max(8)),
+});
+
+const approvalsSchema = z.strictObject({
+  /**
+   * Pending approval cards expire after this many minutes (the run is told, and goes on). Absent:
+   * a card waits for ever; nothing times out silently.
+   */
+  expireAfterMinutes: z.exactOptional(positiveInt),
+  /**
+   * A risk level fixed for a tool, over what the tool declares: e.g. `{ "shell":
+   * "external_irreversible" }` makes every shell command ask, even in the isolated machine.
+   */
+  levels: z.exactOptional(z.record(z.string().min(1), riskLevelEnum)),
+});
+
 export const configSchema = z
   .strictObject({
     databaseUrl: z.exactOptional(z.string().min(1)),
@@ -160,6 +188,15 @@ export const configSchema = z
     worker: z.exactOptional(workerSchema),
     server: z.exactOptional(serverSchema),
     defaults: z.exactOptional(defaultsSchema),
+    /**
+     * Tools whose output is labelled as untrusted data for the model, besides the ones that
+     * declare it themselves (`web_fetch`). Typical choice: `["shell", "read_file", "search_files"]`
+     * when the bot handles content from outside. Off by default: it changes what the model reads
+     * after every call of those tools.
+     */
+    untrustedOutputTools: z.exactOptional(z.array(z.string().min(1)).max(50)),
+    vault: z.exactOptional(vaultSchema),
+    approvals: z.exactOptional(approvalsSchema),
   })
   .superRefine((config, ctx) => {
     const providerIds = new Set<string>();
@@ -277,6 +314,9 @@ function describeIssue(issue: z.core.$ZodIssue, path: readonly (string | number)
       const secret = keys.find((k) => SECRET_KEYS.has(k));
       if (secret !== undefined && path[0] === "server") {
         return `"${secret}" não é aceito: o token do servidor nunca fica no arquivo. Use "tokenEnv" com o NOME da variável de ambiente que guarda o token (gere um token com: suup server --generate-token)`;
+      }
+      if (secret !== undefined && path[0] === "vault") {
+        return `"${secret}" não é aceito: a chave do cofre nunca fica no arquivo. Use "keyEnv" com o NOME da variável de ambiente que guarda a chave (gere uma com: suup vault key generate)`;
       }
       if (secret !== undefined) {
         return `"${secret}" não é aceito: chaves de API nunca ficam no arquivo. Use "apiKeyEnv" com o NOME da variável de ambiente que guarda a chave`;

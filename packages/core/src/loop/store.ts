@@ -1,4 +1,5 @@
 import type {
+  ApprovalDecision,
   FailureOrigin,
   PlanStep,
   RunEventData,
@@ -8,6 +9,19 @@ import type {
 } from "../events.js";
 
 export type { FailureOrigin, RunOrigin, RunResult, RunStatus };
+
+/**
+ * What the user (or the system) decided about an approval, as the store holds it before the loop
+ * records it in the log as `approval_decided`.
+ */
+export interface ApprovalDecisionItem {
+  approvalId: string;
+  callId: string;
+  decision: ApprovalDecision;
+  reason?: string | undefined;
+  /** The rule an "approve and always allow" created. */
+  ruleId?: string | undefined;
+}
 
 /** The run as the store knows it. The conversation is NOT here: it is rebuilt from events. */
 export interface RunRecord {
@@ -95,6 +109,12 @@ export interface StatusChange {
    * store, whichever comes first. The change still reports `true`.
    */
   requeueIfInbox?: boolean;
+  /**
+   * Only with `to: "waiting_approval"`, the same idea as `requeueIfInbox`: if an approval of the
+   * run was already decided (and not yet recorded in the log), the store must not leave the run
+   * waiting for ever; it makes the run claimable again instead. The change still reports `true`.
+   */
+  requeueIfDecided?: boolean;
 }
 
 /**
@@ -108,6 +128,11 @@ export interface StatusChange {
  *   answer to `escalate`, or the cancellation), and those events carry the item ids. A crash in
  *   between therefore never loses an item, and the next loop sees the ids in the log, acks the
  *   items and does not deliver them again. `ackInbox` is idempotent and ignores unknown ids.
+ * - Approvals work like the inbox. The loop logs `approval_requested` (the store keeps the request
+ *   for the user to see); the decision is made from outside and held by the store;
+ *   `peekApprovalDecisions` returns the decisions not yet recorded in the log (the same ones on
+ *   every call), and the loop calls `ackApprovalDecisions` only after the `approval_decided` events
+ *   exist. A decision posted to a run in `waiting_approval` makes it claimable again.
  * - `heartbeat` renews the worker's lease and throws `LeaseLostError` when it is no longer held.
  *   A store that fences writes may throw it from any other method too. It returns what the user
  *   asked of the run meanwhile (`RunControl`); a store with no outside control returns nothing.
@@ -125,6 +150,10 @@ export interface RunStore {
   peekInbox(runId: string): Promise<InboxItem[]>;
   /** Marks items as delivered. Idempotent. Call it only after the delivering events exist. */
   ackInbox(runId: string, ids: readonly string[]): Promise<void>;
+  /** Decisions made from outside that the log does not hold yet, oldest first. Does not consume them. */
+  peekApprovalDecisions(runId: string): Promise<ApprovalDecisionItem[]>;
+  /** Marks decisions as recorded. Idempotent. Call it only after the `approval_decided` events exist. */
+  ackApprovalDecisions(runId: string, approvalIds: readonly string[]): Promise<void>;
   /** Renews the worker's lease on the run; throws `LeaseLostError` if it is no longer held. */
   // biome-ignore lint/suspicious/noConfusingVoidType: a store with no outside control returns nothing
   heartbeat(runId: string): Promise<RunControl | undefined | void>;

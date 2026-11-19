@@ -10,9 +10,11 @@ import {
 import { describe, expect, it } from "vitest";
 import {
   addMemoryBodySchema,
+  approvalSchema,
   BOT_COLORS,
   BOT_PALETTE,
   botColorSchema,
+  decideApprovalBodySchema,
   FAILURE_ORIGINS,
   listMessagesQuerySchema,
   listRunsQuerySchema,
@@ -193,5 +195,57 @@ describe("bot palette", () => {
     expect(botColorSchema.options).toEqual(Object.keys(BOT_PALETTE));
     expect(botColorSchema.safeParse("vermelho-vivo; background:url(x)").success).toBe(false);
     expect(BOT_COLORS).toContain("branco");
+  });
+});
+
+describe("approvals in the contract", () => {
+  const card = {
+    id: "11111111-1111-4111-8111-111111111111",
+    runId: "11111111-1111-4111-8111-111111111111",
+    botId: "11111111-1111-4111-8111-111111111111",
+    conversationId: null,
+    callId: "c1",
+    tool: "send",
+    args: { to: "ana" },
+    level: "external_irreversible",
+    summary: "Send",
+    secrets: ["TOKEN"],
+    source: "rule",
+    status: "pending",
+    reason: null,
+    ruleId: null,
+    expiresAt: null,
+    decidedAt: null,
+    createdAt: "2026-11-18T20:00:00.000Z",
+  };
+
+  it("the stream carries the card, and an unknown level or status is refused", () => {
+    const frame = (approval: unknown) =>
+      streamEventSchema.safeParse({
+        type: "approval.changed",
+        id: 7,
+        data: { change: "created", approval },
+      }).success;
+    expect(frame(card)).toBe(true);
+    expect(frame({ ...card, level: "nuclear" })).toBe(false);
+    expect(frame({ ...card, status: "maybe" })).toBe(false);
+    expect(approvalSchema.safeParse(card).success).toBe(true);
+  });
+
+  it("a decision is either an approval (maybe always) or a denial (maybe with a reason)", () => {
+    const ok = (body: unknown) => decideApprovalBodySchema.safeParse(body).success;
+    expect(ok({ decision: "approve" })).toBe(true);
+    expect(ok({ decision: "approve", always: { scope: "global" } })).toBe(true);
+    expect(ok({ decision: "approve", always: {} })).toBe(true);
+    expect(ok({ decision: "deny", reason: "no" })).toBe(true);
+    expect(ok({ decision: "deny" })).toBe(true);
+    expect(ok({ decision: "maybe" })).toBe(false);
+    expect(ok({})).toBe(false);
+    expect(
+      ok({
+        decision: "approve",
+        always: { scope: "bot", matchers: [{ field: "a", op: "regex", value: "b" }] },
+      }),
+    ).toBe(false);
   });
 });

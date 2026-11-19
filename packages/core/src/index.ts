@@ -1,4 +1,8 @@
+export * from "./approvals/index.js";
 export {
+  APPROVAL_DECISIONS,
+  type ApprovalDecision,
+  approvalDecisionSchema,
   type ContextItem,
   contextItemSchema,
   type EscalateOption,
@@ -12,8 +16,11 @@ export {
   MODEL_CALL_PURPOSES,
   type ModelCallPurpose,
   type PlanStep,
+  POLICY_SOURCES,
+  type PolicySource,
   parseRunEvent,
   planStepSchema,
+  policySourceSchema,
   RUN_EVENT_TYPES,
   RUN_ORIGINS,
   type RunEventData,
@@ -22,10 +29,13 @@ export {
   type RunOrigin,
   type RunResult,
   type RunStatus,
+  riskLevelSchema,
   runEventSchema,
   runOriginSchema,
   runResultSchema,
   runStatusSchema,
+  type SecretInfo,
+  secretInfoSchema,
   toolOutcomeSchema,
 } from "./events.js";
 export * from "./loop/index.js";
@@ -72,12 +82,14 @@ export {
   usageSchema,
 } from "./provider.js";
 export {
+  type AssessOptions,
   type BeforeExecuteResult,
   DEFAULT_MAX_OUTPUT_CHARS,
   DEFAULT_TOOL_TIMEOUT_MS,
   type InvokeOptions,
   TOOL_NAME_PATTERN,
   TOOL_OUTCOMES,
+  type ToolAssessment,
   type ToolInvocation,
   type ToolOutcome,
   ToolRegistry,
@@ -100,6 +112,33 @@ export {
   replayRun,
 } from "./replay.js";
 export {
+  classifyCall,
+  isRiskLevel,
+  maxRisk,
+  RISK_LEVELS,
+  type RiskLevel,
+} from "./risk.js";
+export {
+  createRedactor,
+  findPlaceholders,
+  isSecretName,
+  MIN_REDACTED_LENGTH,
+  type MutableRedactor,
+  noRedaction,
+  type PlaceholderSite,
+  pathAllowed,
+  placeholderFor,
+  placeholderSites,
+  type Redactor,
+  redactionMark,
+  SECRET_NAME_PATTERN,
+  type SecretAccess,
+  SecretUnavailableError,
+  secretForms,
+  substituteSecrets,
+} from "./secrets.js";
+export {
+  type ClassifyEnv,
   type DirEntry,
   defineTool,
   type ExecOptions,
@@ -117,6 +156,7 @@ export {
   type ToolRisk,
   WorkspaceEscapeError,
 } from "./tool.js";
+export { EXTERNAL_CLOSE, EXTERNAL_OPEN, wrapUntrusted } from "./untrusted.js";
 export {
   type RunEnd,
   type RunQueue,

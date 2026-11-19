@@ -236,6 +236,33 @@ describe("configuration: readable errors in Portuguese", () => {
     expect(text).toContain('"tokenEnv"');
   });
 
+  it("accepts the vault, the approvals and the untrusted-output settings", () => {
+    const config = parseConfig(
+      rawConfig({
+        vault: { keyEnv: "SUUP_VAULT_KEY", previousKeyEnvs: ["SUUP_VAULT_KEY_OLD"] },
+        approvals: { expireAfterMinutes: 60, levels: { shell: "external_irreversible" } },
+        untrustedOutputTools: ["shell", "read_file"],
+      }),
+    );
+    expect(config.vault?.keyEnv).toBe("SUUP_VAULT_KEY");
+    expect(config.approvals?.levels).toEqual({ shell: "external_irreversible" });
+    expect(config.untrustedOutputTools).toEqual(["shell", "read_file"]);
+    expect(parseConfig(rawConfig({ vault: {} })).vault).toEqual({});
+  });
+
+  it("checks the vault and approvals blocks: the key is a variable NAME, never inside the file", () => {
+    const text = issuesOf(
+      rawConfig({
+        vault: { keyEnv: "not a name", key: "abc" },
+        approvals: { expireAfterMinutes: 0, levels: { shell: "dangerous" } },
+      }),
+    ).join("\n");
+    expect(text).toContain("vault.keyEnv: nome de variável de ambiente inválido");
+    expect(text).toContain('"key" não é aceito: a chave do cofre nunca fica no arquivo');
+    expect(text).toContain("approvals.expireAfterMinutes");
+    expect(text).toContain("approvals.levels.shell: valor inválido");
+  });
+
   it("flags unknown keys at the top level and in nested objects", () => {
     const text = issuesOf(
       rawConfig({ colour: "red", sandbox: { kind: "local", root: "w", extra: 1 } }),

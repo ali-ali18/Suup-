@@ -43,7 +43,7 @@ export const rememberTool = defineTool({
     "The user can see, correct and delete everything saved here, and each memory records that you created it. The result gives the id of the new memory; keep it if you may need to forget it.",
   ].join(" "),
   input,
-  risk: "write",
+  risk: "write_reversible",
   async execute({ layer, text, scope }, ctx) {
     const memory = memoryOf(ctx);
     if (isOutput(memory)) return memory;

@@ -8,6 +8,7 @@ import {
   usageSchema,
 } from "./provider.js";
 import { TOOL_OUTCOMES } from "./registry.js";
+import { RISK_LEVELS } from "./risk.js";
 
 export const planStepSchema = z.object({
   id: z.string(),
@@ -51,6 +52,22 @@ export function escalatedQuestions(payload: {
     ? [{ question: payload.question }]
     : [...payload.questions];
 }
+
+export const riskLevelSchema = z.enum(RISK_LEVELS);
+
+/** Which of the three filters (section 4.8) decided: a user rule, the automatic reviewer, or the level's default. */
+export const POLICY_SOURCES = ["rule", "reviewer", "default"] as const;
+export const policySourceSchema = z.enum(POLICY_SOURCES);
+export type PolicySource = z.infer<typeof policySourceSchema>;
+
+/** How an approval ended: the user answered, the run was cancelled, or a configured limit expired it. */
+export const APPROVAL_DECISIONS = ["approved", "denied", "cancelled", "expired"] as const;
+export const approvalDecisionSchema = z.enum(APPROVAL_DECISIONS);
+export type ApprovalDecision = z.infer<typeof approvalDecisionSchema>;
+
+/** A secret the bot may use, as the model is told about it: the name, never the value. */
+export const secretInfoSchema = z.object({ name: z.string(), description: z.string() });
+export type SecretInfo = z.infer<typeof secretInfoSchema>;
 
 export const contextItemSchema = z.object({ id: z.string(), text: z.string() });
 export type ContextItem = z.infer<typeof contextItemSchema>;
@@ -136,6 +153,8 @@ export const runEventSchema = z.discriminatedUnion("type", [
       history: z.array(messageSchema),
       /** Said alongside the history, e.g. that older messages were left out. */
       historyNote: z.exactOptional(z.string()),
+      /** The secrets the bot may use (names and what they are for; never values). */
+      secrets: z.exactOptional(z.array(secretInfoSchema)),
     }),
   }),
   z.object({
@@ -191,6 +210,66 @@ export const runEventSchema = z.discriminatedUnion("type", [
       durationMs: z.number().nonnegative(),
       /** Set on the answer to an `escalate` call: the inbox items this result delivers. */
       inboxIds: z.exactOptional(z.array(z.string())),
+    }),
+  }),
+  z.object({
+    /**
+     * The verdict of the approval policy on a call that was neither plainly allowed as a read nor
+     * sent to the user: allowed or denied by a rule, the reviewer, or the default of its level.
+     * A resumed or replayed run reads it instead of deciding again.
+     */
+    type: z.literal("policy_checked"),
+    payload: z.object({
+      callId: z.string(),
+      tool: z.string(),
+      level: riskLevelSchema,
+      outcome: z.enum(["allow", "deny"]),
+      source: policySourceSchema,
+      ruleId: z.exactOptional(z.string()),
+      reason: z.exactOptional(z.string()),
+    }),
+  }),
+  z.object({
+    /**
+     * A call waits for the user. `args` is EXACTLY what will run if it is approved (the secret
+     * placeholders as the model wrote them, never values); the call is not executed until an
+     * `approval_decided` says so.
+     */
+    type: z.literal("approval_requested"),
+    payload: z.object({
+      approvalId: z.string(),
+      callId: z.string(),
+      tool: z.string(),
+      args: z.json(),
+      level: riskLevelSchema,
+      /** One line for the card. */
+      summary: z.string(),
+      /** The secret names the call uses. */
+      secrets: z.array(z.string()),
+      source: policySourceSchema,
+      /** Present only when a configured limit makes the request expire. */
+      expiresAt: z.exactOptional(z.string()),
+    }),
+  }),
+  z.object({
+    type: z.literal("approval_decided"),
+    payload: z.object({
+      approvalId: z.string(),
+      callId: z.string(),
+      decision: approvalDecisionSchema,
+      /** The user's reason for a denial. */
+      reason: z.exactOptional(z.string()),
+      /** The rule an "approve and always allow" created. */
+      ruleId: z.exactOptional(z.string()),
+    }),
+  }),
+  z.object({
+    /** The bot asks the user for a credential; the answer is only that it is now available. */
+    type: z.literal("secret_requested"),
+    payload: z.object({
+      callId: z.string(),
+      name: z.string(),
+      reason: z.exactOptional(z.string()),
     }),
   }),
   z.object({

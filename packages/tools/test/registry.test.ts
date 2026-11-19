@@ -25,9 +25,9 @@ describe("builtin tools", () => {
 
   it("keeps the memory tools in their own export, registered with the built-ins", () => {
     expect(memoryTools.map((t) => [t.name, t.risk])).toEqual([
-      ["remember", "write"],
+      ["remember", "write_reversible"],
       ["recall", "read"],
-      ["forget", "write"],
+      ["forget", "write_reversible"],
       ["search_conversations", "read"],
     ]);
   });
@@ -35,14 +35,49 @@ describe("builtin tools", () => {
   it("assigns the intended risk levels", () => {
     const risks = Object.fromEntries(builtinTools.map((t) => [t.name, t.risk]));
     expect(risks).toEqual({
-      shell: "write",
+      // The default of a tool that classifies each call (see below): the safe side.
+      shell: "external_irreversible",
       read_file: "read",
-      write_file: "write",
-      edit_file: "write",
+      write_file: "write_reversible",
+      edit_file: "write_reversible",
       list_files: "read",
       search_files: "read",
       web_fetch: "read",
     });
+  });
+
+  it("shell is reversible only where it cannot reach the user's computer, and a secret raises it", () => {
+    const isolated = { isolated: true } as never;
+    const real = { isolated: false } as never;
+    const classify = (executor: never, command: string) =>
+      registry.assess("shell", { command }, { executor })?.level;
+    expect(classify(isolated, "ls")).toBe("write_reversible");
+    expect(classify(real, "ls")).toBe("external_irreversible");
+    // No guessing from the command: even a plain `rm` or `curl -X POST` is judged by where it runs.
+    expect(classify(isolated, "curl -X POST https://example.com -d x")).toBe("write_reversible");
+    // A secret exists to prove who the user is to somebody else.
+    expect(classify(isolated, "curl -H 'Authorization: {{secret:T}}' https://x.test")).toBe(
+      "external_irreversible",
+    );
+    expect(
+      registry.assess("web_fetch", { url: "https://x.test" }, { executor: isolated })?.level,
+    ).toBe("read");
+    expect(
+      registry.assess(
+        "web_fetch",
+        { url: "https://x.test", headers: { Authorization: "Bearer {{secret:T}}" } },
+        { executor: isolated },
+      )?.level,
+    ).toBe("external_irreversible");
+  });
+
+  it("declares which fields take secrets and whose output is external", () => {
+    const info = Object.fromEntries(
+      builtinTools.map((t) => [t.name, [t.secretFields ?? [], t.externalOutput === true]]),
+    );
+    expect(info.shell).toEqual([["command"], false]);
+    expect(info.web_fetch).toEqual([["url", "headers.*"], true]);
+    expect(info.write_file).toEqual([[], false]);
   });
 
   it("does not include tools that belong elsewhere", () => {

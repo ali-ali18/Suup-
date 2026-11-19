@@ -1,4 +1,5 @@
 export * from "./answers.js";
+export * from "./approvals.js";
 export * from "./bots.js";
 export {
   type ClientOptions,
@@ -29,3 +30,4 @@ export {
   subscribe,
   type Timers,
 } from "./subscribe.js";
+export * from "./vault.js";

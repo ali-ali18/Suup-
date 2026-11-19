@@ -60,8 +60,11 @@ export function parseCommandArgs(
     throw new UsageError(`Falta o argumento ${missing.map((n) => `<${n}>`).join(" ")}.`, command);
   }
   if (parsed.positionals.length > max) {
+    // The vault commands never repeat what was typed: it may be the value of a secret.
     throw new UsageError(
-      `Argumento a mais: ${JSON.stringify(parsed.positionals[max])}. Se o texto tem espaços, coloque-o entre aspas.`,
+      command.startsWith("vault ")
+        ? "Argumento a mais. O valor de um segredo não vai na linha de comando (ficaria no histórico do shell): passe-o pela entrada padrão ou digite-o no prompt."
+        : `Argumento a mais: ${JSON.stringify(parsed.positionals[max])}. Se o texto tem espaços, coloque-o entre aspas.`,
       command,
     );
   }

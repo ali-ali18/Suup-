@@ -60,6 +60,8 @@ export interface WorldOptions {
   scripts?: Record<string, unknown>;
   server?: Partial<ServerOptions>;
   config?: Record<string, unknown>;
+  /** Extra environment variables of both runtimes (a vault key, for instance). */
+  env?: Record<string, string>;
   /** Start a worker on `workerRuntime`. Default true. */
   worker?: boolean;
 }
@@ -86,7 +88,7 @@ export function useWorld(options: WorldOptions = {}): World {
     });
     const url = new URL(base);
     url.searchParams.set("search_path", schema);
-    const env = { DATABASE_URL: url.toString() };
+    const env = { DATABASE_URL: url.toString(), ...options.env };
     world.db = createDb(base, { schema });
     cleanups.unshift(() => world.db.close());
     await migrate(world.db);
@@ -117,6 +119,7 @@ export function useWorld(options: WorldOptions = {}): World {
         { id: "model-k", provider: "nuvem", contextWindow: 100_000, maxOutputTokens: 4096 },
       ],
       sandbox: { kind: "local", root: "workspace" },
+      approvals: { levels: { shell: "write_reversible" } },
       worker: { concurrency: 4, leaseRenewMs: 1000, staleAfterMs: 8000, controlPollMs: 100 },
       defaults: { maxTurns: 20 },
       ...options.config,

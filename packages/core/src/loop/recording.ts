@@ -17,6 +17,8 @@ export interface TransitionExtra {
   inboxIds?: string[];
   /** Pausing for the user: see `StatusChange.requeueIfInbox`. */
   requeueIfInbox?: boolean;
+  /** Pausing for an approval: see `StatusChange.requeueIfDecided`. */
+  requeueIfDecided?: boolean;
   /**
    * Inbox items to acknowledge once the change is in the log and before it is applied. A change
    * to a finished status releases the lease, after which the store may no longer be written to,
@@ -31,9 +33,20 @@ export interface ControlCall {
   args: unknown;
 }
 
+/** `value` with every known secret value scrubbed out (a copy), when the run has a vault. */
+export function scrub<T>(ctx: LoopContext, value: T): T {
+  const redactor = ctx.deps.secrets?.redactor;
+  return redactor === undefined ? value : redactor.redactJson(value);
+}
+
+/**
+ * Appends the event and folds it into the state. The event is scrubbed of known secret values
+ * FIRST, so the log and the conversation the model sees are the same and neither holds a value.
+ */
 export async function record(ctx: LoopContext, event: RunEventData): Promise<void> {
-  const { seq } = await ctx.deps.store.appendEvent(ctx.runId, event);
-  applyEvent(ctx.state, { ...event, seq, createdAt: ctx.deps.now() } as StoredEvent);
+  const safe = scrub(ctx, event);
+  const { seq } = await ctx.deps.store.appendEvent(ctx.runId, safe);
+  applyEvent(ctx.state, { ...safe, seq, createdAt: ctx.deps.now() } as StoredEvent);
 }
 
 /** Records the status change in the log first, then applies it to the store (compare-and-set). */
@@ -43,6 +56,11 @@ export async function transition(
   to: RunStatus,
   extra: TransitionExtra = {},
 ): Promise<boolean> {
+  extra = {
+    ...extra,
+    ...(extra.failure === undefined ? {} : { failure: scrub(ctx, extra.failure) }),
+    ...(extra.result === undefined ? {} : { result: scrub(ctx, extra.result) }),
+  };
   // The log can be ahead of the store: a process that died after logging this very change but
   // before applying it. The change is then only applied, never logged twice.
   if (ctx.state.status !== to) {
@@ -57,6 +75,7 @@ export async function transition(
     ...(extra.failure === undefined ? {} : { failure: extra.failure }),
     ...(extra.result === undefined ? {} : { result: extra.result }),
     ...(extra.requeueIfInbox === true ? { requeueIfInbox: true } : {}),
+    ...(extra.requeueIfDecided === true ? { requeueIfDecided: true } : {}),
   });
 }
 

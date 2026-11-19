@@ -1,5 +1,6 @@
 import { releaseRun, resumeRun } from "@suup/db";
 import { DEFAULT_WORKER } from "@suup/runtime";
+import { pendingCards, printCards } from "../approval-prompt.js";
 import { flag, list, str } from "../args.js";
 import { type CommandSpec, warnIfLocalSandbox } from "../context.js";
 import { CommandError, EXIT_OK, UsageError } from "../errors.js";
@@ -82,8 +83,13 @@ export const resumeCommand: CommandSpec = {
         throw new CommandError(
           `A execução ${short} já terminou (${statusPt(run.status)}); não há o que retomar. Veja: suup show ${short}`,
         );
-      case "waiting_approval":
-        throw new CommandError("A execução espera uma aprovação, que ainda não existe na CLI.");
+      case "waiting_approval": {
+        ctx.out.line(`A execução ${short} espera a sua aprovação:`);
+        printCards(ctx, await pendingCards(runtime.db, run.id));
+        throw new CommandError(
+          `Decida com suup approve ou suup deny; a execução volta à fila e segue (um worker precisa estar rodando, ou use suup resume ${short} depois).`,
+        );
+      }
       case "running": {
         // Leased to a worker: either alive elsewhere, or dead with a lease that went stale.
         const staleMs = { ...DEFAULT_WORKER, ...runtime.config.worker }.staleAfterMs;

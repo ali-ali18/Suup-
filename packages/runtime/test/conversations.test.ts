@@ -131,12 +131,16 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("conversation engine"), () => {
 
   describe("a message while the run works", () => {
     it("is `sent`, then `delivered` when the loop reads it at a safe point; the model sees it in its next request", async () => {
-      const runtime = await open({
-        agent: [
-          { text: "Vou olhar.", calls: [call("shell", { command: "echo oi" })], delayMs: 400 },
-          { text: "Pronto, considerei o seu aviso." },
-        ],
-      });
+      const runtime = await open(
+        {
+          agent: [
+            { text: "Vou olhar.", calls: [call("shell", { command: "echo oi" })], delayMs: 400 },
+            { text: "Pronto, considerei o seu aviso." },
+          ],
+        },
+        // Scripted shell commands run without a card (the user's choice, for this test).
+        { approvals: { levels: { shell: "write_reversible" } } },
+      );
       const bot = await newBot(runtime);
       const first = await sendMessage(runtime, { botId: bot.id, text: "Faça a tarefa longa" });
       const ended = work(runtime, first.run.id);
@@ -366,12 +370,15 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("conversation engine"), () => {
     });
 
     it("a run finished by a second worker after the first one crashed gets its message once", async () => {
-      const runtime = await open({
-        agent: [
-          { calls: [call("shell", { command: "echo oi" })] },
-          { text: "Terminei no segundo worker." },
-        ],
-      });
+      const runtime = await open(
+        {
+          agent: [
+            { calls: [call("shell", { command: "echo oi" })] },
+            { text: "Terminei no segundo worker." },
+          ],
+        },
+        { approvals: { levels: { shell: "write_reversible" } } },
+      );
       const bot = await newBot(runtime);
       const sent = await sendMessage(runtime, { botId: bot.id, text: "Faça e termine" });
       const { conversationId } = sent.message;
