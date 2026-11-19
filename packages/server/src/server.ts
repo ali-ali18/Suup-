@@ -32,6 +32,7 @@ import { conversationRoutes } from "./routes/conversations.js";
 import { diagnosticsRoutes } from "./routes/diagnostics.js";
 import { memoryRoutes } from "./routes/memories.js";
 import { metaRoutes } from "./routes/meta.js";
+import { networkRoutes } from "./routes/network.js";
 import { runRoutes } from "./routes/runs.js";
 import { vaultRoutes } from "./routes/vault.js";
 import { createDbSource, createPgNotifier } from "./stream/db-source.js";
@@ -143,6 +144,7 @@ export function createServer(runtime: Runtime, options: ServerOptions): SuupServ
     ...diagnosticsRoutes,
     ...memoryRoutes,
     ...approvalRoutes,
+    ...networkRoutes,
     ...vaultRoutes,
     ...connectorRoutes,
     ...metaRoutes,

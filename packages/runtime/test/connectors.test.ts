@@ -2,7 +2,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fakeServerCommand } from "@suup/connectors/testing";
 import { createBot, type Db, decideApproval, listApprovals, listRunEvents } from "@suup/db";
-import { describe, expect, it } from "vitest";
+import { removeMachine } from "@suup/sandbox";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRuntime,
   generateKeyText,
@@ -11,6 +12,14 @@ import {
   runDoctorChecks,
 } from "../src/index.js";
 import { DATABASE_URL, dbSuiteName, useIsolatedDb } from "./db.js";
+import {
+  buildFakeServerImage,
+  dockerReady,
+  FAKE_SERVER_PATH,
+  removeImage,
+  removeNetwork,
+  SANDBOX_IMAGE,
+} from "./docker-kit.js";
 import { rawConfig, tempDir, writeJson } from "./helpers.js";
 
 const VALUE = "tok_live_Zx81qKj3Lm0pTt92abCdEf";
@@ -251,6 +260,104 @@ describe.skipIf(!DATABASE_URL)(
       expect(skipped.find((c) => c.component === "Conectores")?.detail).toContain(
         "não verificados",
       );
+      await runtime.close();
+    });
+  },
+);
+
+// The same acceptance criterion with the connector in a CONTAINER (real Docker, sandbox docker): the
+// vault secret reaches the server, and no event, no row and no process argument holds it.
+describe.skipIf(!DATABASE_URL || !dockerReady)(
+  dbSuiteName("MCP connectors in a container, end to end"),
+  { timeout: 120_000 },
+  () => {
+    const ctx = useIsolatedDb();
+    const tag = Math.random().toString(16).slice(2, 8);
+    const names = { machine: `suup-cctest-${tag}`, network: `suup-cctest-${tag}` };
+    let image = "";
+
+    beforeAll(async () => {
+      image = await buildFakeServerImage();
+    }, 180_000);
+    afterAll(async () => {
+      await removeMachine(names.machine, { volume: names.machine });
+      await removeNetwork(names.network);
+      await removeImage(image);
+    }, 60_000);
+
+    it("a bot reads a secret-bearing tool of a containerised connector; the value is in no event, row or database dump", async () => {
+      const dir = await tempDir();
+      await writeJson(join(dir, "script.json"), {
+        agent: [
+          { calls: [{ id: "c1", name: "conn_fake__needs_secret", args: {} }] },
+          { text: "Done." },
+        ],
+      });
+      const runtime = createRuntime(
+        parseConfig(
+          rawConfig({
+            vault: { keyEnv: "TEST_VAULT_KEY" },
+            sandbox: {
+              kind: "docker",
+              image: SANDBOX_IMAGE as string,
+              name: names.machine,
+              volume: names.machine,
+              network: { name: names.network },
+              connectors: { image },
+            },
+          }),
+        ),
+        { env: { DATABASE_URL: ctx.url, TEST_VAULT_KEY: generateKeyText() }, baseDir: dir },
+      );
+      const bot = await createBot(runtime.db, {
+        name: `bot-${tag}`,
+        modelProvider: "script",
+        modelId: "model-s",
+        allowedTools: ["read_file"],
+      });
+      await runtime.vault.set("FAKE_API", VALUE);
+      await runtime.connectors.create({
+        name: "fake",
+        transport: {
+          kind: "stdio",
+          command: "node",
+          args: [FAKE_SERVER_PATH],
+          env: { FAKE_TOKEN: { secret: "FAKE_API" } },
+        },
+        tools: { needs_secret: { risk: "read" } },
+      });
+      await runtime.connectors.grant("fake", bot.id);
+      expect((await runtime.connectors.get("fake"))?.runsIn).toBe("container");
+
+      const run = await runtime.createRun({ botId: bot.id, objective: "Use the connector" });
+      const outcome = await new Promise<string>((resolve) => {
+        const worker = runtime.createWorker({
+          onlyRunId: run.id,
+          idleBackoff: { minMs: 10, maxMs: 50 },
+          onRunEnd: (end) => {
+            resolve(end.outcome === "settled" ? end.status : end.outcome);
+            void worker.stop();
+          },
+        });
+        worker.start();
+      });
+      expect(outcome).toBe("done");
+      const events = await listRunEvents(runtime.db, run.id, { limit: 1000 });
+      const result = events.find(
+        (e) => e.type === "tool_result" && String(e.payload.content).includes("credential="),
+      );
+      expect(String(result?.payload.content)).toContain("credential=[REDACTED:FAKE_API]");
+
+      const everything = `${await dump(runtime.db, ctx.schema)}\n${JSON.stringify(events)}`;
+      for (const form of [
+        VALUE,
+        Buffer.from(VALUE).toString("base64"),
+        Buffer.from(VALUE).toString("base64url"),
+        encodeURIComponent(VALUE),
+        Buffer.from(VALUE).toString("hex"),
+      ]) {
+        expect(everything.includes(form), `stored somewhere: ${form.slice(0, 8)}…`).toBe(false);
+      }
       await runtime.close();
     });
   },

@@ -30,7 +30,28 @@ const MAX_LIST_PAGES = 10;
 const MAX_MESSAGE_BYTES = 4 * 1024 * 1024;
 const STDERR_KEEP = 2000;
 
+/**
+ * How a stdio server is started. The default is a child process of this process (on the host).
+ * An implementation may instead wrap the command so the server runs isolated (a container): it
+ * gets the command, the argument array and the declared environment, and answers what to spawn.
+ * Nothing here knows Docker.
+ */
+export interface StdioLauncher {
+  /** Where the server will run, in words for `suup doctor` and the connector screen. */
+  readonly where: "container" | "host";
+  wrap(input: {
+    connector: string;
+    command: string;
+    args: string[];
+    env: Record<string, string>;
+    egressHosts: string[];
+  }):
+    | { command: string; args: string[]; env: Record<string, string> }
+    | Promise<{ command: string; args: string[]; env: Record<string, string> }>;
+}
+
 export interface ConnectionDeps {
+  launcher?: StdioLauncher | undefined;
   /** Values of the vault secrets a connector refers to. Never logged. */
   resolveSecrets(names: string[]): Promise<Record<string, string>>;
   redact(text: string): string;
@@ -112,13 +133,24 @@ export async function openConnection(
     }
     // Explicit command and argument list, never a shell string; the child gets only the SDK's
     // safe defaults (HOME, PATH, USER...) plus the variables declared here, not our environment.
+    const launched =
+      deps.launcher === undefined
+        ? { command: t.command, args: t.args, env }
+        : await deps.launcher.wrap({
+            connector: spec.name,
+            command: t.command,
+            args: t.args,
+            env,
+            egressHosts: t.egressHosts,
+          });
     const stdio = new StdioClientTransport({
-      command: t.command,
-      args: t.args,
-      env,
+      command: launched.command,
+      args: launched.args,
+      env: launched.env,
       stderr: "pipe",
       maxBufferSize: MAX_MESSAGE_BYTES,
-      ...(t.cwd === undefined ? {} : { cwd: t.cwd }),
+      // `cwd` is a path on the host; inside a container the server starts in its own directory.
+      ...(t.cwd === undefined || deps.launcher !== undefined ? {} : { cwd: t.cwd }),
     });
     // Always consumed (an unread pipe would stall the child), and only the last bytes are kept.
     stdio.stderr?.on("data", (chunk: Buffer) => {

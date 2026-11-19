@@ -167,6 +167,15 @@ export class MemoryRuleError extends Error {
   override readonly name = "MemoryRuleError";
 }
 
+/**
+ * What the network tool may do, with the bot and the run already bound in by whoever provides it
+ * (the runtime). Granting is only ever reached AFTER the user approved the exact host on a card.
+ */
+export interface NetworkAccess {
+  /** Allows ONE exact host for this run only. `added: false`: it was already allowed. Throws for an invalid host. */
+  allowForRun(host: string): Promise<{ host: string; added: boolean }>;
+}
+
 /** Everything a tool may touch. Tools never reach the database, the provider or other tools. */
 export interface ToolContext {
   runId: string;
@@ -177,6 +186,8 @@ export interface ToolContext {
   now(): Date;
   /** Present when the run has memory (the runtime provides it); the memory tools need it. */
   memory?: MemoryService;
+  /** Present when the bot's machine reaches the internet through the egress proxy. */
+  network?: NetworkAccess;
 }
 
 export interface ToolOutput {

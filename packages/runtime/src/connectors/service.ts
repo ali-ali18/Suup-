@@ -12,6 +12,7 @@ import {
   type ConnectorToolInfo,
   parseConnectorSpec,
   type RawTool,
+  type StdioLauncher,
   secretNamesOf,
   type ToolOverride,
 } from "@suup/connectors";
@@ -75,6 +76,8 @@ export interface ConnectorView {
   grantedBotIds: string[];
   /** The vault secrets it refers to. */
   secretNames: string[];
+  /** Where a stdio server runs: isolated in a container, or as a program of the host (unisolated). `null` for HTTP. */
+  runsIn: "container" | "host" | null;
   /** The state of this process's connection (a worker's or the server's own). */
   connection: { connected: boolean; failures: number; lastError: string | null };
   /** What was last seen of the server (by any process). */
@@ -163,6 +166,7 @@ export function specOf(c: StoredConnector): ConnectorSpec {
             args: c.args,
             env: c.env,
             ...(c.cwd === null ? {} : { cwd: c.cwd }),
+            egressHosts: c.egressHosts,
           }
         : { kind: "http", url: c.url, headers: c.headers },
     scope: c.scope,
@@ -193,6 +197,7 @@ function writeOf(
     trustAnnotations: spec.trustAnnotations,
     timeoutMs: extra.timeoutMs,
     enabled: extra.enabled,
+    egressHosts: t.kind === "stdio" ? t.egressHosts : [],
   };
 }
 
@@ -200,6 +205,8 @@ export function createConnectorService(options: {
   db: () => Db;
   vault: Vault;
   fetch?: typeof fetch | undefined;
+  /** Runs stdio servers isolated (docker sandbox). Absent: they are child processes of this one. */
+  launcher?: StdioLauncher | undefined;
   /** For tests of backoff and health checks. */
   managerOptions?: Partial<ConstructorParameters<typeof ConnectorManager>[0]> | undefined;
 }): ConnectorService {
@@ -213,6 +220,7 @@ export function createConnectorService(options: {
     },
     redact: (text) => vault.redactor.redact(text),
     ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+    ...(options.launcher === undefined ? {} : { launcher: options.launcher }),
     ...(options.managerOptions ?? {}),
     onListed: (name, tools) => {
       void saveConnectorDiscovery(db(), name, { tools: boundSnapshot(tools) }).catch(() => {
@@ -239,6 +247,7 @@ export function createConnectorService(options: {
       origin: c.origin,
       grantedBotIds: c.grantedBotIds,
       secretNames: secretNamesOf(spec),
+      runsIn: spec.transport.kind === "stdio" ? manager.stdioIsolation : null,
       connection: {
         connected: state?.connected ?? false,
         failures: state?.failures ?? 0,

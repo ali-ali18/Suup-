@@ -179,6 +179,18 @@ export {
   migrate,
   migrationStatus,
 } from "./migrate.js";
+export {
+  activeHostsForBot,
+  addBotHost,
+  grantRunHost,
+  listBotHosts,
+  listNetworkEvents,
+  type NetworkEventInput,
+  type NetworkEventRow,
+  type NetworkHostRow,
+  recordNetworkEvent,
+  removeBotHost,
+} from "./network.js";
 export { PgRunQueue } from "./pg-queue.js";
 export { PgRunStore, type PgRunStoreOptions } from "./pg-store.js";
 export {

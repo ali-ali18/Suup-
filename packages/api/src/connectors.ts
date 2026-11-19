@@ -27,6 +27,11 @@ export const connectorTransportSchema = z.discriminatedUnion("kind", [
     /** Only these variables reach the program (besides HOME, PATH and a few safe ones). */
     env: z.record(z.string(), valueRefSchema).optional(),
     cwd: z.string().min(1).max(1024).optional(),
+    /**
+     * Exact host names the server may reach when it runs isolated (docker sandbox), through the
+     * egress proxy, besides the default package registries. Empty or absent: only those.
+     */
+    egressHosts: z.array(z.string().max(300)).max(50).optional(),
   }),
   z.strictObject({
     kind: z.literal("http"),
@@ -89,6 +94,12 @@ export const connectorSchema = z.object({
   grantedBotIds: z.array(uuid),
   /** The vault secrets it refers to (names only). */
   secretNames: z.array(z.string()),
+  /**
+   * Where a stdio server runs: `container` (isolated: no host files, no server environment, network
+   * only through the allowlist proxy) or `host` (a program of the machine that runs the worker,
+   * WITHOUT isolation). `null` for an HTTP connector.
+   */
+  runsIn: z.enum(["container", "host"]).nullable(),
   /** The state of the connection in the instance that answered. */
   connection: z.object({
     connected: z.boolean(),

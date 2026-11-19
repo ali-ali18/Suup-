@@ -32,14 +32,18 @@ if (cmd === "exec") {
   const [, ...command] = rest.slice(i); // skip the container name
   const child = spawn(command[0], command.slice(1), { env, stdio: "inherit" });
   child.on("exit", (code, signal) => process.exit(code ?? (signal ? 137 : 1)));
+} else if (cmd === "network") {
+  // An internal network that always exists, with a gateway the tests can listen on.
+  if (rest[0] === "inspect") console.log("true 127.0.0.1 ");
 } else if (cmd === "inspect") {
   const s = readState();
   if (!s.exists) { console.error("Error response from daemon: No such container: " + rest[rest.length - 1]); process.exit(1); }
-  console.log(String(s.running));
+  console.log(rest.some((a) => a.includes("NetworkSettings")) ? (s.network ?? "bridge") + " " : String(s.running));
 } else if (cmd === "run") {
   const s = readState();
   if (s.exists) { console.error("Conflict. The container name is already in use"); process.exit(125); }
-  writeState({ exists: true, running: true });
+  const at = rest.indexOf("--network");
+  writeState({ exists: true, running: true, network: at < 0 ? undefined : rest[at + 1] });
   console.log("fakecontainerid");
 } else if (cmd === "start") {
   writeState({ exists: true, running: true });

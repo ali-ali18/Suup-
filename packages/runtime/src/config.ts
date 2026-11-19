@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { parseAllowlistHost } from "@suup/core";
 import { z } from "zod";
 import { ConfigError } from "./errors.js";
 
@@ -90,6 +91,53 @@ const modelSchema = z.strictObject({
   supportsForcedToolChoice: z.exactOptional(z.boolean()),
 });
 
+/** The hosts the bots' machines may reach out of the box: the package registries, by exact name. */
+export const DEFAULT_ALLOWED_HOSTS: readonly string[] = [
+  "registry.npmjs.org",
+  "pypi.org",
+  "files.pythonhosted.org",
+];
+export const DEFAULT_NETWORK_NAME = "suup-sandbox-net";
+export const DEFAULT_CONNECTOR_IMAGE = "suup-connector-runner:dev";
+
+const memorySize = z.string().regex(/^[1-9][0-9]*[bkmg]?$/i, 'ex.: "2g" ou "512m"');
+
+/** A host name of the allowlist, stored in its normal form (lower case, no trailing dot). */
+const hostEntry = z
+  .string({ error: "esperado um nome de host (texto)" })
+  .transform((value, ctx) => {
+    const parsed = parseAllowlistHost(value);
+    if (!parsed.ok) {
+      ctx.addIssue({ code: "custom", message: parsed.message });
+      return z.NEVER;
+    }
+    return parsed.host;
+  });
+
+/**
+ * The network of the bots' machines (docker sandbox). The container has no route of its own: it
+ * reaches the internet only through a proxy of the harness, to the exact host names listed here
+ * (global defaults) plus the ones added per bot. See docs/REDE.md.
+ */
+const networkSchema = z.strictObject({
+  /** Name of the internal Docker network the machine and the connector containers join. */
+  name: z.exactOptional(z.string().min(1)),
+  /** Exact host names every bot may reach. Default: the package registries (`DEFAULT_ALLOWED_HOSTS`). `[]`: none. */
+  defaultHosts: z.exactOptional(z.array(hostEntry).max(100)),
+  /** Ports the proxy lets through. Default 80 and 443. */
+  ports: z.exactOptional(z.array(z.number().int().min(1).max(65535)).min(1).max(10)),
+  proxy: z.exactOptional(
+    z.strictObject({
+      /** Where the proxy listens. Default: the host's address on the internal network. */
+      listenHost: z.exactOptional(z.string().min(1)),
+      /** The address written into the machines' proxy settings. Default: `listenHost`. */
+      advertiseHost: z.exactOptional(z.string().min(1)),
+      /** Default: any free port. */
+      port: z.exactOptional(z.number().int().min(0).max(65535)),
+    }),
+  ),
+});
+
 const sandboxSchema = z.discriminatedUnion(
   "kind",
   [
@@ -98,8 +146,17 @@ const sandboxSchema = z.discriminatedUnion(
       image: z.string().min(1),
       name: z.string().min(1),
       volume: z.string().min(1),
-      memory: z.exactOptional(z.string().regex(/^[1-9][0-9]*[bkmg]?$/i, 'ex.: "2g" ou "512m"')),
+      memory: z.exactOptional(memorySize),
       cpus: z.exactOptional(z.number().positive()),
+      network: z.exactOptional(networkSchema),
+      /** Where stdio connectors run: a container of this image, on the same internal network. */
+      connectors: z.exactOptional(
+        z.strictObject({
+          image: z.exactOptional(z.string().min(1)),
+          memory: z.exactOptional(memorySize),
+          cpus: z.exactOptional(z.number().positive()),
+        }),
+      ),
     }),
     z.strictObject({ kind: z.literal("local"), root: z.string().min(1) }),
   ],

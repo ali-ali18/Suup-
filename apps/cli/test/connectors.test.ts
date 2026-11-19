@@ -106,7 +106,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup connectors, end to end"), () =>
 
     const listed = await ok(["connectors", "list"]);
     expect(listed.stdout).toContain("fake");
-    expect(listed.stdout).toContain("processo local");
+    expect(listed.stdout).toContain("processo no host");
     expect(listed.stdout).toContain("conectado");
     expect(listed.stdout).toContain("(ainda não listadas)");
     const json = JSON.parse((await ok(["connectors", "list", "--json"])).stdout) as {

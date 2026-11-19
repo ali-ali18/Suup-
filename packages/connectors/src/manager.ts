@@ -11,6 +11,7 @@ import {
   listAllTools,
   openConnection,
   type RawTool,
+  type StdioLauncher,
 } from "./connection.js";
 import { ConnectorError } from "./errors.js";
 import type { ConnectorSpec } from "./spec.js";
@@ -37,6 +38,8 @@ export interface ManagerOptions {
   backoff?: { baseMs?: number; maxMs?: number };
   /** The `fetch` the HTTP transport uses (tests). */
   fetch?: typeof fetch;
+  /** Runs stdio servers isolated (a container). Without it they are child processes of this process. */
+  launcher?: StdioLauncher;
   /** Called when a fresh list of tools was read from a server (the runtime stores it). */
   onListed?(connector: string, tools: RawTool[]): void;
 }
@@ -106,6 +109,7 @@ export class ConnectorManager {
       redact: this.#redact,
       connectTimeoutMs: this.#opts.connectTimeoutMs,
       fetch: options.fetch,
+      launcher: options.launcher,
       clientInfo: { name: "suup", version: "0.0.0" },
     };
   }
@@ -117,6 +121,11 @@ export class ConnectorManager {
       this.#slots.set(name, slot);
     }
     return slot;
+  }
+
+  /** Where stdio servers run: `container` (isolated) or `host` (a child process of this one, unisolated). */
+  get stdioIsolation(): "container" | "host" {
+    return this.#deps.launcher?.where ?? "host";
   }
 
   status(): ConnectorStatus[] {

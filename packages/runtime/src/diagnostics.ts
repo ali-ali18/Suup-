@@ -1,6 +1,7 @@
 // The diagnostics of section 4.13 of the plan, shared by the CLI (`suup inspect`, `replay`,
 // `resend`, `doctor`) and the server (the "Inspetor" screen): one implementation, two front ends.
 // Everything here reads the database and the configuration; nothing runs a loop or a tool.
+
 import { resolve } from "node:path";
 import {
   type GenerateRequest,
@@ -21,6 +22,7 @@ import {
 import { type Db, getBot, getRun, listRunEvents, migrationStatus } from "@suup/db";
 import { checkConnectors } from "./connectors/doctor.js";
 import { RuntimeError } from "./errors.js";
+import { checkNetwork } from "./network/doctor.js";
 import type { Runtime } from "./runtime.js";
 import { loadScript } from "./scripted-provider.js";
 import { checkVaultAndApprovals } from "./vault/doctor.js";
@@ -709,6 +711,9 @@ export async function runDoctorChecks(
         ]
       : await guarded("Sandbox", () => checkSandbox(runtime))),
   );
+  if (options.sandbox !== false) {
+    checks.push(...(await guarded("Rede dos bots", () => checkNetwork(runtime))));
+  }
   checks.push(
     ...(await guarded("Provedores", () => checkProviders(runtime, options.live === true))),
   );

@@ -97,7 +97,11 @@ export const connectorsList: CommandSpec = {
         ["NOME", "TIPO", "ESCOPO", "ESTADO", "BOTS COM ACESSO", "FERRAMENTAS", "ÚLTIMO PROBLEMA"],
         all.map((c) => [
           c.name,
-          c.transport.kind === "stdio" ? "processo local" : "HTTP",
+          c.transport.kind === "stdio"
+            ? c.runsIn === "container"
+              ? "processo, em contêiner"
+              : "processo no host (SEM isolamento)"
+            : "HTTP",
           c.scope === "read_only" ? "só leitura" : "leitura e escrita",
           c.enabled ? "ligado" : "desligado",
           c.grantedBotIds.length === 0
@@ -141,7 +145,13 @@ export const connectorsAdd: CommandSpec = {
       multiple: true,
       help: "Variável de ambiente que vem de um segredo do cofre",
     },
-    cwd: { type: "string", value: "pasta", help: "Pasta onde o processo roda" },
+    cwd: { type: "string", value: "pasta", help: "Pasta onde o processo roda (só sem contêiner)" },
+    egress: {
+      type: "string",
+      value: "host",
+      multiple: true,
+      help: "Em contêiner: host (nome exato) que o servidor pode alcançar além dos registros de pacotes padrão",
+    },
     url: {
       type: "string",
       value: "url",
@@ -200,8 +210,9 @@ export const connectorsAdd: CommandSpec = {
     "  suup connectors add erp --url https://erp.example.com/mcp --bearer ERP_TOKEN --bot ajudante",
     "",
     "Credenciais são SEMPRE referências a segredos do cofre (suup vault set ERP_TOKEN): o valor só é lido ao conectar.",
-    "Um processo local roda NO COMPUTADOR DO SERVIDOR/WORKER, fora da máquina isolada dos bots, com as permissões do",
-    "usuário que roda o suup. Só adicione programas em que você confia (docs/CONECTORES.md).",
+    "Com o sandbox docker, um processo (stdio) roda num CONTÊINER isolado: sem os arquivos nem o ambiente do servidor, e a rede só",
+    "pelo proxy, para os registros de pacotes padrão e os hosts de --egress. Com o sandbox local ele roda NO COMPUTADOR DO",
+    "WORKER, SEM isolamento, com as permissões do usuário que roda o suup (docs/CONECTORES.md, docs/REDE.md).",
     "Toda ferramenta nova PERGUNTA antes de rodar, a menos que você a marque como leitura (--read, ou suup connectors set-risk).",
   ],
   async run(ctx) {
@@ -235,6 +246,7 @@ export const connectorsAdd: CommandSpec = {
             args: list(ctx.args, "arg"),
             env: refs("env", list(ctx.args, "env"), list(ctx.args, "env-secret")),
             ...(str(ctx.args, "cwd") === undefined ? {} : { cwd: str(ctx.args, "cwd") as string }),
+            egressHosts: list(ctx.args, "egress"),
           }
         : {
             kind: "http" as const,
@@ -532,5 +544,42 @@ export const connectorsTest: CommandSpec = {
       ctx.out.line(`FALHOU: ${result.error ?? "sem detalhe"}`);
     }
     return result.ok ? EXIT_OK : EXIT_FAILED;
+  },
+};
+
+export const connectorsSetEgress: CommandSpec = {
+  name: "connectors set-egress",
+  summary: "Define os hosts (nomes exatos) que um conector em contêiner pode alcançar",
+  options: {
+    host: {
+      type: "string",
+      value: "host",
+      multiple: true,
+      help: "Um host por opção (repita). Sem nenhum: só os registros de pacotes padrão",
+    },
+  },
+  positionals: { names: ["nome"] },
+  notes: [
+    "Substitui a lista inteira. Nome exato, sem curinga: api.exemplo.com não libera exemplo.com. Veja docs/REDE.md.",
+  ],
+  async run(ctx) {
+    const [name] = ctx.args.positionals as [string];
+    const current = await must(ctx, name);
+    if (current.transport.kind !== "stdio") {
+      throw new CommandError(
+        `O conector ${name} é HTTP: a lista de hosts vale só para processos (stdio).`,
+      );
+    }
+    const updated = await ctx.runtime().connectors.update(name, {
+      transport: { ...current.transport, egressHosts: list(ctx.args, "host") },
+    });
+    if (ctx.json) ctx.out.data(view(updated));
+    else {
+      const hosts = updated.transport.kind === "stdio" ? updated.transport.egressHosts : [];
+      ctx.out.line(
+        `${name}: ${hosts.length === 0 ? "só os registros de pacotes padrão" : hosts.join(", ")}.`,
+      );
+    }
+    return EXIT_OK;
   },
 };

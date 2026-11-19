@@ -143,3 +143,7 @@ Método: fontes primárias lidas por curl (MCP, quando WebFetch falhou com ENOTF
 | Elicitation para segredos | não especificado | url mode para credencial; form não para dado sensível | Medium: usar url mode ou form do harness, nunca pelo modelo | [S3] |
 
 Ponto de atenção sobre a regra do projeto: Claude Code usa wildcard em regra de Bash, glob em nome de tool e casamento por texto. Todos são padrões de texto. Recomendação compatível com a regra: comparação exata de argv e de nomes, hash de definição, canonização de caminho por componentes de diretório (não por prefixo de string), isolamento e, quando for preciso julgar intenção, um modelo como revisor com entrada declarada.
+
+## Estado depois desta pesquisa
+
+Os dois itens **High** de rede/isolamento foram implementados: shell com rede (proxy de saída fora do contêiner, lista de hosts por igualdade exata, cartão para host novo) e stdio no host (um contêiner por conector, na mesma rede, com env mínimo e lista própria). Ver [REDE.md](../REDE.md) e [CONECTORES.md](../CONECTORES.md), com o que não foi coberto (canais de tempo e volume, host liberado como canal, bots que compartilham uma máquina).
