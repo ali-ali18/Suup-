@@ -39,7 +39,7 @@ export const rememberTool = defineTool({
   description: [
     "Saves something to long-term memory so it is still known in later conversations and runs. Use it when the user states a standing instruction (layer rule), tells you a lasting fact about themselves (layer profile), or when you learn something that will make your own work better next time (layer note).",
     "Rules and the profile are shown to every future run from the start; notes and the journal are found with recall. So keep each memory short and self-contained, and save one thing per call.",
-    "Do NOT save secrets (passwords, tokens, keys, card numbers), one-off task details (what you are doing right now, intermediate results) or things the user did not say and you cannot verify. When in doubt, ask the user whether they want it remembered. If the same thing is already remembered, do not save it again: use recall first.",
+    "Do NOT save secrets (passwords, tokens, keys, card numbers), one-off task details (what you are doing right now, intermediate results) or things the user did not say and you cannot verify. A lasting fact the user just told you about themselves (a preference, a fixed commitment, a date, a person) needs no permission: save it, then tell them briefly. For anything else you are unsure about, ask the user whether they want it remembered. If the same thing is already remembered, do not save it again: use recall first.",
     "The user can see, correct and delete everything saved here, and each memory records that you created it. The result gives the id of the new memory; keep it if you may need to forget it.",
   ].join(" "),
   input,

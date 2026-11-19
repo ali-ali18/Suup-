@@ -69,6 +69,22 @@ const samples: RunEventData[] = [
     },
   },
   { type: "review", payload: { verdict: "reject", notes: "n" } },
+  { type: "review", payload: { verdict: "unverified", notes: "could not check the CNPJ" } },
+  {
+    type: "review_evidence",
+    payload: {
+      round: 1,
+      callId: "v1",
+      notes: "need the contract",
+      requested: { results: ["#1"], files: ["contrato.md"] },
+      supplied: [
+        { kind: "tool_result", ref: "c1", index: 1, chars: 10, sent: 10 },
+        { kind: "file", ref: "contrato.md", chars: 4, sent: 4, hash: "abcd", content: "text" },
+      ],
+      missing: [{ item: "#9", reason: "no such tool result" }],
+      budgetChars: 60000,
+    },
+  },
   { type: "escalated", payload: { question: "q" } },
   {
     type: "status_changed",

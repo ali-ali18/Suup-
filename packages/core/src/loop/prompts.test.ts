@@ -7,7 +7,7 @@ describe("system prompt", () => {
   const prompt = buildSystemPrompt({ name: "Ada", personality: "Dry and precise." });
 
   it("is short enough to be followed", () => {
-    expect(words(buildSystemPrompt({ name: "Ada", personality: "" }))).toBeLessThanOrEqual(490);
+    expect(words(buildSystemPrompt({ name: "Ada", personality: "" }))).toBeLessThanOrEqual(515);
   });
 
   it("carries the bot's identity and the harness rules", () => {
@@ -25,6 +25,14 @@ describe("system prompt and memory tools", () => {
 
   it("describes the memory tools by default", () => {
     expect(buildSystemPrompt(bot)).toContain("`remember`");
+  });
+
+  it("tells the bot to save durable facts about the user on its own, and to say so", () => {
+    const prompt = buildSystemPrompt(bot);
+    expect(prompt).toContain("save it yourself");
+    expect(prompt).toContain("without being asked");
+    expect(prompt).toContain("say briefly that you saved it");
+    expect(prompt).toContain("Never save trivia or secrets");
   });
 
   it("leaves the memory line out for a bot that is not offered any memory tool", () => {

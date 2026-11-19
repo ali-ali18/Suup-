@@ -8,6 +8,7 @@ import {
   FakeProvider,
   type FakeStep,
   finishCall,
+  needEvidence,
   planCall,
   type Rig,
   SimulatedCrash,
@@ -40,6 +41,8 @@ interface Scenario {
   midRun?: { atCall: number; text: string };
   /** The run starts with this outside context (rules, profile, history). */
   context?: RunContextSnapshot;
+  /** Files in the workspace at the start (the reviewer may ask to read them). */
+  files?: Record<string, string>;
 }
 
 /** How many times each rig's `loadRunContext` was called, across every life of the run. */
@@ -117,6 +120,17 @@ const scenarios: Scenario[] = [
     ],
     reviewerScript: [verdict("reject", "Not convincing.")],
     answer: "Accept it.",
+  },
+  {
+    name: "a review in which the reviewer asks for evidence twice and then rejects, then approves",
+    files: { "report.md": "Total: 42\n" },
+    script: [use(finishCall("c1", "Total is 42.")), use(finishCall("c2", "Total is 42, checked."))],
+    reviewerScript: [
+      needEvidence("v1", "need the report", { files: ["report.md", "absent.md"] }),
+      needEvidence("v2", "need the report again", { files: ["report.md"] }),
+      verdict("reject", "The summary says 42 but nothing shows it."),
+      verdict("approve"),
+    ],
   },
   {
     name: "a run that starts with rules, a profile and the history of the conversation",
@@ -289,6 +303,9 @@ async function expectDeliveredOnce(rig: Rig, scenario: Scenario, label: string):
 function makeRig(scenario: Scenario): Rig {
   const rig = createRigFor(scenario);
   const { context } = scenario;
+  for (const [path, content] of Object.entries(scenario.files ?? {})) {
+    rig.executor.files.set(`/workspace/${path}`, content);
+  }
   if (context !== undefined) {
     const original = rig.deps.bind(rig);
     rig.deps = (overrides = {}) =>

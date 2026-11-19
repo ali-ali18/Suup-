@@ -53,6 +53,8 @@ Um bot guarda o provedor e o modelo com que foi criado. Se o modelo sair da conf
 
 `{ "model": "<id de um modelo>" }`. Quando presente, um revisor independente (outra chamada ao modelo, sem o histórico) confere cada `finish` antes de ele ser aceito. Sem ele, o `finish` é validado só pelas regras do harness.
 
+O revisor vê um resumo das ferramentas (início e fim de cada resultado longo, marcado `[SHORTENED]` com o número `#N`). Ele pode **pedir evidência** em vez de adivinhar: resultados de ferramenta inteiros (`#N`) e/ou arquivos do espaço de trabalho (lidos só para leitura, pelo mesmo executor da execução). São no máximo 2 rodadas por revisão, até 6 itens e 60 000 caracteres de evidência por rodada (o que passa disso é cortado com uma marca que diz quantos caracteres ficaram de fora, e o revisor é avisado); arquivos acima de 200 000 bytes não são lidos. Cada pedido extra ao revisor conta como turno e entra no custo. Depois das rodadas ele precisa decidir: aprovar, reprovar (só com uma divergência concreta) ou dizer que **não conseguiu verificar** algo; neste último caso a decisão vai para o dono, com o texto exato do que não foi verificado, em vez de uma reprovação falsa do trabalho.
+
 ### `sandbox` (obrigatório)
 
 A máquina dos bots. Cada bot trabalha na própria subpasta `bots/<id do bot>` da máquina compartilhada.

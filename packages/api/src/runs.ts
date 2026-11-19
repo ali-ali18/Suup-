@@ -38,6 +38,7 @@ export const RUN_EVENT_TYPES = [
   "nudge",
   "finish_attempt",
   "review",
+  "review_evidence",
   "escalated",
   "status_changed",
   "compacted",

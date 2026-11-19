@@ -13,6 +13,7 @@ export {
   eventTypes,
   finishCall,
   lastStatus,
+  needEvidence,
   planCall,
   problemsInRequests,
   REMINDER_MARK,

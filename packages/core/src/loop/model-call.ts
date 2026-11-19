@@ -33,6 +33,11 @@ export interface CallSpec {
   tools: ToolSpec[];
   toolChoice?: ToolChoice;
   retries: number;
+  /**
+   * Counts as a turn against the run's limit. The agent's calls always do; a review or
+   * summarizer call does not, except the extra calls of the reviewer's evidence rounds.
+   */
+  countsAsTurn?: boolean;
 }
 
 /**
@@ -89,7 +94,7 @@ export async function callModel(ctx: LoopContext, spec: CallSpec): Promise<CallO
       // Usage first: if the process dies before the response is logged, the money was still
       // spent, so over-counting is the right way to be wrong.
       await store.addUsage(ctx.runId, {
-        turns: spec.purpose === "agent" ? 1 : 0,
+        turns: spec.purpose === "agent" || spec.countsAsTurn === true ? 1 : 0,
         inputTokens: result.usage.inputTokens,
         outputTokens: result.usage.outputTokens,
         costUsd: computeCost(result.usage, spec.model.pricing),

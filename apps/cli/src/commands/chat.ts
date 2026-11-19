@@ -13,6 +13,7 @@ import { type CommandSpec, type Ctx, warnIfLocalSandbox } from "../context.js";
 import { CommandError, EXIT_FAILED, EXIT_OK, UsageError } from "../errors.js";
 import { followRunCore, LineQueue } from "../follow.js";
 import { findBot, readEvents } from "../lookup.js";
+import { optionLines } from "../questionnaire.js";
 import type { RawEvent } from "../render.js";
 
 const NAME = "chat";
@@ -40,7 +41,22 @@ function bubble(message: Message, botName: string): string[] {
   const lines = message.text.trimEnd().split("\n");
   const [first = "", ...rest] = lines;
   const pad = " ".repeat(who.length + 2);
-  return [`${who}: ${first}`, ...rest.map((l) => `${pad}${l}`)];
+  return [`${who}: ${first}`, ...[...rest, ...questionLines(message)].map((l) => `${pad}${l}`)];
+}
+
+/**
+ * The choices of a question the bot asked. The text of the message has the question; the options
+ * are only in its structured side, so without this a terminal (and `--message`, which has no
+ * prompt to show them) would not tell the person what they can pick.
+ */
+function questionLines(message: Message): string[] {
+  const questions = message.question?.questions ?? [];
+  const many = questions.length > 1;
+  return questions.flatMap((q, i) => {
+    const lines = optionLines(q);
+    if (lines.length === 0) return [];
+    return [many ? `Opções da pergunta ${i + 1}:` : "Opções:", ...lines.map((l) => `  ${l}`)];
+  });
 }
 
 function messageJson(message: Message) {

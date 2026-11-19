@@ -105,7 +105,8 @@ Cada execução tem um log de eventos numerados (`seq`), só de acréscimo. É a
 | `user_message` | `text` | Sua mensagem, marcada como "lida pelo bot" |
 | `nudge` | `reason`, `text` | Aviso discreto: "o Suup pediu ao bot que continuasse" |
 | `finish_attempt` | `summary`, `evidence`, `accepted`, `rejectionReasons` | Conclusão aceita, ou "conclusão recusada" com os motivos |
-| `review` | `verdict` (`approve` ou `reject`), `notes`, `warning?` | Selo do revisor |
+| `review` | `verdict` (`approve`, `reject` ou `unverified`), `notes`, `warning?` | Selo do revisor. `unverified`: o revisor não conseguiu verificar algo mesmo com as evidências; `notes` diz o quê, e a decisão vai para o dono |
+| `review_evidence` | `round`, `callId`, `notes`, `requested`, `supplied`, `missing`, `budgetChars` | Aviso discreto ("o revisor pediu mais evidências"). Resultados de ferramenta vêm por referência (`ref` = id da chamada, o conteúdo já está no log); arquivos trazem `content` e `hash`, para a retomada e o replay não dependerem do disco |
 | `escalated` | `question`, `questions?`, `reason?` | Pergunta em destaque. `questions` (1 a 5 itens `{ question, options?, multiple?, allowOther? }`) existe quando há escolhas ou várias perguntas; `options` só quando as respostas são discretas |
 | `status_changed` | `from`, `to`, `failure?`, `result?` | Mudança de estado |
 | `context_loaded` | `rules`, `profile`, `history`, `historyNote?` | Logo depois de `run_started`: o que a memória e a conversa deram à execução. Aviso discreto ("3 regras, 1 fato do perfil, 6 mensagens anteriores"); `rules` e `profile` têm `id` e `text` e aparecem na tela de memória |
@@ -119,7 +120,7 @@ Observações:
 - Em `GET /v1/runs/{id}/events?view=chat` (e no stream), o `payload` de `model_request` vem **resumido** (`omitted: true`, `provider`, `model`, `purpose`, `messageCount`, `toolCount`): o pedido inteiro pode ter megabytes e só o Inspetor o desenha (`GET /v1/runs/{id}/requests/{seq}`). Todos os outros tipos desta tabela vêm inteiros.
 - `model_response`, `model_request` e `model_error` têm `purpose`: `agent` (o bot), `review` (o revisor) ou `compaction` (resumo do histórico). Na conversa, só `agent` aparece.
 - O texto do bot chega **por turno**, inteiro, e não letra por letra.
-- `escalated` com `reason: "review_tie_break"` é o caso em que o revisor recusou duas vezes e o Suup pede que você decida.
+- `escalated` com `reason: "review_tie_break"` é o caso em que o revisor recusou duas vezes (ou não conseguiu verificar, `review` com `unverified`) e o Suup pede que você decida; o texto da pergunta diz qual dos dois foi.
 - Resultado de ferramenta pode ser grande ou cortado (`truncated`); mostrar recolhido por padrão.
 
 **Ferramentas que existem hoje**, para ícones e rótulos: `shell`, `read_file`, `write_file`, `edit_file`, `list_files`, `search_files`, `web_fetch`, mais as três de controle, `plan`, `finish` e `escalate`. Da fase 2: `remember`, `recall`, `forget` e `search_conversations` (memória; "salvo na memória" quando `remember` dá certo). Entram depois: conectores (fase 3), `delegate` e rotinas (fase 4), navegador (fase 5), dispositivos (fase 6).

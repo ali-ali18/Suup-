@@ -456,6 +456,66 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup chat and memory, end to end"), 
     });
   });
 
+  describe("a questionnaire without a terminal", () => {
+    it("chat --message shows the options and the hints, and one question with options too", async () => {
+      await p.script("roteiro.json", {
+        cases: [
+          {
+            whenObjectiveContains: "QUESTIONARIO",
+            agent: [
+              act("escalate", {
+                questions: [
+                  {
+                    question: "Qual tema da festa?",
+                    options: [
+                      { label: "Frozen", description: "azul e branco" },
+                      { label: "Futebol" },
+                    ],
+                  },
+                  {
+                    question: "Quais extras?",
+                    options: [{ label: "Bolo" }, { label: "Balões" }],
+                    multiple: true,
+                  },
+                ],
+              }),
+            ],
+          },
+          {
+            whenObjectiveContains: "UMA-PERGUNTA",
+            agent: [
+              act("escalate", {
+                question: "Qual cor?",
+                options: [{ label: "Azul" }, { label: "Verde" }],
+              }),
+            ],
+          },
+        ],
+      });
+      await p.suup(["bot", "create", "--name", "festeiro", "--model", "model-x", "--all-tools"]);
+      const r = await chat("festeiro", "QUESTIONARIO da festa");
+      expect(r.code, r.stdout + r.stderr).toBe(0);
+      expect(r.stdout).toContain("1. Qual tema da festa?");
+      expect(r.stdout).toContain("Opções da pergunta 1:");
+      expect(r.stdout).toContain("1) Frozen — azul e branco");
+      expect(r.stdout).toContain("2) Futebol");
+      expect(r.stdout).toContain("Opções da pergunta 2:");
+      expect(r.stdout).toContain(
+        "(pode escolher vários: números separados por vírgula, ou texto livre)",
+      );
+      expect(r.stdout).toContain("2) Balões");
+
+      await p.suup(["bot", "create", "--name", "pintor", "--model", "model-x", "--all-tools"]);
+      const one = await chat("pintor", "UMA-PERGUNTA sobre cor");
+      expect(one.code, one.stdout + one.stderr).toBe(0);
+      expect(one.stdout).toContain("pintor: Qual cor?");
+      expect(one.stdout).toContain("Opções:");
+      expect(one.stdout).toContain("(escolha um número, ou responda com texto livre)");
+      expect(one.stdout).toContain("1) Azul");
+      expect(one.stdout).toContain("2) Verde");
+    });
+  });
+
   describe("chat in a terminal", () => {
     it("shows the bot's question, takes the next line as the answer, and ends on /sair", async () => {
       await p.script("roteiro.json", {

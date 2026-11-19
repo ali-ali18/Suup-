@@ -16,6 +16,7 @@ import {
   outcomePt,
   statusPt,
 } from "./format.js";
+import { optionLines } from "./questionnaire.js";
 
 /**
  * What the bot asked, for the terminal: the text and, for a question with choices, the numbered
@@ -26,18 +27,7 @@ export function renderQuestions(questions: readonly EscalateQuestion[]): string[
   const many = questions.length > 1;
   questions.forEach((q, i) => {
     lines.push(...indent(`${many ? `${i + 1}. ` : ""}${q.question}`, "    "));
-    if (q.options !== undefined) {
-      lines.push(
-        q.multiple === true
-          ? "      (pode escolher vários: números separados por vírgula, ou texto livre)"
-          : "      (escolha um número, ou responda com texto livre)",
-      );
-      q.options.forEach((o, j) => {
-        lines.push(
-          `      ${j + 1}) ${o.label}${o.description === undefined ? "" : ` — ${o.description}`}`,
-        );
-      });
-    }
+    for (const line of optionLines(q)) lines.push(`      ${line}`);
   });
   if (many) lines.push("    (Enter pula uma pergunta)");
   return lines;
@@ -245,10 +235,21 @@ export function renderEvent(event: RawEvent, state: RenderState): string[] {
       ];
     }
     case "review": {
-      const verdict = e.payload.verdict === "approve" ? "aprovou" : "reprovou";
+      const verdict = {
+        approve: "aprovou",
+        reject: "reprovou",
+        unverified: "não conseguiu verificar",
+      }[e.payload.verdict];
       return [
         `Revisor ${verdict}${e.payload.notes.trim() === "" ? "" : `: ${oneLine(e.payload.notes, 200)}`}`,
         ...(e.payload.warning === undefined ? [] : [`  ! aviso: ${e.payload.warning}`]),
+      ];
+    }
+    case "review_evidence": {
+      const { supplied, missing, round } = e.payload;
+      const cut = supplied.filter((i) => i.sent < i.chars).length;
+      return [
+        `· revisor pediu mais evidências (rodada ${round}): ${supplied.length} item(ns) enviado(s)${cut > 0 ? `, ${cut} cortado(s) pelo limite` : ""}${missing.length > 0 ? `, ${missing.length} indisponível(is)` : ""}`,
       ];
     }
     case "escalated":
@@ -331,6 +332,8 @@ export function summarizeEvent(event: RawEvent): string {
         : `recusada: ${oneLine(e.payload.rejectionReasons.join(" | "), 90)}`;
     case "review":
       return `${e.payload.verdict}: ${oneLine(e.payload.notes, 80)}${e.payload.warning === undefined ? "" : ` (aviso: ${oneLine(e.payload.warning, 50)})`}`;
+    case "review_evidence":
+      return `rodada ${e.payload.round}: ${e.payload.supplied.length} enviado(s), ${e.payload.missing.length} indisponível(is)`;
     case "escalated":
       return JSON.stringify(oneLine(e.payload.question, 90));
     case "status_changed": {
