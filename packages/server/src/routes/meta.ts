@@ -66,6 +66,8 @@ export const metaRoutes: Route[] = [
       const checks = await runDoctorChecks(ctx.runtime, {
         live: query.live === true,
         sandbox: ctx.doctorSandbox,
+        // A stdio connector runs where the worker runs: an API-only server cannot vouch for it.
+        connectors: ctx.doctorSandbox,
       });
       return { body: { ok: checks.every((c) => c.ok), checks } };
     },

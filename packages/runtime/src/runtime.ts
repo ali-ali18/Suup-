@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { hostname } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import {
+  allowAllGate,
   type BotConfig,
   createToolGate,
   type Executor,
@@ -37,6 +38,7 @@ import {
   type RuntimeConfig,
   resolveDatabaseUrl,
 } from "./config.js";
+import { type ConnectorService, createConnectorService } from "./connectors/service.js";
 import { ConfigError, RuntimeError } from "./errors.js";
 import { createMemoryService } from "./memory-service.js";
 import { DEFAULT_HISTORY_CHARS, loadRunContext } from "./run-context.js";
@@ -102,6 +104,11 @@ export interface Runtime {
   /** The vault: secrets encrypted in the database, with the master key from the environment. */
   readonly vault: Vault;
   /**
+   * MCP connectors (plan 4.11): configuration in the database, connections opened lazily by this
+   * process and closed by `close()`. Their tools join a run's registry only for the bots granted.
+   */
+  readonly connectors: ConnectorService;
+  /**
    * `value` with every known secret value scrubbed out (a copy). It reloads the vault's values
    * when they are older than a few seconds, so a secret saved by another process is covered too.
    * A system without a usable vault returns `value` as it is.
@@ -153,13 +160,11 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
   const providerEntries = new Map(config.providers.map((p) => [p.id, p]));
   const modelEntries = new Map(config.models.map((m) => [m.id, m]));
 
-  const tools = registerBuiltinTools(
-    new ToolRegistry(
-      config.untrustedOutputTools === undefined
-        ? {}
-        : { externalOutputTools: config.untrustedOutputTools },
-    ),
-  );
+  const registryOptions =
+    config.untrustedOutputTools === undefined
+      ? {}
+      : { externalOutputTools: config.untrustedOutputTools };
+  const tools = registerBuiltinTools(new ToolRegistry(registryOptions));
   const vaultSettings =
     config.vault === undefined
       ? undefined
@@ -170,16 +175,25 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
             : { previousKeyEnvs: config.vault.previousKeyEnvs }),
         };
   const vault = createVault(() => runtime.db, env, vaultSettings);
-  // Every tool call goes through the approval policy: the user's rules, the reviewer, then a card.
-  const gate = createToolGate({
-    tools,
-    rules: { rulesFor: (botId) => rulesForBot(runtime.db, botId) },
-    ...(config.approvals?.levels === undefined ? {} : { levelOverrides: config.approvals.levels }),
-    ...(config.approvals?.expireAfterMinutes === undefined
-      ? {}
-      : { expireAfterMs: config.approvals.expireAfterMinutes * 60_000 }),
-    now: () => new Date(),
+  const connectors = createConnectorService({
+    db: () => runtime.db,
+    vault,
+    ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
   });
+  // Every tool call goes through the approval policy: the user's rules, the reviewer, then a card.
+  // The gate asks the registry of the RUN (built-in tools plus the connector tools of its bot).
+  const gateFor = (registry: ToolRegistry) =>
+    createToolGate({
+      tools: registry,
+      rules: { rulesFor: (botId) => rulesForBot(runtime.db, botId) },
+      ...(config.approvals?.levels === undefined
+        ? {}
+        : { levelOverrides: config.approvals.levels }),
+      ...(config.approvals?.expireAfterMinutes === undefined
+        ? {}
+        : { expireAfterMs: config.approvals.expireAfterMinutes * 60_000 }),
+      now: () => new Date(),
+    });
   const REDACTION_MAX_AGE_MS = 5_000;
 
   let db: Db | undefined;
@@ -408,15 +422,37 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     const guarded = buildOptions.isolated !== true;
     const vaultOn = guarded && vault.settings !== undefined;
     if (vaultOn) await vault.refresh(REDACTION_MAX_AGE_MS);
+
+    // The registry of this run: the built-in tools, plus the tools of the connectors this bot was
+    // granted (connected now, lazily). An evaluation (isolated) has no connectors.
+    let runTools = tools;
+    let botCfg = cfg;
+    if (guarded) {
+      const offered = await connectors.toolsForBot(bot.id);
+      if (offered.tools.length > 0) {
+        runTools = registerBuiltinTools(new ToolRegistry(registryOptions));
+        const names: string[] = [];
+        for (const tool of offered.tools) {
+          try {
+            runTools.register(tool);
+            names.push(tool.name);
+          } catch {
+            // a name the registry refuses (it cannot happen with the names this package makes)
+          }
+        }
+        botCfg = { ...cfg, allowedTools: [...cfg.allowedTools, ...names] };
+      }
+    }
     return {
       store: new PgRunStore(handle, { workerId }),
       provider: getProvider(bot.modelProvider),
-      tools,
+      tools: runTools,
       executor: await runtime.executorFor(bot.id),
-      bot: cfg,
+      bot: botCfg,
       ...(reviewer === undefined ? {} : { reviewer }),
-      // An isolated run (an evaluation) gets neither: nothing of the user's memory reaches it.
-      ...(guarded ? { gate } : {}),
+      // An isolated run (an evaluation) runs unattended on a disposable machine: no card could ever
+      // be answered, so it opts out of the policy by name. Every other run is gated.
+      gate: guarded ? gateFor(runTools) : allowAllGate(),
       ...(vaultOn ? { secrets: vault.accessFor(bot.id) } : {}),
       ...(buildOptions.isolated === true
         ? {}
@@ -458,6 +494,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     },
     tools,
     vault,
+    connectors,
     redactor: vault.redactor,
     async redactJson(value) {
       await vault.refresh(REDACTION_MAX_AGE_MS);
@@ -515,10 +552,11 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
       const settings = { ...DEFAULT_WORKER, ...config.worker };
       return new Worker({
         workerId,
-        queue: new PgRunQueue(
-          runtime.db,
-          opts.onlyRunId === undefined ? {} : { onlyRunId: opts.onlyRunId },
-        ),
+        queue: new PgRunQueue(runtime.db, {
+          ...(opts.onlyRunId === undefined ? {} : { onlyRunId: opts.onlyRunId }),
+          // What crashed the harness may have had a secret in its message: scrub it first.
+          redact: (text) => runtime.redactJson(text),
+        }),
         buildDeps: (runId) => buildDeps(runId, workerId),
         // What must follow a run (the bot's message in the conversation, the journal) is derived
         // from the stored run, so it also happens for a run another worker finished after a crash.
@@ -537,6 +575,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
       });
     },
     async close() {
+      await connectors.close();
       const open = db;
       db = undefined;
       if (open !== undefined) await open.close();

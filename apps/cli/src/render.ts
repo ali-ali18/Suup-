@@ -279,9 +279,11 @@ export function renderEvent(event: RawEvent, state: RenderState): string[] {
     }
     case "escalated":
       return [
-        e.payload.reason === "review_tie_break"
-          ? "? O bot e o revisor não chegaram a um acordo e precisam da sua decisão:"
-          : "? O bot precisa de você:",
+        e.payload.reason !== "review_tie_break"
+          ? "? O bot precisa de você:"
+          : e.payload.reviewVerdict === "unverified"
+            ? "? O revisor não conseguiu verificar parte do trabalho e precisa da sua decisão:"
+            : "? O bot e o revisor não chegaram a um acordo e precisam da sua decisão:",
         ...renderQuestions(escalatedQuestions(e.payload)),
       ];
     case "status_changed": {

@@ -10,6 +10,7 @@ import {
   validateConversation,
 } from "@suup/core";
 import {
+  allowAllGate,
   CrashingStore,
   call,
   FakeProvider,
@@ -64,6 +65,7 @@ function depsFor(
     tools: registry,
     executor,
     bot,
+    gate: allowAllGate(),
     now: () => new Date(),
     sleep: async () => {},
   };

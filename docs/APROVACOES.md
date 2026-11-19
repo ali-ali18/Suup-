@@ -25,6 +25,8 @@ Uma ferramenta que não declara nada, ou declara um nível que não existe, vale
 | `write_file`, `edit_file`, `remember`, `forget` | `write_reversible` | Mudam a pasta do próprio bot ou a memória, e dá para desfazer |
 | `shell` | `write_reversible` **na máquina isolada** (Docker); `external_irreversible` na máquina `local` | Veja abaixo |
 
+| `conn_<conector>__<ferramenta>` (conectores MCP) | `external_irreversible`, a não ser que **você** a marque como leitura (ou confie nas dicas do servidor) | O servidor é um programa externo e o que ele diz de si (`readOnlyHint`...) é só uma dica: ela pode apertar o nível, nunca afrouxar. Veja [CONECTORES.md](CONECTORES.md) |
+
 **Por que o `shell` é assim.** Um comando de shell pode fazer qualquer coisa, e nenhuma análise do texto do comando serve de segurança (`curl -X POST`, `git push`, `rm -rf`, um script que faz tudo isso): por isso **não há heurística sobre o comando**. O que decide é *onde ele roda*. Na máquina dos bots (contêiner descartável, `sandbox.kind: "docker"`), um comando só muda uma máquina que pode ser jogada fora: `write_reversible`. Na máquina `local` (os comandos rodam direto no seu computador, sem isolamento) cada comando pergunta. Duas ressalvas honestas: a máquina Docker tem rede, então um comando pode, sim, enviar algo para fora sem pedir cartão; e um comando com um marcador de segredo (`{{secret:NOME}}`) é sempre `external_irreversible`, pois um segredo existe para provar quem você é a outra parte. Quem quer o rigor total muda o nível da ferramenta (`approvals.levels`, abaixo) ou cria uma regra que proíbe.
 
 ## Os três filtros, em ordem
@@ -95,5 +97,5 @@ No `suup chat` interativo o cartão aparece com `Aprovar? [s] sim · [n] não (n
 
 - O app de desktop não desenha cartões nem a tela de regras (o que ele precisa está em FRONTEND.md, seção 8).
 - Revisão automática por modelo (só a interface).
-- Rascunho de mensagens para outras pessoas ("tudo que vai para outra pessoa vira rascunho"): depende dos conectores (MCP), ainda não feitos.
+- Rascunho de mensagens para outras pessoas ("tudo que vai para outra pessoa vira rascunho"): os conectores (MCP) já existem ([CONECTORES.md](CONECTORES.md)) e cada ferramenta deles pergunta por padrão, mas o rascunho como etapa própria ainda não.
 - Mostrar todos os cartões de um turno de uma vez.

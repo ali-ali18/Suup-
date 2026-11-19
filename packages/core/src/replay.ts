@@ -1,4 +1,4 @@
-import { createReplayGate } from "./approvals/gate.js";
+import { allowAllGate, createReplayGate } from "./approvals/gate.js";
 import type { PlanStep } from "./events.js";
 import { parseRunEvent, type RunEventData, type RunStatus } from "./events.js";
 import { CONTROL_TOOL_NAMES } from "./loop/control-tools.js";
@@ -530,7 +530,8 @@ export async function replayRun(
     bot: options.bot,
     ...(reviewer === undefined ? {} : { reviewer }),
     ...(loadRunContext === undefined ? {} : { loadRunContext }),
-    ...(gated ? { gate: createReplayGate(recorded) } : {}),
+    // A run recorded without approvals is replayed without them (nothing was gated then).
+    gate: gated ? createReplayGate(recorded) : allowAllGate(),
     ...(hadVault
       ? {
           // Nothing is resolved in a replay: tools never run, and the log holds placeholders only.

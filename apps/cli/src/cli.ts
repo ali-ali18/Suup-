@@ -2,6 +2,18 @@ import { GLOBAL_OPTIONS, type OptionSpec, parseCommandArgs } from "./args.js";
 import { approvalsCommand, approveCommand, denyCommand } from "./commands/approvals.js";
 import { botArchive, botCreate, botDraft, botList, botShow } from "./commands/bot.js";
 import { chatCommand } from "./commands/chat.js";
+import {
+  connectorsAdd,
+  connectorsDisable,
+  connectorsEnable,
+  connectorsGrant,
+  connectorsList,
+  connectorsRemove,
+  connectorsRevoke,
+  connectorsSetRisk,
+  connectorsTest,
+  connectorsTools,
+} from "./commands/connectors.js";
 import { dbMigrate } from "./commands/db.js";
 import { doctorCommand } from "./commands/doctor.js";
 import { evalCommand, evalHistory, evalList } from "./commands/eval.js";
@@ -64,6 +76,16 @@ export const COMMANDS: readonly CommandSpec[] = [
   vaultRevoke,
   vaultRotate,
   vaultKeyGenerate,
+  connectorsList,
+  connectorsAdd,
+  connectorsRemove,
+  connectorsEnable,
+  connectorsDisable,
+  connectorsGrant,
+  connectorsRevoke,
+  connectorsTools,
+  connectorsSetRisk,
+  connectorsTest,
   runCommand,
   workerCommand,
   serverCommand,
@@ -86,6 +108,7 @@ const GROUPS: Record<string, string> = {
   memory: "Memória",
   rules: "Regras de aprovação",
   vault: "Cofre de segredos",
+  connectors: "Conectores MCP",
 };
 
 function usageLine(spec: CommandSpec): string {

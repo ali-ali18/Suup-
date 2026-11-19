@@ -58,6 +58,27 @@ export {
 } from "./change-feed.js";
 export { type CreateDbOptions, createDb, type Db, withTransaction } from "./client.js";
 export {
+  CONNECTOR_TRANSPORTS,
+  type ConnectorDiscovery,
+  ConnectorNameTakenError,
+  ConnectorNotFoundError,
+  type ConnectorOrigin,
+  type ConnectorScopeName,
+  type ConnectorTransportKind,
+  type ConnectorWrite,
+  createConnector,
+  deleteConnector,
+  getConnector,
+  getConnectorDiscovery,
+  grantConnector,
+  listConnectors,
+  listConnectorsForBot,
+  replaceConnector,
+  revokeConnector,
+  type StoredConnector,
+  saveConnectorDiscovery,
+} from "./connectors.js";
+export {
   ACTIVE_RUN_STATUSES,
   ConversationSendError,
   getActiveConversationRun,
@@ -192,6 +213,7 @@ export {
 export {
   deleteSecret,
   getSecretMeta,
+  getSecretRowByName,
   getSecretRowForBot,
   grantSecret,
   listSecretInfoForBot,

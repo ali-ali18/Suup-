@@ -15,6 +15,7 @@ import {
 import {
   type Db,
   deleteSecret,
+  getSecretRowByName,
   getSecretRowForBot,
   grantSecret,
   listSecretInfoForBot,
@@ -84,6 +85,13 @@ export interface Vault {
   infoFor(botId: string): Promise<SecretInfo[]>;
   /** What a run of this bot gets. */
   accessFor(botId: string): SecretAccess;
+  /**
+   * The values of the secrets a CONNECTOR refers to, for opening its connection. Not tied to a bot:
+   * the user who configured the connector named these secrets (and the connector is granted to
+   * bots, not the secrets). The values go into the child's environment or an HTTP header and
+   * nowhere else; they are known to the redactor before they are handed over.
+   */
+  resolveForConnector(names: readonly string[]): Promise<Record<string, string>>;
   /** Scrubs every known value. Call `refresh` first to be sure the set is current. */
   readonly redactor: Redactor;
   /** Reloads every value into the redactor, unless it was done less than `maxAgeMs` ago. */
@@ -249,6 +257,28 @@ export function createVault(db: () => Db, env: Env, settings: VaultSettings | un
           return values;
         },
       };
+    },
+    async resolveForConnector(names) {
+      const { all } = keyRing();
+      const values: Record<string, string> = {};
+      for (const name of names) {
+        const row = await getSecretRowByName(db(), name);
+        if (row === null) {
+          throw new VaultError(
+            "value_invalid",
+            `o segredo ${name} não existe no cofre (cadastre com: suup vault set ${name})`,
+          );
+        }
+        const value = decrypt(all, name, {
+          nonce: row.nonce,
+          ciphertext: row.ciphertext,
+          keyId: row.keyId,
+        });
+        redactor.add(name, value);
+        values[name] = value;
+        void markSecretUsed(db(), name).catch(() => {});
+      }
+      return values;
     },
     async refresh(maxAgeMs = 0) {
       if (settings === undefined || !vault.status().ok) return;

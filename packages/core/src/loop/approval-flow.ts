@@ -71,12 +71,10 @@ export function clearanceFromLog(ctx: LoopContext, call: ControlCall): CallClear
 
 /**
  * Asks the gate about a call nothing was decided about yet, and records its verdict before
- * anything else happens. With no gate every call runs.
+ * anything else happens. An allow-all gate (`allowAllGate`) answers `null` for every call.
  */
 export async function askGate(ctx: LoopContext, call: ControlCall): Promise<CallClearance> {
   const { gate, bot, executor } = ctx.deps;
-  if (gate === undefined) return { kind: "run", args: call.args as JsonValue };
-
   const verdict = await gate.check({
     runId: ctx.runId,
     callId: call.id,

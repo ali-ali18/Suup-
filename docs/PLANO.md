@@ -220,6 +220,8 @@ Requisito de infraestrutura: o servidor na VPS precisa de domínio e HTTPS públ
 - Autorização por conector, com escopo (por exemplo, somente leitura).
 - Um registro onde o bot procura e propõe instalar conectores novos; a instalação passa por aprovação.
 
+**Estado (fase 3, backend):** feitos o protocolo (cliente do SDK oficial em `packages/connectors`, `stdio` e *streamable HTTP*), a autorização por conector e por bot com escopo e risco por ferramenta, e a passagem pelo mesmo registro, aprovação, cofre e rótulo de conteúdo não confiável das ferramentas embutidas. **Não feito:** o bot propor a instalação (e o registro onde procura). Como funciona e o que não protege: [CONECTORES.md](CONECTORES.md).
+
 ### 4.12 App e agente local
 
 - App de desktop em Tauri: interface web na webview do sistema, com casca nativa leve. Mostra conversas, cartões de aprovação, formulário seguro, execuções em andamento e, na fase 5, a tela ao vivo.

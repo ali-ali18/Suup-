@@ -220,7 +220,11 @@ export async function followRunCore(
       const run = await getRun(db, runId); // status first: its events are all in the log already
       if (run === null) throw new CommandError(`A execução ${short} sumiu do banco.`);
       emit(await readEvents(db, runId, afterSeq));
-      if (workerStopped || TERMINAL.has(run.status) || run.status === "waiting_approval") break;
+      if (workerStopped || TERMINAL.has(run.status)) break;
+      // Waiting for a card means a card is pending. A `waiting_approval` row with none is the
+      // moment a resumed run is put back where its log is, before the decision it already holds is
+      // taken in (a few milliseconds, longer on a busy machine): the worker is about to go on.
+      if (run.status === "waiting_approval" && (await pendingCards(db, runId)).length > 0) break;
       if (run.status === "waiting_user") {
         if (!interactive) break;
         if (!prompted) {

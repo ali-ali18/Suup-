@@ -110,6 +110,10 @@ Reenvia o mesmo pedido a **outro modelo configurado**. Compare com o desfecho gr
 | Outro modelo acerta onde o original errou | **Só o modelo original erra**: é o modelo |
 | Todos erram do mesmo jeito | É **o que foi enviado**: instruções ou contexto montado pelo harness. Volte ao passo 3 |
 
+## Conectores
+
+Uma ferramenta de um conector MCP ([CONECTORES.md](CONECTORES.md)) que falha dá um resultado de erro que **começa com `Conector "nome":`** (o desfecho no log é `tool_error`): o problema é do conector, não do modelo. `suup doctor` liga cada conector ligado do zero e dá uma linha por conector (`Conector nome`); `suup connectors test <nome>` faz o mesmo para um e lista as ferramentas, com o risco de cada uma e o motivo de as que ficaram de fora.
+
 ## Quando os comandos acima não bastam
 
 - `suup doctor` confere cada componente (configuração, banco e migrações, sandbox, provedores, ferramentas). Com `--live` faz uma chamada minúscula de verdade a cada modelo e mostra a latência e a versão que o provedor devolveu.

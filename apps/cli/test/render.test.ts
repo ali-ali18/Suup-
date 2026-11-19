@@ -233,6 +233,19 @@ describe("renderers: the live view", () => {
     expect(
       render({ type: "escalated", payload: { question: "decida", reason: "review_tie_break" } }),
     ).toContain("não chegaram a um acordo");
+    // The reviewer that could not verify is not a disagreement: the header says so.
+    const unverified = render({
+      type: "escalated",
+      payload: { question: "decida", reason: "review_tie_break", reviewVerdict: "unverified" },
+    });
+    expect(unverified).toContain("O revisor não conseguiu verificar");
+    expect(unverified).not.toContain("não chegaram a um acordo");
+    expect(
+      render({
+        type: "escalated",
+        payload: { question: "decida", reason: "review_tie_break", reviewVerdict: "reject" },
+      }),
+    ).toContain("não chegaram a um acordo");
   });
 
   it("shows finish attempts with the rejection reasons, and the reviewer's verdict", () => {

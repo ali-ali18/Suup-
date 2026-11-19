@@ -141,6 +141,10 @@ O cofre de segredos ([COFRE.md](COFRE.md)). Sem esta seção não há cofre.
 
 Uma lista de nomes de ferramentas cuja saída chega ao modelo **rotulada como dado não confiável** (o envelope `<<<EXTERNAL_DATA`), além das que já se declaram assim (`web_fetch`). Padrão: nenhuma. Quem faz o bot lidar com conteúdo de fora pode ligar para `["shell", "read_file", "search_files"]`; fica desligado por padrão porque muda o que o modelo lê depois de cada chamada dessas ferramentas.
 
+### Conectores
+
+Não há seção de conectores neste arquivo: eles ficam no banco (`suup connectors ...`, [CONECTORES.md](CONECTORES.md)), porque são criados em tempo de execução e carregam referências a segredos do cofre. A seção `vault` é necessária para um conector que use credenciais.
+
 ## Variáveis de ambiente
 
 | Variável | Uso |

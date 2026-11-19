@@ -26,6 +26,7 @@ import {
 } from "./http.js";
 import { approvalRoutes } from "./routes/approvals.js";
 import { botRoutes } from "./routes/bots.js";
+import { connectorRoutes } from "./routes/connectors.js";
 import { conversationRoutes } from "./routes/conversations.js";
 import { diagnosticsRoutes } from "./routes/diagnostics.js";
 import { memoryRoutes } from "./routes/memories.js";
@@ -142,6 +143,7 @@ export function createServer(runtime: Runtime, options: ServerOptions): SuupServ
     ...memoryRoutes,
     ...approvalRoutes,
     ...vaultRoutes,
+    ...connectorRoutes,
     ...metaRoutes,
   ].map(compileRoute);
 

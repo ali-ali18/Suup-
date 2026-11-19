@@ -30,6 +30,16 @@ import {
   type UpdateBotBody,
 } from "./bots.js";
 import {
+  type Connector,
+  type ConnectorTest,
+  type CreateConnectorBody,
+  connectorListSchema,
+  connectorSchema,
+  connectorTestSchema,
+  type SetToolRiskBody,
+  type UpdateConnectorBody,
+} from "./connectors.js";
+import {
   type Conversation,
   conversationListSchema,
   conversationSchema,
@@ -186,6 +196,19 @@ export interface SuupClient {
     create(body: CreateRuleBody): Promise<ApprovalRule>;
     update(id: string, body: UpdateRuleBody): Promise<ApprovalRule>;
     remove(id: string): Promise<void>;
+  };
+  connectors: {
+    list(): Promise<Connector[]>;
+    get(name: string): Promise<Connector>;
+    create(body: CreateConnectorBody): Promise<Connector>;
+    update(name: string, body: UpdateConnectorBody): Promise<Connector>;
+    remove(name: string): Promise<void>;
+    grant(name: string, botId: string): Promise<Connector>;
+    revoke(name: string, botId: string): Promise<Connector>;
+    /** What the user says a tool's risk is (`null` clears it). */
+    setToolRisk(name: string, tool: string, body: SetToolRiskBody): Promise<Connector>;
+    /** Starts the server from scratch where THIS server runs, lists its tools and closes. */
+    test(name: string): Promise<ConnectorTest>;
   };
   vault: {
     /** Names and metadata. There is no way to read a value back. */
@@ -408,6 +431,25 @@ export function createClient(options: ClientOptions): SuupClient {
       remove: async (ruleId) => {
         await call("DELETE", `/v1/approval-rules/${id(ruleId)}`, deletedSchema);
       },
+    },
+    connectors: {
+      list: async () => (await call("GET", "/v1/connectors", connectorListSchema)).items,
+      get: (name) => call("GET", `/v1/connectors/${id(name)}`, connectorSchema),
+      create: (body) => call("POST", "/v1/connectors", connectorSchema, { body }),
+      update: (name, body) =>
+        call("PATCH", `/v1/connectors/${id(name)}`, connectorSchema, { body }),
+      remove: async (name) => {
+        await call("DELETE", `/v1/connectors/${id(name)}`, deletedSchema);
+      },
+      grant: (name, botId) =>
+        call("PUT", `/v1/connectors/${id(name)}/grants/${id(botId)}`, connectorSchema, noBody),
+      revoke: (name, botId) =>
+        call("DELETE", `/v1/connectors/${id(name)}/grants/${id(botId)}`, connectorSchema),
+      setToolRisk: (name, tool, body) =>
+        call("PUT", `/v1/connectors/${id(name)}/tools/${id(tool)}/risk`, connectorSchema, {
+          body,
+        }),
+      test: (name) => call("POST", `/v1/connectors/${id(name)}/test`, connectorTestSchema, noBody),
     },
     vault: {
       list: async () => (await call("GET", "/v1/secrets", secretListSchema)).items,

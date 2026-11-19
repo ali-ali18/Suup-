@@ -3,6 +3,7 @@
 // shows (one fixed budget, with an explicit mark of what was cut), and how the answer is written
 // down so that resume and replay rebuild exactly the same conversation.
 import type { RunEventPayload } from "../events.js";
+import { scrub } from "./recording.js";
 import type { LoopContext } from "./run-context.js";
 import type { ToolLogEntry } from "./state.js";
 
@@ -154,19 +155,23 @@ export async function gatherEvidence(
     }
     const read = await readWorkspaceFile(ctx, ref.trim());
     if ("reason" in read) {
-      missing.push({ item: ref, reason: read.reason });
+      missing.push({ item: ref, reason: scrub(ctx, read.reason) });
       continue;
     }
+    // A file can hold a value the vault knows (a token in a config file): it is scrubbed HERE,
+    // before the lengths, the fingerprint and the budget are computed, so what is recorded and
+    // what the reviewer sees are the same text and the numbers describe it.
+    const content = scrub(ctx, read.content);
     candidates.push({
       item: {
         kind: "file",
         ref: ref.trim(),
-        chars: read.content.length,
-        sent: read.content.length,
-        hash: fingerprint(read.content),
-        content: read.content,
+        chars: content.length,
+        sent: content.length,
+        hash: fingerprint(content),
+        content,
       },
-      length: read.content.length,
+      length: content.length,
     });
   }
 

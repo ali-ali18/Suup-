@@ -3,6 +3,8 @@ import type {
   Approval,
   ApprovalRule,
   Bot,
+  Connector,
+  ConnectorTest,
   Conversation,
   Memory,
   Message,
@@ -10,6 +12,7 @@ import type {
   RunEvent,
   Secret,
 } from "@suup/api";
+import type { ConnectorTestResult, ConnectorView } from "@suup/runtime";
 import {
   type Approval as ApprovalRow,
   type BotSummary,
@@ -211,5 +214,57 @@ export function toSecretDto(secret: SecretMeta): Secret {
     createdAt: iso(secret.createdAt),
     updatedAt: iso(secret.updatedAt),
     lastUsedAt: isoOrNull(secret.lastUsedAt),
+  };
+}
+
+export function toConnectorDto(view: ConnectorView): Connector {
+  return {
+    id: view.id,
+    name: view.name,
+    description: view.description,
+    transport: view.transport,
+    scope: view.scope,
+    toolOverrides: view.toolOverrides,
+    trustAnnotations: view.trustAnnotations,
+    timeoutMs: view.timeoutMs,
+    enabled: view.enabled,
+    origin: view.origin,
+    grantedBotIds: view.grantedBotIds,
+    secretNames: view.secretNames,
+    connection: view.connection,
+    discovery: {
+      discoveredAt: isoOrNull(view.discovery.discoveredAt),
+      lastError: view.discovery.lastError,
+      lastErrorAt: isoOrNull(view.discovery.lastErrorAt),
+    },
+    tools: view.tools === null ? null : view.tools.map(toConnectorToolDto),
+    createdAt: iso(view.createdAt),
+    updatedAt: iso(view.updatedAt),
+  };
+}
+
+function toConnectorToolDto(
+  tool: NonNullable<ConnectorView["tools"]>[number],
+): Connector["tools"] extends (infer T)[] | null ? T : never {
+  return {
+    tool: tool.tool,
+    name: tool.name,
+    description: tool.description,
+    risk: tool.risk,
+    riskBasis: tool.riskBasis,
+    available: tool.available,
+    ...(tool.reason === undefined ? {} : { reason: tool.reason }),
+    hints: tool.hints === undefined ? null : tool.hints,
+  };
+}
+
+export function toConnectorTestDto(result: ConnectorTestResult): ConnectorTest {
+  return {
+    ok: result.ok,
+    serverName: result.serverName,
+    serverVersion: result.serverVersion,
+    durationMs: result.durationMs,
+    error: result.error,
+    tools: result.tools.map(toConnectorToolDto),
   };
 }

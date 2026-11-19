@@ -1,3 +1,4 @@
+export { allowAllGate } from "../approvals/gate.js";
 export {
   FakeProvider,
   type FakeProviderOptions,

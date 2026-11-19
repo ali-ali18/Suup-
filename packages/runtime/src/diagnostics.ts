@@ -19,6 +19,7 @@ import {
   type StopReason,
 } from "@suup/core";
 import { type Db, getBot, getRun, listRunEvents, migrationStatus } from "@suup/db";
+import { checkConnectors } from "./connectors/doctor.js";
 import { RuntimeError } from "./errors.js";
 import type { Runtime } from "./runtime.js";
 import { loadScript } from "./scripted-provider.js";
@@ -685,6 +686,12 @@ export async function runDoctorChecks(
      * API-only server, which must not hold the Docker socket) says so instead of failing.
      */
     sandbox?: boolean;
+    /**
+     * Whether to start the connectors (default `true`). A stdio connector is a program on the host
+     * that runs the bots (the worker), not necessarily on an API-only server, so that process says
+     * so instead of reporting a failure that is not real.
+     */
+    connectors?: boolean;
   } = {},
 ): Promise<DoctorCheck[]> {
   const checks: DoctorCheck[] = [];
@@ -706,6 +713,18 @@ export async function runDoctorChecks(
     ...(await guarded("Provedores", () => checkProviders(runtime, options.live === true))),
   );
   checks.push(...(await guarded("Cofre", () => checkVaultAndApprovals(runtime))));
+  checks.push(
+    ...(options.connectors === false
+      ? [
+          {
+            component: "Conectores",
+            ok: true,
+            detail:
+              "não verificados neste processo: um conector de processo local roda onde o worker roda; rode `suup doctor` (ou `suup connectors test`) lá",
+          },
+        ]
+      : await guarded("Conectores", () => checkConnectors(runtime))),
+  );
   checks.push(
     ...(await guarded("Ferramentas", async () => {
       const names = runtime.tools.list().map((t) => t.name);

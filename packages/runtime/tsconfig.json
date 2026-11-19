@@ -8,10 +8,23 @@
   "include": ["src"],
   "exclude": ["src/**/*.test.ts"],
   "references": [
-    { "path": "../core" },
-    { "path": "../db" },
-    { "path": "../providers" },
-    { "path": "../sandbox" },
-    { "path": "../tools" }
+    {
+      "path": "../connectors"
+    },
+    {
+      "path": "../core"
+    },
+    {
+      "path": "../db"
+    },
+    {
+      "path": "../providers"
+    },
+    {
+      "path": "../sandbox"
+    },
+    {
+      "path": "../tools"
+    }
   ]
 }

@@ -27,7 +27,7 @@ export function fixedParts(ctx: LoopContext): { system: string; tools: ToolSpec[
     system: buildSystemPrompt(bot, ctx.state.context ?? undefined, {
       memoryTools,
       secrets: ctx.deps.secrets !== undefined,
-      approvals: ctx.deps.gate !== undefined,
+      approvals: ctx.deps.gate.allowsEverything !== true,
     }),
     tools: offered,
   };

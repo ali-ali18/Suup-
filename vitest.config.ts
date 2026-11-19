@@ -18,7 +18,11 @@ export default defineConfig({
               replacement: src("core", "testing/store-contract.ts"),
             },
             {
-              find: /^@suup\/(core|providers|tools|db|sandbox|runtime|api|server)$/,
+              find: /^@suup\/connectors\/testing$/,
+              replacement: src("connectors", "testing/index.ts"),
+            },
+            {
+              find: /^@suup\/(core|providers|tools|connectors|db|sandbox|runtime|api|server)$/,
               replacement: src("$1"),
             },
             {

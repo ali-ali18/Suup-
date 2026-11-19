@@ -158,6 +158,16 @@ export async function getSecretRowForBot(
 }
 
 /**
+ * One secret with its ciphertext, whoever may use it. For the one caller that acts for the USER and
+ * not for a bot: a connector the user configured with a reference to the secret.
+ */
+export async function getSecretRowByName(db: Db, name: string): Promise<SecretRow | null> {
+  const [row] = await db.sql<CipherRow[]>`
+    select id, name, description, nonce, ciphertext, key_id, updated_at from secrets where name = ${name}`;
+  return row === undefined ? null : toRow(row);
+}
+
+/**
  * Replaces the ciphertext of a secret (key rotation). The row must not have changed meanwhile: a
  * write always draws a new random nonce, so the nonce read earlier says whether it did.
  */

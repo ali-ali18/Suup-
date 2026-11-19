@@ -1,3 +1,4 @@
+export type { ConnectorToolInfo } from "@suup/connectors";
 export { MEMORY_TOOL_NAMES } from "@suup/core";
 export {
   configPath,
@@ -18,6 +19,16 @@ export {
   type SandboxEntry,
   type ServerConfig,
 } from "./config.js";
+export {
+  type BotConnectorTools,
+  type ConnectorInput,
+  type ConnectorPatch,
+  type ConnectorService,
+  type ConnectorTestResult,
+  type ConnectorView,
+  createConnectorService,
+  specOf,
+} from "./connectors/service.js";
 export {
   type BotDraft,
   botDraftSchema,

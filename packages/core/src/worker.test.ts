@@ -4,6 +4,7 @@ import { LeaseLostError, type RunStore } from "./loop/store.js";
 import type { Provider } from "./provider.js";
 import { ToolRegistry } from "./registry.js";
 import {
+  allowAllGate,
   call,
   eventsOfType,
   FakeClock,
@@ -98,6 +99,7 @@ function makeWorld(): World {
             tools: registry,
             executor,
             bot: testBot(),
+            gate: allowAllGate(),
             now: () => new Date(clock.now()),
             sleep: async () => {},
           };

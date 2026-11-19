@@ -381,6 +381,12 @@ export const runEventSchema = z.discriminatedUnion("type", [
       callId: z.exactOptional(z.string()),
       /** `review_tie_break`: the reviewer rejected too often and a human must decide. */
       reason: z.exactOptional(z.enum(["review_tie_break"])),
+      /**
+       * With `review_tie_break`: why the review sent it to the user. `reject`: the bot and the
+       * reviewer disagree. `unverified`: the reviewer could not verify part of the work. Absent in
+       * older logs (read as `reject`).
+       */
+      reviewVerdict: z.exactOptional(z.enum(["reject", "unverified"])),
     }),
   }),
   z.object({

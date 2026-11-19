@@ -96,6 +96,7 @@ const NOT_FOUND = new Set([
   "event_not_found",
   "conversation_not_found",
   "memory_not_found",
+  "connector_not_found",
 ]);
 
 const DB_DOWN = new Set([

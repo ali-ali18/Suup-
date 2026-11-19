@@ -117,6 +117,10 @@ O worker comanda a máquina dos bots com `docker exec`, o que exige falar com o 
 - Mantenha a VPS dedicada ao Suup (nada mais de valor nela), com o sistema e o Docker atualizados e as portas fechadas (item acima).
 - Para reduzir ainda mais: Docker em modo *rootless* no host, ou um *proxy de socket* com permissões restritas (só `exec`, `inspect`, `start`, `volume create`, `run`) entre o worker e o daemon. Nenhum dos dois vem pronto aqui.
 
+## Conectores MCP
+
+Um conector de processo local ([CONECTORES.md](CONECTORES.md)) é um programa que o **worker** inicia, **dentro do contêiner do worker**, fora da máquina isolada dos bots. A imagem de produção tem Node e `npx`; não tem Python, `uv` nem os arquivos do seu computador. O contêiner do worker já tem acesso ao socket do Docker (veja acima): um conector malicioso ali é um risco **maior** que um comando de bot, e roda com o usuário `node` da imagem. Prefira conectores **HTTP** (o servidor Suup só faz requisições) e programas fixados em uma versão. O contêiner do servidor da API não roda conectores: `suup doctor`, nele, diz que não verificou; rode `docker compose ... exec worker suup connectors test <nome>`.
+
 ## Backups
 
 Dois lugares guardam o que importa: o **Postgres** (bots, conversas, memória, o log de todas as execuções) e o **volume do workspace** (os arquivos que os bots criam).

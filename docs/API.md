@@ -251,6 +251,30 @@ Qualquer resposta ou quadro do stream que mencione um valor conhecido (por exemp
 
 ---
 
+## Conectores (MCP)
+
+Servidores MCP externos cujas ferramentas os bots podem usar, com autorização por conector (concessão por bot), escopo e risco por ferramenta. Como funciona, o que protege e o que não: [CONECTORES.md](CONECTORES.md). **Nenhuma resposta traz uma credencial**: um conector só cita segredos do cofre pelo nome (`secretNames`, e `{ secret, prefix? }` no lugar do valor em `env` e `headers`). Criar, editar ou ligar um conector pela API é o usuário agindo (o token do servidor): não há cartão. (O bot propor um conector, com cartão, não existe ainda.)
+
+`Connector`: `id`, `name` (`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`, até 24), `description`, `transport` (`{ kind: "stdio", command, args, env, cwd? }` ou `{ kind: "http", url, headers }`; um valor de `env`/`headers` é um texto **ou** `{ secret: "NOME", prefix?: "Bearer " }`), `scope` (`read_only` ou `read_write`), `toolOverrides` (`{ "<ferramenta no servidor>": { risk } }`: o que o usuário afirma), `trustAnnotations`, `timeoutMs`, `enabled`, `origin` (`user`; `proposal` é o gancho do futuro "o bot propõe", sempre criado desligado), `grantedBotIds`, `secretNames`, `connection` (`{ connected, failures, lastError }`: **do processo que respondeu**), `discovery` (`{ discoveredAt, lastError, lastErrorAt }`: o que **qualquer** processo viu por último), `tools` e as datas.
+
+`ConnectorTool` (de `tools`, a última listagem guardada, com o risco recalculado pela configuração de agora): `tool` (nome no servidor), `name` (`conn_<conector>__<ferramenta>`: o que o modelo chama e o que as regras casam), `description` (texto do servidor, limpo e limitado a 800 caracteres: **não confiável**), `risk`, `riskBasis` (`default`, `user`, `trusted_hint`, `tightened_by_hint`), `available` (e `reason` quando não: esquema não suportado, escopo somente leitura, nome repetido...), `hints` (`readOnlyHint`, `destructiveHint` como o servidor os declarou). `tools` é `null` até o servidor ser listado uma vez.
+
+| Método e caminho | Corpo | Resposta |
+|---|---|---|
+| `GET /v1/connectors` | | `200 { items: [Connector] }` |
+| `POST /v1/connectors` | `{ name, transport, description?, scope?, tools?, trustAnnotations?, timeoutMs?, enabled?, grantBotIds? }` | `201 Connector`; `400` (configuração recusada: shell com `-c`, `http://` fora de localhost, segredo que não existe no cofre...); `409` nome repetido |
+| `GET /v1/connectors/{nome}` | | `200 Connector`; `404` |
+| `PATCH /v1/connectors/{nome}` | `{ description?, transport?, scope?, tools?, trustAnnotations?, timeoutMs? (null: o padrão), enabled? }` | `200 Connector`. `transport` e `tools` **substituem** o que havia; a conexão aberta com a configuração antiga é descartada |
+| `DELETE /v1/connectors/{nome}` | | `200 { deleted: true }`; `404` |
+| `PUT /v1/connectors/{nome}/grants/{botId}` | | `200 Connector`: o bot passa a ver as ferramentas na próxima execução; `404` |
+| `DELETE /v1/connectors/{nome}/grants/{botId}` | | `200 Connector`; `404` |
+| `PUT /v1/connectors/{nome}/tools/{ferramenta}/risk` | `{ risk: "read" \| "write_reversible" \| "external_irreversible" \| null }` | `200 Connector`: o que o usuário afirma dessa ferramenta (`null` limpa). O servidor pode **apertar** isso por uma dica, nunca afrouxar |
+| `POST /v1/connectors/{nome}/test` | | `200 { ok, serverName, serverVersion, durationMs, error, tools }`: liga o servidor **do zero, no processo que atende** (um programa local precisa existir onde o servidor da API roda), lista as ferramentas e desliga. Uma falha do servidor MCP é `ok: false` com `error` (que nomeia o conector), não um erro HTTP |
+
+Sem tempo real próprio: o app lê de novo depois de escrever. `GET /v1/doctor` ganha uma linha `Conector <nome>` por conector ligado (e, numa instalação em que a API não roda os bots, diz que não verificou).
+
+---
+
 ## Diagnóstico (o Inspetor)
 
 Os mesmos cálculos de `suup inspect --request`, `replay`, `resend` e `doctor`, que a CLI e o servidor compartilham (um código só, em `@suup/runtime`).

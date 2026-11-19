@@ -134,10 +134,11 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("approvals and the vault, end to end"
     const { runtime, bot } = await open({ agent: [{ text: "x" }] });
     const run = await runtime.createRun({ botId: bot.id, objective: "x" });
     const normal = await runtime.buildDeps(run.id, "worker-x");
-    expect(normal.gate).toBeDefined();
+    expect(normal.gate.allowsEverything).toBeUndefined();
     expect(normal.secrets).toBeDefined();
     const isolated = await runtime.buildDeps(run.id, "worker-x", { isolated: true });
-    expect(isolated.gate).toBeUndefined();
+    // The evaluation opts out BY NAME (allowAllGate): there is no way to have no gate.
+    expect(isolated.gate.allowsEverything).toBe(true);
     expect(isolated.secrets).toBeUndefined();
     await runtime.close();
 
@@ -150,7 +151,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("approvals and the vault, end to end"
       baseDir: dir,
     });
     const deps = await plain.buildDeps(run.id, "worker-y");
-    expect(deps.gate).toBeDefined();
+    expect(deps.gate.allowsEverything).toBeUndefined();
     expect(deps.secrets).toBeUndefined();
     await plain.close();
   });

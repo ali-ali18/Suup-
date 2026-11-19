@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { allowAllGate } from "../approvals/gate.js";
 import type { RunEventData, RunEventType } from "../events.js";
 import {
   type BotConfig,
@@ -202,6 +203,8 @@ export function createRig(options: RigOptions): Rig {
     tools: registry,
     executor,
     bot,
+    // Tests opt out of the approval policy by name; a test about approvals passes its own gate.
+    gate: allowAllGate(),
     ...(reviewer === undefined ? {} : { reviewer }),
     now: () => new Date(clock.now),
     sleep: async (ms) => {

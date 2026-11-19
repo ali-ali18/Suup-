@@ -48,6 +48,22 @@ export interface GateVerdict {
 /** What the loop asks before running a tool call. `null`: nothing to decide (no such tool, bad arguments). */
 export interface ToolGate {
   check(call: GateCall): Promise<GateVerdict | null>;
+  /**
+   * Set only by `allowAllGate`: this gate decides nothing, so the run is not under any approval
+   * policy (the prompt does not promise approvals, and nothing is recorded as gated).
+   */
+  readonly allowsEverything?: true;
+}
+
+/**
+ * The gate that lets every call run, unchecked. It exists so that "no approval policy" is a
+ * decision somebody writes down, never something a missing field turns into: `LoopDeps.gate` is
+ * required. Legitimate uses are a disposable machine without a user to ask (an evaluation), a
+ * replay of a run recorded without approvals, and tests. An architecture test lists the files
+ * allowed to name it.
+ */
+export function allowAllGate(): ToolGate {
+  return { allowsEverything: true, check: async () => null };
 }
 
 export interface ToolGateOptions {

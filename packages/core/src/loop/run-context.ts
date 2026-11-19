@@ -72,10 +72,11 @@ export interface LoopDeps {
   loadRunContext?(runId: string): Promise<RunContextSnapshot>;
   /**
    * The approval policy (section 4.8): decides, for every tool call, whether it runs, is refused or
-   * waits for the user. Without it every call runs: only for tests and evaluations in a disposable
-   * machine; the runtime always provides one.
+   * waits for the user. Required, so a loop built by hand cannot run every call unchecked by
+   * forgetting it: running unchecked is `allowAllGate()`, written out (tests, evaluations on a
+   * disposable machine, replays of runs recorded without approvals).
    */
-  gate?: ToolGate;
+  gate: ToolGate;
   /**
    * The vault seam: where `{{secret:NAME}}` placeholders get their values at the moment of the
    * action, and what scrubs known values out of everything the run records or hands to the model.

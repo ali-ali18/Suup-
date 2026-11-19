@@ -60,6 +60,10 @@ curl -H "Authorization: Bearer {{secret:GITHUB_TOKEN}}" https://api.github.com/u
 
 Ferramentas que aceitam marcadores hoje: `shell` (campo `command`) e `web_fetch` (`url` e `headers.*`). Um marcador em qualquer outro campo é recusado **sem executar** ("esta ferramenta não aceita um segredo em `note`"). Um marcador em ferramenta que não declara nenhum campo também.
 
+### Segredos de conectores
+
+Um conector MCP ([CONECTORES.md](CONECTORES.md)) cita segredos **pelo nome**, em variáveis de ambiente do processo e em cabeçalhos HTTP, e o valor é lido na hora de conectar. Diferente do uso por um bot, **não depende de concessão ao bot**: quem o referenciou foi você, ao configurar o conector, e quem pode usar o conector é a concessão do conector. O valor é ensinado ao filtro de redação antes de ser entregue, então um servidor que o ecoe num resultado o vê trocado por `[REDACTED:NOME]`.
+
 ### Segredo em ação irreversível
 
 Uma chamada que contém um marcador é tratada como `external_irreversible`: **vira cartão**, a menos que você tenha uma regra que libere. O cartão mostra o marcador, nunca o valor. É o "aprovar e sempre permitir" que torna o uso rotineiro. (Veja [APROVACOES.md](APROVACOES.md).)

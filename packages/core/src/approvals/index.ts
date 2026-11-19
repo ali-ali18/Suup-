@@ -5,6 +5,7 @@ export {
   type PolicyOutcome,
 } from "./decide.js";
 export {
+  allowAllGate,
   createReplayGate,
   createToolGate,
   type GateCall,

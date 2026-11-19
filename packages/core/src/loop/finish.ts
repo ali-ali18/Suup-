@@ -159,7 +159,14 @@ async function recordTieBreak(ctx: LoopContext, summary: string): Promise<void> 
     review?.verdict === "unverified"
       ? `I believe the task is complete, but the automated review could not verify part of it, so I need you to decide.\n\nMy summary:\n${summary}\n\nWhat the reviewer could not verify:\n${review.notes}\n\nShould I accept the work as it is, or should something be checked or changed?`
       : `I believe the task is complete, but an automated review keeps disagreeing, so I need you to decide.\n\nMy summary:\n${summary}\n\nThe reviewer's last objection:\n${ctx.state.lastRejectionNotes}\n\nShould I accept the work as it is, or what should change?`;
-  await record(ctx, { type: "escalated", payload: { reason: "review_tie_break", question } });
+  await record(ctx, {
+    type: "escalated",
+    payload: {
+      reason: "review_tie_break",
+      reviewVerdict: review?.verdict === "unverified" ? "unverified" : "reject",
+      question,
+    },
+  });
 }
 
 interface ReviewOutcome {
