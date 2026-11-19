@@ -1,0 +1,334 @@
+import { z } from "zod";
+import {
+  type Bot,
+  type BotDraft,
+  botDraftSchema,
+  botListSchema,
+  botSchema,
+  type CreateBotBody,
+  type DraftBotBody,
+  type ListBotsQuery,
+  type ModelInfo,
+  modelListSchema,
+  type ToolInfo,
+  toolListSchema,
+  type UpdateBotBody,
+} from "./bots.js";
+import {
+  type Conversation,
+  conversationListSchema,
+  conversationSchema,
+  type ListConversationsQuery,
+  type ListMessagesQuery,
+  type MarkReadBody,
+  type Message,
+  messagePageSchema,
+  type SendMessageResult,
+  sendMessageResultSchema,
+} from "./conversations.js";
+import {
+  type Doctor,
+  doctorSchema,
+  type ModelRequest,
+  modelRequestSchema,
+  type Replay,
+  type Resend,
+  type ResendBody,
+  replaySchema,
+  resendSchema,
+} from "./diagnostics.js";
+import { ApiError, type ErrorCode } from "./errors.js";
+import {
+  type AddMemoryBody,
+  type ListMemoriesQuery,
+  type Memory,
+  memoryListSchema,
+  memorySchema,
+  memorySearchSchema,
+  messageSearchSchema,
+  type SearchMemoriesQuery,
+  type SearchMessagesQuery,
+} from "./memory.js";
+import {
+  type ListRunsQuery,
+  type Run,
+  type RunEvents,
+  type RunEventsQuery,
+  runEventsSchema,
+  runListSchema,
+  runSchema,
+} from "./runs.js";
+import { errorOf, type SubscribeOptions, type Subscription, subscribe } from "./subscribe.js";
+
+export interface ClientOptions {
+  /** Where the server is, e.g. `http://127.0.0.1:8787`. */
+  baseUrl: string;
+  /** The server's bearer token. */
+  token: string;
+  /** For tests, or a platform whose `fetch` is not the global one. */
+  fetch?: typeof fetch;
+  /** Gives up on a request that has not been answered in this time (not the stream). Default 60 s. */
+  timeoutMs?: number;
+}
+
+type Query = Record<string, string | number | boolean | readonly string[] | undefined>;
+
+function queryString(query: Query | undefined): string {
+  if (query === undefined) return "";
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value === undefined) continue;
+    params.set(key, Array.isArray(value) ? value.join(",") : String(value));
+  }
+  const text = params.toString();
+  return text === "" ? "" : `?${text}`;
+}
+
+const healthSchema = z.object({ status: z.literal("ok") });
+
+export interface SuupClient {
+  /** `GET /health`: no token needed. */
+  health(): Promise<{ status: "ok" }>;
+  models: { list(): Promise<ModelInfo[]> };
+  tools: { list(): Promise<{ items: ToolInfo[]; control: string[] }> };
+  bots: {
+    list(query?: ListBotsQuery): Promise<Bot[]>;
+    get(id: string): Promise<Bot>;
+    create(body: CreateBotBody): Promise<Bot>;
+    update(id: string, body: UpdateBotBody): Promise<Bot>;
+    archive(id: string): Promise<Bot>;
+    setDefault(id: string): Promise<Bot>;
+    /** The bot's direct conversation (created at the first call). */
+    openConversation(id: string): Promise<Conversation>;
+    /** A proposal (name, description, personality) from a free-text description. Creates nothing. */
+    draft(body: DraftBotBody): Promise<BotDraft>;
+  };
+  conversations: {
+    list(query?: ListConversationsQuery): Promise<Conversation[]>;
+    get(id: string): Promise<Conversation>;
+    messages(
+      id: string,
+      query?: ListMessagesQuery,
+    ): Promise<{ items: Message[]; hasMore: boolean }>;
+    send(id: string, text: string): Promise<SendMessageResult>;
+    markRead(id: string, body?: MarkReadBody): Promise<Conversation>;
+  };
+  runs: {
+    list(query?: ListRunsQuery): Promise<{ items: Run[]; hasMore: boolean }>;
+    get(id: string): Promise<Run>;
+    events(id: string, query?: RunEventsQuery): Promise<RunEvents>;
+    /** Stops at the next safe point; resumable. */
+    pause(id: string): Promise<Run>;
+    /** Stops now (cuts the model call and the tool in flight); resumable. */
+    interrupt(id: string): Promise<Run>;
+    /** Ends the run as `cancelled`. Needs a worker alive to be applied. */
+    cancel(id: string): Promise<Run>;
+    resume(id: string): Promise<Run>;
+  };
+  memories: {
+    list(query?: ListMemoriesQuery): Promise<Memory[]>;
+    add(body: AddMemoryBody): Promise<Memory>;
+    edit(id: string, text: string): Promise<Memory>;
+    /** Forgets (archives): it can be restored. */
+    archive(id: string): Promise<Memory>;
+    restore(id: string): Promise<Memory>;
+    search(query: SearchMemoriesQuery): Promise<z.infer<typeof memorySearchSchema>["items"]>;
+  };
+  search: {
+    messages(query: SearchMessagesQuery): Promise<z.infer<typeof messageSearchSchema>["items"]>;
+  };
+  diagnostics: {
+    /** What the model saw in the call recorded at event `seq`, and what it answered. */
+    request(runId: string, seq: number): Promise<ModelRequest>;
+    replay(runId: string): Promise<Replay>;
+    resend(runId: string, body: ResendBody, signal?: AbortSignal): Promise<Resend>;
+    doctor(options?: { live?: boolean }): Promise<Doctor>;
+  };
+  /** Follows the realtime stream, reconnecting and resuming by itself. */
+  subscribe(options: SubscribeOptions): Subscription;
+}
+
+/** A typed client for every endpoint of the server and its realtime stream. */
+export function createClient(options: ClientOptions): SuupClient {
+  const baseUrl = options.baseUrl.replace(/\/+$/, "");
+  const doFetch: typeof fetch = options.fetch ?? ((input, init) => fetch(input, init));
+  const timeoutMs = options.timeoutMs ?? 60_000;
+
+  async function call<T extends z.ZodType>(
+    method: "GET" | "POST" | "PATCH",
+    path: string,
+    schema: T,
+    config: {
+      query?: Query | undefined;
+      body?: unknown;
+      auth?: boolean;
+      signal?: AbortSignal | undefined;
+      timeoutMs?: number;
+    } = {},
+  ): Promise<z.infer<T>> {
+    const controller = new AbortController();
+    const timer = setTimeout(
+      () => controller.abort(new Error("timeout")),
+      config.timeoutMs ?? timeoutMs,
+    );
+    const onAbort = () => controller.abort(config.signal?.reason);
+    config.signal?.addEventListener("abort", onAbort, { once: true });
+    if (config.signal?.aborted) controller.abort(config.signal.reason);
+    let response: Response;
+    try {
+      response = await doFetch(`${baseUrl}${path}${queryString(config.query)}`, {
+        method,
+        headers: {
+          Accept: "application/json",
+          ...(config.auth === false ? {} : { Authorization: `Bearer ${options.token}` }),
+          ...(config.body === undefined ? {} : { "Content-Type": "application/json" }),
+        },
+        ...(config.body === undefined ? {} : { body: JSON.stringify(config.body) }),
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (config.signal?.aborted)
+        throw new ApiError("aborted", "A requisição foi cancelada.", undefined, { cause: error });
+      throw new ApiError(
+        "network",
+        controller.signal.aborted
+          ? "O servidor demorou demais para responder."
+          : `Não foi possível falar com o servidor: ${error instanceof Error ? error.message : String(error)}`,
+        undefined,
+        { cause: error },
+      );
+    } finally {
+      clearTimeout(timer);
+      config.signal?.removeEventListener("abort", onAbort);
+    }
+    if (!response.ok) throw await errorOf(response);
+    let json: unknown;
+    try {
+      json = await response.json();
+    } catch (error) {
+      throw new ApiError(
+        "invalid_response",
+        "O servidor respondeu algo que não é JSON.",
+        response.status,
+        { cause: error },
+      );
+    }
+    const parsed = schema.safeParse(json);
+    if (!parsed.success) {
+      throw new ApiError(
+        "invalid_response",
+        `A resposta de ${method} ${path} não segue o contrato: ${parsed.error.issues
+          .slice(0, 3)
+          .map((i) => `${i.path.join(".")}: ${i.message}`)
+          .join("; ")}`,
+        response.status,
+        { cause: parsed.error },
+      );
+    }
+    return parsed.data;
+  }
+
+  const id = (value: string) => encodeURIComponent(value);
+  const noBody = { body: undefined } as const;
+
+  return {
+    health: () => call("GET", "/health", healthSchema, { auth: false }),
+    models: { list: async () => (await call("GET", "/v1/models", modelListSchema)).items },
+    tools: { list: () => call("GET", "/v1/tools", toolListSchema) },
+    bots: {
+      list: async (query) =>
+        (await call("GET", "/v1/bots", botListSchema, { query: query as Query | undefined })).items,
+      get: (botId) => call("GET", `/v1/bots/${id(botId)}`, botSchema),
+      create: (body) => call("POST", "/v1/bots", botSchema, { body }),
+      update: (botId, body) => call("PATCH", `/v1/bots/${id(botId)}`, botSchema, { body }),
+      archive: (botId) => call("POST", `/v1/bots/${id(botId)}/archive`, botSchema, noBody),
+      setDefault: (botId) => call("POST", `/v1/bots/${id(botId)}/default`, botSchema, noBody),
+      openConversation: (botId) =>
+        call("POST", `/v1/bots/${id(botId)}/conversation`, conversationSchema, noBody),
+      draft: (body) => call("POST", "/v1/bots/draft", botDraftSchema, { body, timeoutMs: 180_000 }),
+    },
+    conversations: {
+      list: async (query) =>
+        (
+          await call("GET", "/v1/conversations", conversationListSchema, {
+            query: query as Query | undefined,
+          })
+        ).items,
+      get: (conversationId) =>
+        call("GET", `/v1/conversations/${id(conversationId)}`, conversationSchema),
+      messages: (conversationId, query) =>
+        call("GET", `/v1/conversations/${id(conversationId)}/messages`, messagePageSchema, {
+          query: query as Query | undefined,
+        }),
+      send: (conversationId, text) =>
+        call("POST", `/v1/conversations/${id(conversationId)}/messages`, sendMessageResultSchema, {
+          body: { text },
+        }),
+      markRead: (conversationId, body = {}) =>
+        call("POST", `/v1/conversations/${id(conversationId)}/read`, conversationSchema, { body }),
+    },
+    runs: {
+      list: (query) =>
+        call("GET", "/v1/runs", runListSchema, { query: query as Query | undefined }),
+      get: (runId) => call("GET", `/v1/runs/${id(runId)}`, runSchema),
+      events: (runId, query) =>
+        call("GET", `/v1/runs/${id(runId)}/events`, runEventsSchema, {
+          query: query === undefined ? undefined : (query as Query),
+        }),
+      pause: (runId) => call("POST", `/v1/runs/${id(runId)}/pause`, runSchema, noBody),
+      interrupt: (runId) => call("POST", `/v1/runs/${id(runId)}/interrupt`, runSchema, noBody),
+      cancel: (runId) => call("POST", `/v1/runs/${id(runId)}/cancel`, runSchema, noBody),
+      resume: (runId) => call("POST", `/v1/runs/${id(runId)}/resume`, runSchema, noBody),
+    },
+    memories: {
+      list: async (query) =>
+        (await call("GET", "/v1/memories", memoryListSchema, { query: query as Query | undefined }))
+          .items,
+      add: (body) => call("POST", "/v1/memories", memorySchema, { body }),
+      edit: (memoryId, text) =>
+        call("PATCH", `/v1/memories/${id(memoryId)}`, memorySchema, { body: { text } }),
+      archive: (memoryId) =>
+        call("POST", `/v1/memories/${id(memoryId)}/archive`, memorySchema, noBody),
+      restore: (memoryId) =>
+        call("POST", `/v1/memories/${id(memoryId)}/restore`, memorySchema, noBody),
+      search: async (query) =>
+        (
+          await call("GET", "/v1/memories/search", memorySearchSchema, {
+            query: query as unknown as Query,
+          })
+        ).items,
+    },
+    search: {
+      messages: async (query) =>
+        (
+          await call("GET", "/v1/messages/search", messageSearchSchema, {
+            query: query as unknown as Query,
+          })
+        ).items,
+    },
+    diagnostics: {
+      request: (runId, seq) =>
+        call("GET", `/v1/runs/${id(runId)}/requests/${seq}`, modelRequestSchema),
+      replay: (runId) =>
+        call("POST", `/v1/runs/${id(runId)}/replay`, replaySchema, {
+          ...noBody,
+          timeoutMs: 180_000,
+        }),
+      resend: (runId, body, signal) =>
+        call("POST", `/v1/runs/${id(runId)}/resend`, resendSchema, {
+          body,
+          timeoutMs: 600_000,
+          ...(signal === undefined ? {} : { signal }),
+        }),
+      doctor: (opts = {}) =>
+        call("GET", "/v1/doctor", doctorSchema, {
+          query: opts.live === undefined ? undefined : { live: opts.live },
+          timeoutMs: 180_000,
+        }),
+    },
+    subscribe: (subscribeOptions) =>
+      subscribe({ baseUrl, token: options.token, fetch: doFetch }, subscribeOptions),
+  };
+}
+
+export type { ErrorCode };

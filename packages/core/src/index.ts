@@ -1,4 +1,11 @@
 export {
+  type ContextItem,
+  contextItemSchema,
+  type EscalateOption,
+  type EscalateQuestion,
+  escalatedQuestions,
+  escalateOptionSchema,
+  escalateQuestionSchema,
   FAILURE_ORIGINS,
   type FailureOrigin,
   failureOriginSchema,
@@ -92,6 +99,7 @@ export {
   type RequestDiff,
   replayRun,
 } from "./replay.js";
+export { REDACTED, redactSecrets, SECRET_PATTERNS } from "./secrets.js";
 export {
   type DirEntry,
   defineTool,
@@ -99,6 +107,10 @@ export {
   type ExecResult,
   type Executor,
   type FileStat,
+  type MemoryLayerName,
+  MemoryRuleError,
+  type MemoryService,
+  type RecallLayerName,
   resolveWorkspacePath,
   type Tool,
   type ToolContext,

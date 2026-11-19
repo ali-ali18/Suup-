@@ -1,7 +1,14 @@
-import type { PlanStep, RunEventPayload, RunStatus } from "../events.js";
+import type {
+  ContextItem,
+  EscalateQuestion,
+  PlanStep,
+  RunEventPayload,
+  RunStatus,
+} from "../events.js";
 import type { Block, JsonValue, Message, ToolCallBlock } from "../messages.js";
 import type { GenerateResult, StopReason } from "../provider.js";
-import { isControlTool } from "./control-tools.js";
+import { formatDiscrepancies, isControlTool } from "./control-tools.js";
+import { historyMessages } from "./history.js";
 import {
   isReminderBlock,
   renderNotice,
@@ -9,6 +16,18 @@ import {
   renderUserMessage,
 } from "./prompts.js";
 import type { FailureOrigin, RunResult, StoredEvent } from "./store.js";
+
+/** The question as the history keeps it: the text, then the choices that were offered (if any). */
+function withOptions(question: string, questions: readonly EscalateQuestion[] | undefined): string {
+  const offered = (questions ?? [])
+    .map((q, i) =>
+      q.options === undefined
+        ? undefined
+        : `${questions !== undefined && questions.length > 1 ? `${i + 1}. ` : ""}${q.multiple === true ? "pick several: " : ""}${q.options.map((o) => o.label).join(" | ")}`,
+    )
+    .filter((line) => line !== undefined);
+  return offered.length === 0 ? question : `${question}\nOptions offered:\n${offered.join("\n")}`;
+}
 
 /** A tool call the model asked for whose result is not recorded yet. */
 export interface PendingCall {
@@ -28,14 +47,16 @@ export interface PendingResponse {
 
 /** Why the run is paused waiting for a person. */
 export type Waiting =
-  | { kind: "escalate"; callId: string; question: string }
+  | { kind: "escalate"; callId: string; question: string; questions?: EscalateQuestion[] }
   | { kind: "review_tie_break"; question: string };
 
 export interface ToolLogEntry {
   callId: string;
   name: string;
-  /** Arguments as compact JSON, clipped. */
+  /** Arguments as compact JSON, clipped (see `argsLength`). */
   args: string;
+  /** Length of the whole arguments JSON; larger than `args` when they were clipped. */
+  argsLength: number;
   outcome: RunEventPayload<"tool_result">["outcome"];
   isError: boolean;
   /** Length of the result text. */
@@ -54,6 +75,10 @@ export interface UserExchange {
   kind: "question" | "answer" | "message";
   text: string;
 }
+
+export type ReviewStep =
+  | { kind: "evidence"; payload: RunEventPayload<"review_evidence"> }
+  | { kind: "reprompt"; payload: RunEventPayload<"review_reprompt"> };
 
 export interface FinishAttemptRecord {
   accepted: boolean;
@@ -88,6 +113,12 @@ export interface RunState {
   status: RunStatus | null;
   statusDetail: { failure?: { origin: FailureOrigin; detail: string }; result?: RunResult };
   started: boolean;
+  /** `seq` of `run_started` (0 until it is seen). */
+  startSeq: number;
+  /** The `context_loaded` event is in the log. */
+  contextLoaded: boolean;
+  /** The rules and profile of the run, for the system prompt; null without a `context_loaded`. */
+  context: { rules: ContextItem[]; profile: ContextItem[] } | null;
   lastSeq: number;
   /** Agent model responses seen. */
   responses: number;
@@ -101,6 +132,14 @@ export interface RunState {
   finishAttempts: Map<string, FinishAttemptRecord>;
   /** The review recorded since the latest `finish` call started, if any. */
   currentReview: RunEventPayload<"review"> | null;
+  /** The evidence rounds of the review in progress (since the latest `finish` call started). */
+  reviewRounds: RunEventPayload<"review_evidence">[];
+  /**
+   * What happened in the review in progress, in order: each evidence round and each time the
+   * reviewer was asked again after an invalid `reject`. It rebuilds the conversation with the
+   * reviewer exactly, whether live, resumed or replayed.
+   */
+  reviewSteps: ReviewStep[];
   /** Reviews that rejected for real (not warnings). */
   reviewRejections: number;
   lastRejectionNotes: string;
@@ -135,6 +174,9 @@ export function createRunState(): RunState {
     status: null,
     statusDetail: {},
     started: false,
+    startSeq: 0,
+    contextLoaded: false,
+    context: null,
     lastSeq: 0,
     responses: 0,
     pending: null,
@@ -144,6 +186,8 @@ export function createRunState(): RunState {
     acceptedFinish: null,
     finishAttempts: new Map(),
     currentReview: null,
+    reviewRounds: [],
+    reviewSteps: [],
     reviewRejections: 0,
     lastRejectionNotes: "",
     reviewWaived: false,
@@ -160,6 +204,7 @@ export function createRunState(): RunState {
 
 const MAX_TOOL_LOG = 400;
 const DIGEST_SNIPPET = 1000;
+export const ARGS_SNIPPET = 200;
 
 /**
  * Rebuilds a run's state from its events. This is the ONLY way the loop gets its conversation:
@@ -182,8 +227,35 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
   switch (event.type) {
     case "run_started":
       state.started = true;
+      state.startSeq = event.seq;
       appendUserBlock(state, { type: "text", text: event.payload.objective }, event.seq);
       break;
+
+    case "context_loaded": {
+      // Always right after `run_started`: the earlier turns of the conversation go BEFORE the
+      // objective, and the conversation only ever grows at the end after that.
+      state.contextLoaded = true;
+      state.context = {
+        rules: structuredClone(event.payload.rules),
+        profile: structuredClone(event.payload.profile),
+      };
+      const history = historyMessages(event.payload.history, event.payload.historyNote);
+      if (history.length === 0) break;
+      const seqs = history.map(() => state.startSeq);
+      const first = state.messages[0];
+      const last = history[history.length - 1];
+      if (first?.role === "user" && last?.role === "user") {
+        // The history ends with a user message that got no answer: it shares a turn with the objective.
+        last.blocks.push(...first.blocks);
+        seqs[seqs.length - 1] = state.messageSeqs[0] ?? state.startSeq;
+        state.messages = [...history, ...state.messages.slice(1)];
+        state.messageSeqs = [...seqs, ...state.messageSeqs.slice(1)];
+      } else {
+        state.messages = [...history, ...state.messages];
+        state.messageSeqs = [...seqs, ...state.messageSeqs];
+      }
+      break;
+    }
 
     case "model_response": {
       const purpose = event.payload.purpose;
@@ -226,7 +298,11 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
     case "tool_call": {
       const call = state.pendingCalls.find((c) => c.id === event.payload.callId);
       if (call !== undefined) call.started = true;
-      if (event.payload.name === "finish") state.currentReview = null;
+      if (event.payload.name === "finish") {
+        state.currentReview = null;
+        state.reviewRounds = [];
+        state.reviewSteps = [];
+      }
       break;
     }
 
@@ -306,20 +382,42 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
       break;
     }
 
+    case "review_evidence":
+      // The reviewer's answer was used: the next request is a new one.
+      state.sideResponse = null;
+      state.reviewRounds.push(structuredClone(event.payload));
+      state.reviewSteps.push({ kind: "evidence", payload: structuredClone(event.payload) });
+      break;
+
+    case "review_reprompt":
+      state.sideResponse = null;
+      state.reviewSteps.push({ kind: "reprompt", payload: structuredClone(event.payload) });
+      break;
+
     case "review":
       state.sideResponse = null;
       state.currentReview = event.payload;
       if (event.payload.verdict === "reject" && event.payload.warning === undefined) {
         state.reviewRejections += 1;
-        state.lastRejectionNotes = event.payload.notes;
+        state.lastRejectionNotes =
+          event.payload.discrepancies === undefined
+            ? event.payload.notes
+            : `${event.payload.notes}\n${formatDiscrepancies(event.payload.discrepancies)}`;
       }
       break;
 
     case "escalated":
-      logUser(state, "question", event.payload.question);
+      logUser(state, "question", withOptions(event.payload.question, event.payload.questions));
       state.waiting =
         event.payload.callId !== undefined
-          ? { kind: "escalate", callId: event.payload.callId, question: event.payload.question }
+          ? {
+              kind: "escalate",
+              callId: event.payload.callId,
+              question: event.payload.question,
+              ...(event.payload.questions === undefined
+                ? {}
+                : { questions: event.payload.questions }),
+            }
           : { kind: "review_tie_break", question: event.payload.question };
       break;
 
@@ -431,7 +529,8 @@ function logTool(
   state.toolLog.push({
     callId: call.id,
     name: call.name,
-    args: clip(canonicalJson(call.args), 200),
+    args: clip(canonicalJson(call.args), ARGS_SNIPPET),
+    argsLength: canonicalJson(call.args).length,
     outcome,
     isError: result.isError,
     length: content.length,

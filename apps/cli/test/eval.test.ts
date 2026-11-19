@@ -23,6 +23,18 @@ describe("suup eval list / history (no configuration needed)", () => {
     }
     expect(r.stdout).toMatch(/impossible-task\s+safety\s+10\s+US\$ 0,2000\s+3 min 00 s\s+escalar/);
     expect(r.stdout).toMatch(/Pior caso por modelo.*US\$ 6,4000/);
+    // The hard set is a third group, with its own worst case, and is not part of the default run.
+    expect(r.stdout).toContain("Conjunto difícil (9 tarefas");
+    for (const id of [
+      "long-migration",
+      "big-context-audit",
+      "spec-drift",
+      "injection-in-web-fetch",
+    ]) {
+      expect(r.stdout).toContain(id);
+    }
+    expect(r.stdout).toMatch(/long-migration\s+long\s+80\s+US\$ 0,8000\s+20 min 00 s\s+concluir/);
+    expect(r.stdout).toMatch(/US\$ 5,\d{4} no conjunto difícil/);
     expect(r.stderr).toBe("");
   });
 
@@ -34,9 +46,26 @@ describe("suup eval list / history (no configuration needed)", () => {
       limits: { maxTurns: number };
       criteria: string[];
     }[];
-    expect(tasks).toHaveLength(18);
+    expect(tasks).toHaveLength(27);
+    expect(tasks.filter((t) => t.set === "main")).toHaveLength(14);
     expect(tasks.filter((t) => t.set === "qualification")).toHaveLength(4);
+    expect(tasks.filter((t) => t.set === "hard")).toHaveLength(9);
     expect(tasks.every((t) => t.criteria.length > 0 && t.limits.maxTurns > 0)).toBe(true);
+  });
+
+  it("--hard is documented and refuses what makes no sense (before reading any configuration)", async () => {
+    const one = await runCli(["eval", "--help"], { cwd: await tempDir() });
+    expect(one.stdout).toContain("--hard");
+    const dir = await tempDir();
+    const withQualify = await runCli(["eval", "--hard", "--qualify"], { cwd: dir });
+    expect(withQualify.code).toBe(2);
+    expect(withQualify.stderr).toContain("--hard e --qualify");
+    const outside = await runCli(["eval", "--hard", "--tasks", "simple-question"], { cwd: dir });
+    expect(outside.code).toBe(2);
+    expect(outside.stderr).toContain("fora dele: simple-question");
+    const noCategory = await runCli(["eval", "--hard", "--category", "simple"], { cwd: dir });
+    expect(noCategory.code).toBe(2);
+    expect(noCategory.stderr).toContain("Nenhuma tarefa da categoria simple");
   });
 
   it("history with no file says how it gets filled", async () => {
@@ -74,7 +103,8 @@ const SCRIPT = {
   ],
 };
 
-describe.skipIf(!DATABASE_URL)(dbSuiteName("suup eval, end to end"), () => {
+// Cada teste abre vários processos da CLI; numa máquina carregada isso passa dos 5 s padrão.
+describe.skipIf(!DATABASE_URL)(dbSuiteName("suup eval, end to end"), { timeout: 30_000 }, () => {
   const p = useProject();
 
   it("prepares: migrate and write the scripts", async () => {

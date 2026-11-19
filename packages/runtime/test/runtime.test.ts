@@ -103,15 +103,24 @@ describe("runtime: models and providers", () => {
 
   it("registers the built-in tools", () => {
     const runtime = createRuntime(configOf(), { env: {} });
-    expect(runtime.tools.list().map((t) => t.name)).toEqual([
-      "shell",
-      "read_file",
-      "write_file",
-      "edit_file",
-      "list_files",
-      "search_files",
-      "web_fetch",
-    ]);
+    const names = runtime.tools.list().map((t) => t.name);
+    expect(names).toEqual(
+      expect.arrayContaining([
+        "shell",
+        "read_file",
+        "write_file",
+        "edit_file",
+        "list_files",
+        "search_files",
+        "web_fetch",
+        // the memory tools are registered with the others
+        "remember",
+        "recall",
+        "forget",
+        "search_conversations",
+      ]),
+    );
+    expect(new Set(names).size).toBe(names.length);
   });
 
   it("throws a configuration error, only when used, if no database is configured", () => {
@@ -264,5 +273,20 @@ describe("runtime: the machine of each bot", () => {
         else process.env[key] = value;
       }
     }
+  });
+});
+
+describe("runtime: workers", () => {
+  it("gives every worker an id that is unique across processes and containers", () => {
+    const runtime = createRuntime(configOf(), {
+      env: { DATABASE_URL: "postgres://suup@127.0.0.1:1/none" },
+    });
+    const ids = [runtime.createWorker(), runtime.createWorker(), runtime.createWorker()].map(
+      (w) => w.workerId,
+    );
+    expect(new Set(ids).size).toBe(3);
+    // Two containers can have the same pid; the id must not be the pid alone.
+    for (const id of ids) expect(id).toMatch(/^worker-.+-\d+-\d+-[0-9a-f]{6}$/);
+    expect(runtime.createWorker({ workerId: "mine" }).workerId).toBe("mine");
   });
 });

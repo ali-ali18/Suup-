@@ -1,13 +1,38 @@
 {
   "files": [],
   "references": [
-    { "path": "packages/core" },
-    { "path": "packages/providers" },
-    { "path": "packages/tools" },
-    { "path": "packages/db" },
-    { "path": "packages/sandbox" },
-    { "path": "packages/runtime" },
-    { "path": "evals" },
-    { "path": "apps/cli" }
+    {
+      "path": "packages/core"
+    },
+    {
+      "path": "packages/api"
+    },
+    {
+      "path": "packages/avatar"
+    },
+    {
+      "path": "packages/providers"
+    },
+    {
+      "path": "packages/tools"
+    },
+    {
+      "path": "packages/db"
+    },
+    {
+      "path": "packages/sandbox"
+    },
+    {
+      "path": "packages/runtime"
+    },
+    {
+      "path": "packages/server"
+    },
+    {
+      "path": "evals"
+    },
+    {
+      "path": "apps/cli"
+    }
   ]
 }

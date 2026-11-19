@@ -1,6 +1,6 @@
 import { ToolRegistry } from "@suup/core";
 import { describe, expect, it } from "vitest";
-import { builtinTools, registerBuiltinTools } from "../src/index.js";
+import { builtinTools, memoryTools, registerBuiltinTools } from "../src/index.js";
 import { registry } from "./helpers.js";
 
 describe("builtin tools", () => {
@@ -15,8 +15,21 @@ describe("builtin tools", () => {
       "web_fetch",
     ]);
     const fresh = registerBuiltinTools(new ToolRegistry());
-    expect(fresh.list().length).toBe(7);
+    expect(fresh.list().length).toBe(builtinTools.length + memoryTools.length);
+    expect(fresh.list().map((t) => t.name)).toEqual([
+      ...builtinTools.map((t) => t.name),
+      ...memoryTools.map((t) => t.name),
+    ]);
     expect(() => registerBuiltinTools(fresh)).toThrow(/already registered/);
+  });
+
+  it("keeps the memory tools in their own export, registered with the built-ins", () => {
+    expect(memoryTools.map((t) => [t.name, t.risk])).toEqual([
+      ["remember", "write"],
+      ["recall", "read"],
+      ["forget", "write"],
+      ["search_conversations", "read"],
+    ]);
   });
 
   it("assigns the intended risk levels", () => {

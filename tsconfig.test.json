@@ -15,5 +15,6 @@
     "apps/*/test/**/*.ts",
     "evals/src/**/*.test.ts",
     "evals/test/**/*.ts"
-  ]
+  ],
+  "exclude": ["apps/desktop"]
 }

@@ -1,3 +1,5 @@
+import { randomBytes } from "node:crypto";
+import { hostname } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import {
   type BotConfig,
@@ -33,6 +35,9 @@ import {
   resolveDatabaseUrl,
 } from "./config.js";
 import { ConfigError, RuntimeError } from "./errors.js";
+import { createMemoryService } from "./memory-service.js";
+import { DEFAULT_HISTORY_CHARS, loadRunContext } from "./run-context.js";
+import { finishRun } from "./run-end.js";
 import { createScriptedProvider } from "./scripted-provider.js";
 
 type Env = Record<string, string | undefined>;
@@ -73,8 +78,20 @@ export interface CreateWorkerOptions {
   onError?(error: unknown, context: string): void;
 }
 
+export interface BuildDepsOptions {
+  /**
+   * Runs the loop with no memory at all: no rules, profile or conversation history are loaded
+   * (so no `context_loaded` carries anything from the database) and the memory tools have no
+   * `MemoryService` behind them. For evaluations, which must measure the harness and the model,
+   * never what a real user once told the system. Default: what the run says (`runs.isolated`).
+   */
+  isolated?: boolean;
+}
+
 export interface Runtime {
   readonly config: RuntimeConfig;
+  /** Directory relative paths of the configuration start from (sandbox root, scripts). */
+  readonly baseDir: string;
   /** The database handle. Created at the first use; throws `ConfigError` without a URL. */
   readonly db: Db;
   readonly tools: ToolRegistry;
@@ -92,8 +109,10 @@ export interface Runtime {
     botId: string;
     objective: string;
     acceptanceCriteria?: string[];
+    /** An evaluation run: isolated from the user's memory, now and at its end (no journal). */
+    isolated?: boolean;
   }): Promise<Run>;
-  buildDeps(runId: string, workerId: string): Promise<LoopDeps>;
+  buildDeps(runId: string, workerId: string, options?: BuildDepsOptions): Promise<LoopDeps>;
   createWorker(options?: CreateWorkerOptions): Worker;
   close(): Promise<void>;
 }
@@ -328,7 +347,11 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     return dockerExecutor(dockerWorkspace(botId));
   };
 
-  const buildDeps = async (runId: string, workerId: string): Promise<LoopDeps> => {
+  const buildDeps = async (
+    runId: string,
+    workerId: string,
+    buildOptions: BuildDepsOptions = {},
+  ): Promise<LoopDeps> => {
     const handle = runtime.db;
     const run = await getRun(handle, runId);
     if (run === null) throw new RuntimeError("bot_not_found", `Execução ${runId} não encontrada.`);
@@ -348,6 +371,15 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
       executor: await runtime.executorFor(bot.id),
       bot: cfg,
       ...(reviewer === undefined ? {} : { reviewer }),
+      // An isolated run (an evaluation) gets neither: nothing of the user's memory reaches it.
+      ...((buildOptions.isolated ?? run.isolated) === true
+        ? {}
+        : {
+            loadRunContext: (id: string) =>
+              loadRunContext(handle, id, config.defaults?.historyChars ?? DEFAULT_HISTORY_CHARS),
+            memoryFor: (record: { botId: string; id: string }) =>
+              createMemoryService(handle, { botId: record.botId, runId: record.id }),
+          }),
       now: () => new Date(),
       sleep: (ms) => new Promise<void>((done) => setTimeout(done, ms)),
     };
@@ -356,6 +388,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
   let workerCount = 0;
   const runtime: Runtime = {
     config,
+    baseDir,
     get db(): Db {
       if (db === undefined) {
         const url = resolveDatabaseUrl(config, env);
@@ -409,11 +442,16 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
         ...(input.acceptanceCriteria === undefined
           ? {}
           : { acceptanceCriteria: input.acceptanceCriteria }),
+        ...(input.isolated === true ? { isolated: true } : {}),
       });
     },
     buildDeps,
     createWorker(opts = {}) {
-      const workerId = opts.workerId ?? `worker-${process.pid}-${++workerCount}`;
+      // Unique across machines and containers: in two containers the pid can be the same (1, 7...),
+      // and a lease held by "the same worker" would be taken for one's own.
+      const workerId =
+        opts.workerId ??
+        `worker-${hostname()}-${process.pid}-${++workerCount}-${randomBytes(3).toString("hex")}`;
       const settings = { ...DEFAULT_WORKER, ...config.worker };
       return new Worker({
         workerId,
@@ -422,9 +460,17 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
           opts.onlyRunId === undefined ? {} : { onlyRunId: opts.onlyRunId },
         ),
         buildDeps: (runId) => buildDeps(runId, workerId),
+        // What must follow a run (the bot's message in the conversation, the journal) is derived
+        // from the stored run, so it also happens for a run another worker finished after a crash.
+        afterRun: async (end) => {
+          if (end.outcome === "settled" || end.outcome === "failed") {
+            await finishRun(runtime.db, end.runId);
+          }
+        },
         concurrency: opts.concurrency ?? settings.concurrency,
         leaseRenewMs: settings.leaseRenewMs,
         staleAfterMs: settings.staleAfterMs,
+        controlPollMs: settings.controlPollMs,
         ...(opts.idleBackoff === undefined ? {} : { idleBackoff: opts.idleBackoff }),
         ...(opts.onRunEnd === undefined ? {} : { onRunEnd: opts.onRunEnd }),
         ...(opts.onError === undefined ? {} : { onError: opts.onError }),

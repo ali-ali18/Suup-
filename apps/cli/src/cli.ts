@@ -1,14 +1,24 @@
 import { GLOBAL_OPTIONS, type OptionSpec, parseCommandArgs } from "./args.js";
-import { botArchive, botCreate, botList, botShow } from "./commands/bot.js";
+import { botArchive, botCreate, botDraft, botList, botShow } from "./commands/bot.js";
+import { chatCommand } from "./commands/chat.js";
 import { dbMigrate } from "./commands/db.js";
 import { doctorCommand } from "./commands/doctor.js";
 import { evalCommand, evalHistory, evalList } from "./commands/eval.js";
 import { inspectCommand } from "./commands/inspect.js";
+import {
+  memoryAdd,
+  memoryEdit,
+  memoryForget,
+  memoryList,
+  memoryRestore,
+  memorySearch,
+} from "./commands/memory.js";
 import { sayCommand, stopCommand } from "./commands/messages.js";
 import { replayCommand } from "./commands/replay.js";
 import { resendCommand } from "./commands/resend.js";
 import { resumeCommand, runCommand } from "./commands/run.js";
 import { runsCommand, showCommand } from "./commands/runs.js";
+import { serverCommand } from "./commands/server.js";
 import { workerCommand } from "./commands/worker.js";
 import { type CommandSpec, makeCtx } from "./context.js";
 import { CommandError, EXIT_FAILED, EXIT_OK, EXIT_USAGE, UsageError } from "./errors.js";
@@ -21,8 +31,17 @@ export const COMMANDS: readonly CommandSpec[] = [
   botList,
   botShow,
   botArchive,
+  botDraft,
+  chatCommand,
+  memoryList,
+  memoryAdd,
+  memoryEdit,
+  memoryForget,
+  memoryRestore,
+  memorySearch,
   runCommand,
   workerCommand,
+  serverCommand,
   runsCommand,
   showCommand,
   sayCommand,
@@ -39,6 +58,7 @@ export const COMMANDS: readonly CommandSpec[] = [
 const GROUPS: Record<string, string> = {
   db: "Banco de dados",
   bot: "Bots",
+  memory: "Memória",
 };
 
 function usageLine(spec: CommandSpec): string {

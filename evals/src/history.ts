@@ -3,10 +3,39 @@ import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { z } from "zod";
 import { dateTime, num, pct, points, usd } from "./fmt.js";
+import { hardTasks } from "./hard/index.js";
+import { qualificationTasks } from "./qualify/index.js";
 import { type EvalReport, type HistoryNote, isQualified, type ModelSummary } from "./report.js";
+import { evalTasks } from "./tasks/index.js";
 
 /** Where the history lives, relative to the directory the CLI runs in. */
 export const DEFAULT_HISTORY_FILE = ".suup/evals/history.jsonl";
+
+/** Which of the task sets a run belongs to. Only entries of the same set are ever compared. */
+export const TASK_SETS = ["main", "qualification", "hard", "mixed"] as const;
+export type TaskSet = (typeof TASK_SETS)[number];
+
+const SET_LABEL: Record<TaskSet, string> = {
+  main: "principal",
+  qualification: "de qualificação",
+  hard: "difícil (--hard)",
+  mixed: "misto (tarefas de conjuntos diferentes)",
+};
+
+/**
+ * The set the tasks come from: all from the main set (a category or a few of its tasks count),
+ * all from the hard set, all from the qualification set, or `mixed`. A hard run and a main run are
+ * different sets, so a hard run is never compared with a default one.
+ */
+export function taskSetOf(taskIds: readonly string[]): TaskSet {
+  if (taskIds.length === 0) return "mixed";
+  const within = (list: readonly { id: string }[]) =>
+    taskIds.every((id) => list.some((t) => t.id === id));
+  if (within(hardTasks)) return "hard";
+  if (within(evalTasks)) return "main";
+  if (within(qualificationTasks)) return "qualification";
+  return "mixed";
+}
 
 export const historyEntrySchema = z.object({
   /** ISO date of the evaluation. */
@@ -16,6 +45,8 @@ export const historyEntrySchema = z.object({
   modelVersion: z.string(),
   /** Which tasks were run: only the same set is comparable. */
   suite: z.string(),
+  /** The task set (main, qualification, hard). Entries from before it existed have none. */
+  set: z.enum(TASK_SETS).optional(),
   passRate: z.number().min(0).max(1),
   executed: z.number().int().nonnegative(),
   passed: z.number().int().nonnegative(),
@@ -42,6 +73,7 @@ export function suiteId(taskIds: readonly string[]): string {
 /** One entry per model that executed at least one cell. */
 export function historyEntries(report: EvalReport): HistoryEntry[] {
   const suite = suiteId(report.tasks.map((t) => t.id));
+  const set = taskSetOf(report.tasks.map((t) => t.id));
   return report.summary
     .filter((s) => s.executed > 0 && s.passRate !== null)
     .map((s: ModelSummary) => ({
@@ -49,6 +81,7 @@ export function historyEntries(report: EvalReport): HistoryEntry[] {
       model: s.model,
       modelVersion: s.modelVersions.join(", "),
       suite,
+      set,
       passRate: s.passRate as number,
       executed: s.executed,
       passed: s.passed,
@@ -104,13 +137,25 @@ export function compareWithPrevious(
   entry: HistoryEntry,
   history: readonly HistoryEntry[],
 ): HistoryNote {
-  const mine = history.filter((h) => h.model === entry.model && h.date < entry.date);
+  // Never across task sets: a hard run says nothing about a default one. Entries recorded before
+  // the set was kept are comparable only when they ran exactly the same tasks.
+  const mine = history.filter(
+    (h) =>
+      h.model === entry.model &&
+      h.date < entry.date &&
+      (h.set === undefined ? h.suite === entry.suite : h.set === entry.set),
+  );
   const sameSuite = mine.filter((h) => h.suite === entry.suite);
   const previous = (sameSuite.length > 0 ? sameSuite : mine).at(-1);
   if (previous === undefined) {
+    const otherSets = history.some((h) => h.model === entry.model && h.date < entry.date);
     return {
       model: entry.model,
-      lines: ["Primeira avaliação registrada deste modelo: sem comparação."],
+      lines: [
+        entry.set === undefined
+          ? "Primeira avaliação registrada deste modelo: sem comparação."
+          : `Primeira avaliação registrada deste modelo no conjunto ${SET_LABEL[entry.set]}: sem comparação${otherSets ? " (as avaliações de outros conjuntos não são comparáveis)" : ""}.`,
+      ],
     };
   }
   const change = entry.passRate - previous.passRate;

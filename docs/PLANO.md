@@ -78,7 +78,7 @@ Regras:
 
 - Pergunta simples não precisa de plano. A partir do momento em que existe plano, `finish` é a única saída válida.
 - O plano e o objetivo vão sempre no fim do contexto, onde o modelo presta mais atenção.
-- Antes de aceitar `finish` em execução com plano, um **revisor** (outra chamada ao modelo, sem o histórico) recebe objetivo, critérios e evidência, e pode devolver.
+- Antes de aceitar `finish` em execução com plano, um **revisor** (outra chamada ao modelo, sem o histórico) recebe objetivo, critérios e evidência, e pode devolver. O resumo que ele recebe é curto: por isso pode **pedir evidência** (resultados inteiros, argumentos de chamadas e arquivos, em até 3 rodadas e com orçamento de caracteres) antes de decidir, e só reprova com ao menos uma divergência concreta e estruturada; o que continua inverificável chega ao dono como "não consegui verificar X", nunca como reprovação.
 - Estados: `queued`, `running`, `waiting_approval`, `waiting_user`, `done`, `failed`, `cancelled`.
 - Execuções longas rodam em segundo plano; a conversa continua livre.
 - Retomada: o contexto é reconstruído a partir dos eventos. Uma ferramenta interrompida no meio é marcada como "resultado desconhecido" e o modelo decide se confere ou repete.
@@ -222,9 +222,9 @@ Requisito de infraestrutura: o servidor na VPS precisa de domínio e HTTPS públ
 
 ### 4.12 App e agente local
 
-- App de desktop com interface web numa casca nativa. Mostra conversas, cartões de aprovação, formulário seguro, execuções em andamento e, na fase 5, a tela ao vivo.
-- O mesmo app contém o agente local: abre conexão de saída com o servidor e executa comandos aprovados no PC.
-- Comunicação em tempo real por WebSocket, alimentado por `LISTEN/NOTIFY` do Postgres.
+- App de desktop em Tauri: interface web na webview do sistema, com casca nativa leve. Mostra conversas, cartões de aprovação, formulário seguro, execuções em andamento e, na fase 5, a tela ao vivo.
+- O agente local é um processo Node à parte, empacotado junto com o app, que o inicia e supervisiona: abre conexão de saída com o servidor e executa comandos aprovados no PC. Assim ele reaproveita os pacotes do projeto e pode continuar rodando com a janela fechada.
+- Comunicação em tempo real por **Server-Sent Events** (decisão da fase 2, no lugar do WebSocket do plano original: o fluxo é só do servidor para o app, passa por qualquer proxy HTTP e se retoma pelo `Last-Event-ID`; as ações do app são requisições HTTP comuns), alimentado por `LISTEN/NOTIFY` do Postgres. Veja [API.md](API.md).
 
 ### 4.13 Diagnóstico: de quem é o problema
 
@@ -246,7 +246,7 @@ Um problema pode estar em cinco lugares: modelo, harness, ferramenta, servidor o
 | Replay gravado: reexecuta o loop usando as respostas do modelo que foram gravadas | Mesmo erro com as mesmas respostas: harness. Respostas ruins desde a origem: modelo ou instruções |
 | Origem da falha gravada em toda execução que não termina bem: `provider`, `tool`, `harness`, `limit`, `approval`, `user` | Classificação imediata, sem investigar |
 | Conjunto de avaliação rodando sem app | Linha de base do harness: se a avaliação passa e o app falha, o problema está acima do núcleo |
-| Verificações de saúde por componente: banco, fila, máquina dos bots, provedores, WebSocket | Infraestrutura fora do ar |
+| Verificações de saúde por componente: banco, fila, máquina dos bots, provedores, tempo real (SSE) | Infraestrutura fora do ar |
 
 **Roteiro de diagnóstico**
 
@@ -411,10 +411,10 @@ A fila de execuções é a própria tabela `runs`, consumida com `SELECT … FOR
 | Monorepo | pnpm workspaces |
 | Banco | Postgres + `pgvector`, migrações em SQL versionado |
 | Validação | zod |
-| Servidor | HTTP + WebSocket |
+| Servidor | HTTP (`node:http`) + Server-Sent Events |
 | Testes | Vitest |
 | Isolamento | Docker |
-| Desktop (fase 2) | interface web em casca nativa (Tauri ou Electron, a decidir na fase 2) |
+| Desktop (fase 2) | Tauri (decisão de 18/11/2026), com interface em React e TypeScript. O agente local da fase 6 roda como processo Node separado, que o app inicia e supervisiona |
 | Navegador (fase 5) | Playwright sobre tela virtual |
 
 ## 7. Estrutura do repositório
@@ -426,7 +426,8 @@ packages/
   tools/       registro e ferramentas
   db/          esquema, migrações, acesso a dados
   sandbox/     executor da máquina dos bots
-  server/      API, WebSocket, fila, agendador            (fase 2 em diante)
+  api/         contrato da API (esquemas, cliente, stream) compartilhado com o app
+  server/      API HTTP, tempo real (SSE)                 (fase 2)
   desktop/     app e agente local                         (fase 2 em diante)
 apps/
   cli/         criar e acompanhar execuções pelo terminal (fase 1)

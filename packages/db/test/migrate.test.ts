@@ -5,6 +5,11 @@ import { describe, expect, it } from "vitest";
 import { MIGRATIONS_DIR, MigrationChecksumError, migrate } from "../src/index.js";
 import { DATABASE_URL, dbSuiteName, useIsolatedDb } from "./helpers.js";
 
+/** The migration files of the package, in order: the tests do not hardcode how many there are. */
+async function allMigrations(): Promise<string[]> {
+  return (await readdir(MIGRATIONS_DIR)).filter((f) => f.endsWith(".sql")).sort();
+}
+
 describe.skipIf(!DATABASE_URL)(dbSuiteName("migrate"), () => {
   const ctx = useIsolatedDb({ migrate: false });
 
@@ -14,13 +19,18 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("migrate"), () => {
 
   it("applies pending migrations, records them, and is idempotent", async () => {
     const first = await migrate(ctx.db);
-    expect(first).toEqual(["0001_init.sql", "0002_inbox_and_model_origin.sql"]);
+    expect(first).toEqual(await allMigrations());
+    expect(first.slice(0, 3)).toEqual([
+      "0001_init.sql",
+      "0002_inbox_and_model_origin.sql",
+      "0003_conversations_and_memory.sql",
+    ]);
 
     const second = await migrate(ctx.db);
     expect(second).toEqual([]);
 
     const rows = await ctx.db.sql`select name, checksum from schema_migrations`;
-    expect(rows.map((r) => r.name)).toEqual(["0001_init.sql", "0002_inbox_and_model_origin.sql"]);
+    expect(rows.map((r) => r.name)).toEqual(await allMigrations());
     expect(rows[0]?.checksum).toMatch(/^[0-9a-f]{64}$/);
 
     const tables = await ctx.db.sql<{ table_name: string }[]>`
@@ -28,6 +38,12 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("migrate"), () => {
       where table_schema = ${ctx.schema} order by table_name`;
     expect(tables.map((t) => t.table_name)).toEqual([
       "bots",
+      "change_log",
+      "change_log_state",
+      "conversation_members",
+      "conversations",
+      "memories",
+      "messages",
       "run_events",
       "run_inbox",
       "runs",
@@ -61,11 +77,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("migrate"), () => {
     await expect(migrate(ctx.db, dir)).rejects.toThrow(/0901_broken\.sql failed/);
 
     const names = await ctx.db.sql<{ name: string }[]>`select name from schema_migrations`;
-    expect(names.map((n) => n.name).sort()).toEqual([
-      "0001_init.sql",
-      "0002_inbox_and_model_origin.sql",
-      "0900_ok.sql",
-    ]);
+    expect(names.map((n) => n.name).sort()).toEqual([...(await allMigrations()), "0900_ok.sql"]);
     const [t] = await ctx.db.sql<{ ok: string | null; rolled: string | null }[]>`
       select to_regclass('extra_ok')::text as ok, to_regclass('extra_rolled_back')::text as rolled`;
     expect(t?.ok).not.toBeNull();
@@ -76,9 +88,10 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("migrate"), () => {
     const fresh = await ctx.db.sql`select 1`; // keep pool warm
     expect(fresh).toHaveLength(1);
     await ctx.db
-      .sql`drop table schema_migrations, run_inbox, run_events, runs, bots, extra_ok cascade`;
-    await ctx.db.sql`drop function set_updated_at(), run_events_append_only()`;
+      .sql`drop table schema_migrations, memories, messages, conversation_members, conversations, run_inbox, run_events, runs, bots, extra_ok, change_log, change_log_state cascade`;
+    await ctx.db
+      .sql`drop function set_updated_at(), run_events_append_only(), suup_search_query(text), suup_unaccent(text)`;
     const results = await Promise.all([migrate(ctx.db), migrate(ctx.db), migrate(ctx.db)]);
-    expect(results.flat()).toEqual(["0001_init.sql", "0002_inbox_and_model_origin.sql"]);
+    expect(results.flat()).toEqual(await allMigrations());
   });
 });

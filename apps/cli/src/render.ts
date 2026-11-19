@@ -1,4 +1,10 @@
-import { type PlanStep, type RunEventData, runEventSchema } from "@suup/core";
+import {
+  type EscalateQuestion,
+  escalatedQuestions,
+  type PlanStep,
+  type RunEventData,
+  runEventSchema,
+} from "@suup/core";
 import {
   firstLines,
   formatDuration,
@@ -10,6 +16,22 @@ import {
   outcomePt,
   statusPt,
 } from "./format.js";
+import { optionLines } from "./questionnaire.js";
+
+/**
+ * What the bot asked, for the terminal: the text and, for a question with choices, the numbered
+ * options (the answer is their numbers, separated by commas, or free text; Enter skips).
+ */
+export function renderQuestions(questions: readonly EscalateQuestion[]): string[] {
+  const lines: string[] = [];
+  const many = questions.length > 1;
+  questions.forEach((q, i) => {
+    lines.push(...indent(`${many ? `${i + 1}. ` : ""}${q.question}`, "    "));
+    for (const line of optionLines(q)) lines.push(`      ${line}`);
+  });
+  if (many) lines.push("    (Enter pula uma pergunta)");
+  return lines;
+}
 
 /** An event as it comes out of the database, before any interpretation. */
 export interface RawEvent {
@@ -132,6 +154,20 @@ export function renderEvent(event: RawEvent, state: RenderState): string[] {
           : ["Critérios de pronto:", ...acceptanceCriteria.map((c, i) => `  ${i + 1}. ${c}`)]),
       ];
     }
+    case "context_loaded": {
+      const { rules, profile, history } = e.payload;
+      if (rules.length + profile.length + history.length === 0) return [];
+      const parts = [
+        rules.length > 0 ? `${rules.length} regra${rules.length === 1 ? "" : "s"}` : "",
+        profile.length > 0
+          ? `${profile.length} fato${profile.length === 1 ? "" : "s"} do perfil`
+          : "",
+        history.length > 0
+          ? `${history.length} mensagem${history.length === 1 ? "" : "s"} anterior${history.length === 1 ? "" : "es"} da conversa`
+          : "",
+      ].filter((part) => part !== "");
+      return [`· contexto carregado: ${parts.join(", ")}`];
+    }
     case "model_request": {
       const purpose = e.payload.purpose ?? "agent";
       if (purpose === "review") return [`· revisor (${e.payload.model}) conferindo a conclusão…`];
@@ -199,18 +235,38 @@ export function renderEvent(event: RawEvent, state: RenderState): string[] {
       ];
     }
     case "review": {
-      const verdict = e.payload.verdict === "approve" ? "aprovou" : "reprovou";
+      const verdict = {
+        approve: "aprovou",
+        reject: "reprovou",
+        unverified: "não conseguiu verificar",
+      }[e.payload.verdict];
       return [
         `Revisor ${verdict}${e.payload.notes.trim() === "" ? "" : `: ${oneLine(e.payload.notes, 200)}`}`,
+        ...(e.payload.discrepancies ?? []).map(
+          (d) =>
+            `  - ${oneLine(d.claimed, 80)} → ${oneLine(d.shows, 80)} (${oneLine(d.where, 40)})`,
+        ),
         ...(e.payload.warning === undefined ? [] : [`  ! aviso: ${e.payload.warning}`]),
       ];
     }
+    case "review_evidence": {
+      const { supplied, missing, round, omitted } = e.payload;
+      const cut = supplied.filter((i) => i.sent < i.chars).length;
+      const left = omitted?.length ?? 0;
+      return [
+        `· revisor pediu mais evidências (rodada ${round}): ${supplied.length} item(ns) enviado(s)${cut > 0 ? `, ${cut} cortado(s) pelo limite` : ""}${left > 0 ? `, ${left} ficou(aram) de fora pelo limite` : ""}${missing.length > 0 ? `, ${missing.length} indisponível(is)` : ""}`,
+      ];
+    }
+    case "review_reprompt":
+      return [
+        `· revisor reprovou sem apontar divergência; perguntado de novo (${e.payload.reason})`,
+      ];
     case "escalated":
       return [
         e.payload.reason === "review_tie_break"
           ? "? O bot e o revisor não chegaram a um acordo e precisam da sua decisão:"
           : "? O bot precisa de você:",
-        ...indent(e.payload.question, "    "),
+        ...renderQuestions(escalatedQuestions(e.payload)),
       ];
     case "status_changed": {
       const { to, failure, result } = e.payload;
@@ -251,6 +307,8 @@ export function summarizeEvent(event: RawEvent): string {
   switch (e.type) {
     case "run_started":
       return `bot ${e.payload.botId.slice(0, 8)} objetivo=${JSON.stringify(oneLine(e.payload.objective, 70))}`;
+    case "context_loaded":
+      return `${e.payload.rules.length} regras · ${e.payload.profile.length} fatos do perfil · ${e.payload.history.length} mensagens de histórico${e.payload.historyNote === undefined ? "" : " (com aviso de mensagens omitidas)"}`;
     case "model_request": {
       const purpose = e.payload.purpose ?? "agent";
       return `${purpose} ${e.payload.provider}/${e.payload.model} · ${e.payload.messages.length} msgs · ${e.payload.tools.length} ferramentas`;
@@ -283,6 +341,10 @@ export function summarizeEvent(event: RawEvent): string {
         : `recusada: ${oneLine(e.payload.rejectionReasons.join(" | "), 90)}`;
     case "review":
       return `${e.payload.verdict}: ${oneLine(e.payload.notes, 80)}${e.payload.warning === undefined ? "" : ` (aviso: ${oneLine(e.payload.warning, 50)})`}`;
+    case "review_evidence":
+      return `rodada ${e.payload.round}: ${e.payload.supplied.length} enviado(s), ${e.payload.omitted?.length ?? 0} de fora pelo limite, ${e.payload.missing.length} indisponível(is)`;
+    case "review_reprompt":
+      return `reprovação sem divergência: ${oneLine(e.payload.reason, 80)}`;
     case "escalated":
       return JSON.stringify(oneLine(e.payload.question, 90));
     case "status_changed": {

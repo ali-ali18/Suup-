@@ -129,7 +129,8 @@ function sectionOf(req: GenerateRequest): Section {
  * Answers come from the script, deterministically:
  *
  * - `agent`: the answer to a turn is `agent[n]`, where `n` is the number of assistant messages
- *   already in the conversation. It depends only on the request, so a run resumed in another
+ *   already in the conversation (the assistant turns of a conversation's history count too, so
+ *   the second turn of a chat starts its script after the first one). It depends only on the request, so a run resumed in another
  *   process (after a pause, an escalation or a crash) goes on from the right step, and re-sending
  *   a recorded request (`suup resend`) gets the same answer again.
  * - `review` and `compaction`: consumed in order within the process; the last step repeats when

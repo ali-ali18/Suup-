@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { Block, JsonValue } from "../messages.js";
 import { ProviderError } from "../provider.js";
 import {
   call,
@@ -14,6 +15,7 @@ import {
   use,
   verdict,
 } from "../testing/index.js";
+import { verdictToolSpec } from "./control-tools.js";
 import { buildReviewDigest, parseVerdict } from "./reviewer.js";
 import type { ToolLogEntry } from "./state.js";
 
@@ -267,6 +269,7 @@ describe("review digest", () => {
     callId: `c${i}`,
     name: "shell",
     args: '{"command":"ls"}',
+    argsLength: 15,
     outcome: "ok",
     isError: false,
     length: 5,
@@ -290,7 +293,7 @@ describe("review digest", () => {
     const log = Array.from({ length: 200 }, (_, i) => entry(i + 1));
     const digest = buildReviewDigest(log, 1000);
     expect(digest.length).toBeLessThan(1200);
-    expect(digest).toMatch(/^\(\d+ earlier tool call\(s\) omitted\)/);
+    expect(digest).toMatch(/^\(\d+ earlier tool call\(s\) omitted: #1 to #\d+;/);
     expect(digest).toContain("#200 shell");
     expect(digest).not.toContain("#1 shell");
   });
@@ -301,11 +304,144 @@ describe("review digest", () => {
 });
 
 describe("parseVerdict", () => {
-  it("reads a well-formed verdict and fills notes for a bare rejection", () => {
+  const verdictCall = (args: unknown): Block[] => [
+    { type: "tool_call", id: "v", name: "verdict", args: args as JsonValue },
+  ];
+
+  it("a reject with no discrepancy is invalid (not a rejection), with the reason", () => {
+    const parsed = parseVerdict(verdictCall({ verdict: "reject", notes: " " }));
+    expect(parsed).toMatchObject({
+      verdict: "reject",
+      notes: "(no reason given)",
+      callId: "v",
+      results: [],
+      calls: [],
+      files: [],
+      discrepancies: [],
+    });
+    expect(parsed.invalidReject).toContain("at least one concrete discrepancy");
+  });
+
+  it("a discrepancy with an empty part does not count", () => {
+    const parsed = parseVerdict(
+      verdictCall({
+        verdict: "reject",
+        notes: "wrong",
+        discrepancies: [{ claimed: "42", shows: " ", where: "#1", real_mismatch: true }],
+      }),
+    );
+    expect(parsed.invalidReject).toBeDefined();
+  });
+
+  it("a reject with a complete discrepancy is valid and keeps it", () => {
+    const parsed = parseVerdict(
+      verdictCall({
+        verdict: "reject",
+        notes: "fix the total",
+        discrepancies: [
+          { claimed: "Total 42", shows: "report says 41", where: "#2", real_mismatch: true },
+        ],
+      }),
+    );
+    expect(parsed.invalidReject).toBeUndefined();
+    expect(parsed.discrepancies).toEqual([
+      { claimed: "Total 42", shows: "report says 41", where: "#2" },
+    ]);
+  });
+
+  it("an entry the reviewer marks as not a real mismatch is dropped; none left is a bare reject", () => {
+    const parsed = parseVerdict(
+      verdictCall({
+        verdict: "reject",
+        notes: "all matches",
+        discrepancies: [
+          {
+            claimed: "CNPJ 0001-95",
+            shows: "matches; no discrepancy",
+            where: "#2",
+            real_mismatch: false,
+          },
+          { claimed: "Total 42", shows: "consistent", where: "#3", real_mismatch: false },
+        ],
+      }),
+    );
+    expect(parsed.discrepancies).toEqual([]);
+    expect(parsed.invalidReject).toContain("at least one concrete discrepancy");
+    expect(parsed.invalidReject).toContain("The 2 entries you listed were discarded");
+  });
+
+  it("keeps only the real ones when real and not-real entries are mixed", () => {
+    const parsed = parseVerdict(
+      verdictCall({
+        verdict: "reject",
+        notes: "one is wrong",
+        discrepancies: [
+          { claimed: "a", shows: "same", where: "#1", real_mismatch: false },
+          { claimed: "Total 42", shows: "report says 41", where: "#2", real_mismatch: true },
+        ],
+      }),
+    );
+    expect(parsed.invalidReject).toBeUndefined();
+    expect(parsed.discrepancies).toEqual([
+      { claimed: "Total 42", shows: "report says 41", where: "#2" },
+    ]);
+  });
+
+  it("an entry without the flag is not confirmed: it is dropped, not an approval by default", () => {
+    const parsed = parseVerdict(
+      verdictCall({
+        verdict: "reject",
+        notes: "x",
+        discrepancies: [{ claimed: "a", shows: "b", where: "#1" }],
+      }),
+    );
+    expect(parsed.verdict).toBe("reject");
+    expect(parsed.warning).toBeUndefined();
+    expect(parsed.invalidReject).toBeDefined();
+  });
+
+  it("the verdict tool asks for the flag (and the unchecked list) in its schema", () => {
+    const schema = JSON.stringify(verdictToolSpec(true).inputSchema);
+    expect(schema).toContain('"required":["claimed","shows","where","real_mismatch"]');
+    expect(schema).toContain('"required":["what","kind","ref"]');
+    expect(JSON.stringify(verdictToolSpec(false).inputSchema)).toContain("real_mismatch");
+  });
+
+  it("reads what a cannot_verify says it lacked; a malformed list is empty, not an approval", () => {
+    const parsed = parseVerdict(
+      verdictCall({
+        verdict: "cannot_verify",
+        notes: "n",
+        unchecked: [
+          { what: "the CNPJ", kind: "file", ref: "contrato.md" },
+          { what: " ", kind: "other", ref: "" },
+          { what: "the total" },
+        ],
+      }),
+    );
+    expect(parsed.unchecked).toEqual([
+      { what: "the CNPJ", kind: "file", ref: "contrato.md" },
+      { what: "the total", kind: "other", ref: "" },
+    ]);
+    const bad = parseVerdict(verdictCall({ verdict: "cannot_verify", notes: "n", unchecked: "x" }));
+    expect(bad.verdict).toBe("cannot_verify");
+    expect(bad.unchecked).toEqual([]);
+    expect(bad.warning).toBeUndefined();
+  });
+
+  it("an approval or cannot_verify needs no discrepancy", () => {
     expect(
-      parseVerdict([
-        { type: "tool_call", id: "v", name: "verdict", args: { verdict: "reject", notes: " " } },
-      ]),
-    ).toEqual({ verdict: "reject", notes: "(no reason given)" });
+      parseVerdict(verdictCall({ verdict: "approve", notes: "" })).invalidReject,
+    ).toBeUndefined();
+    expect(
+      parseVerdict(verdictCall({ verdict: "cannot_verify", notes: "x" })).invalidReject,
+    ).toBeUndefined();
+  });
+
+  it("reads the calls the reviewer asked for", () => {
+    const parsed = parseVerdict(
+      verdictCall({ verdict: "need_evidence", notes: "n", results: ["#1"], calls: ["#4"] }),
+    );
+    expect(parsed).toMatchObject({ results: ["#1"], calls: ["#4"], files: [] });
   });
 });

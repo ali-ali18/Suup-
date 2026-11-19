@@ -32,5 +32,25 @@
         "organizeImports": "on"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["apps/desktop/src/**"],
+      "linter": {
+        "rules": {
+          "a11y": {
+            "useSemanticElements": "off",
+            "noStaticElementInteractions": "off",
+            "noAutofocus": "off"
+          },
+          "correctness": {
+            "useExhaustiveDependencies": "off"
+          },
+          "complexity": {
+            "noImportantStyles": "off"
+          }
+        }
+      }
+    }
+  ]
 }

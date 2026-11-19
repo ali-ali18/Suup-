@@ -110,12 +110,44 @@ const workerSchema = z.strictObject({
   concurrency: z.exactOptional(positiveInt),
   leaseRenewMs: z.exactOptional(z.number().positive()),
   staleAfterMs: z.exactOptional(z.number().positive()),
+  /** How often a running run is checked for a pause or interrupt asked for by the server. */
+  controlPollMs: z.exactOptional(z.number().positive()),
+});
+
+/** A browser origin: scheme, host and optional port, nothing else (no path, no trailing slash). */
+const ORIGIN = /^[a-z][a-z0-9+.-]*:\/\/[^/\s?#@]+$/i;
+const originSchema = z
+  .string({ error: orMissing("esperado uma origem (texto), por exemplo http://localhost:1420") })
+  .regex(
+    ORIGIN,
+    "origem inválida: use só esquema, host e porta, sem barra no fim nem caminho (ex.: http://localhost:1420 ou tauri://localhost)",
+  );
+
+const serverSchema = z.strictObject({
+  /** Interface to listen on. Default `127.0.0.1`; anything else must be asked for here. */
+  host: z.exactOptional(z.string().min(1)),
+  port: z.exactOptional(z.number().int().min(0).max(65535)),
+  /** Browser origins allowed to call the API (CORS). Empty: no browser origin is allowed. */
+  allowedOrigins: z.exactOptional(z.array(originSchema)),
+  /** NAME of the environment variable that holds the bearer token (never the token itself). */
+  tokenEnv: z.exactOptional(envName),
+  /** Most concurrent realtime streams (SSE). */
+  maxStreams: z.exactOptional(positiveInt),
+  /** Largest request body accepted, in bytes. */
+  maxBodyBytes: z.exactOptional(positiveInt),
+  /** How long the realtime change log is kept (minutes): the window `Last-Event-ID` can resume from. */
+  eventRetentionMinutes: z.exactOptional(positiveInt),
 });
 
 const defaultsSchema = z.strictObject({
   maxTurns: z.exactOptional(positiveInt),
   maxCostUsd: z.exactOptional(z.number().positive()),
   maxDurationMs: z.exactOptional(positiveInt),
+  /**
+   * How many characters of the earlier messages of a conversation a run gets as history (whole
+   * messages, newest first). Older ones are found with `search_conversations`.
+   */
+  historyChars: z.exactOptional(positiveInt),
 });
 
 export const configSchema = z
@@ -126,6 +158,7 @@ export const configSchema = z
     reviewer: z.exactOptional(z.strictObject({ model: z.string().min(1) })),
     sandbox: sandboxSchema,
     worker: z.exactOptional(workerSchema),
+    server: z.exactOptional(serverSchema),
     defaults: z.exactOptional(defaultsSchema),
   })
   .superRefine((config, ctx) => {
@@ -187,8 +220,23 @@ export type RuntimeConfig = z.infer<typeof configSchema>;
 export type ProviderEntry = RuntimeConfig["providers"][number];
 export type ModelEntry = RuntimeConfig["models"][number];
 export type SandboxEntry = RuntimeConfig["sandbox"];
+export type ServerConfig = NonNullable<RuntimeConfig["server"]>;
 
-export const DEFAULT_WORKER = { concurrency: 4, leaseRenewMs: 10_000, staleAfterMs: 30_000 };
+export const DEFAULT_WORKER = {
+  concurrency: 4,
+  leaseRenewMs: 10_000,
+  staleAfterMs: 30_000,
+  controlPollMs: 2_000,
+};
+/** Where the server listens when the configuration does not say: this computer only. */
+export const DEFAULT_SERVER = {
+  host: "127.0.0.1",
+  port: 8787,
+  tokenEnv: "SUUP_SERVER_TOKEN",
+  maxStreams: 16,
+  maxBodyBytes: 1_048_576,
+  eventRetentionMinutes: 360,
+};
 /** The turn limit of a bot that sets none, when the configuration does not set one either. */
 export const DEFAULT_MAX_TURNS = 50;
 
@@ -200,7 +248,7 @@ export function describeIssues(error: z.ZodError): string[] {
   const walk = (issues: readonly z.core.$ZodIssue[], prefix: (string | number)[]) => {
     for (const issue of issues) {
       const path = [...prefix, ...issue.path.map((p) => (typeof p === "symbol" ? String(p) : p))];
-      lines.push(`${renderPath(path)}: ${describeIssue(issue)}`);
+      lines.push(`${renderPath(path)}: ${describeIssue(issue, path)}`);
     }
   };
   walk(error.issues, []);
@@ -214,7 +262,7 @@ function renderPath(path: readonly (string | number)[]): string {
 
 const SECRET_KEYS = new Set(["apiKey", "api_key", "apikey", "key", "token", "secret", "password"]);
 
-function describeIssue(issue: z.core.$ZodIssue): string {
+function describeIssue(issue: z.core.$ZodIssue, path: readonly (string | number)[] = []): string {
   switch (issue.code) {
     case "invalid_type": {
       const match = /^Invalid input: expected (\w+), received (\w+)/.exec(issue.message);
@@ -227,6 +275,9 @@ function describeIssue(issue: z.core.$ZodIssue): string {
     case "unrecognized_keys": {
       const keys = issue.keys;
       const secret = keys.find((k) => SECRET_KEYS.has(k));
+      if (secret !== undefined && path[0] === "server") {
+        return `"${secret}" não é aceito: o token do servidor nunca fica no arquivo. Use "tokenEnv" com o NOME da variável de ambiente que guarda o token (gere um token com: suup server --generate-token)`;
+      }
       if (secret !== undefined) {
         return `"${secret}" não é aceito: chaves de API nunca ficam no arquivo. Use "apiKeyEnv" com o NOME da variável de ambiente que guarda a chave`;
       }

@@ -1,9 +1,12 @@
 import { createInterface } from "node:readline";
-import { getRun, postInbox } from "@suup/db";
+import type { Readable } from "node:stream";
+import { escalatedQuestions } from "@suup/core";
+import { getRun, postInbox, type Run } from "@suup/db";
 import type { Ctx } from "./context.js";
-import { EXIT_FAILED, EXIT_OK } from "./errors.js";
+import { CommandError, EXIT_FAILED, EXIT_OK } from "./errors.js";
 import { readEvents } from "./lookup.js";
-import { primedRenderState, renderEvent, renderFooter } from "./render.js";
+import { needsQuestionnaire, Questionnaire } from "./questionnaire.js";
+import { primedRenderState, type RawEvent, renderEvent, renderFooter } from "./render.js";
 
 const POLL_MS = 120;
 /** How long a soft stop waits for the current turn before it gives up (a second Ctrl+C aborts sooner). */
@@ -13,6 +16,81 @@ const TERMINAL = new Set(["done", "failed", "cancelled"]);
 const message = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/** Something typed lines can be taken from: while it is attached, every line goes to `handler`. */
+export interface LineSource {
+  attach(handler: (line: string) => void): () => void;
+}
+
+/**
+ * The lines typed on a terminal: one reader for a whole session, so several follows (and the
+ * prompt between them) share it. A line typed while nobody listens waits for `next`.
+ */
+export class LineQueue implements LineSource {
+  readonly #rl;
+  readonly #waiting: string[] = [];
+  #handler: ((line: string) => void) | undefined;
+  #waiter: ((line: string | null) => void) | undefined;
+  #closed = false;
+
+  constructor(input: Readable) {
+    this.#rl = createInterface({ input });
+    this.#rl.on("line", (line) => {
+      if (this.#handler !== undefined) this.#handler(line);
+      else if (this.#waiter !== undefined) {
+        const resolve = this.#waiter;
+        this.#waiter = undefined;
+        resolve(line);
+      } else this.#waiting.push(line);
+    });
+    this.#rl.on("close", () => {
+      this.#closed = true;
+      this.#waiter?.(null);
+      this.#waiter = undefined;
+    });
+  }
+
+  attach(handler: (line: string) => void): () => void {
+    this.#handler = handler;
+    for (const line of this.#waiting.splice(0)) handler(line);
+    return () => {
+      if (this.#handler === handler) this.#handler = undefined;
+    };
+  }
+
+  /** The next typed line, or `null` when the input ended. */
+  next(): Promise<string | null> {
+    const queued = this.#waiting.shift();
+    if (queued !== undefined) return Promise.resolve(queued);
+    if (this.#closed) return Promise.resolve(null);
+    return new Promise((resolve) => {
+      this.#waiter = resolve;
+    });
+  }
+
+  close(): void {
+    this.#rl.close();
+  }
+}
+
+export interface FollowOptions {
+  /** Sends a typed line. Default: posts it to the run's inbox as a user message. */
+  onLine?(text: string, run: Run): Promise<void>;
+  /** Where typed lines come from. Default: a reader of stdin made (and closed) by the follow. */
+  lines?: LineSource;
+  /** Called when the run starts waiting for an answer, just before the prompt is shown. */
+  beforePrompt?(): Promise<void>;
+  /** Events the live view leaves out (the chat shows the outcome as the bot's message). */
+  hide?(event: RawEvent): boolean;
+}
+
+export interface FollowResult {
+  run: Run;
+  hardAborted: boolean;
+  /** The "Sua resposta>" prompt was shown and the answer has not been typed. */
+  prompted: boolean;
+  durationMs: number | null;
+}
 
 /**
  * Works on one run in this process (an embedded worker that only takes that run) and shows it
@@ -24,7 +102,12 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
  *   hard abort.
  * - Without a terminal, a run that waits for the user is left waiting, with instructions.
  */
-export async function followRun(ctx: Ctx, runId: string, fromSeq: number): Promise<number> {
+export async function followRunCore(
+  ctx: Ctx,
+  runId: string,
+  fromSeq: number,
+  options: FollowOptions = {},
+): Promise<FollowResult> {
   const { io, out, json } = ctx;
   const runtime = ctx.runtime();
   const db = runtime.db;
@@ -38,6 +121,7 @@ export async function followRun(ctx: Ctx, runId: string, fromSeq: number): Promi
   const emit = (events: Awaited<ReturnType<typeof readEvents>>) => {
     for (const event of events) {
       afterSeq = event.seq;
+      const hidden = options.hide?.(event) === true;
       if (json) {
         out.ndjson({
           type: "event",
@@ -47,7 +131,9 @@ export async function followRun(ctx: Ctx, runId: string, fromSeq: number): Promi
           payload: event.payload,
         });
       } else {
-        out.lines(renderEvent(event, state));
+        // Hidden events still go through the renderer, which keeps its turn counter and call names.
+        const lines = renderEvent(event, state);
+        if (!hidden) out.lines(lines);
       }
     }
   };
@@ -87,13 +173,29 @@ export async function followRun(ctx: Ctx, runId: string, fromSeq: number): Promi
     }
   });
 
+  // A question with choices is answered one line per question; the answer becomes plain text.
+  let questionnaire: Questionnaire | undefined;
   const handleLine = async (line: string) => {
-    const text = line.trim();
+    let text = line.trim();
+    if (questionnaire !== undefined) {
+      const step = questionnaire.answer(line);
+      if (!step.done) {
+        if (step.message !== undefined) out.line(step.message);
+        out.raw(step.prompt);
+        return;
+      }
+      questionnaire = undefined;
+      text = step.text;
+    }
     if (text === "") return;
     try {
       const run = await getRun(db, runId);
       if (run === null || TERMINAL.has(run.status)) {
         out.line("A execução já terminou; a mensagem não foi enviada.");
+        return;
+      }
+      if (options.onLine !== undefined) {
+        await options.onLine(text, run);
         return;
       }
       const posted = await postInbox(db, runId, { kind: "user_message", text });
@@ -106,34 +208,45 @@ export async function followRun(ctx: Ctx, runId: string, fromSeq: number): Promi
       out.err(`Não foi possível enviar a mensagem: ${message(error)}`);
     }
   };
-  const lines = interactive ? createInterface({ input: io.stdin }) : undefined;
-  lines?.on("line", (line) => void handleLine(line));
+  const ownLines = interactive && options.lines === undefined ? new LineQueue(io.stdin) : undefined;
+  const source = options.lines ?? ownLines;
+  const detach = interactive ? source?.attach((line) => void handleLine(line)) : undefined;
 
   let prompted = false;
   worker.start();
   try {
     for (;;) {
       const run = await getRun(db, runId); // status first: its events are all in the log already
-      if (run === null) {
-        out.err(`A execução ${short} sumiu do banco.`);
-        return EXIT_FAILED;
-      }
+      if (run === null) throw new CommandError(`A execução ${short} sumiu do banco.`);
       emit(await readEvents(db, runId, afterSeq));
       if (workerStopped || TERMINAL.has(run.status) || run.status === "waiting_approval") break;
       if (run.status === "waiting_user") {
         if (!interactive) break;
         if (!prompted) {
-          out.raw("Sua resposta> ");
+          await options.beforePrompt?.();
+          const asked = (await readEvents(db, runId)).filter((e) => e.type === "escalated").at(-1);
+          const questions =
+            asked === undefined
+              ? []
+              : escalatedQuestions(asked.payload as Parameters<typeof escalatedQuestions>[0]);
+          if (needsQuestionnaire(questions)) {
+            questionnaire = new Questionnaire(questions);
+            out.raw(questionnaire.prompt());
+          } else {
+            out.raw("Sua resposta> ");
+          }
           prompted = true;
         }
       } else {
         prompted = false;
+        questionnaire = undefined;
       }
       await sleep(POLL_MS);
     }
   } finally {
     unsubscribe();
-    lines?.close();
+    detach?.();
+    ownLines?.close();
     if (hardAborted) await worker.abortNow();
     else await worker.stop();
   }
@@ -141,11 +254,30 @@ export async function followRun(ctx: Ctx, runId: string, fromSeq: number): Promi
   // Everything the worker wrote while stopping.
   emit(await readEvents(db, runId, afterSeq));
   const run = await getRun(db, runId);
-  if (run === null) return EXIT_FAILED;
+  if (run === null) throw new CommandError(`A execução ${short} sumiu do banco.`);
   const durationMs =
     run.finishedAt !== null && run.startedAt !== null
       ? run.finishedAt.getTime() - run.startedAt.getTime()
       : null;
+  return { run, hardAborted, prompted, durationMs };
+}
+
+/** Follows a run to where it stops and says how it ended. Returns the exit code. */
+export async function followRun(ctx: Ctx, runId: string, fromSeq: number): Promise<number> {
+  const { io, out, json } = ctx;
+  const short = runId.slice(0, 8);
+  const interactive = io.stdin.isTTY === true && !json;
+  let result: FollowResult;
+  try {
+    result = await followRunCore(ctx, runId, fromSeq);
+  } catch (error) {
+    if (error instanceof CommandError) {
+      out.err(error.message);
+      return EXIT_FAILED;
+    }
+    throw error;
+  }
+  const { run, hardAborted, prompted, durationMs } = result;
   if (json) {
     out.ndjson({
       type: "result",

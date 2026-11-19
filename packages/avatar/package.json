@@ -1,0 +1,20 @@
+{
+  "name": "@suup/avatar",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Procedural avatar engine: body shape + colour + two eyes, drawn as SVG data and animated per frame. Zero dependencies.",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./browser": {
+      "types": "./dist/browser.d.ts",
+      "default": "./dist/browser.js"
+    }
+  },
+  "files": [
+    "dist"
+  ]
+}

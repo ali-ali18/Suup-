@@ -1,6 +1,6 @@
 # Configuração
 
-Tudo o que a CLI (`suup`) precisa saber para funcionar vem de **um arquivo JSON** mais algumas variáveis de ambiente. O arquivo é validado ao ser lido; um erro aparece em português, com o caminho do campo (por exemplo `models[0].contextWindow: esperado número, recebido texto`) e todos os problemas de uma vez.
+Tudo o que a CLI (`suup`) e o servidor (`suup server`) precisam saber para funcionar vem de **um arquivo JSON** mais algumas variáveis de ambiente. O arquivo é validado ao ser lido; um erro aparece em português, com o caminho do campo (por exemplo `models[0].contextWindow: esperado número, recebido texto`) e todos os problemas de uma vez.
 
 Um ponto de partida está em [`suup.config.example.json`](../suup.config.example.json). Para experimentar sem nenhuma chave de API, veja a configuração de demonstração em [`examples/demo/`](../examples/demo/) (provedor roteirizado e sandbox local).
 
@@ -53,6 +53,8 @@ Um bot guarda o provedor e o modelo com que foi criado. Se o modelo sair da conf
 
 `{ "model": "<id de um modelo>" }`. Quando presente, um revisor independente (outra chamada ao modelo, sem o histórico) confere cada `finish` antes de ele ser aceito. Sem ele, o `finish` é validado só pelas regras do harness.
 
+O revisor vê um resumo das ferramentas (início e fim de cada resultado longo, marcado `[SHORTENED]` com o número `#N`; argumentos longos de uma chamada ficam marcados `[ARGUMENTS SHORTENED]`). Ele pode **pedir evidência** em vez de adivinhar: resultados de ferramenta inteiros (`results`, `#N`), os **argumentos completos de uma chamada** (`calls`, `#N`: o comando de shell inteiro, o conteúdo escrito num arquivo) e/ou arquivos do espaço de trabalho (`files`, lidos só para leitura, pelo mesmo executor da execução; arquivos fora dele continuam ilegíveis, e o aviso diz que o conteúdo pode estar nos argumentos da chamada que o escreveu). São no máximo 3 rodadas por revisão e 60 000 caracteres de evidência por rodada, preenchidos na ordem pedida (teto de sanidade de 24 itens): o que não cabe é cortado, ou fica de fora, e o revisor recebe a lista exata do que ficou de fora para pedir de novo; arquivos acima de 200 000 bytes não são lidos. Cada pedido extra ao revisor conta como turno e entra no custo. Depois das rodadas ele precisa decidir: aprovar, reprovar (só com ao menos uma divergência estruturada: o que o trabalho afirma, o que a evidência mostra, onde; uma reprovação sem isso é perguntada de novo uma vez e, se continuar assim, vira "não conseguiu verificar") ou dizer que **não conseguiu verificar** algo; neste último caso a decisão vai para o dono, com o texto exato do que não foi verificado, em vez de uma reprovação falsa do trabalho.
+
 ### `sandbox` (obrigatório)
 
 A máquina dos bots. Cada bot trabalha na própria subpasta `bots/<id do bot>` da máquina compartilhada.
@@ -76,6 +78,21 @@ A máquina dos bots. Cada bot trabalha na própria subpasta `bots/<id do bot>` d
 | `concurrency` | 4 | Execuções ao mesmo tempo em um worker |
 | `leaseRenewMs` | 10000 | De quanto em quanto tempo o worker renova a posse de cada execução |
 | `staleAfterMs` | 30000 | Uma posse não renovada por este tempo vence, e a execução volta para a fila (precisa ser maior que `leaseRenewMs`) |
+| `controlPollMs` | 2000 | De quanto em quanto tempo o worker olha se o servidor pediu para **pausar, interromper ou cancelar** uma execução dele (a verificação é o próprio batimento, que passa a bater no menor entre este valor e `leaseRenewMs`). É o tempo que um "interromper agora" leva para chegar a uma execução parada numa chamada longa ao modelo |
+
+### `server` (opcional)
+
+O servidor da API e do tempo real (`suup server`; [API.md](API.md)). Todos os campos são opcionais.
+
+| Campo | Padrão | Significado |
+|---|---|---|
+| `host` | `127.0.0.1` | Interface em que escutar. **Escutar fora do próprio computador exige pedir aqui** (ou `--host`), e o servidor fala HTTP puro: ponha um proxy com TLS na frente ([IMPLANTACAO.md](IMPLANTACAO.md)) |
+| `port` | 8787 | Porta |
+| `allowedOrigins` | `[]` | Origens de navegador que podem chamar a API (CORS): esquema, host e porta, sem barra no fim (`http://localhost:1420`). Vazio: nenhuma. Do app de desktop (Tauri) acrescente `tauri://localhost`, `http://tauri.localhost` e `https://tauri.localhost` |
+| `tokenEnv` | `SUUP_SERVER_TOKEN` | O **NOME** da variável de ambiente que guarda o token do app (mínimo 32 caracteres; `suup server --generate-token` gera um). O token em si **nunca** vai no arquivo: um campo `token` é recusado |
+| `maxStreams` | 16 | Conexões de tempo real ao mesmo tempo; a seguinte leva `429` |
+| `maxBodyBytes` | 1048576 | Maior corpo de requisição aceito (`413` acima) |
+| `eventRetentionMinutes` | 360 | Por quanto tempo o diário de mudanças é guardado: a janela em que um cliente consegue retomar o stream de onde parou (fora dela, o servidor manda recarregar) |
 
 ### `defaults` (opcional)
 
@@ -86,6 +103,7 @@ Limites usados quando o bot não define os próprios (`suup bot create --max-tur
 | `maxTurns` | 50 | Chamadas ao modelo por execução |
 | `maxCostUsd` | sem limite | Custo máximo por execução, em dólares |
 | `maxDurationMs` | sem limite | Duração máxima por execução, em milissegundos |
+| `historyChars` | 12000 | Quanto da conversa anterior (em caracteres, só mensagens inteiras, das mais novas para as mais antigas) uma execução recebe como histórico. As mais antigas ficam de fora e o bot é avisado de que pode buscá-las com `search_conversations` |
 
 Passar de um limite termina a execução como `failed` com origem `limit`.
 
@@ -95,6 +113,7 @@ Passar de um limite termina a execução como `failed` com origem `limit`.
 |---|---|
 | `DATABASE_URL` | URL do Postgres (vale mais que `databaseUrl`). `pnpm suup` lê também o arquivo `.env` |
 | `SUUP_CONFIG` | Caminho do arquivo de configuração (vale menos que `--config`) |
+| `SUUP_SERVER_TOKEN` | O token do servidor (o nome é o de `server.tokenEnv`) |
 | as de `apiKeyEnv` | As chaves de API dos provedores (nomes à sua escolha, por exemplo `ANTHROPIC_API_KEY`) |
 | `SUUP_DOCKER_PATH` | Caminho do executável `docker` (padrão: o do `PATH`) |
 | `SUUP_DEBUG` | Com qualquer valor, erros inesperados mostram a pilha |

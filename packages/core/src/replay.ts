@@ -1,7 +1,14 @@
 import type { PlanStep } from "./events.js";
 import { parseRunEvent, type RunEventData, type RunStatus } from "./events.js";
 import { CONTROL_TOOL_NAMES } from "./loop/control-tools.js";
-import { type BotConfig, type ReviewerConfig, runLoop, type ToolInvoker } from "./loop/loop.js";
+import {
+  type BotConfig,
+  type LoopDeps,
+  type ReviewerConfig,
+  type RunContextSnapshot,
+  runLoop,
+  type ToolInvoker,
+} from "./loop/loop.js";
 import { canonicalJson } from "./loop/state.js";
 import type { InboxItem, RunStore, StatusChange, UsageDelta } from "./loop/store.js";
 import {
@@ -14,7 +21,7 @@ import {
 } from "./provider.js";
 import type { InvokeOptions, ToolInvocation } from "./registry.js";
 import { InMemoryRunStore } from "./testing/memory-store.js";
-import type { Executor, ToolContext } from "./tool.js";
+import type { Executor, FileStat, ToolContext } from "./tool.js";
 
 // Replay of a recorded run (section 4.13 of the plan): the real loop runs again, but every answer
 // comes from the recording. Nothing is called for real: a replay can never repeat a side effect,
@@ -263,15 +270,38 @@ export class ReplayInvoker implements ToolInvoker {
   }
 }
 
-/** The machine of a replay: there is none. Anything that reaches for it is a bug in the replay. */
+/**
+ * The machine of a replay: there is none. Anything that reaches for it is a bug in the replay,
+ * with one exception: the files the reviewer asked to see. Those are not in the log as tool
+ * results, so the recording keeps what was read (`review_evidence`) and this serves it back,
+ * read only, under the same path; a path the recording could not supply fails the same way.
+ */
 class NoMachine implements Executor {
+  readonly #files = new Map<string, string>();
+  readonly #failures = new Map<string, string>();
+
+  constructor(events: readonly RecordedEvent[]) {
+    for (const event of events) {
+      if (event.type !== "review_evidence") continue;
+      for (const item of event.payload.supplied) {
+        if (item.kind === "file") this.#files.set(item.ref, item.content);
+      }
+      for (const { item, reason } of event.payload.missing) this.#failures.set(item.trim(), reason);
+    }
+  }
+
   #refuse(what: string): never {
     throw new Error(`replay: ${what} was attempted, but a replay never touches the machine`);
   }
   async exec(): Promise<never> {
     return this.#refuse("exec");
   }
-  async readFile(): Promise<never> {
+  async readFile(path: string): Promise<string> {
+    const content = this.#files.get(path);
+    if (content !== undefined) return content;
+    const reason = this.#failures.get(path);
+    // A read that failed in the original run fails again with the message it carried.
+    if (reason !== undefined) throw new Error(reason.replace(/^could not be read: /, ""));
     return this.#refuse("readFile");
   }
   async writeFile(): Promise<never> {
@@ -280,8 +310,16 @@ class NoMachine implements Executor {
   async listDir(): Promise<never> {
     return this.#refuse("listDir");
   }
-  async stat(): Promise<never> {
-    return this.#refuse("stat");
+  async stat(path: string): Promise<FileStat | null> {
+    const content = this.#files.get(path);
+    if (content !== undefined) return { kind: "file", size: content.length };
+    const reason = this.#failures.get(path);
+    if (reason === undefined) return this.#refuse("stat");
+    if (reason.startsWith("no such file")) return null;
+    if (reason.startsWith("it is a directory")) return { kind: "dir", size: 0 };
+    const large = /\((\d+) bytes/.exec(reason);
+    if (large !== null) return { kind: "file", size: Number(large[1]) };
+    return { kind: "file", size: 0 };
   }
 }
 
@@ -455,13 +493,21 @@ export async function replayRun(
     ...(options.tools === undefined ? {} : { specs: options.tools }),
   });
 
-  const deps = {
+  // The context of the run is what the recording says it was, never what memory holds now.
+  const recordedContext = recorded.find((e) => e.type === "context_loaded");
+  const loadRunContext =
+    recordedContext?.type === "context_loaded"
+      ? async (): Promise<RunContextSnapshot> => structuredClone(recordedContext.payload)
+      : undefined;
+
+  const deps: LoopDeps = {
     store,
     provider,
     tools,
-    executor: new NoMachine(),
+    executor: new NoMachine(recorded),
     bot: options.bot,
     ...(reviewer === undefined ? {} : { reviewer }),
+    ...(loadRunContext === undefined ? {} : { loadRunContext }),
     now: clock,
     sleep: async () => {},
   };

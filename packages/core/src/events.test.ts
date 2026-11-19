@@ -7,6 +7,15 @@ const samples: RunEventData[] = [
     payload: { botId: "b", objective: "o", acceptanceCriteria: ["c"], origin: "user" },
   },
   {
+    type: "context_loaded",
+    payload: {
+      rules: [{ id: "r", text: "Always be brief." }],
+      profile: [{ id: "p", text: "Lives in Recife." }],
+      history: [{ role: "user", blocks: [{ type: "text", text: "hi" }] }],
+      historyNote: "Older messages were left out.",
+    },
+  },
+  {
     type: "model_request",
     payload: {
       provider: "p",
@@ -59,7 +68,36 @@ const samples: RunEventData[] = [
       rejectionReasons: ["r"],
     },
   },
-  { type: "review", payload: { verdict: "reject", notes: "n" } },
+  {
+    type: "review",
+    payload: {
+      verdict: "reject",
+      notes: "n",
+      discrepancies: [{ claimed: "42", shows: "41", where: "#1" }],
+    },
+  },
+  {
+    type: "review_reprompt",
+    payload: { callId: "v0", args: { verdict: "reject", notes: "n" }, reason: "no discrepancy" },
+  },
+  { type: "review", payload: { verdict: "unverified", notes: "could not check the CNPJ" } },
+  {
+    type: "review_evidence",
+    payload: {
+      round: 1,
+      callId: "v1",
+      notes: "need the contract",
+      requested: { results: ["#1"], calls: ["#2"], files: ["contrato.md"] },
+      supplied: [
+        { kind: "tool_result", ref: "c1", index: 1, chars: 10, sent: 10 },
+        { kind: "tool_call", ref: "c2", index: 2, chars: 30, sent: 30 },
+        { kind: "file", ref: "contrato.md", chars: 4, sent: 4, hash: "abcd", content: "text" },
+      ],
+      missing: [{ item: "#9", reason: "no such tool result", hint: "ask for the call" }],
+      omitted: [{ item: "#8", chars: 70000 }],
+      budgetChars: 60000,
+    },
+  },
   { type: "escalated", payload: { question: "q" } },
   {
     type: "status_changed",

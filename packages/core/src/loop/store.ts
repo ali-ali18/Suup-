@@ -19,7 +19,7 @@ export interface RunRecord {
   plan: PlanStep[];
   status: RunStatus;
   origin: RunOrigin;
-  /** Model calls made by the agent so far (reviewer and compaction calls are not turns). */
+  /** Model calls made by the agent so far, plus the extra calls of the reviewer's evidence rounds (the first review call and compaction calls are not turns). */
   turns: number;
   inputTokens: number;
   outputTokens: number;
@@ -54,6 +54,22 @@ export class LeaseLostError extends Error {
   ) {
     super(`${detail} (run ${runId})`);
   }
+}
+
+/**
+ * What the user asked of a run from outside the worker (the server writes it to the database; see
+ * `heartbeat`). Both flags are level-triggered: they stay true until the run is resumed or taken
+ * over, so a request is never lost between two heartbeats.
+ */
+export interface RunControl {
+  /** Stop at the next safe point, without starting another model call (a soft pause). */
+  pause: boolean;
+  /**
+   * Stop now: abort the model call and the tool in flight. The worker acts on it (the loop does
+   * not read it): it is what the heartbeat tick looks at, so a hard interrupt reaches a run that
+   * sits in a long model or tool call.
+   */
+  interrupt: boolean;
 }
 
 export interface UsageDelta {
@@ -93,7 +109,8 @@ export interface StatusChange {
  *   between therefore never loses an item, and the next loop sees the ids in the log, acks the
  *   items and does not deliver them again. `ackInbox` is idempotent and ignores unknown ids.
  * - `heartbeat` renews the worker's lease and throws `LeaseLostError` when it is no longer held.
- *   A store that fences writes may throw it from any other method too.
+ *   A store that fences writes may throw it from any other method too. It returns what the user
+ *   asked of the run meanwhile (`RunControl`); a store with no outside control returns nothing.
  */
 export interface RunStore {
   getRun(runId: string): Promise<RunRecord>;
@@ -109,5 +126,6 @@ export interface RunStore {
   /** Marks items as delivered. Idempotent. Call it only after the delivering events exist. */
   ackInbox(runId: string, ids: readonly string[]): Promise<void>;
   /** Renews the worker's lease on the run; throws `LeaseLostError` if it is no longer held. */
-  heartbeat(runId: string): Promise<void>;
+  // biome-ignore lint/suspicious/noConfusingVoidType: a store with no outside control returns nothing
+  heartbeat(runId: string): Promise<RunControl | undefined | void>;
 }

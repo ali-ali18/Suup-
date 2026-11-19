@@ -265,6 +265,34 @@ describe("renderers: the live view", () => {
     ).toContain("aviso: revisor fora do ar");
   });
 
+  it("shows when the reviewer could not verify, and each round of evidence it asked for", () => {
+    expect(
+      render({
+        type: "review",
+        payload: { verdict: "unverified", notes: "o CNPJ não foi checado" },
+      }),
+    ).toContain("Revisor não conseguiu verificar: o CNPJ não foi checado");
+    const round = render({
+      type: "review_evidence",
+      payload: {
+        round: 1,
+        callId: "v1",
+        notes: "preciso do contrato",
+        requested: { results: ["#1"], files: ["a.md", "b.md"] },
+        supplied: [
+          { kind: "tool_result", ref: "c1", index: 1, chars: 100, sent: 50 },
+          { kind: "file", ref: "a.md", chars: 3, sent: 3, hash: "h", content: "abc" },
+        ],
+        missing: [{ item: "b.md", reason: "no such file in the workspace" }],
+        budgetChars: 60000,
+      },
+    });
+    expect(round).toContain("rodada 1");
+    expect(round).toContain("2 item(ns) enviado(s)");
+    expect(round).toContain("1 cortado(s)");
+    expect(round).toContain("1 indisponível(is)");
+  });
+
   it("shows how the run ended: the result with its evidence, or the failure with its origin and what it means", () => {
     const done = render({
       type: "status_changed",

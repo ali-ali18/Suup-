@@ -1,0 +1,16 @@
+# O que não entra no contexto de build das imagens.
+.git
+.github
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+coverage
+.env
+.env.*
+!.env.example
+!.env.prod.example
+.suup
+examples/demo/workspace
+suup.config.json
+*.log
+docs

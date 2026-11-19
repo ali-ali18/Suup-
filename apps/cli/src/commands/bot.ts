@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { archiveBot, type Bot, createBot, listBots } from "@suup/db";
+import { draftBot } from "@suup/runtime";
 import { flag, list, posInt, str } from "../args.js";
 import type { CommandSpec } from "../context.js";
 import { CommandError, EXIT_OK, UsageError } from "../errors.js";
@@ -208,6 +209,67 @@ export const botArchive: CommandSpec = {
           ? `Bot arquivado: ${archived.name} (${archived.id})`
           : `O bot ${archived.name} já estava arquivado.`,
       );
+    }
+    return EXIT_OK;
+  },
+};
+
+export const botDraft: CommandSpec = {
+  name: "bot draft",
+  summary:
+    "Propõe nome, descrição e personalidade de um bot a partir de uma descrição em texto livre",
+  options: {
+    model: {
+      type: "string",
+      value: "modelo",
+      help: 'Id de um modelo de "models" na configuração: faz a proposta e, com --create, é o modelo do bot (obrigatório)',
+    },
+    create: {
+      type: "boolean",
+      help: "Cria o bot com a proposta (com todas as ferramentas liberadas); sem isto só mostra a proposta",
+    },
+  },
+  positionals: { names: ["descrição"] },
+  notes: [
+    "Uma chamada ao modelo, sem criar nada: você lê a proposta e, se gostar, repete com --create (ou use suup bot create).",
+    'Exemplo: suup bot draft "Uma assistente que cuida dos meus estudos de inglês, paciente e animada" --model model-x',
+  ],
+  async run(ctx) {
+    const description = (ctx.args.positionals[0] as string).trim();
+    const modelId = str(ctx.args, "model");
+    if (description === "") throw new UsageError("A descrição está vazia.", "bot draft");
+    if (modelId === undefined) throw new UsageError("Falta --model <id do modelo>.", "bot draft");
+    const runtime = ctx.runtime();
+    const draft = await draftBot(runtime, { description, modelId });
+    let created: Bot | undefined;
+    if (flag(ctx.args, "create")) {
+      const { model, provider } = runtime.resolveModel(modelId);
+      created = await createBot(runtime.db, {
+        name: draft.name,
+        description: draft.description,
+        personality: draft.personality,
+        modelProvider: provider.id,
+        modelId: model.id,
+        allowedTools: runtime.tools.list().map((t) => t.name),
+      });
+    }
+    if (ctx.json) {
+      ctx.out.data({ draft, ...(created === undefined ? {} : { bot: botJson(created) }) });
+      return EXIT_OK;
+    }
+    ctx.out.lines([
+      `Proposta de bot: ${draft.name}`,
+      `Descrição: ${draft.description}`,
+      "Personalidade:",
+      ...draft.personality.split("\n").map((l) => `  ${l}`),
+    ]);
+    if (created !== undefined) {
+      ctx.out.line(
+        `Bot criado: ${created.name} (${created.id}), modelo ${created.modelId}, todas as ferramentas.`,
+      );
+      ctx.out.line(`Próximo passo: suup chat --bot ${created.name}`);
+    } else {
+      ctx.out.line("Nada foi criado. Para criar com esta proposta, repita o comando com --create.");
     }
     return EXIT_OK;
   },

@@ -11,7 +11,7 @@
   "scripts": {
     "lint": "biome check .",
     "format": "biome format --write .",
-    "typecheck": "tsc -b && tsc -p tsconfig.test.json",
+    "typecheck": "tsc -b && tsc -p tsconfig.test.json && tsc -p apps/desktop/tsconfig.json",
     "test": "vitest run",
     "suup": "tsc -b apps/cli && node --env-file-if-exists=.env apps/cli/dist/bin.js",
     "db:migrate": "tsc -b packages/db && node --env-file-if-exists=.env packages/db/dist/migrate-cli.js"

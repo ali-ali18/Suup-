@@ -1,0 +1,336 @@
+// Morph de indicador: o corpo encolhe num núcleo e vira o próprio indicador
+// (radar, órbita, anel de progresso, reticências), em vez de um spinner à
+// parte. Valores e curvas. Puro: o tempo anda por
+// `advance`.
+//
+// Coordenadas das partes: px do viewBox (centro em CENTER), prontas para
+// desenhar dentro do mesmo grupo do corpo (acompanham zoom e deslocamento).
+import { clamp } from "../geometry/math.js";
+import { CENTER, VIEW_FIT } from "../geometry/shapes.js";
+import type { MorphName } from "./states.js";
+
+/** Base radius (px of the 228.54 box). */
+const REF_B = 114.2705;
+/** Da base box para o viewBox. */
+const K = VIEW_FIT;
+
+export type IndicatorKind = "dots" | "orbit" | "radar" | "progress";
+
+export type Part =
+  | { type: "disc"; cx: number; cy: number; r: number; opacity: number }
+  | {
+      type: "ring";
+      cx: number;
+      cy: number;
+      r: number;
+      width: number;
+      opacity: number;
+      /** Arco de progresso: fração da volta a partir de `startDeg`. */
+      arc?: { fraction: number; startDeg: number };
+    };
+
+export type IndicatorFrame = {
+  kind: IndicatorKind;
+  /** 0 = corpo normal, 1 = indicador completo. */
+  amount: number;
+  /** Rosto some quando o corpo já virou mais da metade. */
+  faceVisible: boolean;
+  /** Escala do corpo (núcleo do indicador) relativa ao corpo normal. */
+  core: number;
+  /** Quanto o contorno já virou círculo (0..1). */
+  round: number;
+  /** Zoom extra do conjunto (o indicador ocupa mais que o corpo). */
+  zoom: number;
+  /** Deslocamento vertical do núcleo (px), p.ex. o pulinho das reticências. */
+  lift: number;
+  parts: Part[];
+};
+
+/** Raio do núcleo (px da base box) e zoom por indicador. */
+const CORE: Record<IndicatorKind, number> = { dots: 22, orbit: 19, radar: 19, progress: 19 };
+const ZOOM: Record<IndicatorKind, number> = { dots: 1.5, orbit: 1.14, radar: 1.14, progress: 1.32 };
+
+/** Morph da tabela de estados → indicador desenhado (os demais ainda não têm desenho). */
+export function indicatorFor(morph: MorphName | null | undefined): IndicatorKind | null {
+  switch (morph) {
+    case "thinking":
+      return "dots";
+    case "orbit":
+    case "radar":
+    case "progress":
+      return morph;
+    case "spawning":
+    case "dictating":
+    case "sending":
+    case "receiving":
+    case "uploading":
+    case "writing":
+    case "alerting":
+    case "bouncing":
+    case "powering-down":
+    case undefined:
+    case null:
+      return null;
+  }
+}
+
+// ---------------------------------------------------------------------- curvas
+
+/** Saída cúbica. */
+const easeOut = (e: number) => 1 - (1 - e) ** 3;
+/** Saída com pequeno overshoot. */
+const easeBack = (e: number) => 1 + 2.70158 * (e - 1) ** 3 + 1.70158 * (e - 1) ** 2;
+const easeInOut = (e: number) => (e < 0.5 ? 4 * e * e * e : 1 - (-2 * e + 2) ** 3 / 2);
+const frac = (e: number) => ((e % 1) + 1) % 1;
+
+/** Com o corpo virando indicador, os olhos encolhem até sumir neste ponto do morph (0..1). */
+export const FACE_GONE = 0.4;
+
+/** Escala dos olhos durante o morph: 1 com o corpo normal, 0 a partir de `FACE_GONE` (nunca sobra olho recortando o ponto). */
+export function faceScale(amount: number): number {
+  const k = clamp(1 - amount / FACE_GONE, 0, 1);
+  return k * k * (3 - 2 * k);
+}
+
+/** Frequência (rad/s) da mola do morph: amortecimento crítico. */
+const OMEGA = 14;
+/** O anel de progresso enche em 2,5 s, some e recomeça 1,5 s depois. */
+const PROGRESS_FILL_S = 2.5;
+const PROGRESS_CYCLE_S = 4;
+/** Anel com fração real: sobe até o alvo com esta taxa (1/s) e fica mais grosso para ler a 36 px. */
+const PROGRESS_RATE = 6;
+/** Abaixo disto o indicador antigo já recolheu e o novo pode entrar. */
+const SWITCH_EPS = 0.08;
+const PROGRESS_WIDTH = 10;
+
+const px = (value: number) => CENTER + (value - REF_B) * K;
+const len = (value: number) => value * K;
+
+export class Indicator {
+  private kind: IndicatorKind | null = null;
+  /** Para qual indicador a mola está indo (null = voltando ao corpo). */
+  private shown: IndicatorKind | null = null;
+  private amount = 0;
+  private velocity = 0;
+  /** Troca de um indicador para outro: o atual recolhe até quase sumir e só então o novo cresce (sem corte seco). */
+  private pending: IndicatorKind | null = null;
+  private time = 0;
+  /** Fração real (0..1) do anel de progresso; `null` = anel que só gira e recomeça. */
+  private progressTarget: number | null = null;
+  private progressShown = 0;
+
+  /**
+   * Fração real do anel de progresso (ex.: passo 3 de 8). O anel anima até o
+   * valor e fica cheio, sem o ciclo de enche/some. `null` volta ao ciclo.
+   */
+  setProgress(fraction: number | null): void {
+    this.progressTarget =
+      fraction === null || !Number.isFinite(fraction) ? null : clamp(fraction, 0, 1);
+  }
+
+  /** Fração que o anel mostra agora (nula sem fração real). */
+  get progress(): number | null {
+    return this.progressTarget === null ? null : this.progressShown;
+  }
+
+  /** Muda o indicador (ou `null`, volta ao corpo). Reinicia o relógio dele. */
+  set(kind: IndicatorKind | null): void {
+    if (kind === this.kind) return;
+    this.kind = kind;
+    this.pending = null;
+    if (!kind) return;
+    if (this.shown !== null && this.shown !== kind && this.amount > SWITCH_EPS) {
+      this.pending = kind;
+      return;
+    }
+    this.shown = kind;
+    this.time = 0;
+  }
+
+  get current(): IndicatorKind | null {
+    return this.kind;
+  }
+
+  private targetAmount(): number {
+    if (!this.kind || this.pending) return 0;
+    if (this.kind === "progress" && this.progressTarget !== null) return 1;
+    if (
+      this.kind === "progress" &&
+      frac(this.time / PROGRESS_CYCLE_S) * PROGRESS_CYCLE_S >= PROGRESS_FILL_S
+    )
+      return 0;
+    return 1;
+  }
+
+  /** Anda `dt` s (a mola é integrada em passos curtos: estável com quadro longo). */
+  advance(dt: number): void {
+    if (!(dt > 0)) return;
+    if (this.kind) this.time += dt;
+    if (this.progressTarget !== null) {
+      const gap = this.progressTarget - this.progressShown;
+      this.progressShown =
+        Math.abs(gap) < 0.002
+          ? this.progressTarget
+          : this.progressShown + gap * (1 - Math.exp(-PROGRESS_RATE * dt));
+    }
+    const target = this.targetAmount();
+    let left = dt;
+    while (left > 1e-9) {
+      const h = Math.min(left, 1 / 120);
+      this.amount += this.velocity * h;
+      this.velocity += (target - this.amount) * OMEGA * OMEGA * h - this.velocity * 2 * OMEGA * h;
+      left -= h;
+    }
+    if (this.pending && this.amount <= SWITCH_EPS) {
+      this.shown = this.pending;
+      this.pending = null;
+      this.time = 0;
+    }
+    if (Math.abs(target - this.amount) < 0.001 && Math.abs(this.velocity) < 0.01) {
+      this.amount = target;
+      this.velocity = 0;
+      if (target === 0 && !this.kind) this.shown = null;
+    }
+  }
+
+  /** Em repouso: nada a animar (sem indicador e já de volta ao corpo). */
+  get isSettled(): boolean {
+    return !this.kind && this.amount === 0 && this.velocity === 0;
+  }
+
+  frame(): IndicatorFrame | null {
+    const kind = this.shown;
+    const s = clamp(this.amount, 0, 1);
+    if (!kind || s <= 0.0005) return null;
+    const t = this.time;
+    const bounce = kind === "dots" ? dotsBounce(t) : null;
+    const core = (CORE[kind] / REF_B) * (bounce ? bounce.pop : 1);
+    return {
+      kind,
+      amount: s,
+      faceVisible: s < FACE_GONE,
+      core: 1 - s + core * s,
+      round: easeInOut(clamp(s / 0.62, 0, 1)),
+      zoom: 1 + (ZOOM[kind] - 1) * s,
+      lift: bounce ? -bounce.lift * s * K : 0,
+      parts: partsOf(kind, s, t, this.progressTarget === null ? null : this.progressShown),
+    };
+  }
+}
+
+// ------------------------------------------------------------------- reticências
+
+/** Pulinho das reticências: um pulso gaussiano que percorre os pontos a cada 1,4 s. */
+function dotsBounce(t: number, index = 1): { lift: number; pop: number; tone: number } {
+  const phase = frac((t * 1000) / 1400 + 0.119);
+  const dist = Math.abs(phase - index / 3);
+  const near = Math.min(dist, 1 - dist);
+  const a = Math.exp(-(near * near) / (2 * 0.15 * 0.15));
+  return { lift: a * 9, pop: 1 + (0.84 + 0.22 * a - 1), tone: 1 - 0.5 * (1 - a) };
+}
+
+function partsOf(kind: IndicatorKind, s: number, t: number, progress: number | null): Part[] {
+  switch (kind) {
+    case "dots":
+      return dotsParts(s, t);
+    case "orbit":
+      return orbitParts(s, t);
+    case "radar":
+      return radarParts(s, t);
+    case "progress":
+      return progressParts(s, t, progress);
+  }
+}
+
+function dotsParts(s: number, t: number): Part[] {
+  const parts: Part[] = [];
+  const sides = [REF_B - 62, REF_B + 62];
+  for (let o = 0; o < 2; o++) {
+    const i = clamp((s - o * 0.12) / (1 - o * 0.12), 0, 1);
+    if (i <= 0.004) continue;
+    const a = easeOut(i);
+    const c = easeBack(i);
+    const u = dotsBounce(t, o === 0 ? 0 : 2);
+    parts.push({
+      type: "disc",
+      cx: px(REF_B + ((sides[o] as number) - REF_B) * c),
+      cy: CENTER - len(u.lift * s),
+      r: len(22 * a * u.pop * 1.02),
+      opacity: a * u.tone,
+    });
+  }
+  return parts;
+}
+
+function orbitParts(s: number, t: number): Part[] {
+  const n = easeOut(s);
+  const radius = 58 * easeBack(s);
+  const base = t * 1000 * 0.0017;
+  // Anel deitado visto de cima: a frente fica embaixo e o anel é mais largo que o
+  // núcleo, então as bolinhas giram em volta dele e nenhuma some atrás.
+  return Array.from({ length: 5 }, (_, i) => {
+    const c = base + (i * Math.PI * 2) / 5;
+    const depth = 0.5 + 0.5 * Math.cos(c); // 1 na frente, 0 atrás
+    return {
+      type: "disc" as const,
+      cx: px(REF_B + radius * Math.sin(c)),
+      cy: px(REF_B + radius * 0.5 * Math.cos(c)),
+      r: len(Math.max((6.5 + 4.5 * depth) * n, 0.3)),
+      opacity: (0.45 + 0.55 * depth) * n,
+    };
+  });
+}
+
+function radarParts(s: number, t: number): Part[] {
+  const n = easeOut(s);
+  const core = CORE.radar;
+  return Array.from({ length: 3 }, (_, i) => {
+    const c = frac((t * 1000) / 1300 + i / 3);
+    return {
+      type: "ring" as const,
+      cx: CENTER,
+      cy: CENTER,
+      r: len(core + (104 - core) * c),
+      width: len(3.4 * (1 - c * 0.55)),
+      opacity: n * (1 - c) * 0.9,
+    };
+  });
+}
+
+function progressParts(s: number, t: number, determinate: number | null): Part[] {
+  const n = easeOut(s);
+  const r = len(62 * easeBack(s));
+  if (determinate !== null) {
+    const width = len(PROGRESS_WIDTH);
+    const track: Part = { type: "ring", cx: CENTER, cy: CENTER, r, width, opacity: n * 0.22 };
+    if (determinate <= 0.004) return [track];
+    return [
+      track,
+      {
+        type: "ring",
+        cx: CENTER,
+        cy: CENTER,
+        r,
+        width,
+        opacity: n,
+        arc: { fraction: determinate, startDeg: -90 },
+      },
+    ];
+  }
+  const shot = (frac(t / PROGRESS_CYCLE_S) * PROGRESS_CYCLE_S) / PROGRESS_FILL_S;
+  const fill = clamp(shot / 0.85, 0, 1);
+  const track: Part = { type: "ring", cx: CENTER, cy: CENTER, r, width: len(5), opacity: n * 0.16 };
+  if (fill <= 0) return [track];
+  return [
+    track,
+    {
+      type: "ring",
+      cx: CENTER,
+      cy: CENTER,
+      r,
+      width: len(5),
+      opacity: n,
+      arc: { fraction: fill, startDeg: -90 },
+    },
+  ];
+}

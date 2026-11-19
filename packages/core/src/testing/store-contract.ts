@@ -189,7 +189,8 @@ export function describeRunStoreContract(
         }
         const listed = await h.store.listEvents(id);
         expect(listed.map((e) => e.seq)).toEqual(Array.from({ length: total }, (_, i) => i + 1));
-      });
+        // Over a thousand commits on a real database: generous, so a slow machine only takes longer.
+      }, 60_000);
     });
 
     describe("status", () => {

@@ -17,6 +17,63 @@ export const planStepSchema = z.object({
 });
 export type PlanStep = z.infer<typeof planStepSchema>;
 
+/** One memory shown to the model: the id lets the user (and `forget`) refer to it. */
+/** A choice offered with a question (`escalate`). The answer is still plain text: the label, or free text. */
+export const escalateOptionSchema = z.object({
+  label: z.string().describe("Short text of the choice (a few words). It becomes the reply."),
+  description: z
+    .exactOptional(z.string())
+    .describe("Optional one-line explanation of what the choice means."),
+});
+export type EscalateOption = z.infer<typeof escalateOptionSchema>;
+
+/** One question of a questionnaire (`escalate`): free text, or a choice among discrete options. */
+export const escalateQuestionSchema = z.object({
+  question: z.string(),
+  /** 2 to 6 choices, only when the answers are genuinely discrete. */
+  options: z.exactOptional(z.array(escalateOptionSchema).min(2).max(6)),
+  /** The user may pick several options. */
+  multiple: z.exactOptional(z.boolean()),
+  /** The user may answer with something that is not in the list. */
+  allowOther: z.exactOptional(z.boolean()),
+});
+export type EscalateQuestion = z.infer<typeof escalateQuestionSchema>;
+
+/**
+ * The questionnaire an `escalated` event asks, in ONE shape: the event keeps a plain single
+ * question as just `question`, and anything richer as `questions`; this reads both.
+ */
+export function escalatedQuestions(payload: {
+  question: string;
+  questions?: readonly EscalateQuestion[] | undefined;
+}): EscalateQuestion[] {
+  return payload.questions === undefined
+    ? [{ question: payload.question }]
+    : [...payload.questions];
+}
+
+/** One concrete discrepancy named by the reviewer: what the work claims, what the evidence shows, where. */
+export const discrepancySchema = z.object({
+  claimed: z.string(),
+  shows: z.string(),
+  where: z.string(),
+});
+export type Discrepancy = z.infer<typeof discrepancySchema>;
+
+/**
+ * Something the reviewer said it could not check, and what it would need to check it: a digest
+ * result or call ("#3"), a workspace file, or something else (`other`, with the reference it names).
+ */
+export const uncheckedItemSchema = z.object({
+  what: z.string(),
+  kind: z.enum(["result", "call", "file", "other"]),
+  ref: z.string(),
+});
+export type UncheckedItem = z.infer<typeof uncheckedItemSchema>;
+
+export const contextItemSchema = z.object({ id: z.string(), text: z.string() });
+export type ContextItem = z.infer<typeof contextItemSchema>;
+
 export const runStatusSchema = z.enum([
   "queued",
   "running",
@@ -81,6 +138,23 @@ export const runEventSchema = z.discriminatedUnion("type", [
       objective: z.string(),
       acceptanceCriteria: z.array(z.string()),
       origin: runOriginSchema,
+    }),
+  }),
+  z.object({
+    /**
+     * What came from outside the loop and shapes this run: the user's standing rules, the shared
+     * profile and the earlier turns of the conversation. Loaded ONCE, right after `run_started`,
+     * and never again: resume and replay read it from here, so the cached prompt prefix and the
+     * conversation stay identical for the whole run.
+     */
+    type: z.literal("context_loaded"),
+    payload: z.object({
+      rules: z.array(contextItemSchema),
+      profile: z.array(contextItemSchema),
+      /** Earlier turns of the same conversation, plain text, as user/assistant messages. */
+      history: z.array(messageSchema),
+      /** Said alongside the history, e.g. that older messages were left out. */
+      historyNote: z.exactOptional(z.string()),
     }),
   }),
   z.object({
@@ -173,19 +247,122 @@ export const runEventSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("review"),
     payload: z.object({
-      verdict: z.enum(["approve", "reject"]),
+      /**
+       * `unverified`: after the evidence rounds the reviewer still could not check something. It
+       * is neither an approval nor a rejection of the work: the decision goes to the owner, and
+       * `notes` says exactly what could not be verified.
+       */
+      verdict: z.enum(["approve", "reject", "unverified"]),
       notes: z.string(),
       /**
        * Set when the review did not really happen (reviewer unreachable, answer malformed): the
        * verdict is then an approval by default and this says why.
        */
       warning: z.exactOptional(z.string()),
+      /** `reject`: the concrete discrepancies the reviewer named (at least one; else not a reject). */
+      discrepancies: z.exactOptional(z.array(discrepancySchema).min(1)),
+      /** `unverified`: what the reviewer listed as unchecked and not already sent to it in full. */
+      unchecked: z.exactOptional(z.array(uncheckedItemSchema)),
+      /**
+       * `unverified` from a `cannot_verify` that, even after being asked once more, named nothing
+       * the harness had not already sent in full (or nothing at all): the owner is told so.
+       */
+      namedNothing: z.exactOptional(z.boolean()),
+    }),
+  }),
+  z.object({
+    /**
+     * The reviewer's answer was not usable and the harness asked once more (this event is that
+     * question): a `reject` with no discrepancy marked as a real mismatch, or a `cannot_verify` that
+     * named nothing it lacked (or only what had already been sent in full). `args` is what the
+     * reviewer sent, so the conversation can be rebuilt. A second unusable answer ends the review
+     * as `unverified`.
+     */
+    type: z.literal("review_reprompt"),
+    payload: z.object({
+      callId: z.string(),
+      args: z.json(),
+      reason: z.string(),
+    }),
+  }),
+  z.object({
+    /**
+     * The reviewer asked for evidence it could not see in the digest, and the harness supplied it
+     * (one event per round). Tool results are named by `ref` (the call id): their content is
+     * already in the log, so it is not copied here. Files are not in the log, so their content is
+     * kept (that is what makes a resumed or replayed review identical).
+     */
+    type: z.literal("review_evidence"),
+    payload: z.object({
+      /** 1-based round of this review. */
+      round: z.number().int().positive(),
+      /** The reviewer's `verdict` tool call that asked, so the conversation can be rebuilt. */
+      callId: z.string(),
+      /** Why the reviewer wanted it, in its words. */
+      notes: z.string(),
+      /** What the reviewer named: digest entries (`#3` or a call id) and workspace paths. */
+      requested: z.object({
+        results: z.array(z.string()),
+        files: z.array(z.string()),
+        /** Tool CALLS whose full arguments were asked for (absent in older logs: none). */
+        calls: z.exactOptional(z.array(z.string())),
+      }),
+      /** What was supplied, in order. `sent` is how many characters were shown (the budget). */
+      supplied: z.array(
+        z.discriminatedUnion("kind", [
+          z.object({
+            kind: z.literal("tool_result"),
+            /** The tool call id; the full content is that call's `tool_result` event. */
+            ref: z.string(),
+            /** Position in the digest (1-based). */
+            index: z.number().int().positive(),
+            chars: z.number().int().nonnegative(),
+            sent: z.number().int().nonnegative(),
+          }),
+          z.object({
+            kind: z.literal("tool_call"),
+            /** The tool call id; the arguments are that call's `tool_call` event, rendered. */
+            ref: z.string(),
+            index: z.number().int().positive(),
+            chars: z.number().int().nonnegative(),
+            sent: z.number().int().nonnegative(),
+          }),
+          z.object({
+            kind: z.literal("file"),
+            ref: z.string(),
+            chars: z.number().int().nonnegative(),
+            sent: z.number().int().nonnegative(),
+            /** A short fingerprint of the whole content (not cryptographic). */
+            hash: z.string(),
+            /** The whole text read, so that resume and replay do not depend on the disk. */
+            content: z.string(),
+          }),
+        ]),
+      ),
+      /** Requested items that could not be supplied, and why. */
+      missing: z.array(
+        z.object({
+          item: z.string(),
+          reason: z.string(),
+          /** What else the reviewer can try (for example: the content may be a call's arguments). */
+          hint: z.exactOptional(z.string()),
+        }),
+      ),
+      /** Requested items left out only because the budget ran out (absent in older logs: none). */
+      omitted: z.exactOptional(z.array(z.object({ item: z.string(), chars: z.number().int() }))),
+      /** The most characters of evidence the harness shows in one round. */
+      budgetChars: z.number().int().positive(),
     }),
   }),
   z.object({
     type: z.literal("escalated"),
     payload: z.object({
       question: z.string(),
+      /**
+       * What was asked, when it is more than one plain question (choices, several questions). Its
+       * text is `question`: the question itself, or the numbered list of them.
+       */
+      questions: z.exactOptional(z.array(escalateQuestionSchema).min(1).max(5)),
       /** The `escalate` call this question came from. Absent for a review tie-break. */
       callId: z.exactOptional(z.string()),
       /** `review_tie_break`: the reviewer rejected too often and a human must decide. */

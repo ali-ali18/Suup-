@@ -117,6 +117,51 @@ function normalizeSegments(parts: string[], original: string, strict: boolean): 
   return out;
 }
 
+export type MemoryLayerName = "rule" | "profile" | "note";
+/** Layers `recall` can search: the three above plus the journal the runtime writes. */
+export type RecallLayerName = MemoryLayerName | "journal";
+
+/**
+ * What the memory tools may do, with the bot, the run and the conversation already bound in by
+ * whoever provides it (the runtime). Tools see only this interface, never the database. A bot
+ * sees the shared memories and its own, nothing else.
+ */
+export interface MemoryService {
+  /** Saves a memory. Throws a `MemoryRuleError` (see below) for a layer/scope combination that does not exist. */
+  remember(input: {
+    layer: MemoryLayerName;
+    text: string;
+    scope?: "shared" | "bot";
+  }): Promise<{ id: string }>;
+  recall(input: { query: string; layers?: RecallLayerName[]; limit?: number }): Promise<
+    {
+      id: string;
+      layer: RecallLayerName;
+      text: string;
+      /** The passage around the match, as plain text. */
+      excerpt: string;
+      createdAt: Date;
+    }[]
+  >;
+  /** Forgets (archives) a memory visible to the bot. `false` when there is none with that id. */
+  forget(input: { id: string }): Promise<boolean>;
+  /** Full-text search over the past messages of the bot's conversations. */
+  searchConversations(input: { query: string; limit?: number }): Promise<
+    {
+      conversationId: string;
+      messageId: string;
+      author: "user" | "bot" | "system";
+      excerpt: string;
+      createdAt: Date;
+    }[]
+  >;
+}
+
+/** Thrown by a `MemoryService` for a request that makes no sense (e.g. a shared note). The message is for the model. */
+export class MemoryRuleError extends Error {
+  override readonly name = "MemoryRuleError";
+}
+
 /** Everything a tool may touch. Tools never reach the database, the provider or other tools. */
 export interface ToolContext {
   runId: string;
@@ -125,6 +170,8 @@ export interface ToolContext {
   /** Aborted on cancellation or timeout. Long-running tools must honor it. */
   signal: AbortSignal;
   now(): Date;
+  /** Present when the run has memory (the runtime provides it); the memory tools need it. */
+  memory?: MemoryService;
 }
 
 export interface ToolOutput {

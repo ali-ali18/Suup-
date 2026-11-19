@@ -1,13 +1,60 @@
 export {
+  type BotLatestRun,
+  type BotSummary,
+  getBotSummary,
+  listBotSummaries,
+} from "./bot-summaries.js";
+export {
   archiveBot,
   type CreateBotInput,
   createBot,
   getBot,
+  getDefaultBot,
   listBots,
+  setDefaultBot,
   type UpdateBotInput,
   updateBot,
 } from "./bots.js";
+export {
+  CHANGE_KINDS,
+  type Change,
+  type ChangeKind,
+  changeChannel,
+  changeLogBounds,
+  listChanges,
+  pruneChangeLog,
+} from "./change-feed.js";
 export { type CreateDbOptions, createDb, type Db, withTransaction } from "./client.js";
+export {
+  ACTIVE_RUN_STATUSES,
+  ConversationSendError,
+  getActiveConversationRun,
+  listActiveConversationRuns,
+  rolloverUnreadMessages,
+  type SendConversationMessageResult,
+  sendConversationMessage,
+} from "./conversation-runs.js";
+export {
+  addMember,
+  archiveConversation,
+  CONVERSATION_KINDS,
+  type Conversation,
+  type ConversationKind,
+  type ConversationMember,
+  ConversationNotFoundError,
+  ConversationRuleError,
+  type ConversationView,
+  type CreateGroupConversationInput,
+  createDirectConversation,
+  createGroupConversation,
+  getConversation,
+  type ListConversationsOptions,
+  listConversations,
+  MESSAGE_PREVIEW_LENGTH,
+  type MessagePreview,
+  markConversationRead,
+  removeMember,
+} from "./conversations.js";
 export {
   type AppendRunEventOptions,
   appendRunEvent,
@@ -25,6 +72,52 @@ export {
   postInbox,
 } from "./inbox.js";
 export {
+  type AddJournalInput,
+  type AddMemoryInput,
+  addJournalMemory,
+  addMemory,
+  archiveMemory,
+  getMemory,
+  type ListMemoriesOptions,
+  listMemories,
+  MEMORY_CREATORS,
+  MEMORY_LAYERS,
+  MEMORY_SCOPES,
+  type Memory,
+  type MemoryContext,
+  type MemoryCreator,
+  type MemoryLayer,
+  type MemoryScope,
+  type MemorySearchHit,
+  memoryContextFor,
+  restoreMemory,
+  type SearchMemoriesOptions,
+  searchMemories,
+  updateMemory,
+} from "./memories.js";
+export {
+  type AppendMessageInput,
+  appendMessage,
+  appendMessageOnce,
+  getMessage,
+  HIGHLIGHT_END,
+  HIGHLIGHT_START,
+  type ListMessagesOptions,
+  listMessages,
+  MESSAGE_AUTHOR_KINDS,
+  MESSAGE_STATUSES,
+  type Message,
+  type MessageAuthorKind,
+  type MessageQuestion,
+  type MessageQuestionItem,
+  type MessageQuestionOption,
+  type MessageSearchHit,
+  type MessageStatus,
+  markMessageDelivered,
+  type SearchMessagesOptions,
+  searchMessages,
+} from "./messages.js";
+export {
   MIGRATIONS_DIR,
   MigrationChecksumError,
   type MigrationStatus,
@@ -34,11 +127,20 @@ export {
 export { PgRunQueue } from "./pg-queue.js";
 export { PgRunStore, type PgRunStoreOptions } from "./pg-store.js";
 export {
+  heartbeatRun,
   type RequeueStaleOptions,
+  type RunControlState,
   releaseLeasedRun,
   renewLease,
   requeueStaleRuns,
 } from "./queue.js";
+export {
+  cancelRun,
+  pauseRun,
+  RunControlError,
+  type RunControlErrorCode,
+  resumeRun,
+} from "./run-control.js";
 export {
   addRunUsage,
   type CreateRunInput,

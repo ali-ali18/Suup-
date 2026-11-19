@@ -37,6 +37,20 @@ jobs:
       - run: pnpm typecheck
       - name: Build the bot machine image
         run: docker build --tag suup-sandbox:ci docker/sandbox
+      - name: Build the server image (not pushed)
+        run: docker build --file docker/server/Dockerfile --tag suup:ci .
+      - name: Smoke test the server image
+        run: |
+          docker run --rm suup:ci --help | head -n 3
+          docker run --rm suup:ci server --generate-token | grep -Eq '^[A-Za-z0-9_-]{43}$'
+      - name: Check the production compose file
+        run: >
+          POSTGRES_PASSWORD=ci SUUP_SERVER_TOKEN=0123456789012345678901234567890123456789 DOCKER_GID=999
+          docker compose -f docker-compose.prod.yml config --quiet
+      - name: Test the server end to end (real Postgres, real client)
+        run: pnpm vitest run packages/api packages/server apps/cli/test/server.test.ts
+        env:
+          DATABASE_URL: postgres://suup:suup@127.0.0.1:5432/suup
       - name: Test
         run: pnpm test
         env:
@@ -44,3 +58,39 @@ jobs:
           # Also run the executor contract against a real container (see packages/sandbox/test).
           SUUP_DOCKER_TESTS: "1"
           SUUP_SANDBOX_IMAGE: suup-sandbox:ci
+      # The desktop app: the web build (the unit tests of the app ran with `pnpm test` above), then the
+      # browser tests against a real server in this process (Postgres-backed, scripted provider).
+      - name: Build the desktop web app
+        run: pnpm --filter @suup/desktop build
+      - name: Install Chromium for the browser tests
+        run: pnpm --filter @suup/desktop exec playwright install --with-deps chromium
+      - name: Test the desktop app in a browser (real server)
+        run: pnpm --filter @suup/desktop test:e2e
+        env:
+          DATABASE_URL: postgres://suup:suup@127.0.0.1:5432/suup
+
+  # A separate job: it only checks that the native shell still compiles, so a broken Tauri shell is
+  # caught without slowing the main job. No bundling, no artifacts.
+  tauri:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Install the system libraries of the webview
+        run: >
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends
+          libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev build-essential
+          pkg-config libssl-dev libdbus-1-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+      - run: pnpm install --frozen-lockfile
+      # `tauri::generate_context!` embeds the built web app, so it must exist.
+      - run: pnpm --filter @suup/desktop build
+      - name: cargo check (no bundle)
+        run: cargo check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml

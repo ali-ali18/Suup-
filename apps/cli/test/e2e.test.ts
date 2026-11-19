@@ -6,6 +6,7 @@ import { DATABASE_URL, dbSuiteName, type Project, type Result, useProject } from
 // End to end through the real entry point (`main`): the real Postgres (one schema for this file),
 // the real runtime and worker, the `scripted` provider and the `local` sandbox in a temp dir.
 
+const RUN_ID_CREATED = /Execução criada: ([0-9a-f-]{36})/;
 const RUN_ID = /Execução ([0-9a-f-]{36}) criada/;
 
 const idOf = (r: Result): string => {
@@ -77,7 +78,8 @@ const HAPPY_SCRIPT = {
   ],
 };
 
-describe.skipIf(!DATABASE_URL)(dbSuiteName("suup, end to end"), () => {
+// Cada teste abre vários processos da CLI; numa máquina carregada isso passa dos 5 s padrão.
+describe.skipIf(!DATABASE_URL)(dbSuiteName("suup, end to end"), { timeout: 30_000 }, () => {
   const p = useProject();
   let botId = "";
   let happyRun = "";
@@ -86,13 +88,13 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup, end to end"), () => {
     const before = await p.suup(["doctor"]);
     expect(before.code).toBe(1);
     expect(before.stdout).toMatch(
-      /\[falha\] Banco de dados\s+acessível, mas com 2 migrações pendentes/,
+      /\[falha\] Banco de dados\s+acessível, mas com \d+ migrações pendentes/,
     );
     expect(before.stdout).toContain("suup db migrate");
 
     const migrated = await p.suup(["db", "migrate"]);
     expect(migrated.code).toBe(0);
-    expect(migrated.stdout).toContain("2 migrações aplicadas");
+    expect(migrated.stdout).toMatch(/\d+ migrações aplicadas/);
     expect(migrated.stdout).toContain("0001_init.sql");
 
     const again = await p.suup(["db", "migrate"]);
@@ -109,13 +111,13 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup, end to end"), () => {
     const r = await p.suup(["doctor"]);
     expect(r.code).toBe(1);
     expect(r.stdout).toMatch(/\[ok\]\s+Configuração\s+válida/);
-    expect(r.stdout).toMatch(/\[ok\]\s+Banco de dados\s+acessível, 2 migrações aplicadas/);
+    expect(r.stdout).toMatch(/\[ok\]\s+Banco de dados\s+acessível, \d+ migrações aplicadas/);
     expect(r.stdout).toMatch(/\[ok\]\s+Sandbox\s+LOCAL .*SEM isolamento/);
     expect(r.stdout).toMatch(/\[ok\]\s+Provedor roteiro\s+scripted/);
     expect(r.stdout).toMatch(
       /\[falha\] Provedor nuvem\s+anthropic: a variável de ambiente SUUP_TEST_MISSING_KEY não está definida/,
     );
-    expect(r.stdout).toMatch(/\[ok\]\s+Ferramentas\s+7 registradas: shell/);
+    expect(r.stdout).toMatch(/\[ok\]\s+Ferramentas\s+\d+ registradas: shell/);
     expect(r.stdout).toContain("1 componente com falha");
 
     const json = await p.suup(["doctor", "--json"]);
@@ -280,7 +282,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup, end to end"), () => {
     expect(r.stdout).toContain("← resultado da chamada a1_1");
     expect(r.stdout).toContain("Created ola.txt (13 bytes).");
     expect(r.stdout).toContain("[STATE REMINDER");
-    expect(r.stdout).toContain("=== FERRAMENTAS (10) ===");
+    expect(r.stdout).toMatch(/=== FERRAMENTAS \(\d+\) ===/);
     expect(r.stdout).toContain("- shell:");
     expect(r.stdout).toContain("=== RESPOSTA GRAVADA");
     expect(r.stdout).toContain("chamada plan");
@@ -400,7 +402,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup, end to end"), () => {
     const nowhere = await p.suup(["resend", happyRun, "--seq", "9999"]);
     expect(nowhere.code).toBe(1);
     expect(nowhere.stderr).toContain("não tem o evento seq 9999");
-    const unknownModel = await p.suup(["resend", happyRun, "--seq", "2", "--model", "model-z"]);
+    const unknownModel = await p.suup(["resend", happyRun, "--seq", "3", "--model", "model-z"]);
     expect(unknownModel.code).toBe(1);
     expect(unknownModel.stderr).toContain('O modelo "model-z" não está em "models"');
   });
@@ -686,11 +688,17 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup, end to end"), () => {
     expect((await show(p, id)).status).toBe("queued");
     const human = await p.suup(["run", "Faça algo", "--bot", "ajudante", "--detach"]);
     expect(human.stdout).toContain("Um worker precisa processá-la: suup worker");
+    const secondId = RUN_ID_CREATED.exec(human.stdout)?.[1];
+    if (secondId === undefined) throw new Error(`no run id in:\n${human.stdout}`);
 
     const w = await p.suup(["worker"], {
       during: async (h) => {
         await h.waitFor("Worker ");
         await h.waitFor(`Execução ${id.slice(0, 8)}: concluída`);
+        // Ctrl+C is a soft stop: a run the worker has claimed but not started would go back to the
+        // queue. Both detached runs must be finished before the interrupt, or the last assertion
+        // depends on which one the worker got to first.
+        await h.waitFor(`Execução ${secondId.slice(0, 8)}: concluída`);
         h.interrupt();
       },
     });

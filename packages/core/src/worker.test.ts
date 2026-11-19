@@ -110,6 +110,50 @@ function makeWorld(): World {
 
 const statusOf = async (w: World, runId: string) => (await w.store.getRun(runId)).status;
 
+describe("Worker: afterRun hook", () => {
+  it("is awaited after the run, before it leaves the worker, for every outcome", async () => {
+    const w = makeWorld();
+    const runId = w.newRun();
+    const gate = deferred();
+    const seen: string[] = [];
+    const worker = w.worker("w1", {
+      afterRun: async (end) => {
+        seen.push(`start ${end.outcome}`);
+        await gate.promise;
+        seen.push("end");
+      },
+    });
+    worker.start();
+    await w.clock.flush();
+    // The run is done, but the hook still holds the slot and `onRunEnd` has not fired.
+    expect(await statusOf(w, runId)).toBe("done");
+    expect(seen).toEqual(["start settled"]);
+    expect(worker.activeRunIds).toEqual([runId]);
+    expect(w.ends).toEqual([]);
+    gate.resolve();
+    await w.clock.flush();
+    expect(seen).toEqual(["start settled", "end"]);
+    expect(w.ends).toHaveLength(1);
+    await worker.stop();
+  });
+
+  it("a hook that throws is reported and breaks nothing", async () => {
+    const w = makeWorld();
+    const runId = w.newRun();
+    const worker = w.worker("w1", {
+      afterRun: async () => {
+        throw new Error("hook broke");
+      },
+    });
+    worker.start();
+    await w.clock.flush();
+    expect(await statusOf(w, runId)).toBe("done");
+    expect(w.ends).toHaveLength(1);
+    expect(w.errors.map((e) => e.context)).toEqual([`after run ${runId}`]);
+    await worker.stop();
+  });
+});
+
 describe("Worker: polling and concurrency", () => {
   it("runs a queued run to the end and reports it", async () => {
     const w = makeWorld();
@@ -480,6 +524,79 @@ describe("Worker: failures", () => {
   });
 });
 
+describe("Worker: pause and interrupt asked for from outside (the server, in another process)", () => {
+  it("a soft pause is read at the safe point: the turn in progress finishes, no model call starts, the run goes back to the queue", async () => {
+    const w = makeWorld();
+    const gate = deferred();
+    const provider = new FakeProvider([
+      async () => {
+        await gate.promise;
+        return use(call("c1", "write_note", { name: "a.txt", body: "1" }));
+      },
+      say("Done."),
+    ]);
+    const runId = w.newRun(provider);
+    const worker = w.worker("w1");
+    worker.start();
+    await w.clock.flush();
+    expect(provider.calls).toBe(1);
+
+    w.store.setControl(runId, { pause: true }); // the server paused it, mid-turn
+    await w.clock.advance(3000); // heartbeats pass: a soft pause does not abort anything
+    expect(worker.activeRunIds).toEqual([runId]);
+    gate.resolve();
+    await w.clock.flush();
+    expect(provider.calls).toBe(1); // the next model call was not started
+    expect(w.ends).toEqual([{ runId, outcome: "released", reason: "pause" }]);
+    expect(await statusOf(w, runId)).toBe("queued");
+    const events = await w.store.listEvents(runId);
+    expect(eventsOfType(events, "tool_result").map((e) => e.payload.outcome)).toEqual(["ok"]);
+
+    // Paused: the worker does not take it again, however long it polls.
+    await w.clock.advance(10_000);
+    expect(worker.activeRunIds).toEqual([]);
+    expect(provider.calls).toBe(1);
+
+    // Resumed: it goes on from the log and finishes.
+    w.store.setControl(runId, { pause: false });
+    await w.clock.advance(3000);
+    expect(await statusOf(w, runId)).toBe("done");
+    await worker.stop();
+  });
+
+  it("a hard interrupt is seen on the heartbeat tick and aborts a model call that never returns", async () => {
+    const w = makeWorld();
+    const runId = w.newRun(hangingAt(new FakeProvider([say("Done after the resume.")]), 0));
+    const worker = w.worker("w1", {
+      leaseRenewMs: 10_000,
+      staleAfterMs: 30_000,
+      controlPollMs: 500,
+    });
+    worker.start();
+    await w.clock.flush();
+    expect(worker.activeRunIds).toEqual([runId]);
+
+    w.store.setControl(runId, { pause: true, interrupt: true });
+    await w.clock.advance(500); // one control tick, much sooner than the 10 s lease renewal
+    await w.clock.flush();
+    expect(w.ends).toEqual([{ runId, outcome: "released", reason: "interrupt" }]);
+    expect(await statusOf(w, runId)).toBe("queued");
+    expect(worker.activeRunIds).toEqual([]);
+
+    await w.clock.advance(5000);
+    expect(worker.activeRunIds).toEqual([]); // paused: not taken again
+    w.store.setControl(runId, { pause: false });
+    await w.clock.advance(2000);
+    expect(await statusOf(w, runId)).toBe("done");
+    await worker.stop();
+  });
+
+  it("controlPollMs makes the heartbeat tick faster than the lease renewal, never slower", () => {
+    const w = makeWorld();
+    expect(() => w.worker("w1", { controlPollMs: 0 })).toThrow(RangeError);
+  });
+});
+
 describe("Worker: graceful stop", () => {
   const twoStepRun = () =>
     new FakeProvider([
@@ -503,7 +620,7 @@ describe("Worker: graceful stop", () => {
     const stopped = first.stop({ graceMs: 0 });
     await w.clock.flush();
     await stopped;
-    expect(w.ends).toEqual([{ runId, outcome: "released" }]);
+    expect(w.ends).toEqual([{ runId, outcome: "released", reason: "shutdown" }]);
     expect(await statusOf(w, runId)).toBe("queued");
     expect(w.store.leaseHolder(runId)).toBeNull();
     expect(first.activeRunIds).toEqual([]);
@@ -584,7 +701,7 @@ describe("Worker: graceful stop", () => {
     await w.clock.flush();
     await stopping; // long before the grace period is over
     expect(provider.calls).toBe(1);
-    expect(w.ends).toEqual([{ runId, outcome: "released" }]);
+    expect(w.ends).toEqual([{ runId, outcome: "released", reason: "shutdown" }]);
     expect(await statusOf(w, runId)).toBe("queued");
     const events = await w.store.listEvents(runId);
     expect(eventsOfType(events, "tool_result").map((e) => e.payload.outcome)).toEqual(["ok"]);
@@ -607,7 +724,7 @@ describe("Worker: graceful stop", () => {
     const hurried = worker.abortNow();
     await w.clock.flush();
     await Promise.all([stopping, hurried]);
-    expect(w.ends).toEqual([{ runId, outcome: "released" }]);
+    expect(w.ends).toEqual([{ runId, outcome: "released", reason: "shutdown" }]);
     expect(await statusOf(w, runId)).toBe("queued");
   });
 

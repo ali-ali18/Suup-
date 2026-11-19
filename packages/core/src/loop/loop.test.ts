@@ -427,6 +427,111 @@ describe("runLoop: escalate", () => {
     expect((await stopped.record()).status).toBe("cancelled");
   });
 
+  it("records the options offered with the question as ONE questionnaire; the answer stays plain text", async () => {
+    const options = [
+      { label: " Postgres ", description: "  Robusto " },
+      { label: "SQLite", description: " " },
+    ];
+    const rig = createRig({
+      script: [use(call("c1", "escalate", { question, options })), say("Using Postgres.")],
+    });
+    expect(await rig.run()).toBe("waiting_user");
+    expect(eventsOfType(await rig.events(), "escalated")[0]?.payload).toEqual({
+      question,
+      questions: [
+        {
+          question,
+          options: [{ label: "Postgres", description: "Robusto" }, { label: "SQLite" }],
+        },
+      ],
+      callId: "c1",
+    });
+    rig.store.postInbox(rig.runId, { kind: "user_message", text: "Postgres" });
+    expect(await rig.run()).toBe("done");
+    expect(resultsIn(rig, 1).c1).toBe("Postgres");
+  });
+
+  it("a questionnaire is recorded with its numbered text; the reply comes back as plain text", async () => {
+    const questions = [
+      { question: "Which database?", options: [{ label: "Postgres" }, { label: "SQLite" }] },
+      {
+        question: "Which extras?",
+        options: [{ label: "Cache" }, { label: "Queue" }, { label: "Search" }],
+        multiple: true,
+        allowOther: true,
+      },
+    ];
+    const rig = createRig({
+      script: [use(call("c1", "escalate", { questions })), say("Done.")],
+    });
+    expect(await rig.run()).toBe("waiting_user");
+    expect(eventsOfType(await rig.events(), "escalated")[0]?.payload).toEqual({
+      question: "1. Which database?\n2. Which extras?",
+      questions,
+      callId: "c1",
+    });
+    const reply = "1. Which database? → Postgres\n2. Which extras? → (pulou)";
+    rig.store.postInbox(rig.runId, { kind: "user_message", text: reply });
+    expect(await rig.run()).toBe("done");
+    expect(resultsIn(rig, 1).c1).toBe(reply);
+  });
+
+  it("rejects an invalid escalate (both forms, neither, bad options, stray flags) and lets the model retry", async () => {
+    const opt = (label: string) => ({ label });
+    const rig = createRig({
+      script: [
+        use(call("c1", "escalate", { question, options: [opt("a")] })),
+        use(call("c2", "escalate", { question, questions: [{ question: "x" }] })),
+        say("fine"),
+      ],
+    });
+    expect(await rig.run()).toBe("done");
+    expect(resultsIn(rig, 1).c1).toContain("options");
+    expect(resultsIn(rig, 2).c2).toContain("not both");
+
+    const second = createRig({
+      script: [
+        use(call("c3", "escalate", { options: [opt("a"), opt("b")] })),
+        use(call("c4", "escalate", { questions: [{ question: "x", multiple: true }] })),
+        say("fine"),
+      ],
+    });
+    expect(await second.run()).toBe("done");
+    expect(resultsIn(second, 1).c3).toContain("Provide `question`");
+    expect(resultsIn(second, 2).c4).toContain("without `options`");
+
+    const third = createRig({
+      script: [
+        use(call("c5", "escalate", { question, options: "abcdef".split("").map(opt) })),
+        use(
+          call("c6", "escalate", { questions: [{ question: "x", options: [opt("a"), opt("A")] }] }),
+        ),
+        say("fine"),
+      ],
+    });
+    expect(await third.run()).toBe("done");
+    expect(resultsIn(third, 1).c5).toContain("options");
+    expect(resultsIn(third, 2).c6).toContain("same label");
+
+    const fourth = createRig({
+      script: [
+        use(
+          call("c7", "escalate", {
+            questions: [{ question: "x", options: [opt("a"), opt("  ")] }],
+          }),
+        ),
+        use(call("c8", "escalate", { questions: [{ question: " " }] })),
+        say("fine"),
+      ],
+    });
+    expect(await fourth.run()).toBe("done");
+    expect(resultsIn(fourth, 1).c7).toContain("empty label");
+    expect(resultsIn(fourth, 2).c8).toContain("is empty");
+    for (const r of [rig, second, third, fourth]) {
+      expect(eventsOfType(await r.events(), "escalated")).toHaveLength(0);
+    }
+  });
+
   it("rejects an escalate that is not alone, and an empty question", async () => {
     const rig = createRig({
       script: [

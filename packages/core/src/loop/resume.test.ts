@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { validateConversation } from "../messages.js";
 import {
+  bareReject,
   CrashingStore,
   call,
+  cannotVerify,
   createRig,
   eventsOfType,
   FakeProvider,
   type FakeStep,
   finishCall,
+  needEvidence,
   planCall,
   type Rig,
   SimulatedCrash,
@@ -17,6 +20,7 @@ import {
   verdict,
 } from "../testing/index.js";
 import { INTERRUPTED_RESULT, runLoop } from "./loop.js";
+import type { RunContextSnapshot } from "./run-context.js";
 import { rebuildState } from "./state.js";
 import type { StoredEvent } from "./store.js";
 
@@ -37,7 +41,14 @@ interface Scenario {
   answer?: string;
   /** Posted by the user while the model produces response number `atCall` (0-based). */
   midRun?: { atCall: number; text: string };
+  /** The run starts with this outside context (rules, profile, history). */
+  context?: RunContextSnapshot;
+  /** Files in the workspace at the start (the reviewer may ask to read them). */
+  files?: Record<string, string>;
 }
+
+/** How many times each rig's `loadRunContext` was called, across every life of the run. */
+const contextLoads = new WeakMap<object, number>();
 
 const scenarios: Scenario[] = [
   {
@@ -111,6 +122,93 @@ const scenarios: Scenario[] = [
     ],
     reviewerScript: [verdict("reject", "Not convincing.")],
     answer: "Accept it.",
+  },
+  {
+    name: "a review in which the reviewer asks for evidence twice and then rejects, then approves",
+    files: { "report.md": "Total: 42\n" },
+    script: [use(finishCall("c1", "Total is 42.")), use(finishCall("c2", "Total is 42, checked."))],
+    reviewerScript: [
+      needEvidence("v1", "need the report", { files: ["report.md", "absent.md"] }),
+      needEvidence("v2", "need the report again", { files: ["report.md"] }),
+      verdict("reject", "The summary says 42 but nothing shows it."),
+      verdict("approve"),
+    ],
+  },
+  {
+    name: "the reviewer asks for the arguments of a call and for a file outside the workspace",
+    script: [
+      use(call("c1", "echo", { text: `cat > /tmp/calc.py <<'EOF'\n${"x = 1\n".repeat(80)}EOF` })),
+      use(finishCall("c2", "Computed with /tmp/calc.py.")),
+    ],
+    reviewerScript: [
+      needEvidence("v1", "need the script", { calls: ["#1", "#7"], files: ["/tmp/calc.py"] }),
+      verdict("approve"),
+    ],
+  },
+  {
+    name: "the reviewer rejects without a discrepancy, is asked again, then rejects for real and approves",
+    script: [use(finishCall("c1", "Done.")), use(finishCall("c2", "Done, fixed."))],
+    reviewerScript: [
+      bareReject("something feels off"),
+      verdict("reject", "The total is 41, not 42."),
+      verdict("approve"),
+    ],
+  },
+  {
+    name: "the reviewer rejects twice without a discrepancy: unverified, handed to the user",
+    script: [use(finishCall("c1", "Done.")), use(finishCall("c2", "Done, accepted."))],
+    reviewerScript: [bareReject("not sure"), bareReject("still not sure")],
+    answer: "Accept it.",
+  },
+  {
+    name: "the reviewer rejects with discrepancies it marks as not real, is asked again, then approves",
+    script: [use(finishCall("c1", "Done."))],
+    reviewerScript: [
+      verdict("reject", "everything matches", [
+        { claimed: "CNPJ", shows: "matches; no discrepancy", where: "#1", real_mismatch: false },
+      ]),
+      verdict("approve"),
+    ],
+  },
+  {
+    name: "the reviewer cannot_verify naming nothing, is asked again, then approves",
+    script: [use(finishCall("c1", "Done."))],
+    reviewerScript: [cannotVerify("it all checks out"), verdict("approve")],
+  },
+  {
+    name: "the reviewer cannot_verify something already sent in full, twice: unverified, handed to the user",
+    files: { "report.md": "Total: 42\n" },
+    script: [
+      use(finishCall("c1", "Total is 42.")),
+      use(finishCall("c2", "Total is 42, accepted.")),
+    ],
+    reviewerScript: [
+      needEvidence("v1", "need the report", { files: ["report.md"] }),
+      cannotVerify("cannot check", [{ what: "the total", kind: "file", ref: "report.md" }]),
+      cannotVerify("still cannot", [{ what: "the total", kind: "file", ref: "report.md" }]),
+    ],
+    answer: "Accept it.",
+  },
+  {
+    name: "a run that starts with rules, a profile and the history of the conversation",
+    context: {
+      rules: [{ id: "r1", text: "Always confirm before writing files." }],
+      profile: [{ id: "p1", text: "The user is called Marina." }],
+      history: [
+        { role: "user", blocks: [{ type: "text", text: "Earlier question." }] },
+        { role: "assistant", blocks: [{ type: "text", text: "Earlier answer." }] },
+      ],
+      historyNote: "Older messages were left out.",
+    },
+    script: [
+      use(planCall("c1", [step("s1", "in_progress")])),
+      use(call("c2", "echo", { text: "x" }), call("c3", "counter")),
+      use(call("c4", "escalate", { question: "Blue or red?" })),
+      use(planCall("c5", [step("s1", "done")])),
+      use(finishCall("c6", "Went with blue, Marina.")),
+    ],
+    midRun: { atCall: 1, text: "Keep it short." },
+    answer: "Blue.",
   },
   {
     name: "a compaction in the middle",
@@ -260,6 +358,26 @@ async function expectDeliveredOnce(rig: Rig, scenario: Scenario, label: string):
 }
 
 function makeRig(scenario: Scenario): Rig {
+  const rig = createRigFor(scenario);
+  const { context } = scenario;
+  for (const [path, content] of Object.entries(scenario.files ?? {})) {
+    rig.executor.files.set(`/workspace/${path}`, content);
+  }
+  if (context !== undefined) {
+    const original = rig.deps.bind(rig);
+    rig.deps = (overrides = {}) =>
+      original({
+        loadRunContext: async () => {
+          contextLoads.set(rig, (contextLoads.get(rig) ?? 0) + 1);
+          return structuredClone(context);
+        },
+        ...overrides,
+      });
+  }
+  return rig;
+}
+
+function createRigFor(scenario: Scenario): Rig {
   return createRig({
     script: scenario.script,
     ...(scenario.reviewerScript === undefined ? {} : { reviewerScript: scenario.reviewerScript }),
@@ -305,6 +423,12 @@ describe("resume: kill the process after every possible event", () => {
         const resumed = project(await rig.events(), scenario.midRun !== undefined);
 
         const label = `crash after ${n} events`;
+        if (scenario.context !== undefined) {
+          // Once the event is in the log nobody asks again; only a death between `run_started`
+          // and `context_loaded` (n = 1) makes the second life ask once more.
+          expect(contextLoads.get(rig), `${label}: context loads`).toBe(n === 1 ? 2 : 1);
+          expect(eventsOfType(await rig.events(), "context_loaded"), label).toHaveLength(1);
+        }
         await expectDeliveredOnce(rig, scenario, label);
         expect(resumed.length, label).toBe(baseProjection.length);
         let interrupted = 0;

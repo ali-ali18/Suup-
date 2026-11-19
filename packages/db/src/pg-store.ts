@@ -3,6 +3,7 @@ import {
   LeaseLostError,
   type PlanStep,
   parseRunEvent,
+  type RunControl,
   type RunRecord,
   type RunStore,
   type StatusChange,
@@ -12,7 +13,7 @@ import {
 import { type Db, withTransaction } from "./client.js";
 import { appendRunEvent, listRunEvents, RunNotFoundError } from "./events.js";
 import { ackInboxEntries, hasPendingInbox, type InboxEntry, peekInboxEntries } from "./inbox.js";
-import { renewLease } from "./queue.js";
+import { heartbeatRun } from "./queue.js";
 import {
   addRunUsage,
   getRun,
@@ -140,8 +141,10 @@ export class PgRunStore implements RunStore {
     await this.#leased(runId, (tx) => ackInboxEntries(tx, runId, ids));
   }
 
-  async heartbeat(runId: string): Promise<void> {
-    if (!(await renewLease(this.#db, runId, this.workerId))) throw new LeaseLostError(runId);
+  async heartbeat(runId: string): Promise<RunControl> {
+    const control = await heartbeatRun(this.#db, runId, this.workerId);
+    if (control === null) throw new LeaseLostError(runId);
+    return control;
   }
 
   /** Runs `fn` in a transaction after checking the lease under the run's row lock. */

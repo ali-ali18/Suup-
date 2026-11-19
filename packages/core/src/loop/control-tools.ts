@@ -1,8 +1,15 @@
 import { z } from "zod";
-import type { PlanStep } from "../events.js";
+import {
+  type Discrepancy,
+  type EscalateQuestion,
+  escalateOptionSchema,
+  escalateQuestionSchema,
+  type PlanStep,
+  type UncheckedItem,
+} from "../events.js";
 import type { JsonObject } from "../messages.js";
 import type { ToolSpec } from "../provider.js";
-import { openSteps, VERDICT_TOOL_DESCRIPTION } from "./prompts.js";
+import { FINAL_VERDICT_TOOL_DESCRIPTION, openSteps, VERDICT_TOOL_DESCRIPTION } from "./prompts.js";
 
 /**
  * Tools the loop handles itself. They are always available, never go through the registry and do
@@ -38,9 +45,17 @@ The harness rejects the finish, and tells you every reason at once, if: the summ
 
 If the task cannot be completed as asked, do not finish: use \`escalate\`.`;
 
-export const ESCALATE_DESCRIPTION = `Stop and ask the user ONE question. Use it when you are blocked (missing information or access), when the task is impossible or ambiguous in a way that matters, when a decision belongs to the user, or before something risky or irreversible that was not clearly authorized. Do not use it for things you can find out or decide yourself.
+export const ESCALATE_DESCRIPTION = `Stop and ask the user a question (or, rarely, a short questionnaire). Use it when you are blocked (missing information or access), when the task is impossible or ambiguous in a way that matters, when a decision belongs to the user, or before something risky or irreversible that was not clearly authorized. Do not use it for things you can find out or decide yourself.
 
-Make the question precise and answerable in a sentence or two: say what you need to know, what you already tried or found, the options you see, and what you would do by default. Include the context needed to answer without reading the whole history.
+Make each question precise and answerable in a sentence or two: say what you need to know, what you already tried or found, the options you see, and what you would do by default. Include the context needed to answer without reading the whole history: every question must be answerable on its own, without scrolling back.
+
+Two forms (use exactly one):
+- \`question\` (plus optional \`options\`): ONE question. This is the usual form.
+- \`questions\`: a questionnaire of 1 to 5 questions, each with its own \`question\`, optional \`options\`, \`multiple\` (the user may pick several) and \`allowOther\`. Use it ONLY when you need several independent answers at once and the choices are genuinely discrete; never ask more questions than you need, and never split one decision into several.
+
+Pass \`options\` (2 to 5 items for \`question\`, 2 to 6 per entry of \`questions\`; each a short \`label\` and an optional one-line \`description\`) ONLY when the possible answers are genuinely discrete, such as choosing between two approaches or confirming one of a few named alternatives. The user sees them as choices, but may always answer with free text, and may skip a question of a questionnaire. Leave \`options\` out for open questions, for missing information, and when you would have to invent choices.
+
+The reply comes back as plain text. For one question it is the chosen label(s) (separated by "; ") or what the user typed. For a questionnaire it is one line per question, \`1. <question> → <chosen labels, separated by "; ">\`, with \`→ (pulou)\` for a question the user skipped.
 
 Call it ALONE in its turn. The run pauses until the user replies; the reply comes back as this tool's result, and you continue from there.`;
 
@@ -74,13 +89,231 @@ export const finishInputSchema = z.object({
 });
 
 export const escalateInputSchema = z.object({
-  question: z.string().describe("The single, precise question for the user."),
+  question: z
+    .exactOptional(z.string())
+    .describe("A single, precise question for the user. Use this OR `questions`."),
+  options: z
+    .exactOptional(z.array(escalateOptionSchema).min(2).max(5))
+    .describe(
+      "Only with `question`: 2 to 5 choices, only when the answers are genuinely discrete. The user may still answer in free text.",
+    ),
+  questions: z
+    .exactOptional(z.array(escalateQuestionSchema).min(1).max(5))
+    .describe(
+      "A questionnaire of 1 to 5 questions, only when you need several independent answers at once. Use this OR `question`.",
+    ),
 });
 
-export const verdictInputSchema = z.object({
-  verdict: z.enum(["approve", "reject"]),
-  notes: z.string().describe("Short explanation; when rejecting, what is wrong and how to fix it."),
-});
+export type EscalateInput = z.infer<typeof escalateInputSchema>;
+
+/**
+ * Checks and normalises what the model asked: ONE questionnaire, or the reason it is not valid.
+ * Whitespace is trimmed; labels must be non-empty and distinct inside a question.
+ */
+export function normalizeEscalateInput(
+  input: EscalateInput,
+): { ok: true; questions: EscalateQuestion[]; text: string } | { ok: false; problem: string } {
+  const bad = (problem: string) => ({ ok: false as const, problem });
+  if (input.question !== undefined && input.questions !== undefined) {
+    return bad(
+      "Use either `question` (one question, with optional `options`) or `questions` (a questionnaire), not both.",
+    );
+  }
+  if (input.question === undefined && input.questions === undefined) {
+    return bad("Provide `question` (one question) or `questions` (a questionnaire).");
+  }
+  if (input.questions !== undefined && input.options !== undefined) {
+    return bad(
+      "`options` goes with `question`. In a questionnaire, put the options inside each entry of `questions`.",
+    );
+  }
+  const raw: EscalateQuestion[] = input.questions ?? [
+    {
+      question: input.question as string,
+      ...(input.options === undefined ? {} : { options: input.options }),
+    },
+  ];
+  const questions: EscalateQuestion[] = [];
+  for (const [index, q] of raw.entries()) {
+    const label = raw.length === 1 ? "The question" : `Question ${index + 1}`;
+    const text = q.question.trim();
+    if (text === "") {
+      return bad(`${label} is empty. Ask one precise question, or leave it out.`);
+    }
+    const options = q.options?.map((o) => ({
+      label: o.label.trim(),
+      ...(o.description === undefined || o.description.trim() === ""
+        ? {}
+        : { description: o.description.trim() }),
+    }));
+    if (options?.some((o) => o.label === "") === true) {
+      return bad(
+        `${label} has an option with an empty label. Give every option a short label, or leave options out.`,
+      );
+    }
+    if (new Set(options?.map((o) => o.label.toLowerCase())).size !== (options?.length ?? 0)) {
+      return bad(
+        `${label} has two options with the same label. Make the labels distinct, or leave options out.`,
+      );
+    }
+    if (options === undefined && (q.multiple === true || q.allowOther === true)) {
+      return bad(
+        `${label} sets \`multiple\` or \`allowOther\` without \`options\`. They only make sense with options.`,
+      );
+    }
+    questions.push({
+      question: text,
+      ...(options === undefined ? {} : { options }),
+      ...(q.multiple === true ? { multiple: true } : {}),
+      ...(q.allowOther === true ? { allowOther: true } : {}),
+    });
+  }
+  const text =
+    questions.length === 1
+      ? (questions[0] as EscalateQuestion).question
+      : questions.map((q, i) => `${i + 1}. ${q.question}`).join("\n");
+  return { ok: true, questions, text };
+}
+
+/**
+ * The discrepancies the reviewer lists. `real_mismatch` is the reviewer's own statement that the
+ * entry is a real difference between the claim and the evidence; one it marks `false` is dropped
+ * (a thing it checked and found matching). It is required for the model; reading it is lenient (see
+ * `verdictParseSchema`), so a missing flag costs a re-ask and not an approval by default.
+ */
+function discrepanciesField(flagRequired: boolean) {
+  const flag = z
+    .boolean()
+    .describe(
+      "true ONLY if what the evidence shows really DIFFERS from what the work claims. false if you checked and they match, or you found no real difference: such an entry is discarded. Things that match do not belong here (put them in `notes`).",
+    );
+  return z
+    .array(
+      z.object({
+        claimed: z.string().describe("What the assistant's work or evidence claims."),
+        shows: z
+          .string()
+          .describe("What the tool results or files actually show instead (a real difference)."),
+        where: z
+          .string()
+          .describe(
+            'Where to see it: a digest id ("#3"), a file path, or an acceptance criterion.',
+          ),
+        real_mismatch: flagRequired ? flag : flag.optional(),
+      }),
+    )
+    .optional()
+    .describe(
+      "Only for a reject: the REAL mismatches between the claim and the evidence, at least one, each with real_mismatch true. This is not a list of what you checked and found correct (that goes in `notes`). A reject with no real mismatch is not accepted: if you found none, answer approve or cannot_verify.",
+    );
+}
+
+/** What the reviewer says it could not check: what, and the reference it would need. */
+function uncheckedField(flagRequired: boolean) {
+  const item = z.object({
+    what: z.string().describe("The claim or fact you could not check."),
+    kind: flagRequired
+      ? z
+          .enum(["result", "call", "file", "other"])
+          .describe(
+            'What you would need: "result" (a tool result), "call" (the arguments of a tool call), "file" (a workspace file) or "other".',
+          )
+      : z.enum(["result", "call", "file", "other"]).optional(),
+    ref: flagRequired
+      ? z
+          .string()
+          .describe('The digest id ("#3"), the file path, or the reference of what you would need.')
+      : z.string().optional(),
+  });
+  const list = z
+    .array(item)
+    .describe(
+      "Only for cannot_verify, at least one: each thing you could NOT check, with what you would need to check it. Do not list what the digest or the evidence already showed you in full.",
+    );
+  return flagRequired ? list.optional() : list.optional().catch(undefined);
+}
+
+/** The discrepancies of a reject that are usable: all three parts written and marked as a real mismatch. */
+export function validDiscrepancies(
+  list: readonly (Discrepancy & { real_mismatch?: boolean | undefined })[] | undefined,
+): Discrepancy[] {
+  return (list ?? [])
+    .filter((d) => d.real_mismatch === true)
+    .map((d) => ({
+      claimed: d.claimed.trim(),
+      shows: d.shows.trim(),
+      where: d.where.trim(),
+    }))
+    .filter((d) => d.claimed !== "" && d.shows !== "" && d.where !== "");
+}
+
+/** The unchecked items that name something (`what` written); kind and reference default to `other` / "". */
+export function validUnchecked(
+  list:
+    | readonly {
+        what: string;
+        kind?: UncheckedItem["kind"] | undefined;
+        ref?: string | undefined;
+      }[]
+    | undefined,
+): UncheckedItem[] {
+  return (list ?? [])
+    .map((u) => ({ what: u.what.trim(), kind: u.kind ?? "other", ref: (u.ref ?? "").trim() }))
+    .filter((u) => u.what !== "");
+}
+
+/** The discrepancies as a numbered list, for the assistant (and the user) to act on. */
+export function formatDiscrepancies(list: readonly Discrepancy[]): string {
+  return list
+    .map(
+      (d, i) =>
+        `${i + 1}. Claimed: ${d.claimed}\n   Evidence shows: ${d.shows}\n   Where: ${d.where}`,
+    )
+    .join("\n");
+}
+
+/**
+ * What the reviewer may answer. `need_evidence` asks the harness for items the digest only shows
+ * in part (`results`: digest entries like "#3" or call ids; `calls`: the full ARGUMENTS of tool
+ * calls, such as a script written inside a shell command; `files`: workspace paths);
+ * `cannot_verify` says that something stayed unchecked even with the evidence, and lists it in
+ * `unchecked`. A `reject` must carry `discrepancies` with at least one `real_mismatch: true`, and a
+ * `cannot_verify` an `unchecked` that names something the harness had not already sent in full. Both
+ * are checked by `parseVerdict` and `finish.ts`, not by the schema, so the reviewer can be asked
+ * again instead of failing the call. `strict` is the schema the model sees (the flags required);
+ * reading uses the lenient one (`verdictParseSchema`).
+ */
+function verdictShape(strict: boolean) {
+  return z.object({
+    verdict: z.enum(["approve", "reject", "need_evidence", "cannot_verify"]),
+    notes: z
+      .string()
+      .describe(
+        "Short explanation. Reject: what the assistant should fix. need_evidence: what you will check. cannot_verify: what could not be verified. Put here what you checked and found correct, if useful.",
+      ),
+    discrepancies: discrepanciesField(strict),
+    unchecked: uncheckedField(strict),
+    results: z
+      .array(z.string())
+      .optional()
+      .describe(
+        'need_evidence: tool RESULTS (what the tool returned) to see in full, as in the digest ("#3") or by call id.',
+      ),
+    calls: z
+      .array(z.string())
+      .optional()
+      .describe(
+        'need_evidence: tool CALLS whose full ARGUMENTS (the whole command, the content written to a file) you want to see, as in the digest ("#3"). Use it when the digest marks ARGUMENTS SHORTENED. Different from `results`.',
+      ),
+    files: z
+      .array(z.string())
+      .optional()
+      .describe("need_evidence: workspace files to read in full, by relative path."),
+  });
+}
+
+export const verdictInputSchema = verdictShape(true);
+export const verdictParseSchema = verdictShape(false);
 
 function toolSpec(name: string, description: string, schema: z.ZodType): ToolSpec {
   const json = z.toJSONSchema(schema, { io: "input", unrepresentable: "any" }) as JsonObject;
@@ -97,8 +330,22 @@ export function controlToolSpecs(): ToolSpec[] {
   ];
 }
 
-export function verdictToolSpec(): ToolSpec {
-  return toolSpec("verdict", VERDICT_TOOL_DESCRIPTION, verdictInputSchema);
+/** The last round no longer lets the reviewer ask for evidence: it must decide or say what it could not check. */
+const finalVerdictInputSchema = z.object({
+  verdict: z.enum(["approve", "reject", "cannot_verify"]),
+  notes: z
+    .string()
+    .describe(
+      "Short explanation. Reject: what the assistant should fix. cannot_verify: what could not be verified. Put here what you checked and found correct, if useful.",
+    ),
+  discrepancies: verdictInputSchema.shape.discrepancies,
+  unchecked: verdictInputSchema.shape.unchecked,
+});
+
+export function verdictToolSpec(canAskEvidence = true): ToolSpec {
+  return canAskEvidence
+    ? toolSpec("verdict", VERDICT_TOOL_DESCRIPTION, verdictInputSchema)
+    : toolSpec("verdict", FINAL_VERDICT_TOOL_DESCRIPTION, finalVerdictInputSchema);
 }
 
 /** Renders zod issues for the model, in the same shape the registry uses for ordinary tools. */

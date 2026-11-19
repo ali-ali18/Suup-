@@ -32,7 +32,20 @@ describe("control tool specs", () => {
     const finish = specs[1]?.inputSchema as { required?: string[] };
     expect(finish.required).toEqual(["summary"]);
     const escalate = specs[2]?.inputSchema as { required: string[] };
-    expect(escalate.required).toEqual(["question"]);
+    // One tool, one schema: a single question OR a questionnaire, so nothing is required by itself.
+    expect(escalate.required ?? []).toEqual([]);
+    const props = (
+      escalate as unknown as {
+        properties: Record<string, { minItems?: number; maxItems?: number }>;
+      }
+    ).properties;
+    expect(props.options).toMatchObject({ minItems: 2, maxItems: 5 });
+    expect(props.questions).toMatchObject({ minItems: 1, maxItems: 5 });
+    const description = specs[2]?.description ?? "";
+    expect(description).toContain("genuinely discrete");
+    expect(description).toContain("answerable on its own");
+    expect(description).toContain("questionnaire");
+    expect(description).toContain("(pulou)");
   });
 });
 

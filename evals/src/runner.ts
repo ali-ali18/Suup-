@@ -23,6 +23,7 @@ import {
 import {
   createRuntime,
   DEFAULT_WORKER,
+  MEMORY_TOOL_NAMES,
   type Runtime,
   type RuntimeConfig,
   type RuntimeOptions,
@@ -126,6 +127,8 @@ export type EvalProgress =
   | { type: "warning"; message: string };
 
 const isEvalTool = (name: string) => name.startsWith(EVAL_TOOL_PREFIX);
+/** Memory tools are not part of what an evaluation measures (see `isolated` in `buildDeps`). */
+const isMemoryTool = (name: string) => (MEMORY_TOOL_NAMES as readonly string[]).includes(name);
 
 /** Validates the request and works out what it would cost. Throws `EvalSetupError`. */
 export function planEval(options: RunEvalOptions & { runtime: Runtime }): EvalPlan {
@@ -322,7 +325,8 @@ async function driveRun(
     queue: new PgRunQueue(db, { onlyRunId: runId }),
     buildDeps: async (id): Promise<LoopDeps> => {
       claims += 1;
-      const deps = await runtime.buildDeps(id, workerId);
+      // Isolated: an evaluation never loads memory (rules, profile, history) from the database.
+      const deps = await runtime.buildDeps(id, workerId, { isolated: true });
       return {
         ...deps,
         store: new ScriptedInboxStore(
@@ -469,6 +473,8 @@ async function executeCell(
       botId: bot.id,
       objective: task.objective,
       acceptanceCriteria: task.criteria,
+      // Isolated also at the end: no journal entry, now or later by reconciliation.
+      isolated: true,
     });
     result.runId = run.id;
 
@@ -629,7 +635,7 @@ async function run(runtime: Runtime, options: RunEvalOptions): Promise<EvalRepor
   const builtinTools = runtime.tools
     .list()
     .map((t) => t.name)
-    .filter((name) => !isEvalTool(name));
+    .filter((name) => !isEvalTool(name) && !isMemoryTool(name));
   const startedAt = new Date();
   const results: CellResult[] = [];
   const inflight = new Map<number, { cost: number; done: Promise<void> }>();

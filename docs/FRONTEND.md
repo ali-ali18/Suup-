@@ -1,14 +1,14 @@
 # Suup: o que o backend oferece ao front
 
-Guia para desenhar o app de desktop. Cada item diz se **já existe** (fase 1, no repositório) ou em que **fase** entra. O que já existe tem os nomes exatos dos campos; o que é futuro pode mudar de nome, mas não de natureza.
+Guia para desenhar o app de desktop. Cada item diz se **já existe** (fases 1 e 2, no repositório) ou em que **fase** entra. O que já existe tem os nomes exatos dos campos; o que é futuro pode mudar de nome, mas não de natureza.
 
-A API de rede (HTTP e tempo real) ainda não existe: ela nasce na fase 2, junto com o app. Hoje tudo isso é acessado pela linha de comando `suup`. O desenho do front define o que essa API precisa servir.
+A **API de rede existe** (fase 2): HTTP e tempo real por Server-Sent Events, descritos em [API.md](API.md) e tipados no pacote `@suup/api`, que o app importa (esquemas, tipos, o cliente `createClient` e o `subscribe` do stream). Este documento diz *o que* cada tela precisa; o API.md diz *como* pedir. Onde a API real difere do que este guia prometia antes de ela existir, o texto abaixo já foi corrigido (a seção 12 resume as diferenças).
 
 ## 1. As três camadas de dados
 
 | Camada | O que é | Como o front usa |
 |---|---|---|
-| **Conversa** | Mensagens entre você e um bot (fase 2) | A tela de chat |
+| **Conversa** | Mensagens entre você e um bot (existe) | A tela de chat |
 | **Execução** (`run`) | Uma rodada de trabalho do bot, com começo, fim e um log de eventos (existe) | O que aparece "dentro" de uma resposta do bot: plano, ferramentas, conclusão |
 | **Estado** | Bots, memória, rotinas, aprovações, segredos, dispositivos | Telas de configuração e painéis laterais |
 
@@ -25,12 +25,18 @@ Uma mensagem sua abre uma execução. Uma rotina e uma tarefa delegada por outro
 | `modelProvider`, `modelId` | texto | Qual modelo o bot usa |
 | `allowedTools` | lista de textos | Ferramentas liberadas |
 | `limits` | objeto | `maxTurns`, `maxCostUsd`, `maxDurationMs` |
+| `avatar` | texto ou vazio | Referência opaca que o app interpreta (`mascot:<formato>` com um dos 25 formatos do motor de avatar, um emoji, id de arquivo...): o servidor só a guarda |
+| `isDefault` | verdadeiro/falso | O bot principal, o que recebe a mensagem quando nenhum é escolhido |
+| `pinned`, `groupName`, `sortOrder` | booleano, texto ou vazio, inteiro ou vazio | Onde o bot aparece na lista: fixado (blocos grandes no topo), sob um grupo nomeado, ou na lista padrão "Bots" |
+| `color` | id da paleta ou vazio | A cor do mascote e do balão do usuário (`laranja`, `azul`, `verde`, `roxo`, `rosa`, `amarelo`, `cinza`, `grafite`, `branco`); o servidor só guarda o id; sem cor, o app escolhe uma pelo id do bot |
 | `createdAt`, `updatedAt` | data | |
 | `archivedAt` | data ou vazio | Bot arquivado não recebe trabalho novo |
 
-Ainda não existe: foto ou avatar (fase 2), nível de autonomia (fase 4), tela própria (fase 5).
+Para a **lista de bots** a API devolve junto, em cada bot: `latestRun` (a execução mais recente, com o `status` e se está `paused`: o indicador de atividade), `conversationId` (a conversa direta, se já existe) e `unreadCount` (mensagens não lidas).
 
-Ações: criar, editar, arquivar, listar (com ou sem arquivados).
+Ainda não existe: nível de autonomia (fase 4), tela própria (fase 5).
+
+Ações: criar, editar, arquivar, tornar principal, listar (com ou sem arquivados), **propor um bot a partir de uma descrição** (`draft`: devolve nome, descrição e personalidade para a pessoa revisar; não cria nada) e listar os **modelos** e as **ferramentas** disponíveis, para o formulário de criar e editar.
 
 ## 3. Execução (existe)
 
@@ -43,7 +49,9 @@ Ações: criar, editar, arquivar, listar (com ou sem arquivados).
 | `objective` | texto | O pedido |
 | `acceptanceCriteria` | lista de textos | Critérios de pronto |
 | `plan` | lista de passos | Ver abaixo |
+| `conversationId` | texto ou vazio | A conversa cuja mensagem abriu a execução; vazio nas de rotina e de delegação |
 | `status` | ver seção 4 | |
+| `paused` | verdadeiro/falso | **Você pausou a execução** (seções 4 e 6). Não é um estado novo: vem junto de `queued` ou `running` |
 | `failureOrigin`, `failureDetail` | texto | Só quando `status` é `failed` |
 | `result` | `{ summary, evidence[] }` | Só quando concluída |
 | `turns` | número | Idas e vindas com o modelo |
@@ -68,6 +76,8 @@ Ações: criar, editar, arquivar, listar (com ou sem arquivados).
 | `cancelled` | Você mandou parar | "Cancelada" |
 
 Detalhe importante: quando você responde uma pergunta, a execução passa um instante por `queued` antes de voltar a `running`. O front deve tratar `queued` depois de `waiting_user` como "retomando", não como "voltou para o fim da fila".
+
+**Pausada** não é um estado: é `paused: true` junto de `queued` (parada, esperando `resume`) ou de `running` (a caminho de parar, até o worker chegar ao próximo ponto seguro). Mostre "Pausada" sempre que `paused` for verdadeiro, seja qual for o `status`. O servidor tira a pausa sozinho quando a execução termina ou passa a esperar você.
 
 **Origem da falha** (`failureOrigin`), para o diagnóstico ficar visível:
 
@@ -95,9 +105,12 @@ Cada execução tem um log de eventos numerados (`seq`), só de acréscimo. É a
 | `user_message` | `text` | Sua mensagem, marcada como "lida pelo bot" |
 | `nudge` | `reason`, `text` | Aviso discreto: "o Suup pediu ao bot que continuasse" |
 | `finish_attempt` | `summary`, `evidence`, `accepted`, `rejectionReasons` | Conclusão aceita, ou "conclusão recusada" com os motivos |
-| `review` | `verdict` (`approve` ou `reject`), `notes`, `warning?` | Selo do revisor |
-| `escalated` | `question`, `reason?` | Pergunta em destaque |
+| `review` | `verdict` (`approve`, `reject` ou `unverified`), `notes`, `discrepancies?` (num `reject`: lista de `{ claimed, shows, where }`, ao menos uma), `warning?` | Selo do revisor. `unverified`: o revisor não conseguiu verificar algo mesmo com as evidências; `notes` diz o quê, e a decisão vai para o dono |
+| `review_reprompt` | `callId`, `args`, `reason` | O revisor reprovou sem apontar divergência concreta e foi perguntado de novo (no máximo uma vez por revisão); não é uma reprovação |
+| `review_evidence` | `round`, `callId`, `notes`, `requested` (`results`, `calls?`, `files`), `supplied`, `missing` (com `hint?`), `omitted?`, `budgetChars` | Aviso discreto ("o revisor pediu mais evidências"). Resultados de ferramenta e argumentos de chamada (`kind: tool_call`) vêm por referência (`ref` = id da chamada, o conteúdo já está no log); `omitted` lista o que só não coube no orçamento; arquivos trazem `content` e `hash`, para a retomada e o replay não dependerem do disco |
+| `escalated` | `question`, `questions?`, `reason?` | Pergunta em destaque. `questions` (1 a 5 itens `{ question, options?, multiple?, allowOther? }`) existe quando há escolhas ou várias perguntas; `options` só quando as respostas são discretas |
 | `status_changed` | `from`, `to`, `failure?`, `result?` | Mudança de estado |
+| `context_loaded` | `rules`, `profile`, `history`, `historyNote?` | Logo depois de `run_started`: o que a memória e a conversa deram à execução. Aviso discreto ("3 regras, 1 fato do perfil, 6 mensagens anteriores"); `rules` e `profile` têm `id` e `text` e aparecem na tela de memória |
 | `model_error` | `kind`, `message`, `retryable`, `attempt` | "Tentando de novo" ou erro |
 | `compacted` | `summary`, `droppedMessages` | Aviso discreto: "histórico resumido" |
 | `model_request` | A requisição inteira enviada ao modelo | Só no inspetor de diagnóstico |
@@ -105,12 +118,13 @@ Cada execução tem um log de eventos numerados (`seq`), só de acréscimo. É a
 Observações:
 
 - `tool_call` e `tool_result` se ligam pelo `callId`. Entre um e outro, a ferramenta está rodando.
+- Em `GET /v1/runs/{id}/events?view=chat` (e no stream), o `payload` de `model_request` vem **resumido** (`omitted: true`, `provider`, `model`, `purpose`, `messageCount`, `toolCount`): o pedido inteiro pode ter megabytes e só o Inspetor o desenha (`GET /v1/runs/{id}/requests/{seq}`). Todos os outros tipos desta tabela vêm inteiros.
 - `model_response`, `model_request` e `model_error` têm `purpose`: `agent` (o bot), `review` (o revisor) ou `compaction` (resumo do histórico). Na conversa, só `agent` aparece.
 - O texto do bot chega **por turno**, inteiro, e não letra por letra.
-- `escalated` com `reason: "review_tie_break"` é o caso em que o revisor recusou duas vezes e o Suup pede que você decida.
+- `escalated` com `reason: "review_tie_break"` é o caso em que o revisor recusou duas vezes (ou não conseguiu verificar, `review` com `unverified`, o que inclui reprovar duas vezes sem apontar divergência) e o Suup pede que você decida; o texto da pergunta diz qual dos dois foi.
 - Resultado de ferramenta pode ser grande ou cortado (`truncated`); mostrar recolhido por padrão.
 
-**Ferramentas que existem hoje**, para ícones e rótulos: `shell`, `read_file`, `write_file`, `edit_file`, `list_files`, `search_files`, `web_fetch`, mais as três de controle, `plan`, `finish` e `escalate`. Entram depois: memória (fase 2), conectores (fase 3), `delegate` e rotinas (fase 4), navegador (fase 5), dispositivos (fase 6).
+**Ferramentas que existem hoje**, para ícones e rótulos: `shell`, `read_file`, `write_file`, `edit_file`, `list_files`, `search_files`, `web_fetch`, mais as três de controle, `plan`, `finish` e `escalate`. Da fase 2: `remember`, `recall`, `forget` e `search_conversations` (memória; "salvo na memória" quando `remember` dá certo). Entram depois: conectores (fase 3), `delegate` e rotinas (fase 4), navegador (fase 5), dispositivos (fase 6).
 
 ## 6. O que você pode fazer numa execução (existe)
 
@@ -118,30 +132,41 @@ Observações:
 |---|---|
 | Enviar mensagem com o bot trabalhando | Fica gravada na hora; o bot lê no próximo ponto seguro, entre um turno e outro. Estados da mensagem: "enviada" e "lida pelo bot" (quando surge o evento `user_message`) |
 | Responder uma pergunta | A execução retoma |
-| Pausar | Para no próximo ponto seguro; fica retomável |
-| Interromper agora | Corta a chamada em curso; fica retomável |
-| Retomar | Continua de onde parou |
-| Cancelar | Estado final `cancelled` |
+| Pausar | `POST /v1/runs/{id}/pause`. Termina a volta em andamento (o modelo e as ferramentas que ele pediu) e para no próximo ponto seguro; fica retomável: `queued` + `paused: true` |
+| Interromper agora | `POST /v1/runs/{id}/interrupt`. Corta a chamada ao modelo e a ferramenta em curso em até alguns segundos (a ferramenta fica registrada como interrompida, resultado desconhecido); fica retomável |
+| Retomar | `POST /v1/runs/{id}/resume`. Continua de onde o log parou |
+| Cancelar | `POST /v1/runs/{id}/cancel`. Estado final `cancelled`; a conversa recebe o aviso "A execução foi cancelada" |
+
+Quem trabalha é um worker, que pode ser outro processo: pausar, interromper, cancelar e retomar funcionam por meio do banco e **precisam de um worker vivo** para serem aplicados. Pausar não vale para uma execução que espera você (`waiting_user`) ou uma aprovação: a resposta (ou o cartão) é que a move.
 
 Várias mensagens seguidas são entregues juntas.
 
-## 7. Tempo real (fase 2)
+## 7. Tempo real (existe, `GET /v1/stream`)
 
-O app recebe ao vivo, sem precisar recarregar:
+Uma conexão por instância do app (Server-Sent Events; o cliente `api.subscribe` do `@suup/api` cuida de reconectar e retomar). Chega ao vivo, sem recarregar:
 
-- novos eventos de uma execução aberta na tela;
-- mudança de estado de qualquer execução (para o indicador de cada bot na lista);
-- nova mensagem numa conversa;
-- novo cartão de aprovação, pergunta do bot ou aviso (com notificação do sistema);
-- quadros da tela do bot (fase 5).
+| Evento do stream | Para quê |
+|---|---|
+| `run.event` | Novos eventos das execuções que o app **escolheu seguir** (a tela aberta). Com o `model_request` resumido |
+| `run.updated` | Mudança de estado, pausa, plano, uso ou resultado de **qualquer** execução (o indicador de cada bot na lista) |
+| `message.created` | Mensagem nova em qualquer conversa (inclui a pergunta do bot e os avisos do sistema) |
+| `message.updated` | Mudou o estado de entrega de uma mensagem sua (`sent` → `delivered`) |
+| `conversation.updated` | Mudou a lista de conversas: mensagem nova, lida, arquivada (com `unreadCount` e `activeRun`) |
+| `memory.changed` | Uma memória foi criada, editada, esquecida ou restaurada |
+| `bot.updated` | Um bot foi criado, editado, arquivado ou tornado principal |
+| `ready` / `resync` | Da conexão: `resync` diz que o app deve **recarregar** o que mostra (veja API.md, "Retomada") |
+
+Cada evento tem um id que só cresce; reconectar com o último id visto retoma **sem perder nada** (dentro da janela de retenção, 6 horas por padrão; fora dela o servidor manda `resync`). Receber o estado por **REST depois de abrir o stream** é o jeito de abrir uma tela sem perder o que muda no intervalo.
+
+Ainda não existem: novo cartão de aprovação (fase 3), notificação do sistema por aviso (a pergunta do bot já chega como `message.created`; mostrar a notificação é do app) e os quadros da tela do bot (fase 5).
 
 ## 8. O que entra depois
 
-### Fase 2: conversas e memória
+### Fase 2: conversas e memória (existe)
 
-- **Conversa:** `id`, participantes (você e um ou mais bots), título, última atividade, não lidas.
-- **Mensagem:** `id`, autor (você ou um bot), texto, anexos, data, e a execução que ela abriu (se abriu).
-- **Sala de grupo:** uma conversa com vários bots; cada um decide se responde.
+- **Conversa:** `id`, `kind` (`direct` com um bot; `group` ainda não recebe mensagens), `members` (os bots; você está implícito), `title` (só em grupo), `lastMessageAt`, `lastMessage` (cortada em 200 caracteres), `unreadCount`, `lastReadSeq` e `activeRun` (a execução em primeiro plano). **Não lidas** = mensagens do bot e do sistema depois de `lastReadSeq`; as suas nunca contam. `POST /v1/conversations/{id}/read` marca como lida (até uma mensagem, ou tudo).
+- **Mensagem:** `id`, `seq`, `authorKind` (`user`, `bot` ou `system`: o aviso de falha ou cancelamento), `authorBotId`, `text`, `runId`, `status` (`sent` ou `delivered`, só nas suas enviadas com o bot trabalhando) e `createdAt`; `question` (`{ questions: [{ question, options?, multiple?, allowOther? }], reason? }`) só na mensagem do bot que pergunta algo: o cartão de pergunta se desenha a partir dela, e a resposta é texto comum (os rótulos escolhidos, uma linha por pergunta quando são várias, `→ (pulou)` para a que foi pulada).
+- **Sala de grupo (fase 4):** uma conversa com vários bots; cada um decide se responde.
 - **Memória**, em camadas, tudo visível e editável:
 
 | Camada | Exemplo | Escopo |
@@ -151,7 +176,7 @@ O app recebe ao vivo, sem precisar recarregar:
 | Notas do bot | o que ele aprendeu naquela função | Por bot |
 | Diário | o que foi feito, quando, com que resultado | Por bot |
 
-Cada item de memória tem texto, origem (de qual conversa veio) e data. Na conversa aparece um aviso "salvo na memória" quando o bot grava algo.
+Cada item de memória tem texto, camada, escopo, **autor** (`user` ou `bot`), origem (a execução, a conversa e a mensagem de onde veio, quando foi um bot) e datas, e pode estar **arquivado** (esquecido: dá para restaurar). A API lista (por camada, escopo e bot, com ou sem arquivados), cria (regra, perfil e nota; o diário é do sistema), edita, esquece, restaura e busca (por palavras, sem diferenciar acentos). Uma memória nova ou esquecida vale a partir da **próxima** execução. Na conversa aparece um aviso "salvo na memória" quando o bot grava algo: é o `tool_result` de `remember` na linha do tempo.
 
 ### Fase 3: aprovações, cofre e conectores
 
@@ -187,44 +212,59 @@ Cada item de memória tem texto, origem (de qual conversa veio) e data. Na conve
 - **Artefatos:** arquivos e páginas que o bot produziu, com pré-visualização, download e link de compartilhamento.
 - Imagens, áudio (respostas em voz) e vídeo dentro da conversa.
 
-## 9. Inspetor de diagnóstico (existe na linha de comando; vira tela na fase 2)
+## 9. Inspetor de diagnóstico (existe na CLI e na API)
 
-Uma tela separada do chat, para quando algo dá errado:
+Uma tela separada do chat, para quando algo dá errado. A API serve os mesmos cálculos da linha de comando (`inspect`, `replay`, `resend`, `doctor`):
 
-- linha do tempo crua dos eventos, com filtro por tipo;
-- "o que o modelo viu" num turno: instruções, mensagens e ferramentas enviadas;
-- **replay:** se o Suup atual reproduz a execução gravada, ou onde diverge;
-- **reenviar:** mandar de novo a mesma requisição várias vezes, ou para outro modelo, e comparar os desfechos;
-- uso e custo por execução.
+- linha do tempo crua dos eventos, com filtro por tipo: `GET /v1/runs/{id}/events?types=...` (sem `view=chat`, que é para o chat);
+- "o que o modelo viu" num turno: instruções, mensagens e ferramentas enviadas, e a resposta gravada: `GET /v1/runs/{id}/requests/{seq}`;
+- **replay:** se o Suup atual reproduz a execução gravada, ou onde diverge, com uma leitura em português: `POST /v1/runs/{id}/replay`;
+- **reenviar:** mandar de novo a mesma requisição várias vezes (até 20), ou para outro modelo, e comparar os desfechos: `POST /v1/runs/{id}/resend`;
+- uso e custo por execução (`turns`, `inputTokens`, `outputTokens`, `costUsd` na execução);
+- **saúde dos componentes** (banco, busca, fila, máquina dos bots, provedores, ferramentas): `GET /v1/doctor`.
 
 ## 10. Telas, e de que dados cada uma precisa
 
 | Tela | Dados |
 |---|---|
-| Lista de bots | Bots, estado da execução mais recente de cada um, não lidas |
-| Conversa | Mensagens, e para cada execução: estado, plano e linha do tempo |
+| Lista de bots | `GET /v1/bots` (cada bot já traz `latestRun` e `unreadCount`) e o stream (`run.updated`, `conversation.updated`, `bot.updated`) |
+| Conversa | `GET /v1/conversations/{id}/messages` e `GET /v1/runs/{id}/events?view=chat`; no stream, `message.*` e `run.event` |
 | Sala de grupo | O mesmo, com vários bots |
-| Criar e editar bot | Campos do bot, modelos e ferramentas disponíveis |
-| Memória | Itens por camada e por bot |
+| Criar e editar bot | `GET /v1/models`, `GET /v1/tools`, `POST /v1/bots`, `PATCH /v1/bots/{id}`, `POST /v1/bots/draft` |
+| Memória | `GET /v1/memories`, `POST`, `PATCH`, `archive`, `restore`, `GET /v1/memories/search` |
 | Rotinas | Rotinas e histórico de disparos |
 | Pendências | Cartões de aprovação, perguntas abertas e iniciativas, de todos os bots |
 | Desktop do bot | Vídeo da tela e estado da conexão |
 | Conectores e cofre | Serviços conectados e segredos |
 | Dispositivos | Seus computadores e celular |
-| Inspetor | Eventos crus, replay, reenvio |
+| Inspetor | Eventos crus, `requests/{seq}`, `replay`, `resend`, `doctor` |
 | Configurações | Modelos e chaves, limites padrão, notificações |
 
 ## 11. Momentos em que o avatar do bot pode reagir
 
-| Momento | De onde vem |
-|---|---|
-| Parado | Nenhuma execução ativa |
-| Pensando | Execução `running`, aguardando `model_response` |
-| Trabalhando | Entre `tool_call` e `tool_result`; variações por ferramenta |
-| Com dúvida | `waiting_user` |
-| Pedindo permissão | `waiting_approval` |
-| Concluiu | `finish_attempt` com `accepted: true` |
-| Levou bronca | `finish_attempt` recusado ou `review` com `reject` |
-| Falhou | `status` `failed` |
-| Pausado | Você pausou ou assumiu a tela |
-| Teve uma ideia | Nova iniciativa (fase 4) |
+O rosto é desenhado pelo motor `@suup/avatar` (formatos, cores e estados no `README` do pacote); o app só escolhe o **estado** do motor a partir da execução, numa função pura (`apps/desktop/src/lib/avatar-state.ts`). A cor do rosto é a do bot (`BOT_PALETTE`); com "Movimento reduzido" ligado (no app ou no sistema) o rosto é uma imagem parada, com a cara do estado.
+
+| Momento | De onde vem | Estado do avatar |
+|---|---|---|
+| Parado | Nenhuma execução ativa (ou `cancelled`) | `idle` |
+| Pensando | Execução `queued` ou `running`, aguardando `model_response` | `thinking` |
+| Trabalhando | Entre `tool_call` e `tool_result`; variações por ferramenta | `working` |
+| Com dúvida | `waiting_user` | `asking` |
+| Pedindo permissão | `waiting_approval` | `waiting` |
+| Concluiu | `finish_attempt` com `accepted: true` (status `done`); aparece por alguns segundos e volta a `idle` | `done` |
+| Levou bronca | `finish_attempt` recusado ou `review` com `reject` | `thinking` |
+| Falhou | `status` `failed` | `failed` |
+| Pausado | `paused: true` (você pausou) ou, na fase 5, você assumiu a tela | `paused` |
+| Teve uma ideia | Nova iniciativa (fase 4) | ainda sem estado |
+
+## 12. Onde a API real difere do que este guia dizia antes dela
+
+- **Tempo real é SSE, não WebSocket.** Uma conexão `GET /v1/stream` (cabeçalho `Authorization`, o que o `EventSource` do navegador não faz: use o `api.subscribe`). Seguir os eventos de uma execução é escolher as execuções na conexão (`?runs=`); o resto chega para todas.
+- **"Pausado" é uma marca, não um estado.** `paused: true` junto de `queued` ou `running` (seções 3, 4 e 6). Os sete estados da seção 4 continuam os únicos.
+- **Pausar tem duas forças:** `pause` (suave, no próximo ponto seguro) e `interrupt` (dura, corta o que está em curso). Os dois deixam a execução retomável.
+- **Erros** têm sempre o formato `{ "error": { "code", "message" } }`, com 13 códigos fechados (API.md): o app decide pelo `code` e mostra a `message`, que está em português.
+- **A lista de bots já traz o necessário** (`latestRun`, `conversationId`, `unreadCount`): não é preciso uma chamada por bot.
+- **O `model_request` não viaja** nem no stream nem em `view=chat`: só o resumo. O Inspetor busca o pedido inteiro.
+- **Não lidas** só contam mensagens do bot e do sistema; marcar como lida é uma chamada (`/read`), nunca automática.
+- **Datas** são sempre texto ISO 8601 em UTC; **custos**, texto decimal.
+- **Mensagem para uma execução pausada** fica guardada (`sent`) e é lida depois do `resume`.

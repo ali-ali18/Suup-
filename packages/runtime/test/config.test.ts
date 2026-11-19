@@ -194,6 +194,48 @@ describe("configuration: readable errors in Portuguese", () => {
     expect(text).toContain("defaults.maxTurns");
   });
 
+  it("accepts the server block, with the Tauri origins, and applies no defaults inside the file", () => {
+    const config = parseConfig(
+      rawConfig({
+        server: {
+          host: "0.0.0.0",
+          port: 8787,
+          allowedOrigins: ["tauri://localhost", "http://tauri.localhost", "http://localhost:1420"],
+          tokenEnv: "MEU_TOKEN",
+          maxStreams: 4,
+          maxBodyBytes: 2048,
+          eventRetentionMinutes: 60,
+        },
+        worker: { controlPollMs: 500 },
+      }),
+    );
+    expect(config.server?.allowedOrigins).toHaveLength(3);
+    expect(config.server?.tokenEnv).toBe("MEU_TOKEN");
+    expect(config.worker?.controlPollMs).toBe(500);
+    expect(parseConfig(rawConfig({ server: {} })).server).toEqual({});
+  });
+
+  it("checks the server block: origins without a path or a trailing slash, the variable NAME, no token inside", () => {
+    const text = issuesOf(
+      rawConfig({
+        server: {
+          allowedOrigins: ["http://localhost:1420/", "localhost", "*", "http://a.com/path"],
+          tokenEnv: "not a name",
+          port: 70000,
+          token: "abc",
+        },
+      }),
+    ).join("\n");
+    expect(text).toContain("server.allowedOrigins[0]: origem inválida");
+    expect(text).toContain("server.allowedOrigins[1]: origem inválida");
+    expect(text).toContain("server.allowedOrigins[2]: origem inválida");
+    expect(text).toContain("server.allowedOrigins[3]: origem inválida");
+    expect(text).toContain("server.tokenEnv: nome de variável de ambiente inválido");
+    expect(text).toContain("server.port");
+    expect(text).toContain('"token" não é aceito: o token do servidor nunca fica no arquivo');
+    expect(text).toContain('"tokenEnv"');
+  });
+
   it("flags unknown keys at the top level and in nested objects", () => {
     const text = issuesOf(
       rawConfig({ colour: "red", sandbox: { kind: "local", root: "w", extra: 1 } }),

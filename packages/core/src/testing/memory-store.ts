@@ -3,6 +3,7 @@ import {
   type InboxItem,
   type InboxItemInput,
   LeaseLostError,
+  type RunControl,
   type RunOrigin,
   type RunRecord,
   type RunResult,
@@ -34,6 +35,8 @@ interface Entry {
   failure?: { origin: string; detail: string };
   result?: RunResult;
   heartbeats: number;
+  /** What the user asked of the run from outside (see `setControl`). */
+  control: RunControl;
   /** Who holds the run and when the lease was last renewed (epoch ms of the store's clock). */
   lease: { workerId: string; at: number } | null;
 }
@@ -72,7 +75,14 @@ export class InMemoryRunStore implements RunStore {
       createdAt: now,
       startedAt: now,
     };
-    this.#runs.set(id, { record, events: [], inbox: [], heartbeats: 0, lease: null });
+    this.#runs.set(id, {
+      record,
+      events: [],
+      inbox: [],
+      heartbeats: 0,
+      control: { pause: false, interrupt: false },
+      lease: null,
+    });
     return structuredClone(record);
   }
 
@@ -85,6 +95,15 @@ export class InMemoryRunStore implements RunStore {
     // claimable again.
     if (entry.record.status === "waiting_user") this.#requeue(entry);
     return id;
+  }
+
+  /**
+   * Plays the server pausing or interrupting the run: the flags come back from the next
+   * `heartbeat`, a paused run is not handed out by `claimNext`, and a claim clears an interrupt
+   * (the database does the same).
+   */
+  setControl(runId: string, control: Partial<RunControl>): void {
+    Object.assign(this.#entry(runId).control, control);
   }
 
   /** Every item ever posted to the run, with whether it was acknowledged. For test assertions. */
@@ -170,13 +189,16 @@ export class InMemoryRunStore implements RunStore {
     for (const e of this.#entry(runId).inbox) if (wanted.has(e.item.id)) e.acked = true;
   }
 
-  async heartbeat(runId: string): Promise<void> {
-    this.#entry(runId).heartbeats += 1;
+  async heartbeat(runId: string): Promise<RunControl> {
+    const entry = this.#entry(runId);
+    entry.heartbeats += 1;
+    return { ...entry.control };
   }
 
   #requeue(entry: Entry): void {
     entry.record.status = "queued";
     entry.lease = null;
+    entry.control.interrupt = false;
   }
 
   // --- the queue, as the database has it (`runs` with `FOR UPDATE SKIP LOCKED`) ----------------
@@ -185,11 +207,12 @@ export class InMemoryRunStore implements RunStore {
   claimNext(workerId: string): RunRecord | null {
     let oldest: Entry | undefined;
     for (const entry of this.#runs.values()) {
-      if (entry.record.status !== "queued") continue;
+      if (entry.record.status !== "queued" || entry.control.pause) continue;
       if (oldest === undefined || entry.record.createdAt < oldest.record.createdAt) oldest = entry;
     }
     if (oldest === undefined) return null;
     oldest.record.status = "running";
+    oldest.control.interrupt = false;
     oldest.lease = { workerId, at: this.#clock().getTime() };
     return structuredClone(oldest.record);
   }
@@ -263,6 +286,7 @@ export class InMemoryRunStore implements RunStore {
         const entry = check(runId);
         entry.lease = { workerId, at: this.#clock().getTime() };
         entry.heartbeats += 1;
+        return { ...entry.control };
       },
     };
   }
