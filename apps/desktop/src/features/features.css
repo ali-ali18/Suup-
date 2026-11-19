@@ -75,8 +75,10 @@
 .sidebar {
   display: flex;
   flex-direction: column;
+  position: relative;
   flex: none;
-  width: var(--width-sidebar);
+  /* A largura vem do arrasto (`ui/resize-handle.tsx` escreve --sidebar-w); sem ela, o padrão. */
+  width: var(--sidebar-w, var(--width-sidebar));
   min-height: 0;
   padding: var(--space-3);
   gap: var(--space-2);
@@ -133,7 +135,8 @@
 }
 .sidebar__tiles {
   display: grid;
-  grid-template-columns: repeat(2, 118px);
+  /* Quantas colunas cabem na largura da barra: duas no padrão, três na mais larga. */
+  grid-template-columns: repeat(auto-fill, 118px);
   justify-content: center;
   gap: var(--space-1);
 }
@@ -194,10 +197,6 @@
 .bot-entry__main:hover {
   background: var(--color-hover);
 }
-.bot-entry--active .bot-entry__main {
-  background: var(--color-raised);
-  border-color: var(--color-border);
-}
 .bot-entry__avatar {
   position: relative;
   display: inline-flex;
@@ -227,8 +226,8 @@
   padding-right: 36px;
 }
 .bot-entry--row .ui-avatar {
-  width: 52px;
-  height: 52px;
+  width: 42px;
+  height: 42px;
 }
 .bot-entry--tile .bot-entry__main {
   flex-direction: column;
@@ -360,9 +359,10 @@
 }
 .chat__center {
   display: flex;
-  flex: 1;
+  /* A conversa não encolhe abaixo de um mínimo usável: quem cede é o painel. */
+  flex: 1 0 var(--width-chat-min);
   flex-direction: column;
-  min-width: 0;
+  min-width: var(--width-chat-min);
   min-height: 0;
 }
 .chat__top {
@@ -445,12 +445,17 @@
 
 /* ---- Panel ---------------------------------------------------------------------------------------- */
 .panel {
+  position: relative;
   display: flex;
-  flex: none;
+  /* Encolhe antes da conversa: ela nunca fica abaixo do mínimo útil (ver .chat__center). */
+  flex: 0 1 var(--panel-w, var(--width-panel));
+  min-width: 0;
   flex-direction: column;
-  width: var(--width-panel);
   min-height: 0;
   border-left: 1px solid var(--color-border);
+}
+.panel[data-closing="true"] {
+  opacity: 0.5;
 }
 .panel__head {
   position: relative;
@@ -867,12 +872,6 @@ kbd {
   background: var(--color-raised);
   font-family: var(--font-mono);
   font-size: var(--text-code-size);
-}
-
-@media (max-width: 1279px) {
-  .panel {
-    width: min(var(--width-panel), 40vw);
-  }
 }
 
 .newbot__more {

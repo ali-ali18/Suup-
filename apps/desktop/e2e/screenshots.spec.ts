@@ -143,6 +143,17 @@ test.describe("screenshots", () => {
       await expect(page.getByTestId("panel")).toHaveCount(0);
       await shot("08-painel-fechado");
       await page.getByTestId("bot-chip").click();
+      // A barra lateral alargada ao máximo, e de volta à largura padrão arrastando a alça.
+      const handle = page.getByRole("separator", { name: "Redimensionar a barra lateral" });
+      await handle.focus();
+      await page.keyboard.press("End");
+      await settle();
+      await shot("09b-barra-larga");
+      const edge = await page.getByTestId("sidebar").boundingBox();
+      await page.mouse.move((edge?.x ?? 0) + (edge?.width ?? 0), 500);
+      await page.mouse.down();
+      await page.mouse.move(316, 500, { steps: 6 });
+      await page.mouse.up();
       await page.getByRole("button", { name: "Recolher a barra lateral" }).click();
       await shot("09-barra-recolhida");
       await page.getByRole("button", { name: "Expandir a barra lateral" }).click();

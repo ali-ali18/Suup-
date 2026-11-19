@@ -6,10 +6,12 @@ import { botDisplay, pendingQuestions, unreadOf } from "../../app/selectors.js";
 import { useUi } from "../../app/ui-store.js";
 import { arrangeBots, flatBots } from "../../data/botlist.js";
 import { plainText } from "../../lib/markdown.js";
+import { SIDEBAR_SPEC } from "../../lib/pane-size.js";
 import { Avatar } from "../../ui/avatar.js";
 import type { MenuItem } from "../../ui/menu.js";
 import { PopupMenu } from "../../ui/popup-menu.js";
 import { RoundButton } from "../../ui/primitives.js";
+import { ResizeHandle } from "../../ui/resize-handle.js";
 
 type BadgeKind = "working" | "question" | "unread" | "paused" | "failed";
 
@@ -140,6 +142,7 @@ export function Sidebar() {
   const runs = useData((s) => s.runs);
   const conversations = useData((s) => s.conversations);
   const collapsed = useUi((s) => s.sidebarCollapsed);
+  const sidebarWidth = useUi((s) => s.sidebarWidth);
   const view = useUi((s) => s.view);
   const selected = useUi((s) => s.selectedBotId);
   const ui = useUi.getState;
@@ -302,88 +305,98 @@ export function Sidebar() {
     </>
   );
 
-  if (collapsed) {
-    return (
-      <nav
-        className="sidebar sidebar--rail"
-        aria-label="Bots e atalhos"
-        data-testid="sidebar"
-        data-collapsed="true"
-      >
-        <RoundButton label="Expandir a barra lateral" tone="ghost" onClick={ui().toggleSidebar}>
-          <PanelLeftOpen size={20} aria-hidden="true" />
-        </RoundButton>
-        <div className="sidebar__scroll sidebar__scroll--rail" role="group" aria-label="Bots">
-          {layout.pinned.map((bot) => entry(bot, "rail"))}
-          {layout.pinned.length > 0 && flat.length > layout.pinned.length && (
-            <hr className="sidebar__divider" />
-          )}
-          {flat.filter((b) => !b.pinned).map((bot) => entry(bot, "rail"))}
-        </div>
-        <div className="sidebar__bottom sidebar__bottom--rail">
-          <RoundButton label="Novo bot" tone="ghost" onClick={ui().openNewBot}>
-            <Plus size={20} aria-hidden="true" />
-          </RoundButton>
-          <RoundButton label="Buscar e ações" tone="raised" onClick={() => ui().setPalette(true)}>
-            <LayoutGrid size={18} aria-hidden="true" />
-          </RoundButton>
-          {ownerButton("rail")}
-        </div>
-        {popups}
-      </nav>
-    );
-  }
+  const resizer = (
+    <ResizeHandle
+      key="resize"
+      spec={SIDEBAR_SPEC}
+      edge="end"
+      layout={{ collapsed, width: sidebarWidth }}
+      cssVar="--sidebar-w"
+      label="Redimensionar a barra lateral"
+      liveCollapse
+      onCollapsedChange={ui().setSidebarCollapsed}
+      onCommit={ui().setSidebarLayout}
+    />
+  );
 
+  // Um só <nav> nos dois estados: a alça de arrastar continua montada quando o arrasto vira o trilho.
   return (
     <nav
-      className="sidebar"
+      className={collapsed ? "sidebar sidebar--rail" : "sidebar"}
       aria-label="Bots e atalhos"
       data-testid="sidebar"
-      data-collapsed="false"
+      data-collapsed={collapsed ? "true" : "false"}
     >
-      <div className="sidebar__top">
-        <RoundButton label="Recolher a barra lateral" tone="ghost" onClick={ui().toggleSidebar}>
-          <PanelLeftClose size={20} aria-hidden="true" />
-        </RoundButton>
-        <span className="sidebar__spacer" />
-        <RoundButton label="Buscar" tone="raised" onClick={() => ui().setPalette(true)}>
-          <Search size={20} aria-hidden="true" />
-        </RoundButton>
-        <RoundButton label="Novo bot" tone="raised" onClick={ui().openNewBot}>
-          <Plus size={20} aria-hidden="true" />
-        </RoundButton>
-      </div>
-      <div className="sidebar__scroll">
-        {layout.pinned.length > 0 && (
-          <section aria-label="Fixados" data-testid="pinned-section">
-            <div className="sidebar__tiles">{layout.pinned.map((b) => entry(b, "tile"))}</div>
-          </section>
-        )}
-        {layout.groups.map((group) => (
-          <section
-            key={group.name}
-            aria-label={`Grupo ${group.name}`}
-            data-testid="group-section"
-            data-group={group.name}
-          >
-            <p className="sidebar__label">{group.name}</p>
-            <div className="sidebar__rows">{group.bots.map((b) => entry(b, "row"))}</div>
-          </section>
-        ))}
-        {layout.rest.length > 0 && (
-          <section aria-label="Bots" data-testid="rest-section">
-            <p className="sidebar__label">Bots</p>
-            <div className="sidebar__rows">{layout.rest.map((b) => entry(b, "row"))}</div>
-          </section>
-        )}
-      </div>
-      <div className="sidebar__bottom">
-        {ownerButton("bar")}
-        <span className="sidebar__spacer" />
-        <RoundButton label="Buscar e ações" tone="raised" onClick={() => ui().setPalette(true)}>
-          <LayoutGrid size={18} aria-hidden="true" />
-        </RoundButton>
-      </div>
+      {collapsed ? (
+        <>
+          <RoundButton label="Expandir a barra lateral" tone="ghost" onClick={ui().toggleSidebar}>
+            <PanelLeftOpen size={20} aria-hidden="true" />
+          </RoundButton>
+          <div className="sidebar__scroll sidebar__scroll--rail" role="group" aria-label="Bots">
+            {layout.pinned.map((bot) => entry(bot, "rail"))}
+            {layout.pinned.length > 0 && flat.length > layout.pinned.length && (
+              <hr className="sidebar__divider" />
+            )}
+            {flat.filter((b) => !b.pinned).map((bot) => entry(bot, "rail"))}
+          </div>
+          <div className="sidebar__bottom sidebar__bottom--rail">
+            <RoundButton label="Novo bot" tone="ghost" onClick={ui().openNewBot}>
+              <Plus size={20} aria-hidden="true" />
+            </RoundButton>
+            <RoundButton label="Buscar e ações" tone="raised" onClick={() => ui().setPalette(true)}>
+              <LayoutGrid size={18} aria-hidden="true" />
+            </RoundButton>
+            {ownerButton("rail")}
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="sidebar__top">
+            <RoundButton label="Recolher a barra lateral" tone="ghost" onClick={ui().toggleSidebar}>
+              <PanelLeftClose size={20} aria-hidden="true" />
+            </RoundButton>
+            <span className="sidebar__spacer" />
+            <RoundButton label="Buscar" tone="raised" onClick={() => ui().setPalette(true)}>
+              <Search size={20} aria-hidden="true" />
+            </RoundButton>
+            <RoundButton label="Novo bot" tone="raised" onClick={ui().openNewBot}>
+              <Plus size={20} aria-hidden="true" />
+            </RoundButton>
+          </div>
+          <div className="sidebar__scroll">
+            {layout.pinned.length > 0 && (
+              <section aria-label="Fixados" data-testid="pinned-section">
+                <div className="sidebar__tiles">{layout.pinned.map((b) => entry(b, "tile"))}</div>
+              </section>
+            )}
+            {layout.groups.map((group) => (
+              <section
+                key={group.name}
+                aria-label={`Grupo ${group.name}`}
+                data-testid="group-section"
+                data-group={group.name}
+              >
+                <p className="sidebar__label">{group.name}</p>
+                <div className="sidebar__rows">{group.bots.map((b) => entry(b, "row"))}</div>
+              </section>
+            ))}
+            {layout.rest.length > 0 && (
+              <section aria-label="Bots" data-testid="rest-section">
+                <p className="sidebar__label">Bots</p>
+                <div className="sidebar__rows">{layout.rest.map((b) => entry(b, "row"))}</div>
+              </section>
+            )}
+          </div>
+          <div className="sidebar__bottom">
+            {ownerButton("bar")}
+            <span className="sidebar__spacer" />
+            <RoundButton label="Buscar e ações" tone="raised" onClick={() => ui().setPalette(true)}>
+              <LayoutGrid size={18} aria-hidden="true" />
+            </RoundButton>
+          </div>
+        </>
+      )}
+      {resizer}
       {popups}
     </nav>
   );

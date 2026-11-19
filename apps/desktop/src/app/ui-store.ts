@@ -1,4 +1,12 @@
 import { create } from "zustand";
+import {
+  PANEL_SPEC,
+  type PaneLayout,
+  type PaneSpec,
+  parseStoredFlag,
+  parseStoredWidth,
+  SIDEBAR_SPEC,
+} from "../lib/pane-size.js";
 import type { ToastItem } from "../ui/primitives.js";
 
 export type View = "chat" | "pending" | "memory" | "settings" | "inspector";
@@ -19,11 +27,21 @@ export interface UiState {
   /** Which step the bot dialog opens on (the empty chat hint opens the second). */
   editBotStep: 1 | 2;
   sidebarCollapsed: boolean;
+  /** A última largura aberta da barra lateral (continua guardada com ela recolhida). */
+  sidebarWidth: number;
+  /** A última largura do painel do bot (continua guardada com ele fechado). */
+  panelWidth: number;
   paletteOpen: boolean;
   shortcutsOpen: boolean;
   groupBotId: string | null;
   openEditBot(botId: string, step?: 1 | 2): void;
   toggleSidebar(): void;
+  /** Recolhe ou expande sem mexer na largura guardada (usado durante o arrasto). */
+  setSidebarCollapsed(collapsed: boolean): void;
+  /** Grava o resultado de um arrasto ou de uma tecla na alça da barra lateral. */
+  setSidebarLayout(layout: PaneLayout): void;
+  /** Idem para o painel do bot (`collapsed`: fechado). */
+  setPanelLayout(layout: PaneLayout): void;
   setPalette(open: boolean): void;
   setShortcuts(open: boolean): void;
   setGroupBot(botId: string | null): void;
@@ -45,6 +63,7 @@ export interface UiState {
 }
 
 const COLLAPSED_KEY = "suup.sidebarCollapsed";
+const PANEL_OPEN_KEY = "suup.panelOpen";
 
 // Per-viewer conveniences only (the layout, the theme): never anything the server must know.
 function readFlag(key: string): boolean {
@@ -62,6 +81,22 @@ function writeFlag(key: string, value: boolean): void {
   }
 }
 
+function readText(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+function writeText(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // not remembered
+  }
+}
+const readWidth = (spec: PaneSpec) => parseStoredWidth(spec, readText(spec.key));
+
 let toastId = 0;
 
 /** What the person is looking at: screen, selected bot, panel, theme, toasts. Never server data. */
@@ -69,7 +104,12 @@ export const useUi = create<UiState>((set, get) => ({
   view: "chat",
   selectedBotId: null,
   // Closed by default on narrow windows (the layout has no room for three columns there).
-  panelOpen: typeof window === "undefined" ? true : window.innerWidth >= 1280,
+  // Quem abriu ou fechou o painel guardou a escolha; sem ela, aberto só em janelas largas.
+  panelOpen: parseStoredFlag(
+    readText(PANEL_OPEN_KEY),
+    typeof window === "undefined" ? true : window.innerWidth >= 1280,
+  ),
+  panelWidth: readWidth(PANEL_SPEC),
   panelTab: "activity",
   inspectorRunId: null,
   inspectorFrom: "chat",
@@ -77,6 +117,7 @@ export const useUi = create<UiState>((set, get) => ({
   editBotId: null,
   editBotStep: 1,
   sidebarCollapsed: readFlag(COLLAPSED_KEY),
+  sidebarWidth: readWidth(SIDEBAR_SPEC),
   paletteOpen: false,
   shortcutsOpen: false,
   groupBotId: null,
@@ -85,6 +126,22 @@ export const useUi = create<UiState>((set, get) => ({
     const next = !get().sidebarCollapsed;
     writeFlag(COLLAPSED_KEY, next);
     set({ sidebarCollapsed: next });
+  },
+  setSidebarCollapsed: (collapsed) => {
+    writeFlag(COLLAPSED_KEY, collapsed);
+    set({ sidebarCollapsed: collapsed });
+  },
+  setSidebarLayout: ({ collapsed, width }) => {
+    writeFlag(COLLAPSED_KEY, collapsed);
+    if (collapsed) return set({ sidebarCollapsed: true });
+    writeText(SIDEBAR_SPEC.key, String(width));
+    set({ sidebarCollapsed: false, sidebarWidth: width });
+  },
+  setPanelLayout: ({ collapsed, width }) => {
+    writeText(PANEL_OPEN_KEY, collapsed ? "0" : "1");
+    if (collapsed) return set({ panelOpen: false });
+    writeText(PANEL_SPEC.key, String(width));
+    set({ panelOpen: true, panelWidth: width });
   },
   setPalette: (paletteOpen) => set({ paletteOpen }),
   setShortcuts: (shortcutsOpen) => set({ shortcutsOpen }),
@@ -97,7 +154,11 @@ export const useUi = create<UiState>((set, get) => ({
   go: (view) => set({ view }),
   selectBot: (botId) => set({ view: "chat", selectedBotId: botId }),
   openPanel: (tab) => set((s) => ({ panelOpen: true, panelTab: tab ?? s.panelTab })),
-  togglePanel: () => set((s) => ({ panelOpen: !s.panelOpen })),
+  togglePanel: () => {
+    const next = !get().panelOpen;
+    writeText(PANEL_OPEN_KEY, next ? "1" : "0");
+    set({ panelOpen: next });
+  },
   setPanelTab: (panelTab) => set({ panelTab }),
   openInspector: (runId) =>
     set((s) => ({

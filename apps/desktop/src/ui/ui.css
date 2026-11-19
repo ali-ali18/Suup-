@@ -227,8 +227,8 @@
   font-size: 10px;
 }
 .ui-avatar--sm {
-  width: var(--size-avatar-sm);
-  height: var(--size-avatar-sm);
+  width: 29px;
+  height: 29px;
 }
 .ui-avatar--md {
   width: var(--size-avatar-md);
@@ -239,13 +239,13 @@
   height: var(--size-rail-avatar);
 }
 .ui-avatar--xl {
-  width: 88px;
-  height: 88px;
+  width: 74px;
+  height: 74px;
   font-size: 32px;
 }
 .ui-avatar--tile {
-  width: 80px;
-  height: 80px;
+  width: 66px;
+  height: 66px;
   font-size: 28px;
 }
 .ui-mascot {
@@ -1254,4 +1254,51 @@ button.ui-action__row:hover {
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
+}
+
+/* ---- Alça de redimensionar (barra lateral e painel) ------------------------------------------- */
+.resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 6;
+  width: 10px;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+.resize-handle--end {
+  right: -5px;
+}
+.resize-handle--start {
+  left: -5px;
+}
+/* A linha só aparece ao passar o mouse, ao focar e durante o arrasto. */
+.resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--color-focus);
+  opacity: 0;
+  transition: opacity var(--duration-fast);
+}
+.resize-handle:hover::after,
+.resize-handle:focus-visible::after,
+.resize-handle[data-dragging="true"]::after {
+  opacity: 0.7;
+}
+/* Durante o arrasto: sem seleção de texto e o cursor fixo, mesmo fora da alça. */
+html[data-resizing] {
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: col-resize;
+}
+html[data-resizing] * {
+  cursor: col-resize !important;
+  user-select: none !important;
 }

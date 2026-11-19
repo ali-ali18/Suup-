@@ -131,6 +131,155 @@ test.describe("bots, sidebar, palette, memory", () => {
     await expect(sidebar).toHaveAttribute("data-collapsed", "false");
   });
 
+  test("the sidebar is resized by dragging its edge: wider, then below the threshold (rail), then back; remembered across a reload", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await openApp(page, world);
+    const sidebar = page.getByTestId("sidebar");
+    const handle = sidebar.getByRole("separator", { name: "Redimensionar a barra lateral" });
+    await expect(handle).toHaveAttribute("aria-orientation", "vertical");
+    await expect(handle).toHaveAttribute("aria-valuenow", "316");
+    const width = async () => Math.round((await sidebar.boundingBox())?.width ?? 0);
+    expect(await width()).toBe(316);
+    const y = 400;
+    const drag = async (to: number, release = true) => {
+      const box = await sidebar.boundingBox();
+      await page.mouse.move((box?.x ?? 0) + (box?.width ?? 0), y);
+      await page.mouse.down();
+      await page.mouse.move(to, y, { steps: 8 });
+      if (release) await page.mouse.up();
+    };
+    // Wider, and capped at the maximum.
+    await drag(380);
+    expect(await width()).toBe(380);
+    await expect(handle).toHaveAttribute("aria-valuenow", "380");
+    await drag(900);
+    expect(await width()).toBe(420);
+    // Below the threshold: only the avatars (the rail), mid-drag already.
+    await drag(120, false);
+    await expect(sidebar).toHaveAttribute("data-collapsed", "true");
+    expect(await page.evaluate(() => document.documentElement.hasAttribute("data-resizing"))).toBe(
+      true,
+    );
+    await page.mouse.up();
+    await expect(sidebar).toHaveAttribute("data-collapsed", "true");
+    expect(await width()).toBeLessThan(150);
+    await expect(sidebar.getByTestId("bot-item").first()).toBeVisible();
+    await expect(sidebar.locator(".bot-entry__text")).toHaveCount(0);
+    await page.reload();
+    await expect(sidebar).toHaveAttribute("data-collapsed", "true");
+    // Back out past the threshold: the expanded layout, at the width the drag ended on.
+    await drag(330);
+    await expect(sidebar).toHaveAttribute("data-collapsed", "false");
+    expect(await width()).toBe(330);
+    await page.reload();
+    await expect(sidebar).toHaveAttribute("data-collapsed", "false");
+    expect(await width()).toBe(330);
+    // The button collapses, and expanding restores the last expanded width.
+    await page.getByRole("button", { name: "Recolher a barra lateral" }).click();
+    await expect(sidebar).toHaveAttribute("data-collapsed", "true");
+    await page.getByRole("button", { name: "Expandir a barra lateral" }).click();
+    expect(await width()).toBe(330);
+  });
+
+  test("the sidebar handle works with the keyboard", async ({ page }) => {
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await openApp(page, world);
+    const sidebar = page.getByTestId("sidebar");
+    const handle = sidebar.getByRole("separator", { name: "Redimensionar a barra lateral" });
+    await handle.focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(handle).toHaveAttribute("aria-valuenow", "332");
+    await page.keyboard.press("End");
+    await expect(handle).toHaveAttribute("aria-valuenow", "420");
+    await page.keyboard.press("ArrowLeft");
+    await expect(handle).toHaveAttribute("aria-valuenow", "404");
+    await page.keyboard.press("Home");
+    await expect(sidebar).toHaveAttribute("data-collapsed", "true");
+    await expect(handle).toHaveAttribute("aria-valuenow", "110");
+    await page.keyboard.press("ArrowRight");
+    await expect(sidebar).toHaveAttribute("data-collapsed", "false");
+    await expect(handle).toHaveAttribute("aria-valuenow", "404");
+  });
+
+  test("the pinned tiles and the active bot: more columns when wider, and no highlight card on the selected bot", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1600, height: 900 });
+    for (const name of ["Tile1", "Tile2", "Tile3"]) await freshBot(world, name, { pinned: true });
+    await openApp(page, world);
+    const sidebar = page.getByTestId("sidebar");
+    await selectBot(page, "Tile1");
+    const tiles = sidebar.locator(".sidebar__tiles");
+    const columns = () =>
+      tiles.evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(" ").length);
+    expect(await columns()).toBe(2);
+    await sidebar.getByRole("separator").focus();
+    await page.keyboard.press("End");
+    expect(await columns()).toBe(3);
+    // The selected bot keeps aria-current but no raised background or border.
+    await page.mouse.move(900, 500); // fora da barra: o hover tem estilo próprio
+    const current = sidebar.locator('[aria-current="page"]');
+    await expect(current).toHaveCount(1);
+    const style = await current.evaluate((el) => {
+      const css = getComputedStyle(el);
+      return { background: css.backgroundColor, border: css.borderTopColor };
+    });
+    expect(style.background).toBe("rgba(0, 0, 0, 0)");
+    expect(style.border).toBe("rgba(0, 0, 0, 0)");
+  });
+
+  test("the bot panel is resized by dragging its left edge, closes below the threshold, and remembers its width", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await openApp(page, world);
+    const panel = page.getByTestId("panel");
+    await expect(panel).toBeVisible();
+    const handle = panel.getByRole("separator", { name: "Redimensionar o painel" });
+    await expect(handle).toHaveAttribute("aria-orientation", "vertical");
+    const width = async () => Math.round((await panel.boundingBox())?.width ?? 0);
+    expect(await width()).toBe(450);
+    const drag = async (to: number, release = true) => {
+      const box = await panel.boundingBox();
+      await page.mouse.move(box?.x ?? 0, 400);
+      await page.mouse.down();
+      await page.mouse.move(to, 400, { steps: 8 });
+      if (release) await page.mouse.up();
+    };
+    // Wider: the left edge goes to x=1000, the panel is 600 wide.
+    await drag(1000);
+    expect(await width()).toBe(600);
+    await drag(100);
+    expect(await width()).toBe(640);
+    // The chat column keeps a usable minimum on a narrow window.
+    await page.setViewportSize({ width: 1100, height: 700 });
+    const centre = page.getByRole("region", { name: /^Conversa com/ });
+    expect((await centre.boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(420);
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await drag(1100);
+    expect(await width()).toBe(500);
+    await page.reload();
+    expect(await width()).toBe(500);
+    // Below the threshold: closed on release; the chip brings it back at the last width.
+    await drag(1400);
+    await expect(panel).toHaveCount(0);
+    await page.reload();
+    await expect(panel).toHaveCount(0);
+    await page.getByTestId("bot-chip").click();
+    await expect(panel).toBeVisible();
+    expect(await width()).toBe(500);
+    // Keyboard.
+    await panel.getByRole("separator").focus();
+    await page.keyboard.press("ArrowLeft");
+    expect(await width()).toBe(516);
+    await page.keyboard.press("End");
+    expect(await width()).toBe(640);
+    await page.keyboard.press("Home");
+    await expect(panel).toHaveCount(0);
+  });
+
   test("the command palette opens with the keyboard and jumps to a bot, or runs an action", async ({
     page,
   }) => {

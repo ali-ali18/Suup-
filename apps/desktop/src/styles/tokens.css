@@ -81,6 +81,7 @@
   --width-sidebar: 316px; /* owner's layout: expanded sidebar */
   --width-rail: 110px; /* owner's layout: narrow icon rail on the left */
   --width-panel: 450px; /* owner's layout: bot panel on the right */
+  --width-chat-min: 420px; /* the chat column never gets narrower than this */
   --width-reading: 700px; /* the widest a bot bubble gets */
   --width-content: 1200px; /* the widest the chat column (messages and composer) gets */
   --size-rail-avatar: 56px;
@@ -125,6 +126,7 @@
 
 /* Appearance settings (lib/settings.ts): the root carries data-* attributes, the CSS reads them. */
 :root[data-width="wide"] {
+  --width-chat-min: 420px; /* the chat column never gets narrower than this */
   --width-reading: 900px;
   --width-content: 1400px;
 }

@@ -2,9 +2,11 @@ import { X } from "lucide-react";
 import { useState } from "react";
 import { useData } from "../../app/context.js";
 import { useUi } from "../../app/ui-store.js";
+import { PANEL_SPEC } from "../../lib/pane-size.js";
 import { Avatar } from "../../ui/avatar.js";
 import { LibraryList } from "../../ui/library-list.js";
 import { RoundButton, Tabs } from "../../ui/primitives.js";
+import { ResizeHandle } from "../../ui/resize-handle.js";
 import { ActivityTab } from "./ActivityTab.js";
 
 const TABS = [
@@ -18,6 +20,8 @@ export function Panel({ botId }: { botId: string }) {
   const tab = useUi((s) => s.panelTab);
   const setTab = useUi((s) => s.setPanelTab);
   const togglePanel = useUi((s) => s.togglePanel);
+  const panelWidth = useUi((s) => s.panelWidth);
+  const setPanelLayout = useUi((s) => s.setPanelLayout);
   const [now] = useState(() => new Date());
   if (bot === undefined) return null;
   return (
@@ -44,6 +48,15 @@ export function Panel({ botId }: { botId: string }) {
       >
         {tab === "activity" ? <ActivityTab /> : <LibraryList items={[]} now={now} />}
       </div>
+      <ResizeHandle
+        spec={PANEL_SPEC}
+        edge="start"
+        layout={{ collapsed: false, width: panelWidth }}
+        cssVar="--panel-w"
+        label="Redimensionar o painel"
+        liveCollapse={false}
+        onCommit={setPanelLayout}
+      />
     </aside>
   );
 }
