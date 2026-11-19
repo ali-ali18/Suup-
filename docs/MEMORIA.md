@@ -82,4 +82,4 @@ A mesma memória está na API (`/v1/memories`, [API.md](API.md)): listar, criar,
 
 ## O que o bot nunca deve guardar
 
-Senhas, chaves, tokens, números de cartão e detalhes de uma tarefa pontual. A ferramenta `remember` recusa texto que pareça uma credencial, mas isso é só uma rede de proteção: o prompt do bot e a descrição da ferramenta dizem a mesma coisa.
+Senhas, chaves, tokens, números de cartão e detalhes de uma tarefa pontual. A ferramenta `remember` **não** recusa nada por aparência (a detecção por padrão foi removida, veja acima): quem pede isso é o prompt do bot e a descrição da ferramenta. A defesa adicional está em discussão em [pesquisas/memoria-dos-agentes.md](pesquisas/memoria-dos-agentes.md).
