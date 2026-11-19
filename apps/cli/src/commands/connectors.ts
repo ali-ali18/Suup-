@@ -19,6 +19,7 @@ const BASIS_PT: Record<string, string> = {
   user: "definido por você",
   trusted_hint: "dica do servidor (você confia)",
   tightened_by_hint: "apertado pela dica do servidor",
+  outbound: "mensagem a outra pessoa (você marcou)",
 };
 
 function view(c: ConnectorView) {
@@ -49,11 +50,12 @@ function secretName(name: string, option: string, command: string): string {
 
 function tableOfTools(tools: readonly ConnectorToolInfo[]): string[] {
   return renderTable(
-    ["FERRAMENTA (nome para o bot)", "RISCO", "ORIGEM DO RISCO", "OFERECIDA"],
+    ["FERRAMENTA (nome para o bot)", "RISCO", "ORIGEM DO RISCO", "MENSAGEM", "OFERECIDA"],
     tools.map((t) => [
       t.name,
       LEVEL_PT[t.risk] ?? t.risk,
       BASIS_PT[t.riskBasis] ?? t.riskBasis,
+      t.outbound === undefined ? "" : `a outra pessoa (${t.outbound.recipientFields.join(", ")})`,
       t.available ? "sim" : `não: ${oneLine(t.reason ?? "", 70)}`,
     ]),
   );
@@ -410,6 +412,9 @@ export const connectorsTools: CommandSpec = {
     ctx.out.line(
       "Para marcar uma ferramenta como leitura: suup connectors set-risk <conector> <ferramenta-no-servidor> read",
     );
+    ctx.out.line(
+      "Para marcar uma ferramenta que envia mensagem a outra pessoa: suup connectors set-outbound <conector> <ferramenta-no-servidor> --to campo",
+    );
     return EXIT_OK;
   },
 };
@@ -443,6 +448,63 @@ export const connectorsSetRisk: CommandSpec = {
         risk === null
           ? `${tool}: voltou ao padrão (pergunta antes de rodar).`
           : `${tool}: ${LEVEL_PT[risk]}.`,
+      );
+    }
+    return EXIT_OK;
+  },
+};
+
+export const connectorsSetOutbound: CommandSpec = {
+  name: "connectors set-outbound",
+  summary:
+    'Marca (ou desmarca) uma ferramenta como "envia mensagem para outra pessoa" e diz onde está o destinatário',
+  options: {
+    to: {
+      type: "string",
+      value: "campo",
+      multiple: true,
+      help: "O argumento da ferramenta que guarda o destinatário (repita para vários: to, cc)",
+    },
+    none: {
+      type: "boolean",
+      help: "Desmarca: a ferramenta deixa de ser uma mensagem a outra pessoa",
+    },
+  },
+  positionals: { names: ["nome", "ferramenta"] },
+  notes: [
+    "Só VOCÊ diz isto: nenhuma dica do servidor, nome ou descrição de ferramenta faz o app tratá-la como mensagem.",
+    'Uma ferramenta marcada nunca é leitura e o cartão dela tem "Enviar" e o menu do destinatário ("Permitir destinatário").',
+    "A ferramenta é o nome dela NO SERVIDOR. Exemplo: suup connectors set-outbound mail send_email --to to",
+  ],
+  async run(ctx) {
+    const [name, tool] = ctx.args.positionals as [string, string];
+    const fields = list(ctx.args, "to");
+    const none = flag(ctx.args, "none");
+    if (none === fields.length > 0) {
+      throw new UsageError(
+        "Diga onde está o destinatário (--to campo) ou use --none para desmarcar.",
+        "connectors set-outbound",
+      );
+    }
+    await must(ctx, name);
+    const updated = await ctx
+      .runtime()
+      .connectors.setToolOutbound(
+        name,
+        tool,
+        none ? null : { kind: "message", recipientFields: fields },
+      )
+      .catch((error: unknown) => {
+        throw error instanceof Error && error.name === "ConnectorConfigError"
+          ? new CommandError(error.message)
+          : error;
+      });
+    if (ctx.json) ctx.out.data(view(updated));
+    else {
+      ctx.out.line(
+        none
+          ? `${tool}: não é mais uma mensagem a outra pessoa.`
+          : `${tool}: mensagem a outra pessoa (destinatário em ${fields.join(", ")}). O cartão dela pergunta antes de enviar.`,
       );
     }
     return EXIT_OK;

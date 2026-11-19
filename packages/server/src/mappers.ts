@@ -12,6 +12,7 @@ import type {
   RunEvent,
   Secret,
 } from "@suup/api";
+import { recipientMatchers } from "@suup/core";
 import type { ConnectorTestResult, ConnectorView } from "@suup/runtime";
 import {
   type Approval as ApprovalRow,
@@ -167,6 +168,14 @@ export function toRunEventDto(event: RunEventRow): RunEvent {
 
 export type { MemoryRow };
 
+/** What "Permitir destinatário" would pin for this call, or `null` when it cannot be said exactly. */
+function recipientsOf(
+  args: ApprovalRow["args"],
+  outbound: NonNullable<ApprovalRow["outbound"]>,
+): { field: string; value: string }[] | null {
+  return recipientMatchers(args, outbound);
+}
+
 export function toApprovalDto(approval: ApprovalRow): Approval {
   return {
     id: approval.id,
@@ -180,6 +189,13 @@ export function toApprovalDto(approval: ApprovalRow): Approval {
     summary: approval.summary,
     secrets: approval.secrets,
     source: approval.source,
+    outbound:
+      approval.outbound === null
+        ? null
+        : {
+            ...approval.outbound,
+            recipients: recipientsOf(approval.args, approval.outbound),
+          },
     status: approval.status,
     reason: approval.reason,
     ruleId: approval.ruleId,
@@ -196,6 +212,8 @@ export function toRuleDto(rule: StoredRule): ApprovalRule {
     tool: rule.tool,
     effect: rule.effect,
     matchers: rule.matchers,
+    enabled: rule.enabled,
+    disabledReason: rule.disabledReason,
     note: rule.note,
     createdBy: rule.createdBy,
     sourceApprovalId: rule.sourceApprovalId,
@@ -252,6 +270,7 @@ function toConnectorToolDto(
     description: tool.description,
     risk: tool.risk,
     riskBasis: tool.riskBasis,
+    outbound: tool.outbound === undefined ? null : tool.outbound,
     available: tool.available,
     ...(tool.reason === undefined ? {} : { reason: tool.reason }),
     hints: tool.hints === undefined ? null : tool.hints,

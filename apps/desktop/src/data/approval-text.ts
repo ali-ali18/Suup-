@@ -1,5 +1,4 @@
 import type { ApprovalRule, ArgMatcher, RiskLevel } from "@suup/api";
-import { exactFields } from "../lib/format-args.js";
 import { toolLabel } from "./derive.js";
 
 // What the approval screens SAY, in plain Portuguese: the risk levels, why a card was asked, the tool
@@ -100,21 +99,14 @@ export function toolTitle(
 
 // ------------------------------------------------------------------- rules
 
-export const OP_LABEL: Record<ArgMatcher["op"], string> = {
-  equals: "é exatamente",
-  starts_with: "começa com",
-  contains: "contém",
-  glob: "casa com o padrão",
-};
-
 const quote = (value: string): string => `“${value}”`;
 
-/** `o campo command começa com “git ”`. */
+/** `o campo command é exatamente “git status”`: the only comparison a rule has. */
 export function matcherText(matcher: ArgMatcher): string {
-  return `o campo ${matcher.field} ${OP_LABEL[matcher.op]} ${quote(matcher.value)}`;
+  return `o campo ${matcher.field} é exatamente ${quote(matcher.value)}`;
 }
 
-/** All of them have to hold: `o campo a é exatamente “x” e o campo b contém “y”`. */
+/** All of them have to hold: `o campo a é exatamente “x” e o campo b é exatamente “y”`. */
 export function matchersText(matchers: readonly ArgMatcher[]): string {
   return matchers.map(matcherText).join(" e ");
 }
@@ -133,7 +125,8 @@ const whoText = (botId: string | null, botName: string | undefined): string =>
 
 /**
  * The whole rule as one sentence, for the list and for the form's preview:
- * `Libera Terminal para todos os bots quando o campo command começa com “git ”.`
+ * `Libera Terminal para todos os bots quando o campo command é exatamente “git status”.`
+ * A rule with no condition says plainly that it covers ANY use of the tool.
  */
 export function ruleSentence(
   rule: Pick<ApprovalRule, "effect" | "tool" | "botId" | "matchers">,
@@ -142,7 +135,9 @@ export function ruleSentence(
   const verb = rule.effect === "allow" ? "Libera" : "Proíbe";
   const tool = toolTitle(rule.tool, context.connectors ?? []);
   const when =
-    rule.matchers.length === 0 ? "em qualquer uso" : `quando ${matchersText(rule.matchers)}`;
+    rule.matchers.length === 0
+      ? "em QUALQUER uso da ferramenta, com quaisquer argumentos"
+      : `quando ${matchersText(rule.matchers)}`;
   return `${verb} ${tool} para ${whoText(rule.botId, context.botName)} ${when}.`;
 }
 
@@ -152,32 +147,21 @@ export const RULE_PRECEDENCE =
 
 export const EFFECT_LABEL: Record<"allow" | "deny", string> = { allow: "Libera", deny: "Proíbe" };
 
-// ---------------------------------------------------------- always allow
-
-export type AlwaysScope = "bot" | "global";
-export type AlwaysMatch = "exact" | "any";
+// -------------------------------------------------------- message (outbound)
 
 /**
- * What "Aprovar e sempre permitir" will create, in plain words, before the person confirms. The
- * server builds the same rule: with `exact`, every top-level text argument must be equal to the ones
- * on the card (numbers and nested values stay free); with `any`, no condition at all.
+ * What "Permitir destinatário" will create, in plain words, before the person confirms: the rule
+ * pins exactly the recipient(s) of THIS call, for this bot (never "any use", never every bot).
  */
-export function alwaysSentence(input: {
-  scope: AlwaysScope;
-  match: AlwaysMatch;
+export function allowRecipientSentence(input: {
   botName: string;
   tool: string;
-  args: unknown;
+  recipients: readonly { field: string; value: string }[];
   connectors?: RuleContext["connectors"];
 }): string {
-  const who = input.scope === "bot" ? `o bot ${input.botName}` : "todos os bots";
   const tool = toolTitle(input.tool, input.connectors ?? []);
-  const pinned = input.match === "exact" ? exactFields(input.args) : [];
-  if (pinned.length === 0) {
-    return `Passa a valer para ${who}: qualquer uso de ${tool} roda sem perguntar, com quaisquer argumentos. Você pode apagar a regra em Configurações > Aprovações.`;
-  }
-  const fields = pinned.map((f) => `${f.field} = ${quote(f.value)}`).join(" e ");
-  return `Passa a valer para ${who}: ${tool} roda sem perguntar só quando ${fields}. Qualquer outro conteúdo continua pedindo sua aprovação. Você pode apagar a regra em Configurações > Aprovações.`;
+  const who = input.recipients.map((r) => `${r.field} = ${quote(r.value)}`).join(" e ");
+  return `Passa a valer para o bot ${input.botName}: ${tool} envia sem perguntar só quando ${who}. Qualquer outro destinatário continua pedindo sua aprovação. Você pode apagar a regra em Configurações > Aprovações.`;
 }
 
 /**
@@ -210,11 +194,11 @@ export interface ToolCategory {
   icon: CategoryIcon;
 }
 
-const MAIL = /mail|smtp|imap|gmail|outlook/i;
-
 /**
  * The ONE vocabulary of tools in the chat: the same label and icon whether the tool shows as a
  * decision card, a decided approval or a row of what the bot did. Unknown tools are "Ferramenta".
+ * `outbound` is the DECLARATION that the call is a message to another person (the approval's
+ * `outbound`); the name or the text of a tool never says it.
  */
 export function toolCategory(
   tool: string,
@@ -222,14 +206,11 @@ export function toolCategory(
     name: string;
     tools?: readonly { name: string; tool: string }[] | null;
   }[] = [],
+  outbound = false,
 ): ToolCategory {
+  if (outbound) return { label: "Mensagem", icon: "mail" };
   const ref = parseConnectorTool(tool, connectors);
-  if (ref !== null) {
-    return MAIL.test(ref.tool)
-      ? { label: "E-mail", icon: "mail" }
-      : { label: ref.connector, icon: "connector" };
-  }
-  if (MAIL.test(tool)) return { label: "E-mail", icon: "mail" };
+  if (ref !== null) return { label: ref.connector, icon: "connector" };
   switch (tool) {
     case "shell":
       return { label: "Terminal", icon: "terminal" };

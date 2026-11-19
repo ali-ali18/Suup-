@@ -30,7 +30,7 @@ export function hintFloor(hints: ToolHints | undefined): RiskLevel {
 export interface ToolRisk {
   level: RiskLevel;
   /** Why, for `suup connectors tools`: where the level came from. */
-  basis: "default" | "user" | "trusted_hint" | "tightened_by_hint";
+  basis: "default" | "user" | "trusted_hint" | "tightened_by_hint" | "outbound";
 }
 
 /**
@@ -39,7 +39,8 @@ export interface ToolRisk {
  *   - `read` if (and only if) the user trusts the server's hints and the tool says it only reads, else
  *   - `external_irreversible`;
  * and then never less than what the hints imply (`max`), so a tool the user marked `read` that the
- * server now declares destructive asks again.
+ * server now declares destructive asks again; and never `read` for a tool the user marked as
+ * sending a message to another person.
  */
 export function toolRisk(
   spec: Pick<ConnectorSpec, "tools" | "trustAnnotations">,
@@ -61,6 +62,13 @@ export function toolRisk(
     basis = "trusted_hint";
   }
   const level = maxRisk(base, hintFloor(hints));
+  // A tool the user marked as sending a message to another person is never a read.
+  if (
+    spec.tools[tool]?.outbound !== undefined &&
+    maxRisk(level, "external_irreversible") !== level
+  ) {
+    return { level: "external_irreversible", basis: "outbound" };
+  }
   return { level, basis: level !== base ? "tightened_by_hint" : basis };
 }
 

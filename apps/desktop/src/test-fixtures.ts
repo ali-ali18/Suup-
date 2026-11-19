@@ -147,6 +147,7 @@ export function makeApproval(over: Partial<Approval> = {}): Approval {
     summary: "Shell em repo: git push origin main",
     secrets: [],
     source: "default",
+    outbound: null,
     status: "pending",
     reason: null,
     ruleId: null,
@@ -164,6 +165,8 @@ export function makeRule(over: Partial<ApprovalRule> = {}): ApprovalRule {
     tool: "shell",
     effect: "allow",
     matchers: [],
+    enabled: true,
+    disabledReason: null,
     note: null,
     createdBy: "user",
     sourceApprovalId: null,
@@ -193,6 +196,7 @@ export function makeConnectorTool(over: Partial<ConnectorTool> = {}): ConnectorT
     description: "Returns the text it was given.",
     risk: "external_irreversible",
     riskBasis: "default",
+    outbound: null,
     available: true,
     hints: null,
     ...over,
@@ -220,4 +224,19 @@ export function makeConnector(over: Partial<Connector> = {}): Connector {
     updatedAt: iso(),
     ...over,
   };
+}
+
+/** An approval of a message to another person: the tool DECLARED it (`outbound`), as the server sends it. */
+export function makeMessageApproval(over: Partial<Approval> = {}): Approval {
+  return makeApproval({
+    tool: "conn_mail__send_email",
+    args: { to: "ana@exemplo.com", subject: "Oi", body: "Tudo bem?" },
+    summary: "Conector mail → send_email",
+    outbound: {
+      kind: "message",
+      recipientFields: ["to"],
+      recipients: [{ field: "to", value: "ana@exemplo.com" }],
+    },
+    ...over,
+  });
 }

@@ -210,54 +210,39 @@ describe.skipIf(!DATABASE_URL)(
       f.close();
     });
 
-    it("'approve and always allow' makes a rule, listed and removable, and the next call does not ask", async () => {
+    it("a normal card cannot make a standing rule: no 'always allow' in the API, and no allowRecipient on a non-message", async () => {
       const { api, bot, conversation, f } = await setup("Sempre");
       const first = await api.conversations.send(conversation.id, "CASE-ALWAYS 1");
       const card = await pendingOf(first.run.id);
-      const { rule } = await api.approvals.decide(card.id, {
-        decision: "approve",
-        always: { scope: "global" },
+      expect(card.outbound).toBeNull();
+      // the removed field is refused loudly, not ignored
+      const raw = await fetch(`${w.started.url}/v1/approvals/${card.id}/decision`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${w.token}`, "content-type": "application/json" },
+        body: JSON.stringify({ decision: "approve", always: { scope: "global" } }),
       });
-      expect(rule).toMatchObject({
-        botId: null,
-        tool: "shell",
-        effect: "allow",
-        createdBy: "approval",
-        sourceApprovalId: card.id,
-        matchers: [{ field: "command", op: "equals", value: "echo sempre-ok" }],
-      });
-      expect((await api.approvals.get(card.id)).ruleId).toBe(rule?.id);
+      expect(raw.status).toBe(400);
+      // and a tool that never declared a message cannot be turned into a recipient rule
+      expect(
+        await code(api.approvals.decide(card.id, { decision: "approve", allowRecipient: true })),
+      ).toBe("conflict");
+      expect((await api.approvals.get(card.id)).status).toBe("pending");
+      const { rule } = await api.approvals.decide(card.id, { decision: "approve" });
+      expect(rule).toBeNull();
+      expect((await api.approvals.get(card.id)).ruleId).toBeNull();
+      expect(
+        (await api.rules.list({ botId: bot.id })).filter((r) => r.createdBy === "approval"),
+      ).toEqual([]);
       await until(
         async () => (await api.runs.get(first.run.id)).status === "done" || undefined,
         "first done",
       );
-
-      // Another bot, another conversation: the rule is for every bot.
-      const twin = await api.bots.create({
-        name: "Gemeo",
-        modelId: "model-x",
-        allowedTools: ["shell"],
-      });
-      const twinChat = await api.bots.openConversation(twin.id);
-      const second = await api.conversations.send(twinChat.id, "CASE-ALWAYS 2");
-      await until(
-        async () => (await api.runs.get(second.run.id)).status === "done" || undefined,
-        "second done",
-      );
-      const events = (await api.runs.events(second.run.id, { limit: 1000 })).items;
-      expect(events.some((e) => e.type === "approval_requested")).toBe(false);
-      expect(events.find((e) => e.type === "policy_checked")?.payload).toMatchObject({
-        outcome: "allow",
-        source: "rule",
-        ruleId: rule?.id,
-      });
-
-      expect((await api.rules.list({ botId: bot.id })).map((r) => r.id)).toContain(rule?.id);
-      expect((await api.rules.list({ botId: twin.id })).map((r) => r.id)).toContain(rule?.id);
-      await api.rules.remove(rule?.id as string);
-      expect((await api.rules.list({ botId: bot.id })).map((r) => r.id)).not.toContain(rule?.id);
-      expect(await code(api.rules.remove(rule?.id as string))).toBe("not_found");
+      // The next equal call asks again: nothing was remembered behind the user's back.
       f.close();
+      const twin = await setup("Sempre-bis");
+      const second = await api.conversations.send(twin.conversation.id, "CASE-ALWAYS 2");
+      expect((await pendingOf(second.run.id)).args).toMatchObject({ command: "echo sempre-ok" });
+      twin.f.close();
     });
 
     it("cancelling a run that waits cancels its card, and the stream shows both", async () => {
@@ -292,7 +277,7 @@ describe.skipIf(!DATABASE_URL)(
         botId: bot.id,
         tool: "shell",
         effect: "deny",
-        matchers: [{ field: "command", op: "starts_with", value: "rm " }],
+        matchers: [{ field: "command", value: "rm -rf build" }],
         note: "nada de rm",
       });
       expect(created).toMatchObject({
@@ -314,10 +299,32 @@ describe.skipIf(!DATABASE_URL)(
           api.rules.create({
             tool: "x",
             effect: "deny",
-            matchers: [{ field: "a", op: "regex" as never, value: "b" }],
+            matchers: [{ field: "a", op: "regex", value: "b" } as never],
           }),
         ),
       ).toBe("invalid_request");
+      // every removed way of comparing is refused as an unknown field, never read as equality
+      for (const op of ["equals", "starts_with", "contains", "glob"]) {
+        expect(
+          await code(
+            api.rules.create({
+              tool: "x",
+              effect: "deny",
+              matchers: [{ field: "a", op, value: "b*" } as never],
+            }),
+          ),
+          op,
+        ).toBe("invalid_request");
+        expect(
+          await code(
+            api.rules.update(created.id, { matchers: [{ field: "a", op, value: "b" } as never] }),
+          ),
+          op,
+        ).toBe("invalid_request");
+      }
+      // a rule without conditions is "any use of the tool", and says so
+      expect(global.matchers).toEqual([]);
+      expect(global).toMatchObject({ enabled: true, disabledReason: null });
       expect(
         await code(
           api.rules.create({

@@ -108,6 +108,7 @@ export async function askGate(ctx: LoopContext, call: ControlCall): Promise<Call
           summary: verdict.summary,
           secrets: verdict.secrets,
           source: verdict.source,
+          ...(verdict.outbound === undefined ? {} : { outbound: verdict.outbound }),
           ...(verdict.expiresAt === undefined ? {} : { expiresAt: verdict.expiresAt }),
         },
       });

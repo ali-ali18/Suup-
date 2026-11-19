@@ -2,8 +2,10 @@ import { expect, type Page, test } from "@playwright/test";
 import { DATABASE_URL, SKIP_REASON, startWorld, type World } from "./harness.js";
 import { botItem, freshBot, openWithBot, selectBot, send } from "./helpers.js";
 
-// Phase 3 in the browser: the approval card (approve, deny (one click), always allow through the menu, decided
-// elsewhere, cancelled), the permanent rules, and the secure form of a secret request. Everything
+// Phase 3 in the browser: the approval card (approve, deny (one click), decided elsewhere,
+// cancelled; a normal action has ONLY Recusar and Aprovar), the permanent rules (exact equality
+// only), and the secure form of a secret request. The message card (the split button) is in
+// vault-connectors.spec.ts, because only a connector tool the user marked is one. Everything
 // runs against the real server with the scripted provider: nothing is mocked.
 
 // The decision card (waiting for you) and the row of a call (what the bot did, an approval merged in).
@@ -58,6 +60,13 @@ test.describe("approval cards", () => {
     await expect(pending).toHaveCSS("border-top-width", "1px");
     await expect(pending).toHaveCSS("border-top-left-radius", "24px");
     expect((await pending.boundingBox())?.width ?? 0).toBeLessThanOrEqual(700);
+    // A normal action: ONLY the plain text Recusar and the pill Aprovar. No split button, no menu.
+    await expect(pending.getByRole("button", { name: /Mostrar tudo/ })).toHaveCount(0);
+    expect(await pending.getByRole("button").allTextContents()).toEqual(["Recusar", "Aprovar"]);
+    await expect(pending.getByTestId("approval-more")).toHaveCount(0);
+    await expect(pending.locator(".ui-split")).toHaveCount(0);
+    await expect(pending.locator('[aria-haspopup="menu"]')).toHaveCount(0);
+    await expect(pending).not.toContainText(/sempre permitir/i);
     // The buttons are underneath the content.
     const contentBox = await pending.getByTestId("approval-content").boundingBox();
     const buttonBox = await pending.getByTestId("approval-approve").boundingBox();
@@ -89,7 +98,6 @@ test.describe("approval cards", () => {
     await expect(pending).toHaveAttribute("data-state", "needs-action");
     for (const button of await pending.getByRole("button").all())
       await expect(button).toBeDisabled();
-    await expect(pending.getByTestId("approval-more")).toBeDisabled();
     // Confirmed: ONE line for the call, with the decision and the execution together, closed; the run
     // goes on and the bot says so. The decision card is gone and no second row stands for the tool.
     await expect(botMessage(page, "Escrevi o arquivo aprovado.")).toBeVisible();
@@ -176,66 +184,72 @@ test.describe("approval cards", () => {
     expect(JSON.stringify(events.items)).not.toContain('"outcome":"ok"');
   });
 
-  test("approve and always allow: the choice is explained, the rule shows in settings, and the next call does not ask", async ({
+  test("a normal card makes no rule; the user's own exact rule (written in settings) lets the next call through", async ({
     page,
   }) => {
     await openWithBot(page, world, "Permissivo");
     await send(page, "CASE-ALWAYS escreva o arquivo");
     await expect(card(page)).toHaveAttribute("data-state", "needs-action");
-    // The chevron opens the menu; "Precisa de aprovação" starts checked.
-    await card(page).getByTestId("approval-more").click();
-    const needs = page.getByTestId("approval-needs");
-    await expect(needs).toHaveAttribute("aria-checked", "true");
-    // Turning it off makes Aprovar create the rule, and the card says exactly which one.
-    await needs.click();
-    const sentence = card(page).getByTestId("always-sentence");
-    await expect(sentence).toContainText("o bot Permissivo");
-    await expect(sentence).toContainText("path = “sempre.txt”");
-    await expect(sentence).toContainText("content = “pode sempre”");
-    await expect(card(page).getByTestId("approval-approve")).toHaveText("Aprovar e permitir");
-    await card(page).getByTestId("approval-more").click();
-    await page.getByTestId("approval-needs").click();
-    await expect(sentence).toHaveCount(0);
-    // "Sempre permitir isto, neste bot": approves and creates the rule in one click.
-    await card(page).getByTestId("approval-more").click();
-    await page.getByTestId("always-bot-exact").click();
+    expect(await card(page).getByRole("button").allTextContents()).toEqual(["Recusar", "Aprovar"]);
+    await card(page).getByTestId("approval-approve").click();
     await expect(botMessage(page, "Primeiro arquivo escrito.")).toBeVisible();
     await expect(row(page)).toHaveCount(1);
     await expect(row(page)).toHaveAttribute("data-state", "done");
-    // The row says it created a rule.
+    // Approving created nothing behind the user's back.
     await row(page)
       .getByRole("button", { name: /Aprovado/ })
       .click();
-    await expect(row(page).getByTestId("approval-rule")).toContainText(
-      "Libera Escrever arquivo para o bot Permissivo",
+    await expect(row(page).getByTestId("approval-rule")).toHaveCount(0);
+    expect((await world.api.rules.list()).filter((r) => r.createdBy === "approval")).toHaveLength(
+      0,
     );
-    // The next call, the same one, goes through without a card.
+    // The user's explicit act: a rule in Configurações > Aprovações, exact equality on two fields.
+    await openSettings(page, "Aprovações");
+    await page.getByTestId("rule-new").click();
+    await page.getByTestId("rule-bot").selectOption({ label: "Permissivo" });
+    await page.getByTestId("rule-tool").selectOption("write_file");
+    await expect(page.getByTestId("rule-any-use")).toContainText("qualquer uso");
+    for (const [field, value] of [
+      ["path", "sempre.txt"],
+      ["content", "pode sempre"],
+    ] as const) {
+      await page.getByRole("button", { name: "Adicionar condição" }).click();
+      const condition = page.getByTestId("rule-condition").last();
+      await condition.getByLabel("Campo dos argumentos (ex.: command)").fill(field);
+      await condition.getByLabel("Valor exato").fill(value);
+    }
+    // There is no way to pick "starts with / contains / pattern".
+    await expect(page.getByLabel("Como comparar")).toHaveCount(0);
+    await expect(page.getByTestId("rule-any-use")).toHaveCount(0);
+    await expect(page.getByTestId("rule-preview")).toContainText(
+      "Libera Escrever arquivo para o bot Permissivo quando o campo path é exatamente “sempre.txt” e o campo content é exatamente “pode sempre”.",
+    );
+    await page.getByTestId("rule-save").click();
+    await expect(page.getByTestId("rule-row").filter({ hasText: "Permissivo" })).toHaveCount(1);
+    // Back to the chat: the same call goes through without a card.
+    await selectBot(page, "Permissivo");
     await send(page, "CASE-AGAIN agora faça de novo");
     await expect(botMessage(page, "Segundo arquivo escrito, sem perguntar.")).toBeVisible();
-    // Still one row per call: the first one (approved), the second one (a rule let it through, no card).
     await expect(card(page)).toHaveCount(0);
     await expect(row(page)).toHaveCount(2);
-    // (the first call belongs to an earlier run, whose events are not loaded: the approval alone says "Aprovado")
-    await expect(row(page).first()).toContainText("Aprovado · Escrever sempre.txt");
-    await expect(row(page).last()).toContainText("Concluído");
     await expect(row(page).last()).not.toContainText("Aprovado");
     expect(
       await world.api.approvals.list({ botId: await botId(world, "Permissivo") }),
     ).toHaveLength(1);
-    // The rule is in the settings, in plain language, and can be deleted there.
+    // The rule is listed in plain language and can be deleted there.
     await openSettings(page, "Aprovações");
     const ruleRow = page.getByTestId("rule-row").filter({ hasText: "Permissivo" });
     await expect(ruleRow).toHaveCount(1);
     await expect(ruleRow.getByTestId("rule-sentence")).toContainText(
       "Libera Escrever arquivo para o bot Permissivo quando o campo path é exatamente “sempre.txt” e o campo content é exatamente “pode sempre”.",
     );
-    await expect(ruleRow).toContainText("Criada num cartão");
+    await expect(ruleRow).not.toContainText("Criada num cartão");
+    // No setting for "always allow" any more.
+    await expect(page.getByTestId("approval-behaviour")).not.toContainText("sempre permitir");
     await ruleRow.getByTestId("rule-delete").click();
     await page.getByTestId("rule-delete-confirm").click();
     await expect(page.getByTestId("rule-row").filter({ hasText: "Permissivo" })).toHaveCount(0);
-    expect(
-      (await world.api.rules.list()).filter((r) => r.botId === null || r.createdBy === "approval"),
-    ).toHaveLength(0);
+    expect(await world.api.rules.list()).toHaveLength(0);
   });
 
   test("rules: create a forbidding rule, edit it, see it work (no card, the bot is told), delete it", async ({
@@ -253,10 +267,9 @@ test.describe("approval cards", () => {
     await page.getByRole("button", { name: "Adicionar condição" }).click();
     const condition = page.getByTestId("rule-condition");
     await condition.getByLabel("Campo dos argumentos (ex.: command)").fill("path");
-    await condition.getByLabel("Como comparar").selectOption("starts_with");
-    await condition.getByLabel("Valor").fill("proibido/");
+    await condition.getByLabel("Valor exato").fill("proibido/segredo.txt");
     await expect(page.getByTestId("rule-preview")).toContainText(
-      "Proíbe Escrever arquivo para o bot Regrado quando o campo path começa com “proibido/”.",
+      "Proíbe Escrever arquivo para o bot Regrado quando o campo path é exatamente “proibido/segredo.txt”.",
     );
     await page.getByTestId("rule-save").click();
     const row = page.getByTestId("rule-row").filter({ hasText: "Regrado" });
@@ -264,13 +277,13 @@ test.describe("approval cards", () => {
     await expect(row).toHaveAttribute("data-effect", "deny");
     // Edit: the note.
     await row.getByTestId("rule-edit").click();
-    await page.getByLabel("Anotação (opcional)").fill("a pasta proibido/ é só minha");
+    await page.getByLabel("Anotação (opcional)").fill("este arquivo é só meu");
     await page.getByTestId("rule-save").click();
-    await expect(row).toContainText("a pasta proibido/ é só minha");
-    expect((await world.api.rules.list())[0]?.note).toBe("a pasta proibido/ é só minha");
+    await expect(row).toContainText("este arquivo é só meu");
+    expect((await world.api.rules.list())[0]?.note).toBe("este arquivo é só meu");
     // It works: the call is refused by the rule, with no card, and the bot is told and goes on.
     await page.getByTestId("bot-item").filter({ hasText: "Regrado" }).click();
-    await send(page, "CASE-RULEDENY escreva em proibido/");
+    await send(page, "CASE-RULEDENY escreva em proibido/segredo.txt");
     await expect(botMessage(page, "A regra não deixou eu escrever lá.")).toBeVisible();
     await expect(card(page)).toHaveCount(0);
     const runs = await world.api.runs.list({ botId: await botId(world, "Regrado") });
@@ -374,45 +387,11 @@ test.describe("approval cards", () => {
     await expect(pending.getByTestId("approval-deny")).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(pending.getByTestId("approval-approve")).toBeFocused();
-    await page.keyboard.press("Tab");
-    const chevron = pending.getByTestId("approval-more");
-    await expect(chevron).toBeFocused();
-    // The menu of the chevron: Enter opens it with the focus on the first item, arrows move, Esc closes.
-    await page.keyboard.press("Enter");
-    const items = page.getByRole("menu").locator('[role^="menuitem"]');
-    await expect(items.first()).toBeFocused();
-    await page.keyboard.press("ArrowDown");
-    await expect(items.nth(1)).toBeFocused();
-    await page.keyboard.press("End");
-    await expect(items.last()).toBeFocused();
-    await expect(items.last()).toContainText("Gerenciar regras");
-    await page.keyboard.press("Escape");
-    await expect(page.getByRole("menu")).toHaveCount(0);
-    await expect(chevron).toBeFocused();
-    await page.keyboard.press("Shift+Tab");
-    await expect(pending.getByTestId("approval-approve")).toBeFocused();
+    // Nothing comes after Aprovar: there is no menu on a normal card.
     await page.keyboard.press("Enter");
     await expect(botMessage(page, "Arquivo longo escrito.")).toBeVisible();
     await expect(row(page)).toHaveCount(1);
     await expect(row(page)).toHaveAttribute("data-state", "done");
-  });
-
-  test("'Gerenciar regras' in the menu opens Configurações > Aprovações", async ({ page }) => {
-    await openWithBot(page, world, "Gerente");
-    await send(page, "CASE-APPROVE escreva o arquivo");
-    await expect(card(page)).toHaveAttribute("data-state", "needs-action");
-    await card(page).getByTestId("approval-more").click();
-    await page.getByTestId("approval-manage-rules").click();
-    await expect(page.getByRole("tab", { name: "Aprovações" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
-    await expect(page.getByTestId("rules-card")).toBeVisible();
-    // Nothing is left waiting for the other tests: approve it from Configurações (it lists the pending cards).
-    await page.getByTestId("settings-pending-approvals").getByTestId("approval-approve").click();
-    await expect(page.getByTestId("settings-pending-approvals")).toContainText(
-      "Nenhuma aprovação esperando",
-    );
   });
 
   test("Pendências lists the card with the same buttons, and a decision there is a decision in the chat", async ({

@@ -21,8 +21,6 @@ export interface Settings {
   favicons: "off" | "on";
   /** Movimento reduzido: segue o sistema, ou sempre. */
   motion: "system" | "reduce";
-  /** O escopo que "Aprovar e sempre permitir" propõe: este bot, ou todos. */
-  alwaysScope: "bot" | "global";
   /** Cartões de aprovação já decididos: uma linha que se abre ao clicar, ou já abertos. */
   approvalResolved: "collapsed" | "open";
   /** O conteúdo longo de um cartão de aprovação: recolhido (com "Mostrar tudo"), ou inteiro. */
@@ -40,7 +38,6 @@ export const DEFAULT_SETTINGS: Settings = {
   fold: "on",
   favicons: "off",
   motion: "system",
-  alwaysScope: "bot",
   approvalResolved: "collapsed",
   approvalLong: "collapse",
   notifyApprovals: "on",
@@ -56,7 +53,6 @@ export const SETTING_OPTIONS = {
   fold: ["on", "off"],
   favicons: ["off", "on"],
   motion: ["system", "reduce"],
-  alwaysScope: ["bot", "global"],
   approvalResolved: ["collapsed", "open"],
   approvalLong: ["collapse", "full"],
   notifyApprovals: ["on", "off"],
@@ -106,7 +102,6 @@ export function settingsAttributes(settings: Settings): Record<string, string> {
     "data-fold": settings.fold,
     "data-favicons": settings.favicons,
     "data-motion": settings.motion,
-    "data-always-scope": settings.alwaysScope,
     "data-approval-resolved": settings.approvalResolved,
     "data-approval-long": settings.approvalLong,
     "data-notify-approvals": settings.notifyApprovals,

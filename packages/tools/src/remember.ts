@@ -1,4 +1,4 @@
-import { defineTool, MemoryRuleError, SECRET_PATTERNS } from "@suup/core";
+import { defineTool, MemoryRuleError } from "@suup/core";
 import { z } from "zod";
 import { isOutput, memoryOf } from "./memory-util.js";
 
@@ -37,13 +37,6 @@ export const rememberTool = defineTool({
   async execute({ layer, text, scope }, ctx) {
     const memory = memoryOf(ctx);
     if (isOutput(memory)) return memory;
-    if (SECRET_PATTERNS.some((pattern) => pattern.test(text))) {
-      return {
-        isError: true,
-        content:
-          "Nothing was saved: the text looks like it contains a secret (a password, key or token). Never store secrets in memory. If the user wants a secret kept, tell them to use a safer place, and save only a non-secret fact such as which service the account is for.",
-      };
-    }
     try {
       const { id } = await memory.remember({
         layer,

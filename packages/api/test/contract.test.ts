@@ -11,9 +11,11 @@ import { describe, expect, it } from "vitest";
 import {
   addMemoryBodySchema,
   approvalSchema,
+  argMatcherSchema,
   BOT_COLORS,
   BOT_PALETTE,
   botColorSchema,
+  createRuleBodySchema,
   decideApprovalBodySchema,
   FAILURE_ORIGINS,
   listMessagesQuerySchema,
@@ -211,6 +213,7 @@ describe("approvals in the contract", () => {
     summary: "Send",
     secrets: ["TOKEN"],
     source: "rule",
+    outbound: null,
     status: "pending",
     reason: null,
     ruleId: null,
@@ -232,20 +235,55 @@ describe("approvals in the contract", () => {
     expect(approvalSchema.safeParse(card).success).toBe(true);
   });
 
-  it("a decision is either an approval (maybe always) or a denial (maybe with a reason)", () => {
+  it("a message approval carries the declaration and what 'Permitir destinatário' would pin", () => {
+    const message = {
+      ...card,
+      outbound: {
+        kind: "message",
+        recipientFields: ["to"],
+        recipients: [{ field: "to", value: "a@x.com" }],
+      },
+    };
+    expect(approvalSchema.safeParse(message).success).toBe(true);
+    expect(
+      approvalSchema.safeParse({ ...message, outbound: { ...message.outbound, kind: "email" } })
+        .success,
+    ).toBe(false);
+    expect(
+      approvalSchema.safeParse({
+        ...message,
+        outbound: { kind: "message", recipientFields: [], recipients: null },
+      }).success,
+    ).toBe(false);
+    // a card without the field is not a valid card any more: the declaration is always stated
+    const { outbound: _omitted, ...without } = card;
+    expect(approvalSchema.safeParse(without).success).toBe(false);
+  });
+
+  it("a decision is an approval (maybe allowing the recipient) or a denial (maybe with a reason)", () => {
     const ok = (body: unknown) => decideApprovalBodySchema.safeParse(body).success;
     expect(ok({ decision: "approve" })).toBe(true);
-    expect(ok({ decision: "approve", always: { scope: "global" } })).toBe(true);
-    expect(ok({ decision: "approve", always: {} })).toBe(true);
+    expect(ok({ decision: "approve", allowRecipient: true })).toBe(true);
     expect(ok({ decision: "deny", reason: "no" })).toBe(true);
     expect(ok({ decision: "deny" })).toBe(true);
     expect(ok({ decision: "maybe" })).toBe(false);
     expect(ok({})).toBe(false);
-    expect(
-      ok({
-        decision: "approve",
-        always: { scope: "bot", matchers: [{ field: "a", op: "regex", value: "b" }] },
-      }),
-    ).toBe(false);
+    // the removed "always allow" is refused loudly, not ignored
+    expect(ok({ decision: "approve", always: { scope: "global" } })).toBe(false);
+    expect(ok({ decision: "approve", always: {} })).toBe(false);
+    expect(ok({ decision: "deny", allowRecipient: true })).toBe(false);
+  });
+
+  it("a rule matches only by exact equality: no operator, in any spelling", () => {
+    const ok = (matcher: unknown) => argMatcherSchema.safeParse(matcher).success;
+    expect(ok({ field: "command", value: "git status" })).toBe(true);
+    for (const op of ["equals", "starts_with", "contains", "glob", "regex"]) {
+      expect(ok({ field: "command", op, value: "git *" }), op).toBe(false);
+    }
+    const body = (matchers: unknown) =>
+      createRuleBodySchema.safeParse({ tool: "shell", effect: "allow", matchers }).success;
+    expect(body([{ field: "a", value: "b" }])).toBe(true);
+    expect(body([])).toBe(true);
+    expect(body([{ field: "a", op: "starts_with", value: "b" }])).toBe(false);
   });
 });

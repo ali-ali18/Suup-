@@ -31,6 +31,7 @@ suup connectors add erp --url https://erp.example.com/mcp --bearer ERP_TOKEN --b
 suup connectors test erp          # liga do zero, lista as ferramentas, desliga; diz de quem é o problema
 suup connectors tools erp         # cada ferramenta, o risco e de onde ele veio
 suup connectors set-risk erp search_orders read
+suup connectors set-outbound erp send_message --to to   # "envia mensagem para outra pessoa"
 suup connectors list | enable | disable | grant | revoke | rm
 ```
 
@@ -52,7 +53,7 @@ suup connectors list | enable | disable | grant | revoke | rm
 
 ## As ferramentas
 
-O bot enxerga `conn_<conector>__<ferramenta>` (por exemplo, `conn_erp__search_orders`). O registro e os provedores aceitam `^[a-z][a-z0-9_]{0,63}$`, e dois servidores podem usar o mesmo nome, por isso o prefixo. Um nome do servidor que já é `[a-z0-9_]` e cabe é usado como está; qualquer outro (maiúsculas, hífen, ponto, comprido demais) vira um nome simples **com um sufixo de 6 caracteres do hash do original** (`conn_fake__weird_name_v2_3fa9c1`), de modo que dois nomes diferentes nunca caem no mesmo. As regras de aprovação ("sempre permitir") casam por esse nome registrado.
+O bot enxerga `conn_<conector>__<ferramenta>` (por exemplo, `conn_erp__search_orders`). O registro e os provedores aceitam `^[a-z][a-z0-9_]{0,63}$`, e dois servidores podem usar o mesmo nome, por isso o prefixo. Um nome do servidor que já é `[a-z0-9_]` e cabe é usado como está; qualquer outro (maiúsculas, hífen, ponto, comprido demais) vira um nome simples **com um sufixo de 6 caracteres do hash do original** (`conn_fake__weird_name_v2_3fa9c1`), de modo que dois nomes diferentes nunca caem no mesmo. As regras de aprovação casam por esse nome registrado.
 
 O esquema de entrada vem do servidor, que não é confiável. Ele é **convertido** (não copiado): só um subconjunto compreendido de JSON Schema vira o esquema que o modelo vê e que valida os argumentos.
 
@@ -77,14 +78,17 @@ Ferramentas que só rodam como "tarefa de longa duração" (execução por taref
 |---|---|
 | Padrão de **toda** ferramenta de conector | `external_irreversible` (cartão) |
 | Você marcou a ferramenta (`--read`, `set-risk`, API) | o que você marcou |
+| Você marcou a ferramenta como **mensagem a outra pessoa** (`set-outbound`) | **no mínimo** `external_irreversible`, nunca `read` (origem "mensagem a outra pessoa") |
 | `--trust-annotations` no conector **e** o servidor diz `readOnlyHint: true` (sem `destructiveHint: true`) | `read` |
 | O servidor diz `destructiveHint: true` ou `readOnlyHint: false` | **no mínimo** `external_irreversible`, mesmo que você tenha marcado `read` |
 
 O que o servidor diz de si mesmo (as *annotations* MCP) são **dicas de um programa que você não escreveu**. Elas só podem **apertar** o nível, nunca afrouxar, a não ser que a **sua** configuração diga: a marca por ferramenta, ou `trustAnnotations` no conector inteiro (e nem assim uma dica de "destrutivo" é ignorada). O nível final é o maior entre o que você configurou e o que as dicas exigem. `suup connectors tools` mostra a origem: *padrão*, *definido por você*, *dica do servidor (você confia)* ou *apertado pela dica do servidor*.
 
-Para deixar rodar sem cartão uma ferramenta que o servidor diz que escreve, **não** a marque como leitura: crie uma regra "sempre permitir" (`suup rules add`, ou "aprovar e sempre permitir" no cartão). As regras funcionam como em qualquer ferramenta, inclusive com condições sobre os argumentos, e `approvals.levels` na configuração também vale (pelo nome registrado).
+Para deixar rodar sem cartão uma ferramenta que o servidor diz que escreve, **não** a marque como leitura: crie uma regra (`suup rules add`, ou Configurações > Aprovações; um cartão comum não cria regras). As regras funcionam como em qualquer ferramenta, com condições de **igualdade exata** sobre os argumentos (nada de padrão), e `approvals.levels` na configuração também vale (pelo nome registrado).
 
 **Escopo `read_only`:** o conector inteiro só oferece as ferramentas cujo nível final é `read`. As outras **nem aparecem** para o modelo (para ele, são ferramentas desconhecidas) e `suup connectors tools` diz por que foram deixadas de fora.
+
+**Mensagens a outras pessoas.** O servidor pode chamar uma ferramenta de `send_email`, mas só **você** diz que ela envia mensagem a outra pessoa (nenhuma dica do servidor, nome ou descrição faz isso): `suup connectors set-outbound <conector> <ferramenta-no-servidor> --to campo` (repita `--to` para vários campos; `--none` desmarca) ou a caixa "Envia mensagem para outra pessoa" na tela do conector, com o campo do destinatário. A marca fica em `toolOverrides.<ferramenta>.outbound` e o cartão passa a ser o cartão de mensagem (Enviar, "Permitir destinatário"). Veja [APROVACOES.md](APROVACOES.md).
 
 O cartão mostra a linha `Conector <nome> → <ferramenta> <argumentos>` e, em `args`, o conteúdo exato; depois da aprovação o loop executa exatamente esses argumentos.
 

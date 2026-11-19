@@ -1401,6 +1401,11 @@ html[data-resizing] * {
 .ui-decision__deny:hover:not(:disabled) {
   color: var(--color-text);
 }
+/* The primary pill of a card footer: Aprovar, Enviar (secret). */
+.ui-decision__primary {
+  min-width: 112px;
+}
+/* The split button: drawn ONLY for the approval of a message to another person (design-rules.test.ts). */
 .ui-split {
   display: inline-flex;
 }

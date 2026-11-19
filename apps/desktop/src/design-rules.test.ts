@@ -107,6 +107,58 @@ describe("chat cards share one chrome and one collapsed row", () => {
   });
 });
 
+describe("approval buttons: normal = Aprovar / Recusar; the split button is only for messages to another person", () => {
+  const card = read(join(SRC, "ui", "approval-card.tsx"));
+  const between = (text: string, from: string, to: string): string => {
+    const start = text.indexOf(from);
+    expect(start, from).toBeGreaterThan(-1);
+    const end = text.indexOf(to, start + from.length);
+    expect(end, to).toBeGreaterThan(start);
+    return text.slice(start, end);
+  };
+
+  it("the split button class is drawn only by the message footer of the approval card, nowhere else", () => {
+    const offenders = files(SRC, /\.tsx?$/)
+      .filter((f) => !f.endsWith("design-rules.test.ts"))
+      .filter((f) => read(f).includes("ui-split"))
+      .map(rel);
+    expect(offenders).toEqual(["ui/approval-card.tsx"]);
+    const messageFooter = between(card, "function MessageFooter(", "function ResolvedCard(");
+    expect(messageFooter).toContain('className="ui-split"');
+    // every use of the split button in the file is inside the message footer
+    expect(card.split("ui-split").length - 1).toBe(messageFooter.split("ui-split").length - 1);
+  });
+
+  it("the message footer is rendered only when the approval DECLARES an outbound message", () => {
+    expect(card.split("<MessageFooter").length - 1).toBe(1);
+    const branch = between(card, "outbound === null ? (", "<MessageFooter");
+    // the branch before it is the normal footer: Recusar and Aprovar, no menu of any kind
+    expect(branch).toContain('data-testid="approval-approve"');
+    expect(branch).not.toContain("MenuButton");
+    expect(branch).not.toContain("ui-split");
+    // `outbound` comes from the approval's declaration, never from the tool's name or text
+    expect(card).toContain("const outbound = approval.outbound;");
+  });
+
+  it("no card offers 'always allow', and there is no setting for it", () => {
+    const sources = files(SRC, /\.tsx?$/).filter((f) => !f.endsWith("design-rules.test.ts"));
+    for (const f of sources) {
+      const text = read(f).toLowerCase();
+      expect(text.includes("sempre permitir"), rel(f)).toBe(false);
+      expect(text.includes("alwaysscope"), rel(f)).toBe(false);
+      expect(text.includes("aprovar e permitir"), rel(f)).toBe(false);
+    }
+  });
+
+  it("nothing in the app guesses a message from a tool's name", () => {
+    for (const f of files(SRC, /\.tsx?$/).filter((x) => !x.endsWith("design-rules.test.ts"))) {
+      const text = read(f).toLowerCase();
+      expect(text.includes("smtp"), rel(f)).toBe(false);
+      expect(text.includes("imap"), rel(f)).toBe(false);
+    }
+  });
+});
+
 describe("docs/DESIGN.md is the standard, and everyone is pointed to it", () => {
   const root = join(SRC, "..", "..", "..");
   it("exists and is referenced by the desktop README, FRONTEND.md and CLAUDE.md", () => {

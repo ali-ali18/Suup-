@@ -228,6 +228,16 @@ const asArgs = (value: unknown): Record<string, unknown> =>
  * approval whose call is not among `actions` (an older run) becomes a call of its own; a pending
  * approval stays a decision card (`pending`) and its call is not a row yet.
  */
+/** An approval that DECLARES a message to another person reads as one in the chat (never guessed). */
+function outboundLook(
+  approval: Approval,
+  connectors: ConnectorRefs,
+): Partial<Pick<ActionItem, "kindLabel" | "icon">> {
+  if (approval.outbound === null) return {};
+  const category = toolCategory(approval.tool, connectors, true);
+  return { kindLabel: category.label, icon: category.icon };
+}
+
 export function mergeApprovals(
   actions: readonly ActionItem[],
   approvals: readonly Approval[],
@@ -252,8 +262,11 @@ export function mergeApprovals(
     // Denied, expired or cancelled: it never ran, whatever the log says about the refusal.
     const ran = approval.status === "approved";
     const { output: _output, durationMs: _duration, ...rest } = action;
+    const look = outboundLook(approval, connectors);
     calls.push(
-      ran ? { ...action, approval } : { ...rest, state: "stopped", truncated: false, approval },
+      ran
+        ? { ...action, ...look, approval }
+        : { ...rest, ...look, state: "stopped", truncated: false, approval },
     );
   }
   for (const approval of approvals) {
@@ -268,6 +281,7 @@ export function mergeApprovals(
       runId: approval.runId,
       name: approval.tool,
       ...describeAction(approval.tool, args, connectors),
+      ...outboundLook(approval, connectors),
       state: approval.status === "approved" ? "done" : "stopped",
       args,
       truncated: false,

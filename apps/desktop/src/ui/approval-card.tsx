@@ -2,9 +2,7 @@ import type { Approval, ApprovalRule, DecideApprovalBody } from "@suup/api";
 import { ChevronDown, LoaderCircle } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
-  type AlwaysMatch,
-  type AlwaysScope,
-  alwaysSentence,
+  allowRecipientSentence,
   approvalTitle,
   expiryText,
   instructionLine,
@@ -41,8 +39,6 @@ export interface ApprovalCardProps {
   rule?: ApprovalRule | undefined;
   expanded: boolean;
   onToggle(): void;
-  /** What the settings propose for "always allow": this bot, or every bot. */
-  defaultScope?: AlwaysScope;
   /** Long content is collapsed with a button to show it all. */
   collapseLong?: boolean;
   /** Take the focus when the card appears (unless the person is typing). */
@@ -51,12 +47,12 @@ export interface ApprovalCardProps {
   onDecide(body: DecideApprovalBody): Promise<DecideOutcome>;
   /** Called when the server says the card was already decided elsewhere. */
   onDecidedElsewhere?(approval: Approval | undefined): void;
-  /** "Gerenciar regras": opens Configurações > Aprovações. No item when it is missing. */
+  /** "Gerenciar regras" (message cards only): opens Configurações > Aprovações. No item when it is missing. */
   onManageRules?(): void;
   now?: () => number;
 }
 
-type Busy = "approve" | "always" | "deny";
+type Busy = "approve" | "allow" | "deny";
 
 /** Re-reads the clock while a card that expires is on screen. */
 function useNow(active: boolean, now: () => number): number {
@@ -74,11 +70,15 @@ const clock = () => Date.now();
 
 /**
  * The approval card of the chat and of the Pendências screen. Waiting for you it is a calm bordered
- * card: category, a bold title, one muted paragraph, the exact content as quiet rows, and on the
- * right Recusar (one click, no reason) and a split button Aprovar whose menu has "Sempre permitir"
- * (this bot or all, exactly this or any use), "Precisa de aprovação" and "Gerenciar regras". Decided,
- * it is one line (Aprovado, Recusado, Expirou, Cancelado) that opens on click. Nothing here is
- * optimistic: while a decision is on its way every button waits, and the card changes when the
+ * card: category, a bold title, one muted paragraph, the exact content as quiet rows. The footer
+ * depends only on what the call DECLARES:
+ *  - a normal action (files, terminal, memory, web, connector tools): plain text "Recusar" and a
+ *    primary pill "Aprovar". Nothing else: no menu, no standing rule from the card;
+ *  - a message to another person (`approval.outbound`): "Descartar" and a split button "Enviar"
+ *    whose menu is about the recipient (Permitir destinatário, Precisa de aprovação, Gerenciar
+ *    regras). This is the only place the split button exists.
+ * Decided, it is one line (Aprovado, Recusado, Expirou, Cancelado) that opens on click. Nothing here
+ * is optimistic: while a decision is on its way every button waits, and the card changes when the
  * server answers.
  */
 export function ApprovalCard(props: ApprovalCardProps) {
@@ -93,7 +93,6 @@ function PendingCard({
   approval,
   botName,
   connectors = [],
-  defaultScope = "bot",
   collapseLong = true,
   autoFocus,
   onDecide,
@@ -103,14 +102,15 @@ function PendingCard({
 }: ApprovalCardProps) {
   const root = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState<Busy | null>(null);
-  // "Precisa de aprovação" is on until the person turns it off: then Aprovar also makes the rule.
-  const [needsApproval, setNeedsApproval] = useState(true);
   const [error, setError] = useState<string | undefined>(undefined);
+  // Message cards only: "Precisa de aprovação" is on until the person turns it off; then Enviar
+  // also allows this recipient.
+  const [needsApproval, setNeedsApproval] = useState(true);
   const current = useNow(approval.expiresAt !== null, now);
   const ref = parseConnectorTool(approval.tool, connectors);
-  const category = toolCategory(approval.tool, connectors);
+  const outbound = approval.outbound;
+  const category = toolCategory(approval.tool, connectors, outbound !== null);
   const title = approvalTitle(approval.tool, approval.args, approval.summary, connectors);
-  const tool = toolTitle(approval.tool, connectors);
 
   // The card appears: take the focus on the card itself (not on a button, so a stray Enter cannot
   // decide), unless the person is in the middle of typing something.
@@ -129,49 +129,9 @@ function PendingCard({
     setBusy(null);
   };
 
-  const always = (scope: AlwaysScope, match: AlwaysMatch): DecideApprovalBody => ({
-    decision: "approve",
-    always: { scope, ...(match === "any" ? { matchers: [] } : {}) },
-  });
-
   const waiting = busy !== null;
-  const approving = busy === "approve" || busy === "always";
-  const items: MenuItem[] = [];
-  for (const scope of defaultScope === "bot"
-    ? (["bot", "global"] as const)
-    : (["global", "bot"] as const)) {
-    for (const match of ["exact", "any"] as const) {
-      items.push({
-        id: `always-${scope}-${match}`,
-        testId: `always-${scope}-${match}`,
-        label: `Sempre permitir ${match === "exact" ? "isto" : "esta ferramenta"}, ${scope === "bot" ? "neste bot" : "em todos os bots"}`,
-        description:
-          match === "exact"
-            ? "Só quando o conteúdo for idêntico a este."
-            : `Qualquer uso de ${tool}, com quaisquer argumentos.`,
-        onSelect: () => void send("always", always(scope, match)),
-      });
-    }
-  }
-  items.push({
-    id: "needs-approval",
-    testId: "approval-needs",
-    label: "Precisa de aprovação",
-    description: needsApproval
-      ? "Pergunta de novo na próxima vez."
-      : "Aprovar passa a criar uma regra também.",
-    checked: needsApproval,
-    onSelect: () => setNeedsApproval(!needsApproval),
-  });
-  if (onManageRules !== undefined) {
-    items.push({
-      id: "manage-rules",
-      testId: "approval-manage-rules",
-      label: "Gerenciar regras",
-      onSelect: onManageRules,
-    });
-  }
-
+  const approving = busy === "approve" || busy === "allow";
+  const recipients = outbound?.recipients ?? null;
   const note = (): ReactNode => {
     if (error !== undefined) {
       return (
@@ -180,17 +140,10 @@ function PendingCard({
         </span>
       );
     }
-    if (!needsApproval) {
+    if (outbound !== null && !needsApproval && recipients !== null) {
       return (
-        <span data-testid="always-sentence" aria-live="polite">
-          {alwaysSentence({
-            scope: defaultScope,
-            match: "exact",
-            botName,
-            tool: approval.tool,
-            args: approval.args,
-            connectors,
-          })}
+        <span data-testid="allow-recipient-sentence" aria-live="polite">
+          {allowRecipientSentence({ botName, tool: approval.tool, recipients, connectors })}
         </span>
       );
     }
@@ -199,6 +152,27 @@ function PendingCard({
     }
     return null;
   };
+  const verb = outbound === null ? "Aprovar" : "Enviar";
+  const denyLabel = outbound === null ? "Recusar" : "Descartar";
+
+  const denyButton = (
+    <Pill
+      tone="ghost"
+      className="ui-decision__deny"
+      disabled={waiting}
+      data-testid="approval-deny"
+      onClick={() => void send("deny", { decision: "deny" })}
+    >
+      {busy === "deny" ? (
+        <>
+          <LoaderCircle size={16} className="ui-spin" aria-hidden="true" />
+          {outbound === null ? "Recusando…" : "Descartando…"}
+        </>
+      ) : (
+        denyLabel
+      )}
+    </Pill>
+  );
 
   return (
     <DecisionCard
@@ -223,66 +197,37 @@ function PendingCard({
       ledeTestId="approval-why"
       footerNote={note()}
       footer={
-        <>
-          <Pill
-            tone="ghost"
-            className="ui-decision__deny"
-            disabled={waiting}
-            data-testid="approval-deny"
-            onClick={() => void send("deny", { decision: "deny" })}
-          >
-            {busy === "deny" ? (
-              <>
-                <LoaderCircle size={16} className="ui-spin" aria-hidden="true" />
-                Recusando…
-              </>
-            ) : (
-              "Recusar"
-            )}
-          </Pill>
-          <div className="ui-split">
+        outbound === null ? (
+          <>
+            {denyButton}
             <Pill
               tone="primary"
-              className="ui-split__main"
+              className="ui-decision__primary"
               disabled={waiting}
               data-testid="approval-approve"
-              onClick={() =>
-                void send(
-                  needsApproval ? "approve" : "always",
-                  needsApproval ? { decision: "approve" } : always(defaultScope, "exact"),
-                )
-              }
+              onClick={() => void send("approve", { decision: "approve" })}
             >
               {approving ? (
                 <>
                   <LoaderCircle size={16} className="ui-spin" aria-hidden="true" />
                   Aprovando…
                 </>
-              ) : needsApproval ? (
-                "Aprovar"
               ) : (
-                "Aprovar e permitir"
+                verb
               )}
             </Pill>
-            <MenuButton
-              label="Mais opções de aprovação"
-              items={items}
-              placement="above"
-              trigger={(props) => (
-                <button
-                  type="button"
-                  className="ui-pill ui-pill--primary ui-split__more"
-                  aria-label="Mais opções de aprovação"
-                  disabled={waiting}
-                  data-testid="approval-more"
-                  {...props}
-                >
-                  <ChevronDown size={16} aria-hidden="true" />
-                </button>
-              )}
-            />
-          </div>
-        </>
+          </>
+        ) : (
+          <MessageFooter
+            recipients={recipients}
+            busy={busy}
+            deny={denyButton}
+            needsApproval={needsApproval}
+            onNeedsApproval={setNeedsApproval}
+            send={send}
+            onManageRules={onManageRules}
+          />
+        )
       }
     >
       <ArgsView args={approval.args} collapse={collapseLong} testId="approval-content">
@@ -299,6 +244,113 @@ function PendingCard({
   );
 }
 
+/**
+ * The footer of a message to another person: Descartar, and the split button Enviar whose menu is
+ * about the recipient. The ONLY place a split button is drawn (`design-rules.test.ts` checks it).
+ * "Permitir destinatário" sends and creates an allow rule for exactly this recipient, for this bot;
+ * it is offered only when the recipient can be said exactly (one text value per recipient field).
+ */
+function MessageFooter({
+  recipients,
+  busy,
+  deny,
+  needsApproval,
+  onNeedsApproval,
+  send,
+  onManageRules,
+}: {
+  recipients: { field: string; value: string }[] | null;
+  busy: Busy | null;
+  deny: ReactNode;
+  needsApproval: boolean;
+  onNeedsApproval(next: boolean): void;
+  send(kind: Busy, body: DecideApprovalBody): Promise<void>;
+  onManageRules?: (() => void) | undefined;
+}) {
+  const waiting = busy !== null;
+  const approving = busy === "approve" || busy === "allow";
+  const canAllow = recipients !== null;
+  const items: MenuItem[] = [
+    {
+      id: "allow-recipient",
+      testId: "allow-recipient",
+      label: "Permitir destinatário",
+      description: canAllow
+        ? "Envia e libera este destinatário, neste bot."
+        : "Indisponível: não há um único destinatário em texto.",
+      disabled: !canAllow,
+      onSelect: () => void send("allow", { decision: "approve", allowRecipient: true }),
+    },
+    {
+      id: "needs-approval",
+      testId: "approval-needs",
+      label: "Precisa de aprovação",
+      description: needsApproval
+        ? "Pergunta de novo na próxima vez."
+        : "Enviar passa a liberar este destinatário também.",
+      checked: needsApproval,
+      disabled: !canAllow,
+      onSelect: () => onNeedsApproval(!needsApproval),
+    },
+  ];
+  if (onManageRules !== undefined) {
+    items.push({
+      id: "manage-rules",
+      testId: "approval-manage-rules",
+      label: "Gerenciar regras",
+      onSelect: onManageRules,
+    });
+  }
+  const allowing = !needsApproval && canAllow;
+  return (
+    <>
+      {deny}
+      <div className="ui-split">
+        <Pill
+          tone="primary"
+          className="ui-split__main"
+          disabled={waiting}
+          data-testid="approval-approve"
+          onClick={() =>
+            void send(
+              allowing ? "allow" : "approve",
+              allowing ? { decision: "approve", allowRecipient: true } : { decision: "approve" },
+            )
+          }
+        >
+          {approving ? (
+            <>
+              <LoaderCircle size={16} className="ui-spin" aria-hidden="true" />
+              Enviando…
+            </>
+          ) : allowing ? (
+            "Enviar e permitir"
+          ) : (
+            "Enviar"
+          )}
+        </Pill>
+        <MenuButton
+          label="Mais opções de envio"
+          items={items}
+          placement="above"
+          trigger={(props) => (
+            <button
+              type="button"
+              className="ui-pill ui-pill--primary ui-split__more"
+              aria-label="Mais opções de envio"
+              disabled={waiting}
+              data-testid="approval-more"
+              {...props}
+            >
+              <ChevronDown size={16} aria-hidden="true" />
+            </button>
+          )}
+        />
+      </div>
+    </>
+  );
+}
+
 function ResolvedCard({
   approval,
   botName,
@@ -308,7 +360,7 @@ function ResolvedCard({
   onToggle,
   collapseLong = true,
 }: ApprovalCardProps) {
-  const category = toolCategory(approval.tool, connectors);
+  const category = toolCategory(approval.tool, connectors, approval.outbound !== null);
   const state = approval.status === "approved" ? "done" : "stopped";
   const decided = approval.decidedAt === null ? undefined : new Date(approval.decidedAt);
   const title = approvalTitle(approval.tool, approval.args, approval.summary, connectors);
@@ -337,7 +389,7 @@ function ResolvedCard({
       {approval.ruleId !== null && (
         <p className="ui-action__label" data-testid="approval-rule">
           {rule === undefined
-            ? "Criou uma regra “sempre permitir”."
+            ? "Criou uma regra para este destinatário."
             : `Criou a regra: ${ruleSentence(rule, { botName, connectors })}`}
         </p>
       )}

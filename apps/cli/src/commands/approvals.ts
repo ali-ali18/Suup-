@@ -9,9 +9,9 @@ import {
 } from "@suup/db";
 import { flag, posInt, str } from "../args.js";
 import type { CommandSpec, Ctx } from "../context.js";
-import { CommandError, EXIT_OK, UsageError } from "../errors.js";
+import { CommandError, EXIT_OK } from "../errors.js";
 import { formatDateTime, levelPt, oneLine } from "../format.js";
-import { findBot } from "../lookup.js";
+import { findBot, isIdPrefix } from "../lookup.js";
 import { renderApprovalCard } from "../render.js";
 import { renderTable } from "../table.js";
 
@@ -25,7 +25,7 @@ const STATUS_PT: Record<string, string> = {
 
 /** An approval by full id or unique id prefix. */
 export async function findApproval(db: Db, ref: string): Promise<Approval> {
-  if (!/^[0-9a-f][0-9a-f-]{3,35}$/i.test(ref)) {
+  if (!isIdPrefix(ref)) {
     throw new CommandError(
       `${JSON.stringify(ref)} não parece um id de aprovação (use o id completo ou o início dele, com pelo menos 4 caracteres). Veja os pendentes com: suup approvals`,
     );
@@ -63,6 +63,7 @@ export function approvalJson(a: Approval) {
     source: a.source,
     status: a.status,
     reason: a.reason,
+    outbound: a.outbound,
     ruleId: a.ruleId,
     expiresAt: a.expiresAt?.toISOString() ?? null,
     decidedAt: a.decidedAt?.toISOString() ?? null,
@@ -82,7 +83,7 @@ export const approvalsCommand: CommandSpec = {
   positionals: { names: [] },
   notes: [
     "Cada cartão é uma chamada de ferramenta que o bot quer fazer e que pede o seu OK: o que sai para o mundo ou não tem volta.",
-    'Decida com: suup approve <id> [--always]   ou   suup deny <id> [--reason "..."]',
+    'Decida com: suup approve <id>   ou   suup deny <id> [--reason "..."]',
   ],
   async run(ctx) {
     const db = ctx.runtime().db;
@@ -155,7 +156,7 @@ export async function decideAndReport(
   );
   if (ruleId !== null) {
     ctx.out.line(
-      `Regra criada (${ruleId.slice(0, 8)}): chamadas iguais a esta passam a ser liberadas. Veja: suup rules list`,
+      `Regra criada (${ruleId.slice(0, 8)}): este destinatário passa a ser liberado neste bot. Veja: suup rules list`,
     );
   }
   ctx.out.line(
@@ -166,41 +167,23 @@ export async function decideAndReport(
 
 export const approveCommand: CommandSpec = {
   name: "approve",
-  summary: "Aprova uma ação que um bot pediu (opcionalmente, e sempre permite ações iguais)",
+  summary: "Aprova uma ação que um bot pediu",
   options: {
-    always: {
+    "allow-recipient": {
       type: "boolean",
-      help: "Aprova e cria uma regra: chamadas iguais a esta (mesmos argumentos de texto) deste bot passam sem perguntar",
-    },
-    global: {
-      type: "boolean",
-      help: "Com --always: a regra vale para todos os bots",
-    },
-    "any-args": {
-      type: "boolean",
-      help: "Com --always: a regra vale para qualquer chamada desta ferramenta, com quaisquer argumentos",
+      help: "Só para mensagens a outra pessoa: aprova e cria uma regra que libera exatamente este destinatário, neste bot",
     },
   },
   positionals: { names: ["id"] },
   notes: [
     "O que roda é exatamente o conteúdo do cartão (suup approvals --show): o bot não pode mudá-lo depois.",
+    "Regras permanentes não se criam aqui: use suup rules add (a única exceção é --allow-recipient, numa mensagem).",
   ],
   async run(ctx) {
     const [ref] = ctx.args.positionals as [string];
-    const always = flag(ctx.args, "always");
-    if ((flag(ctx.args, "global") || flag(ctx.args, "any-args")) && !always) {
-      throw new UsageError("--global e --any-args só fazem sentido com --always.", "approve");
-    }
     return decideAndReport(ctx, ref, {
       decision: "approved",
-      ...(always
-        ? {
-            always: {
-              scope: flag(ctx.args, "global") ? ("global" as const) : ("bot" as const),
-              ...(flag(ctx.args, "any-args") ? { matchers: [] } : {}),
-            },
-          }
-        : {}),
+      ...(flag(ctx.args, "allow-recipient") ? { allowRecipient: true } : {}),
     });
   },
 };

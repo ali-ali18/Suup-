@@ -233,6 +233,15 @@ describe("labelling by configuration", () => {
 
 describe("assess and classification", () => {
   const executor = new MemoryExecutor();
+  it("a declared outbound message is reported, is never a read, and nothing is inferred from names", () => {
+    const declared = registry.assess("mailer", { to: "a@x.com" }, { executor });
+    expect(declared?.outbound).toEqual({ kind: "message", recipientFields: ["to"] });
+    expect(declared?.level).toBe("external_irreversible");
+    const lookalike = registry.assess("send_mail_lookalike", { to: "a@x.com" }, { executor });
+    expect(lookalike?.outbound).toBeUndefined();
+    expect(lookalike?.level).toBe("read");
+  });
+
   const tools: Tool[] = [
     defineTool({
       name: "plain",
@@ -240,6 +249,22 @@ describe("assess and classification", () => {
       input: z.object({ x: z.string() }),
       risk: "write_reversible",
       describe: ({ x }) => `Do ${x}`,
+      execute: async () => ({ content: "" }),
+    }),
+    defineTool({
+      name: "mailer",
+      description: "Sends an e-mail.",
+      input: z.object({ to: z.string() }),
+      risk: "read",
+      outbound: { kind: "message", recipientFields: ["to"] },
+      execute: async () => ({ content: "" }),
+    }),
+    defineTool({
+      // looks like a mailer by name and text, but declares nothing
+      name: "send_mail_lookalike",
+      description: "Sends an e-mail to somebody.",
+      input: z.object({ to: z.string() }),
+      risk: "read",
       execute: async () => ({ content: "" }),
     }),
     defineTool({

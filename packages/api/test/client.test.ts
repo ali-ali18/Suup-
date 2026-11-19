@@ -214,6 +214,11 @@ describe("client", () => {
       summary: "Shell: ls",
       secrets: [],
       source: "default",
+      outbound: {
+        kind: "message",
+        recipientFields: ["to"],
+        recipients: [{ field: "to", value: "ana@x.com" }],
+      },
       status: "approved",
       reason: null,
       ruleId: null,
@@ -224,10 +229,11 @@ describe("client", () => {
     const { api, calls } = client(() => Response.json({ approval: card, rule: null }));
     const result = await api.approvals.decide(BOT_ID, {
       decision: "approve",
-      always: { scope: "global" },
+      allowRecipient: true,
     });
     expect(result.approval.status).toBe("approved");
-    expect(calls[0]?.body).toEqual({ decision: "approve", always: { scope: "global" } });
+    expect(result.approval.outbound?.recipients).toEqual([{ field: "to", value: "ana@x.com" }]);
+    expect(calls[0]?.body).toEqual({ decision: "approve", allowRecipient: true });
     const bad = client(() =>
       Response.json({ approval: { ...card, level: "nuclear" }, rule: null }),
     );

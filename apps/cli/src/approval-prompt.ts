@@ -28,8 +28,11 @@ export function printCards(ctx: Ctx, cards: readonly Approval[]): void {
       continue;
     }
     ctx.out.lines(renderApprovalCard(card));
+    const id = card.id.slice(0, 8);
     ctx.out.line(
-      `  Aprovar: suup approve ${card.id.slice(0, 8)}   ·   sempre permitir: suup approve ${card.id.slice(0, 8)} --always   ·   negar: suup deny ${card.id.slice(0, 8)} --reason "..."`,
+      card.outbound === null
+        ? `  Aprovar: suup approve ${id}   ·   negar: suup deny ${id} --reason "..."`
+        : `  Enviar: suup approve ${id}   ·   enviar e permitir este destinatário: suup approve ${id} --allow-recipient   ·   descartar: suup deny ${id} --reason "..."`,
     );
   }
 }
@@ -38,11 +41,21 @@ export type InlineAnswer = "approved" | "denied" | "later";
 
 const YES = new Set(["s", "sim", "y", "yes", "a", "aprovar"]);
 const NO = new Set(["n", "nao", "não", "no", "negar"]);
-const ALWAYS = new Set(["sempre", "always", "!"]);
+const ALLOW_RECIPIENT = new Set(["p", "permitir"]);
+
+/** The first word of a line and the rest, split at the first space or tab (no pattern involved). */
+function splitFirstWord(text: string): [string, string] {
+  for (let i = 0; i < text.length; i += 1) {
+    if (text[i] === " " || text[i] === "\t") return [text.slice(0, i), text.slice(i + 1).trim()];
+  }
+  return [text, ""];
+}
 
 /**
- * Shows one card and asks. `s` approves, `n [motivo]` denies, `sempre` approves and creates a rule
- * for equal calls of this bot; an empty line (or the end of the input) leaves it pending.
+ * Shows one card and asks. `s` approves, `n [motivo]` denies; for a message to another person
+ * `p` also approves and allows exactly this recipient (a standing rule for this bot). Nothing else
+ * creates a rule here: standing rules are made in `suup rules`. An empty line (or the end of the
+ * input) leaves it pending.
  */
 export async function askInline(
   ctx: Ctx,
@@ -55,22 +68,21 @@ export async function askInline(
   ctx.out.lines(renderApprovalCard(card));
   for (;;) {
     ctx.out.raw(
-      "Aprovar? [s] sim · [n] não (n <motivo>) · [sempre] sim e sempre permitir igual · [Enter] decidir depois > ",
+      card.outbound === null
+        ? "Aprovar? [s] sim · [n] não (n <motivo>) · [Enter] decidir depois > "
+        : "Enviar? [s] sim · [p] sim e permitir este destinatário · [n] não (n <motivo>) · [Enter] decidir depois > ",
     );
     const line = await lines.next();
     if (line === null) return "later";
     const text = line.trim();
     if (text === "") return "later";
-    const [word = "", ...rest] = text.split(/\s+/);
+    const [word, rest] = splitFirstWord(text);
     const key = word.toLowerCase();
     try {
-      if (ALWAYS.has(key)) {
-        await decideApproval(db, card.id, {
-          decision: "approved",
-          always: { scope: "bot" },
-        });
+      if (card.outbound !== null && ALLOW_RECIPIENT.has(key)) {
+        await decideApproval(db, card.id, { decision: "approved", allowRecipient: true });
         ctx.out.line(
-          "Aprovada, e as chamadas iguais a esta deste bot passam a ser liberadas (suup rules list).",
+          "Aprovada, e este destinatário passa a ser liberado neste bot (suup rules list).",
         );
         return "approved";
       }
@@ -80,7 +92,7 @@ export async function askInline(
         return "approved";
       }
       if (NO.has(key)) {
-        const reason = rest.join(" ").trim();
+        const reason = rest;
         await decideApproval(db, card.id, {
           decision: "denied",
           ...(reason === "" ? {} : { reason }),
@@ -92,6 +104,8 @@ export async function askInline(
       ctx.out.err(error instanceof Error ? error.message : String(error));
       return "later";
     }
-    ctx.out.line("Não entendi. Responda s, n, sempre, ou Enter para decidir depois.");
+    ctx.out.line(
+      `Não entendi. Responda s, ${card.outbound === null ? "" : "p, "}n, ou Enter para decidir depois.`,
+    );
   }
 }

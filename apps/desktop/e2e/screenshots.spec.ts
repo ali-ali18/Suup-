@@ -105,13 +105,13 @@ test.describe("screenshots", () => {
       tool: "write_file",
       effect: "allow",
       botId: phase3Id("Nova"),
-      matchers: [{ field: "path", op: "starts_with", value: "notas/" }],
-      note: "A pasta notas/ é só minha",
+      matchers: [{ field: "path", value: "notas/ideias.md" }],
+      note: "Só este arquivo, sem perguntar",
     });
     await api.rules.create({
       tool: "web_fetch",
       effect: "deny",
-      matchers: [{ field: "url", op: "contains", value: "exemplo-ruim.com" }],
+      matchers: [{ field: "url", value: "https://exemplo-ruim.com/" }],
     });
     const mcp = fakeMcpCommand();
     await api.connectors.create({
@@ -123,6 +123,23 @@ test.describe("screenshots", () => {
     });
     await api.connectors.test("fake");
     await api.connectors.setToolRisk("fake", "echo", { risk: "read" });
+    // The user marks the e-mail tool of the connector as a message to another person.
+    await api.connectors.setToolOutbound("fake", "send_email", {
+      outbound: { kind: "message", recipientFields: ["to"] },
+    });
+    await api.bots.create({
+      ...base,
+      name: "Carteiro",
+      description: "Escreve e envia e-mails",
+      avatar: "mascot:clover",
+      color: "azul",
+    });
+    const mailer = (await api.bots.list()).find((b) => b.name === "Carteiro")?.id as string;
+    await api.connectors.grant("fake", mailer);
+    {
+      const conversation = await api.bots.openConversation(mailer);
+      await api.conversations.send(conversation.id, "CASE-EMAIL-MARCADO envie o e-mail");
+    }
     for (const [name, text] of [
       ["Escriba", "CASE-APPROVE escreva o arquivo de notas"],
       ["Chaveiro", "CASE-SECRET preciso do token"],
@@ -257,11 +274,8 @@ test.describe("screenshots", () => {
       await expect(approval).toHaveAttribute("data-state", "needs-action");
       await settle();
       await shot("18-aprovacao-cartao");
-      await approval.getByTestId("approval-more").click();
-      await expect(page.getByRole("menu")).toBeVisible();
-      await settle();
-      await shot("18b-aprovacao-menu");
-      await page.keyboard.press("Escape");
+      // A normal action: only Recusar and Aprovar, nothing else.
+      expect(await approval.getByRole("button").allTextContents()).toEqual(["Recusar", "Aprovar"]);
       await approval.getByTestId("approval-approve").click();
       await expect(
         page.getByTestId("message-bot").filter({ hasText: "Escrevi o arquivo aprovado." }),
@@ -281,6 +295,21 @@ test.describe("screenshots", () => {
       await page.mouse.move(0, 0);
       await settle();
       await shot("18e-aprovacao-resolvida-aberta");
+      // A message to another person (the user marked the tool): Descartar, and the split button Enviar.
+      await selectBot(page, "Carteiro");
+      const message = page.getByTestId("approval-card");
+      await expect(message).toHaveAttribute("data-state", "needs-action");
+      await expect(message.getByTestId("approval-approve")).toHaveText("Enviar");
+      await settle();
+      await shot("18f-mensagem-cartao");
+      await message.getByTestId("approval-more").click();
+      await expect(page.getByRole("menu")).toBeVisible();
+      await expect(page.getByRole("menuitem", { name: /Permitir destinatário/ })).toBeVisible();
+      await settle();
+      await shot("18g-mensagem-menu");
+      await page.keyboard.press("Escape");
+      await message.getByTestId("approval-deny").click();
+      await expect(page.getByTestId("approval-card")).toHaveCount(0);
       await selectBot(page, "Chaveiro");
       const secret = page.getByTestId("secret-card");
       await expect(secret).toHaveAttribute("data-state", "needs-action");
@@ -310,7 +339,7 @@ test.describe("screenshots", () => {
         .getByTestId("rule-condition")
         .getByLabel("Campo dos argumentos (ex.: command)")
         .fill("path");
-      await page.getByTestId("rule-condition").getByLabel("Valor").fill("/etc/");
+      await page.getByTestId("rule-condition").getByLabel("Valor exato").fill("/etc/passwd");
       await settle();
       await shot("20b-config-nova-regra");
       await page.getByRole("button", { name: "Cancelar" }).click();

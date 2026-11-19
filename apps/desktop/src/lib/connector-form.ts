@@ -190,10 +190,23 @@ export const RISK_BASIS_TEXT: Record<ConnectorTool["riskBasis"], string> = {
   user: "Definido por você.",
   trusted_hint: "Dica do servidor, em que você confia.",
   tightened_by_hint: "Apertado pelo servidor: ele diz que esta ferramenta escreve.",
+  outbound: "Mensagem para outra pessoa, como você marcou: nunca roda sem perguntar.",
 };
 
+/** The recipient fields as typed ("to, cc") into the list the API takes; only commas separate them. */
+export function parseRecipientFields(text: string): string[] {
+  return [
+    ...new Set(
+      text
+        .split(",")
+        .map((part) => part.trim())
+        .filter((part) => part !== ""),
+    ),
+  ];
+}
+
 export const TIGHTENED_HELP =
-  "O servidor declara que a ferramenta escreve ou destrói, então ela não pode ser marcada como leitura. Para deixá-la rodar sem cartão, use “Aprovar e sempre permitir” quando ela pedir, ou crie uma regra em Aprovações.";
+  "O servidor declara que a ferramenta escreve ou destrói, então ela não pode ser marcada como leitura. Para deixá-la rodar sem cartão, crie uma regra em Configurações > Aprovações (a regra é um ato seu, nunca do cartão).";
 
 export const READ_WARNING =
   "Uma ferramenta marcada como leitura roda sem cartão de aprovação. Marque só o que você conhece.";

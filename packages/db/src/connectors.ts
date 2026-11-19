@@ -2,6 +2,7 @@
 // migration 0012). The database holds configuration and REFERENCES to vault secrets by name, never a
 // credential value. What is stored is validated by whoever writes it (the runtime, with the rules of
 // `@suup/connectors`); this module only keeps it consistent and answers.
+import { type OutboundMessage, outboundMessageSchema } from "@suup/core";
 import { z } from "zod";
 import type { Db } from "./client.js";
 
@@ -23,7 +24,7 @@ export interface StoredConnector {
   url: string | null;
   headers: Record<string, unknown>;
   scope: ConnectorScopeName;
-  toolOverrides: Record<string, { risk: string }>;
+  toolOverrides: Record<string, StoredToolOverride>;
   trustAnnotations: boolean;
   timeoutMs: number | null;
   enabled: boolean;
@@ -32,6 +33,12 @@ export interface StoredConnector {
   grantedBotIds: string[];
   createdAt: Date;
   updatedAt: Date;
+}
+
+/** What the user said about one tool: its risk and/or that it sends a message to another person. */
+export interface StoredToolOverride {
+  risk?: string | undefined;
+  outbound?: OutboundMessage | undefined;
 }
 
 export interface ConnectorDiscovery {
@@ -66,7 +73,10 @@ interface Row {
 
 const argsSchema = z.array(z.string());
 const recordSchema = z.record(z.string(), z.unknown());
-const overridesSchema = z.record(z.string(), z.object({ risk: z.string() }));
+const overridesSchema = z.record(
+  z.string(),
+  z.object({ risk: z.string().optional(), outbound: outboundMessageSchema.optional() }),
+);
 
 function map(row: Row): StoredConnector {
   return {
@@ -123,7 +133,7 @@ export interface ConnectorWrite {
   url: string | null;
   headers: Record<string, unknown>;
   scope: ConnectorScopeName;
-  toolOverrides: Record<string, { risk: string }>;
+  toolOverrides: Record<string, StoredToolOverride>;
   trustAnnotations: boolean;
   timeoutMs: number | null;
   enabled: boolean;

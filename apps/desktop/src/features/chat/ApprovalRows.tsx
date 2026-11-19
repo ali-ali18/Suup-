@@ -56,7 +56,6 @@ export function ApprovalRow({
       rule={rule}
       expanded={resolvedOpen(clicked, key, settings.approvalResolved)}
       onToggle={() => onToggle(key)}
-      defaultScope={settings.alwaysScope}
       collapseLong={settings.approvalLong === "collapse"}
       {...(autoFocus === undefined ? {} : { autoFocus })}
       onDecide={onDecide}

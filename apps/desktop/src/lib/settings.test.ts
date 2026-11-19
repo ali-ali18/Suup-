@@ -21,17 +21,15 @@ describe("settings: one typed object with defaults", () => {
       fold: "on",
       favicons: "off",
       motion: "system",
-      alwaysScope: "bot",
       approvalResolved: "collapsed",
       approvalLong: "collapse",
       notifyApprovals: "on",
     });
   });
 
-  it("'always allow' proposes this bot, never all bots, until the person says otherwise", () => {
-    expect(DEFAULT_SETTINGS.alwaysScope).toBe("bot");
-    expect(parseSettings({ alwaysScope: "global" }).alwaysScope).toBe("global");
-    expect(parseSettings({ alwaysScope: "everyone" }).alwaysScope).toBe("bot");
+  it("there is no setting for 'always allow' (standing rules are made only by an explicit act)", () => {
+    expect(Object.keys(DEFAULT_SETTINGS)).not.toContain("alwaysScope");
+    expect(parseSettings({ alwaysScope: "global" })).toEqual(DEFAULT_SETTINGS);
     expect(
       parseSettings({ approvalResolved: "open", approvalLong: "full", notifyApprovals: "off" }),
     ).toMatchObject({

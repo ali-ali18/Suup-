@@ -18,6 +18,7 @@ import {
   compileRoute,
   isUuid,
   type Matcher,
+  matchRoute,
   newRequestId,
   type Reply,
   type Route,
@@ -298,13 +299,13 @@ export function createServer(runtime: Runtime, options: ServerOptions): SuupServ
   ): { route: Route; params: Record<string, string> } {
     let pathMatched = false;
     for (const matcher of matchers) {
-      const match = matcher.regex.exec(path);
+      const match = matchRoute(matcher, path);
       if (match === null) continue;
       pathMatched = true;
       if (matcher.route.method !== method) continue;
       const params: Record<string, string> = {};
       matcher.keys.forEach((key, i) => {
-        params[key] = decodeURIComponent(match[i + 1] ?? "");
+        params[key] = decodeURIComponent(match[i] ?? "");
       });
       return { route: matcher.route, params };
     }

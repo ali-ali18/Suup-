@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { riskLevelSchema } from "./approvals.js";
+import { outboundMessageSchema, riskLevelSchema } from "./approvals.js";
 import { isoDate, uuid } from "./common.js";
 
 export const CONNECTOR_NAME = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
@@ -36,8 +36,19 @@ export const connectorTransportSchema = z.discriminatedUnion("kind", [
 ]);
 export type ConnectorTransport = z.infer<typeof connectorTransportSchema>;
 
+/**
+ * What the USER says about one tool of a connector (a server can never set either): its risk, and
+ * whether a call is a message to another person (`outbound`, with the argument fields that hold
+ * the recipient). Only the user's mark makes the approval card the message card.
+ */
+export const toolOverrideSchema = z
+  .strictObject({
+    risk: riskLevelSchema.optional(),
+    outbound: outboundMessageSchema.optional(),
+  })
+  .refine((o) => o.risk !== undefined || o.outbound !== undefined, "override vazio");
 export const toolOverridesSchema = z
-  .record(z.string().min(1).max(128), z.strictObject({ risk: riskLevelSchema }))
+  .record(z.string().min(1).max(128), toolOverrideSchema)
   .refine((o) => Object.keys(o).length <= 200, "overrides demais");
 
 /** One tool of a connector, as the model would get it now. */
@@ -50,7 +61,9 @@ export const connectorToolSchema = z.object({
   description: z.string(),
   risk: riskLevelSchema,
   /** Where the level came from: the default, the user, a hint the user trusts, or a hint that tightened it. */
-  riskBasis: z.enum(["default", "user", "trusted_hint", "tightened_by_hint"]),
+  riskBasis: z.enum(["default", "user", "trusted_hint", "tightened_by_hint", "outbound"]),
+  /** Set when the user marked the tool as sending a message to another person. */
+  outbound: outboundMessageSchema.nullable(),
   /** Offered to bots. When not, `reason` says why (unsupported schema, read-only scope...). */
   available: z.boolean(),
   reason: z.string().optional(),
@@ -126,6 +139,15 @@ export type UpdateConnectorBody = z.input<typeof updateConnectorBodySchema>;
 /** Sets what the user says one tool's risk is; `risk: null` clears it (back to the default). */
 export const setToolRiskBodySchema = z.strictObject({ risk: riskLevelSchema.nullable() });
 export type SetToolRiskBody = z.input<typeof setToolRiskBodySchema>;
+
+/**
+ * Marks (or, with `outbound: null`, unmarks) a tool as sending a message to another person, naming
+ * the argument fields that hold the recipient. The server's hints can never do this.
+ */
+export const setToolOutboundBodySchema = z.strictObject({
+  outbound: outboundMessageSchema.nullable(),
+});
+export type SetToolOutboundBody = z.input<typeof setToolOutboundBodySchema>;
 
 export const connectorTestSchema = z.object({
   ok: z.boolean(),

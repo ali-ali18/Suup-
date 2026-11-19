@@ -347,6 +347,35 @@ export const SCRIPTS = {
           s({ text: "Criei a coisa no conector." }),
         ],
       },
+      {
+        // The connector tool `send_email` is a normal write until the USER marks it as a message.
+        whenObjectiveContains: "CASE-EMAIL-NORMAL",
+        agent: [
+          s({
+            calls: [
+              {
+                name: "conn_fake__send_email",
+                args: { to: "ana@exemplo.com", subject: "Plano", body: "Segue o plano." },
+              },
+            ],
+          }),
+          s({ text: "E-mail normal enviado." }),
+        ],
+      },
+      {
+        whenObjectiveContains: "CASE-EMAIL-MARCADO",
+        agent: [
+          s({
+            calls: [
+              {
+                name: "conn_fake__send_email",
+                args: { to: "ana@exemplo.com", subject: "Olá", body: "Tudo bem?" },
+              },
+            ],
+          }),
+          s({ text: "E-mail enviado." }),
+        ],
+      },
       { whenObjectiveContains: "OI-SIMPLES", agent: [s({ text: "Olá! Como posso ajudar?" })] },
     ],
   },

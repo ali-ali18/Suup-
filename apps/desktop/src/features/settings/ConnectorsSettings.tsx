@@ -14,6 +14,7 @@ import {
   emptyRow,
   type FormErrors,
   HTTP_WARNING,
+  parseRecipientFields,
   READ_WARNING,
   type RefRow,
   RISK_BASIS_TEXT,
@@ -346,6 +347,79 @@ function AddConnectorDialog({ onClose, onNewSecret }: { onClose(): void; onNewSe
 
 // ------------------------------------------------------------- the tools
 
+/**
+ * "Envia mensagem para outra pessoa": only the USER can mark a tool this way (a server's hints
+ * never do), and says which argument holds the recipient. It is what makes the approval card the
+ * message card (Enviar, Permitir destinatário).
+ */
+function OutboundMark({ connector, tool }: { connector: Connector; tool: ConnectorTool }) {
+  const { sync, api } = useServices();
+  const task = useTask();
+  const saved = tool.outbound?.recipientFields.join(", ") ?? "";
+  const [marked, setMarked] = useState(tool.outbound !== null);
+  const [fields, setFields] = useState(saved);
+  useEffect(() => {
+    setMarked(tool.outbound !== null);
+    setFields(saved);
+  }, [tool.outbound, saved]);
+  const id = `outbound-${connector.name}-${tool.tool}`;
+  const parsed = parseRecipientFields(fields);
+  const dirty = marked !== (tool.outbound !== null) || (marked && fields !== saved);
+  const save = () =>
+    task.run(async () => {
+      const result = await sync.connectorCall(() =>
+        api.connectors.setToolOutbound(connector.name, tool.tool, {
+          outbound: marked ? { kind: "message", recipientFields: parsed } : null,
+        }),
+      );
+      return result.ok ? { ok: true } : { ok: false, message: result.message };
+    });
+  return (
+    <div className="tool-row__outbound" data-testid="tool-outbound">
+      <label className="settings__row">
+        <input
+          type="checkbox"
+          checked={marked}
+          disabled={task.busy}
+          data-testid="tool-outbound-check"
+          onChange={(e) => setMarked(e.target.checked)}
+        />
+        <span>Envia mensagem para outra pessoa</span>
+      </label>
+      {marked && (
+        <div className="settings__row">
+          <label className="ui-field__label" htmlFor={id}>
+            Campo do destinatário
+          </label>
+          <input
+            id={id}
+            className="ui-field__control"
+            placeholder="ex.: to (separe vários por vírgula)"
+            value={fields}
+            disabled={task.busy}
+            data-testid="tool-outbound-fields"
+            onChange={(e) => setFields(e.target.value)}
+          />
+        </div>
+      )}
+      <p className="ui-field__hint">
+        Só você marca isto; o servidor não pode. O cartão desta ferramenta passa a ter “Enviar” e o
+        menu do destinatário.
+      </p>
+      {dirty && (
+        <Pill
+          tone="secondary"
+          disabled={task.busy || (marked && parsed.length === 0)}
+          data-testid="tool-outbound-save"
+          onClick={() => void save()}
+        >
+          {task.busy ? "Salvando…" : "Salvar"}
+        </Pill>
+      )}
+    </div>
+  );
+}
+
 function ToolRow({ connector, tool }: { connector: Connector; tool: ConnectorTool }) {
   const { sync, api } = useServices();
   const task = useTask();
@@ -434,6 +508,7 @@ function ToolRow({ connector, tool }: { connector: Connector; tool: ConnectorToo
               ))}
             </select>
           </div>
+          <OutboundMark connector={connector} tool={tool} />
           {task.error !== undefined && (
             <p className="ui-field__error" role="alert">
               {task.error}

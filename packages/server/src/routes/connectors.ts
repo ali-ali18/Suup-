@@ -1,6 +1,7 @@
 import {
   connectorNameSchema,
   createConnectorBodySchema,
+  setToolOutboundBodySchema,
   setToolRiskBodySchema,
   updateConnectorBodySchema,
 } from "@suup/api";
@@ -108,6 +109,19 @@ export const connectorRoutes: Route[] = [
       return {
         body: toConnectorDto(
           await ctx.runtime.connectors.setToolRisk(name, ctx.params.tool ?? "", body.risk),
+        ),
+      };
+    },
+  },
+  {
+    method: "PUT",
+    pattern: "/v1/connectors/:name/tools/:tool/outbound",
+    async handler(ctx) {
+      const name = nameOf(ctx.params.name ?? "");
+      const body = ctx.body(setToolOutboundBodySchema);
+      return {
+        body: toConnectorDto(
+          await ctx.runtime.connectors.setToolOutbound(name, ctx.params.tool ?? "", body.outbound),
         ),
       };
     },

@@ -3,7 +3,7 @@
 // tool: this module only DECLARES (the registered name, the risk, the input schema, that the output
 // is external) and never decides anything about permissions. It does not know the database, the
 // vault or the loop.
-import { defineTool, type RiskLevel, type Tool } from "@suup/core";
+import { defineTool, type OutboundMessage, type RiskLevel, type Tool } from "@suup/core";
 import type { z } from "zod";
 import type { RawTool } from "./connection.js";
 import { ConnectorError } from "./errors.js";
@@ -26,6 +26,8 @@ export interface ConnectorToolInfo {
   description: string;
   risk: RiskLevel;
   riskBasis: ToolRisk["basis"];
+  /** The user marked the tool as sending a message to another person (never a server's claim). */
+  outbound?: OutboundMessage;
   /** Offered to bots. When not, `reason` says why. */
   available: boolean;
   reason?: string;
@@ -54,12 +56,14 @@ export function adaptConnector(
   for (const raw of discovered) {
     const name = registeredName(spec.name, raw.name);
     const risk = toolRisk(spec, raw.name, raw.annotations);
+    const outbound = spec.tools[raw.name]?.outbound;
     const base: ConnectorToolInfo = {
       tool: oneLineClean(raw.name, 128),
       name,
       description: cleanDescription(raw.description, MAX_TOOL_DESCRIPTION),
       risk: risk.level,
       riskBasis: risk.basis,
+      ...(outbound === undefined ? {} : { outbound }),
       available: false,
       hints: raw.annotations,
     };
@@ -96,7 +100,9 @@ export function adaptConnector(
     }
     taken.add(name);
     info.push({ ...base, available: true });
-    tools.push(makeTool(spec, raw.name, name, base.description, input, risk.level, manager));
+    tools.push(
+      makeTool(spec, raw.name, name, base.description, input, risk.level, outbound, manager),
+    );
   }
   return { tools, info };
 }
@@ -108,6 +114,7 @@ function makeTool(
   description: string,
   input: z.ZodType<Record<string, unknown>>,
   level: RiskLevel,
+  outbound: OutboundMessage | undefined,
   manager: Pick<ConnectorManager, "callTool">,
 ): Tool<Record<string, unknown>> {
   // The model is told where the tool comes from, in OUR words first; the server's follow, cleaned
@@ -120,6 +127,8 @@ function makeTool(
     input,
     risk: level,
     classify: () => level,
+    // Declared by the USER in the connector's settings, never taken from the server.
+    ...(outbound === undefined ? {} : { outbound }),
     describe: (args) =>
       `Conector ${spec.name} → ${oneLineClean(serverTool, 80)} ${clip(safeJson(args), 300)}`,
     // Everything a server sends back is external content: the registry labels it as untrusted.

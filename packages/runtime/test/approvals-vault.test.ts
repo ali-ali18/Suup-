@@ -1,6 +1,14 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { createBot, type Db, decideApproval, getRun, listApprovals, listRunEvents } from "@suup/db";
+import {
+  createBot,
+  createRule,
+  type Db,
+  decideApproval,
+  getRun,
+  listApprovals,
+  listRunEvents,
+} from "@suup/db";
 import { describe, expect, it } from "vitest";
 import {
   answerSecretRequest,
@@ -186,39 +194,58 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("approvals and the vault, end to end"
     await runtime.close();
   });
 
-  it("'approve and always allow' creates a rule: the next equal call runs without asking", async () => {
-    const call = { id: "c", name: "shell", args: { command: "echo hello-rule" } };
+  it("a rule the user wrote lets exactly that call run; a call that is merely similar still asks", async () => {
     const { runtime, bot } = await open({
-      agent: [
-        { calls: [{ ...call, id: "c1" }] },
-        { text: "ok" },
-        { calls: [{ ...call, id: "c2" }] },
-        { text: "ok again" },
+      cases: [
+        {
+          whenObjectiveContains: "first",
+          agent: [
+            { calls: [{ id: "c1", name: "shell", args: { command: "echo hello-rule" } }] },
+            { text: "ok" },
+          ],
+        },
+        {
+          // a start of the rule's value is not the value: no pattern, no prefix
+          whenObjectiveContains: "second",
+          agent: [
+            { calls: [{ id: "c2", name: "shell", args: { command: "echo hello-rule && ls" } }] },
+            { text: "ok again" },
+          ],
+        },
       ],
     });
+    const rule = await createRule(runtime.db, {
+      botId: bot.id,
+      tool: "shell",
+      effect: "allow",
+      matchers: [{ field: "command", value: "echo hello-rule" }],
+    });
     const first = await runtime.createRun({ botId: bot.id, objective: "first" });
-    expect(await work(runtime, first.id)).toBe("waiting_approval");
-    const [card] = await listApprovals(runtime.db, {
-      runId: first.id,
-      status: "pending",
-      limit: 5,
-    });
-    const { ruleId } = await decideApproval(runtime.db, card?.id as string, {
-      decision: "approved",
-      always: { scope: "bot" },
-    });
-    expect(ruleId).not.toBeNull();
     expect(await work(runtime, first.id)).toBe("done");
-
-    const second = await runtime.createRun({ botId: bot.id, objective: "second" });
-    expect(await work(runtime, second.id)).toBe("done");
-    const events = await listRunEvents(runtime.db, second.id, { limit: 1000 });
+    const events = await listRunEvents(runtime.db, first.id, { limit: 1000 });
     expect(events.filter((e) => e.type === "approval_requested")).toHaveLength(0);
     expect(events.find((e) => e.type === "policy_checked")?.payload).toMatchObject({
       outcome: "allow",
       source: "rule",
-      ruleId,
+      ruleId: rule.id,
     });
+
+    const second = await runtime.createRun({ botId: bot.id, objective: "second" });
+    expect(await work(runtime, second.id)).toBe("waiting_approval");
+    const [card] = await listApprovals(runtime.db, {
+      runId: second.id,
+      status: "pending",
+      limit: 5,
+    });
+    expect(card?.args).toEqual({ command: "echo hello-rule && ls" });
+    expect(card?.outbound).toBeNull();
+    // a normal call cannot make a rule from its card
+    await expect(
+      decideApproval(runtime.db, card?.id as string, {
+        decision: "approved",
+        allowRecipient: true,
+      }),
+    ).rejects.toMatchObject({ code: "conflict" });
     await runtime.close();
   });
 

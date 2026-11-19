@@ -6,7 +6,6 @@ import { sortedBots } from "../../app/selectors.js";
 import { useSettings } from "../../app/settings-store.js";
 import {
   EFFECT_LABEL,
-  OP_LABEL,
   RULE_PRECEDENCE,
   ruleSentence,
   toolTitle,
@@ -16,8 +15,6 @@ import type { Settings } from "../../lib/settings.js";
 import { Card, Dialog, EmptyState, Pill, Tag, TextField } from "../../ui/primitives.js";
 import { ApprovalRow } from "../chat/ApprovalRows.js";
 import { useTask } from "./use-task.js";
-
-const OPS = Object.keys(OP_LABEL) as ArgMatcher["op"][];
 
 interface Draft {
   effect: "allow" | "deny";
@@ -78,12 +75,9 @@ function RuleDialog({ rule, onClose }: { rule: ApprovalRule | undefined; onClose
   const [problem, setProblem] = useState<string | undefined>(undefined);
   const task = useTask();
   const editing = rule !== undefined;
+  const disabled = rule !== undefined && !rule.enabled;
   const botName = draft.botId === "" ? undefined : bots[draft.botId]?.name;
-  const matchers: ArgMatcher[] = draft.matchers.map(({ field, op, value }) => ({
-    field,
-    op,
-    value,
-  }));
+  const matchers: ArgMatcher[] = draft.matchers.map(({ field, value }) => ({ field, value }));
   const set = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));
   const setMatcher = (id: number, patch: Partial<ArgMatcher>) =>
     set({ matchers: draft.matchers.map((m) => (m.id === id ? { ...m, ...patch } : m)) });
@@ -91,6 +85,12 @@ function RuleDialog({ rule, onClose }: { rule: ApprovalRule | undefined; onClose
   const save = async () => {
     if (matchers.some((m) => m.field.trim() === "")) {
       setProblem("Cada condição precisa dizer qual campo olhar (por exemplo, command).");
+      return;
+    }
+    if (disabled && matchers.length === 0) {
+      setProblem(
+        "Esta regra foi desativada. Para ativá-la, diga ao menos uma condição exata (sem condições ela valeria para qualquer uso da ferramenta).",
+      );
       return;
     }
     setProblem(undefined);
@@ -103,6 +103,7 @@ function RuleDialog({ rule, onClose }: { rule: ApprovalRule | undefined; onClose
               effect: draft.effect,
               matchers: clean,
               note: note === "" ? null : note,
+              ...(disabled ? { enabled: true } : {}),
             }),
           )
         : sync.ruleCall(() =>
@@ -134,12 +135,18 @@ function RuleDialog({ rule, onClose }: { rule: ApprovalRule | undefined; onClose
             disabled={task.busy}
             data-testid="rule-save"
           >
-            {task.busy ? "Salvando…" : "Salvar regra"}
+            {task.busy ? "Salvando…" : disabled ? "Salvar e ativar" : "Salvar regra"}
           </Pill>
         </>
       }
     >
       <div className="form" data-testid="rule-form">
+        {disabled && (
+          <div className="ui-notice" data-testid="rule-disabled-notice">
+            <strong>Regra desativada</strong>
+            <p className="wrap">{rule.disabledReason}</p>
+          </div>
+        )}
         <div className="form__row">
           <span className="ui-field__label" id="rule-effect">
             O que a regra faz
@@ -210,7 +217,10 @@ function RuleDialog({ rule, onClose }: { rule: ApprovalRule | undefined; onClose
         <div className="form__row">
           <span className="ui-field__label">Condições (todas precisam valer)</span>
           {draft.matchers.length === 0 && (
-            <p className="ui-field__hint">Sem condições: vale para qualquer uso da ferramenta.</p>
+            <p className="ui-field__hint" data-testid="rule-any-use">
+              Sem condições, a regra vale para <strong>qualquer uso</strong> desta ferramenta, com
+              quaisquer argumentos. É uma escolha sua; para limitar, adicione uma condição.
+            </p>
           )}
           {draft.matchers.map((m) => (
             <div key={m.id} className="cond-row" data-testid="rule-condition">
@@ -221,21 +231,12 @@ function RuleDialog({ rule, onClose }: { rule: ApprovalRule | undefined; onClose
                 value={m.field}
                 onChange={(e) => setMatcher(m.id, { field: e.target.value })}
               />
-              <select
-                className="ui-field__control"
-                aria-label="Como comparar"
-                value={m.op}
-                onChange={(e) => setMatcher(m.id, { op: e.target.value as ArgMatcher["op"] })}
-              >
-                {OPS.map((op) => (
-                  <option key={op} value={op}>
-                    {OP_LABEL[op]}
-                  </option>
-                ))}
-              </select>
+              <span className="cond-row__is" aria-hidden="true">
+                é exatamente
+              </span>
               <input
                 className="ui-field__control"
-                aria-label="Valor"
+                aria-label="Valor exato"
                 placeholder="valor"
                 value={m.value}
                 onChange={(e) => setMatcher(m.id, { value: e.target.value })}
@@ -256,7 +257,7 @@ function RuleDialog({ rule, onClose }: { rule: ApprovalRule | undefined; onClose
               icon={<Plus size={16} aria-hidden="true" />}
               onClick={() =>
                 set({
-                  matchers: [...draft.matchers, withId({ field: "", op: "equals", value: "" })],
+                  matchers: [...draft.matchers, withId({ field: "", value: "" })],
                 })
               }
             >
@@ -265,9 +266,9 @@ function RuleDialog({ rule, onClose }: { rule: ApprovalRule | undefined; onClose
           </div>
           <p className="ui-field__hint">
             O campo é o nome de um argumento da chamada (<code>command</code>, <code>path</code>,{" "}
-            <code>url</code>...); use pontos para entrar num objeto (<code>options.branch</code>).
-            Em “casa com o padrão”, <code>*</code> vale por qualquer trecho e <code>?</code> por um
-            caractere.
+            <code>url</code>...); use pontos para entrar num objeto (<code>options.branch</code>). A
+            comparação é sempre <strong>exatamente igual</strong>: não existe “começa com”, “contém”
+            nem padrão.
           </p>
         </div>
         <TextField
@@ -402,7 +403,9 @@ export function ApprovalsSettings() {
           </Pill>
         </div>
         <p className="muted small">
-          {RULE_PRECEDENCE} Sem regra, o nível da ferramenta decide: leitura e escrita reversível
+          {RULE_PRECEDENCE} Uma regra casa só quando os argumentos que ela nomeia são{" "}
+          <strong>exatamente iguais</strong>; sem condições, vale para <strong>qualquer uso</strong>{" "}
+          da ferramenta. Sem regra, o nível da ferramenta decide: leitura e escrita reversível
           rodam; o que sai para o mundo pede cartão.
         </p>
         {!rulesLoaded ? (
@@ -410,7 +413,7 @@ export function ApprovalsSettings() {
         ) : rules.length === 0 ? (
           <EmptyState
             title="Nenhuma regra"
-            text="Crie uma aqui, ou use “Aprovar e sempre permitir” num cartão."
+            text="Uma regra só nasce de um ato seu: aqui, no terminal (suup rules) ou, numa mensagem para outra pessoa, em “Permitir destinatário”."
           />
         ) : (
           <ul className="rule-list" data-testid="rule-list">
@@ -432,6 +435,7 @@ export function ApprovalsSettings() {
                       <Tag tone="outline">{bots[rule.botId]?.name ?? "Bot removido"}</Tag>
                     )}
                     {rule.createdBy === "approval" && <Tag tone="outline">Criada num cartão</Tag>}
+                    {!rule.enabled && <Tag tone="danger">Desativada</Tag>}
                   </div>
                   <p className="wrap" data-testid="rule-sentence">
                     {ruleSentence(rule, {
@@ -439,6 +443,11 @@ export function ApprovalsSettings() {
                       connectors,
                     })}
                   </p>
+                  {!rule.enabled && (
+                    <p className="small wrap" data-testid="rule-disabled-reason">
+                      {rule.disabledReason}
+                    </p>
+                  )}
                   {rule.note !== null && rule.note !== "" && (
                     <p className="muted small wrap">{rule.note}</p>
                   )}
@@ -459,15 +468,6 @@ export function ApprovalsSettings() {
       <Card aria-label="Cartões" data-testid="approval-behaviour">
         <h2 className="section-label">Como os cartões se comportam</h2>
         <p className="muted small">Fica guardado neste computador.</p>
-        <BehaviourRow
-          setting="alwaysScope"
-          label="“Aprovar e sempre permitir” propõe valer para"
-          hint="Você ainda escolhe em cada cartão."
-          options={[
-            ["bot", "Só este bot"],
-            ["global", "Todos os bots"],
-          ]}
-        />
         <BehaviourRow
           setting="approvalResolved"
           label="Cartões já decididos"

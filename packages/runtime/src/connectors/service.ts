@@ -13,8 +13,9 @@ import {
   parseConnectorSpec,
   type RawTool,
   secretNamesOf,
+  type ToolOverride,
 } from "@suup/connectors";
-import type { RiskLevel, Tool } from "@suup/core";
+import type { OutboundMessage, RiskLevel, Tool } from "@suup/core";
 import {
   type ConnectorWrite,
   createConnector,
@@ -41,7 +42,7 @@ export interface ConnectorInput {
   description?: string | undefined;
   transport: unknown;
   scope?: "read_only" | "read_write" | undefined;
-  tools?: Record<string, { risk: RiskLevel }> | undefined;
+  tools?: Record<string, ToolOverride> | undefined;
   trustAnnotations?: boolean | undefined;
   timeoutMs?: number | undefined;
   enabled?: boolean | undefined;
@@ -51,7 +52,7 @@ export interface ConnectorPatch {
   description?: string | undefined;
   transport?: unknown;
   scope?: "read_only" | "read_write" | undefined;
-  tools?: Record<string, { risk: RiskLevel }> | undefined;
+  tools?: Record<string, ToolOverride> | undefined;
   trustAnnotations?: boolean | undefined;
   /** `null` goes back to the default. */
   timeoutMs?: number | null | undefined;
@@ -66,7 +67,7 @@ export interface ConnectorView {
   transport: ConnectorSpec["transport"];
   scope: "read_only" | "read_write";
   /** What the user said about each tool, by the name on the server. */
-  toolOverrides: Record<string, { risk: RiskLevel }>;
+  toolOverrides: Record<string, ToolOverride>;
   trustAnnotations: boolean;
   timeoutMs: number;
   enabled: boolean;
@@ -111,6 +112,15 @@ export interface ConnectorService {
   revoke(name: string, botId: string): Promise<ConnectorView>;
   /** Sets (or, with `null`, clears) what the user says a tool's risk is. */
   setToolRisk(name: string, tool: string, risk: RiskLevel | null): Promise<ConnectorView>;
+  /**
+   * Sets (or, with `null`, clears) the user's statement that a tool sends a message to another
+   * person, and where the recipient is in its arguments. Only the user says it, never the server.
+   */
+  setToolOutbound(
+    name: string,
+    tool: string,
+    outbound: OutboundMessage | null,
+  ): Promise<ConnectorView>;
   /** Connects from scratch, lists the tools and closes; saves what it saw. Never throws for a server problem. */
   test(name: string): Promise<ConnectorTestResult>;
   /** The tools the bot may use from its enabled connectors (connecting lazily). */
@@ -120,6 +130,27 @@ export interface ConnectorService {
 
 const message = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
+
+/** The overrides with one field of one tool set (`undefined` clears it); an override left empty goes away. */
+function withOverride(
+  current: Record<string, ToolOverride>,
+  tool: string,
+  change: ToolOverride,
+): Record<string, ToolOverride> {
+  const tools = { ...current };
+  const merged: ToolOverride = { ...tools[tool] };
+  if ("risk" in change) {
+    if (change.risk === undefined) delete merged.risk;
+    else merged.risk = change.risk;
+  }
+  if ("outbound" in change) {
+    if (change.outbound === undefined) delete merged.outbound;
+    else merged.outbound = change.outbound;
+  }
+  if (merged.risk === undefined && merged.outbound === undefined) delete tools[tool];
+  else tools[tool] = merged;
+  return tools;
+}
 
 export function specOf(c: StoredConnector): ConnectorSpec {
   return parseConnectorSpec({
@@ -353,10 +384,15 @@ export function createConnectorService(options: {
     },
     async setToolRisk(name, tool, risk) {
       const current = await must(name);
-      const tools = { ...current.toolOverrides } as Record<string, { risk: RiskLevel }>;
-      if (risk === null) delete tools[tool];
-      else tools[tool] = { risk };
-      return service.update(name, { tools });
+      return service.update(name, {
+        tools: withOverride(specOf(current).tools, tool, { risk: risk ?? undefined }),
+      });
+    },
+    async setToolOutbound(name, tool, outbound) {
+      const current = await must(name);
+      return service.update(name, {
+        tools: withOverride(specOf(current).tools, tool, { outbound: outbound ?? undefined }),
+      });
     },
     async test(name) {
       const stored = await must(name);

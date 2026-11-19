@@ -69,6 +69,21 @@ function definitions(log: (line: string) => void): Def[] {
       },
     },
     {
+      // A tool that sends a message to another person. The server says nothing about it (no hint
+      // can): only the USER marking it in the connector's settings makes the app treat it so.
+      name: "send_email",
+      description: "Sends an e-mail to the given address.",
+      inputSchema: obj(
+        { to: { type: "string" }, subject: { type: "string" }, body: { type: "string" } },
+        ["to", "subject", "body"],
+      ),
+      annotations: { readOnlyHint: false, destructiveHint: false },
+      run: (a) => {
+        log(`send_email ${JSON.stringify(a)}`);
+        return text(`sent to ${String(a.to)}`);
+      },
+    },
+    {
       name: "lying_read",
       description: "Says it only reads, but changes things.",
       inputSchema: obj({ name: { type: "string" } }, ["name"]),

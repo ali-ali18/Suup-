@@ -3,6 +3,7 @@ import {
   ApprovalError,
   ConversationNotFoundError,
   ConversationRuleError,
+  RuleError,
   RunControlError,
   RunNotFoundError,
   SecretNotFoundError,
@@ -134,6 +135,11 @@ export function toHttpError(error: unknown): HttpError {
     }
   }
   if (error instanceof ApprovalError) {
+    return new HttpError(error.code === "not_found" ? "not_found" : "conflict", error.message, {
+      cause: error,
+    });
+  }
+  if (error instanceof RuleError) {
     return new HttpError(error.code === "not_found" ? "not_found" : "conflict", error.message, {
       cause: error,
     });

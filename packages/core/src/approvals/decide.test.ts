@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 import { decidePolicy } from "./decide.js";
 import { approvalIdFor } from "./id.js";
 import { levelReviewer, levelVerdict, stricter } from "./reviewer.js";
-import { type ApprovalRule, exactMatchers, matcherMatches, ruleMatches } from "./rules.js";
+import {
+  type ApprovalRule,
+  argMatcherSchema,
+  matcherMatches,
+  recipientMatchers,
+  ruleMatches,
+} from "./rules.js";
 
 const call = (tool: string, args: Record<string, unknown> = {}, botId = "bot-1") => ({
   botId,
@@ -74,8 +80,8 @@ describe("decidePolicy: the three filters in order", () => {
         effect: "allow",
         tool: "shell",
         matchers: [
-          { field: "command", op: "starts_with", value: "git push" },
-          { field: "cwd", op: "equals", value: "repo" },
+          { field: "command", value: "git push origin x" },
+          { field: "cwd", value: "repo" },
         ],
       }),
     ];
@@ -146,40 +152,68 @@ describe("decidePolicy: the three filters in order", () => {
 });
 
 describe("rules", () => {
-  it("compares as asked", () => {
-    const args = { path: "/etc/passwd", n: 3, deep: { x: "yes" } };
-    expect(matcherMatches({ field: "path", op: "equals", value: "/etc/passwd" }, args)).toBe(true);
-    expect(matcherMatches({ field: "path", op: "starts_with", value: "/etc" }, args)).toBe(true);
-    expect(matcherMatches({ field: "path", op: "contains", value: "passw" }, args)).toBe(true);
-    expect(matcherMatches({ field: "path", op: "glob", value: "/etc/*" }, args)).toBe(true);
-    expect(matcherMatches({ field: "path", op: "glob", value: "/etc/p?sswd" }, args)).toBe(true);
-    expect(matcherMatches({ field: "path", op: "glob", value: "/etc" }, args)).toBe(false);
-    expect(matcherMatches({ field: "n", op: "equals", value: "3" }, args)).toBe(true);
-    expect(matcherMatches({ field: "deep.x", op: "equals", value: "yes" }, args)).toBe(true);
-    expect(matcherMatches({ field: "missing", op: "contains", value: "" }, args)).toBe(false);
-    expect(matcherMatches({ field: "deep", op: "contains", value: "x" }, args)).toBe(false);
+  it("compare by exact equality of the named argument, and nothing else", () => {
+    const args = { path: "/etc/passwd", n: 3, flag: true, deep: { x: "yes" } };
+    expect(matcherMatches({ field: "path", value: "/etc/passwd" }, args)).toBe(true);
+    expect(matcherMatches({ field: "n", value: "3" }, args)).toBe(true);
+    expect(matcherMatches({ field: "flag", value: "true" }, args)).toBe(true);
+    expect(matcherMatches({ field: "deep.x", value: "yes" }, args)).toBe(true);
+    // a start, a part, a pattern or a different case is not the same value
+    expect(matcherMatches({ field: "path", value: "/etc" }, args)).toBe(false);
+    expect(matcherMatches({ field: "path", value: "passw" }, args)).toBe(false);
+    expect(matcherMatches({ field: "path", value: "/etc/*" }, args)).toBe(false);
+    expect(matcherMatches({ field: "path", value: "/etc/p?sswd" }, args)).toBe(false);
+    expect(matcherMatches({ field: "path", value: ".*" }, args)).toBe(false);
+    expect(matcherMatches({ field: "path", value: "/ETC/passwd" }, args)).toBe(false);
+    expect(matcherMatches({ field: "missing", value: "" }, args)).toBe(false);
+    expect(matcherMatches({ field: "deep", value: "x" }, args)).toBe(false);
   });
 
-  it("a glob does not read its pattern as a regular expression", () => {
-    expect(matcherMatches({ field: "a", op: "glob", value: "a.b(c)+" }, { a: "a.b(c)+" })).toBe(
-      true,
-    );
-    expect(matcherMatches({ field: "a", op: "glob", value: "a.b" }, { a: "axb" })).toBe(false);
+  it("a pattern written as the value only matches itself", () => {
+    expect(matcherMatches({ field: "a", value: "a.b(c)+" }, { a: "a.b(c)+" })).toBe(true);
+    expect(matcherMatches({ field: "a", value: "a.b" }, { a: "axb" })).toBe(false);
+    expect(matcherMatches({ field: "a", value: "git *" }, { a: "git status" })).toBe(false);
   });
 
-  it("exactMatchers pins the text arguments only", () => {
-    expect(exactMatchers({ to: "ana", body: "hi", retries: 2, flag: true })).toEqual([
-      { field: "to", op: "equals", value: "ana" },
-      { field: "body", op: "equals", value: "hi" },
+  it("a matcher has no operator: the removed ones are refused, not ignored", () => {
+    expect(argMatcherSchema.safeParse({ field: "a", value: "b" }).success).toBe(true);
+    for (const op of ["equals", "starts_with", "contains", "glob", "regex"]) {
+      expect(argMatcherSchema.safeParse({ field: "a", op, value: "b" }).success).toBe(false);
+    }
+  });
+
+  it("a rule without matchers means any use of the tool (an explicit choice)", () => {
+    const r = rule({ id: "r", effect: "allow", tool: "send" });
+    expect(ruleMatches(r, call("send", { to: "anyone" }))).toBe(true);
+    expect(ruleMatches(r, call("other"))).toBe(false);
+  });
+
+  it("recipientMatchers pins exactly the recipient fields, as text", () => {
+    expect(
+      recipientMatchers({ to: "ana@x.com", subject: "hi", body: "b" }, { recipientFields: ["to"] }),
+    ).toEqual([{ field: "to", value: "ana@x.com" }]);
+    expect(
+      recipientMatchers({ to: "a@x.com", cc: "b@x.com" }, { recipientFields: ["to", "cc"] }),
+    ).toEqual([
+      { field: "to", value: "a@x.com" },
+      { field: "cc", value: "b@x.com" },
     ]);
     const r = rule({
       id: "r",
       effect: "allow",
       tool: "send",
-      matchers: exactMatchers({ to: "ana" }),
+      matchers: recipientMatchers({ to: "ana@x.com" }, { recipientFields: ["to"] }) ?? [],
     });
-    expect(ruleMatches(r, call("send", { to: "ana", extra: 1 }))).toBe(true);
-    expect(ruleMatches(r, call("send", { to: "bob" }))).toBe(false);
+    expect(ruleMatches(r, call("send", { to: "ana@x.com", subject: "other" }))).toBe(true);
+    expect(ruleMatches(r, call("send", { to: "bob@x.com" }))).toBe(false);
+  });
+
+  it("recipientMatchers says null when the recipient cannot be said exactly", () => {
+    expect(recipientMatchers({ to: ["a@x.com"] }, { recipientFields: ["to"] })).toBeNull();
+    expect(recipientMatchers({ cc: "a@x.com" }, { recipientFields: ["to"] })).toBeNull();
+    expect(recipientMatchers({ to: "  " }, { recipientFields: ["to"] })).toBeNull();
+    expect(recipientMatchers({ to: "a@x.com" }, { recipientFields: [] })).toBeNull();
+    expect(recipientMatchers({ to: "a@x.com" }, { recipientFields: ["to", "cc"] })).toBeNull();
   });
 });
 

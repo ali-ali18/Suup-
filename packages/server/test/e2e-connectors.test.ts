@@ -13,6 +13,11 @@ const usage = { inputTokens: 500, outputTokens: 50 };
 const s = <T extends object>(step: T) => ({ ...step, usage });
 const VALUE = "conn_live_Q1w2E3r4T5y6U7i8";
 
+const mail = (to: string, subject: string) => ({
+  name: "conn_fake__send_email",
+  args: { to, subject, body: "Tudo bem?" },
+});
+
 const SCRIPTS = {
   roteiro: {
     cases: [
@@ -24,6 +29,20 @@ const SCRIPTS = {
             calls: [{ name: "conn_fake__write_thing", args: { name: "relatorio", body: "oi" } }],
           }),
           s({ text: "Feito." }),
+        ],
+      },
+      {
+        // Not marked by the user as a message: a normal write, whatever its name says.
+        whenObjectiveContains: "CASE-MAIL-PLAIN",
+        agent: [s({ calls: [mail("ana@exemplo.com", "Plano")] }), s({ text: "Pronto." })],
+      },
+      {
+        whenObjectiveContains: "CASE-MAIL-MARKED",
+        agent: [
+          s({ calls: [mail("ana@exemplo.com", "Primeiro")] }),
+          s({ calls: [mail("ana@exemplo.com", "Segundo")] }),
+          s({ calls: [mail("bob@exemplo.com", "Terceiro")] }),
+          s({ text: "Enviei." }),
         ],
       },
     ],
@@ -193,6 +212,124 @@ describe.skipIf(!DATABASE_URL)(
       const results = events.filter((e) => e.type === "tool_result").map((e) => e.payload);
       expect(String(results[0]?.content)).toContain("credential=[REDACTED:FAKE_API]");
       expect(JSON.stringify(events)).not.toContain(VALUE);
+    });
+
+    it("only a tool the USER marked as a message gets the message card; 'Permitir destinatário' pins exactly the recipient", async () => {
+      const { api } = w.started;
+      const log = join(w.dir, "connector-calls.log");
+      // Fresh bots: the scripted provider reads the whole conversation to pick its case.
+      const bot = await api.bots.create({ name: "Carteiro", modelId: "model-x", allowedTools: [] });
+      const other = await api.bots.create({
+        name: "Carteiro 2",
+        modelId: "model-x",
+        allowedTools: [],
+      });
+      await api.connectors.grant("fake", bot.id);
+      await api.connectors.grant("fake", other.id);
+      const conversation = await api.bots.openConversation(bot.id);
+      const otherChat = await api.bots.openConversation(other.id);
+      const pending = async (runId: string, seen: number) =>
+        until(async () => {
+          const cards = await api.approvals.list({ status: "pending", runId });
+          return cards.length > 0 && cards[0] ? cards[0] : undefined;
+        }, `approval card ${seen}`);
+
+      // 1. Not marked: a send_email tool is a normal write. No declaration, no message card, and
+      //    the card cannot be used to make a rule.
+      const plain = await api.conversations.send(otherChat.id, "CASE-MAIL-PLAIN");
+      const plainCard = await pending(plain.run.id, 0);
+      expect(plainCard).toMatchObject({ tool: "conn_fake__send_email", outbound: null });
+      expect(
+        await code(
+          api.approvals.decide(plainCard.id, { decision: "approve", allowRecipient: true }),
+        ),
+      ).toBe("conflict");
+      expect((await api.approvals.get(plainCard.id)).status).toBe("pending");
+      await api.approvals.decide(plainCard.id, { decision: "approve" });
+      await until(
+        async () => (await api.runs.get(plain.run.id)).status === "done" || undefined,
+        "plain run done",
+      );
+
+      // 2. The user marks it (a server's hints can never do this) and names the recipient field.
+      expect(
+        await code(
+          api.connectors.setToolOutbound("fake", "send_email", {
+            outbound: { kind: "message", recipientFields: [] },
+          }),
+        ),
+      ).toBe("invalid_request");
+      const marked = await api.connectors.setToolOutbound("fake", "send_email", {
+        outbound: { kind: "message", recipientFields: ["to"] },
+      });
+      expect(marked.toolOverrides.send_email).toEqual({
+        outbound: { kind: "message", recipientFields: ["to"] },
+      });
+      expect(marked.tools?.find((t) => t.tool === "send_email")).toMatchObject({
+        outbound: { kind: "message", recipientFields: ["to"] },
+        risk: "external_irreversible",
+      });
+      // the other tools are untouched
+      expect(marked.tools?.find((t) => t.tool === "write_thing")?.outbound).toBeNull();
+
+      // 3. Now the card declares it, and carries what the recipient rule would pin.
+      const run = await api.conversations.send(conversation.id, "CASE-MAIL-MARKED");
+      const first = await pending(run.run.id, 1);
+      expect(first).toMatchObject({
+        tool: "conn_fake__send_email",
+        outbound: {
+          kind: "message",
+          recipientFields: ["to"],
+          recipients: [{ field: "to", value: "ana@exemplo.com" }],
+        },
+      });
+      const { rule } = await api.approvals.decide(first.id, {
+        decision: "approve",
+        allowRecipient: true,
+      });
+      expect(rule).toMatchObject({
+        botId: bot.id,
+        tool: "conn_fake__send_email",
+        effect: "allow",
+        createdBy: "approval",
+        enabled: true,
+        matchers: [{ field: "to", value: "ana@exemplo.com" }],
+      });
+
+      // 4. Same recipient, another subject: no card (the rule); another recipient: a card again.
+      const third = await pending(run.run.id, 3);
+      expect(third.args).toMatchObject({ to: "bob@exemplo.com", subject: "Terceiro" });
+      const events = (await api.runs.events(run.run.id, { limit: 1000 })).items;
+      expect(
+        events
+          .filter((e) => e.type === "approval_requested")
+          .map((e) => (e.payload.args as { to: string }).to),
+      ).toEqual(["ana@exemplo.com", "bob@exemplo.com"]);
+      expect(events.find((e) => e.type === "policy_checked")?.payload).toMatchObject({
+        outcome: "allow",
+        source: "rule",
+        ruleId: rule?.id,
+      });
+      await api.approvals.decide(third.id, { decision: "deny" });
+      await until(
+        async () => (await api.runs.get(run.run.id)).status === "done" || undefined,
+        "marked run done",
+      );
+      const sent = readFileSync(log, "utf8")
+        .split("\n")
+        .filter((l) => l.startsWith("send_email"));
+      expect(sent.map((l) => JSON.parse(l.slice("send_email ".length)).subject)).toEqual([
+        "Plano",
+        "Primeiro",
+        "Segundo",
+      ]);
+
+      // 5. Unmarking puts the tool back among the normal ones; the rule is the user's to delete.
+      const cleared = await api.connectors.setToolOutbound("fake", "send_email", {
+        outbound: null,
+      });
+      expect(cleared.toolOverrides.send_email).toBeUndefined();
+      await api.rules.remove(rule?.id as string);
     });
 
     it("a removed connector is gone for the bots, and the removal is clean", async () => {

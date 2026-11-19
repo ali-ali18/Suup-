@@ -35,11 +35,24 @@ function Segments({ text }: { text: string }) {
   );
 }
 
-const CODE_KEY = /command|cmd|script|code|query|sql|json|patch|diff|regex|pattern/i;
+/** Field names that hold code, compared exactly (no pattern on names). */
+const CODE_KEYS: ReadonlySet<string> = new Set([
+  "command",
+  "cmd",
+  "script",
+  "code",
+  "query",
+  "sql",
+  "json",
+  "patch",
+  "diff",
+  "regex",
+  "pattern",
+]);
 
 /** Monospace only for what is code: a command, a script, a query, or anything on several lines. */
 const isCodeLike = (field: ArgField): boolean =>
-  field.json || field.lines > 1 || (field.key !== null && CODE_KEY.test(field.key));
+  field.json || field.lines > 1 || (field.key !== null && CODE_KEYS.has(field.key.toLowerCase()));
 
 /** One quiet row: its label at the left, its value after it, a hairline above. */
 export function ArgRow({

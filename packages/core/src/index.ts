@@ -59,6 +59,13 @@ export {
   validateConversation,
 } from "./messages.js";
 export {
+  MAX_RECIPIENT_FIELDS,
+  type OutboundMessage,
+  outboundMessage,
+  outboundMessageSchema,
+  recipientFieldSchema,
+} from "./outbound.js";
+export {
   collect,
   type GenerateRequest,
   type GenerateResult,
@@ -118,7 +125,6 @@ export {
   RISK_LEVELS,
   type RiskLevel,
 } from "./risk.js";
-export { REDACTED, redactSecrets, SECRET_PATTERNS } from "./secret-patterns.js";
 export {
   createRedactor,
   findPlaceholders,

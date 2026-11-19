@@ -1,4 +1,5 @@
 import type { z } from "zod";
+import type { OutboundMessage } from "./outbound.js";
 import type { RiskLevel } from "./risk.js";
 
 /** Compatibility name of `RiskLevel` (see `risk.ts`). */
@@ -234,6 +235,13 @@ export interface Tool<I = unknown> {
    * can also set `ToolOutput.untrusted` itself.
    */
   externalOutput?: boolean;
+  /**
+   * The call sends a message to another person (an e-mail and the like). Declared, never guessed:
+   * `recipientFields` say where the recipients are in the input (dotted paths). The approval card
+   * of such a call is the message card; every other tool's is plain Aprovar / Recusar. A call of a
+   * tool that declares this is never `read`.
+   */
+  outbound?: OutboundMessage;
   /** Overrides the registry's default timeout. */
   timeoutMs?: number;
   /**

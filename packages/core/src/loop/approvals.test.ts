@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { type ApprovalRule, createToolGate, type ToolGate } from "../approvals/index.js";
+import { outboundMessage } from "../outbound.js";
 import { replayRun } from "../replay.js";
 import { createRedactor } from "../secrets.js";
 import {
@@ -38,6 +39,18 @@ function makeTools(sent: string[]): Tool[] {
       },
     }),
     defineTool({
+      // Declares that a call is a message to another person: only a declaration says it.
+      name: "mail",
+      description: "Sends an e-mail.",
+      input: z.object({ to: z.string(), subject: z.string() }),
+      risk: "read",
+      outbound: outboundMessage("to"),
+      execute: async ({ to, subject }) => {
+        sent.push(`mail:${to}|${subject}`);
+        return { content: `mailed ${to}` };
+      },
+    }),
+    defineTool({
       name: "deploy",
       description: "Deploys. A dry run only reads.",
       input: z.object({ dry_run: z.boolean(), target: z.string() }),
@@ -50,7 +63,7 @@ function makeTools(sent: string[]): Tool[] {
   ];
 }
 
-const ALLOWED = ["echo", "counter", "write_note", "send", "deploy"];
+const ALLOWED = ["echo", "counter", "write_note", "send", "mail", "deploy"];
 
 interface Setup {
   script: Parameters<typeof createRig>[0]["script"];
@@ -92,6 +105,27 @@ describe("approval gate in the loop", () => {
     const events = await s.rig.events();
     expect(requested(events)).toHaveLength(0);
     expect(eventsOfType(events, "policy_checked")).toHaveLength(0);
+  });
+
+  it("a tool that DECLARES a message to another person asks even if its risk says read, and the request records the declaration", async () => {
+    const s = setup([use(call("c1", "mail", { to: "ana@x.com", subject: "Oi" })), say("ok")]);
+    expect(await loop(s)).toBe("waiting_approval");
+    const [card] = requested(await s.rig.events());
+    expect(card?.payload).toMatchObject({
+      tool: "mail",
+      level: "external_irreversible",
+      outbound: { kind: "message", recipientFields: ["to"] },
+    });
+    expect(s.sent).toEqual([]);
+  });
+
+  it("a tool that does not declare it never gets the declaration, whatever its name or text say", async () => {
+    // `send` sends a message in its description and name, but nobody declared it an outbound message.
+    const s = setup([use(call("c1", "send", { to: "ana", body: "hi" })), say("ok")]);
+    expect(await loop(s)).toBe("waiting_approval");
+    const [card] = requested(await s.rig.events());
+    expect(card?.payload.outbound).toBeUndefined();
+    expect("outbound" in (card?.payload ?? {})).toBe(false);
   });
 
   it("a reversible write runs and leaves a policy event naming its level", async () => {
@@ -191,7 +225,7 @@ describe("approval gate in the loop", () => {
         botId: null,
         tool: "send",
         effect: "allow",
-        matchers: [{ field: "to", op: "equals", value: "ana" }],
+        matchers: [{ field: "to", value: "ana" }],
       },
     ];
     const s = setup([use(call("c1", "send", { to: "ana", body: "hi" })), say("ok")], rules);

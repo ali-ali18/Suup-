@@ -29,12 +29,10 @@ export {
   type ApprovalRule,
   type ArgMatcher,
   argMatcherSchema,
-  exactMatchers,
-  MATCH_OPS,
-  type MatchOp,
   matcherMatches,
   RULE_EFFECTS,
   type RuleCall,
   type RuleEffect,
+  recipientMatchers,
   ruleMatches,
 } from "./rules.js";

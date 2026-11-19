@@ -3,6 +3,7 @@
 // and records what it says; replays serve the recorded verdicts instead (`createReplayGate`).
 import type { PolicySource, RunEventData } from "../events.js";
 import type { JsonValue } from "../messages.js";
+import type { OutboundMessage } from "../outbound.js";
 import type { AssessOptions, ToolAssessment } from "../registry.js";
 import type { RiskLevel } from "../risk.js";
 import type { Executor } from "../tool.js";
@@ -39,6 +40,8 @@ export interface GateVerdict {
   secrets: string[];
   /** The arguments as they will run. */
   args: JsonValue;
+  /** Present only when the tool declares the call as a message to another person. */
+  outbound?: OutboundMessage;
   /** An `ask` that expires (only when a limit says so). */
   expiresAt?: string;
   /** Only a replay sets it: the id the recording gave the card (the run id differs there). */
@@ -108,6 +111,7 @@ export function createToolGate(options: ToolGateOptions): ToolGate {
         summary: assessed.summary,
         secrets: assessed.secrets,
         args: assessed.args,
+        ...(assessed.outbound === undefined ? {} : { outbound: assessed.outbound }),
         ...(decision.outcome === "ask" && options.expireAfterMs !== undefined
           ? { expiresAt: new Date(options.now().getTime() + options.expireAfterMs).toISOString() }
           : {}),
@@ -145,6 +149,7 @@ export function createReplayGate(events: readonly { type: string; payload?: unkn
         summary: p.summary,
         secrets: p.secrets,
         args: p.args,
+        ...(p.outbound === undefined ? {} : { outbound: p.outbound }),
         ...(p.expiresAt === undefined ? {} : { expiresAt: p.expiresAt }),
       });
     }

@@ -97,11 +97,3 @@ export function formatArgs(args: unknown): ArgField[] {
 export function secretsOf(args: unknown): string[] {
   return [...new Set(formatArgs(args).flatMap((f) => f.secrets))];
 }
-
-/** The text arguments an "exactly this" rule pins: every top-level string (as the server does). */
-export function exactFields(args: unknown): { field: string; value: string }[] {
-  if (args === null || typeof args !== "object" || Array.isArray(args)) return [];
-  return Object.entries(args as Record<string, unknown>).flatMap(([key, value]) =>
-    typeof value === "string" ? [{ field: key, value }] : [],
-  );
-}

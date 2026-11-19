@@ -3,7 +3,6 @@ import {
   type EscalateQuestion,
   escalatedQuestions,
   type FailureOrigin,
-  redactSecrets,
   runResultSchema,
 } from "@suup/core";
 import {
@@ -41,9 +40,11 @@ const isoDay = (date: Date): string => date.toISOString().slice(0, 10);
  * guardar (e é instruído a não guardar segredos), e o diário seguia o que o usuário digitou, o que
  * vazava uma senha que o bot tinha se recusado a guardar. Aqui só entra o que o próprio bot
  * escreveu (o resumo do `finish`) e metadados neutros. Numa execução sem conversa (`suup run`) o
- * objetivo é uma tarefa dada por quem opera o sistema e entra, cortado. Todo o texto passa por
- * `redactSecrets`, melhor esforço, como segunda linha de defesa (os valores exatos do cofre são
- * tirados antes, em `finishRun`).
+ * objetivo é uma tarefa dada por quem opera o sistema e entra, cortado. NÃO há detecção de
+ * "texto que parece segredo" (isso seria reconhecer por padrão): o que protege é (1) o diário nunca
+ * copiar o texto cru do usuário numa conversa, (2) o redator do cofre, que troca os valores EXATOS
+ * dos segredos conhecidos (em `finishRun`, antes do corte) e (3) a regra no prompt do bot de nunca
+ * guardar segredos. Um segredo que o bot repete no resumo e que não está no cofre não é pego.
  */
 export function journalText(run: Run): string {
   const when = isoDay(run.finishedAt ?? run.updatedAt);
@@ -58,7 +59,7 @@ export function journalText(run: Run): string {
     outcome = "cancelada antes de terminar.";
   }
   const what = isConversation ? "Conversa" : `Objetivo: "${clip(run.objective, 200)}"`;
-  return redactSecrets(`${when} · ${what} · Resultado: ${outcome}`);
+  return `${when} · ${what} · Resultado: ${outcome}`;
 }
 
 /** Nomes das ferramentas de controle, para distinguir uma execução que só conversou. */
@@ -164,8 +165,8 @@ async function outcomeMessage(
 /**
  * Como o fim de uma execução limpa o texto que vai ao diário. `redact` é o redator do cofre
  * (`runtime.redactJson`): ele conhece os valores exatos dos segredos e roda sobre o texto cru, ANTES
- * do corte e da redação por padrões (`redactSecrets`, melhor esforço), porque um corte no meio de um
- * valor deixaria um pedaço que nenhum dos dois reconheceria. Sem ele só valem os padrões.
+ * do corte, porque um corte no meio de um valor deixaria um pedaço que o redator não reconheceria.
+ * Sem ele nada é trocado (não há detecção por padrão).
  */
 export interface RunEndOptions {
   redact?: <T>(value: T) => Promise<T>;

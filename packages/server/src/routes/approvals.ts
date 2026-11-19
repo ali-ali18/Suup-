@@ -81,9 +81,7 @@ export const approvalRoutes: Route[] = [
         body.decision === "approve"
           ? {
               decision: "approved",
-              ...(body.always === undefined
-                ? {}
-                : { always: { scope: body.always.scope, matchers: body.always.matchers } }),
+              ...(body.allowRecipient === true ? { allowRecipient: true } : {}),
             }
           : { decision: "denied", reason: body.reason },
       );
@@ -134,6 +132,7 @@ export const approvalRoutes: Route[] = [
         ...(body.effect === undefined ? {} : { effect: body.effect }),
         ...(body.matchers === undefined ? {} : { matchers: body.matchers }),
         ...(body.note === undefined ? {} : { note: body.note }),
+        ...(body.enabled === undefined ? {} : { enabled: body.enabled }),
       });
       if (rule === null) throw new HttpError("not_found", "Regra não encontrada.");
       return { body: toRuleDto(rule) };

@@ -6,12 +6,11 @@
 import {
   type ApprovalDecision,
   type ApprovalDecisionItem,
-  type ArgMatcher,
-  argMatcherSchema,
-  exactMatchers,
   type JsonValue,
+  type OutboundMessage,
   type PolicySource,
   type RiskLevel,
+  recipientMatchers,
 } from "@suup/core";
 import { z } from "zod";
 import { createRuleRow } from "./approval-rules.js";
@@ -34,9 +33,11 @@ export interface Approval {
   summary: string;
   secrets: string[];
   source: PolicySource;
+  /** The tool's declaration that this call is a message to another person; `null` for every other call. */
+  outbound: OutboundMessage | null;
   status: ApprovalStatus;
   reason: string | null;
-  /** The rule an "approve and always allow" created. */
+  /** The rule an "allow this recipient" created. */
   ruleId: string | null;
   expiresAt: Date | null;
   decidedAt: Date | null;
@@ -55,6 +56,7 @@ interface ApprovalRow {
   summary: string;
   secrets: string[];
   source: PolicySource;
+  outbound: OutboundMessage | null;
   status: ApprovalStatus;
   reason: string | null;
   rule_id: string | null;
@@ -76,6 +78,7 @@ function mapApproval(row: ApprovalRow): Approval {
     summary: row.summary,
     secrets: row.secrets,
     source: row.source,
+    outbound: row.outbound,
     status: row.status,
     reason: row.reason,
     ruleId: row.rule_id,
@@ -87,7 +90,7 @@ function mapApproval(row: ApprovalRow): Approval {
 
 const SELECT = (db: Db) => db.sql`
   select a.id, a.run_id, a.bot_id, r.conversation_id, a.call_id, a.tool, a.args, a.level,
-         a.summary, a.secrets, a.source, a.status, a.reason, a.rule_id, a.expires_at,
+         a.summary, a.secrets, a.source, a.outbound, a.status, a.reason, a.rule_id, a.expires_at,
          a.decided_at, a.created_at
   from approvals a join runs r on r.id = a.run_id`;
 
@@ -122,12 +125,14 @@ export async function projectApprovalRequested(
     summary: string;
     secrets: string[];
     source: PolicySource;
+    outbound?: OutboundMessage;
     expiresAt?: string;
   };
   await tx.sql`
-    insert into approvals (id, run_id, bot_id, call_id, tool, args, level, summary, secrets, source, expires_at)
+    insert into approvals (id, run_id, bot_id, call_id, tool, args, level, summary, secrets, source, outbound, expires_at)
     select ${p.approvalId}, r.id, r.bot_id, ${p.callId}, ${p.tool}, ${tx.sql.json(p.args)},
-           ${p.level}, ${p.summary}, ${p.secrets}::text[], ${p.source}, ${p.expiresAt ?? null}
+           ${p.level}, ${p.summary}, ${p.secrets}::text[], ${p.source},
+           ${p.outbound === undefined ? null : tx.sql.json(p.outbound)}, ${p.expiresAt ?? null}
     from runs r where r.id = ${runId}
     on conflict (run_id, call_id) do nothing`;
 }
@@ -160,30 +165,20 @@ export async function listApprovals(db: Db, opts: ListApprovalsOptions): Promise
   return rows.map(mapApproval);
 }
 
-/** How the user wants a rule created from a card ("approve and always allow"). */
-export interface AlwaysAllow {
-  /** `bot`: only this bot. `global`: every bot. */
-  scope: "bot" | "global";
-  /** Omitted: exactly this call (every text argument equal). `[]`: any call of the tool. */
-  matchers?: ArgMatcher[] | undefined;
-}
-
 export interface DecideApprovalInput {
   decision: "approved" | "denied";
   reason?: string | undefined;
-  /** Only with `approved`: also create an allow rule. */
-  always?: AlwaysAllow | undefined;
+  /**
+   * Only with `approved`, and only for a message to another person (the card's declaration): also
+   * create an allow rule for exactly this recipient, for this bot. Refused for any other call.
+   */
+  allowRecipient?: boolean | undefined;
 }
 
 const decideSchema = z.object({
   decision: z.enum(["approved", "denied"]),
   reason: z.string().max(2000).optional(),
-  always: z
-    .object({
-      scope: z.enum(["bot", "global"]),
-      matchers: z.array(argMatcherSchema).max(20).optional(),
-    })
-    .optional(),
+  allowRecipient: z.boolean().optional(),
 });
 
 /** Marks the run claimable again when it was waiting on this decision. */
@@ -209,8 +204,8 @@ async function lockPending(tx: Db, id: string): Promise<ApprovalRow & { run_stat
 }
 
 /**
- * Records the user's decision on a pending card, in one transaction: the card, the rule an
- * "always allow" creates, and the wake-up of the run (a run waiting for this decision becomes
+ * Records the user's decision on a pending card, in one transaction: the card, the rule "allow
+ * this recipient" creates (messages only), and the wake-up of the run (a run waiting for this decision becomes
  * claimable again; a run that has not paused yet reads the decision at its next safe point).
  * Throws `ApprovalError`: `not_found`, or `conflict` when the card was already decided, cancelled
  * or expired.
@@ -221,8 +216,8 @@ export async function decideApproval(
   input: DecideApprovalInput,
 ): Promise<{ approval: Approval; ruleId: string | null }> {
   const body = decideSchema.parse(input);
-  if (body.always !== undefined && body.decision !== "approved") {
-    throw new ApprovalError("conflict", "Só se pode sempre permitir ao aprovar.");
+  if (body.allowRecipient === true && body.decision !== "approved") {
+    throw new ApprovalError("conflict", "Só se pode permitir o destinatário ao aprovar.");
   }
   const result = await withTransaction(db, async (tx) => {
     const row = await lockPending(tx, z.uuid().parse(id));
@@ -241,12 +236,25 @@ export async function decideApproval(
       return "expired" as const;
     }
     let ruleId: string | null = null;
-    if (body.always !== undefined) {
+    if (body.allowRecipient === true) {
+      if (row.outbound === null) {
+        throw new ApprovalError(
+          "conflict",
+          "Esta chamada não é uma mensagem para outra pessoa: só se cria regra de destinatário para mensagens.",
+        );
+      }
+      const matchers = recipientMatchers(row.args, row.outbound);
+      if (matchers === null) {
+        throw new ApprovalError(
+          "conflict",
+          "Não dá para permitir este destinatário: o envio não tem um único destinatário em texto. Aprove só este envio.",
+        );
+      }
       const rule = await createRuleRow(tx, {
-        botId: body.always.scope === "global" ? null : row.bot_id,
+        botId: row.bot_id,
         tool: row.tool,
         effect: "allow",
-        matchers: body.always.matchers ?? exactMatchers(row.args),
+        matchers,
         note: `Criada ao aprovar: ${row.summary}`.slice(0, 500),
         createdBy: "approval",
         sourceApprovalId: row.id,

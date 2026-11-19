@@ -41,10 +41,24 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("approvals and rules"), () => {
     ...over,
   });
 
+  /** An outbound message: the tool DECLARED it (`outbound`), as the loop records it. */
+  const message = (callId: string, over: Record<string, unknown> = {}) =>
+    request(callId, {
+      tool: "conn_mail__send_email",
+      args: { to: "ana@x.com", subject: "Oi", body: "Tudo bem?" },
+      secrets: [],
+      outbound: { kind: "message", recipientFields: ["to"] },
+      ...over,
+    });
+
   /** A run that asked for approval and paused: `running` with the card, then `waiting_approval`. */
-  async function waiting(callId = "c1", over: Record<string, unknown> = {}) {
+  async function waiting(
+    callId = "c1",
+    over: Record<string, unknown> = {},
+    make: typeof request = request,
+  ) {
     const run = await makeRun(ctx.db, { status: "running", leasedTo: "w1" });
-    const payload = request(callId, over);
+    const payload = make(callId, over);
     await appendRunEvent(ctx.db, run.id, "approval_requested", payload, { leaseHolder: "w1" });
     await setRunStatus(ctx.db, run.id, { from: "running", to: "waiting_approval" });
     return { run, approvalId: payload.approvalId as string };
@@ -65,12 +79,21 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("approvals and rules"), () => {
         summary: "Send a message to ana",
         secrets: ["TOKEN"],
         source: "default",
+        outbound: null,
         status: "pending",
         reason: null,
         ruleId: null,
         expiresAt: null,
         decidedAt: null,
         conversationId: null,
+      });
+    });
+
+    it("keeps the tool's declaration that the call is a message to another person", async () => {
+      const { approvalId } = await waiting("c1", {}, message);
+      expect((await getApproval(ctx.db, approvalId))?.outbound).toEqual({
+        kind: "message",
+        recipientFields: ["to"],
       });
     });
 
@@ -192,49 +215,58 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("approvals and rules"), () => {
       expect(await getRun(ctx.db, run.id)).toMatchObject({ status: "running", lockedBy: "w1" });
     });
 
-    it("'always allow' creates a rule: exactly this call, for this bot", async () => {
-      const { run, approvalId } = await waiting();
+    it("'allow this recipient' creates a rule: exactly the recipient, for this bot, other fields free", async () => {
+      const { run, approvalId } = await waiting("c1", {}, message);
       const { ruleId } = await decideApproval(ctx.db, approvalId, {
         decision: "approved",
-        always: { scope: "bot" },
+        allowRecipient: true,
       });
       const rule = await getRule(ctx.db, ruleId as string);
       expect(rule).toMatchObject({
         botId: run.botId,
-        tool: "send",
+        tool: "conn_mail__send_email",
         effect: "allow",
         createdBy: "approval",
         sourceApprovalId: approvalId,
-        matchers: [
-          { field: "to", op: "equals", value: "ana" },
-          { field: "body", op: "equals", value: "hello {{secret:TOKEN}}" },
-        ],
+        enabled: true,
+        matchers: [{ field: "to", value: "ana@x.com" }],
       });
       expect((await getApproval(ctx.db, approvalId))?.ruleId).toBe(ruleId);
     });
 
-    it("'always allow' can be for every bot, and for any arguments", async () => {
-      const { approvalId } = await waiting();
-      const { ruleId } = await decideApproval(ctx.db, approvalId, {
-        decision: "approved",
-        always: { scope: "global", matchers: [] },
-      });
-      expect(await getRule(ctx.db, ruleId as string)).toMatchObject({
-        botId: null,
-        tool: "send",
-        matchers: [],
-      });
-    });
-
-    it("only an approval can always allow, and a failed decision creates no rule", async () => {
+    it("a call that is not a declared message cannot create a rule from its card", async () => {
       const { approvalId } = await waiting();
       const before = (await listRules(ctx.db)).length;
       await expect(
-        decideApproval(ctx.db, approvalId, { decision: "denied", always: { scope: "bot" } }),
+        decideApproval(ctx.db, approvalId, { decision: "approved", allowRecipient: true }),
+      ).rejects.toMatchObject({ code: "conflict" });
+      expect((await getApproval(ctx.db, approvalId))?.status).toBe("pending");
+      expect((await listRules(ctx.db)).length).toBe(before);
+    });
+
+    it("a message whose recipient is not one text value cannot be allowed by recipient", async () => {
+      const list = await waiting(
+        "c1",
+        { args: { to: ["a@x.com", "b@x.com"], body: "x" } },
+        message,
+      );
+      await expect(
+        decideApproval(ctx.db, list.approvalId, { decision: "approved", allowRecipient: true }),
+      ).rejects.toMatchObject({ code: "conflict" });
+      expect((await getApproval(ctx.db, list.approvalId))?.status).toBe("pending");
+      // approving only this send still works
+      await decideApproval(ctx.db, list.approvalId, { decision: "approved" });
+    });
+
+    it("only an approval can allow a recipient, and a failed decision creates no rule", async () => {
+      const { approvalId } = await waiting("c1", {}, message);
+      const before = (await listRules(ctx.db)).length;
+      await expect(
+        decideApproval(ctx.db, approvalId, { decision: "denied", allowRecipient: true }),
       ).rejects.toMatchObject({ code: "conflict" });
       await decideApproval(ctx.db, approvalId, { decision: "denied" });
       await expect(
-        decideApproval(ctx.db, approvalId, { decision: "approved", always: { scope: "bot" } }),
+        decideApproval(ctx.db, approvalId, { decision: "approved", allowRecipient: true }),
       ).rejects.toBeInstanceOf(ApprovalError);
       expect((await listRules(ctx.db)).length).toBe(before);
     });
@@ -304,7 +336,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("approvals and rules"), () => {
         tool: "shell",
         effect: "allow",
         botId: bot.id,
-        matchers: [{ field: "command", op: "starts_with", value: "git " }],
+        matchers: [{ field: "command", value: "git status" }],
         note: "git is fine",
       });
       const b = await createRule(ctx.db, { tool: "*", effect: "deny" });
@@ -347,9 +379,19 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("approvals and rules"), () => {
         createRule(ctx.db, {
           tool: "t",
           effect: "allow",
-          matchers: [{ field: "", op: "equals", value: "x" }],
+          matchers: [{ field: "", value: "x" }],
         }),
       ).rejects.toThrow();
+      // a comparison other than equality does not exist: it is refused, never read as equality
+      for (const op of ["starts_with", "contains", "glob", "equals"]) {
+        await expect(
+          createRule(ctx.db, {
+            tool: "t",
+            effect: "allow",
+            matchers: [{ field: "a", op, value: "x" } as never],
+          }),
+        ).rejects.toThrow();
+      }
       await expect(createRule(ctx.db, { tool: "t", effect: "maybe" as never })).rejects.toThrow();
     });
   });

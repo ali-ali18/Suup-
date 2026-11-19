@@ -292,7 +292,7 @@ test.describe("connectors", () => {
     const contradicted = panel.locator('[data-testid="connector-tool"][data-tool="contradicted"]');
     await contradicted.getByTestId("tool-risk").selectOption("read");
     await expect(contradicted.getByTestId("tool-basis")).toContainText("Apertado pelo servidor");
-    await expect(contradicted).toContainText("Aprovar e sempre permitir");
+    await expect(contradicted).toContainText("crie uma regra em Configurações > Aprovações");
     await expect(contradicted).toContainText("Externa ou irreversível");
     // Tools that are not offered have their own section, with the reason.
     const unavailable = panel.getByTestId("connector-tools-unavailable");
@@ -357,6 +357,96 @@ test.describe("connectors", () => {
     await page.getByTestId("connector-delete-confirm").click();
     await expect(page.getByTestId("connector-row")).toHaveCount(0);
     expect(await world.api.connectors.list()).toHaveLength(0);
+  });
+
+  test("only a tool the user marks as a message gets the split button; its menu is about the recipient", async ({
+    page,
+  }) => {
+    await freshBot(world, "Postal", { allowedTools: [] });
+    await freshBot(world, "Postal 2", { allowedTools: [] });
+    const { command, args } = fakeMcpCommand();
+    await world.api.connectors.create({
+      name: "fake",
+      transport: { kind: "stdio", command, args },
+      scope: "read_write",
+      grantBotIds: [await botId(world, "Postal"), await botId(world, "Postal 2")],
+    });
+    await openApp(page, world);
+
+    // 1. Not marked: a send_email tool is a normal write, whatever its name says. Only Recusar and Aprovar.
+    await selectBot(page, "Postal 2");
+    await send(page, "CASE-EMAIL-NORMAL mande o plano");
+    const plain = page.getByTestId("approval-card");
+    await expect(plain).toHaveAttribute("data-state", "needs-action");
+    await expect(plain.locator(".ui-decision__category")).toHaveText("fake");
+    expect(await plain.getByRole("button").allTextContents()).toEqual(["Recusar", "Aprovar"]);
+    await expect(plain.locator(".ui-split")).toHaveCount(0);
+    await expect(plain.getByTestId("approval-more")).toHaveCount(0);
+    await plain.getByTestId("approval-approve").click();
+    await expect(botMessage(page, "E-mail normal enviado.")).toBeVisible();
+
+    // 2. The user marks the tool in the connector's settings and names the recipient field.
+    await openSettings(page, "Conectores");
+    const row = page.getByTestId("connector-row").filter({ hasText: "fake" });
+    await row.getByTestId("connector-details").click();
+    const tool = row
+      .getByTestId("connector-panel")
+      .locator('[data-testid="connector-tool"][data-tool="send_email"]');
+    await expect(tool.getByTestId("tool-outbound-check")).not.toBeChecked();
+    await tool.getByTestId("tool-outbound-check").check();
+    await tool.getByTestId("tool-outbound-fields").fill("to");
+    await tool.getByTestId("tool-outbound-save").click();
+    await expect
+      .poll(async () => (await world.api.connectors.get("fake")).toolOverrides.send_email)
+      .toEqual({ outbound: { kind: "message", recipientFields: ["to"] } });
+    // The server's other tools are untouched.
+    expect((await world.api.connectors.get("fake")).toolOverrides.write_thing).toBeUndefined();
+
+    // 3. Now its card is the message card: Descartar and the split button Enviar.
+    await selectBot(page, "Postal");
+    await send(page, "CASE-EMAIL-MARCADO mande o e-mail");
+    const message = page.getByTestId("approval-card");
+    await expect(message).toHaveAttribute("data-state", "needs-action");
+    await expect(message.locator(".ui-decision__category")).toHaveText("Mensagem");
+    await expect(message.getByTestId("approval-deny")).toHaveText("Descartar");
+    await expect(message.getByTestId("approval-approve")).toHaveText("Enviar");
+    await message.getByTestId("approval-more").click();
+    const items = page.getByRole("menu").locator('[role^="menuitem"]');
+    await expect(items).toHaveText([
+      /Permitir destinatário/,
+      /Precisa de aprovação/,
+      /Gerenciar regras/,
+    ]);
+    await expect(page.getByTestId("approval-needs")).toHaveAttribute("aria-checked", "true");
+    await expect(items.first()).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    // "Gerenciar regras" opens Configurações > Aprovações.
+    await message.getByTestId("approval-more").click();
+    await page.getByTestId("approval-manage-rules").click();
+    await expect(page.getByRole("tab", { name: "Aprovações" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await page.keyboard.press("Escape");
+    await selectBot(page, "Postal");
+    // "Permitir destinatário": sends and writes a rule for exactly this recipient, for this bot.
+    await message.getByTestId("approval-more").click();
+    await page.getByTestId("allow-recipient").click();
+    await expect(botMessage(page, "E-mail enviado.")).toBeVisible();
+    const rules = (await world.api.rules.list()).filter((r) => r.tool === "conn_fake__send_email");
+    expect(rules).toHaveLength(1);
+    expect(rules[0]).toMatchObject({
+      botId: await botId(world, "Postal"),
+      createdBy: "approval",
+      matchers: [{ field: "to", value: "ana@exemplo.com" }],
+    });
+    await openSettings(page, "Aprovações");
+    await expect(page.getByTestId("rule-sentence")).toContainText(
+      "o campo to é exatamente “ana@exemplo.com”",
+    );
+    await world.api.rules.remove(rules[0]?.id as string);
+    await world.api.connectors.remove("fake");
   });
 
   test("a connector that cannot start says why, with its name, on the card and on the test", async ({

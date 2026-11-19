@@ -3,7 +3,6 @@ import {
   COLLAPSED_CHARS,
   COLLAPSED_LINES,
   collapsedText,
-  exactFields,
   formatArgs,
   isLong,
   secretsOf,
@@ -68,14 +67,5 @@ describe("formatArgs: the exact content of a call", () => {
     const { head } = collapsedText(text);
     expect(head.endsWith("{{secret:API_TOKEN}}")).toBe(true);
     expect(splitSecrets(head).some((s) => s.kind === "secret")).toBe(true);
-  });
-
-  it("an exact rule pins the top-level text arguments only", () => {
-    expect(exactFields({ to: "ana", n: 2, ok: true, deep: { a: "b" }, body: "oi" })).toEqual([
-      { field: "to", value: "ana" },
-      { field: "body", value: "oi" },
-    ]);
-    expect(exactFields("x")).toEqual([]);
-    expect(exactFields([1])).toEqual([]);
   });
 });

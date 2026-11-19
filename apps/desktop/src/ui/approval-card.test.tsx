@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { DecideOutcome } from "../data/sync.js";
-import { makeApproval, makeRule } from "../test-fixtures.js";
+import { makeApproval, makeMessageApproval, makeRule } from "../test-fixtures.js";
 import { ApprovalCard, type ApprovalCardProps } from "./approval-card.js";
 
 const noop = () => {};
@@ -58,7 +58,7 @@ describe("ApprovalCard waiting for you", () => {
     const buttons = within(card)
       .getAllByRole("button")
       .map((b) => b.getAttribute("aria-label") ?? b.textContent);
-    expect(buttons).toEqual(["Recusar", "Aprovar", "Mais opções de aprovação"]);
+    expect(buttons).toEqual(["Recusar", "Aprovar"]);
     expect(within(card).queryByRole("textbox")).toBeNull();
   });
 
@@ -161,75 +161,112 @@ describe("ApprovalCard waiting for you", () => {
     expect(onDecide).toHaveBeenCalledExactlyOnceWith({ decision: "deny" });
   });
 
+  it("a normal action has ONLY Recusar and Aprovar: no split button, no menu, no 'sempre permitir'", () => {
+    for (const approval of [
+      makeApproval(),
+      makeApproval({ tool: "write_file", args: { path: "a.txt", content: "x" } }),
+      makeApproval({ tool: "web_fetch", args: { url: "https://exemplo.com" } }),
+      makeApproval({ tool: "remember", args: { layer: "note", text: "x" } }),
+      // A connector tool that merely LOOKS like a mail tool: nothing declared it a message.
+      makeApproval({ tool: "conn_gmail__send_email", args: { to: "a@b.com" } }),
+    ]) {
+      const { view } = show({ approval, onManageRules: vi.fn() });
+      const card = screen.getByTestId("approval-card");
+      expect(
+        within(card)
+          .getAllByRole("button")
+          .map((b) => b.textContent),
+      ).toEqual(["Recusar", "Aprovar"]);
+      expect(card.querySelector(".ui-split")).toBeNull();
+      expect(within(card).queryByTestId("approval-more")).toBeNull();
+      expect(card.querySelector('[aria-haspopup="menu"]')).toBeNull();
+      expect(card.textContent).not.toMatch(/sempre permitir|Permitir destinat/i);
+      view.unmount();
+    }
+  });
+
   const openMenu = () => {
     fireEvent.click(screen.getByTestId("approval-more"));
-    return screen.getByRole("menu", { name: "Mais opções de aprovação" });
+    return screen.getByRole("menu", { name: "Mais opções de envio" });
   };
 
-  it("the chevron opens the menu: four 'Sempre permitir' variants, 'Precisa de aprovação' checked, 'Gerenciar regras'", () => {
+  it("a message to another person (declared) has Descartar and a split button Enviar", () => {
+    show({ approval: makeMessageApproval() });
+    const card = screen.getByTestId("approval-card");
+    expect(document.querySelector(".ui-decision__category")?.textContent).toBe("Mensagem");
+    expect(within(card).getByTestId("approval-deny").textContent).toBe("Descartar");
+    expect(within(card).getByTestId("approval-approve").textContent).toBe("Enviar");
+    expect(card.querySelector(".ui-split")).not.toBeNull();
+    expect(within(card).getByTestId("approval-more")).toBeTruthy();
+  });
+
+  it("the chevron opens the recipient menu: Permitir destinatário, Precisa de aprovação (checked), Gerenciar regras", () => {
     const onManageRules = vi.fn();
-    show({ onManageRules });
+    show({ approval: makeMessageApproval(), onManageRules });
     const trigger = screen.getByTestId("approval-more");
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
     const menu = openMenu();
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
     const items = Array.from(menu.querySelectorAll<HTMLElement>('[role^="menuitem"]'));
     expect(items.map((i) => i.querySelector(".ui-menu__label")?.textContent)).toEqual([
-      "Sempre permitir isto, neste bot",
-      "Sempre permitir esta ferramenta, neste bot",
-      "Sempre permitir isto, em todos os bots",
-      "Sempre permitir esta ferramenta, em todos os bots",
+      "Permitir destinatário",
       "Precisa de aprovação",
       "Gerenciar regras",
     ]);
-    // Each variant says in one muted line what it does.
-    expect(items[0]?.textContent).toContain("Só quando o conteúdo for idêntico a este.");
-    expect(items[1]?.textContent).toContain("Qualquer uso de Terminal");
+    expect(items[0]?.textContent).toContain("libera este destinatário, neste bot");
     expect(screen.getByTestId("approval-needs").getAttribute("aria-checked")).toBe("true");
     fireEvent.click(screen.getByTestId("approval-manage-rules"));
     expect(onManageRules).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("menu")).toBeNull();
   });
 
-  it("'Sempre permitir' approves and sends the scope and what it matches; the settings order the scopes", () => {
-    const { onDecide } = show({ defaultScope: "global" });
+  it("'Permitir destinatário' sends the approval with allowRecipient (the server pins exactly the recipient)", async () => {
+    const { onDecide } = show({ approval: makeMessageApproval() });
     openMenu();
-    const first = screen.getAllByRole("menuitem")[0] as HTMLElement;
-    expect(first.textContent).toContain("em todos os bots");
-    fireEvent.click(screen.getByTestId("always-global-exact"));
-    expect(onDecide).toHaveBeenLastCalledWith({ decision: "approve", always: { scope: "global" } });
-  });
-
-  it("'Sempre permitir esta ferramenta' sends an empty list of conditions", async () => {
-    const { onDecide } = show();
-    openMenu();
-    fireEvent.click(screen.getByTestId("always-bot-any"));
-    expect(onDecide).toHaveBeenLastCalledWith({
-      decision: "approve",
-      always: { scope: "bot", matchers: [] },
-    });
+    fireEvent.click(screen.getByTestId("allow-recipient"));
+    expect(onDecide).toHaveBeenLastCalledWith({ decision: "approve", allowRecipient: true });
     await waitFor(() =>
       expect((screen.getByTestId("approval-approve") as HTMLButtonElement).disabled).toBe(false),
     );
   });
 
-  it("turning 'Precisa de aprovação' off makes Aprovar create the rule, and says which one before", () => {
-    const { onDecide } = show({
-      approval: makeApproval({ args: { command: "git push origin main" } }),
-    });
+  it("turning 'Precisa de aprovação' off makes Enviar also allow the recipient, and says which rule before", () => {
+    const { onDecide } = show({ approval: makeMessageApproval() });
     openMenu();
     fireEvent.click(screen.getByTestId("approval-needs"));
-    expect(screen.getByTestId("always-sentence").textContent).toContain("o bot Ajudante");
-    expect(screen.getByTestId("always-sentence").textContent).toContain(
-      "command = “git push origin main”",
-    );
-    expect(screen.getByTestId("approval-approve").textContent).toBe("Aprovar e permitir");
+    const sentence = screen.getByTestId("allow-recipient-sentence").textContent ?? "";
+    expect(sentence).toContain("o bot Ajudante");
+    expect(sentence).toContain("to = “ana@exemplo.com”");
+    expect(sentence).toContain("Qualquer outro destinatário continua pedindo");
+    expect(screen.getByTestId("approval-approve").textContent).toBe("Enviar e permitir");
     fireEvent.click(screen.getByTestId("approval-approve"));
-    expect(onDecide).toHaveBeenLastCalledWith({ decision: "approve", always: { scope: "bot" } });
+    expect(onDecide).toHaveBeenLastCalledWith({ decision: "approve", allowRecipient: true });
+  });
+
+  it("without one exact recipient the menu cannot allow a recipient, and Enviar only sends", () => {
+    const base = makeMessageApproval();
+    const { onDecide } = show({
+      approval: makeMessageApproval({
+        args: { to: ["a@x.com", "b@x.com"] },
+        outbound: { ...(base.outbound as NonNullable<typeof base.outbound>), recipients: null },
+      }),
+    });
+    openMenu();
+    expect((screen.getByTestId("allow-recipient") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId("approval-needs") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByTestId("approval-more"));
+    fireEvent.click(screen.getByTestId("approval-approve"));
+    expect(onDecide).toHaveBeenLastCalledWith({ decision: "approve" });
+  });
+
+  it("Descartar is one click and sends no reason", () => {
+    const { onDecide } = show({ approval: makeMessageApproval() });
+    fireEvent.click(screen.getByTestId("approval-deny"));
+    expect(onDecide).toHaveBeenCalledExactlyOnceWith({ decision: "deny" });
   });
 
   it("the menu works from the keyboard: arrows move, Escape closes and gives the focus back", () => {
-    show();
+    show({ approval: makeMessageApproval() });
     const trigger = screen.getByTestId("approval-more");
     openMenu();
     const items = Array.from(
@@ -356,7 +393,7 @@ describe("ApprovalCard decided", () => {
     expect(within(card).getByTestId("approval-denial").textContent).toContain("agora não");
     expect(within(card).getByTestId("arg-value").textContent).toBe("rm -rf build");
     expect(within(card).getByTestId("approval-rule").textContent).toContain(
-      "Libera Terminal para todos os bots em qualquer uso.",
+      "Libera Terminal para todos os bots em QUALQUER uso da ferramenta, com quaisquer argumentos.",
     );
     expect(within(card).queryByTestId("approval-deny")).toBeNull();
     expect(within(card).queryByTestId("approval-more")).toBeNull();

@@ -2,7 +2,13 @@
 // validation. It is plain data: no secret values (only references to vault secrets by name), no
 // connection, no database. The same rules run when the API or the CLI saves a connector and when a
 // worker is about to use it, so a row edited by hand in the database is checked too.
-import { isRiskLevel, isSecretName, type RiskLevel } from "@suup/core";
+import {
+  isRiskLevel,
+  isSecretName,
+  type OutboundMessage,
+  outboundMessageSchema,
+  type RiskLevel,
+} from "@suup/core";
 import { z } from "zod";
 import { CONNECTOR_NAME_MAX, isConnectorName } from "./names.js";
 
@@ -30,7 +36,13 @@ export type ConnectorTransport =
 
 export interface ToolOverride {
   /** What the user says this tool is. Hints from the server can only make it stricter. */
-  risk: RiskLevel;
+  risk?: RiskLevel | undefined;
+  /**
+   * The user says a call of this tool is a message to another person, and where the recipient is
+   * in the arguments. Only the user can say it (never a hint of the server): it makes the approval
+   * card the message card, and the tool is never `read`.
+   */
+  outbound?: OutboundMessage | undefined;
 }
 
 export interface ConnectorSpec {
@@ -56,7 +68,20 @@ const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
 // RFC 9110 token characters.
 const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,64}$/;
 // Names the process would misuse if a connector could set them (code injection into any child).
-const FORBIDDEN_ENV = /^(LD_.*|DYLD_.*|NODE_OPTIONS|PYTHONPATH|PYTHONSTARTUP|BASH_ENV|ENV|PATH)$/i;
+const FORBIDDEN_ENV_NAMES: ReadonlySet<string> = new Set([
+  "NODE_OPTIONS",
+  "PYTHONPATH",
+  "PYTHONSTARTUP",
+  "BASH_ENV",
+  "ENV",
+  "PATH",
+]);
+const FORBIDDEN_ENV_PREFIXES = ["LD_", "DYLD_"] as const;
+/** Exact names and two prefixes, compared as text (no pattern). */
+const isForbiddenEnv = (name: string): boolean => {
+  const upper = name.toUpperCase();
+  return FORBIDDEN_ENV_NAMES.has(upper) || FORBIDDEN_ENV_PREFIXES.some((p) => upper.startsWith(p));
+};
 
 const valueRefSchema = z.union([
   z.string().max(4096),
@@ -149,7 +174,7 @@ export const connectorTransportSchema = z
             path: ["env", name],
             message: "nome de variável inválido",
           });
-        } else if (FORBIDDEN_ENV.test(name)) {
+        } else if (isForbiddenEnv(name)) {
           ctx.addIssue({
             code: "custom",
             path: ["env", name],
@@ -182,7 +207,12 @@ export const connectorNameSchema = z
 const toolOverridesSchema = z
   .record(
     z.string().min(1).max(128),
-    z.strictObject({ risk: z.string().refine(isRiskLevel, "nível de risco inválido") }),
+    z
+      .strictObject({
+        risk: z.string().refine(isRiskLevel, "nível de risco inválido").optional(),
+        outbound: outboundMessageSchema.optional(),
+      })
+      .refine((o) => o.risk !== undefined || o.outbound !== undefined, "override vazio"),
   )
   .default({})
   .refine((o) => Object.keys(o).length <= 200, "overrides demais");

@@ -6,13 +6,14 @@ export {
   type ListRulesOptions,
   listRules,
   type RuleCreator,
+  RuleError,
+  type RuleErrorCode,
   rulesForBot,
   type StoredRule,
   type UpdateRuleInput,
   updateRule,
 } from "./approval-rules.js";
 export {
-  type AlwaysAllow,
   APPROVAL_STATUSES,
   type Approval,
   ApprovalError,
@@ -76,6 +77,7 @@ export {
   replaceConnector,
   revokeConnector,
   type StoredConnector,
+  type StoredToolOverride,
   saveConnectorDiscovery,
 } from "./connectors.js";
 export {

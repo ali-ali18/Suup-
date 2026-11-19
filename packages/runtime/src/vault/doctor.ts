@@ -1,4 +1,4 @@
-import { listApprovals } from "@suup/db";
+import { listApprovals, listRules } from "@suup/db";
 import type { DoctorCheck } from "../diagnostics.js";
 import type { Runtime } from "../runtime.js";
 
@@ -48,5 +48,22 @@ export async function checkVaultAndApprovals(runtime: Runtime): Promise<DoctorCh
             .map((a) => `${a.tool} (${a.id.slice(0, 8)})`)
             .join(", ")}${pending.length > 3 ? "..." : ""} (suup approvals)`,
   });
+  const disabled = (await listRules(runtime.db)).filter((r) => !r.enabled);
+  checks.push(
+    disabled.length === 0
+      ? { component: "Regras", ok: true, detail: "todas valem (comparação exata)" }
+      : {
+          component: "Regras",
+          ok: false,
+          detail: [
+            `${disabled.length} regra(s) desativada(s): usavam uma condição por padrão (começa com, contém ou glob), que não existe mais. Nada foi apagado nem ampliado; elas não valem enquanto isso.`,
+            ...disabled.map(
+              (r) =>
+                `- ${r.id.slice(0, 8)} (${r.effect === "allow" ? "libera" : "proíbe"} ${r.tool}): ${r.disabledReason ?? ""}`,
+            ),
+            "Para cada uma: troque as condições por valores exatos e reative (suup rules edit <id> --match campo=valor --enable) ou apague (suup rules rm <id>).",
+          ].join("\n"),
+        },
+  );
   return checks;
 }

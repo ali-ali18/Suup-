@@ -139,7 +139,7 @@ function OpenForm({
           </Pill>
           <Pill
             tone="primary"
-            className="ui-split__main"
+            className="ui-decision__primary"
             disabled={waiting || empty}
             data-testid="secret-save"
             onClick={() => void save()}

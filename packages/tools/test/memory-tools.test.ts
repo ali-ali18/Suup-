@@ -90,19 +90,15 @@ describe("remember", () => {
     expect(r.output.content).toContain("A note always belongs to one bot");
   });
 
-  it("refuses text that looks like a secret, without calling the service", async () => {
+  it("does not judge the text by its look: the protection is the instruction to the model and the vault", async () => {
     const { memory, calls } = fakeMemory();
-    for (const text of [
-      "The wifi password is hunter2hunter2",
-      "A senha: abc12345678",
-      "key sk-abcdefghijklmnopqrstuvwxyz123456",
-      "token ghp_abcdefghijklmnopqrstuvwxyz0123456789",
-    ]) {
-      const r = await run("remember", { layer: "profile", text }, memory);
-      expect(r.output.isError, text).toBe(true);
-      expect(r.output.content).toContain("secret");
-    }
-    expect(calls).toEqual([]);
+    // No pattern decides what is "secret-looking": the tool saves what the service accepts...
+    const r = await run("remember", { layer: "profile", text: "A senha: abc12345678" }, memory);
+    expect(r.output.isError).not.toBe(true);
+    expect(calls.length).toBe(1);
+    // ...and the model is told, in the tool's own description, never to store secrets.
+    const description = registry.get("remember")?.description;
+    expect(description).toContain("Do NOT save secrets");
   });
 
   it("validates its input through the registry", async () => {

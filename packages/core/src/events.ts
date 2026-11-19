@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { blockSchema, messageSchema } from "./messages.js";
+import { outboundMessageSchema } from "./outbound.js";
 import {
   PROVIDER_ERROR_KINDS,
   stopReasonSchema,
@@ -266,6 +267,8 @@ export const runEventSchema = z.discriminatedUnion("type", [
       /** The secret names the call uses. */
       secrets: z.array(z.string()),
       source: policySourceSchema,
+      /** Present only when the tool declares the call as a message to another person. */
+      outbound: z.exactOptional(outboundMessageSchema),
       /** Present only when a configured limit makes the request expire. */
       expiresAt: z.exactOptional(z.string()),
     }),

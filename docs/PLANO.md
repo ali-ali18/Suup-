@@ -27,6 +27,8 @@ Convenção: código, tabelas e identificadores em inglês; documentação e tex
 5. **Agir exige permissão proporcional ao risco.** Ler é livre; o que sai para o mundo ou não tem volta espera aprovação.
 6. **Conteúdo externo é dado, nunca ordem.**
 7. **Cada fase é utilizável sozinha.** Nada de construir oito camadas antes de ver funcionar.
+8. **Nada de regex que identifica, classifica ou barra.** Entender texto é do modelo; o harness usa estrutura declarada e comparação exata. Regex só para formato formal, e na dúvida se pergunta ao dono ([REGRAS.md](REGRAS.md)).
+9. **Cada fase ganha uma pesquisa confiável antes de ser implementada**, com fontes primárias, URL e data, salva em `docs/pesquisas/` e ligada à seção que ela valida ([REGRAS.md](REGRAS.md)).
 
 ## 3. Visão geral
 

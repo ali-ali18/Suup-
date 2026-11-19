@@ -13,6 +13,7 @@ Uma ferramenta **só declara**; quem decide é o harness (a ferramenta nunca imp
 | `describe(args)` (opcional) | A linha do cartão. Padrão: o nome da ferramenta e os argumentos |
 | `secretFields` | Os campos que podem receber `{{secret:NOME}}` (veja COFRE.md) |
 | `externalOutput` | A saída vem de fora: chega ao modelo rotulada como dado não confiável |
+| `outbound` (opcional) | `{ kind: "message", recipientFields: ["to", ...] }`: a chamada **envia uma mensagem a outra pessoa** (e-mail e afins) e os destinatários estão nesses campos dos argumentos. Veja "Mensagens a outras pessoas" |
 
 Uma ferramenta que não declara nada, ou declara um nível que não existe, vale `external_irreversible`: o lado seguro é o que pergunta.
 
@@ -33,7 +34,7 @@ Uma ferramenta que não declara nada, ou declara um nível que não existe, vale
 
 A decisão é uma função pura (`decidePolicy`, em `core`), testada sozinha: dadas as regras e o veredito do revisor, devolve `allow`, `deny` ou `ask`.
 
-1. **Regras do usuário** (tabela `approval_rules`). Valem para um bot ou para todos, para uma ferramenta (ou `*`) e, opcionalmente, com condições sobre os argumentos (`equals`, `starts_with`, `contains`, `glob` com `*` e `?`; todas precisam valer). **Quem proíbe vale mais que quem libera**; entre regras do mesmo efeito, a do bot vem antes da global. Uma regra pode liberar até uma ação irreversível ("pode fazer push neste repositório"). As condições olham os argumentos como o modelo os escreveu (um segredo aparece como `{{secret:NOME}}`, nunca como valor).
+1. **Regras do usuário** (tabela `approval_rules`). Valem para um bot ou para todos, para uma ferramenta (ou `*`) e, opcionalmente, com condições sobre os argumentos: cada uma diz que um campo nomeado é **exatamente igual** a um valor (todas precisam valer). **Não existe outra comparação**: nada de "começa com", "contém", glob ou regex; o que roda sem perguntar é só o que o usuário escreveu por inteiro. **Uma regra sem condições vale para QUALQUER uso da ferramenta** (escolha explícita do usuário, e as telas dizem isso com todas as letras). **Quem proíbe vale mais que quem libera**; entre regras do mesmo efeito, a do bot vem antes da global. Uma regra pode liberar até uma ação irreversível ("pode fazer push neste repositório"). As condições olham os argumentos como o modelo os escreveu (um segredo aparece como `{{secret:NOME}}`, nunca como valor).
 2. **Revisão automática.** Hoje é só a interface (`AutoReviewer`) e um padrão determinístico que apenas traduz o nível (`read` e `write_reversible` são seguros; `external_irreversible` é sensível). **Nenhuma chamada a modelo é feita.** O revisor só pode apertar, nunca afrouxar: um "seguro" dele não deixa passar uma ação irreversível; só uma regra sua faz isso. Um revisor que falha conta como "sensível".
 3. **Cartão.** O que sobrou e é sensível espera você.
 
@@ -59,7 +60,8 @@ modelo pede a chamada
 
 - **O conteúdo exato.** `approval_requested.args` é o que vai rodar. Depois da aprovação o loop executa esses argumentos, nunca uma versão que o modelo diga de novo. Segredos aparecem como marcador.
 - **Negar não derruba a execução.** O modelo recebe um resultado de erro dizendo que o usuário negou (com o motivo, se houver) e que não deve repetir nem contornar; a execução segue. A origem de falha `approval` continua existindo no esquema para um caso futuro, mas negar um cartão não a usa.
-- **Aprovar e sempre permitir.** Cria, na mesma transação da decisão, uma regra `allow`: para este bot ou para todos, com as condições "todos os argumentos de texto iguais a estes" (padrão) ou "qualquer chamada desta ferramenta" (`matchers: []`).
+- **Nada de "sempre permitir" num cartão comum.** Um cartão de ação comum só se aprova ou se recusa. Regras permanentes nascem de um **ato explícito do usuário**: Configurações > Aprovações, ou `suup rules add`. A única exceção é o cartão de **mensagem a outra pessoa** (abaixo), cujo menu tem "Permitir destinatário".
+- **Mensagens a outras pessoas.** Uma chamada é uma mensagem a outra pessoa **só por declaração**, nunca por palpite sobre o nome ou o texto da ferramenta: (1) a ferramenta declara `outbound` (nenhuma embutida declara hoje); (2) para uma ferramenta de **conector**, o **usuário** marca a ferramenta como "envia mensagem para outra pessoa" e diz em qual campo dos argumentos está o destinatário (`suup connectors set-outbound <conector> <ferramenta> --to campo`, ou a tela do conector); nenhuma dica do servidor faz isso. A declaração entra no evento `approval_requested`, na linha de `approvals` (`outbound`) e na API (`Approval.outbound`). Uma ferramenta assim **nunca é `read`**: sempre pergunta, a não ser por uma regra. O cartão dela tem "Descartar" e o botão dividido "Enviar", cujo menu é "Permitir destinatário", "Precisa de aprovação" e "Gerenciar regras". "Permitir destinatário" (`allowRecipient: true` na decisão) cria, na mesma transação, uma regra `allow` **para este bot**, com **exatamente os campos de destinatário iguais aos desta chamada** (os outros campos, assunto e corpo, ficam livres). Se o envio não tem um único destinatário em texto (uma lista, um campo ausente), não dá para fixar o destinatário e a opção é recusada (`409`); aprovar só este envio continua valendo.
 - **Mensagens não aprovam nada.** Escrever "sim, pode" no chat não decide o cartão; só a decisão pelo cartão (API ou CLI) decide.
 - **Sem prazo escondido.** Um cartão só expira se `approvals.expireAfterMinutes` estiver na configuração (aí ele vira `expired`, o bot é avisado e segue). Sem isso espera para sempre, e o worker não fica preso nele (a execução está em `waiting_approval`).
 - **Cancelar a execução cancela os cartões pendentes** (`approval_decided` com `cancelled` no log).
@@ -85,13 +87,17 @@ O log de eventos continua sendo a verdade:
 
 ```
 suup approvals [--all] [--bot X] [--show]    # os cartões que esperam você (--show: o conteúdo exato)
-suup approve <id> [--always] [--global] [--any-args]
+suup approve <id> [--allow-recipient]        # só para mensagem a outra pessoa
 suup deny <id> [--reason "..."]
-suup rules list|add|edit|rm
+suup rules list|add|edit|rm                  # a regra: igualdade exata, `--match campo=valor`
 suup chat                                    # o cartão aparece no terminal e você responde na hora
 ```
 
 No `suup chat` interativo o cartão aparece com `Aprovar? [s] sim · [n] não (n <motivo>) · [sempre] · [Enter] decidir depois`. Sem terminal (`--message`) o cartão é impresso com o comando para responder.
+
+## Regras antigas com padrões
+
+A migração 0013 **desativou** (nunca apagou nem ampliou) as regras guardadas com `starts_with`, `contains` ou `glob`: elas deixam de valer, continuam na lista com o motivo (as condições antigas ficam registradas) e `suup doctor` as aponta. Para voltar a usá-las, o usuário troca as condições por valores exatos e reativa (`suup rules edit <id> --match campo=valor --enable`, ou a tela de regras: "Salvar e ativar"); ativar uma regra com condições antigas, ou sem nenhuma condição restante, não é aceito.
 
 ## O que ainda não existe
 

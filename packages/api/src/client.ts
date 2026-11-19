@@ -36,6 +36,7 @@ import {
   connectorListSchema,
   connectorSchema,
   connectorTestSchema,
+  type SetToolOutboundBody,
   type SetToolRiskBody,
   type UpdateConnectorBody,
 } from "./connectors.js";
@@ -209,6 +210,8 @@ export interface SuupClient {
     revoke(name: string, botId: string): Promise<Connector>;
     /** What the user says a tool's risk is (`null` clears it). */
     setToolRisk(name: string, tool: string, body: SetToolRiskBody): Promise<Connector>;
+    /** Marks a tool as sending a message to another person, naming the recipient fields (`null` clears it). */
+    setToolOutbound(name: string, tool: string, body: SetToolOutboundBody): Promise<Connector>;
     /** Starts the server from scratch where THIS server runs, lists its tools and closes. */
     test(name: string): Promise<ConnectorTest>;
   };
@@ -451,6 +454,10 @@ export function createClient(options: ClientOptions): SuupClient {
         call("DELETE", `/v1/connectors/${id(name)}/grants/${id(botId)}`, connectorSchema),
       setToolRisk: (name, tool, body) =>
         call("PUT", `/v1/connectors/${id(name)}/tools/${id(tool)}/risk`, connectorSchema, {
+          body,
+        }),
+      setToolOutbound: (name, tool, body) =>
+        call("PUT", `/v1/connectors/${id(name)}/tools/${id(tool)}/outbound`, connectorSchema, {
           body,
         }),
       test: (name) => call("POST", `/v1/connectors/${id(name)}/test`, connectorTestSchema, noBody),

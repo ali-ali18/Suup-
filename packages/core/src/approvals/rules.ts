@@ -3,15 +3,15 @@
 import { z } from "zod";
 import type { JsonValue } from "../messages.js";
 
-/** How a matcher compares the argument: the whole text, its start, a part of it, or a `*`/`?` pattern. */
-export const MATCH_OPS = ["equals", "starts_with", "contains", "glob"] as const;
-export type MatchOp = (typeof MATCH_OPS)[number];
-
-/** One condition on one argument. A rule with several matchers needs all of them (AND). */
-export const argMatcherSchema = z.object({
+/**
+ * One condition on one argument: the argument must be EXACTLY this value. There is no other way
+ * to compare (no prefix, no substring, no pattern, no regular expression): what runs without
+ * asking is only ever what the user wrote out in full. A rule with several matchers needs all of
+ * them (AND).
+ */
+export const argMatcherSchema = z.strictObject({
   /** A dotted path into the arguments, e.g. `command` or `options.branch`. */
   field: z.string().min(1).max(200),
-  op: z.enum(MATCH_OPS),
   value: z.string().max(2000),
 });
 export type ArgMatcher = z.infer<typeof argMatcherSchema>;
@@ -45,36 +45,12 @@ function valueAt(args: unknown, field: string): unknown {
   return node;
 }
 
-/** A glob (`*` any run of characters, `?` one character) as an anchored expression. */
-function globToRegExp(pattern: string): RegExp {
-  const source = [...pattern]
-    .map((ch) =>
-      ch === "*"
-        ? "[\\s\\S]*"
-        : ch === "?"
-          ? "[\\s\\S]"
-          : ch.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&"),
-    )
-    .join("");
-  return new RegExp(`^${source}$`);
-}
-
 export function matcherMatches(matcher: ArgMatcher, args: unknown): boolean {
   const found = valueAt(args, matcher.field);
   if (typeof found !== "string" && typeof found !== "number" && typeof found !== "boolean") {
     return false;
   }
-  const text = String(found);
-  switch (matcher.op) {
-    case "equals":
-      return text === matcher.value;
-    case "starts_with":
-      return text.startsWith(matcher.value);
-    case "contains":
-      return text.includes(matcher.value);
-    case "glob":
-      return globToRegExp(matcher.value).test(text);
-  }
+  return String(found) === matcher.value;
 }
 
 /** Whether the rule covers this call: same bot (or a global rule), same tool (or `*`), every matcher. */
@@ -85,13 +61,20 @@ export function ruleMatches(rule: ApprovalRule, call: RuleCall): boolean {
 }
 
 /**
- * The matchers of an "approve and always allow" that means exactly this call: every top-level
- * text argument must be equal. (Numbers such as a timeout are left free: they do not say what the
- * call does.)
+ * The matchers of "allow this recipient": each recipient field of an outbound message must be
+ * exactly what it is in this call. `null` when that cannot be said exactly: no field declared, a
+ * field that is missing, empty, or not a single piece of text (a list of recipients, say).
  */
-export function exactMatchers(args: JsonValue): ArgMatcher[] {
-  if (args === null || typeof args !== "object" || Array.isArray(args)) return [];
-  return Object.entries(args)
-    .filter((entry): entry is [string, string] => typeof entry[1] === "string")
-    .map(([field, value]) => ({ field, op: "equals" as const, value }));
+export function recipientMatchers(
+  args: JsonValue,
+  outbound: { recipientFields: readonly string[] },
+): ArgMatcher[] | null {
+  if (outbound.recipientFields.length === 0) return null;
+  const matchers: ArgMatcher[] = [];
+  for (const field of outbound.recipientFields) {
+    const found = valueAt(args, field);
+    if (typeof found !== "string" || found.trim() === "" || found.length > 2000) return null;
+    matchers.push({ field, value: found });
+  }
+  return matchers;
 }

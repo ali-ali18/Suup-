@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  alwaysSentence,
+  allowRecipientSentence,
   approvalTitle,
   expiryText,
   instructionLine,
@@ -53,25 +53,23 @@ describe("connector tool names", () => {
 });
 
 describe("rules in plain language", () => {
-  it.each([
-    [
-      { field: "command", op: "equals", value: "git push" },
+  it("a condition is always an exact comparison: there is no other wording", () => {
+    expect(matcherText({ field: "command", value: "git push" })).toBe(
       "o campo command é exatamente “git push”",
-    ],
-    [{ field: "path", op: "starts_with", value: "/tmp/" }, "o campo path começa com “/tmp/”"],
-    [{ field: "url", op: "contains", value: "api" }, "o campo url contém “api”"],
-    [{ field: "command", op: "glob", value: "git *" }, "o campo command casa com o padrão “git *”"],
-  ] as const)("matcher %j", (matcher, text) => {
-    expect(matcherText(matcher)).toBe(text);
+    );
+    // "git *" or "/tmp/" are just text to be equal to, never a pattern or a start
+    expect(matcherText({ field: "command", value: "git *" })).toBe(
+      "o campo command é exatamente “git *”",
+    );
   });
 
   it("every condition has to hold: they are joined by 'e'", () => {
     expect(
       matchersText([
-        { field: "a", op: "equals", value: "1" },
-        { field: "b", op: "contains", value: "2" },
+        { field: "a", value: "1" },
+        { field: "b", value: "2" },
       ]),
-    ).toBe("o campo a é exatamente “1” e o campo b contém “2”");
+    ).toBe("o campo a é exatamente “1” e o campo b é exatamente “2”");
   });
 
   it("the sentence of a rule: effect, tool, who, and when", () => {
@@ -81,61 +79,37 @@ describe("rules in plain language", () => {
           effect: "allow",
           tool: "shell",
           botId: null,
-          matchers: [{ field: "command", op: "starts_with", value: "git " }],
+          matchers: [{ field: "command", value: "git status" }],
         },
         {},
       ),
-    ).toBe("Libera Terminal para todos os bots quando o campo command começa com “git ”.");
+    ).toBe("Libera Terminal para todos os bots quando o campo command é exatamente “git status”.");
     expect(
       ruleSentence(
         { effect: "deny", tool: "*", botId: "b1", matchers: [] },
         { botName: "Ajudante" },
       ),
-    ).toBe("Proíbe qualquer ferramenta para o bot Ajudante em qualquer uso.");
+    ).toBe(
+      "Proíbe qualquer ferramenta para o bot Ajudante em QUALQUER uso da ferramenta, com quaisquer argumentos.",
+    );
     expect(ruleSentence({ effect: "allow", tool: "shell", botId: "gone", matchers: [] })).toContain(
       "o bot (removido)",
     );
   });
 });
 
-describe("what 'always allow' will create", () => {
-  const args = { command: "git push origin main", timeout: 30, cwd: "/repo" };
-
-  it("exactly this: every text argument pinned, numbers left free, and what stays asking", () => {
-    const text = alwaysSentence({
-      scope: "bot",
-      match: "exact",
+describe("what 'Permitir destinatário' will create", () => {
+  it("pins exactly the recipient, for this bot only, and says what keeps asking", () => {
+    const text = allowRecipientSentence({
       botName: "Ajudante",
-      tool: "shell",
-      args,
+      tool: "conn_mail__send_email",
+      recipients: [{ field: "to", value: "ana@exemplo.com" }],
     });
     expect(text).toContain("o bot Ajudante");
-    expect(text).toContain("command = “git push origin main” e cwd = “/repo”");
-    expect(text).not.toContain("timeout");
-    expect(text).toContain("continua pedindo");
-  });
-
-  it("any use of the tool, for all bots", () => {
-    const text = alwaysSentence({
-      scope: "global",
-      match: "any",
-      botName: "x",
-      tool: "shell",
-      args,
-    });
-    expect(text).toContain("todos os bots");
-    expect(text).toContain("qualquer uso de Terminal");
-  });
-
-  it("a call with no text argument cannot be pinned: it says it is any use", () => {
-    const text = alwaysSentence({
-      scope: "bot",
-      match: "exact",
-      botName: "x",
-      tool: "ferramenta",
-      args: { n: 1 },
-    });
-    expect(text).toContain("qualquer uso");
+    expect(text).toContain("to = “ana@exemplo.com”");
+    expect(text).toContain("Qualquer outro destinatário continua pedindo");
+    expect(text).not.toContain("todos os bots");
+    expect(text).not.toContain("qualquer uso");
   });
 });
 
@@ -151,14 +125,19 @@ describe("the instruction line of a card", () => {
 });
 
 describe("the category and the title of a card", () => {
-  it("names the category by the tool, the connector, or a mail-like tool", () => {
+  it("names the category by the tool or the connector; 'Mensagem' only when a call DECLARES it", () => {
     expect(toolCategory("shell")).toEqual({ label: "Terminal", icon: "terminal" });
     expect(toolCategory("write_file").label).toBe("Arquivo");
     expect(toolCategory("web_fetch").label).toBe("Web");
     expect(toolCategory("remember").label).toBe("Memória");
     expect(toolCategory("conn_erp__criar_pedido")).toEqual({ label: "erp", icon: "connector" });
-    expect(toolCategory("conn_gmail__send_email")).toEqual({ label: "E-mail", icon: "mail" });
-    expect(toolCategory("send_mail").icon).toBe("mail");
+    // The name of a tool never makes it a message: only the declaration does.
+    expect(toolCategory("conn_gmail__send_email")).toEqual({ label: "gmail", icon: "connector" });
+    expect(toolCategory("send_mail")).toEqual({ label: "Ferramenta", icon: "generic" });
+    expect(toolCategory("conn_gmail__send_email", [], true)).toEqual({
+      label: "Mensagem",
+      icon: "mail",
+    });
     expect(toolCategory("algo_novo")).toEqual({ label: "Ferramenta", icon: "generic" });
   });
 

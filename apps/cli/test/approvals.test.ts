@@ -159,27 +159,60 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup approvals, rules and vault, end
     expect(shown.stdout).toContain("Entendi a negativa");
   });
 
-  it("approve --always makes a rule that the rules commands list, edit and remove", async () => {
+  it("approve has no --always: standing rules are made only by `suup rules`, which lists, edits and removes them", async () => {
     const run = idOf(await p.suup(["run", "CASE-ONE de novo", "--bot", "aprova"], withVault));
-    const [card] = (await json(["approvals"])) as { id: string }[];
-    const approved = await p.suup(["approve", prefix(card?.id, 8), "--always"], withVault);
+    const [card] = (await json(["approvals"])) as { id: string; outbound: unknown }[];
+    expect(card?.outbound).toBeNull();
+    // the removed flag is refused, and so is the recipient one on a call that is not a message
+    const always = await p.suup(["approve", prefix(card?.id, 8), "--always"], withVault);
+    expect(always.code, always.stdout + always.stderr).toBe(2);
+    const recipient = await p.suup(
+      ["approve", prefix(card?.id, 8), "--allow-recipient"],
+      withVault,
+    );
+    expect(recipient.code).toBe(1);
+    expect(recipient.stderr + recipient.stdout).toContain("não é uma mensagem para outra pessoa");
+    expect(((await json(["rules", "list"])) as Json[]).length).toBe(0);
+    const approved = await p.suup(["approve", prefix(card?.id, 8)], withVault);
     expect(approved.code, approved.stdout + approved.stderr).toBe(0);
-    expect(approved.stdout).toContain("Regra criada");
+    expect(approved.stdout).not.toContain("Regra criada");
     await p.suup(["resume", run], withVault);
     expect(await statusOf(run)).toBe("done");
+    expect(((await json(["rules", "list"])) as Json[]).length).toBe(0);
 
+    // The user's own act: an exact rule. (A similar command, or a start of it, is not the rule.)
+    const added = await p.suup(
+      [
+        "rules",
+        "add",
+        "--tool",
+        "shell",
+        "--effect",
+        "allow",
+        "--bot",
+        "aprova",
+        "--match",
+        "command=echo primeiro",
+      ],
+      withVault,
+    );
+    expect(added.code, added.stdout + added.stderr).toBe(0);
     const rules = (await json(["rules", "list"])) as {
       id: string;
       effect: string;
       createdBy: string;
+      enabled: boolean;
       matchers: Json[];
     }[];
-    const made = rules.find((r) => r.createdBy === "approval");
+    const made = rules.find((r) => r.createdBy === "user" && r.matchers.length === 1);
     expect(made).toMatchObject({
       effect: "allow",
-      matchers: [{ field: "command", op: "equals", value: "echo primeiro" }],
+      enabled: true,
+      matchers: [{ field: "command", value: "echo primeiro" }],
     });
-    expect((await p.suup(["rules", "list"], withVault)).stdout).toContain("de um cartão");
+    expect((await p.suup(["rules", "list"], withVault)).stdout).toContain(
+      'command = "echo primeiro"',
+    );
 
     // The next equal call runs without a card (a new run, another objective, same command).
     const next = idOf(await p.suup(["run", "CASE-ONE terceira", "--bot", "aprova"], withVault));
@@ -202,6 +235,39 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup approvals, rules and vault, end
     ).toBe(false);
   });
 
+  it("a rule that used a pattern is disabled, reported by the doctor, and only comes back with exact conditions", async () => {
+    // What an older version stored (the migration disables it; here it is written as it leaves it).
+    const [row] = await p.db.sql<{ id: string }[]>`
+      insert into approval_rules (tool, effect, matchers, enabled, disabled_reason)
+      values ('shell', 'allow', '[{"field":"command","op":"starts_with","value":"git "}]'::jsonb,
+              false, 'Desativada: usava uma condição por padrão (começa com, contém ou glob), que não existe mais. Condições: command starts_with "git "')
+      returning id`;
+    const id = row?.id as string;
+    const doctor = await p.suup(["doctor"], withVault);
+    expect(doctor.stdout).toContain("Regras");
+    expect(doctor.stdout).toContain("desativada");
+    expect(doctor.stdout).toContain(prefix(id, 8));
+    expect(doctor.stdout).toContain('command starts_with "git "');
+    const listed = await p.suup(["rules", "list"], withVault);
+    expect(listed.stdout).toContain("(desativada)");
+    // It cannot be turned on as it was, only with exact conditions (the user's explicit act).
+    const refused = await p.suup(["rules", "edit", prefix(id, 8), "--enable"], withVault);
+    expect(refused.code).toBe(1);
+    const fixed = await p.suup(
+      ["rules", "edit", prefix(id, 8), "--match", "command=git status", "--enable"],
+      withVault,
+    );
+    expect(fixed.code, fixed.stdout + fixed.stderr).toBe(0);
+    const [again] = (
+      (await json(["rules", "list"])) as { id: string; enabled: boolean; matchers: Json[] }[]
+    ).filter((r) => r.id === id);
+    expect(again).toMatchObject({
+      enabled: true,
+      matchers: [{ field: "command", value: "git status" }],
+    });
+    await p.suup(["rules", "rm", prefix(id, 8)], withVault);
+  });
+
   it("rules add validates its arguments", async () => {
     const ok = await p.suup(
       [
@@ -214,7 +280,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup approvals, rules and vault, end
         "--bot",
         "aprova",
         "--match",
-        "command^=git status",
+        "command=git status",
         "--match",
         "cwd=repo",
         "--note",
@@ -227,13 +293,17 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup approvals, rules and vault, end
       (await json(["rules", "list", "--bot", "aprova"])) as { note: string; matchers: Json[] }[]
     ).filter((r) => r.note === "git ok");
     expect(rule?.matchers).toEqual([
-      { field: "command", op: "starts_with", value: "git status" },
-      { field: "cwd", op: "equals", value: "repo" },
+      { field: "command", value: "git status" },
+      { field: "cwd", value: "repo" },
     ]);
     for (const bad of [
       ["rules", "add", "--tool", "shell"],
       ["rules", "add", "--tool", "shell", "--effect", "maybe"],
       ["rules", "add", "--tool", "shell", "--effect", "allow", "--match", "no-operator"],
+      // there is no prefix, substring or pattern comparison: refused, never read as equality
+      ["rules", "add", "--tool", "shell", "--effect", "allow", "--match", "command^=git"],
+      ["rules", "add", "--tool", "shell", "--effect", "allow", "--match", "command~=git"],
+      ["rules", "add", "--tool", "shell", "--effect", "allow", "--match", "command*=git *"],
     ]) {
       const r = await p.suup(bad, withVault);
       expect(r.code, bad.join(" ")).toBe(2);

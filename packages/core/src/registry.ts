@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { JsonObject, JsonValue } from "./messages.js";
+import type { OutboundMessage } from "./outbound.js";
 import type { ToolSpec } from "./provider.js";
 import { classifyCall, maxRisk, type RiskLevel } from "./risk.js";
 import {
@@ -55,6 +56,8 @@ export interface ToolAssessment {
   summary: string;
   /** The secret names the arguments mention. */
   secrets: string[];
+  /** Set only when the tool declares that the call is a message to another person. */
+  outbound?: OutboundMessage;
 }
 
 export interface AssessOptions {
@@ -163,11 +166,14 @@ export class ToolRegistry {
     let level = classifyCall(tool, parsed.data, { executor: opts.executor });
     // A call that carries a secret exists to prove who the user is to somebody else.
     if (secrets.length > 0) level = maxRisk(level, "external_irreversible");
+    // A message to another person cannot be taken back: it is never a plain read.
+    if (tool.outbound !== undefined) level = maxRisk(level, "external_irreversible");
     return {
       level,
       args: structuredClone(rawArgs) as JsonValue,
       summary: describeCall(tool, parsed.data, rawArgs),
       secrets,
+      ...(tool.outbound === undefined ? {} : { outbound: structuredClone(tool.outbound) }),
     };
   }
 

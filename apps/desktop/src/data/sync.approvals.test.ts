@@ -1,6 +1,6 @@
 import { ApiError, type SuupClient } from "@suup/api";
 import { describe, expect, it, vi } from "vitest";
-import { makeApproval, makeRule } from "../test-fixtures.js";
+import { makeApproval, makeMessageApproval, makeRule } from "../test-fixtures.js";
 import { mergeApprovals } from "./reducers.js";
 import { createDataStore, update } from "./store.js";
 import { Sync } from "./sync.js";
@@ -19,8 +19,8 @@ function setup(api: Record<string, unknown>) {
 }
 
 describe("deciding an approval: never optimistic", () => {
-  it("the card changes only with what the server answers, and an 'always allow' rule arrives with it", async () => {
-    const card = makeApproval();
+  it("the card changes only with what the server answers, and a 'Permitir destinatário' rule arrives with it", async () => {
+    const card = makeMessageApproval();
     const rule = makeRule({ sourceApprovalId: card.id, createdBy: "approval" });
     let resolveDecision: (value: unknown) => void = () => {};
     const decide = vi.fn(
@@ -31,7 +31,7 @@ describe("deciding an approval: never optimistic", () => {
     );
     const { store, sync } = setup({ approvals: { decide } });
     update(store, (s) => mergeApprovals(s, [card]));
-    const pending = sync.decideApproval(card.id, { decision: "approve", always: { scope: "bot" } });
+    const pending = sync.decideApproval(card.id, { decision: "approve", allowRecipient: true });
     // On its way: the card is exactly as it was.
     expect(store.getState().approvals[card.id]?.status).toBe("pending");
     expect(store.getState().rules).toEqual({});

@@ -66,7 +66,7 @@ export function ActionDetail({ item, context = {} }: { item: ActionItem; context
       blocks.push(
         <p key="rule" className="ui-action__label" data-testid="approval-rule">
           {context.rule === undefined
-            ? "Criou uma regra “sempre permitir”."
+            ? "Criou uma regra para este destinatário."
             : `Criou a regra: ${ruleSentence(context.rule, {
                 botName: context.botName,
                 ...(context.connectors === undefined ? {} : { connectors: context.connectors }),

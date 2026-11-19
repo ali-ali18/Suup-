@@ -49,14 +49,22 @@ export function fingerprint(key: Buffer): string {
   return createHash("sha256").update("suup-vault-key-id:").update(key).digest("hex").slice(0, 16);
 }
 
+const HEX_DIGITS = "0123456789abcdefABCDEF";
+const BASE64_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/_-";
+
 /** Reads a key given as base64, base64url or 64 hex characters. Throws `VaultError` `key_invalid`. */
 export function parseKey(text: string, source: string): VaultKey {
   const trimmed = text.trim();
   let key: Buffer | undefined;
-  if (/^[0-9a-fA-F]{64}$/.test(trimmed)) key = Buffer.from(trimmed, "hex");
-  else if (/^[A-Za-z0-9+/_-]{43}={0,1}$/.test(trimmed)) {
-    // Node's base64 decoder takes both alphabets (standard and URL-safe).
-    key = Buffer.from(trimmed.replace(/=+$/, ""), "base64");
+  if (trimmed.length === 64 && [...trimmed].every((ch) => HEX_DIGITS.includes(ch))) {
+    key = Buffer.from(trimmed, "hex");
+  } else {
+    // 43 base64 characters (standard or URL-safe alphabet), with at most one `=` of padding.
+    const body = trimmed.endsWith("=") ? trimmed.slice(0, -1) : trimmed;
+    if (body.length === 43 && [...body].every((ch) => BASE64_CHARS.includes(ch))) {
+      // Node's base64 decoder takes both alphabets (standard and URL-safe).
+      key = Buffer.from(body, "base64");
+    }
   }
   if (key === undefined || key.length !== KEY_BYTES) {
     throw new VaultError(

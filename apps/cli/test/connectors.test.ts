@@ -64,6 +64,17 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup connectors, end to end"), () =>
             { text: "Feito." },
           ],
         },
+        {
+          whenObjectiveContains: "CASE-MAIL",
+          agent: [
+            call("conn_fake__send_email", {
+              to: "ana@exemplo.com",
+              subject: "Oi",
+              body: "Tudo bem?",
+            }),
+            { text: "Enviei." },
+          ],
+        },
       ],
     });
     await p.script("outro.json", { agent: [] });
@@ -193,6 +204,66 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup connectors, end to end"), () =>
     expect(shown.stdout).not.toContain(VALUE);
     const replayed = await ok(["replay", runId]);
     expect(replayed.stdout).toContain("IDÊNTICO");
+  });
+
+  it("set-outbound: only the user marks a tool as a message to another person; its card then allows the recipient", async () => {
+    const unmarked = JSON.parse((await ok(["connectors", "tools", "fake", "--json"])).stdout) as {
+      tool: string;
+      outbound?: unknown;
+    }[];
+    expect(unmarked.find((t) => t.tool === "send_email")?.outbound).toBeUndefined();
+    expect(
+      (await p.suup(["connectors", "set-outbound", "fake", "send_email"], withVault)).code,
+    ).toBe(2);
+    expect(
+      (
+        await p.suup(
+          ["connectors", "set-outbound", "fake", "send_email", "--to", "to", "--none"],
+          withVault,
+        )
+      ).code,
+    ).toBe(2);
+    const marked = await ok(["connectors", "set-outbound", "fake", "send_email", "--to", "to"]);
+    expect(marked.stdout).toContain("mensagem a outra pessoa");
+    const tools = await ok(["connectors", "tools", "fake"]);
+    expect(tools.stdout).toContain("a outra pessoa (to)");
+
+    const first = await ok(["run", "CASE-MAIL primeiro", "--bot", "conectado"]);
+    expect(first.stdout).toContain("espera a sua aprovação");
+    expect(first.stdout).toContain("suup approve");
+    expect(first.stdout).toContain("--allow-recipient");
+    const cards = JSON.parse((await ok(["approvals", "--json"])).stdout) as {
+      id: string;
+      runId: string;
+      outbound: { kind: string; recipientFields: string[] } | null;
+    }[];
+    const card = cards.find((c) => c.runId === idOf(first));
+    expect(card?.outbound).toEqual({ kind: "message", recipientFields: ["to"] });
+    const approved = await ok(["approve", (card?.id ?? "").slice(0, 8), "--allow-recipient"]);
+    expect(approved.stdout).toContain("Regra criada");
+    await ok(["resume", idOf(first)]);
+    expect(calls().filter((c) => c.startsWith("send_email")).length).toBe(1);
+
+    const rules = JSON.parse((await ok(["rules", "list", "--json"])).stdout) as {
+      id: string;
+      tool: string;
+      createdBy: string;
+      matchers: unknown[];
+    }[];
+    const made = rules.find((r) => r.tool === "conn_fake__send_email");
+    expect(made).toMatchObject({
+      createdBy: "approval",
+      matchers: [{ field: "to", value: "ana@exemplo.com" }],
+    });
+    // The same recipient now goes without a card.
+    const again = await ok(["run", "CASE-MAIL segundo", "--bot", "conectado"]);
+    expect(again.stdout).not.toContain("espera a sua aprovação");
+    expect(calls().filter((c) => c.startsWith("send_email")).length).toBe(2);
+
+    await ok(["rules", "rm", (made?.id ?? "").slice(0, 8)]);
+    expect(
+      (await ok(["connectors", "set-outbound", "fake", "send_email", "--none"])).stdout,
+    ).toContain("não é mais");
   });
 
   it("set-risk, disable, enable, revoke, grant and rm", async () => {
