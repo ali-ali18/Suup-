@@ -3,8 +3,10 @@
 // scheduler from the host; this file builds those from the browser.
 import {
   type AvatarTicker,
+  createPixelClock,
   createTicker,
   type FrameScheduler,
+  type PixelClock,
   type Target,
   type TickerEnv,
 } from "./index.js";
@@ -88,4 +90,12 @@ let shared: AvatarTicker | null = null;
 export function getTicker(): AvatarTicker {
   shared ??= createTicker(createBrowserEnv());
   return shared;
+}
+
+let sharedPixel: PixelClock | null = null;
+
+/** Relógio compartilhado dos avatares pixel (um rAF para todos). Call from effects only. */
+export function getPixelClock(): PixelClock {
+  sharedPixel ??= createPixelClock(createBrowserEnv());
+  return sharedPixel;
 }
