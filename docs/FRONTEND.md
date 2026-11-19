@@ -112,7 +112,7 @@ Cada execução tem um log de eventos numerados (`seq`), só de acréscimo. É a
 | `review_evidence` | `round`, `callId`, `notes`, `requested` (`results`, `calls?`, `files`), `supplied`, `missing` (com `hint?`), `omitted?`, `budgetChars` | Aviso discreto ("o revisor pediu mais evidências"). Resultados de ferramenta e argumentos de chamada (`kind: tool_call`) vêm por referência (`ref` = id da chamada, o conteúdo já está no log); `omitted` lista o que só não coube no orçamento; arquivos trazem `content` e `hash`, para a retomada e o replay não dependerem do disco |
 | `escalated` | `question`, `questions?`, `reason?` | Pergunta em destaque. `questions` (1 a 5 itens `{ question, options?, multiple?, allowOther? }`) existe quando há escolhas ou várias perguntas; `options` só quando as respostas são discretas |
 | `status_changed` | `from`, `to`, `failure?`, `result?` | Mudança de estado |
-| `context_loaded` | `rules`, `profile`, `history`, `historyNote?` | Logo depois de `run_started`: o que a memória e a conversa deram à execução. Aviso discreto ("3 regras, 1 fato do perfil, 6 mensagens anteriores"); `rules` e `profile` têm `id` e `text` e aparecem na tela de memória |
+| `context_loaded` | `rules`, `profile`, `history`, `historyNote?`, `compactionThreshold?`, `memoryOmitted?` | Logo depois de `run_started`: o que a memória e a conversa deram à execução. Aviso discreto ("3 regras, 1 fato do perfil, 6 mensagens anteriores"); `rules` e `profile` têm `id` e `text` e aparecem na tela de memória. `memoryOmitted` (`{ count, chars, limitChars }`) existe quando regras e perfil ativos **não couberam** no teto do prompt: aviso "N memórias ficaram de fora do prompt; apague ou encurte algumas". `compactionThreshold` é o ponto de compactação que a execução usou |
 | `model_error` | `kind`, `message`, `retryable`, `attempt` | "Tentando de novo" ou erro |
 | `compacted` | `summary`, `droppedMessages` | Aviso discreto: "histórico resumido" |
 | `model_request` | A requisição inteira enviada ao modelo | Só no inspetor de diagnóstico |
@@ -161,7 +161,7 @@ Uma conexão por instância do app (Server-Sent Events; o cliente `api.subscribe
 | `message.created` | Mensagem nova em qualquer conversa (inclui a pergunta do bot e os avisos do sistema) |
 | `message.updated` | Mudou o estado de entrega de uma mensagem sua (`sent` → `delivered`) |
 | `conversation.updated` | Mudou a lista de conversas: mensagem nova, lida, arquivada (com `unreadCount` e `activeRun`) |
-| `memory.changed` | Uma memória foi criada, editada, esquecida ou restaurada |
+| `memory.changed` | Uma memória foi criada, editada, esquecida, restaurada, confirmada ou recusada. Com `change: "pending"` e `memory.status: "pending"`, **um bot ou a consolidação propôs** uma regra, um fato sobre o usuário ou uma nota que espera confirmação: é o gatilho do cartão "Guardar isto?" (`memory.review`, quando vem, diz por que o revisor segurou) |
 | `bot.updated` | Um bot foi criado, editado, arquivado ou tornado principal |
 | `ready` / `resync` | Da conexão: `resync` diz que o app deve **recarregar** o que mostra (veja API.md, "Retomada") |
 
@@ -275,7 +275,7 @@ Uma tela separada do chat, para quando algo dá errado. A API serve os mesmos c�
 | Conversa | `GET /v1/conversations/{id}/messages` e `GET /v1/runs/{id}/events?view=chat`; no stream, `message.*` e `run.event` |
 | Sala de grupo | O mesmo, com vários bots |
 | Criar e editar bot | `GET /v1/models`, `GET /v1/tools`, `POST /v1/bots`, `PATCH /v1/bots/{id}`, `POST /v1/bots/draft` |
-| Memória | `GET /v1/memories`, `POST`, `PATCH`, `archive`, `restore`, `GET /v1/memories/search` |
+| Memória | `GET /v1/memories` (`?status=pending` é a fila de confirmação), `POST`, `PATCH`, `archive`, `restore`, `confirm`, `reject`, `GET /v1/memories/search`, `GET /v1/memories/{id}/revisions` e `POST .../revisions/{id}/undo` (histórico e desfazer), `GET`/`PATCH /v1/memory-settings` (consolidação, teto do prompt, expiração, compactação, com o aviso `promptUsage.overLimit` e o `reviewer`), `GET /v1/memory-consolidations` |
 | Rotinas | Rotinas e histórico de disparos |
 | Pendências | Cartões de aprovação (`GET /v1/approvals?status=pending`, quadro `approval.changed`), perguntas abertas, pedidos de segredo (execuções `waiting_user` com `secret-request`) e iniciativas, de todos os bots |
 | Regras de aprovação | `GET/POST/PATCH/DELETE /v1/written-rules` (as que o usuário escreve) e o modo em `GET/PATCH /v1/approval-settings`; as exatas em `/v1/approval-rules` |

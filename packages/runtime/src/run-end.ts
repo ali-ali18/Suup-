@@ -62,6 +62,29 @@ export function journalText(run: Run): string {
   return `${when} · ${what} · Resultado: ${outcome}`;
 }
 
+/**
+ * O fato curto da entrada do diário (até 200 caracteres), que entra na busca junto do texto. Sem
+ * modelo: sai só dos campos da própria execução (o que ela era e como acabou), na mesma regra de
+ * privacidade do texto do diário (o texto cru do usuário numa conversa nunca entra).
+ */
+export function journalSummary(run: Run): string {
+  const isConversation = run.conversationId !== null && run.conversationId !== undefined;
+  const what = isConversation ? "Conversa" : clip(run.objective, 70);
+  let outcome: string;
+  if (run.status === "done") {
+    const result = runResultSchema.safeParse(run.result);
+    outcome =
+      result.success && result.data.summary.trim() !== ""
+        ? `concluída: ${clip(result.data.summary, 110)}`
+        : "concluída";
+  } else if (run.status === "failed") {
+    outcome = `falhou (${run.failureOrigin ?? "origem desconhecida"})`;
+  } else {
+    outcome = "cancelada";
+  }
+  return clip(`${what}, ${outcome}`, 200);
+}
+
 /** Nomes das ferramentas de controle, para distinguir uma execução que só conversou. */
 const CONTROL_NAMES: string[] = [...CONTROL_TOOL_NAMES];
 
@@ -235,6 +258,7 @@ export async function finishRun(
       const journal = await addJournalMemory(db, {
         botId: run.botId,
         text: journalText(await scrubbedForJournal(run, options)),
+        summary: journalSummary(await scrubbedForJournal(run, options)),
         sourceRunId: run.id,
         ...(run.conversationId == null ? {} : { sourceConversationId: run.conversationId }),
       });

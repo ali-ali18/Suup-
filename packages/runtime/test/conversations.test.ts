@@ -407,6 +407,9 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("conversation engine"), () => {
         limit: 10,
       });
       expect(journal).toHaveLength(1);
+      // The journal writer fills the short fact itself, from the fields of the run (no model).
+      expect(journal[0]?.summary).toBe("Conversa, concluída: Terminei no segundo worker.");
+      expect(journal[0]?.summary?.length).toBeLessThanOrEqual(200);
       await runtime.close();
     });
 

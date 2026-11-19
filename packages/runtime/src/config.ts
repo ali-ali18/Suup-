@@ -273,6 +273,23 @@ const approvalsSchema = z.strictObject({
   ),
 });
 
+/**
+ * The memory settings that are NOT the user's to change in the app: which model consolidates the
+ * conversations in the background (docs/MEMORIA.md). Everything the user chooses (when it runs, how
+ * much goes into the prompt, expiry, the compaction point) lives in the database
+ * (`GET`/`PATCH /v1/memory-settings`).
+ */
+const memoryConfigSchema = z.strictObject({
+  consolidation: z.exactOptional(
+    z.strictObject({
+      /** A model of `models`. Absent: the model of `approvals.autoReview`, else the one of `reviewer`. */
+      model: z.exactOptional(z.string().min(1)),
+      /** `false` turns the background consolidation off in this configuration. Default `true`. */
+      enabled: z.exactOptional(z.boolean()),
+    }),
+  ),
+});
+
 const toolSearchSchema = z.strictObject({
   /** Defer the connector tools of a bot when it has at least this many (default 10)... */
   minTools: z.exactOptional(positiveInt),
@@ -301,6 +318,7 @@ export const configSchema = z
     untrustedOutputTools: z.exactOptional(z.array(z.string().min(1)).max(50)),
     vault: z.exactOptional(vaultSchema),
     approvals: z.exactOptional(approvalsSchema),
+    memory: z.exactOptional(memoryConfigSchema),
     /** When the connector tools of a bot are searched instead of all loaded (docs/CONFIGURACAO.md). */
     toolSearch: z.exactOptional(toolSearchSchema),
   })
@@ -354,6 +372,14 @@ export const configSchema = z
         code: "custom",
         path: ["approvals", "autoReview", "model"],
         message: `modelo "${autoReviewModel}" não existe em "models" (existentes: ${[...modelIds].join(", ")})`,
+      });
+    }
+    const consolidationModel = config.memory?.consolidation?.model;
+    if (consolidationModel !== undefined && !modelIds.has(consolidationModel)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["memory", "consolidation", "model"],
+        message: `modelo "${consolidationModel}" não existe em "models" (existentes: ${[...modelIds].join(", ")})`,
       });
     }
     const renew = config.worker?.leaseRenewMs ?? DEFAULT_WORKER.leaseRenewMs;

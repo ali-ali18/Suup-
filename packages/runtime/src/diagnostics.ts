@@ -22,6 +22,7 @@ import {
 import { type Db, getBot, getRun, listRunEvents, migrationStatus } from "@suup/db";
 import { checkConnectors } from "./connectors/doctor.js";
 import { RuntimeError } from "./errors.js";
+import { checkMemory } from "./memory-doctor.js";
 import { checkNetwork } from "./network/doctor.js";
 import type { Runtime } from "./runtime.js";
 import { loadScript } from "./scripted-provider.js";
@@ -718,6 +719,7 @@ export async function runDoctorChecks(
     ...(await guarded("Provedores", () => checkProviders(runtime, options.live === true))),
   );
   checks.push(...(await guarded("Cofre", () => checkVaultAndApprovals(runtime))));
+  checks.push(...(await guarded("Memória", () => checkMemory(runtime))));
   checks.push(
     ...(options.connectors === false
       ? [

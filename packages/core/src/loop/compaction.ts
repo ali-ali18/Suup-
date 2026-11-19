@@ -15,7 +15,8 @@ const SUMMARY_MAX_OUTPUT_TOKENS = 4096;
 export async function compactIfNeeded(ctx: LoopContext): Promise<void> {
   const { system, tools } = fixedParts(ctx);
   const estimate = estimateTokens(ctx.state, system.length + JSON.stringify(tools).length);
-  if (estimate > COMPACTION_THRESHOLD * ctx.deps.bot.model.contextWindow) {
+  const threshold = ctx.state.compactionThreshold ?? COMPACTION_THRESHOLD;
+  if (estimate > threshold * ctx.deps.bot.model.contextWindow) {
     await compact(ctx);
   }
 }
@@ -27,6 +28,16 @@ export async function compact(ctx: LoopContext): Promise<boolean> {
   const cut = chooseCutIndex(state.messages);
   const uptoSeq = cut === null ? undefined : state.messageSeqs[cut - 1];
   if (cut === null || uptoSeq === undefined) return false;
+
+  // The conversation is about to lose detail: the runtime may queue a consolidation of what the
+  // user said (it only queues; a failure here never touches the run).
+  if (ctx.deps.beforeCompaction !== undefined) {
+    try {
+      await ctx.deps.beforeCompaction(ctx.run);
+    } catch {
+      // never block or change a run because of the memory
+    }
+  }
 
   const dropped = state.messages.slice(0, cut);
   const transcript = renderTranscript(dropped, Math.floor(bot.model.contextWindow * 4 * 0.5));

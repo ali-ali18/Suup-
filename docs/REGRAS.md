@@ -83,7 +83,6 @@ Total: 191 regex em 76 arquivos (a: 68 · b: 16 · c: 104 · d: 3). Geradas por 
 | `packages/avatar/src/avatar.ts` (81) | troca caracteres fora de [a-zA-Z0-9_-] num id gerado | percorrer e substituir caractere a caractere |
 | `packages/connectors/src/text.ts` (13, 16, 39, 40, 41, 48) | limpa texto vindo de um servidor MCP (não confiável): tira caracteres de controle e invisíveis (classes Unicode fixas) e normaliza espaços/quebras | manter (limpeza por classe de caractere, não por significado) ou dono decide |
 | `packages/core/src/untrusted.ts` (11) | neutraliza as cercas `<<<EXTERNAL_DATA` / `<<<END_EXTERNAL_DATA` dentro de texto de fora, para ele não fechar o envelope | `indexOf` do texto fixo, sem regex |
-| `packages/runtime/src/memory-service.ts` (25) | achata espaços em branco de um trecho de memória para exibir | dividir sem regex |
 | `packages/runtime/src/run-end.ts` (30) | achata espaços em branco do resumo antes de cortar para o diário | dividir sem regex |
 | `packages/tools/src/edit-file.ts` (123) | achata espaços em branco para mostrar um trecho na mensagem de erro | dividir sem regex |
 

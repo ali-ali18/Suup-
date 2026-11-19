@@ -51,6 +51,7 @@ export {
   toolStatsSchema,
 } from "./events.js";
 export * from "./loop/index.js";
+export * from "./memory/index.js";
 export {
   type Block,
   blockSchema,
@@ -188,6 +189,8 @@ export {
   type MemoryService,
   type NetworkAccess,
   type RecallLayerName,
+  type RememberResult,
+  type RunFacts,
   resolveWorkspacePath,
   type Tool,
   type ToolContext,
@@ -197,6 +200,7 @@ export {
 } from "./tool.js";
 export { EXTERNAL_CLOSE, EXTERNAL_OPEN, wrapUntrusted } from "./untrusted.js";
 export {
+  type BackgroundJob,
   type RunEnd,
   type RunQueue,
   systemClock,

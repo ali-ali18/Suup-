@@ -500,14 +500,6 @@ export const REGEX_ALLOWLIST: readonly RegexAllowance[] = [
     pending: true,
   },
   {
-    file: "packages/runtime/src/memory-service.ts",
-    count: 1,
-    group: "b",
-    why: "achata espaços em branco de um trecho de memória para exibir",
-    instead: "dividir sem regex",
-    pending: true,
-  },
-  {
     file: "packages/runtime/src/run-end.ts",
     count: 1,
     group: "b",

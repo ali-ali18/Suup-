@@ -150,6 +150,7 @@ async function handleTool(
     signal: ctx.toolSignal,
     now: () => now(),
     ...(memory === undefined ? {} : { memory }),
+    runFacts: { userMessages: [...ctx.state.userSaid], toolsUsed: [...ctx.state.toolsUsed] },
     ...(network === undefined ? {} : { network }),
   };
   let invocation: ToolInvocation;

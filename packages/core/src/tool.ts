@@ -133,11 +133,17 @@ export type RecallLayerName = MemoryLayerName | "journal";
  */
 export interface MemoryService {
   /** Saves a memory. Throws a `MemoryRuleError` (see below) for a layer/scope combination that does not exist. */
-  remember(input: {
-    layer: MemoryLayerName;
-    text: string;
-    scope?: "shared" | "bot";
-  }): Promise<{ id: string }>;
+  remember(
+    input: {
+      layer: MemoryLayerName;
+      text: string;
+      /** The short fact (at most 200 characters), searched together with the text. */
+      summary?: string;
+      scope?: "shared" | "bot";
+    },
+    /** What the run knows about itself, for the checks on a write (docs/MEMORIA.md). */
+    run?: RunFacts,
+  ): Promise<RememberResult>;
   recall(input: { query: string; layers?: RecallLayerName[]; limit?: number }): Promise<
     {
       id: string;
@@ -160,6 +166,28 @@ export interface MemoryService {
       createdAt: Date;
     }[]
   >;
+}
+
+/**
+ * What a run tells the memory when the bot saves something: the user's own messages (oldest first)
+ * and the names of the tools whose results the run has already received. The runtime decides, from
+ * what each tool DECLARES (`ownOutput`), whether the run has read content from outside.
+ */
+export interface RunFacts {
+  userMessages: readonly string[];
+  toolsUsed: readonly string[];
+}
+
+/**
+ * `active`: the memory counts from the next run. `pending`: it waits for the user (a rule or a fact
+ * about the user written by the bot never counts before they confirm; a note written after the run
+ * read content from outside waits when the reviewer did not clear it). `reason` says why.
+ */
+export interface RememberResult {
+  id: string;
+  status: "active" | "pending";
+  /** Why it is pending, in words the bot can pass on. */
+  reason?: string;
 }
 
 /** Thrown by a `MemoryService` for a request that makes no sense (e.g. a shared note). The message is for the model. */
@@ -186,6 +214,8 @@ export interface ToolContext {
   now(): Date;
   /** Present when the run has memory (the runtime provides it); the memory tools need it. */
   memory?: MemoryService;
+  /** What the run knows about itself (the loop fills it), for checks on what the bot saves. */
+  runFacts?: RunFacts;
   /** Present when the bot's machine reaches the internet through the egress proxy. */
   network?: NetworkAccess;
 }
@@ -246,6 +276,12 @@ export interface Tool<I = unknown> {
    * can also set `ToolOutput.untrusted` itself.
    */
   externalOutput?: boolean;
+  /**
+   * The output is only data the harness holds itself (the bot's own memory, the echo of its own
+   * writes), never content that came from outside. Every other tool counts as "may have read
+   * content from outside" for the checks on what the bot saves to memory; absent means it may have.
+   */
+  ownOutput?: boolean;
   /**
    * The call sends a message to another person (an e-mail and the like). Declared, never guessed:
    * `recipientFields` say where the recipients are in the input (dotted paths). The approval card

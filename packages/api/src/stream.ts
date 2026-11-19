@@ -61,7 +61,12 @@ const frames = {
   /** A conversation changed (a new message, read, archived). The whole conversation is sent. */
   "conversation.updated": z.object({ conversation: conversationSchema }),
   "memory.changed": z.object({
-    change: z.enum(["created", "updated", "archived", "restored"]),
+    /**
+     * `pending`: a bot or the consolidation proposed a rule or a fact that waits for you (show a
+     * card; `memory.status` is `pending`). The later decision arrives as `updated` with
+     * `memory.status` `active` (confirmed) or `rejected`.
+     */
+    change: z.enum(["created", "pending", "updated", "archived", "restored"]),
     memory: memorySchema,
   }),
   "bot.updated": z.object({ bot: botSchema }),

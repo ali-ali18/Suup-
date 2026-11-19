@@ -127,8 +127,12 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup chat and memory, end to end"), 
       const first = await chat("ana", "Meu nome é Marina e moro em Recife.");
       expect(first.code, first.stdout + first.stderr).toBe(0);
       expect(first.stdout).toContain("ana: Anotado, Marina!");
-      const memories = (await json(["memory", "list"])) as Json[];
-      const fact = memories.find((m) => m.layer === "profile");
+      // A fact the bot writes about the user waits for the user: it is not in the memory yet.
+      expect(
+        ((await json(["memory", "list"])) as Json[]).find((m) => m.layer === "profile"),
+      ).toBeUndefined();
+      const pending = (await json(["memory", "pending"])) as Json[];
+      const fact = pending.find((m) => m.layer === "profile");
       expect(fact).toMatchObject({
         text: "O usuário se chama Marina e mora em Recife.",
         scope: "shared",
@@ -137,6 +141,9 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup chat and memory, end to end"), 
       const [anaRun] = await runsOf("ana");
       expect(fact?.sourceRunId).toBe(anaRun);
       expect(fact?.sourceConversationId).toBeTruthy();
+      const confirmed = await p.suup(["memory", "confirm", String(fact?.id).slice(0, 8)]);
+      expect(confirmed.code, confirmed.stdout + confirmed.stderr).toBe(0);
+      expect(confirmed.stdout).toContain("Confirmada");
 
       // A new bot is drafted from a description, and created after the proposal is confirmed.
       const draft = await p.suup([
@@ -201,8 +208,18 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup chat and memory, end to end"), 
       const said = await chat("regra-a", "LEMBRE-REGRA: nunca use gírias, e me chame de chefe");
       expect(said.code, said.stdout + said.stderr).toBe(0);
       expect(said.stdout).toContain("regra-a: Regras guardadas.");
-      const rules = ((await json(["memory", "list", "--layer", "rule"])) as Json[]).filter(
-        (r) => r.createdBy === "bot",
+      // The rules the bot wrote wait for the user: none is in the memory, and none is in a prompt.
+      expect(
+        ((await json(["memory", "list", "--layer", "rule"])) as Json[]).filter(
+          (r) => r.createdBy === "bot",
+        ),
+      ).toEqual([]);
+      await p.suup(["bot", "create", "--name", "regra-d", "--model", "model-x"]);
+      await chat("regra-d", "SO-RESPONDA");
+      const beforeConfirm = await systemOf((await runsOf("regra-d"))[0] as string);
+      expect(beforeConfirm).not.toContain("Nunca use gírias.");
+      const rules = ((await json(["memory", "pending"])) as Json[]).filter(
+        (r) => r.layer === "rule",
       );
       expect(rules.map((r) => [r.text, r.scope])).toEqual([
         ["Nunca use gírias.", "shared"],
@@ -210,6 +227,10 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup chat and memory, end to end"), 
       ]);
       // Audit: the bot-created rule records where it came from.
       for (const rule of rules) expect(rule.sourceRunId).toBeTruthy();
+      for (const rule of rules) {
+        const ok = await p.suup(["memory", "confirm", String(rule.id).slice(0, 8)]);
+        expect(ok.code, ok.stdout + ok.stderr).toBe(0);
+      }
 
       for (const bot of ["regra-b", "regra-c"]) {
         const r = await chat(bot, "SO-RESPONDA");

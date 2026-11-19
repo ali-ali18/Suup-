@@ -264,6 +264,24 @@ export const runEventSchema = z.discriminatedUnion("type", [
       historyNote: z.exactOptional(z.string()),
       /** The secrets the bot may use (names and what they are for; never values). */
       secrets: z.exactOptional(z.array(secretInfoSchema)),
+      /**
+       * The share of the context window past which this run compacts its history (the user's
+       * setting at the start of the run). Recorded so that a replay compacts at the same point.
+       * Absent in a run recorded before it existed: the old default (0.7) applies.
+       */
+      compactionThreshold: z.exactOptional(z.number().min(0.1).max(0.99)),
+      /**
+       * Rules and profile facts that did not fit under the size cap of what always enters the
+       * prompt (`memory.promptLimitChars`) and were left out, in creation order. Nothing is cut
+       * silently: this says how much, so the app can ask the user to trim.
+       */
+      memoryOmitted: z.exactOptional(
+        z.object({
+          count: z.number().int().nonnegative(),
+          chars: z.number().int().nonnegative(),
+          limitChars: z.number().int().positive(),
+        }),
+      ),
     }),
   }),
   z.object({

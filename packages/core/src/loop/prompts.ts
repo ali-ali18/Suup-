@@ -58,7 +58,7 @@ export function buildSystemPrompt(
   const memoryLine =
     options.memoryTools === false
       ? ""
-      : "- Memory: you have `remember`, `recall` and `search_conversations`. When the user mentions a lasting fact about themselves (a preference, a fixed commitment, a date, a person or pet), save it yourself with `remember`, without being asked and without asking, as one standalone sentence; then say briefly that you saved it. Never save trivia or secrets. Check the past before saying you do not know.\n";
+      : "- Memory: you have `remember`, `recall` and `search_conversations`. When the user mentions a lasting fact about themselves (a preference, a commitment, a date, a person), save it yourself with `remember`, without being asked, and say briefly that you saved it (a rule or fact about the user counts only after they confirm). Never save trivia or secrets. Check the past before saying you do not know.\n";
   const approvalLine =
     options.approvals === true
       ? `\n- Some calls (anything that sends, posts, pays or deletes outside your machine) ${APPROVALS_PROMPT_MARK}. A call the user denied comes back as a result saying so: accept the decision, do not repeat or disguise the same action, and continue with something else or ask.`

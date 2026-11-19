@@ -26,6 +26,7 @@ import { dbMigrate } from "./commands/db.js";
 import { doctorCommand } from "./commands/doctor.js";
 import { evalCommand, evalHistory, evalList } from "./commands/eval.js";
 import { evalApprovals } from "./commands/eval-approvals.js";
+import { evalMemory, evalMemoryRecall } from "./commands/eval-memory.js";
 import { inspectCommand } from "./commands/inspect.js";
 import {
   memoryAdd,
@@ -35,6 +36,15 @@ import {
   memoryRestore,
   memorySearch,
 } from "./commands/memory.js";
+import {
+  memoryConfirm,
+  memoryConsolidations,
+  memoryHistory,
+  memoryPending,
+  memoryReject,
+  memorySettings,
+  memoryUndo,
+} from "./commands/memory-lifecycle.js";
 import { sayCommand, stopCommand } from "./commands/messages.js";
 import { networkAllow, networkList, networkRemove } from "./commands/network.js";
 import { replayCommand } from "./commands/replay.js";
@@ -81,6 +91,13 @@ export const COMMANDS: readonly CommandSpec[] = [
   memoryForget,
   memoryRestore,
   memorySearch,
+  memoryPending,
+  memoryConfirm,
+  memoryReject,
+  memoryHistory,
+  memoryUndo,
+  memoryConsolidations,
+  memorySettings,
   approvalsCommand,
   approvalsMode,
   approveCommand,
@@ -131,6 +148,8 @@ export const COMMANDS: readonly CommandSpec[] = [
   evalList,
   evalHistory,
   evalApprovals,
+  evalMemory,
+  evalMemoryRecall,
 ];
 
 const GROUPS: Record<string, string> = {

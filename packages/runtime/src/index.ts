@@ -77,7 +77,16 @@ export {
   typedRunEvent,
 } from "./diagnostics.js";
 export { ConfigError, RuntimeError, type RuntimeErrorCode } from "./errors.js";
-export { createMemoryService } from "./memory-service.js";
+export {
+  CONSOLIDATION_LEASE_MS,
+  type ConsolidationDeps,
+  type ConsolidationOutcome,
+  type KeptItem,
+  requestPreCompactionConsolidation,
+  runMemoryExpiry,
+  runNextConsolidation,
+} from "./memory-consolidation.js";
+export { createMemoryService, type MemoryServiceDeps } from "./memory-service.js";
 export {
   type BotNetworkView,
   createNetworkService,
@@ -86,6 +95,7 @@ export {
 export { DEFAULT_HISTORY_CHARS, loadRunContext } from "./run-context.js";
 export {
   finishRun,
+  journalSummary,
   journalText,
   ORIGIN_TEXT_PT,
   type RunEffects,

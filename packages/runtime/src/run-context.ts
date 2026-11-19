@@ -33,14 +33,28 @@ export async function loadRunContext(
   db: Db,
   runId: string,
   historyChars: number = DEFAULT_HISTORY_CHARS,
+  settings: { promptLimitChars?: number; compactionThreshold?: number } = {},
 ): Promise<RunContextSnapshot> {
   const run = await getRun(db, runId);
   if (run === null) throw new Error(`run ${runId} not found`);
-  const memory = await memoryContextFor(db, run.botId);
+  const memory = await memoryContextFor(
+    db,
+    run.botId,
+    settings.promptLimitChars === undefined ? {} : { limitChars: settings.promptLimitChars },
+  );
   const rules = memory.rules.map((m) => ({ id: m.id, text: m.text }));
   const profile = memory.profile.map((m) => ({ id: m.id, text: m.text }));
+  // Nothing is cut silently: what did not fit under the size cap is counted in the recorded context.
+  const extra = {
+    ...(settings.compactionThreshold === undefined
+      ? {}
+      : { compactionThreshold: settings.compactionThreshold }),
+    ...(memory.omitted.count > 0 && settings.promptLimitChars !== undefined
+      ? { memoryOmitted: { ...memory.omitted, limitChars: settings.promptLimitChars } }
+      : {}),
+  };
   if (run.conversationId === null || run.conversationId === undefined) {
-    return { rules, profile, history: [] };
+    return { rules, profile, history: [], ...extra };
   }
 
   // Everything before the message that opened this run.
@@ -81,7 +95,13 @@ export async function loadRunContext(
   const note = omitted
     ? `The conversation has earlier messages that are not shown here (${hidden > 0 ? `${hidden} older than the ones above` : "all of them"}). Use search_conversations to look them up if you need them.`
     : undefined;
-  return { rules, profile, history, ...(note === undefined ? {} : { historyNote: note }) };
+  return {
+    rules,
+    profile,
+    history,
+    ...(note === undefined ? {} : { historyNote: note }),
+    ...extra,
+  };
 }
 
 function textOf(message: ChatMessage): string {

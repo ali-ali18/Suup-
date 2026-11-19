@@ -9,6 +9,7 @@ import {
   getMemory,
   getMessage,
   getRun,
+  latestMemoryReviews,
   listActiveConversationRuns,
   listChanges,
   listRunEvents,
@@ -109,15 +110,23 @@ async function eventsOf(
       const memory = await getMemory(db, change.ref);
       if (memory === null) return [];
       const kind =
-        change.op === "archived" || change.op === "restored" || change.op === "updated"
+        change.op === "archived" ||
+        change.op === "restored" ||
+        change.op === "updated" ||
+        change.op === "pending"
           ? change.op
           : "created";
+      // A pending memory goes out with what the reviewer said about it, so the card can show why.
+      const review =
+        memory.status === "pending"
+          ? ((await latestMemoryReviews(db, [memory.id])).get(memory.id) ?? null)
+          : undefined;
       return [
         {
           type: "memory.changed",
           key: `memory:${memory.id}`,
           version: memory.updatedAt.getTime(),
-          data: { change: kind, memory: toMemoryDto(memory) },
+          data: { change: kind, memory: toMemoryDto(memory, review) },
         },
       ];
     }

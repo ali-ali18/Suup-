@@ -31,6 +31,7 @@ export const requestNetworkAccessTool = defineTool({
   // It only ever asks: the grant happens after the user approved the card with this exact host.
   // The level is fixed (no `classify`), so the card always appears unless the user wrote a rule.
   risk: "external_irreversible",
+  ownOutput: true,
   describe: ({ host, reason }) =>
     `Allow network access to ${host} until the end of this run. Reason: ${reason}`,
   async execute({ host }, ctx) {

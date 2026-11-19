@@ -163,6 +163,10 @@ async function ensureContext(ctx: LoopContext): Promise<void> {
       history: snapshot.history,
       ...(snapshot.historyNote === undefined ? {} : { historyNote: snapshot.historyNote }),
       ...(snapshot.secrets === undefined ? {} : { secrets: snapshot.secrets }),
+      ...(snapshot.compactionThreshold === undefined
+        ? {}
+        : { compactionThreshold: snapshot.compactionThreshold }),
+      ...(snapshot.memoryOmitted === undefined ? {} : { memoryOmitted: snapshot.memoryOmitted }),
     },
   });
 }

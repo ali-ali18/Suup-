@@ -82,13 +82,21 @@ import { ApiError, type ErrorCode } from "./errors.js";
 import {
   type AddMemoryBody,
   type ListMemoriesQuery,
+  type ListMemoryConsolidationsQuery,
   type Memory,
+  type MemoryConsolidation,
+  type MemoryRevision,
+  type MemorySettings,
+  memoryConsolidationListSchema,
   memoryListSchema,
+  memoryRevisionListSchema,
   memorySchema,
   memorySearchSchema,
+  memorySettingsSchema,
   messageSearchSchema,
   type SearchMemoriesQuery,
   type SearchMessagesQuery,
+  type UpdateMemorySettingsBody,
 } from "./memory.js";
 import { type BotNetwork, botNetworkSchema } from "./network.js";
 import {
@@ -190,6 +198,23 @@ export interface SuupClient {
     archive(id: string): Promise<Memory>;
     restore(id: string): Promise<Memory>;
     search(query: SearchMemoriesQuery): Promise<z.infer<typeof memorySearchSchema>["items"]>;
+    /** What waits for your confirmation: `list({ status: "pending" })`. */
+    pending(): Promise<Memory[]>;
+    /** Confirms a pending memory: from the next run it counts (a rule or fact enters the prompts). */
+    confirm(id: string): Promise<Memory>;
+    /** Refuses a pending memory (kept as `rejected`, not proposed again). */
+    reject(id: string): Promise<Memory>;
+    /** The history of changes of one memory, newest first. */
+    history(id: string): Promise<MemoryRevision[]>;
+    /** Undoes one change (only the latest of a memory); the memory comes back as it was before. */
+    undo(id: string, revisionId: string): Promise<Memory>;
+    /** The attempts of the background consolidation, newest first. */
+    consolidations(query?: ListMemoryConsolidationsQuery): Promise<MemoryConsolidation[]>;
+  };
+  memorySettings: {
+    get(): Promise<MemorySettings>;
+    /** Changes only the keys sent. `expiryDays: null` means never. */
+    update(body: UpdateMemorySettingsBody): Promise<MemorySettings>;
   };
   search: {
     messages(query: SearchMessagesQuery): Promise<z.infer<typeof messageSearchSchema>["items"]>;
@@ -423,6 +448,36 @@ export function createClient(options: ClientOptions): SuupClient {
             query: query as unknown as Query,
           })
         ).items,
+      pending: async () =>
+        (
+          await call("GET", "/v1/memories", memoryListSchema, {
+            query: { status: "pending" } as Query,
+          })
+        ).items,
+      confirm: (memoryId) =>
+        call("POST", `/v1/memories/${id(memoryId)}/confirm`, memorySchema, noBody),
+      reject: (memoryId) =>
+        call("POST", `/v1/memories/${id(memoryId)}/reject`, memorySchema, noBody),
+      history: async (memoryId) =>
+        (await call("GET", `/v1/memories/${id(memoryId)}/revisions`, memoryRevisionListSchema))
+          .items,
+      undo: (memoryId, revisionId) =>
+        call(
+          "POST",
+          `/v1/memories/${id(memoryId)}/revisions/${id(revisionId)}/undo`,
+          memorySchema,
+          noBody,
+        ),
+      consolidations: async (query) =>
+        (
+          await call("GET", "/v1/memory-consolidations", memoryConsolidationListSchema, {
+            query: query as Query | undefined,
+          })
+        ).items,
+    },
+    memorySettings: {
+      get: () => call("GET", "/v1/memory-settings", memorySettingsSchema),
+      update: (body) => call("PATCH", "/v1/memory-settings", memorySettingsSchema, { body }),
     },
     search: {
       messages: async (query) =>

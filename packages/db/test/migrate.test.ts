@@ -52,6 +52,10 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("migrate"), () => {
       "conversation_members",
       "conversations",
       "memories",
+      "memory_consolidations",
+      "memory_reviews",
+      "memory_revisions",
+      "memory_settings",
       "messages",
       "network_events",
       "network_hosts",
@@ -102,9 +106,9 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("migrate"), () => {
     const fresh = await ctx.db.sql`select 1`; // keep pool warm
     expect(fresh).toHaveLength(1);
     await ctx.db
-      .sql`drop table schema_migrations, memories, messages, conversation_members, conversations, run_inbox, approvals, approval_rules, approval_settings, written_rules, secret_grants, secrets, connector_discovery, connector_grants, connector_pin_baselines, connector_tool_events, connector_tool_pins, connectors, network_events, network_hosts, run_events, runs, bots, extra_ok, change_log, change_log_state cascade`;
+      .sql`drop table schema_migrations, memory_consolidations, memory_reviews, memory_revisions, memory_settings, memories, messages, conversation_members, conversations, run_inbox, approvals, approval_rules, approval_settings, written_rules, secret_grants, secrets, connector_discovery, connector_grants, connector_pin_baselines, connector_tool_events, connector_tool_pins, connectors, network_events, network_hosts, run_events, runs, bots, extra_ok, change_log, change_log_state cascade`;
     await ctx.db
-      .sql`drop function set_updated_at(), run_events_append_only(), suup_search_query(text), suup_unaccent(text)`;
+      .sql`drop function set_updated_at(), run_events_append_only(), suup_search_query(text), suup_unaccent(text), suup_text_key(text), memories_set_text_key()`;
     const results = await Promise.all([migrate(ctx.db), migrate(ctx.db), migrate(ctx.db)]);
     expect(results.flat()).toEqual(await allMigrations());
   });

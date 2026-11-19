@@ -16,6 +16,7 @@
     }
   ],
   "reviewer": { "model": "model-x" },
+  "memory": { "consolidation": { "model": "model-x" } },
   "sandbox": {
     "kind": "docker",
     "image": "suup-sandbox:prod",

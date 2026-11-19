@@ -95,7 +95,11 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("memory service and run context"), ()
       const a = await world();
       const b = await world();
       await a.service.remember({ layer: "note", text: "segredo-do-bot-a: chave da planilha azul" });
-      await a.service.remember({ layer: "profile", text: "planilha compartilhada de despesas" });
+      await addMemory(ctx.db, {
+        layer: "profile",
+        text: "planilha compartilhada de despesas",
+        createdBy: "user",
+      });
       const seenByA = await a.service.recall({ query: "planilha" });
       const seenByB = await b.service.recall({ query: "planilha" });
       expect(seenByA.map((h) => h.layer).sort()).toEqual(["note", "profile"]);

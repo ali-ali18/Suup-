@@ -1,8 +1,16 @@
 import type { Message } from "../messages.js";
 import { isReminderBlock } from "./prompts.js";
 
-/** Compact when the next request is estimated above this share of the context window. */
+/**
+ * Compact when the next request is estimated above this share of the context window. This is what
+ * a run uses when its log does not say otherwise (a run recorded before the setting existed, or one
+ * that loads no context, like an evaluation). The user's setting (`memory.compactionThreshold`,
+ * default 0.8) is read at the start of a run and recorded in `context_loaded`.
+ */
 export const COMPACTION_THRESHOLD = 0.7;
+/** The default of the user's setting, and the range it may take. */
+export const DEFAULT_COMPACTION_THRESHOLD = 0.8;
+export const COMPACTION_THRESHOLD_RANGE = { min: 0.5, max: 0.95 } as const;
 /** Messages at the end of the conversation that compaction always keeps verbatim. */
 export const MIN_KEPT_MESSAGES = 4;
 

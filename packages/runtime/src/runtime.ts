@@ -8,6 +8,7 @@ import {
   type BotConfig,
   CONTROL_TOOL_NAMES,
   controlToolSpecs,
+  createMemoryWriteReviewer,
   createModelReviewer,
   createToolGate,
   DEFAULT_TOOL_SEARCH,
@@ -33,6 +34,7 @@ import {
   type Db,
   getApprovalMode,
   getBot,
+  getMemorySettings,
   getRun,
   PgRunQueue,
   PgRunStore,
@@ -68,6 +70,12 @@ import {
   createConnectorService,
 } from "./connectors/service.js";
 import { ConfigError, RuntimeError } from "./errors.js";
+import {
+  type ConsolidationOutcome,
+  requestPreCompactionConsolidation,
+  runMemoryExpiry,
+  runNextConsolidation,
+} from "./memory-consolidation.js";
 import { createMemoryService } from "./memory-service.js";
 import { createNetworkService, type NetworkService } from "./network/service.js";
 import { DEFAULT_HISTORY_CHARS, loadRunContext } from "./run-context.js";
@@ -109,6 +117,11 @@ export interface CreateWorkerOptions {
   onlyRunId?: string;
   concurrency?: number;
   idleBackoff?: { minMs?: number; maxMs?: number; factor?: number };
+  /**
+   * How often the worker looks for a conversation to consolidate and for memory to expire
+   * (`undefined`: every 30 s and every hour). A worker that follows one run never does either.
+   */
+  memoryEveryMs?: { consolidation?: number; expiry?: number };
   onRunEnd?(end: RunEnd): void;
   onError?(error: unknown, context: string): void;
 }
@@ -177,6 +190,13 @@ export interface Runtime {
    * (`reason` says why, in words for the person).
    */
   autoReviewStatus(): AutoReviewStatus;
+  /**
+   * The cheap model that consolidates the conversations in the background and reviews what the bot
+   * writes to memory after reading content from outside (docs/MEMORIA.md): the model of
+   * `memory.consolidation`, else the auto-review model. Without one, nothing is consolidated and
+   * such writes wait for the user.
+   */
+  memoryReviewerStatus(): AutoReviewStatus;
   createRun(input: {
     botId: string;
     objective: string;
@@ -186,6 +206,15 @@ export interface Runtime {
   }): Promise<Run>;
   buildDeps(runId: string, workerId: string, options?: BuildDepsOptions): Promise<LoopDeps>;
   createWorker(options?: CreateWorkerOptions): Worker;
+  /**
+   * One pass of the background consolidation, as the worker does it (tests and the CLI call it
+   * directly): `null` when there is nothing due or it is off.
+   */
+  consolidateOnce(options?: {
+    workerId?: string;
+    now?: Date;
+    log?: (message: string) => void;
+  }): Promise<ConsolidationOutcome | null>;
   close(): Promise<void>;
 }
 
@@ -534,6 +563,44 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     });
   };
 
+  /** The cheap model of the memory: `memory.consolidation.model`, else the auto-review one. */
+  const memoryModelId = config.memory?.consolidation?.model ?? autoReviewModelId;
+  const memoryReviewerStatus = (): AutoReviewStatus => {
+    if (config.memory?.consolidation?.enabled === false) {
+      return {
+        available: false,
+        model: null,
+        reason: 'Desligado na configuração ("memory.consolidation.enabled": false).',
+      };
+    }
+    if (memoryModelId === undefined) {
+      return {
+        available: false,
+        model: null,
+        reason:
+          'Nenhum modelo está configurado para a memória ("memory.consolidation.model", "approvals.autoReview.model" ou "reviewer.model").',
+      };
+    }
+    const { model } = resolveModel(memoryModelId);
+    const key = keyStatus(model.provider);
+    return key.ok
+      ? { available: true, model: model.id, reason: null }
+      : { available: false, model: model.id, reason: key.reason };
+  };
+  const memoryModel = () => {
+    if (memoryModelId === undefined || !memoryReviewerStatus().available) return undefined;
+    const { model } = resolveModel(memoryModelId);
+    return {
+      provider: getProvider(model.provider),
+      model: {
+        id: model.id,
+        maxOutputTokens: model.maxOutputTokens,
+        pricing: model.pricing,
+        supportsForcedToolChoice: model.supportsForcedToolChoice,
+      },
+    };
+  };
+
   const sandbox = config.sandbox;
   const ensureMachineOnce = (): Promise<void> => {
     if (sandbox.kind !== "docker") return Promise.resolve();
@@ -699,18 +766,52 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
         ? {}
         : {
             loadRunContext: async (id: string) => {
+              // What the user chose for the memory is read once, at the start of the run, and
+              // recorded in `context_loaded` (a replay uses the recorded values).
+              const memorySettings = await getMemorySettings(handle);
               const snapshot = await loadRunContext(
                 handle,
                 id,
                 config.defaults?.historyChars ?? DEFAULT_HISTORY_CHARS,
+                {
+                  promptLimitChars: memorySettings.promptLimitChars,
+                  compactionThreshold: memorySettings.compactionThreshold,
+                },
               );
               // The model is told which secrets exist (names and purpose), never their values.
               return vault.status().ok
                 ? { ...snapshot, secrets: await vault.infoFor(bot.id) }
                 : snapshot;
             },
-            memoryFor: (record: { botId: string; id: string }) =>
-              createMemoryService(handle, { botId: record.botId, runId: record.id }),
+            memoryFor: (record: { botId: string; id: string }) => {
+              const writer = memoryModel();
+              return createMemoryService(
+                handle,
+                { botId: record.botId, runId: record.id },
+                {
+                  // Decided by what each tool declares, never by its text: the control tools and
+                  // the tools that declare `ownOutput` bring nothing in from outside.
+                  isExternalTool: (name) =>
+                    !CONTROL_TOOL_NAMES.some((control) => control === name) &&
+                    runTools.get(name)?.ownOutput !== true,
+                  ...(writer === undefined
+                    ? {}
+                    : { reviewer: createMemoryWriteReviewer({ ...writer }) }),
+                },
+              );
+            },
+            // Before a compaction the conversation is consolidated in the background: the hook
+            // only queues, so the run neither waits nor sees any difference.
+            beforeCompaction: async (record: { id: string }) => {
+              if (!memoryReviewerStatus().available) return;
+              if (!(await getMemorySettings(handle)).consolidationEnabled) return;
+              const current = await getRun(handle, record.id);
+              if (current?.conversationId === null || current?.conversationId === undefined) return;
+              await requestPreCompactionConsolidation(handle, {
+                conversationId: current.conversationId,
+                botId: current.botId,
+              });
+            },
           }),
       ...(sandbox.kind === "docker" && guarded
         ? {
@@ -829,6 +930,19 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     botConfig,
     reviewerConfig,
     autoReviewStatus,
+    memoryReviewerStatus,
+    async consolidateOnce(opts = {}) {
+      const writer = memoryModel();
+      if (writer === undefined) return null;
+      return runNextConsolidation({
+        db: runtime.db,
+        workerId: opts.workerId ?? `consolidate-${hostname()}-${process.pid}`,
+        provider: writer.provider,
+        model: writer.model,
+        ...(opts.now === undefined ? {} : { now: () => opts.now as Date }),
+        ...(opts.log === undefined ? {} : { log: opts.log }),
+      });
+    },
     async createRun(input) {
       const bot = await getBot(runtime.db, input.botId);
       if (bot === null) {
@@ -876,6 +990,37 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
             });
           }
         },
+        // Beside the runs, never in their way: consolidating what the user said in the
+        // conversations and archiving the notes nobody used. The database says who does what, so
+        // several workers can run them.
+        ...(opts.onlyRunId !== undefined
+          ? {}
+          : {
+              background: [
+                {
+                  name: "memory-consolidation",
+                  everyMs: opts.memoryEveryMs?.consolidation ?? 30_000,
+                  run: async (signal: AbortSignal) => {
+                    // A few conversations per pass; the next pass takes the rest.
+                    for (let n = 0; n < 3 && !signal.aborted; n++) {
+                      const done = await runtime.consolidateOnce({
+                        workerId,
+                        log: (message) =>
+                          opts.onError?.(new Error(message), "memory consolidation"),
+                      });
+                      if (done === null) return;
+                    }
+                  },
+                },
+                {
+                  name: "memory-expiry",
+                  everyMs: opts.memoryEveryMs?.expiry ?? 3_600_000,
+                  run: async () => {
+                    await runMemoryExpiry(runtime.db);
+                  },
+                },
+              ],
+            }),
         concurrency: opts.concurrency ?? settings.concurrency,
         leaseRenewMs: settings.leaseRenewMs,
         staleAfterMs: settings.staleAfterMs,

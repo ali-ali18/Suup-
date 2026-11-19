@@ -87,6 +87,19 @@ export type RunEnd =
       outcome: "lease_lost";
     };
 
+/**
+ * Something the worker does now and then besides running queued runs (consolidating memory,
+ * archiving what nobody used). It never blocks a run (it has no slot), never overlaps with itself,
+ * and an error is only reported. It must be safe to run in several workers at once: the database
+ * decides which one does the work (docs/MEMORIA.md).
+ */
+export interface BackgroundJob {
+  name: string;
+  everyMs: number;
+  /** Aborted when the worker stops: a job that waits on something long should return early. */
+  run(signal: AbortSignal): Promise<void>;
+}
+
 export interface WorkerOptions {
   workerId: string;
   queue: RunQueue;
@@ -113,6 +126,8 @@ export interface WorkerOptions {
   /** Wait between polls of an empty queue: starts at `minMs`, multiplied by `factor` up to `maxMs`. */
   idleBackoff?: { minMs?: number; maxMs?: number; factor?: number };
   clock?: WorkerClock;
+  /** Jobs run on a timer beside the runs (see `BackgroundJob`). Each also runs once at `start`. */
+  background?: readonly BackgroundJob[];
   /**
    * Awaited after a run left the worker, whatever the outcome, while the run still counts as
    * active (so `stop` waits for it). The runtime uses it for what must follow a run: the bot's
@@ -164,6 +179,9 @@ export class Worker {
   readonly #onRunEnd: ((end: RunEnd) => void) | undefined;
   readonly #afterRun: ((end: RunEnd) => Promise<void>) | undefined;
   readonly #onError: ((error: unknown, context: string) => void) | undefined;
+  readonly #background: readonly BackgroundJob[];
+  readonly #backgroundTimers: { stop(): void }[] = [];
+  readonly #backgroundRunning = new Map<string, Promise<void>>();
 
   readonly #active = new Map<string, ActiveRun>();
   readonly #stopSignal = new AbortController();
@@ -196,6 +214,11 @@ export class Worker {
     this.#onRunEnd = options.onRunEnd;
     this.#afterRun = options.afterRun;
     this.#onError = options.onError;
+    this.#background = options.background ?? [];
+    for (const job of this.#background) {
+      if (!(job.everyMs > 0))
+        throw new RangeError(`Worker: background job ${job.name}: everyMs must be positive`);
+    }
 
     if (!Number.isInteger(this.#concurrency) || this.#concurrency < 1) {
       throw new RangeError("Worker: concurrency must be an integer of at least 1");
@@ -226,6 +249,27 @@ export class Worker {
     this.#polling = this.#poll();
     this.#requeueTimer = this.#clock.every(this.#requeueEveryMs, () => void this.#requeueStale());
     void this.#requeueStale();
+    for (const job of this.#background) {
+      this.#backgroundTimers.push(this.#clock.every(job.everyMs, () => void this.#runJob(job)));
+      void this.#runJob(job);
+    }
+  }
+
+  /** One pass of a background job; a pass still running makes this one a no-op. */
+  #runJob(job: BackgroundJob): Promise<void> {
+    const running = this.#backgroundRunning.get(job.name);
+    if (running !== undefined || this.#stopping) return running ?? Promise.resolve();
+    const pass = (async () => {
+      try {
+        await job.run(this.#stopSignal.signal);
+      } catch (error) {
+        this.#report(error, `background job ${job.name}`);
+      } finally {
+        this.#backgroundRunning.delete(job.name);
+      }
+    })();
+    this.#backgroundRunning.set(job.name, pass);
+    return pass;
   }
 
   /**
@@ -448,6 +492,7 @@ export class Worker {
     this.#stopSignal.abort();
     this.#pause.abort();
     this.#requeueTimer?.stop();
+    for (const timer of this.#backgroundTimers) timer.stop();
     this.#wakeSlotWaiters();
     // No new run starts from here on (a claim in flight is handed back by the poll loop).
     await this.#polling;
@@ -462,6 +507,7 @@ export class Worker {
     for (const run of this.#active.values()) run.abort.abort();
     await Promise.all([...this.#active.values()].map((r) => r.done));
     await this.#requeueing;
+    await Promise.all([...this.#backgroundRunning.values()]);
   }
 
   // --- hooks that must never throw ------------------------------------------------------------

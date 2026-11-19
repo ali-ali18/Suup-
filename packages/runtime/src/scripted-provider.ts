@@ -5,7 +5,9 @@ import { readFileSync } from "node:fs";
 import {
   type Block,
   blockSchema,
+  CONSOLIDATION_TOOL_NAME,
   type GenerateRequest,
+  MEMORY_REVIEW_TOOL_NAME,
   PROVIDER_ERROR_KINDS,
   type Provider,
   ProviderError,
@@ -54,6 +56,10 @@ const sectionsShape = {
   compaction: z.exactOptional(z.array(stepSchema)),
   /** The answers of the model reviewer of "Auto-review" (the `review_call` tool), in order. */
   autoReview: z.exactOptional(z.array(stepSchema)),
+  /** The answers of the background consolidation (the `propose_memories` tool), in order. */
+  memory: z.exactOptional(z.array(stepSchema)),
+  /** The answers of the review of a memory the bot wrote (the `review_memory_write` tool), in order. */
+  memoryReview: z.exactOptional(z.array(stepSchema)),
 };
 
 /** One script per task, chosen by the objective (see `ScriptFile.cases`). */
@@ -108,7 +114,7 @@ export interface ScriptedProviderOptions {
   textChunkSize?: number;
 }
 
-type Section = "agent" | "review" | "compaction" | "autoReview";
+type Section = "agent" | "review" | "compaction" | "autoReview" | "memory" | "memoryReview";
 
 /** The text of the whole conversation, to find the case a request belongs to. */
 function conversationText(req: GenerateRequest): string {
@@ -127,6 +133,8 @@ function sectionOf(req: GenerateRequest): Section {
   const choice = req.toolChoice;
   if (typeof choice === "object" && choice.name === "verdict") return "review";
   if (typeof choice === "object" && choice.name === REVIEW_TOOL_NAME) return "autoReview";
+  if (typeof choice === "object" && choice.name === CONSOLIDATION_TOOL_NAME) return "memory";
+  if (typeof choice === "object" && choice.name === MEMORY_REVIEW_TOOL_NAME) return "memoryReview";
   return "agent";
 }
 
@@ -173,7 +181,10 @@ export function createScriptedProvider(options: ScriptedProviderOptions): Provid
         const file = load();
         section = sectionOf(req);
         let key = "";
-        let sections: Pick<ScriptFile, "agent" | "review" | "compaction" | "autoReview"> = file;
+        let sections: Pick<
+          ScriptFile,
+          "agent" | "review" | "compaction" | "autoReview" | "memory" | "memoryReview"
+        > = file;
         if (file.cases !== undefined) {
           const text = conversationText(req);
           const found = file.cases.findIndex((c) => text.includes(c.whenObjectiveContains));

@@ -20,6 +20,7 @@ export const forgetTool = defineTool({
   ].join(" "),
   input,
   risk: "write_reversible",
+  ownOutput: true,
   async execute({ id }, ctx) {
     const memory = memoryOf(ctx);
     if (isOutput(memory)) return memory;

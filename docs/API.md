@@ -181,21 +181,62 @@ Erros: `404` se a execução não existe; `409` para `pause` e `interrupt` numa 
 
 ## Memória
 
-`Memory`: `id`, `layer` (`rule`, `profile`, `note`, `journal`), `scope` (`shared` ou `bot`), `botId`, `text`, `sourceConversationId`, `sourceRunId`, `sourceMessageId` (de onde veio, quando foi um bot), `createdBy` (`user` ou `bot`), `createdAt`, `updatedAt`, `archivedAt`. Esquecer é **arquivar**: dá para restaurar.
+`Memory`: `id`, `layer` (`rule`, `profile`, `note`, `journal`), `scope` (`shared` ou `bot`), `botId`, `text`, `sourceConversationId`, `sourceRunId`, `sourceMessageId` (de onde veio, quando foi um bot), `createdBy` (`user` ou `bot`), `createdAt`, `updatedAt`, `archivedAt`, e (sempre enviados pelo servidor; opcionais só no tipo, para não quebrar quem monta um `Memory` à mão) `status` (`active`, `pending` ou `rejected`; ausente = `active`), `summary` (o fato curto, até 200 caracteres, de notas e diário), `lastUsedAt` (a última vez que o `recall` a achou), `supersedesId` (uma pendente que propõe **trocar** outra: confirmá-la arquiva a outra) e `review` (só numa pendente que o bot escreveu depois de ler conteúdo de fora: `{ decision, reason }` do revisor, para o cartão dizer por que espera). Esquecer é **arquivar**: dá para restaurar. Uma regra ou um fato sobre você que um **bot** ou a **consolidação em segundo plano** propõem nasce **`pending`**: não entra em nenhum prompt nem na busca até você confirmar ([MEMORIA.md](MEMORIA.md)).
 
 | Método e caminho | Corpo | Resposta |
 |---|---|---|
-| `GET /v1/memories?layer=&scope=&botId=&includeArchived=&limit=` | | `200 { items: [Memory] }`, do mais antigo ao mais novo (`limit` até 1000, padrão 500). `botId` filtra o que **pertence** ao bot |
+| `GET /v1/memories?layer=&scope=&botId=&includeArchived=&status=&limit=` | | `200 { items: [Memory] }`, do mais antigo ao mais novo (`limit` até 1000, padrão 500). `botId` filtra o que **pertence** ao bot. **`status`** (`active` por padrão, `pending`, `rejected`): sem ele, o que espera confirmação **não aparece**; `?status=pending` é a fila de confirmação |
 | `POST /v1/memories` | `{ layer, text, scope?, botId? }` | `201 Memory`, `createdBy: "user"`; `400` |
 | `PATCH /v1/memories/{id}` | `{ text }` | `200 Memory`; `400`, `404` |
 | `POST /v1/memories/{id}/archive` | | `200 Memory` (idempotente); `404` |
 | `POST /v1/memories/{id}/restore` | | `200 Memory`; `404` |
+| `POST /v1/memories/{id}/confirm` | | `200 Memory` (agora `active`; vale a partir da próxima execução; se ela trocava outra, a outra foi arquivada); `404`; `409` se não está `pending` |
+| `POST /v1/memories/{id}/reject` | | `200 Memory` (`rejected`: não é proposta de novo); `404`; `409` se não está `pending` |
+| `GET /v1/memories/{id}/revisions` | | `200 { items: [MemoryRevision] }`, da mais nova para a mais antiga; `404` |
+| `POST /v1/memories/{id}/revisions/{revisionId}/undo` | | `200 Memory` devolvida ao estado de **antes** daquela mudança. Só a mais recente da memória pode ser desfeita (`409` se não é); desfazer cria uma mudança `undone`, então desfazer de novo refaz; `404` |
 | `GET /v1/memories/search?q=&botId=&layers=&limit=` | | `200 { items: [{ memory, excerpt, matches, rank }] }` |
 | `GET /v1/messages/search?q=&conversationId=&botId=&limit=` | | `200 { items: [{ message, excerpt, matches, rank }] }` |
 
+- `MemoryRevision`: `id`, `memoryId`, `kind` (`created`, `edited`, `confirmed`, `rejected`, `archived`, `restored`, `promoted`, `undone`), `actor` (`user`, `bot`, `consolidation`, `expiry`), `prev` (`null` na criação) e `next` (cada um: `text`, `summary`, `status`, `layer`, `scope`, `botId`, `archived`), `originRunId`, `originConversationId`, `originMessageId`, `originConsolidationId`, `createdAt`.
 - Só `rule`, `profile` e `note` são escritas pela pessoa; o diário (`journal`) é escrito pelo sistema ao fim de cada execução. Regras de camada e escopo: perfil é sempre compartilhado; nota é sempre de um bot (`botId` obrigatório); regra é compartilhada, ou de um bot se vier `botId`.
 - Uma memória nova, editada ou esquecida vale **a partir da próxima execução**, nunca no meio de uma ([MEMORIA.md](MEMORIA.md)).
 - **Busca**: em português (radicais: "provas" acha "prova") e **sem diferenciar acentos** ("avaliacao" acha "avaliação") onde o PostgreSQL tem a extensão `unaccent` (a imagem Docker tem; `suup doctor` informa). `excerpt` é o trecho em texto puro e `matches`, os trechos achados nele (`start` inclusive, `end` exclusivo, em caracteres). Quando o texto só casou por causa dos acentos, `matches` pode vir vazio. `botId` na busca de memória diz quem busca (vê as compartilhadas e as dele); sem ele, só as compartilhadas.
+
+### Configurações da memória e consolidação
+
+O que é seu escolher sobre a memória fica no servidor (uma linha só, como o modo de aprovação), vale para o app, a CLI e a API, e muda na hora ([MEMORIA.md](MEMORIA.md)).
+
+| Método e caminho | Corpo | Resposta |
+|---|---|---|
+| `GET /v1/memory-settings` | | `200 MemorySettings` |
+| `PATCH /v1/memory-settings` | só as chaves que mudam | `200 MemorySettings`; `400` com a mensagem em português (`consolidation.maxTurns: deve ser um número inteiro entre 3 e 100`); qualquer chave desconhecida é recusada |
+| `GET /v1/memory-consolidations?conversationId=&limit=` | | `200 { items: [MemoryConsolidation] }`, da mais nova para a mais antiga (somente leitura) |
+
+`MemorySettings` (e o corpo do `PATCH`, com as mesmas chaves, todas opcionais):
+
+```json
+{
+  "consolidation": { "enabled": true, "idleMinutes": 5, "maxTurns": 15 },
+  "promptLimitChars": 6000,
+  "expiryDays": 90,
+  "compactionThreshold": 0.8,
+  "reviewer": { "available": true, "model": "claude-haiku-5-5", "reason": null },
+  "promptUsage": { "limitChars": 6000, "sharedChars": 1450, "overLimit": [] }
+}
+```
+
+| Chave | Padrão | Faixa |
+|---|---|---|
+| `consolidation.enabled` | `true` | verdadeiro ou falso |
+| `consolidation.idleMinutes` | 5 | inteiro de 1 a 120 |
+| `consolidation.maxTurns` | 15 | inteiro de 3 a 100 |
+| `promptLimitChars` | 6000 | inteiro de 1000 a 50000 |
+| `expiryDays` | 90 | inteiro de 7 a 3650, ou `null` (nunca expira) |
+| `compactionThreshold` | 0.8 | número de 0.5 a 0.95 |
+
+`reviewer` diz se a consolidação (e a revisão do que o bot escreve depois de ler conteúdo de fora) tem um modelo agora: `available`, o `model` configurado e `reason` (em português) quando não tem; é só leitura, como o `reviewer` de `/v1/approval-settings`. `promptUsage` é o aviso do teto: `overLimit` lista os bots (`botId`, `name`, `usedChars`) cujas regras e perfil **ativos** passam de `promptLimitChars`; o app deve pedir que você apague ou encurte memórias, ou aumente o teto (nada é cortado em silêncio, o que não cabe só fica fora do prompt).
+
+`MemoryConsolidation` (uma tentativa da consolidação): `id`, `conversationId`, `botId`, `reason` (`idle`, `max_turns`, `pre_compaction`), `status` (`queued`, `running`, `done`, `skipped`, `failed`), `fromSeq`, `toSeq`, `userTurns`, `model`, `promptVersion`, `inputTokens`, `outputTokens`, `costUsd`, `latencyMs`, `proposed` (o que o modelo disse), `kept` (o que foi gravado: ação, id da memória), `dropped` (o que o código descartou e por quê), `error`, `createdAt`, `finishedAt`.
 
 ---
 
@@ -352,7 +393,7 @@ data: {"runId":"...","event":{"seq":7,"type":"tool_call","createdAt":"...","payl
 | `message.created` | `{ message }` | Mensagem nova em qualquer conversa |
 | `message.updated` | `{ message }` | Mudou o estado de entrega (`sent`, `delivered`) |
 | `conversation.updated` | `{ conversation }` | Mudou a lista de conversas: mensagem nova, lida, arquivada. Vai a `Conversation` inteira, com `unreadCount` e `activeRun` |
-| `memory.changed` | `{ change, memory }` | `change`: `created`, `updated`, `archived`, `restored` |
+| `memory.changed` | `{ change, memory }` | `change`: `created`, **`pending`** (um bot ou a consolidação **propôs** uma regra, um fato ou uma nota que espera você: é o gatilho do cartão de confirmação; `memory.status` é `pending`, e uma pendente que o revisor segurou traz `memory.review`), `updated` (inclui confirmar e recusar: veja `memory.status`), `archived`, `restored`. Usar uma memória (o `recall` renovar `lastUsedAt`) **não** gera quadro |
 | `bot.updated` | `{ bot }` | Bot criado, editado, arquivado ou tornado principal |
 | `approval.changed` | `{ change, approval }` | Um cartão de aprovação apareceu (`created`) ou mudou de situação (`updated`: aprovado, negado, cancelado, expirado). Vai o `Approval` inteiro |
 

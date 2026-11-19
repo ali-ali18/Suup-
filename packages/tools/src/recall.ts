@@ -36,6 +36,7 @@ export const recallTool = defineTool({
   ].join(" "),
   input,
   risk: "read",
+  ownOutput: true,
   async execute({ query, layers, limit }, ctx) {
     const memory = memoryOf(ctx);
     if (isOutput(memory)) return memory;

@@ -134,6 +134,21 @@ O **modo** (`auto_review`, o padrão, ou `ask_all`) **não é desta configuraç�
 
 Com a máquina `local` (sem isolamento) o `shell` pergunta a cada comando; para um uso diário sem Docker, a regra `suup rules add --tool shell --effect allow` (ou `levels`) diz que você aceita o risco.
 
+### `memory` (opcional)
+
+Só o que **não** é do usuário mudar pelo app ([MEMORIA.md](MEMORIA.md)): qual modelo faz a consolidação da memória em segundo plano. O resto (quando roda, o teto do prompt, a expiração, o ponto da compactação) são escolhas do usuário, guardadas no servidor: `suup memory settings`, `GET`/`PATCH /v1/memory-settings`.
+
+| Campo | Padrão | Significado |
+|---|---|---|
+| `consolidation.model` | o de `approvals.autoReview.model`, senão o de `reviewer` | Um `id` de `models`, de preferência o barato: lê as conversas em segundo plano e propõe o que guardar, e também revisa o que um bot escreve na memória depois de ler conteúdo de fora. A chave vem do provedor (`apiKeyEnv`), nunca daqui. Sem nenhum modelo, nada é consolidado e a API diz por quê |
+| `consolidation.enabled` | `true` | `false` desliga a consolidação nesta configuração (o interruptor do usuário, `consolidation.enabled` das configurações, é outro e vale por cima) |
+
+```json
+"memory": { "consolidation": { "model": "model-y" } }
+```
+
+Custo medido com o modelo barato: cerca de 1 800 tokens de entrada e 150 a 350 de saída por consolidação, perto de US$ 0,0001 a 0,0004 (TESTES-REAIS.md, item G).
+
 ### `vault` (opcional)
 
 O cofre de segredos ([COFRE.md](COFRE.md)). Sem esta seção não há cofre.
@@ -196,7 +211,9 @@ O arquivo de roteiro (`scriptPath`) é JSON:
   "review": [
     { "calls": [{ "name": "verdict", "args": { "verdict": "approve", "notes": "ok" } }] }
   ],
-  "compaction": [{ "text": "resumo" }]
+  "compaction": [{ "text": "resumo" }],
+  "memory": [{ "calls": [{ "name": "propose_memories", "args": { "items": [] } }] }],
+  "memoryReview": [{ "calls": [{ "name": "review_memory_write", "args": { "decision": "run", "reason": "ok" } }] }]
 }
 ```
 

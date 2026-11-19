@@ -2,20 +2,33 @@ import {
   addMemoryBodySchema,
   editMemoryBodySchema,
   listMemoriesQuerySchema,
+  listMemoryConsolidationsQuerySchema,
   searchMemoriesQuerySchema,
   searchMessagesQuerySchema,
+  updateMemorySettingsBodySchema,
 } from "@suup/api";
 import {
   addMemory,
   archiveMemory,
+  confirmMemory,
   getBot,
+  getMemory,
+  getMemorySettings,
   HIGHLIGHT_END,
   HIGHLIGHT_START,
+  latestMemoryReviews,
+  listConsolidations,
   listMemories,
+  listMemoryRevisions,
+  memoryPromptUsage,
+  RevisionError,
+  rejectMemory,
   restoreMemory,
   searchMemories,
   searchMessages,
+  undoMemoryRevision,
   updateMemory,
+  updateMemorySettings,
 } from "@suup/db";
 import { HttpError } from "../errors.js";
 import type { Route } from "../http.js";
@@ -68,6 +81,42 @@ function checkLayerRules(body: {
   }
 }
 
+/** The memory settings as the API says them, with what the app needs to warn about. */
+async function memorySettingsBody(ctx: Parameters<Route["handler"]>[0]) {
+  const { db } = ctx.runtime;
+  const settings = await getMemorySettings(db);
+  const { available, model, reason } = ctx.runtime.memoryReviewerStatus();
+  const usage = await memoryPromptUsage(db, settings.promptLimitChars);
+  return {
+    consolidation: {
+      enabled: settings.consolidationEnabled,
+      idleMinutes: settings.idleMinutes,
+      maxTurns: settings.maxTurns,
+    },
+    promptLimitChars: settings.promptLimitChars,
+    expiryDays: settings.expiryDays,
+    compactionThreshold: settings.compactionThreshold,
+    reviewer: { available, model, reason },
+    promptUsage: {
+      limitChars: usage.limitChars,
+      sharedChars: usage.sharedChars,
+      overLimit: usage.overBots,
+    },
+  };
+}
+
+/** A pending memory is shown with what the reviewer said about it, when it was asked. */
+async function withReviews(
+  db: Parameters<typeof latestMemoryReviews>[0],
+  rows: Parameters<typeof toMemoryDto>[0][],
+) {
+  const pending = rows.filter((m) => m.status === "pending").map((m) => m.id);
+  const reviews = await latestMemoryReviews(db, pending);
+  return rows.map((m) =>
+    toMemoryDto(m, m.status === "pending" ? (reviews.get(m.id) ?? null) : undefined),
+  );
+}
+
 export const memoryRoutes: Route[] = [
   {
     method: "GET",
@@ -80,8 +129,77 @@ export const memoryRoutes: Route[] = [
         ...(query.layer === undefined ? {} : { layer: query.layer }),
         ...(query.scope === undefined ? {} : { scope: query.scope }),
         ...(query.botId === undefined ? {} : { botId: query.botId }),
+        ...(query.status === undefined ? {} : { status: query.status }),
       });
-      return { body: { items: rows.map(toMemoryDto) } };
+      return { body: { items: await withReviews(ctx.runtime.db, rows) } };
+    },
+  },
+  {
+    method: "GET",
+    pattern: "/v1/memory-settings",
+    async handler(ctx) {
+      return { body: await memorySettingsBody(ctx) };
+    },
+  },
+  {
+    method: "PATCH",
+    pattern: "/v1/memory-settings",
+    async handler(ctx) {
+      const body = ctx.body(updateMemorySettingsBodySchema);
+      await updateMemorySettings(ctx.runtime.db, {
+        ...(body.consolidation?.enabled === undefined
+          ? {}
+          : { consolidationEnabled: body.consolidation.enabled }),
+        ...(body.consolidation?.idleMinutes === undefined
+          ? {}
+          : { idleMinutes: body.consolidation.idleMinutes }),
+        ...(body.consolidation?.maxTurns === undefined
+          ? {}
+          : { maxTurns: body.consolidation.maxTurns }),
+        ...(body.promptLimitChars === undefined ? {} : { promptLimitChars: body.promptLimitChars }),
+        ...(body.expiryDays === undefined ? {} : { expiryDays: body.expiryDays }),
+        ...(body.compactionThreshold === undefined
+          ? {}
+          : { compactionThreshold: body.compactionThreshold }),
+      });
+      return { body: await memorySettingsBody(ctx) };
+    },
+  },
+  {
+    method: "GET",
+    pattern: "/v1/memory-consolidations",
+    async handler(ctx) {
+      const query = ctx.query(listMemoryConsolidationsQuerySchema);
+      const rows = await listConsolidations(ctx.runtime.db, {
+        limit: query.limit,
+        ...(query.conversationId === undefined ? {} : { conversationId: query.conversationId }),
+      });
+      return {
+        body: {
+          items: rows.map((r) => ({
+            id: r.id,
+            conversationId: r.conversationId,
+            botId: r.botId,
+            reason: r.reason,
+            status: r.status,
+            fromSeq: r.fromSeq,
+            toSeq: r.toSeq,
+            userTurns: r.userTurns,
+            model: r.model,
+            promptVersion: r.promptVersion,
+            inputTokens: r.inputTokens,
+            outputTokens: r.outputTokens,
+            costUsd: r.costUsd,
+            latencyMs: r.latencyMs,
+            proposed: r.proposed,
+            kept: r.kept,
+            dropped: r.dropped,
+            error: r.error,
+            createdAt: r.createdAt.toISOString(),
+            finishedAt: r.finishedAt?.toISOString() ?? null,
+          })),
+        },
+      };
     },
   },
   {
@@ -175,6 +293,76 @@ export const memoryRoutes: Route[] = [
       const memory = await restoreMemory(ctx.runtime.db, ctx.uuid("id"));
       if (memory === null) throw new HttpError("not_found", "Memória não encontrada.");
       return { body: toMemoryDto(memory) };
+    },
+  },
+  {
+    method: "POST",
+    pattern: "/v1/memories/:id/confirm",
+    async handler(ctx) {
+      const id = ctx.uuid("id");
+      const found = await getMemory(ctx.runtime.db, id);
+      if (found === null) throw new HttpError("not_found", "Memória não encontrada.");
+      if (found.status !== "pending") {
+        throw new HttpError("conflict", "Esta memória não está esperando confirmação.");
+      }
+      const memory = await confirmMemory(ctx.runtime.db, id);
+      if (memory === null) throw new HttpError("not_found", "Memória não encontrada.");
+      return { body: toMemoryDto(memory) };
+    },
+  },
+  {
+    method: "POST",
+    pattern: "/v1/memories/:id/reject",
+    async handler(ctx) {
+      const id = ctx.uuid("id");
+      const found = await getMemory(ctx.runtime.db, id);
+      if (found === null) throw new HttpError("not_found", "Memória não encontrada.");
+      if (found.status !== "pending") {
+        throw new HttpError("conflict", "Esta memória não está esperando confirmação.");
+      }
+      const memory = await rejectMemory(ctx.runtime.db, id);
+      if (memory === null) throw new HttpError("not_found", "Memória não encontrada.");
+      return { body: toMemoryDto(memory) };
+    },
+  },
+  {
+    method: "GET",
+    pattern: "/v1/memories/:id/revisions",
+    async handler(ctx) {
+      const id = ctx.uuid("id");
+      if ((await getMemory(ctx.runtime.db, id)) === null) {
+        throw new HttpError("not_found", "Memória não encontrada.");
+      }
+      const items = await listMemoryRevisions(ctx.runtime.db, id);
+      return {
+        body: {
+          items: items.map((r) => ({
+            ...r,
+            createdAt: r.createdAt.toISOString(),
+          })),
+        },
+      };
+    },
+  },
+  {
+    method: "POST",
+    pattern: "/v1/memories/:id/revisions/:revisionId/undo",
+    async handler(ctx) {
+      const id = ctx.uuid("id");
+      const revisionId = ctx.uuid("revisionId");
+      const { db } = ctx.runtime;
+      const revisions = await listMemoryRevisions(db, id, 1000);
+      if (!revisions.some((r) => r.id === revisionId)) {
+        throw new HttpError("not_found", "Mudança não encontrada nesta memória.");
+      }
+      try {
+        return { body: toMemoryDto(await undoMemoryRevision(db, revisionId)) };
+      } catch (error) {
+        if (error instanceof RevisionError) {
+          throw new HttpError(error.code === "not_found" ? "not_found" : "conflict", error.message);
+        }
+        throw error;
+      }
     },
   },
 ];

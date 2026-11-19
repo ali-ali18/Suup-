@@ -910,3 +910,77 @@ describe("Worker: the lease timer racing the end of a run", () => {
     expect(w.queueReleases).toEqual([]);
   });
 });
+
+describe("Worker: background jobs", () => {
+  it("runs a job at start and on its timer, never twice at once, beside the runs", async () => {
+    const w = makeWorld();
+    const gate = deferred();
+    const calls: string[] = [];
+    let first = true;
+    const worker = w.worker("w1", {
+      background: [
+        {
+          name: "memory",
+          everyMs: 1000,
+          async run() {
+            calls.push("start");
+            if (first) {
+              first = false;
+              await gate.promise;
+            }
+            calls.push("end");
+          },
+        },
+      ],
+    });
+    const runId = w.newRun();
+    worker.start();
+    await w.clock.flush();
+    // A slow job does not hold a run: the run is already done.
+    expect(await statusOf(w, runId)).toBe("done");
+    expect(calls).toEqual(["start"]);
+    // The timer fires while the first pass still runs: no second pass.
+    await w.clock.advance(3000);
+    expect(calls).toEqual(["start"]);
+    gate.resolve();
+    await w.clock.flush();
+    await w.clock.advance(1000);
+    expect(calls.filter((c) => c === "start").length).toBeGreaterThanOrEqual(2);
+    await worker.stop();
+  });
+
+  it("reports a failing job and keeps going, and stop waits for the pass in flight", async () => {
+    const w = makeWorld();
+    const gate = deferred();
+    let done = false;
+    let n = 0;
+    const worker = w.worker("w1", {
+      background: [
+        {
+          name: "flaky",
+          everyMs: 500,
+          async run() {
+            n += 1;
+            if (n === 1) throw new Error("boom");
+            await gate.promise;
+            done = true;
+          },
+        },
+      ],
+    });
+    worker.start();
+    await w.clock.flush();
+    expect(w.errors.map((e) => e.context)).toEqual(["background job flaky"]);
+    await w.clock.advance(500);
+    const stopped = worker.stop();
+    let settled = false;
+    void stopped.then(() => {
+      settled = true;
+    });
+    await w.clock.flush();
+    expect(settled).toBe(false);
+    gate.resolve();
+    await stopped;
+    expect(done).toBe(true);
+  });
+});

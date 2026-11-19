@@ -21,6 +21,7 @@ export const writeFileTool = defineTool({
   ].join(" "),
   input,
   risk: "write_reversible",
+  ownOutput: true,
   describe: ({ path, content }) => `Write ${path} (${content.length} characters)`,
   async execute({ path, content }, ctx) {
     let existing: Awaited<ReturnType<typeof ctx.executor.stat>>;

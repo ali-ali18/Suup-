@@ -147,15 +147,22 @@ Cada ferramenta declara: nome, descrição, esquema de entrada (zod), nível de 
 
 ### 4.6 Memória
 
+> Pesquisa: [como produtos e harnesses abertos guardam memória](pesquisas/memoria-dos-agentes.md) (quando gravar, quem grava, o que o revisor vê, envenenamento, expiração, busca por palavras ou vetores). Como funciona hoje, com tudo o que o usuário controla: [MEMORIA.md](MEMORIA.md).
+
 | Camada | Conteúdo | Como entra no contexto |
 |---|---|---|
-| Regras | Ordens permanentes do usuário | Sempre presente; também consultada pelo portão de aprovação |
-| Perfil compartilhado | Fatos que todos os bots precisam saber | Sempre presente, em versão resumida |
-| Notas do bot | O que o bot aprendeu naquela função | Busca por relevância (`pgvector`) |
-| Diário | O que foi feito, quando e com que resultado | Busca sob demanda |
+| Regras | Ordens permanentes do usuário | Sempre presente (só as **ativas**, até um teto de tamanho); também consultada pelo portão de aprovação |
+| Perfil compartilhado | Fatos que todos os bots precisam saber | Sempre presente (só os **ativos**, no mesmo teto) |
+| Notas do bot | O que o bot aprendeu naquela função | **Busca textual** (`recall`), com um fato curto indexado junto |
+| Diário | O que foi feito, quando e com que resultado | Busca sob demanda, com fato curto escrito sem modelo |
 | Conversas antigas | Texto integral | Ferramenta de busca textual |
 
-Toda memória tem origem (qual conversa a criou), é visível ao usuário e pode ser corrigida ou apagada.
+Toda memória tem origem (qual conversa a criou), autor, estado e histórico de mudanças com desfazer, é visível ao usuário e pode ser corrigida ou apagada.
+
+- **Quem escreve.** O usuário escreve o que quiser. O **bot** (`remember`) e uma **consolidação em segundo plano** (um modelo barato lê as mensagens do usuário e as respostas do bot, por conversa, depois de 5 minutos de silêncio, de 15 mensagens ou antes de uma compactação do histórico) só **propõem** regras e fatos sobre o usuário: ficam **pendentes** e não entram em nenhum prompt até o usuário confirmar. Notas entram na hora, visíveis e desfazíveis. A consolidação só cita o que o **usuário** disse (a citação é conferida palavra por palavra pelo código) e nunca vê resultado de ferramenta, página, e-mail nem diário. Uma execução que leu conteúdo de fora passa o que escreve pelo revisor antes.
+- **Tamanho e validade.** O que entra em todo prompt tem teto (`promptLimitChars`, 6000): o que não cabe fica de fora na ordem de criação, **sem cortar nada em silêncio**, e o app avisa. Notas e diário sem uso por 90 dias são arquivados (restaurável); regras e perfil nunca expiram. A compactação do histórico acontece a 80% da janela de contexto, configurável.
+- **Tudo isso é configurável pelo usuário no app** (`GET`/`PATCH /v1/memory-settings`).
+- **Busca: textual por enquanto, e por quê.** Notas e conversas usam a busca textual do PostgreSQL (português, sem acento), não `pgvector`. Embeddings pedem um provedor (a Anthropic não tem modelo de embeddings), mandam texto do usuário para fora e exigem vetores em dia; a pesquisa mostra que a busca por palavras com chaves expandidas por fatos é o primeiro passo e que a busca híbrida (palavras e vetores) é o segundo. Medimos antes de decidir (`suup eval memory-recall`, TESTES-REAIS.md item G): a busca por todas as palavras acerta 45% nos 5 primeiros numa memória inventada, com ou sem o fato curto, e por **qualquer** palavra acerta 100%: o gargalo é o vocabulário, não a falta de vetor. **`pgvector` só entra se a medição falhar depois da correção barata** (cair para "qualquer palavra" quando "todas" não acha nada, ainda não feita).
 
 ### 4.7 Máquina dos bots
 

@@ -1,5 +1,10 @@
 export { SKIPPED_AFTER_DENIAL } from "./approval-flow.js";
 export {
+  COMPACTION_THRESHOLD,
+  COMPACTION_THRESHOLD_RANGE,
+  DEFAULT_COMPACTION_THRESHOLD,
+} from "./context.js";
+export {
   CONTROL_TOOL_NAMES,
   type ControlToolName,
   controlToolSpecs,

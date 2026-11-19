@@ -27,6 +27,27 @@ export {
   type TaskSet,
   taskSetOf,
 } from "./history.js";
+export {
+  type ConsolidationCaseResult,
+  type ConsolidationEvalReport,
+  formatConsolidationReport,
+  type RunConsolidationEvalOptions,
+  runConsolidationEval,
+} from "./memory/consolidation.js";
+export {
+  CONSOLIDATION_CASES,
+  type ConsolidationCase,
+  FAKE_PASSWORD,
+  INJECTED_ORDER,
+} from "./memory/consolidation-cases.js";
+export {
+  formatRecallReport,
+  type QuestionResult,
+  type RecallReport,
+  runRecallBenchmark,
+  TOP_K,
+  type VariantReport,
+} from "./memory/recall.js";
 export { type EventMetrics, eventMetrics } from "./metrics.js";
 export { qualificationTasks } from "./qualify/index.js";
 export { ORDER_FILE, registerOrderTool } from "./qualify/register-order-tool.js";

@@ -194,6 +194,14 @@ export interface RunState {
    * to the assistant's questions. Never what the assistant said or a tool returned.
    */
   userSaid: string[];
+  /**
+   * The names of the tools whose calls ran and got a result in this run (denied or malformed calls
+   * did not run). The memory checks use it: a run that used a tool that may bring in content from
+   * outside cannot write rules or facts about the user without a review.
+   */
+  toolsUsed: string[];
+  /** The share of the context window past which the run compacts (recorded in `context_loaded`). */
+  compactionThreshold: number | null;
 }
 
 export function createRunState(): RunState {
@@ -209,6 +217,8 @@ export function createRunState(): RunState {
     startSeq: 0,
     contextLoaded: false,
     context: null,
+    toolsUsed: [],
+    compactionThreshold: null,
     lastSeq: 0,
     responses: 0,
     pending: null,
@@ -281,6 +291,7 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
         profile: structuredClone(event.payload.profile),
         secrets: structuredClone(event.payload.secrets ?? []),
       };
+      state.compactionThreshold = event.payload.compactionThreshold ?? null;
       // The user's earlier messages come before the objective (the history is text only).
       state.userSaid.unshift(
         ...event.payload.history.flatMap((m) =>
@@ -392,6 +403,14 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
         state.waiting.callId === call.id
       ) {
         state.waiting = null;
+      }
+      if (
+        outcome !== "denied" &&
+        outcome !== "invalid_args" &&
+        outcome !== "unknown_tool" &&
+        !state.toolsUsed.includes(call.name)
+      ) {
+        state.toolsUsed.push(call.name);
       }
       if (outcome === "denied" && state.denied === null) {
         state.denied = { callId: call.id, name: call.name };

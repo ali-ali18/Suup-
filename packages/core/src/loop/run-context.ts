@@ -54,6 +54,10 @@ export interface RunContextSnapshot {
   historyNote?: string;
   /** The secrets the bot may use: names and what they are for, never values. */
   secrets?: SecretInfo[];
+  /** Compact the history past this share of the context window (the user's setting; recorded). */
+  compactionThreshold?: number;
+  /** Rules and profile facts left out because they did not fit the size cap (recorded). */
+  memoryOmitted?: { count: number; chars: number; limitChars: number };
 }
 
 export interface LoopDeps {
@@ -86,6 +90,13 @@ export interface LoopDeps {
   secrets?: SecretAccess;
   /** The memory the tools of this run may use. Without it the memory tools report an error. */
   memoryFor?(run: RunRecord): MemoryService;
+  /**
+   * Called just before the history of a run is compacted (before the summarizing model call), so
+   * the runtime can queue a background consolidation of the conversation (docs/MEMORIA.md). It
+   * must only QUEUE (never wait for a model) and cannot change what the run sees: a failure is
+   * ignored. A replay does not set it.
+   */
+  beforeCompaction?(run: RunRecord): Promise<void>;
   /**
    * The connector tools granted to the bot and how to offer them (all loaded, or searched: see
    * `tool-search.ts`). Decided once, at the start of the run, and recorded as `tool_catalog`; a

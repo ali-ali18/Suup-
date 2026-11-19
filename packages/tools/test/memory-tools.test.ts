@@ -17,7 +17,10 @@ function fakeMemory(overrides: Partial<MemoryService> = {}): {
       return fn(input);
     };
   const memory: MemoryService = {
-    remember: log("remember", async () => ({ id: "11111111-1111-4111-8111-111111111111" })),
+    remember: log("remember", async () => ({
+      id: "11111111-1111-4111-8111-111111111111",
+      status: "active" as const,
+    })),
     recall: log("recall", async () => []),
     forget: log("forget", async () => true),
     searchConversations: log("searchConversations", async () => []),
@@ -53,6 +56,65 @@ describe("memory tools without memory", () => {
       expect(r.output.content).toContain("Memory is not available");
     });
   }
+});
+
+describe("remember: pending, summary and the facts of the run", () => {
+  it("passes the short fact and the run facts on, and says plainly when the memory is pending", async () => {
+    const calls: unknown[][] = [];
+    const memory: MemoryService = {
+      ...fakeMemory().memory,
+      async remember(input, facts) {
+        calls.push([input, facts]);
+        return {
+          id: "22222222-2222-4222-8222-222222222222",
+          status: "pending",
+          reason: "Espera o usuário.",
+        };
+      },
+    };
+    const ctx: ToolContext = {
+      runId: "run-1",
+      botId: "bot-1",
+      executor: new MemoryExecutor(),
+      signal: new AbortController().signal,
+      now: () => new Date("2026-11-18T12:00:00Z"),
+      memory,
+      runFacts: { userMessages: ["Always answer in English"], toolsUsed: ["web_fetch"] },
+    };
+    const r = await registry.invoke(
+      "remember",
+      { layer: "rule", text: "Answer in English.", summary: "Answer in English" },
+      ctx,
+    );
+    expect(r.outcome).toBe("ok");
+    expect(r.output.content).toContain("PENDING");
+    expect(r.output.content).toContain("waits for the user to confirm");
+    expect(r.output.content).toContain("Espera o usuário.");
+    expect(r.output.content).toContain("22222222-2222-4222-8222-222222222222");
+    expect(calls).toEqual([
+      [
+        { layer: "rule", text: "Answer in English.", summary: "Answer in English" },
+        { userMessages: ["Always answer in English"], toolsUsed: ["web_fetch"] },
+      ],
+    ]);
+  });
+
+  it("the memory tools declare their output as the harness's own; the tools that read the world do not", () => {
+    const own = (name: string) => registry.get(name)?.ownOutput === true;
+    for (const name of ["remember", "recall", "forget", "search_conversations", "write_file"]) {
+      expect(own(name), name).toBe(true);
+    }
+    for (const name of [
+      "web_fetch",
+      "read_file",
+      "shell",
+      "search_files",
+      "list_files",
+      "edit_file",
+    ]) {
+      expect(own(name), name).toBe(false);
+    }
+  });
 });
 
 describe("remember", () => {

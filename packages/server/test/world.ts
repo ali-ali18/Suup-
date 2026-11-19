@@ -64,6 +64,8 @@ export interface WorldOptions {
   env?: Record<string, string>;
   /** Start a worker on `workerRuntime`. Default true. */
   worker?: boolean;
+  /** How often the worker looks for memory work (default: its own, 30 s and 1 h). */
+  memoryEveryMs?: { consolidation?: number; expiry?: number };
 }
 
 /**
@@ -163,6 +165,7 @@ export function useWorld(options: WorldOptions = {}): World {
       world.worker = world.workerRuntime.createWorker({
         concurrency: 4,
         idleBackoff: { minMs: 15, maxMs: 80 },
+        ...(options.memoryEveryMs === undefined ? {} : { memoryEveryMs: options.memoryEveryMs }),
         onError: (error, context) => {
           console.error(`worker: ${context}:`, error);
         },

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { type Message, validateConversation } from "../messages.js";
 import { ProviderError } from "../provider.js";
+import { replayRun } from "../replay.js";
 import {
   call,
   createRig,
@@ -11,7 +12,13 @@ import {
   textOf,
   use,
 } from "../testing/index.js";
-import { chooseCutIndex, renderTranscript } from "./context.js";
+import {
+  COMPACTION_THRESHOLD_RANGE,
+  chooseCutIndex,
+  DEFAULT_COMPACTION_THRESHOLD,
+  renderTranscript,
+} from "./context.js";
+import { runLoop } from "./loop.js";
 import { rebuildState } from "./state.js";
 
 const BIG = { inputTokens: 800, outputTokens: 10 };
@@ -290,5 +297,125 @@ describe("renderTranscript", () => {
     expect(text.length).toBeLessThan(2500);
     const cut = renderTranscript(messages, 200);
     expect(cut).toContain("oldest part of the transcript is omitted");
+  });
+});
+
+describe("compaction threshold (the user's setting, recorded with the run)", () => {
+  const withThreshold = (compactionThreshold?: number) => ({
+    loadRunContext: async () => ({
+      rules: [],
+      profile: [],
+      history: [],
+      ...(compactionThreshold === undefined ? {} : { compactionThreshold }),
+    }),
+  });
+
+  it("uses the recorded setting: 95% does not compact a request at 80%, 50% does", async () => {
+    const relaxed = createRig({
+      bot: smallWindow,
+      script: fourTurns(say("SUMMARY"), [say("done")]),
+    });
+    expect(await runLoop(relaxed.deps(withThreshold(0.95)), relaxed.runId)).toBe("done");
+    const events = await relaxed.events();
+    expect(eventsOfType(events, "compacted")).toEqual([]);
+    expect(eventsOfType(events, "context_loaded")[0]?.payload.compactionThreshold).toBe(0.95);
+
+    const tight = createRig({
+      bot: smallWindow,
+      script: [
+        use(echo("c1", "alpha")),
+        use(echo("c2", "bravo")),
+        use(echo("c3", "charlie")),
+        { blocks: [echo("c4", "delta")], usage: { inputTokens: 560, outputTokens: 10 } },
+        say("SUMMARY"),
+        say("done"),
+      ] as never[],
+    });
+    expect(await runLoop(tight.deps(withThreshold(0.5)), tight.runId)).toBe("done");
+    expect(eventsOfType(await tight.events(), "compacted")).toHaveLength(1);
+  });
+
+  it("keeps the old point (70%) for a run whose log does not say otherwise", async () => {
+    const rig = createRig({ bot: smallWindow, script: fourTurns(say("SUMMARY"), [say("done")]) });
+    expect(await runLoop(rig.deps(withThreshold()), rig.runId)).toBe("done");
+    expect(eventsOfType(await rig.events(), "compacted")).toHaveLength(1);
+    expect(DEFAULT_COMPACTION_THRESHOLD).toBe(0.8);
+    expect(COMPACTION_THRESHOLD_RANGE).toEqual({ min: 0.5, max: 0.95 });
+  });
+
+  it("a replay compacts at the recorded point, not at whatever the setting is now", async () => {
+    for (const threshold of [0.95, 0.5]) {
+      const rig = createRig({
+        bot: smallWindow,
+        script: [
+          use(echo("c1", "alpha")),
+          use(echo("c2", "bravo")),
+          use(echo("c3", "charlie")),
+          { blocks: [echo("c4", "delta")], usage: { inputTokens: 560, outputTokens: 10 } },
+          ...(threshold === 0.5 ? [say("SUMMARY")] : []),
+          say("done"),
+        ] as never[],
+      });
+      await runLoop(rig.deps(withThreshold(threshold)), rig.runId);
+      const events = await rig.events();
+      const report = await replayRun(events, { bot: rig.bot });
+      expect(report.identical, `threshold ${threshold}`).toBe(true);
+      expect(eventsOfType(events, "compacted").length).toBe(threshold === 0.5 ? 1 : 0);
+    }
+  });
+
+  it("asks for the consolidation just before the summary, only queues, and changes nothing the run sees", async () => {
+    const seen: string[] = [];
+    const withHook = createRig({
+      bot: smallWindow,
+      script: fourTurns(say("SUMMARY"), [say("done")]),
+    });
+    await runLoop(
+      withHook.deps({
+        beforeCompaction: async (run) => {
+          // the summarizer has not been called yet
+          seen.push(
+            `${run.id === withHook.runId ? "run" : "other"}:${withHook.provider.requests.length}`,
+          );
+        },
+      }),
+      withHook.runId,
+    );
+    expect(seen).toEqual(["run:4"]);
+    const without = createRig({
+      bot: smallWindow,
+      script: fourTurns(say("SUMMARY"), [say("done")]),
+    });
+    await without.run();
+    expect(JSON.stringify(withHook.provider.requests)).toBe(
+      JSON.stringify(without.provider.requests),
+    );
+    // the same events, apart from how long a tool really took
+    const shape = async (rig: typeof withHook) =>
+      JSON.stringify(
+        (await rig.events()).map((e) => [e.type, { ...e.payload, durationMs: undefined }]),
+      );
+    expect(await shape(withHook)).toBe(await shape(without));
+  });
+
+  it("a hook that throws changes nothing: the run compacts and finishes", async () => {
+    const rig = createRig({ bot: smallWindow, script: fourTurns(say("SUMMARY"), [say("done")]) });
+    const status = await runLoop(
+      rig.deps({
+        beforeCompaction: async () => {
+          throw new Error("database down");
+        },
+      }),
+      rig.runId,
+    );
+    expect(status).toBe("done");
+    expect(eventsOfType(await rig.events(), "compacted")).toHaveLength(1);
+  });
+
+  it("is not asked when nothing is compacted", async () => {
+    let asked = 0;
+    const rig = createRig({ script: [use(echo("c1", "a")), say("done")] });
+    await runLoop(rig.deps({ beforeCompaction: async () => void asked++ }), rig.runId);
+    expect(asked).toBe(0);
   });
 });

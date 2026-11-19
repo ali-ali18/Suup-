@@ -31,6 +31,7 @@ export const searchConversationsTool = defineTool({
   ].join(" "),
   input,
   risk: "read",
+  ownOutput: true,
   async execute({ query, limit }, ctx) {
     const memory = memoryOf(ctx);
     if (isOutput(memory)) return memory;

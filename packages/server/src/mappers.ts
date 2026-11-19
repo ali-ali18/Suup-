@@ -148,7 +148,10 @@ export function toConversationDto(view: ConversationView, activeRun: RunRow | nu
   };
 }
 
-export function toMemoryDto(memory: MemoryRow): Memory {
+export function toMemoryDto(
+  memory: MemoryRow,
+  review?: { decision: string; reason: string } | null,
+): Memory {
   return {
     id: memory.id,
     layer: memory.layer,
@@ -162,6 +165,11 @@ export function toMemoryDto(memory: MemoryRow): Memory {
     createdAt: iso(memory.createdAt),
     updatedAt: iso(memory.updatedAt),
     archivedAt: isoOrNull(memory.archivedAt),
+    status: memory.status,
+    summary: memory.summary,
+    lastUsedAt: isoOrNull(memory.lastUsedAt),
+    supersedesId: memory.supersedesId,
+    ...(review === undefined ? {} : { review }),
   };
 }
 
