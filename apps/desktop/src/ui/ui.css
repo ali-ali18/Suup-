@@ -507,7 +507,7 @@ input.ui-field__control {
 }
 .ui-bubble {
   padding: var(--bubble-pad-y) 18px;
-  border-radius: var(--radius-card);
+  border-radius: var(--radius-bubble);
   min-width: 0;
 }
 .ui-bubble--bot {
@@ -521,7 +521,34 @@ input.ui-field__control {
   max-width: min(100%, 560px);
   background: var(--bot-bubble, var(--color-raised));
   color: var(--bot-on-bubble, var(--color-text));
-  border-radius: var(--radius-card);
+}
+/* Dynamic bubbles (docs/DESIGN.md, Balões): consecutive text bubbles of one sender link on the
+   sender's side (bot: left, user: right) with a small corner; the far side and the group's ends keep
+   the full radius. Cards never carry data-bubble. Only the radius changes when a bubble's position
+   does, so a new message shifts nothing. */
+.ui-msg[data-bubble="middle"],
+.ui-msg[data-bubble="last"] {
+  margin-top: calc(var(--bubble-gap-group) - var(--chat-gap));
+}
+.ui-msg--bot[data-bubble="first"] .ui-bubble--bot {
+  border-bottom-left-radius: var(--radius-bubble-link);
+}
+.ui-msg--bot[data-bubble="middle"] .ui-bubble--bot {
+  border-top-left-radius: var(--radius-bubble-link);
+  border-bottom-left-radius: var(--radius-bubble-link);
+}
+.ui-msg--bot[data-bubble="last"] .ui-bubble--bot {
+  border-top-left-radius: var(--radius-bubble-link);
+}
+.ui-msg--user[data-bubble="first"] .ui-bubble--user {
+  border-bottom-right-radius: var(--radius-bubble-link);
+}
+.ui-msg--user[data-bubble="middle"] .ui-bubble--user {
+  border-top-right-radius: var(--radius-bubble-link);
+  border-bottom-right-radius: var(--radius-bubble-link);
+}
+.ui-msg--user[data-bubble="last"] .ui-bubble--user {
+  border-top-right-radius: var(--radius-bubble-link);
 }
 .ui-bubble--pending {
   opacity: 0.72;

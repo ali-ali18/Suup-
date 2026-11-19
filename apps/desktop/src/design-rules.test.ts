@@ -88,7 +88,27 @@ describe("chat cards share one chrome and one collapsed row", () => {
       if (selector !== ".ui-bubble--bot")
         expect(block(selector), selector).toContain("border-radius: var(--radius-card)");
     }
-    expect(block(".ui-bubble")).toContain("border-radius: var(--radius-card)");
+    expect(block(".ui-bubble")).toContain("border-radius: var(--radius-bubble)");
+  });
+
+  it("dynamic bubbles: the outer radius is the card's, the linking one is a smaller token, and only bubbles carry the position", () => {
+    const tokens = read(join(SRC, "styles", "tokens.css"));
+    expect(tokens).toContain("--radius-bubble: var(--radius-card);");
+    expect(tokens).toContain("--radius-bubble-link:");
+    expect(tokens).toContain("--bubble-gap-group:");
+    const css = read(join(SRC, "ui", "ui.css"));
+    // Linking corners use the link token; no bubble rule uses a literal or the card radius for them.
+    expect(css).toContain("border-bottom-left-radius: var(--radius-bubble-link)");
+    expect(css).toContain("border-top-right-radius: var(--radius-bubble-link)");
+    // The position is set by the two text bubbles and by nothing else: cards keep their chrome.
+    const message = read(join(SRC, "ui", "message.tsx"));
+    expect(message.split("data-bubble={position}").length - 1).toBe(2);
+    for (const name of ["decision-card.tsx", "action-card.tsx", "question-card.tsx"])
+      expect(read(join(SRC, "ui", name)), name).not.toContain("data-bubble");
+    // The radius of a bubble is never animated: a new message must not move anything.
+    const start = css.indexOf("/* Dynamic bubbles");
+    const rules = css.slice(start, css.indexOf(".ui-bubble--pending {", start));
+    expect(rules).not.toContain("transition");
   });
 
   it("the expand affordance is the stacked chevrons, never a single chevron", () => {
