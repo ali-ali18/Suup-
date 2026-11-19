@@ -190,7 +190,10 @@ describe("an approval that waited too long", () => {
     expect(result?.payload.outcome).toBe("denied");
     expect(result?.payload.content).toContain("[Harness notice]");
     expect(result?.payload.content).toContain("5 h");
-    expect(result?.payload.content).toContain("retomando a tarefa antiga");
+    expect(result?.payload.content).toContain("retomou uma tarefa antiga");
+    // the sentence that reaches the user is the final message, not the text beside a tool call
+    expect(result?.payload.content).toContain("mensagem final");
+    expect(result?.payload.content).toContain("não chega a ele");
     // The model reads it as the harness, not as the user.
     const sent = s.rig.provider.requests[1]?.messages.at(-1);
     expect(textOf(sent)).not.toContain("[Message from the user");
