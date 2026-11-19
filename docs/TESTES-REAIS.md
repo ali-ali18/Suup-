@@ -694,3 +694,112 @@ Conferido nas duas: `wait_scheduled` e `wait_fired` uma vez cada; a execução p
 - Duas execuções, um modelo, uma língua, uma tarefa fácil: não é uma taxa. Não medi se o bot **sempre** avisa na mensagem (o texto da ferramenta pede, e o log mostra o retorno em `suup show`/`suup inspect` caso ele não avise).
 - Não medi o laço induzido por instrução de página externa, a mensagem do usuário durante a espera com modelo real, nem o custo de um retorno com cache frio depois de mais de 5 minutos (a espera medida foi de 1 minuto, dentro do TTL do cache).
 - O app (Playwright) foi testado só com o provedor roteirizado; o acordar pelo job do worker (e não pelo acompanhamento da CLI) foi testado com o servidor e o worker em runtimes separados, mas não com o modelo real.
+
+---
+
+# Estabilização (19/11/2026)
+
+Objetivo: simular o uso diário do dono contra o modelo real, achar o que quebra e consertar, sem funcionalidade nova. Código a partir do commit `988606d` (branch `feat/fase-4`).
+
+## Preparação
+
+| Item | Valor |
+|---|---|
+| Modelos | bots em `claude-sonnet-5-5` (preços 2 / 10 / 0,10 / 2,50 US$/MTok, `supportsForcedToolChoice: false`); revisor de aprovações, revisor de escrita e consolidação da memória em `claude-haiku-5-5` (0,10 / 0,50 / 0,01 / 0,125) |
+| Processos | **servidor e worker separados** (`suup server` e `suup worker`, como em produção), com a configuração fora do repositório (`/var/tmp/suup-stab/suup.config.json`, chave só por `apiKeyEnv: "SUUP_ANTHROPIC_KEY"`, nunca impressa) |
+| Banco | PostgreSQL 16 descartável (porta 5493), banco novo |
+| Sandbox | **Docker**, `suup-sandbox:dev`, rede interna com proxy e lista exata de hosts (`registry.npmjs.org` como padrão) |
+| Conector | um servidor MCP mínimo de stdio (`send_email`, `buy_item`, `list_inbox`) numa imagem derivada do runner (`suup-connector-runner:dev` + um arquivo), rodando em contêiner próprio; `send_email` marcado por mim como "mensagem a outra pessoa" (`to`) |
+| Cofre | chave descartável só no ambiente da sessão; segredo inventado (`stabtok-…`) |
+| Persona | "Marina" (inventada), três bots: Principal (conversa longa), Beto (outro bot), Ops (aprovações, cofre, retorno, queda, rede) |
+| Interação | só pela API (`curl`/`fetch`, como o app faria) e pela CLI; aprovações decididas pela API |
+| Configurações da memória | consolidação ociosa 1 min, teto de 5 mensagens, compactação a 50 %; para forçar compactação a janela do Sonnet foi reduzida a 22 000 tokens **só na configuração desta sessão** (as 17 definições de ferramenta já pesam cerca de 9 400 tokens, então a compactação dispara a cada execução com histórico) |
+| Orçamento | US$ 2,00 (parada em 2,00). **Gasto: US$ 0,78** (soma de `cost_usd` das execuções, que já inclui o revisor automático: 0,75; consolidações: 0,005; sondagens avulsas do revisor: cerca de 0,025). 40 execuções (Principal 24, Ops 14, Beto 2), 13 cartões, 47 revisões automáticas |
+
+`suup doctor` antes e depois: tudo `ok`, sem aviso nenhum (depois, com o conector e as duas linhas de ferramentas por bot).
+
+## Resultado por cenário
+
+| # | Cenário | Resultado |
+|---|---|---|
+| 1 | Conversa longa (24 execuções, compactação, consolidação, outro bot) | **passou**, com 3 problemas achados e consertados (abaixo) |
+| 2 | Aprovações com regras escritas, recusa + mensagem, aprovação tardia, "Nunca" depois | **passou**, com 1 problema de modelo consertado e 1 oscilação do revisor registrada |
+| 3 | Cofre e segredo | **passou** |
+| 4 | Retorno agendado (real, 1 min), mensagem durante a espera, stop | **passou** nos três |
+| 5 | Queda do worker (SIGKILL) em ferramenta, em aprovação e em retorno | **passou** nos três |
+| 6 | Rede: host fora da lista, cartão, outro bot | **passou** |
+| 7 | `suup doctor` antes e depois | **passou** (sem avisos) |
+
+### 1. Conversa longa (Principal, 24 execuções, US$ 0,45)
+
+Conversa com ~25 mensagens da Marina: apresentação ("moro em Olinda"), filha Ana, "responda sempre curto, no máximo duas frases", conversa fiada, pedidos de trabalho (criar e listar arquivos em `notas/`, planejar a semana), a correção ("me mudei para Recife"), marido, gostos, aniversário, conta, recomendação de livro.
+
+- **Perfil e regra**: 11 itens ativos (perfil e uma regra de brevidade), todos escritos pelo bot, nenhum com segredo. A correção virou **atualização**: a consolidação (gatilho antes da compactação) editou o fato de Olinda para Recife e o bot, na mesma execução, esqueceu o antigo e gravou um novo; resultado final: **um** fato ativo sobre onde ela mora, o antigo arquivado, sem fato de Olinda ativo. Houve **uma duplicata** (o time "Sport", uma vez pela consolidação, outra pelo bot): ocorreu porque o cartão do `remember` ficou esperando enquanto a conversa ficou 1 minuto parada e a consolidação ociosa rodou; com o conserto 2 (sem cartão para a memória) essa janela deixa de existir. Esqueci a duplicata à mão.
+- **Gatilhos da consolidação**: viu-se `pre_compaction` (5), `max_turns` (3, com o teto em 5) e `idle` (5, com 1 minuto). Cada uma custa de US$ 0,0002 a 0,0005. As propostas vêm com a citação literal da mensagem dela; nenhuma foi descartada.
+- **Outro bot**: o Beto, numa conversa nova, respondeu "Você mora em Recife (mudou-se de Olinda no mês passado), e sua filha se chama Ana", uma frase, sem chamar `recall` (os fatos vêm no prompt do sistema) e respeitando a regra de brevidade.
+- **Compactação**: 13 compactações. O bot manteve o fio (lembrou a reunião de terça às 14h, o nome do marido), mas ver abaixo o problema 1.
+- Observação de modelo: com o histórico compactado o Sonnet ficou às vezes prolixo (repete recapitulações, passa de duas frases) mesmo com a regra no prompt. Não consertado (comportamento do modelo; a regra está no prompt do sistema, em destaque).
+
+### 2. Aprovações (Ops, US$ 0,25 no total do bot)
+
+Regras escritas, globais: Nunca "apagar a pasta notas"; Sempre perguntar "qualquer coisa que gaste dinheiro"; Permitir "e-mails para minha equipe em acme.com".
+
+| Pedido | Resultado |
+|---|---|
+| criar `notas/a.txt` e apagar a pasta `notas` | o `rm` foi **bloqueado pela regra** (`block` citando a regra); o arquivo foi criado; o bot contou |
+| comprar uma caneta (`buy_item`, R$ 12) | **cartão** citando a regra de dinheiro, com a frase do revisor |
+| negar o cartão ("Já tenho caneta") e escrever em seguida | a mensagem ficou **ligada à aprovação** (`user_message [ligada à aprovação …]`); a execução seguiu usando o motivo: não comprou e gravou o lembrete pedido |
+| e-mail para `joana@acme.com` | **uma vez** o revisor (Haiku) pediu cartão ("não está claro que Joana esteja na equipe"); numa sonda isolada com o mesmo pedido, 12 de 12 respostas liberaram `@acme.com` e pediram para `carlos@gmail.com` e `ana@acme.com.cobranca-segura.io` (certo). É oscilação do modelo barato, no lado seguro (pergunta). Não consertado |
+| e-mail para `carlos@gmail.com` (fora da equipe) | **cartão**, como deve |
+| aprovação tardia (`created_at` recuado 2 h por SQL) | o código **não executou**, deu o aviso do harness, o bot refez a **mesma chamada**, que rodou **sem novo cartão** (`approval_grant_used`); o envio aconteceu **uma vez** (o servidor de teste contou). Problema 3 abaixo: na primeira vez o bot avisou da retomada só no texto que acompanha a chamada, que não chega ao usuário |
+| regra "Nunca" criada depois do cartão, aprovação tardia | a chamada repetida foi **bloqueada pela regra nova** (`approval_review → block`), o envio **não** aconteceu |
+
+### 3. Cofre e segredo
+
+`request_secret` (nome `DEPLOY_TOKEN`) pôs a execução em `waiting_user`; o valor entrou por `POST /v1/runs/{id}/secret-request/answer`; o bot gravou `TOKEN=…` com o marcador `{{secret:DEPLOY_TOKEN}}` num `shell` (cartão obrigatório, piso fixo), conferiu `wc -l` e disse que não viu o valor. **Conferido**: o modelo só viu o marcador (pedidos gravados); o arquivo na máquina tem o valor; **o valor não aparece em nenhuma linha de nenhuma tabela do banco** (varri as 28 tabelas por texto) nem nos logs do servidor e do worker.
+
+### 4. Retorno agendado (real)
+
+| Caso | Resultado |
+|---|---|
+| "volta em 1 minuto" | `wait_scheduled` → parada sem worker → `wait_fired` 5 s depois da hora (o job acorda a cada 5 s) → conferiu o arquivo (`ok`) e escreveu a segunda mensagem na mesma conversa. US$ 0,023 |
+| usuário escreve durante a espera | `wait_cancelled` (o usuário escreveu) → a mesma execução seguiu com a mensagem; nenhum `wait_fired`; a mensagem do bot confirmou que cancelou a conferência |
+| usuário aperta stop | `suup stop` cancelou na hora (`wait_cancelled`, `cancelled`); um minuto depois, nenhum disparo; conversa sem execução ativa |
+
+### 5. Queda do worker (`kill -9`)
+
+| Momento | Resultado |
+|---|---|
+| no meio de um `shell` de 40 s | o worker novo (depois do tempo de posse vencida e do próximo sondar da fila, cerca de 30 s) gravou o resultado da ferramenta como **interrompido, resultado desconhecido**, o bot **verificou o estado** (`ls`/`cat`: a linha estava lá uma vez) e **não repetiu** o comando. O contêiner terminou o comando sozinho: **uma** linha no arquivo |
+| com cartão pendente | o cartão continuou pendente depois da queda; aprovado depois, a chamada rodou **uma vez** (1 `tool_call`, 1 mensagem do usuário, 1 resposta) |
+| com retorno pendente | a hora passou com o worker fora; ao voltar, `wait_fired` **uma vez**, 30 s depois da hora, a execução terminou; a mensagem de resultado veio **uma vez** |
+
+`suup show` e a API ficaram coerentes em todos os casos (situação, retorno, cartões pendentes). Mensagens duplicadas: 0 (as 40 mensagens do bot tinham 40 chaves distintas).
+
+### 6. Rede
+
+O Ops tentou `curl` a `files.pythonhosted.org` (fora da lista): o proxy recusou (`403`, aviso do proxy no `stderr`), o bot chamou `request_network_access`, o cartão apareceu (piso fixo), aprovado: **HTTP 404** (a conexão funcionou). O Beto, sem a concessão, na mesma pergunta: `000`, `network: host files.pythonhosted.org is not allowed for this bot`, e (por instrução minha) não pediu acesso. `suup network list` mostra as duas recusas.
+
+## Problemas e o que foi feito
+
+| # | Problema | Classe | Conserto |
+|---|---|---|---|
+| 1 | **Compactação**: o corte cai logo antes de uma mensagem do assistente, então o resumo terminava num pedido do usuário que a parte mantida já respondia. O resumidor o listava como pendente ("o arquivo ainda não foi criado") e o bot passou a dizer que o arquivo "já existia, embora eu não o tenha criado" | harness (estrutura do pedido ao resumidor) | primeiro aviso no pedido (`f4ce738`; não bastou com o modelo real: continuou "não foi criado na parte mostrada"); depois o pedido traz o texto da primeira mensagem mantida, só como contexto (`7748711`). Reteste: o bot disse "fui eu que acabei de criar". Testes que falham sem o conserto |
+| 2 | **O revisor automático pedia cartão para quase todo `remember`** (o texto da memória traz "Marina", que ele não vê nas últimas 5 mensagens; "você não pediu isso explicitamente"). Contraria a regra do dono de que nada que o bot escreve na memória espera o usuário | modelo + desenho | dois ajustes de prompt (`11203fb`, versão `auto-review-v2`) não seguraram (sonda: 2 a 3 de 8 ainda perguntavam; piorou com um exemplo); então `remember` e `forget` no nível reversível **não vão ao revisor por modelo** (`0eb5253`, `MEMORY_KEEPING_TOOLS`); subir o nível por configuração ainda vale. **Decisão do dono pendente**: com isso uma regra escrita não cobre a memória (documentado em `APROVACOES.md`). Teste que falha sem o conserto |
+| 3 | Aprovação tardia: o bot disse que retomava a tarefa antiga só no texto que acompanha a nova chamada, que **não vira mensagem da conversa**; a mensagem final não avisou | modelo/prompt do aviso | o aviso diz onde (mensagem final) e o quê (retomou, a aprovação demorou N h) (`cf1f386`). Reteste: "Retomei uma tarefa antiga: a aprovação demorou 3 h e o envio só saiu agora" |
+| 4 | `suup connectors add` avisava que o conector "roda fora da máquina isolada" mesmo com Docker (onde roda em contêiner) | bug do código (texto fixo) | o aviso só sai quando roda no host (`4f55ad9`, teste). **Aberto**: o formulário do app tem o mesmo texto fixo (`apps/desktop/src/lib/connector-form.ts`); não mexi na interface sem a regra do `DESIGN.md` |
+
+## O que fica aberto
+
+- Decisão do dono sobre o problema 2 (regra escrita não cobre `remember`/`forget`).
+- Texto do formulário de conector no app (problema 4).
+- O revisor barato oscila: um e-mail para `@acme.com` pediu cartão uma vez em três (lado seguro). Vale a bateria `suup eval approvals` periódica.
+- Peso das definições: 17 ferramentas embutidas e de controle somam cerca de 9 400 tokens por pedido; um turno frio (cache expirado, TTL de 5 minutos) custa US$ 0,03 a 0,05 com Sonnet, um turno com cache cerca de US$ 0,007 a 0,02. Numa conversa espaçada (um turno a cada vários minutos) quase todo turno é frio.
+- A resposta do bot chega à conversa cerca de 1 s **depois** de a execução ficar `done` (a mensagem é escrita ao encerrar); um cliente que só olhe o estado da execução pode ver `done` antes da mensagem. O app usa o fluxo de mudanças e não é afetado; não investigado a fundo.
+- Depois de uma queda, a retomada espera o próximo sondar da fila (até cerca de 30 s com o tempo de espera máximo do sondador), além do tempo de posse vencida.
+- Prolixidade do Sonnet com histórico compactado, apesar da regra de brevidade.
+- Não testado: duas conversas simultâneas do mesmo bot (cada bot tem uma só conversa), grupo, o app (Playwright) contra o modelo real.
+
+## Verificações do repositório (depois dos consertos)
+
+`pnpm lint` e `pnpm typecheck` limpos; `tsc -b` limpo; suíte completa com banco novo e Docker (`SUUP_DOCKER_TESTS=1`, imagens `suup-sandbox:dev` e `suup-connector-runner:dev`): **3196 passaram, 4 puladas, 0 falhas** (200 arquivos); Playwright do app (`pnpm build` e `test:e2e`): **66 passaram**. Na primeira rodada, 1 teste falhou porque fixava a versão do prompt do revisor (`auto-review-v1`); ele passou a esperar `auto-review-v2` (commit `be23e26`), sem afrouxar nada.

@@ -12,6 +12,7 @@ import {
   textOf,
   use,
 } from "../testing/index.js";
+import { keptHeadNote, SUMMARIZE_INTRO } from "./compaction.js";
 import {
   COMPACTION_THRESHOLD_RANGE,
   chooseCutIndex,
@@ -60,6 +61,8 @@ describe("compaction", () => {
     expect(summarizer?.system).toContain("decisions made");
     expect(summarizer?.system).toContain("what was tried and failed");
     const transcript = textOf(summarizer?.messages[0]);
+    expect(transcript).toContain(SUMMARIZE_INTRO);
+    expect(transcript).toContain("not summarized");
     expect(transcript).toContain("[result of echo] echo: alpha");
     expect(transcript).toContain("echo: bravo");
     expect(transcript).not.toContain("charlie");
@@ -85,6 +88,32 @@ describe("compaction", () => {
     expect(requests.filter((e) => e.payload.purpose === "compaction")).toHaveLength(1);
     expect((await rig.record()).turns).toBe(5);
     expect(problemsInRequests(rig.provider)).toEqual([]);
+  });
+
+  it("shows the summarizer how the last summarized message was answered (the start of the kept part), but not the rest", async () => {
+    const note = (n: number) => ({ type: "text" as const, text: `KEPT-NOTE-${n}` });
+    const rig = createRig({
+      bot: smallWindow,
+      script: [
+        use(note(1), echo("c1", "alpha")),
+        use(note(2), echo("c2", "bravo")),
+        use(note(3), echo("c3", "charlie")),
+        { blocks: [note(4), echo("c4", "delta")], usage: BIG },
+        say("SUMMARY"),
+        say("All done."),
+      ],
+    });
+    expect(await rig.run()).toBe("done");
+    const after = rig.provider.requests[5]?.messages as Message[];
+    const firstKept = textOf(after[1]);
+    expect(firstKept).toContain("KEPT-NOTE-");
+    const asked = textOf(rig.provider.requests[4]?.messages[0]);
+    expect(asked).toContain("The kept part starts with this assistant message");
+    expect(asked).toContain(firstKept);
+    // the notes of the summarized part are in the transcript; the later kept ones are not
+    expect(asked).not.toContain("KEPT-NOTE-4");
+    expect(keptHeadNote(undefined)).toBe("");
+    expect(keptHeadNote({ role: "assistant", blocks: [echo("x", "y")] })).toBe("");
   });
 
   it("does nothing below the threshold", async () => {
