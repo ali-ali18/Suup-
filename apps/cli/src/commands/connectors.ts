@@ -319,9 +319,8 @@ export const connectorsAdd: CommandSpec = {
     }
     ctx.out.line(`Conector ${name} adicionado${created.enabled ? "" : " (desligado)"}.`);
     if (command !== undefined) {
-      ctx.out.warn(
-        "este conector é um programa que roda no computador do servidor/worker, fora da máquina isolada dos bots, com as permissões deste usuário.",
-      );
+      const warning = isolationWarning(created.runsIn);
+      if (warning !== undefined) ctx.out.warn(warning);
     }
     ctx.out.line(`Confira se conecta e quais ferramentas oferece: suup connectors test ${name}`);
     if (bots.length === 0)
@@ -331,6 +330,18 @@ export const connectorsAdd: CommandSpec = {
     return EXIT_OK;
   },
 };
+
+/**
+ * What to tell the user right after adding a local-program connector. With the Docker sandbox the
+ * program runs in its own container (no files of the host, network only through the allowlist), and
+ * the old text, which said it ran on the server's computer with the user's permissions, was wrong.
+ */
+export function isolationWarning(
+  runsIn: "container" | "host" | null | undefined,
+): string | undefined {
+  if (runsIn === "container") return undefined;
+  return "este conector é um programa que roda no computador do servidor/worker, fora da máquina isolada dos bots, com as permissões deste usuário.";
+}
 
 export const connectorsRemove: CommandSpec = {
   name: "connectors rm",
