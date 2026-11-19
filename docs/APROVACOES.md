@@ -79,6 +79,7 @@ Função pura `decidePolicy` (`core`), na ordem; a primeira que decide encerra:
    - `run` que cita uma regra `ask` ou `never` vira `ask` (**quem manda perguntar vence quem libera**: o código confere o tipo da regra citada, não só o prompt);
    - um `ruleId` que não existe em nenhuma regra do bot vira `ask`, qualquer que seja a decisão;
    - erro, tempo esgotado (20 s), resposta sem a ferramenta, decisão desconhecida ou argumentos grandes demais (12 000 caracteres) viram `ask`.
+   - **Exceção: as ferramentas da memória do próprio bot (`remember`, `forget`) no nível `write_reversible` não vão ao modelo** (rodam). A regra do dono é que nada que o bot escreve na memória espera o usuário ([MEMORIA.md](MEMORIA.md)); a memória tem as próprias proteções (revisão de escrita quando a execução leu conteúdo de fora, histórico com desfazer). Com o modelo real o revisor pedia cartão para quase todo fato dito pelo usuário (o texto dizia "Marina", e o revisor não via a primeira mensagem, onde o nome foi dito). Consequência aceita: uma regra escrita não cobre a memória. Se o usuário subir o nível da ferramenta (`approvals.levels`) a exceção não vale. Constante `MEMORY_KEEPING_TOOLS` (`gate.ts`).
 7. Sem modelo disponível: a tabela de níveis (`levelReviewer`), como antes.
 8. O que sobrou para perguntar é **cartão**.
 

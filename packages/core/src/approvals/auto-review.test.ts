@@ -136,6 +136,32 @@ describe("auto-review: what the model's answer is allowed to do", () => {
     expect(provider.calls).toBe(0);
   });
 
+  it("the tools that keep the assistant's memory do not go to the model at the reversible level, but a level the user raised still asks", async () => {
+    for (const name of ["remember", "forget"]) {
+      const { provider, check } = gateFor([], {
+        proposed: {
+          level: "write_reversible",
+          name,
+          args: { text: "A Marina odeia reunião cedo." },
+        },
+      });
+      expect(await check()).toMatchObject({ outcome: "allow" });
+      expect(provider.calls).toBe(0);
+    }
+    // another reversible tool still goes to the model, which here asks
+    const other = gateFor([answer("ask", null)], {
+      proposed: { level: "write_reversible", name: "write_file" },
+    });
+    expect(await other.check()).toMatchObject({ outcome: "ask", source: "reviewer" });
+    expect(other.provider.calls).toBe(1);
+    // the user raised remember to irreversible: no exemption, the model reviewer decides (ask)
+    const raised = gateFor([answer("ask", null)], {
+      proposed: { level: "external_irreversible", name: "remember" },
+    });
+    expect(await raised.check()).toMatchObject({ outcome: "ask", source: "reviewer" });
+    expect(raised.provider.calls).toBe(1);
+  });
+
   it("write_reversible with no rule: the model may let it run; the review is recorded with cost", async () => {
     const { provider, check } = gateFor([answer("run", null, "Dentro do pedido.")], {
       proposed: { level: "write_reversible" },
