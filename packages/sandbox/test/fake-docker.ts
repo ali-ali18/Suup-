@@ -34,7 +34,7 @@ if (cmd === "exec") {
   child.on("exit", (code, signal) => process.exit(code ?? (signal ? 137 : 1)));
 } else if (cmd === "network") {
   // An internal network that always exists, with a gateway the tests can listen on.
-  if (rest[0] === "inspect") console.log("true 127.0.0.1 ");
+  if (rest[0] === "inspect") console.log("true false 0 127.0.0.1|127.0.0.0/8 ");
 } else if (cmd === "inspect") {
   const s = readState();
   if (!s.exists) { console.error("Error response from daemon: No such container: " + rest[rest.length - 1]); process.exit(1); }
