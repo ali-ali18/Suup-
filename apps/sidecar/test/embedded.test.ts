@@ -1,0 +1,261 @@
+import { type ChildProcess, execFileSync, spawn } from "node:child_process";
+import {
+  chownSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createClient } from "@suup/api";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { decodeEvent, type SidecarEvent } from "../src/protocol.js";
+
+// The packaged layout, started the way the app starts it: the bundle (`sidecar.mjs`), the PostgreSQL
+// binaries and the migrations in a resources folder, an empty app-data folder, the secrets in the
+// environment. One chat turn with the scripted provider, then a soft stop, and nothing left running.
+//
+// PostgreSQL refuses to run as root. Where this runs as root (a container), SUUP_TEST_RUN_AS names an
+// ordinary user to start the sidecar as.
+
+const HERE = import.meta.dirname;
+const SIDECAR = join(HERE, "..");
+const RUN_AS = process.env.SUUP_TEST_RUN_AS;
+const IS_ROOT = typeof process.getuid === "function" && process.getuid() === 0;
+const CAN_RUN = !IS_ROOT || RUN_AS !== undefined;
+const TOKEN = "t".repeat(48);
+
+function listProcesses(match: string): string[] {
+  if (process.platform === "win32") return [];
+  const out = execFileSync("ps", ["-eo", "pid,args"], { encoding: "utf8" });
+  return out.split("\n").filter((line) => line.includes(match));
+}
+
+describe.skipIf(!CAN_RUN)(
+  "the embedded server, from the packaged layout",
+  { timeout: 240_000 },
+  () => {
+    let root = "";
+    let resources = "";
+    let appData = "";
+    let child: ChildProcess | undefined;
+    const events: SidecarEvent[] = [];
+    let buffered = "";
+
+    const give = (path: string) => {
+      if (IS_ROOT && RUN_AS !== undefined) {
+        const uid = Number(execFileSync("id", ["-u", RUN_AS], { encoding: "utf8" }));
+        execFileSync("chown", ["-R", String(uid), path]);
+      }
+    };
+
+    const waitFor = (test: (event: SidecarEvent) => boolean, ms: number): Promise<SidecarEvent> =>
+      new Promise((resolve, reject) => {
+        const started = Date.now();
+        const timer = setInterval(() => {
+          const found = events.find(test);
+          if (found !== undefined) {
+            clearInterval(timer);
+            resolve(found);
+          } else if (Date.now() - started > ms) {
+            clearInterval(timer);
+            reject(new Error(`timeout; eventos: ${JSON.stringify(events)}`));
+          }
+        }, 50);
+      });
+
+    beforeAll(() => {
+      root = mkdtempSync(join(tmpdir(), "suup-embedded-"));
+      // World-readable so the ordinary user can read what root wrote.
+      execFileSync("chmod", ["755", root]);
+      execFileSync(process.execPath, [join(SIDECAR, "scripts", "prepare.mjs")], {
+        env: { ...process.env, SUUP_PREPARE_OUT: root, SUUP_PREPARE_NO_NODE: "1" },
+        stdio: "inherit",
+      });
+      resources = join(root, "resources");
+      appData = join(root, "app-data");
+      mkdirSync(appData, { recursive: true });
+      // The scripted provider instead of a real model: the generated configuration, section replaced.
+      writeFileSync(
+        join(resources, "script.json"),
+        JSON.stringify({
+          cases: [
+            { whenObjectiveContains: "OI-EMBUTIDO", agent: [{ text: "Olá, de dentro do app." }] },
+          ],
+        }),
+      );
+      writeFileSync(
+        join(appData, "config.override.json"),
+        JSON.stringify({
+          providers: [
+            { id: "scripted", kind: "scripted", scriptPath: join(resources, "script.json") },
+          ],
+          models: [
+            { id: "model-x", provider: "scripted", contextWindow: 100000, maxOutputTokens: 4096 },
+          ],
+          reviewer: { model: "model-x" },
+          memory: { consolidation: { model: "model-x" } },
+        }),
+      );
+      give(root);
+    });
+
+    afterAll(() => {
+      child?.kill("SIGKILL");
+    });
+
+    it("starts the database, migrates, serves, answers a chat turn, and stops with nothing left", async () => {
+      const env = {
+        ...process.env,
+        SUUP_APP_DATA: appData,
+        SUUP_RESOURCES: resources,
+        SUUP_PG_PASSWORD: "senha-do-banco-do-teste-1234",
+        SUUP_SERVER_TOKEN: TOKEN,
+        SUUP_VAULT_KEY: Buffer.alloc(32, 7).toString("base64"),
+        SUUP_SANDBOX: "local",
+        SUUP_APP_VERSION: "test",
+      };
+      const node = process.execPath;
+      const bundle = join(resources, "sidecar", "sidecar.mjs");
+      const command = RUN_AS !== undefined && IS_ROOT ? "runuser" : node;
+      const args =
+        RUN_AS !== undefined && IS_ROOT
+          ? [
+              "-u",
+              RUN_AS,
+              "--",
+              "env",
+              ...Object.entries(env)
+                .filter(([k]) => k.startsWith("SUUP_"))
+                .map(([k, v]) => `${k}=${v}`),
+              node,
+              bundle,
+            ]
+          : [bundle];
+      child = spawn(command, args, { env, stdio: ["pipe", "pipe", "pipe"] });
+      child.stdout?.setEncoding("utf8");
+      child.stdout?.on("data", (chunk: string) => {
+        buffered += chunk;
+        for (let at = buffered.indexOf("\n"); at !== -1; at = buffered.indexOf("\n")) {
+          const event = decodeEvent(buffered.slice(0, at));
+          buffered = buffered.slice(at + 1);
+          if (event !== undefined) events.push(event);
+        }
+      });
+      let stderr = "";
+      child.stderr?.on("data", (c) => {
+        stderr += String(c);
+      });
+
+      const ready = await waitFor((e) => e.event === "ready" || e.event === "error", 180_000);
+      expect(ready, `${JSON.stringify(events)} ${stderr}`).toMatchObject({ event: "ready" });
+      if (ready.event !== "ready") return;
+      // The stages came in order.
+      expect(
+        events.filter((e) => e.event === "stage").map((e) => (e as { stage: string }).stage),
+      ).toEqual(["database", "migrations", "machine", "server"]);
+      expect(ready.isolation.mode).toBe("local");
+      expect(ready.url.startsWith("http://127.0.0.1:")).toBe(true);
+
+      const api = createClient({ baseUrl: ready.url, token: TOKEN });
+      expect(await api.health()).toEqual({ status: "ok" });
+      const [main] = await api.bots.list();
+      expect(main?.name).toBe("Principal");
+      const conversation = await api.bots.openConversation(main?.id as string);
+      await api.conversations.send(conversation.id, "OI-EMBUTIDO");
+      const deadline = Date.now() + 60_000;
+      for (;;) {
+        const { items } = await api.conversations.messages(conversation.id);
+        if (items.some((m) => m.authorKind === "bot")) {
+          expect(items.at(-1)?.text).toBe("Olá, de dentro do app.");
+          break;
+        }
+        if (Date.now() > deadline) throw new Error("o worker embutido não respondeu");
+        await new Promise((r) => setTimeout(r, 50));
+      }
+
+      // The database is the one in the app-data folder, and only the loopback can reach it.
+      expect(readdirSync(join(appData, "postgres"))).toContain("PG_VERSION");
+      expect(listProcesses(join(appData, "postgres")).length).toBeGreaterThan(0);
+
+      // A soft stop, the way the app asks: "stop" on stdin.
+      child.stdin?.write("stop\n");
+      await waitFor((e) => e.event === "stopped", 90_000);
+      const code = await new Promise<number | null>((resolve) => {
+        if (child?.exitCode !== null && child?.exitCode !== undefined) resolve(child.exitCode);
+        else child?.once("exit", (c) => resolve(c));
+      });
+      expect(code).toBe(0);
+      // Nothing is left: no PostgreSQL on this data folder, no Node on this bundle.
+      expect(listProcesses(join(appData, "postgres"))).toEqual([]);
+      expect(listProcesses(bundle)).toEqual([]);
+      // The log is there, and no secret is in it.
+      const logs = join(appData, "logs");
+      const text = readdirSync(logs)
+        .map((name) => readFileSync(join(logs, name), "utf8"))
+        .join("\n");
+      expect(text).toContain("etapa: server");
+      for (const secret of [env.SUUP_PG_PASSWORD, TOKEN, env.SUUP_VAULT_KEY]) {
+        expect(text).not.toContain(secret);
+      }
+      void chownSync;
+    });
+
+    it("finds the same ports and the same data on the next start, and stops when the app's pipe closes", async () => {
+      const ports = JSON.parse(readFileSync(join(appData, "ports.json"), "utf8")) as {
+        server: number;
+      };
+      const env = {
+        ...process.env,
+        SUUP_APP_DATA: appData,
+        SUUP_RESOURCES: resources,
+        SUUP_PG_PASSWORD: "senha-do-banco-do-teste-1234",
+        SUUP_SERVER_TOKEN: TOKEN,
+        SUUP_VAULT_KEY: Buffer.alloc(32, 7).toString("base64"),
+        SUUP_SANDBOX: "local",
+        SUUP_APP_VERSION: "test",
+      };
+      const node = process.execPath;
+      const bundle = join(resources, "sidecar", "sidecar.mjs");
+      const asRoot = RUN_AS !== undefined && IS_ROOT;
+      const args = asRoot
+        ? [
+            "-u",
+            RUN_AS as string,
+            "--",
+            "env",
+            ...Object.entries(env)
+              .filter(([k]) => k.startsWith("SUUP_"))
+              .map(([k, v]) => `${k}=${v}`),
+            node,
+            bundle,
+          ]
+        : [bundle];
+      const again = spawn(asRoot ? "runuser" : node, args, {
+        env,
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      let out = "";
+      again.stdout?.on("data", (c) => {
+        out += String(c);
+      });
+      const deadline = Date.now() + 120_000;
+      while (!out.includes('"event":"ready"')) {
+        if (Date.now() > deadline) throw new Error(`não subiu: ${out}`);
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      expect(out).toContain(`http://127.0.0.1:${ports.server}`);
+      const api = createClient({ baseUrl: `http://127.0.0.1:${ports.server}`, token: TOKEN });
+      const [main] = await api.bots.list();
+      const conversation = await api.bots.openConversation(main?.id as string);
+      const { items } = await api.conversations.messages(conversation.id);
+      expect(items.some((m) => m.text === "Olá, de dentro do app.")).toBe(true);
+      // The app dies: its end of the pipe closes. The sidecar stops the server and the database itself.
+      again.stdin?.end();
+      await new Promise<void>((resolve) => again.once("exit", () => resolve()));
+      expect(listProcesses(join(appData, "postgres"))).toEqual([]);
+    });
+  },
+);

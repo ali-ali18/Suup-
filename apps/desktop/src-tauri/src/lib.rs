@@ -8,6 +8,8 @@
 //! alcançável, nem por uma falha na página.
 
 use std::collections::HashMap;
+mod local;
+
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -15,7 +17,7 @@ use std::sync::Mutex;
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Manager, RunEvent, State};
 use tauri_plugin_opener::OpenerExt;
 use tokio::sync::oneshot;
 
@@ -23,7 +25,7 @@ const KEYRING_SERVICE: &str = "app.suup.desktop";
 const KEYRING_USER: &str = "server-token";
 
 /// O estado de rede: o único servidor permitido e as requisições em andamento.
-struct Net {
+pub struct Net {
     client: reqwest::Client,
     allowed_origin: Mutex<Option<String>>,
     aborts: Mutex<HashMap<u64, oneshot::Sender<()>>>,
@@ -43,7 +45,7 @@ impl Net {
         }
     }
 
-    fn allow(&self, url: &reqwest::Url) {
+    pub fn allow(&self, url: &reqwest::Url) {
         *self.allowed_origin.lock().unwrap() = Some(url.origin().ascii_serialization());
     }
 
@@ -73,9 +75,9 @@ fn parse_server_url(text: &str) -> Result<reqwest::Url, String> {
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct Connection {
-    server_url: String,
-    token: String,
+pub struct Connection {
+    pub server_url: String,
+    pub token: String,
 }
 
 /// O que fica no arquivo de configuração: o modo (`local` ou `vps`) e, no modo `vps`, o endereço.
@@ -108,6 +110,16 @@ fn effective_mode(config: &StoredConfig) -> Option<String> {
         (None, Some(_)) => Some("vps".into()),
         (None, None) => None,
     }
+}
+
+pub(crate) fn mode_of(app: &AppHandle) -> Option<String> {
+    effective_mode(&read_config(app))
+}
+
+pub(crate) fn set_mode(app: &AppHandle, mode: &str) -> Result<(), String> {
+    let mut config = read_config(app);
+    config.mode = Some(mode.to_string());
+    write_config(app, &config)
 }
 
 /// O servidor que este dispositivo usa: `local`, `vps` ou nada (a primeira abertura).
@@ -309,10 +321,17 @@ fn open_url(app: AppHandle, url: String) -> Result<(), String> {
 }
 
 pub fn run() {
-    tauri::Builder::default()
+    let local = local::Local::new();
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
         .manage(Net::new())
+        .manage(local.clone())
+        .setup(|app| {
+            local::start_if_selected(app.handle(), &app.state::<std::sync::Arc<local::Local>>());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             connection_load,
             connection_allow,
@@ -325,8 +344,24 @@ pub fn run() {
             settings_save,
             http_fetch,
             http_abort,
-            open_url
+            open_url,
+            local::local_status,
+            local::local_select,
+            local::local_start,
+            local::local_stop,
+            local::local_connection,
+            local::local_set_api_key,
+            local::local_open_logs
         ])
-        .run(tauri::generate_context!())
+        .build(tauri::generate_context!())
         .expect("erro ao iniciar o Suup");
+    // O plugin de shell mata os filhos ao sair, mas sem aviso: o banco precisa parar com calma. O
+    // app só sai depois que o servidor local parou (ou depois da espera máxima).
+    app.run(move |handle, event| {
+        if let RunEvent::ExitRequested { api, .. } = event {
+            if local::shutdown_on_exit(handle, &local) {
+                api.prevent_exit();
+            }
+        }
+    });
 }

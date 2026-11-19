@@ -26,6 +26,10 @@ export default defineConfig({
               replacement: src("$1"),
             },
             {
+              find: /^@suup\/cli$/,
+              replacement: fileURLToPath(new URL("./apps/cli/src/index.ts", import.meta.url)),
+            },
+            {
               find: /^@suup\/evals$/,
               replacement: fileURLToPath(new URL("./evals/src/index.ts", import.meta.url)),
             },
@@ -33,7 +37,12 @@ export default defineConfig({
         },
         test: {
           name: "node",
-          include: ["packages/**/*.test.ts", "apps/cli/**/*.test.ts", "evals/**/*.test.ts"],
+          include: [
+            "packages/**/*.test.ts",
+            "apps/cli/**/*.test.ts",
+            "apps/sidecar/**/*.test.ts",
+            "evals/**/*.test.ts",
+          ],
           exclude: ["**/node_modules/**", "**/dist/**"],
         },
       },
