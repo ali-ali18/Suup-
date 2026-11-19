@@ -4,14 +4,30 @@ import { Avatar } from "./avatar.js";
 
 export type UserMessageState = "sending" | "sent" | "delivered" | undefined;
 
+/** Where a text bubble sits among the consecutive bubbles of its sender (see `bubblePositions`). */
+export type BubblePosition = "single" | "first" | "middle" | "last";
+
 /**
  * A message of the user: a round bubble on the right, filled with the colour of the conversation's
  * bot (`--bot-fill` / `--bot-on-fill`, set once on the conversation).
  */
-export function UserMessage({ text, state }: { text: string; state?: UserMessageState }) {
+export function UserMessage({
+  text,
+  state,
+  position,
+}: {
+  text: string;
+  state?: UserMessageState;
+  position?: BubblePosition | undefined;
+}) {
   // The delivery state is data, not text: a message not confirmed yet is a little dimmer.
   return (
-    <div className="ui-msg ui-msg--user" data-testid="message-user" data-state={state ?? ""}>
+    <div
+      className="ui-msg ui-msg--user"
+      data-testid="message-user"
+      data-state={state ?? ""}
+      data-bubble={position}
+    >
       <div
         className={`ui-bubble ui-bubble--user${state === "sending" || state === "sent" ? " ui-bubble--pending" : ""}`}
       >
@@ -30,14 +46,16 @@ export function BotMessage({
   children,
   openUrl,
   favicons,
+  position,
 }: {
+  position?: BubblePosition | undefined;
   text?: string;
   children?: ReactNode;
   openUrl?: (url: string) => void;
   favicons?: boolean;
 }) {
   return (
-    <div className="ui-msg ui-msg--bot" data-testid="message-bot">
+    <div className="ui-msg ui-msg--bot" data-testid="message-bot" data-bubble={position}>
       <div className="ui-msg__col">
         {text !== undefined && (
           <div className="ui-bubble ui-bubble--bot">

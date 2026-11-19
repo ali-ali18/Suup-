@@ -61,6 +61,15 @@ Todo cartão do chat (aprovação, segredo, ação do bot, pergunta, "precisa de
 ## 4. Balões e links
 
 - [ ] Balão do bot: borda de 1 px, fundo de superfície. Balão do usuário: a cor do bot; se o bot é branco, cinza neutro.
+### Balões: grupos, cantos, espaçamento, "cartões não contam"
+
+- [ ] **Grupo**: balões de **texto** seguidos do mesmo remetente. Num grupo, os cantos que tocam um vizinho do mesmo grupo usam o raio pequeno `--radius-bubble-link` (6 px, cerca de um quarto do raio cheio, medido na referência do dono); os demais cantos ficam com o raio cheio `--radius-bubble` (= `--radius-card`, 24 px). O balão sozinho é todo arredondado.
+- [ ] **Lado da ligação**: o do remetente. Bot, à esquerda: o primeiro tem o canto inferior esquerdo pequeno; o do meio, os dois cantos da esquerda; o último, o superior esquerdo. O lado de fora e as pontas do grupo ficam cheios. O usuário é o espelho, à direita.
+- [ ] **Espaçamento**: dentro do grupo `--bubble-gap-group` (4 px); entre grupos e entre balão e cartão, o espaço normal do chat (`--chat-gap`, que continua valendo no modo compacto).
+- [ ] **Quebram o grupo**: outro remetente, qualquer cartão ou linha (ação, aprovação, segredo, pergunta com opções, fim de execução, aviso, indicador de trabalho), separador de dia ou de pausa longa (30 min, o mesmo limiar dos separadores). O balão antes do cartão termina o grupo; o depois começa outro. Pergunta aberta (sem opções) é balão.
+- [ ] **Cartões não contam**: mantêm a moldura e o raio padrão (24 px) e não entram em grupo nem têm `data-bubble`; só os dois balões de texto de `ui/message.tsx` o carregam. Mensagem do usuário ainda sendo enviada agrupa como as outras; listas e código dentro do balão não mudam nada.
+- [ ] **Cálculo**: função pura `bubblePositions` (`features/chat/timeline.ts`: `single | first | middle | last` por item); o componente só aplica `data-bubble`. Quando chega um balão novo, o antigo "último" vira "do meio": muda **só o raio**, sem transição e sem deslocar nada (o espaçamento depende de ser ou não o primeiro, não da posição exata).
+
 - [ ] Link: texto na cor normal, sublinhado, com glifo; favicon **desligado** por padrão (`favicons: "off"`, a busca sai do computador).
 
 ## 5. Barra lateral

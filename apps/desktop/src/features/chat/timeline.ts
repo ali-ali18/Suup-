@@ -9,7 +9,7 @@ import {
 import { failureLine } from "../../data/derive.js";
 import type { SecretRequestItem } from "../../data/secret-requests.js";
 import type { LocalMessage } from "../../data/state.js";
-import type { UserMessageState } from "../../ui/message.js";
+import type { BubblePosition, UserMessageState } from "../../ui/message.js";
 
 export type TimelineItem =
   | { kind: "separator"; key: string; text: string }
@@ -222,4 +222,45 @@ export function buildTimeline(
   if (working !== undefined)
     items.push({ kind: "working", key: `working-${working.id}`, runId: working.id });
   return items;
+}
+
+/** A bot message that is a card (a question with choices) and not an ordinary text bubble. */
+export function isChoiceCard(item: TimelineItem): boolean {
+  return item.kind === "bot" && item.ask?.questions.some((q) => q.options !== undefined) === true;
+}
+
+/** The sender of a text bubble, or null for anything that is not one (cards, lines, separators). */
+function bubbleSender(item: TimelineItem): "user" | "bot" | null {
+  if (item.kind === "user") return "user";
+  if (item.kind === "bot" && !isChoiceCard(item)) return "bot";
+  return null;
+}
+
+/**
+ * The groups of consecutive text bubbles from the same sender, by item key. Anything that is not a
+ * text bubble (a card, an action row, a separator — which is also what a long time gap becomes —,
+ * a notice, the working indicator) breaks the group and is not in the result. Pure: the component
+ * only reads the position.
+ */
+export function bubblePositions(items: readonly TimelineItem[]): Map<string, BubblePosition> {
+  const result = new Map<string, BubblePosition>();
+  let run: string[] = [];
+  let sender: "user" | "bot" | null = null;
+  const close = () => {
+    run.forEach((key, i) => {
+      result.set(
+        key,
+        run.length === 1 ? "single" : i === 0 ? "first" : i === run.length - 1 ? "last" : "middle",
+      );
+    });
+    run = [];
+  };
+  for (const item of items) {
+    const who = bubbleSender(item);
+    if (who === null || who !== sender) close();
+    sender = who;
+    if (who !== null) run.push(item.key);
+  }
+  close();
+  return result;
 }

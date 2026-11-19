@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { type ActionItem, describeAction } from "../../data/actions.js";
 import type { SecretRequestItem } from "../../data/secret-requests.js";
 import { makeApproval, makeMessage, makeRun } from "../../test-fixtures.js";
-import { buildTimeline, dayLabel } from "./timeline.js";
+import type { BubblePosition } from "../../ui/message.js";
+import { bubblePositions, buildTimeline, dayLabel, type TimelineItem } from "./timeline.js";
 
 const NOW = new Date(2026, 10, 18, 15, 0, 0);
 const local = (h: number, m = 0, d = 18) => new Date(2026, 10, d, h, m, 0).toISOString();
@@ -467,5 +468,150 @@ describe("buildTimeline: approval cards and secure forms among the bot's actions
       expect(rowsOf(items)).toHaveLength(1);
       expect(rowsOf(items)[0]?.state).toBe("stopped");
     });
+  });
+});
+
+describe("bubblePositions: consecutive text bubbles of one sender form a group", () => {
+  const user = (key: string, state: "sending" | "sent" | "delivered" | undefined = undefined) =>
+    ({ kind: "user", key, text: key, state }) as TimelineItem;
+  const bot = (key: string, text = key) => ({ kind: "bot", key, text }) as TimelineItem;
+  const choice = (key: string) =>
+    ({
+      kind: "bot",
+      key,
+      text: key,
+      ask: {
+        questions: [{ question: "Qual?", options: [{ label: "A" }, { label: "B" }] }],
+        answer: undefined,
+        open: true,
+        tieBreak: false,
+      },
+    }) as TimelineItem;
+  const open = (key: string) =>
+    ({
+      kind: "bot",
+      key,
+      text: key,
+      ask: {
+        questions: [{ question: "E então?" }],
+        answer: undefined,
+        open: true,
+        tieBreak: false,
+      },
+    }) as TimelineItem;
+  const card = (key: string) => ({ kind: "actions", key, entries: [] }) as TimelineItem;
+  const separator = (key: string) =>
+    ({ kind: "separator", key, text: "Hoje · 10:00" }) as TimelineItem;
+  const of = (items: TimelineItem[]): Record<string, BubblePosition> =>
+    Object.fromEntries(bubblePositions(items));
+
+  it("a lone bubble is single, and nothing at all has no groups", () => {
+    expect(of([bot("a")])).toEqual({ a: "single" });
+    expect(of([user("u")])).toEqual({ u: "single" });
+    expect(of([])).toEqual({});
+  });
+
+  it("a pair is first + last; three are first, middle, last; four have two middles", () => {
+    expect(of([bot("a"), bot("b")])).toEqual({ a: "first", b: "last" });
+    expect(of([bot("a"), bot("b"), bot("c")])).toEqual({ a: "first", b: "middle", c: "last" });
+    expect(of([user("a"), user("b"), user("c"), user("d")])).toEqual({
+      a: "first",
+      b: "middle",
+      c: "middle",
+      d: "last",
+    });
+  });
+
+  it("alternating senders never group", () => {
+    expect(of([user("u1"), bot("b1"), user("u2"), bot("b2")])).toEqual({
+      u1: "single",
+      b1: "single",
+      u2: "single",
+      b2: "single",
+    });
+  });
+
+  it("a different sender ends the group; the next one starts another", () => {
+    expect(of([bot("a"), bot("b"), user("u"), bot("c"), bot("d")])).toEqual({
+      a: "first",
+      b: "last",
+      u: "single",
+      c: "first",
+      d: "last",
+    });
+  });
+
+  it("a card between two bubbles of one sender breaks the group and is not in the result", () => {
+    const positions = of([bot("a"), bot("b"), card("k"), bot("c"), bot("d"), bot("e")]);
+    expect(positions).toEqual({ a: "first", b: "last", c: "first", d: "middle", e: "last" });
+    expect(positions).not.toHaveProperty("k");
+    // Every kind of card or line breaks it, even a lone bubble around it.
+    expect(of([bot("a"), choice("q"), bot("b")])).toEqual({ a: "single", b: "single" });
+    expect(
+      of([
+        bot("a"),
+        { kind: "approval", key: "p" } as unknown as TimelineItem,
+        bot("b"),
+        { kind: "secret", key: "s" } as unknown as TimelineItem,
+        bot("c"),
+        { kind: "ended", key: "e", runId: "r", text: "falhou" } as TimelineItem,
+        bot("d"),
+        { kind: "notice", key: "n", text: "aviso" } as TimelineItem,
+        bot("f"),
+        { kind: "working", key: "w", runId: "r" } as TimelineItem,
+      ]),
+    ).toEqual({ a: "single", b: "single", c: "single", d: "single", f: "single" });
+  });
+
+  it("a separator (a new day, or a gap of half an hour) breaks the group", () => {
+    expect(of([bot("a"), separator("d"), bot("b")])).toEqual({ a: "single", b: "single" });
+    expect(of([user("a"), user("b"), separator("d"), user("c"), user("e")])).toEqual({
+      a: "first",
+      b: "last",
+      c: "first",
+      e: "last",
+    });
+  });
+
+  it("a user message still being sent (optimistic) groups like any other", () => {
+    expect(of([user("a", "delivered"), user("b", "sending")])).toEqual({
+      a: "first",
+      b: "last",
+    });
+    expect(of([user("a", "sent"), user("b", "sending"), user("c", "sending")])).toEqual({
+      a: "first",
+      b: "middle",
+      c: "last",
+    });
+  });
+
+  it("bubbles with lists or code are bubbles like the others; an open question is a bubble, a question with choices is a card", () => {
+    const rich = bot("r", "- um\n- dois\n\n```ts\nconst a = 1;\n```");
+    expect(of([bot("a"), rich, bot("c")])).toEqual({ a: "first", r: "middle", c: "last" });
+    expect(of([bot("a"), open("o"), bot("c")])).toEqual({ a: "first", o: "middle", c: "last" });
+  });
+
+  it("is computed over what buildTimeline returns: only the position of a bubble changes when another arrives", () => {
+    const conversationId = makeMessage().conversationId;
+    const message = (seq: number, authorKind: "user" | "bot") =>
+      makeMessage({
+        conversationId,
+        seq,
+        authorKind,
+        authorBotId: authorKind === "bot" ? "bot-1" : null,
+        createdAt: local(14, seq),
+        text: `m${seq}`,
+      });
+    const two = buildTimeline([message(1, "bot"), message(2, "bot")], {}, [], NOW);
+    const three = buildTimeline(
+      [message(1, "bot"), message(2, "bot"), message(3, "bot")],
+      {},
+      [],
+      NOW,
+    );
+    const before = [...bubblePositions(two).values()];
+    const after = [...bubblePositions(three).values()];
+    expect(before).toEqual(["first", "last"]);
+    expect(after).toEqual(["first", "middle", "last"]);
   });
 });
