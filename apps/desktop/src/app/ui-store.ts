@@ -68,6 +68,8 @@ export interface UiState {
   /** Opens a connector's details (or goes back to the list with `null`). */
   setSettingsConnector(name: string | null): void;
   selectBot(botId: string): void;
+  /** Leaving a server (Trocar, Desconectar): nothing the person had open belongs to the next one. */
+  leaveServer(): void;
   openPanel(tab?: PanelTab): void;
   togglePanel(): void;
   setPanelTab(tab: PanelTab): void;
