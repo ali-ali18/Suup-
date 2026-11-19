@@ -1,30 +1,120 @@
 import {
   createRuleBodySchema,
+  createWrittenRuleBodySchema,
   decideApprovalBodySchema,
   listApprovalsQuerySchema,
   listRulesQuerySchema,
+  listWrittenRulesQuerySchema,
+  updateApprovalSettingsBodySchema,
   updateRuleBodySchema,
+  updateWrittenRuleBodySchema,
 } from "@suup/api";
 import {
   createRule,
+  createWrittenRule,
   decideApproval,
   deleteRule,
+  deleteWrittenRule,
   getApproval,
+  getApprovalMode,
   getBot,
   getConversation,
   getRule,
   listApprovals,
   listRules,
+  listWrittenRules,
+  setApprovalMode,
   updateRule,
+  updateWrittenRule,
 } from "@suup/db";
 import { z } from "zod";
 import { HttpError } from "../errors.js";
 import type { Route } from "../http.js";
-import { toApprovalDto, toRuleDto } from "../mappers.js";
+import { toApprovalDto, toRuleDto, toWrittenRuleDto } from "../mappers.js";
 
 const nestedQuerySchema = listApprovalsQuerySchema.omit({ conversationId: true });
 
+async function settingsBody(ctx: Parameters<Route["handler"]>[0]) {
+  const { reason, model, available } = ctx.runtime.autoReviewStatus();
+  return {
+    mode: await getApprovalMode(ctx.runtime.db),
+    reviewer: { available, model, reason },
+  };
+}
+
 export const approvalRoutes: Route[] = [
+  {
+    method: "GET",
+    pattern: "/v1/approval-settings",
+    async handler(ctx) {
+      return { body: await settingsBody(ctx) };
+    },
+  },
+  {
+    method: "PATCH",
+    pattern: "/v1/approval-settings",
+    async handler(ctx) {
+      const body = ctx.body(updateApprovalSettingsBodySchema);
+      await setApprovalMode(ctx.runtime.db, body.mode);
+      return { body: await settingsBody(ctx) };
+    },
+  },
+  {
+    method: "GET",
+    pattern: "/v1/written-rules",
+    async handler(ctx) {
+      const query = ctx.query(listWrittenRulesQuerySchema);
+      const rules = await listWrittenRules(ctx.runtime.db, {
+        ...(query.botId === undefined ? {} : { botId: query.botId }),
+      });
+      return { body: { items: rules.map(toWrittenRuleDto) } };
+    },
+  },
+  {
+    method: "POST",
+    pattern: "/v1/written-rules",
+    async handler(ctx) {
+      const body = ctx.body(createWrittenRuleBodySchema);
+      const { db } = ctx.runtime;
+      if (
+        body.botId !== undefined &&
+        body.botId !== null &&
+        (await getBot(db, body.botId)) === null
+      ) {
+        throw new HttpError("invalid_request", "botId: bot não encontrado.");
+      }
+      const rule = await createWrittenRule(db, {
+        kind: body.kind,
+        text: body.text,
+        botId: body.botId ?? null,
+        ...(body.enabled === undefined ? {} : { enabled: body.enabled }),
+      });
+      return { status: 201, body: toWrittenRuleDto(rule) };
+    },
+  },
+  {
+    method: "PATCH",
+    pattern: "/v1/written-rules/:id",
+    async handler(ctx) {
+      const body = ctx.body(updateWrittenRuleBodySchema);
+      const rule = await updateWrittenRule(ctx.runtime.db, ctx.uuid("id"), {
+        ...(body.kind === undefined ? {} : { kind: body.kind }),
+        ...(body.text === undefined ? {} : { text: body.text }),
+        ...(body.enabled === undefined ? {} : { enabled: body.enabled }),
+      });
+      if (rule === null) throw new HttpError("not_found", "Regra não encontrada.");
+      return { body: toWrittenRuleDto(rule) };
+    },
+  },
+  {
+    method: "DELETE",
+    pattern: "/v1/written-rules/:id",
+    async handler(ctx) {
+      const gone = await deleteWrittenRule(ctx.runtime.db, ctx.uuid("id"));
+      if (!gone) throw new HttpError("not_found", "Regra não encontrada.");
+      return { body: z.object({ deleted: z.literal(true) }).parse({ deleted: true }) };
+    },
+  },
   {
     method: "GET",
     pattern: "/v1/approvals",

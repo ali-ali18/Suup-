@@ -40,7 +40,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup connectors, end to end"), () =>
   it("setup: migrate, a secret, a bot, a script", async () => {
     // These tests script direct calls of the fake server's 17 tools: the tool search is off here (it has its own tests).
     await p.config({
-      approvals: {},
+      approvals: { autoReview: { enabled: false } },
       vault: { keyEnv: "CLI_TEST_VAULT_KEY" },
       toolSearch: { minTools: 1000, minDefinitionTokens: 1_000_000 },
     });

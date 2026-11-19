@@ -54,6 +54,8 @@ export interface ToolAssessment {
   /** The call's arguments as they will run (placeholders, never values). */
   args: JsonValue;
   summary: string;
+  /** What the tool declares it does (its own description, as the model reads it). */
+  toolDescription: string;
   /** The secret names the arguments mention. */
   secrets: string[];
   /** Set only when the tool declares that the call is a message to another person. */
@@ -172,6 +174,7 @@ export class ToolRegistry {
       level,
       args: structuredClone(rawArgs) as JsonValue,
       summary: describeCall(tool, parsed.data, rawArgs),
+      toolDescription: tool.description,
       secrets,
       ...(tool.outbound === undefined ? {} : { outbound: structuredClone(tool.outbound) }),
     };

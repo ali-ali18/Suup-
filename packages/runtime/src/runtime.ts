@@ -3,10 +3,12 @@ import { hostname } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import type { StdioLauncher } from "@suup/connectors";
 import {
+  type AutoReviewer,
   allowAllGate,
   type BotConfig,
   CONTROL_TOOL_NAMES,
   controlToolSpecs,
+  createModelReviewer,
   createToolGate,
   DEFAULT_TOOL_SEARCH,
   type Executor,
@@ -29,12 +31,14 @@ import {
   createDb,
   createRun as createRunRow,
   type Db,
+  getApprovalMode,
   getBot,
   getRun,
   PgRunQueue,
   PgRunStore,
   type Run,
   rulesForBot,
+  writtenRulesForBot,
 } from "@suup/db";
 import { createProvider, type ProviderConfig } from "@suup/providers";
 import {
@@ -167,6 +171,12 @@ export interface Runtime {
   sandboxRoot(): Promise<Executor>;
   botConfig(bot: Bot): BotConfig;
   reviewerConfig(): ReviewerConfig | undefined;
+  /**
+   * What "Auto-review" has to work with: the model that reviews calls and whether its provider can
+   * be used now. When it cannot, the mode still exists and falls back to the table of risk levels
+   * (`reason` says why, in words for the person).
+   */
+  autoReviewStatus(): AutoReviewStatus;
   createRun(input: {
     botId: string;
     objective: string;
@@ -177,6 +187,14 @@ export interface Runtime {
   buildDeps(runId: string, workerId: string, options?: BuildDepsOptions): Promise<LoopDeps>;
   createWorker(options?: CreateWorkerOptions): Worker;
   close(): Promise<void>;
+}
+
+export interface AutoReviewStatus {
+  available: boolean;
+  /** The model's id in the configuration; `null` when none is configured. */
+  model: string | null;
+  /** Why it is not available (`null` when it is). */
+  reason: string | null;
 }
 
 export interface EgressRuntime {
@@ -312,10 +330,14 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
   });
   // Every tool call goes through the approval policy: the user's rules, the reviewer, then a card.
   // The gate asks the registry of the RUN (built-in tools plus the connector tools of its bot).
-  const gateFor = (registry: ToolRegistry) =>
-    createToolGate({
+  const gateFor = (registry: ToolRegistry) => {
+    const autoReviewer = autoReviewerFor();
+    return createToolGate({
       tools: registry,
       rules: { rulesFor: (botId) => rulesForBot(runtime.db, botId) },
+      written: { writtenRulesFor: (botId) => writtenRulesForBot(runtime.db, botId) },
+      mode: { approvalMode: () => getApprovalMode(runtime.db) },
+      ...(autoReviewer === undefined ? {} : { modelReviewer: autoReviewer }),
       ...(config.approvals?.levels === undefined
         ? {}
         : { levelOverrides: config.approvals.levels }),
@@ -324,6 +346,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
         : { expireAfterMs: config.approvals.expireAfterMinutes * 60_000 }),
       now: () => new Date(),
     });
+  };
   const REDACTION_MAX_AGE_MS = 5_000;
 
   let db: Db | undefined;
@@ -471,6 +494,44 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
           : { supportsForcedToolChoice: model.supportsForcedToolChoice }),
       },
     };
+  };
+
+  /** The model "Auto-review" asks: `approvals.autoReview.model`, else the model of `reviewer`. */
+  const autoReviewModelId = config.approvals?.autoReview?.model ?? config.reviewer?.model;
+  const autoReviewStatus = (): AutoReviewStatus => {
+    if (config.approvals?.autoReview?.enabled === false) {
+      return {
+        available: false,
+        model: null,
+        reason: 'Desligado na configuração ("approvals.autoReview.enabled": false).',
+      };
+    }
+    if (autoReviewModelId === undefined) {
+      return {
+        available: false,
+        model: null,
+        reason:
+          'Nenhum modelo de revisão está configurado ("approvals.autoReview.model" ou "reviewer.model").',
+      };
+    }
+    const { model } = resolveModel(autoReviewModelId);
+    const key = keyStatus(model.provider);
+    return key.ok
+      ? { available: true, model: model.id, reason: null }
+      : { available: false, model: model.id, reason: key.reason };
+  };
+  const autoReviewerFor = (): AutoReviewer | undefined => {
+    if (autoReviewModelId === undefined || !autoReviewStatus().available) return undefined;
+    const { model } = resolveModel(autoReviewModelId);
+    return createModelReviewer({
+      provider: getProvider(model.provider),
+      model: {
+        id: model.id,
+        maxOutputTokens: model.maxOutputTokens,
+        pricing: model.pricing,
+        supportsForcedToolChoice: model.supportsForcedToolChoice,
+      },
+    });
   };
 
   const sandbox = config.sandbox;
@@ -767,6 +828,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     },
     botConfig,
     reviewerConfig,
+    autoReviewStatus,
     async createRun(input) {
       const bot = await getBot(runtime.db, input.botId);
       if (bot === null) {

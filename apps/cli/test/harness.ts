@@ -174,7 +174,8 @@ export const DEFAULT_CONFIG = {
   sandbox: { kind: "local", root: "workspace" },
   // These tests drive the harness with scripted shell commands on the (not isolated) local machine:
   // the user's rule is "shell may run", so no card stops them. The approval flow has its own tests.
-  approvals: { levels: { shell: "write_reversible" } },
+  // Nor does the model reviewer of "Auto-review" take part: it has its own tests.
+  approvals: { levels: { shell: "write_reversible" }, autoReview: { enabled: false } },
   worker: { concurrency: 2, leaseRenewMs: 1000, staleAfterMs: 5000 },
   defaults: { maxTurns: 20 },
 };

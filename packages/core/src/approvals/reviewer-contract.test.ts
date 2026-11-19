@@ -5,7 +5,7 @@ import { levelReviewer } from "./reviewer.js";
 
 const executor = {} as GateCall["executor"];
 const assess = (level: "read" | "external_irreversible") => ({
-  assess: () => ({ level, args: { q: 1 }, summary: "do it", secrets: [] }),
+  assess: () => ({ level, args: { q: 1 }, summary: "do it", toolDescription: "d", secrets: [] }),
 });
 const call = (): GateCall => ({
   runId: "r",

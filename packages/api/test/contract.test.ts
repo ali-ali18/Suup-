@@ -2,13 +2,16 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  APPROVAL_MODES as CORE_APPROVAL_MODES,
   RUN_EVENT_TYPES as CORE_EVENT_TYPES,
   FAILURE_ORIGINS as CORE_FAILURE_ORIGINS,
   RUN_ORIGINS as CORE_ORIGINS,
+  WRITTEN_RULE_KINDS as CORE_WRITTEN_RULE_KINDS,
   runStatusSchema as coreStatus,
 } from "@suup/core";
 import { describe, expect, it } from "vitest";
 import {
+  APPROVAL_MODES,
   addMemoryBodySchema,
   approvalSchema,
   argMatcherSchema,
@@ -16,6 +19,7 @@ import {
   BOT_PALETTE,
   botColorSchema,
   createRuleBodySchema,
+  createWrittenRuleBodySchema,
   decideApprovalBodySchema,
   FAILURE_ORIGINS,
   listMessagesQuerySchema,
@@ -28,6 +32,8 @@ import {
   streamEventSchema,
   streamQuerySchema,
   updateBotBodySchema,
+  updateWrittenRuleBodySchema,
+  WRITTEN_RULE_KINDS,
 } from "../src/index.js";
 
 const SRC = fileURLToPath(new URL("../src/", import.meta.url));
@@ -40,6 +46,29 @@ describe("the contract follows the core's vocabulary", () => {
     expect([...RUN_ORIGINS]).toEqual([...CORE_ORIGINS]);
     expect([...FAILURE_ORIGINS]).toEqual([...CORE_FAILURE_ORIGINS]);
     expect([...RUN_EVENT_TYPES].sort()).toEqual([...CORE_EVENT_TYPES].sort());
+  });
+});
+
+describe("written rules and the approval mode", () => {
+  it("the kinds and the modes are the core's", () => {
+    expect([...WRITTEN_RULE_KINDS]).toEqual([...CORE_WRITTEN_RULE_KINDS]);
+    expect([...APPROVAL_MODES]).toEqual([...CORE_APPROVAL_MODES]);
+  });
+
+  it("a written rule is free prose: trimmed, 1 to 500 characters, and nothing else is accepted", () => {
+    const create = (body: unknown) => createWrittenRuleBodySchema.safeParse(body);
+    expect(create({ kind: "allow", text: "  e-mails para acme.com  " })).toMatchObject({
+      success: true,
+      data: { text: "e-mails para acme.com" },
+    });
+    expect(create({ kind: "never", text: "x".repeat(500) }).success).toBe(true);
+    expect(create({ kind: "never", text: "x".repeat(501) }).success).toBe(false);
+    expect(create({ kind: "never", text: "   " }).success).toBe(false);
+    expect(create({ kind: "sometimes", text: "a" }).success).toBe(false);
+    // no tool, matcher or pattern fields: the text is all there is
+    expect(create({ kind: "allow", text: "a", matchers: [] }).success).toBe(false);
+    expect(updateWrittenRuleBodySchema.safeParse({ text: "b", enabled: false }).success).toBe(true);
+    expect(updateWrittenRuleBodySchema.safeParse({ botId: null }).success).toBe(false);
   });
 });
 

@@ -12,6 +12,7 @@ export type {
   RunEvent,
   SecretMeta,
   StoredRule,
+  StoredWrittenRule,
 } from "@suup/db";
 
 /** A finished run's `result` as the wire carries it, or `null` when it has none (or an old shape). */

@@ -36,7 +36,10 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup approvals, rules and vault, end
     (await p.db.sql<{ status: string }[]>`select status from runs where id = ${runId}`)[0]?.status;
 
   it("setup: migrate, a bot that may use shell, scripts", async () => {
-    await p.config({ approvals: {}, vault: { keyEnv: "CLI_TEST_VAULT_KEY" } });
+    await p.config({
+      approvals: { autoReview: { enabled: false } },
+      vault: { keyEnv: "CLI_TEST_VAULT_KEY" },
+    });
     await p.suup(["db", "migrate"]);
     await p.script("roteiro.json", {
       cases: [
@@ -508,7 +511,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup approvals, rules and vault, end
     it("rotates to a new key through the previous-key setting, and removes a secret", async () => {
       const newKey = generateKeyText();
       await p.config({
-        approvals: {},
+        approvals: { autoReview: { enabled: false } },
         vault: { keyEnv: "CLI_TEST_VAULT_KEY", previousKeyEnvs: ["CLI_TEST_VAULT_KEY_OLD"] },
       });
       const during = { env: { CLI_TEST_VAULT_KEY: newKey, CLI_TEST_VAULT_KEY_OLD: KEY } };
@@ -525,7 +528,10 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup approvals, rules and vault, end
       const removed = await p.suup(["vault", "rm", "CLI_TOKEN"], alone);
       expect(removed.code).toBe(0);
       expect((await p.suup(["vault", "rm", "CLI_TOKEN"], alone)).code).toBe(1);
-      await p.config({ approvals: {}, vault: { keyEnv: "CLI_TEST_VAULT_KEY" } });
+      await p.config({
+        approvals: { autoReview: { enabled: false } },
+        vault: { keyEnv: "CLI_TEST_VAULT_KEY" },
+      });
     });
   });
 

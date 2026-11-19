@@ -1,5 +1,10 @@
 import { GLOBAL_OPTIONS, type OptionSpec, parseCommandArgs } from "./args.js";
-import { approvalsCommand, approveCommand, denyCommand } from "./commands/approvals.js";
+import {
+  approvalsCommand,
+  approvalsMode,
+  approveCommand,
+  denyCommand,
+} from "./commands/approvals.js";
 import { botArchive, botCreate, botDraft, botList, botShow } from "./commands/bot.js";
 import { chatCommand } from "./commands/chat.js";
 import {
@@ -20,6 +25,7 @@ import {
 import { dbMigrate } from "./commands/db.js";
 import { doctorCommand } from "./commands/doctor.js";
 import { evalCommand, evalHistory, evalList } from "./commands/eval.js";
+import { evalApprovals } from "./commands/eval-approvals.js";
 import { inspectCommand } from "./commands/inspect.js";
 import {
   memoryAdd,
@@ -33,7 +39,16 @@ import { sayCommand, stopCommand } from "./commands/messages.js";
 import { networkAllow, networkList, networkRemove } from "./commands/network.js";
 import { replayCommand } from "./commands/replay.js";
 import { resendCommand } from "./commands/resend.js";
-import { rulesAdd, rulesEdit, rulesList, rulesRemove } from "./commands/rules.js";
+import {
+  rulesAdd,
+  rulesEdit,
+  rulesList,
+  rulesRemove,
+  rulesWrittenAdd,
+  rulesWrittenEdit,
+  rulesWrittenList,
+  rulesWrittenRemove,
+} from "./commands/rules.js";
 import { resumeCommand, runCommand } from "./commands/run.js";
 import { runsCommand, showCommand } from "./commands/runs.js";
 import { serverCommand } from "./commands/server.js";
@@ -67,12 +82,17 @@ export const COMMANDS: readonly CommandSpec[] = [
   memoryRestore,
   memorySearch,
   approvalsCommand,
+  approvalsMode,
   approveCommand,
   denyCommand,
   rulesList,
   rulesAdd,
   rulesEdit,
   rulesRemove,
+  rulesWrittenList,
+  rulesWrittenAdd,
+  rulesWrittenEdit,
+  rulesWrittenRemove,
   networkList,
   networkAllow,
   networkRemove,
@@ -110,6 +130,7 @@ export const COMMANDS: readonly CommandSpec[] = [
   evalCommand,
   evalList,
   evalHistory,
+  evalApprovals,
 ];
 
 const GROUPS: Record<string, string> = {

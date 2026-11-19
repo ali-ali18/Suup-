@@ -45,6 +45,7 @@ export const RUN_EVENT_TYPES = [
   "status_changed",
   "compacted",
   "policy_checked",
+  "approval_review",
   "approval_requested",
   "approval_decided",
   "secret_requested",

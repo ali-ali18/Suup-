@@ -13,6 +13,7 @@ import type {
   Run,
   RunEvent,
   Secret,
+  WrittenRule,
 } from "@suup/api";
 import { recipientMatchers } from "@suup/core";
 import type {
@@ -31,6 +32,7 @@ import {
   runResultOrNull,
   type SecretMeta,
   type StoredRule,
+  type StoredWrittenRule,
 } from "./db-types.js";
 
 export const iso = (date: Date): string => date.toISOString();
@@ -205,6 +207,8 @@ export function toApprovalDto(approval: ApprovalRow): Approval {
     status: approval.status,
     reason: approval.reason,
     ruleId: approval.ruleId,
+    reviewReason: approval.reviewReason,
+    writtenRuleId: approval.writtenRuleId,
     expiresAt: isoOrNull(approval.expiresAt),
     decidedAt: isoOrNull(approval.decidedAt),
     createdAt: iso(approval.createdAt),
@@ -223,6 +227,18 @@ export function toRuleDto(rule: StoredRule): ApprovalRule {
     note: rule.note,
     createdBy: rule.createdBy,
     sourceApprovalId: rule.sourceApprovalId,
+    createdAt: iso(rule.createdAt),
+    updatedAt: iso(rule.updatedAt),
+  };
+}
+
+export function toWrittenRuleDto(rule: StoredWrittenRule): WrittenRule {
+  return {
+    id: rule.id,
+    kind: rule.kind,
+    text: rule.text,
+    botId: rule.botId,
+    enabled: rule.enabled,
     createdAt: iso(rule.createdAt),
     updatedAt: iso(rule.updatedAt),
   };

@@ -93,6 +93,7 @@ export {
   reconcileRunEffects,
 } from "./run-end.js";
 export {
+  type AutoReviewStatus,
   type BotToolReport,
   type BuildDepsOptions,
   type CreateWorkerOptions,

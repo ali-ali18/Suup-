@@ -184,6 +184,16 @@ export interface RunState {
   policies: Map<string, RunEventPayload<"policy_checked">>;
   /** A call of the turn in progress was denied: the calls after it are not run. */
   denied: { callId: string; name: string } | null;
+  /** The model reviewer's reviews by call id (`approval_review`). A resumed loop reuses them. */
+  reviews: Map<string, RunEventPayload<"approval_review">>;
+  /** Reviews that refused a call (outcome `deny`): in all, and in a row at the end. */
+  reviewBlocks: { total: number; consecutive: number };
+  /**
+   * What the USER said in this run, oldest first, as the model reviewer is shown it: the earlier
+   * messages of the conversation, the objective, the messages sent during the run and the answers
+   * to the assistant's questions. Never what the assistant said or a tool returned.
+   */
+  userSaid: string[];
 }
 
 export function createRunState(): RunState {
@@ -226,6 +236,9 @@ export function createRunState(): RunState {
     approvals: new Map(),
     policies: new Map(),
     denied: null,
+    reviews: new Map(),
+    reviewBlocks: { total: 0, consecutive: 0 },
+    userSaid: [],
   };
 }
 
@@ -256,6 +269,7 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
       state.started = true;
       state.startSeq = event.seq;
       appendUserBlock(state, { type: "text", text: event.payload.objective }, event.seq);
+      state.userSaid.push(event.payload.objective);
       break;
 
     case "context_loaded": {
@@ -267,6 +281,14 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
         profile: structuredClone(event.payload.profile),
         secrets: structuredClone(event.payload.secrets ?? []),
       };
+      // The user's earlier messages come before the objective (the history is text only).
+      state.userSaid.unshift(
+        ...event.payload.history.flatMap((m) =>
+          m.role === "user"
+            ? m.blocks.flatMap((b) => (b.type === "text" && b.text.trim() !== "" ? [b.text] : []))
+            : [],
+        ),
+      );
       const history = historyMessages(event.payload.history, event.payload.historyNote);
       if (history.length === 0) break;
       const seqs = history.map(() => state.startSeq);
@@ -383,6 +405,7 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
       trackRepeat(state, call, content, isError);
       if ((call.name === "escalate" || call.name === "request_secret") && !isError) {
         logUser(state, "answer", content);
+        if (call.name === "escalate") state.userSaid.push(content);
       }
       if (!isControlTool(call.name)) logTool(state, call, event.payload, outcome);
       if (state.pendingCalls.length === 0) completeToolTurn(state);
@@ -392,6 +415,17 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
     case "policy_checked":
       state.policies.set(event.payload.callId, event.payload);
       break;
+
+    case "approval_review": {
+      state.reviews.set(event.payload.callId, event.payload);
+      if (event.payload.outcome === "deny") {
+        state.reviewBlocks.total += 1;
+        state.reviewBlocks.consecutive += 1;
+      } else {
+        state.reviewBlocks.consecutive = 0;
+      }
+      break;
+    }
 
     case "approval_requested":
       state.approvals.set(event.payload.callId, { requested: event.payload });
@@ -432,6 +466,7 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
     case "user_message":
       if (event.payload.inboxId !== undefined) state.deliveredInbox.add(event.payload.inboxId);
       logUser(state, "message", event.payload.text);
+      state.userSaid.push(event.payload.text);
       appendUserBlock(
         state,
         { type: "text", text: renderUserMessage(event.payload.text) },

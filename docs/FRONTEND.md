@@ -117,7 +117,8 @@ Cada execução tem um log de eventos numerados (`seq`), só de acréscimo. É a
 | `compacted` | `summary`, `droppedMessages` | Aviso discreto: "histórico resumido" |
 | `model_request` | A requisição inteira enviada ao modelo | Só no inspetor de diagnóstico |
 | `policy_checked` | `callId`, `tool`, `level`, `outcome` (`allow` ou `deny`), `source` (`rule`, `reviewer`, `default`), `ruleId?`, `reason?` | Selo discreto na linha da ferramenta ("liberada pela regra X", "recusada por regra"). Só existe para o que não foi uma leitura simples |
-| `approval_requested` | `approvalId`, `callId`, `tool`, `args`, `level`, `summary`, `secrets`, `source`, `expiresAt?` | **O cartão de aprovação** (seção 8, fase 3). `args` é o conteúdo exato; segredos aparecem como `{{secret:NOME}}` |
+| `approval_review` | `callId`, `tool`, `level`, `decision` (`run`/`ask`/`block`), `ruleId`, `reason`, `outcome` (`allow`/`ask`/`deny`), `adjusted?`, `skipped?`, `model?`, `promptVersion?`, `usage?`, `costUsd?`, `latencyMs?` | O modelo do Auto-review olhou a chamada (vem **antes** do `policy_checked` ou do `approval_requested` dela). Detalhe recolhido ("revisado: pode / perguntar / bloquear, e a frase"); o custo e o modelo vão no detalhe técnico |
+| `approval_requested` | `approvalId`, `callId`, `tool`, `args`, `level`, `summary`, `secrets`, `source`, `expiresAt?`, `reason?`, `writtenRuleId?` | **O cartão de aprovação** (seção 8, fase 3). `args` é o conteúdo exato; segredos aparecem como `{{secret:NOME}}` |
 | `approval_decided` | `approvalId`, `callId`, `decision` (`approved`, `denied`, `cancelled`, `expired`), `reason?`, `ruleId?` | O cartão resolvido; entra no log quando o worker retoma a execução |
 | `secret_requested` | `callId`, `name`, `reason?` | O bot pede um segredo: abre o formulário seguro (seção 8, fase 3). A execução fica em `waiting_user` |
 
@@ -199,6 +200,12 @@ O backend de aprovações e do cofre **existe** (API.md, [APROVACOES.md](APROVAC
   - estados do cartão (`status`): `pending` (botões), `approved`, `denied` (mostra `reason`), `cancelled` (a execução foi cancelada), `expired`. Cartão resolvido vira uma linha do histórico, não some;
   - o cartão fica **dentro da conversa**, no lugar da chamada da ferramenta (a `Run` está em `waiting_approval`, avatar `waiting`), e também na tela **Pendências** (todos os bots, `GET /v1/approvals?status=pending`) e num contador na barra lateral. Pelo chat, escrever "sim" **não** aprova: só os botões.
   - Depois de decidir, a execução volta sozinha para `queued` e segue; mostre "retomando", como após uma resposta.
+- **Modo e regras escritas (Auto-review)**, decisão do dono: "é auto review ou tudo". Tudo no backend ([APROVACOES.md](APROVACOES.md), API.md "Modo de aprovação" e "Regras escritas"):
+  - **O modo**: `GET`/`PATCH /v1/approval-settings` → `{ mode: "auto_review" | "ask_all", reviewer: { available, model, reason } }`. Duas opções, "Auto-review" e "Perguntar tudo". Com `reviewer.available: false` mostre `reviewer.reason` e diga que o Auto-review está só aplicando a tabela de níveis (leitura e escrita reversível rodam, o resto pergunta); não finja que há revisão.
+  - **As regras**: `GET/POST/PATCH/DELETE /v1/written-rules`. Uma regra é uma frase (`text`, 1 a 500 caracteres) com um tipo (`kind`: "Permitir sem perguntar" = `allow`, "Sempre perguntar" = `ask`, "Nunca permitir" = `never`), para um bot (`botId`) ou para todos (`null`), com um interruptor (`enabled`). Dica do campo: "Diga qual é a ação e quem ou o que ela afeta". Só o usuário cria; nada do modelo.
+  - **No cartão**: se `reviewReason` não é `null`, mostre a frase ("por que estou perguntando"); `writtenRuleId` liga à regra (pode ter sido apagada).
+  - **Chamada recusada pela regra** (`policy_checked` com `outcome: "deny"`, `source: "reviewer"`, `writtenRuleId`, `reason: "Bloqueado pela regra \"…\""`): sem cartão; um registro recolhido "Bloqueado pela regra …" no lugar da chamada.
+  - As regras exatas (`approval-rules`) continuam existindo no backend, mas a tela nova mostra só as escritas.
 - **Tela de regras** (`GET/POST/PATCH/DELETE /v1/approval-rules`): uma tabela com efeito (libera/proíbe), de quem (um bot ou "todos"), ferramenta (ou "qualquer"), condições (`campo operador valor`: igual, começa com, contém, padrão `*`/`?`), anotação e origem (`createdBy: "approval"` = criada num cartão, com link para o cartão em `sourceApprovalId`). Editar efeito, condições e anotação; apagar. Uma regra que proíbe vale mais que uma que libera; mostre isso.
 - **Níveis de risco** de uma ação: leitura, escrita reversível, externa ou irreversível. Cada ferramenta de `GET /v1/tools` traz o `risk` padrão e `dynamicRisk` (o nível depende dos argumentos e de onde roda: o `shell`); use no formulário de criar bot para avisar o que pede cartão.
 - **Rascunho:** tudo o que vai para outra pessoa aparece como rascunho que você envia (depende dos conectores: as ferramentas de conector já existem; o rascunho como etapa própria, não).
@@ -271,7 +278,7 @@ Uma tela separada do chat, para quando algo dá errado. A API serve os mesmos c�
 | Memória | `GET /v1/memories`, `POST`, `PATCH`, `archive`, `restore`, `GET /v1/memories/search` |
 | Rotinas | Rotinas e histórico de disparos |
 | Pendências | Cartões de aprovação (`GET /v1/approvals?status=pending`, quadro `approval.changed`), perguntas abertas, pedidos de segredo (execuções `waiting_user` com `secret-request`) e iniciativas, de todos os bots |
-| Regras de aprovação | `GET/POST/PATCH/DELETE /v1/approval-rules` |
+| Regras de aprovação | `GET/POST/PATCH/DELETE /v1/written-rules` (as que o usuário escreve) e o modo em `GET/PATCH /v1/approval-settings`; as exatas em `/v1/approval-rules` |
 | Desktop do bot | Vídeo da tela e estado da conexão |
 | Conectores | `GET/POST /v1/connectors`, `PATCH`/`DELETE /v1/connectors/{nome}`, concessões por bot, risco por ferramenta, `POST .../test` |
 | Cofre | Segredos: `GET /v1/secrets`, `PUT`/`DELETE /v1/secrets/{nome}`, concessões por bot |

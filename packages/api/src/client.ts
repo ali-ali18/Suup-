@@ -2,17 +2,26 @@ import { z } from "zod";
 import {
   type Approval,
   type ApprovalRule,
+  type ApprovalSettings,
   approvalListSchema,
   approvalSchema,
+  approvalSettingsSchema,
   type CreateRuleBody,
+  type CreateWrittenRuleBody,
   type DecideApprovalBody,
   type DecideApprovalResult,
   decideApprovalResultSchema,
   type ListApprovalsQuery,
   type ListRulesQuery,
+  type ListWrittenRulesQuery,
   ruleListSchema,
   ruleSchema,
+  type UpdateApprovalSettingsBody,
   type UpdateRuleBody,
+  type UpdateWrittenRuleBody,
+  type WrittenRule,
+  writtenRuleListSchema,
+  writtenRuleSchema,
 } from "./approvals.js";
 import {
   type Bot,
@@ -205,6 +214,18 @@ export interface SuupClient {
     list(query?: ListRulesQuery): Promise<ApprovalRule[]>;
     create(body: CreateRuleBody): Promise<ApprovalRule>;
     update(id: string, body: UpdateRuleBody): Promise<ApprovalRule>;
+    remove(id: string): Promise<void>;
+  };
+  /** The approval mode ("Auto-review" or "Perguntar tudo") and whether the reviewer is available. */
+  approvalSettings: {
+    get(): Promise<ApprovalSettings>;
+    update(body: UpdateApprovalSettingsBody): Promise<ApprovalSettings>;
+  };
+  /** The rules the user writes in plain language; a model reads them when it reviews a call. */
+  writtenRules: {
+    list(query?: ListWrittenRulesQuery): Promise<WrittenRule[]>;
+    create(body: CreateWrittenRuleBody): Promise<WrittenRule>;
+    update(id: string, body: UpdateWrittenRuleBody): Promise<WrittenRule>;
     remove(id: string): Promise<void>;
   };
   connectors: {
@@ -458,6 +479,24 @@ export function createClient(options: ClientOptions): SuupClient {
         call("PATCH", `/v1/approval-rules/${id(ruleId)}`, ruleSchema, { body }),
       remove: async (ruleId) => {
         await call("DELETE", `/v1/approval-rules/${id(ruleId)}`, deletedSchema);
+      },
+    },
+    approvalSettings: {
+      get: () => call("GET", "/v1/approval-settings", approvalSettingsSchema),
+      update: (body) => call("PATCH", "/v1/approval-settings", approvalSettingsSchema, { body }),
+    },
+    writtenRules: {
+      list: async (query) =>
+        (
+          await call("GET", "/v1/written-rules", writtenRuleListSchema, {
+            query: query as Query | undefined,
+          })
+        ).items,
+      create: (body) => call("POST", "/v1/written-rules", writtenRuleSchema, { body }),
+      update: (ruleId, body) =>
+        call("PATCH", `/v1/written-rules/${id(ruleId)}`, writtenRuleSchema, { body }),
+      remove: async (ruleId) => {
+        await call("DELETE", `/v1/written-rules/${id(ruleId)}`, deletedSchema);
       },
     },
     connectors: {

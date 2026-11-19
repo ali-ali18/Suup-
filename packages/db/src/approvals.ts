@@ -39,6 +39,10 @@ export interface Approval {
   reason: string | null;
   /** The rule an "allow this recipient" created. */
   ruleId: string | null;
+  /** Why the card exists, when the automatic review (or a floor) sent the call to the user: one sentence. */
+  reviewReason: string | null;
+  /** The written rule that reason rests on, if it cited one (it may have been deleted since). */
+  writtenRuleId: string | null;
   expiresAt: Date | null;
   decidedAt: Date | null;
   createdAt: Date;
@@ -60,6 +64,8 @@ interface ApprovalRow {
   status: ApprovalStatus;
   reason: string | null;
   rule_id: string | null;
+  review_reason: string | null;
+  written_rule_id: string | null;
   expires_at: Date | null;
   decided_at: Date | null;
   created_at: Date;
@@ -82,6 +88,8 @@ function mapApproval(row: ApprovalRow): Approval {
     status: row.status,
     reason: row.reason,
     ruleId: row.rule_id,
+    reviewReason: row.review_reason,
+    writtenRuleId: row.written_rule_id,
     expiresAt: row.expires_at,
     decidedAt: row.decided_at,
     createdAt: row.created_at,
@@ -90,7 +98,7 @@ function mapApproval(row: ApprovalRow): Approval {
 
 const SELECT = (db: Db) => db.sql`
   select a.id, a.run_id, a.bot_id, r.conversation_id, a.call_id, a.tool, a.args, a.level,
-         a.summary, a.secrets, a.source, a.outbound, a.status, a.reason, a.rule_id, a.expires_at,
+         a.summary, a.secrets, a.source, a.outbound, a.status, a.reason, a.rule_id, a.review_reason, a.written_rule_id, a.expires_at,
          a.decided_at, a.created_at
   from approvals a join runs r on r.id = a.run_id`;
 
@@ -127,12 +135,17 @@ export async function projectApprovalRequested(
     source: PolicySource;
     outbound?: OutboundMessage;
     expiresAt?: string;
+    reason?: string;
+    writtenRuleId?: string;
   };
+  // The rule id comes from the event log; a value that is not an id is left out, not trusted.
+  const writtenRuleId = z.uuid().safeParse(p.writtenRuleId).data ?? null;
   await tx.sql`
-    insert into approvals (id, run_id, bot_id, call_id, tool, args, level, summary, secrets, source, outbound, expires_at)
+    insert into approvals (id, run_id, bot_id, call_id, tool, args, level, summary, secrets, source, outbound, expires_at, review_reason, written_rule_id)
     select ${p.approvalId}, r.id, r.bot_id, ${p.callId}, ${p.tool}, ${tx.sql.json(p.args)},
            ${p.level}, ${p.summary}, ${p.secrets}::text[], ${p.source},
-           ${p.outbound === undefined ? null : tx.sql.json(p.outbound)}, ${p.expiresAt ?? null}
+           ${p.outbound === undefined ? null : tx.sql.json(p.outbound)}, ${p.expiresAt ?? null},
+           ${p.reason === undefined ? null : p.reason.slice(0, 1000)}, ${writtenRuleId}
     from runs r where r.id = ${runId}
     on conflict (run_id, call_id) do nothing`;
 }

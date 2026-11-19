@@ -2,6 +2,7 @@
 // and the response, adding usage and cost to the run, and retrying retryable provider errors with
 // backoff. Used for the agent turn, the reviewer and the compaction summarizer alike.
 import type { Message } from "../messages.js";
+import { computeCost } from "../pricing.js";
 import {
   type GenerateResult,
   generateAndCollect,
@@ -10,7 +11,6 @@ import {
   ProviderError,
   type ToolChoice,
   type ToolSpec,
-  type Usage,
 } from "../provider.js";
 import { record } from "./recording.js";
 import type { ModelPricing } from "./reviewer.js";
@@ -146,21 +146,6 @@ export async function callModel(ctx: LoopContext, spec: CallSpec): Promise<CallO
   }
 }
 
-export function computeCost(usage: Usage, pricing: ModelPricing | undefined): number {
-  if (pricing === undefined) return 0;
-  const cached = Math.min(usage.cachedInputTokens ?? 0, usage.inputTokens);
-  const written = Math.min(usage.cacheWriteInputTokens ?? 0, usage.inputTokens - cached);
-  const cachedRate = pricing.cachedInputPerMTok ?? pricing.inputPerMTok;
-  const writeRate = pricing.cacheWriteInputPerMTok ?? pricing.inputPerMTok;
-  return (
-    ((usage.inputTokens - cached - written) * pricing.inputPerMTok +
-      cached * cachedRate +
-      written * writeRate +
-      usage.outputTokens * pricing.outputPerMTok) /
-    1_000_000
-  );
-}
-
 function toProviderError(error: unknown): ProviderError {
   if (error instanceof ProviderError) return error;
   return new ProviderError("unknown", error instanceof Error ? error.message : String(error), {
@@ -168,3 +153,5 @@ function toProviderError(error: unknown): ProviderError {
     cause: error,
   });
 }
+
+export { computeCost };

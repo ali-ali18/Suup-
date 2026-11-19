@@ -1,3 +1,17 @@
+export {
+  BATTERY,
+  BATTERY_CLASSES,
+  BATTERY_RULE_IDS,
+  BATTERY_RULES,
+  type BatteryCase,
+  type BatteryClass,
+  type BatteryReport,
+  type CaseResult,
+  type ClassSummary,
+  formatBatteryReport,
+  type RunBatteryOptions,
+  runBattery,
+} from "./auto-review/index.js";
 export { stamp } from "./fmt.js";
 export { hardTasks } from "./hard/index.js";
 export {

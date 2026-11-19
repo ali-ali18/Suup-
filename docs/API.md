@@ -203,7 +203,7 @@ Erros: `404` se a execução não existe; `409` para `pause` e `interrupt` numa 
 
 Uma chamada de ferramenta que precisa do seu OK vira um **cartão** (`Approval`); a execução fica em `waiting_approval` e libera o worker até você decidir. Como e por quê: [APROVACOES.md](APROVACOES.md).
 
-`Approval`: `id`, `runId`, `botId`, `conversationId` (a da execução, ou `null`), `callId`, `tool`, **`args`** (o conteúdo exato que vai rodar, com segredos como `{{secret:NOME}}`, nunca valores), `level` (`read`, `write_reversible`, `external_irreversible`), `summary` (uma linha: o título do cartão), `secrets` (nomes usados), `source` (`rule`, `reviewer` ou `default`: quem mandou perguntar), `status` (`pending`, `approved`, `denied`, `cancelled`, `expired`), `reason` (o motivo de uma negação), `outbound` (`null`, ou `{ kind: "message", recipientFields, recipients }`: a ferramenta **declarou** que a chamada é uma mensagem a outra pessoa; `recipients` é o que "Permitir destinatário" fixaria, ou `null` se não dá para dizer exatamente), `ruleId` (a regra criada por "Permitir destinatário"), `expiresAt` (só se a configuração faz cartões expirarem), `decidedAt`, `createdAt`.
+`Approval`: `id`, `runId`, `botId`, `conversationId` (a da execução, ou `null`), `callId`, `tool`, **`args`** (o conteúdo exato que vai rodar, com segredos como `{{secret:NOME}}`, nunca valores), `level` (`read`, `write_reversible`, `external_irreversible`), `summary` (uma linha: o título do cartão), `secrets` (nomes usados), `source` (`rule`, `reviewer` ou `default`: quem mandou perguntar), `reviewReason` (uma frase em português dizendo por que o cartão existe, quando foi o revisor ou um piso fixo; senão `null`), `writtenRuleId` (a regra escrita em que essa frase se apoia, se citou uma; ela pode ter sido apagada depois), `status` (`pending`, `approved`, `denied`, `cancelled`, `expired`), `reason` (o motivo de uma negação), `outbound` (`null`, ou `{ kind: "message", recipientFields, recipients }`: a ferramenta **declarou** que a chamada é uma mensagem a outra pessoa; `recipients` é o que "Permitir destinatário" fixaria, ou `null` se não dá para dizer exatamente), `ruleId` (a regra criada por "Permitir destinatário"), `expiresAt` (só se a configuração faz cartões expirarem), `decidedAt`, `createdAt`.
 
 | Método e caminho | Corpo | Resposta |
 |---|---|---|
@@ -226,6 +226,30 @@ Uma chamada de ferramenta que precisa do seu OK vira um **cartão** (`Approval`)
 | `POST /v1/approval-rules` | `{ tool, effect, botId?, matchers?, note? }` | `201 Rule`; `400` |
 | `PATCH /v1/approval-rules/{id}` | `{ effect?, matchers?, note?, enabled? }` | `200 Rule`; `400`, `404`; `409` ao ativar (`enabled: true`) uma regra que ainda guarda condições antigas (troque `matchers` na mesma chamada) |
 | `DELETE /v1/approval-rules/{id}` | | `200 { deleted: true }`; `404` |
+
+### Modo de aprovação
+
+Dois modos, guardados **no servidor**: `auto_review` (padrão: um modelo lê as suas regras escritas e decide cada chamada que não é leitura) e `ask_all` ("Perguntar tudo": toda chamada que não é leitura vira cartão). Como funcionam: [APROVACOES.md](APROVACOES.md).
+
+`ApprovalSettings`: `{ mode: "auto_review" | "ask_all", reviewer: { available, model, reason } }`. `reviewer.available` é `false` quando não há modelo de revisão configurado, a chave do provedor falta ou a configuração o desliga: o `auto_review` então só aplica a tabela de níveis de risco, e `reviewer.reason` diz por quê (uma frase para a pessoa); `model` é o modelo configurado, ou `null`. A tela deve mostrar isso, sem fingir que há revisão.
+
+| Método e caminho | Corpo | Resposta |
+|---|---|---|
+| `GET /v1/approval-settings` | | `200 ApprovalSettings` |
+| `PATCH /v1/approval-settings` | `{ mode }` (estrito) | `200 ApprovalSettings`; `400` para um modo que não existe. Vale para as próximas chamadas, também nas execuções em andamento |
+
+### Regras escritas
+
+`WrittenRule`: `id`, `kind` (`never`: nunca permitir, `ask`: sempre perguntar, `allow`: permitir sem perguntar), `text` (**texto livre** do usuário, aparado, 1 a 500 caracteres: nenhum código o interpreta; quem o lê é o modelo revisor), `botId` (`null` = todos os bots), `enabled`, `createdAt`, `updatedAt`. Só o usuário cria; o modelo nunca. No máximo 100.
+
+| Método e caminho | Corpo | Resposta |
+|---|---|---|
+| `GET /v1/written-rules?botId=` | | `200 { items: [WrittenRule] }`, da mais antiga à mais nova (as desligadas também). Com `botId`: as desse bot e as de todos |
+| `POST /v1/written-rules` | `{ kind, text, botId?, enabled? }` (estrito: `tool`, `matchers` e outros campos dão `400`) | `201 WrittenRule`; `400` (texto vazio ou com mais de 500 caracteres, tipo desconhecido, `botId` que não existe); `409` se já são 100 |
+| `PATCH /v1/written-rules/{id}` | `{ kind?, text?, enabled? }` (estrito) | `200 WrittenRule`; `400`, `404` |
+| `DELETE /v1/written-rules/{id}` | | `200 { deleted: true }`; `404` |
+
+Os eventos novos do log da execução (`GET /v1/runs/{id}/events`): `approval_review` (uma revisão do modelo: `decision`, `ruleId`, `reason`, `outcome`, `adjusted?`, `skipped?`, `model`, `promptVersion`, `usage`, `costUsd`, `latencyMs`) e, no `policy_checked` de uma chamada recusada pela regra `never`, `writtenRuleId` e `reason` (`Bloqueado pela regra "…"`). O cartão da pergunta traz `reason` e `writtenRuleId` no `approval_requested`.
 
 Tempo real: o quadro `approval.changed` (`{ change: "created"\|"updated", approval }`) chega a toda conexão quando um cartão aparece ou muda de situação. As regras e o cofre não têm quadro: leia de novo depois de escrever.
 

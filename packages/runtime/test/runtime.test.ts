@@ -188,6 +188,43 @@ describe("runtime: the bot configuration", () => {
   });
 });
 
+describe("runtime: what Auto-review has to work with", () => {
+  it("tells the truth: no model, a model whose key is missing, a model that works, and switched off", () => {
+    const status = (config: Record<string, unknown>, env: Record<string, string> = {}) =>
+      createRuntime(configOf(config), { env }).autoReviewStatus();
+    expect(status({})).toMatchObject({ available: false, model: null });
+    expect(status({}).reason).toContain("Nenhum modelo de revisão");
+
+    // model-x is on the cloud provider, which needs a key
+    const needsKey = status({ approvals: { autoReview: { model: "model-x" } } });
+    expect(needsKey).toMatchObject({ available: false, model: "model-x" });
+    expect(needsKey.reason).toContain("não está definida");
+
+    // model-y is on a local provider without a key
+    expect(status({ approvals: { autoReview: { model: "model-y" } } })).toEqual({
+      available: true,
+      model: "model-y",
+      reason: null,
+    });
+    // the model of `reviewer` is the default
+    expect(status({ reviewer: { model: "model-y" } })).toMatchObject({
+      available: true,
+      model: "model-y",
+    });
+    // `autoReview.model` wins over `reviewer.model`
+    expect(
+      status({ reviewer: { model: "model-y" }, approvals: { autoReview: { model: "model-s" } } }),
+    ).toMatchObject({ model: "model-s" });
+    // switched off in the configuration
+    const off = status({
+      reviewer: { model: "model-y" },
+      approvals: { autoReview: { enabled: false } },
+    });
+    expect(off).toMatchObject({ available: false, model: null });
+    expect(off.reason).toContain("Desligado na configuração");
+  });
+});
+
 describe("runtime: the machine of each bot", () => {
   it("gives each bot its own subdirectory of the shared local root", async () => {
     const dir = await tempDir();

@@ -83,8 +83,25 @@ export async function askGate(ctx: LoopContext, call: ControlCall): Promise<Call
     args: call.args as JsonValue,
     allowed: bot.allowedTools,
     executor,
+    userMessages: ctx.state.userSaid,
+    reviewBlocks: ctx.state.reviewBlocks,
+    ...(ctx.state.reviews.has(call.id) ? { recordedReview: ctx.state.reviews.get(call.id) } : {}),
+    signal: ctx.signal,
   });
   if (verdict === null) return { kind: "run", args: call.args as JsonValue };
+  if (verdict.review !== undefined) {
+    // The review is paid for and written down BEFORE anything is decided on it.
+    const { usage, costUsd } = verdict.review;
+    if (usage !== undefined) {
+      await ctx.deps.store.addUsage(ctx.runId, {
+        turns: 0,
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        costUsd: costUsd ?? 0,
+      });
+    }
+    await record(ctx, { type: "approval_review", payload: verdict.review });
+  }
 
   switch (verdict.outcome) {
     case "allow":
@@ -110,6 +127,8 @@ export async function askGate(ctx: LoopContext, call: ControlCall): Promise<Call
           source: verdict.source,
           ...(verdict.outbound === undefined ? {} : { outbound: verdict.outbound }),
           ...(verdict.expiresAt === undefined ? {} : { expiresAt: verdict.expiresAt }),
+          ...(verdict.reason === undefined ? {} : { reason: verdict.reason }),
+          ...(verdict.writtenRuleId === undefined ? {} : { writtenRuleId: verdict.writtenRuleId }),
         },
       });
       return { kind: "wait" };
@@ -131,6 +150,7 @@ async function recordPolicy(
       outcome,
       source: verdict.source,
       ...(verdict.ruleId === undefined ? {} : { ruleId: verdict.ruleId }),
+      ...(verdict.writtenRuleId === undefined ? {} : { writtenRuleId: verdict.writtenRuleId }),
       ...(verdict.reason === undefined ? {} : { reason: verdict.reason }),
     },
   });

@@ -192,6 +192,7 @@ Cada ação passa por três filtros, em ordem:
 - Tudo que vai para outra pessoa vira rascunho; o usuário envia.
 - **Cofre:** segredos cifrados no banco. O modelo vê só um marcador; o valor é injetado no momento da ação. Um formulário seguro no chat grava direto no cofre.
 - Todo resultado de ferramenta com conteúdo externo entra rotulado como dado não confiável.
+- **Modo de aprovação: "Auto-review" ou "Perguntar tudo"** (decisão do dono: "é auto review ou tudo, tem que deixar fácil ao usuário"). No Auto-review, um modelo barato lê as **regras que o usuário escreve em linguagem comum** ("E-mails para minha equipe em acme.com"; "Nunca permitir: apagar a pasta notas"; "Sempre perguntar: qualquer coisa que gaste dinheiro") e, para cada chamada que não é leitura, decide: rodar, perguntar ou bloquear. Ele só vê as mensagens do usuário, as regras e a chamada proposta (nunca resultado de ferramenta nem texto do assistente), responde por uma ferramenta de formato fixo, e qualquer erro vira "perguntar". Por cima dele, no código: regras exatas de negar, pisos fixos (rede, segredo que sai) e as checagens do tipo da regra citada. Pesquisa: [pesquisas/fase-3-auto-review-regras-escritas.md](pesquisas/fase-3-auto-review-regras-escritas.md); como funciona: [APROVACOES.md](APROVACOES.md); medição com modelo real: [TESTES-REAIS.md](TESTES-REAIS.md), "Fase 3".
 
 ### 4.9 Rotinas
 

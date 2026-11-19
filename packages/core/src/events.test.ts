@@ -118,6 +118,23 @@ const samples: RunEventData[] = [
     },
   },
   {
+    type: "approval_review",
+    payload: {
+      callId: "1",
+      tool: "send_email",
+      level: "external_irreversible",
+      decision: "block",
+      ruleId: "w1",
+      reason: "Regra: nunca apagar a pasta notas.",
+      outcome: "deny",
+      model: "model-x",
+      promptVersion: "auto-review-v1",
+      usage: { inputTokens: 400, outputTokens: 40 },
+      costUsd: 0.0001,
+      latencyMs: 700,
+    },
+  },
+  {
     type: "approval_requested",
     payload: {
       approvalId: "a1",

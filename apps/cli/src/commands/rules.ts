@@ -1,12 +1,19 @@
 import type { ArgMatcher } from "@suup/core";
 import {
   createRule,
+  createWrittenRule,
   deleteRule,
+  deleteWrittenRule,
   getRule,
+  getWrittenRule,
   listBots,
   listRules,
+  listWrittenRules,
   type StoredRule,
+  type StoredWrittenRule,
   updateRule,
+  updateWrittenRule,
+  WrittenRuleError,
 } from "@suup/db";
 import { flag, list, str } from "../args.js";
 import type { CommandSpec } from "../context.js";
@@ -255,6 +262,209 @@ export const rulesRemove: CommandSpec = {
     await deleteRule(ctx.runtime().db, rule.id);
     if (ctx.json) ctx.out.data({ deleted: rule.id });
     else ctx.out.line(`Regra ${rule.id.slice(0, 8)} apagada.`);
+    return EXIT_OK;
+  },
+};
+
+// ---- written rules: plain language, read by the model reviewer ---------------------------
+
+const KIND_PT = { never: "nunca", ask: "perguntar", allow: "permitir" } as const;
+const KIND_NAMES = ["never", "ask", "allow"] as const;
+type WrittenKind = (typeof KIND_NAMES)[number];
+
+function writtenKind(value: string | undefined, command: string): WrittenKind | undefined {
+  if (value === undefined) return undefined;
+  const kind = KIND_NAMES.find((name) => name === value);
+  if (kind === undefined) {
+    throw new UsageError("--kind precisa ser never, ask ou allow.", command);
+  }
+  return kind;
+}
+
+function writtenJson(r: StoredWrittenRule) {
+  return {
+    id: r.id,
+    kind: r.kind,
+    text: r.text,
+    botId: r.botId,
+    enabled: r.enabled,
+    createdAt: r.createdAt.toISOString(),
+    updatedAt: r.updatedAt.toISOString(),
+  };
+}
+
+async function findWrittenRule(
+  ctx: Parameters<CommandSpec["run"]>[0],
+  ref: string,
+): Promise<StoredWrittenRule> {
+  const db = ctx.runtime().db;
+  const rows = await db.sql<{ id: string }[]>`
+    select id from written_rules where starts_with(id::text, ${ref.toLowerCase()}) limit 5`;
+  if (!isIdPrefix(ref) || rows.length === 0) {
+    throw new CommandError(
+      `Regra escrita não encontrada: ${JSON.stringify(ref)}. Veja: suup rules written list`,
+    );
+  }
+  if (rows.length > 1) {
+    throw new CommandError(
+      `${JSON.stringify(ref)} corresponde a mais de uma regra. Use mais caracteres do id.`,
+    );
+  }
+  const rule = await getWrittenRule(db, (rows[0] as { id: string }).id);
+  if (rule === null) throw new CommandError(`Regra escrita não encontrada: ${ref}.`);
+  return rule;
+}
+
+const WRITTEN_NOTES = [
+  "Uma regra escrita é uma frase sua, em linguagem comum: diga qual é a ação e quem ou o que ela afeta.",
+  "Exemplos: 'e-mails para minha equipe em acme.com' (permitir) · 'apagar a pasta notas' (nunca) · 'qualquer coisa que gaste dinheiro' (perguntar).",
+  "Quem lê a regra é o modelo do auto-review (suup approvals mode); nenhum código a interpreta. Só você cria regras: o bot nunca cria.",
+];
+
+export const rulesWrittenList: CommandSpec = {
+  name: "rules written list",
+  summary: "Lista as regras que você escreveu em linguagem comum (nunca, perguntar, permitir)",
+  options: {
+    bot: { type: "string", value: "bot", help: "Só as regras que valem para este bot" },
+  },
+  positionals: { names: [] },
+  notes: WRITTEN_NOTES,
+  async run(ctx) {
+    const db = ctx.runtime().db;
+    const botRef = str(ctx.args, "bot");
+    const bot = botRef === undefined ? undefined : await findBot(db, botRef);
+    const rules = await listWrittenRules(db, bot === undefined ? {} : { botId: bot.id });
+    if (ctx.json) {
+      ctx.out.data(rules.map(writtenJson));
+      return EXIT_OK;
+    }
+    if (rules.length === 0) {
+      ctx.out.line(
+        'Nenhuma regra escrita. Para criar uma: suup rules written add --kind allow --text "e-mails para minha equipe em acme.com"',
+      );
+      return EXIT_OK;
+    }
+    const names = new Map(
+      (await listBots(db, { includeArchived: true })).map((b) => [b.id, b.name]),
+    );
+    ctx.out.lines(
+      renderTable(
+        ["ID", "TIPO", "DE", "REGRA", "CRIADA"],
+        rules.map((r) => [
+          r.id.slice(0, 8),
+          KIND_PT[r.kind],
+          r.botId === null ? "todos" : (names.get(r.botId) ?? r.botId.slice(0, 8)),
+          `${oneLine(r.text, 80)}${r.enabled ? "" : " (desativada)"}`,
+          formatDateTime(r.createdAt),
+        ]),
+      ),
+    );
+    return EXIT_OK;
+  },
+};
+
+export const rulesWrittenAdd: CommandSpec = {
+  name: "rules written add",
+  summary: "Escreve uma regra em linguagem comum para o auto-review",
+  options: {
+    kind: {
+      type: "string",
+      value: "never|ask|allow",
+      help: "never: nunca permitir · ask: sempre perguntar · allow: permitir sem perguntar",
+    },
+    text: { type: "string", value: "texto", help: "A regra, até 500 caracteres" },
+    bot: {
+      type: "string",
+      value: "bot",
+      help: "Vale só para este bot (sem isto, vale para todos)",
+    },
+  },
+  positionals: { names: [] },
+  notes: WRITTEN_NOTES,
+  async run(ctx) {
+    const kind = writtenKind(str(ctx.args, "kind"), "rules written add");
+    const text = str(ctx.args, "text");
+    if (kind === undefined) throw new UsageError("Falta --kind.", "rules written add");
+    if (text === undefined) throw new UsageError("Falta --text.", "rules written add");
+    const db = ctx.runtime().db;
+    const botRef = str(ctx.args, "bot");
+    const bot = botRef === undefined ? undefined : await findBot(db, botRef);
+    const rule = await createWrittenRule(db, { kind, text, botId: bot?.id ?? null }).catch(
+      (error: unknown) => {
+        throw writtenCommandError(error);
+      },
+    );
+    if (ctx.json) ctx.out.data(writtenJson(rule));
+    else ctx.out.line(`Regra escrita criada: ${rule.id.slice(0, 8)} (${KIND_PT[rule.kind]}).`);
+    return EXIT_OK;
+  },
+};
+
+/** What a rejected rule text or limit says, in words for the terminal. */
+function writtenCommandError(error: unknown): unknown {
+  if (error instanceof WrittenRuleError) return new CommandError(error.message);
+  if (error instanceof Error && error.name === "ZodError") {
+    return new CommandError(
+      "O texto da regra precisa ter entre 1 e 500 caracteres (depois de tirar os espaços das pontas).",
+    );
+  }
+  return error;
+}
+
+export const rulesWrittenEdit: CommandSpec = {
+  name: "rules written edit",
+  summary: "Muda o tipo ou o texto de uma regra escrita, ou liga e desliga",
+  options: {
+    kind: { type: "string", value: "never|ask|allow", help: "Novo tipo" },
+    text: { type: "string", value: "texto", help: "Novo texto" },
+    enable: { type: "boolean", help: "Liga a regra" },
+    disable: { type: "boolean", help: "Desliga a regra (ela fica guardada, mas não vale)" },
+  },
+  positionals: { names: ["id"] },
+  notes: WRITTEN_NOTES,
+  async run(ctx) {
+    const [ref] = ctx.args.positionals as [string];
+    const kind = writtenKind(str(ctx.args, "kind"), "rules written edit");
+    const text = str(ctx.args, "text");
+    const enable = flag(ctx.args, "enable");
+    const disable = flag(ctx.args, "disable");
+    if (enable && disable) {
+      throw new UsageError("Use --enable ou --disable, não os dois.", "rules written edit");
+    }
+    if (kind === undefined && text === undefined && !enable && !disable) {
+      throw new UsageError(
+        "Diga o que mudar: --kind, --text, --enable ou --disable.",
+        "rules written edit",
+      );
+    }
+    const found = await findWrittenRule(ctx, ref);
+    const rule = await updateWrittenRule(ctx.runtime().db, found.id, {
+      ...(kind === undefined ? {} : { kind }),
+      ...(text === undefined ? {} : { text }),
+      ...(enable ? { enabled: true } : {}),
+      ...(disable ? { enabled: false } : {}),
+    }).catch((error: unknown) => {
+      throw writtenCommandError(error);
+    });
+    if (rule === null) throw new CommandError("Regra escrita não encontrada.");
+    if (ctx.json) ctx.out.data(writtenJson(rule));
+    else ctx.out.line(`Regra escrita ${rule.id.slice(0, 8)} atualizada.`);
+    return EXIT_OK;
+  },
+};
+
+export const rulesWrittenRemove: CommandSpec = {
+  name: "rules written rm",
+  summary: "Apaga uma regra escrita",
+  options: {},
+  positionals: { names: ["id"] },
+  notes: [],
+  async run(ctx) {
+    const [ref] = ctx.args.positionals as [string];
+    const rule = await findWrittenRule(ctx, ref);
+    await deleteWrittenRule(ctx.runtime().db, rule.id);
+    if (ctx.json) ctx.out.data({ deleted: rule.id });
+    else ctx.out.line(`Regra escrita ${rule.id.slice(0, 8)} apagada.`);
     return EXIT_OK;
   },
 };

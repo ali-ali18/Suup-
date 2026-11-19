@@ -4,12 +4,14 @@ import {
   type DecideApprovalInput,
   decideApproval,
   getApproval,
+  getApprovalMode,
   listApprovals,
   listBots,
+  setApprovalMode,
 } from "@suup/db";
 import { flag, posInt, str } from "../args.js";
 import type { CommandSpec, Ctx } from "../context.js";
-import { CommandError, EXIT_OK } from "../errors.js";
+import { CommandError, EXIT_OK, UsageError } from "../errors.js";
 import { formatDateTime, levelPt, oneLine } from "../format.js";
 import { findBot, isIdPrefix } from "../lookup.js";
 import { renderApprovalCard } from "../render.js";
@@ -65,6 +67,8 @@ export function approvalJson(a: Approval) {
     reason: a.reason,
     outbound: a.outbound,
     ruleId: a.ruleId,
+    reviewReason: a.reviewReason,
+    writtenRuleId: a.writtenRuleId,
     expiresAt: a.expiresAt?.toISOString() ?? null,
     decidedAt: a.decidedAt?.toISOString() ?? null,
     createdAt: a.createdAt.toISOString(),
@@ -199,5 +203,55 @@ export const denyCommand: CommandSpec = {
   async run(ctx) {
     const [ref] = ctx.args.positionals as [string];
     return decideAndReport(ctx, ref, { decision: "denied", reason: str(ctx.args, "reason") });
+  },
+};
+
+const MODE_NAMES = { "auto-review": "auto_review", "ask-all": "ask_all" } as const;
+const MODE_PT = {
+  auto_review: "Auto-review (um modelo lê as suas regras escritas e decide cada chamada)",
+  ask_all: "Perguntar tudo (todo cartão que não for leitura espera você)",
+} as const;
+
+export const approvalsMode: CommandSpec = {
+  name: "approvals mode",
+  summary: "Mostra ou muda o modo de aprovação: auto-review ou ask-all",
+  options: {},
+  positionals: { names: ["modo?"] },
+  notes: [
+    "auto-review (padrão): um modelo lê as regras que você escreveu (suup rules written) e decide se cada chamada roda, pergunta ou é bloqueada. Leituras rodam sem passar por ele.",
+    "ask-all: toda chamada que não é leitura vira cartão. Nenhum modelo é consultado.",
+    "Sem modelo de revisão configurado (approvals.autoReview.model ou reviewer.model), o auto-review se comporta como a tabela de níveis de risco, e este comando avisa.",
+  ],
+  async run(ctx) {
+    const db = ctx.runtime().db;
+    const [wanted] = ctx.args.positionals as [string | undefined];
+    if (wanted !== undefined) {
+      const next = Object.entries(MODE_NAMES).find(([name]) => name === wanted)?.[1];
+      if (next === undefined) {
+        throw new UsageError(
+          `Modo desconhecido: ${JSON.stringify(wanted)}. Use auto-review ou ask-all.`,
+          "approvals mode",
+        );
+      }
+      await setApprovalMode(db, next);
+    }
+    const mode = await getApprovalMode(db);
+    const status = ctx.runtime().autoReviewStatus();
+    if (ctx.json) {
+      ctx.out.data({
+        mode,
+        reviewer: { available: status.available, model: status.model, reason: status.reason },
+      });
+      return EXIT_OK;
+    }
+    ctx.out.line(`Modo de aprovação: ${MODE_PT[mode]}.`);
+    if (mode === "auto_review" && !status.available) {
+      ctx.out.line(
+        `Aviso: o revisor não está disponível (${status.reason ?? "sem motivo"}). Enquanto isso o auto-review só aplica a tabela de níveis: leitura e escrita reversível rodam, o que sai para fora ou não tem volta pergunta.`,
+      );
+    } else if (mode === "auto_review") {
+      ctx.out.line(`Revisor: ${status.model}.`);
+    }
+    return EXIT_OK;
   },
 };

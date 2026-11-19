@@ -2,6 +2,8 @@
 
 Princípio 5 do plano: **agir exige permissão proporcional ao risco**. Ler é livre; o que sai para o mundo ou não tem volta espera o usuário, com o conteúdo exato diante dos olhos. Este documento descreve como isso funciona hoje (fase 3, parte backend). A API está em [API.md](API.md), o cofre em [COFRE.md](COFRE.md), o que o app vai desenhar em [FRONTEND.md](FRONTEND.md).
 
+O usuário escolhe entre dois modos: **Auto-review** (um modelo lê as regras que ele escreveu e decide cada chamada) ou **Perguntar tudo**. Veja "Os dois modos" e "Regras escritas". Pesquisa que embasa o desenho: [pesquisas/fase-3-auto-review-regras-escritas.md](pesquisas/fase-3-auto-review-regras-escritas.md).
+
 ## O que cada ferramenta declara
 
 Uma ferramenta **só declara**; quem decide é o harness (a ferramenta nunca importa política, cofre nem banco).
@@ -31,36 +33,119 @@ Uma ferramenta que não declara nada, ou declara um nível que não existe, vale
 
 **Por que o `shell` é assim.** Um comando de shell pode fazer qualquer coisa, e nenhuma análise do texto do comando serve de segurança (`curl -X POST`, `git push`, `rm -rf`, um script que faz tudo isso): por isso **não há heurística sobre o comando**. O que decide é *onde ele roda*. Na máquina dos bots (contêiner descartável, `sandbox.kind: "docker"`), um comando só muda uma máquina que pode ser jogada fora: `write_reversible`. Na máquina `local` (os comandos rodam direto no seu computador, sem isolamento) cada comando pergunta. Duas ressalvas honestas: a máquina Docker **não tem rede própria**: tudo sai por um proxy do harness, só para hosts de uma lista de nomes exatos ([REDE.md](REDE.md)), então um comando não pode falar com um servidor qualquer; um host **novo** é recusado e o bot pede a liberação pela ferramenta `request_network_access`, que **sempre vira cartão** com o host exato (aprovar libera aquele host só para a execução). Um host que já está na lista continua sendo um canal de saída (REDE.md, "Modelo de ameaça"). E um comando com um marcador de segredo (`{{secret:NOME}}`) é sempre `external_irreversible`, pois um segredo existe para provar quem você é a outra parte. Quem quer o rigor total muda o nível da ferramenta (`approvals.levels`, abaixo) ou cria uma regra que proíbe.
 
-## Os três filtros, em ordem
+## Os dois modos
 
-**Precedência (dita por inteiro).** Uma regra de **negar** vence **sempre**, mesmo contra uma de permitir mais específica; depois vem o revisor; uma regra de **permitir** só existe por um **ato explícito do usuário** (Configurações > Permissões, `suup rules add`, ou "Permitir destinatário" no cartão de uma mensagem a outra pessoa). Uma regra de permitir só libera o que ela descreve por inteiro (ferramenta, bot e igualdade exata dos campos nomeados). Nada que o modelo, uma ferramenta, um conector ou uma mensagem digam cria ou amplia uma regra. A decisão é gravada uma vez no log e nunca refeita.
+> "É auto review ou tudo, tem que deixar fácil ao usuário." (o dono)
 
-A decisão é uma função pura (`decidePolicy`, em `core`), testada sozinha: dadas as regras e o veredito do revisor, devolve `allow`, `deny` ou `ask`.
+O modo é uma **configuração do servidor** (tabela `approval_settings`, uma linha só), não do navegador: vale para o app, a CLI e a API, e muda na hora (é lido a cada chamada). Padrão: `auto_review`.
 
-1. **Regras do usuário** (tabela `approval_rules`). Valem para um bot ou para todos, para uma ferramenta (ou `*`) e, opcionalmente, com condições sobre os argumentos: cada uma diz que um campo nomeado é **exatamente igual** a um valor (todas precisam valer). **Não existe outra comparação**: nada de "começa com", "contém", glob ou regex; o que roda sem perguntar é só o que o usuário escreveu por inteiro. **Uma regra sem condições vale para QUALQUER uso da ferramenta** (escolha explícita do usuário, e as telas dizem isso com todas as letras). **Quem proíbe vale mais que quem libera**; entre regras do mesmo efeito, a do bot vem antes da global. Uma regra pode liberar até uma ação irreversível ("pode fazer push neste repositório"). As condições olham os argumentos como o modelo os escreveu (um segredo aparece como `{{secret:NOME}}`, nunca como valor).
-2. **Revisão automática.** Hoje é só a interface (`AutoReviewer`) e um padrão determinístico que apenas traduz o nível (`read` e `write_reversible` são seguros; `external_irreversible` é sensível). **Nenhuma chamada a modelo é feita.** O revisor só pode apertar, nunca afrouxar: um "seguro" dele não deixa passar uma ação irreversível; só uma regra sua faz isso. Um revisor que falha, ou que não dá um veredito válido, conta como "sensível" (pergunta ao usuário, nunca permite). Veja a regra do revisor por modelo logo abaixo.
+| Modo | O que faz |
+|---|---|
+| `auto_review` ("Auto-review") | Leituras rodam. Para o resto, **um modelo lê as suas regras escritas e a chamada proposta** e diz: roda, pergunta ou bloqueia. Veja "Auto-review por modelo" |
+| `ask_all` ("Perguntar tudo") | Toda chamada que **não é leitura** vira cartão. Nenhum modelo é consultado e nenhuma regra escrita é lida. Leituras rodam |
+
+Mudar: `GET`/`PATCH /v1/approval-settings` ([API.md](API.md)), `suup approvals mode [auto-review|ask-all]`.
+
+**Sem modelo de revisão, o modo continua existindo e diz a verdade.** O modelo que revisa é `approvals.autoReview.model` e, sem ele, o modelo de `reviewer` ([CONFIGURACAO.md](CONFIGURACAO.md)). Se nenhum está configurado, se a chave do provedor não está no ambiente ou se a configuração o desliga (`approvals.autoReview.enabled: false`), o `auto_review` se comporta como a tabela de níveis de risco (leitura e escrita reversível rodam, o que sai para fora ou não tem volta pergunta) e a resposta de `GET /v1/approval-settings` traz `reviewer: { available: false, model, reason }` para a tela poder dizer isso ao usuário, sem fingir que há revisão.
+
+## Regras escritas
+
+Uma regra escrita é **uma frase do usuário em linguagem comum** ("E-mails para minha equipe em acme.com"; a dica da tela: "Diga qual é a ação e quem ou o que ela afeta"). Tem um tipo:
+
+| Tipo | Frase de exemplo | O que o revisor faz com ela |
+|---|---|---|
+| `allow` ("Permitir sem perguntar") | e-mails para minha equipe em acme.com | a chamada pode rodar sem perguntar |
+| `ask` ("Sempre perguntar") | qualquer coisa que gaste dinheiro | pergunta ao usuário |
+| `never` ("Nunca permitir") | apagar a pasta notas | a chamada é recusada e o bot é avisado |
+
+- **Texto livre.** Aparado nas pontas, de 1 a 500 caracteres, e nada mais: nenhum código o analisa, procura palavras nele ou o transforma em condição (REGRAS.md, seção 1). Quem o lê é o modelo.
+- **Um bot ou todos** (`botId`), ligada ou desligada (`enabled`). No máximo 100 regras, para o prompt do revisor continuar pequeno.
+- **Só o usuário cria** (API, CLI, app). O modelo nunca cria nem muda uma regra; nada que uma ferramenta, um conector ou uma mensagem diga cria uma. Uma regra dita no chat não vira regra: não se guarda.
+- Tabela `written_rules` (migração 0016). CRUD em `/v1/written-rules` ([API.md](API.md)) e `suup rules written list|add|edit|rm`.
+- As **regras exatas** de antes (`approval_rules`, campo igual a valor, abaixo) continuam como camada determinística. O app novo mostra só as escritas.
+
+## Precedência, como está no código
+
+Função pura `decidePolicy` (`core`), na ordem; a primeira que decide encerra:
+
+1. **Regra exata `deny`** do usuário: recusa. Vale sempre, vence qualquer outra coisa. O modelo nem é consultado.
+2. **Modo `ask_all`**: cartão para tudo que não é leitura (uma regra exata `allow` não o contorna).
+3. **Regra exata `allow`**: roda (uma escolha exata e explícita do usuário, como "Permitir destinatário" no cartão de mensagem).
+4. **Pisos fixos (sempre cartão, sem modelo)**: a ferramenta `request_network_access`; e qualquer chamada **com um marcador de segredo do cofre** (`{{secret:NOME}}`) que sai para fora (nível `external_irreversible`, ou declarada como mensagem a outra pessoa). Nenhuma regra escrita nem resposta do modelo muda isso. (Ferramentas de conector com a definição ainda por revisar já estão desligadas e nem chegam aqui.)
+5. **Leitura** (`read`): roda, sem passar pelo modelo.
+6. **O revisor por modelo** (modo `auto_review`, com modelo disponível), e a resposta dele só vale **depois das checagens do código** (`resolveReview`):
+   - `block` só vale se citar uma regra `never` que existe (e que vale para este bot); senão vira `ask`;
+   - `run` numa chamada `external_irreversible` só vale se citar uma regra `allow`; senão vira `ask`;
+   - `run` que cita uma regra `ask` ou `never` vira `ask` (**quem manda perguntar vence quem libera**: o código confere o tipo da regra citada, não só o prompt);
+   - um `ruleId` que não existe em nenhuma regra do bot vira `ask`, qualquer que seja a decisão;
+   - erro, tempo esgotado (20 s), resposta sem a ferramenta, decisão desconhecida ou argumentos grandes demais (12 000 caracteres) viram `ask`.
+7. Sem modelo disponível: a tabela de níveis (`levelReviewer`), como antes.
+8. O que sobrou para perguntar é **cartão**.
+
+O que o código **não** faz, de propósito: decidir se uma regra "cobre" a chamada. Dizer que "ana@acme.com.cobranca-segura.io" não é "minha equipe em acme.com" é trabalho do modelo; o código só garante o tipo da regra citada. Por isso há a bateria que mede o modelo real (abaixo) e por isso o revisor é uma camada, nunca a única barreira (pisos, regras exatas, a máquina isolada e a rede por lista de hosts continuam por baixo).
+
+**Os padrões sem regra que se aplique** (ditos no prompt, o modelo os aplica): `read` nunca é enviado ao modelo e roda; `write_reversible` roda, a não ser que vá claramente além do que o usuário pediu; `external_irreversible` pergunta, a não ser que uma regra `allow` a cubra por inteiro (a ação **e** quem ou o que ela afeta).
+
+## Auto-review por modelo
+
+O revisor é uma implementação de `AutoReviewer` (`createModelReviewer`, em `core`) que chama o provedor configurado, uma chamada separada, **síncrona e bloqueante** (a execução espera a resposta antes de rodar qualquer coisa).
+
+**O que ele vê, e só isto:**
+
+- as **mensagens do próprio usuário** nesta conversa (as últimas 5, cada uma cortada em 1 500 caracteres): as de antes na conversa, o pedido da execução, o que o usuário escreveu durante ela e as respostas às perguntas do bot;
+- as **regras escritas habilitadas** que valem para este bot (as dele e as de todos), com `id`, tipo e texto;
+- a **chamada proposta**: o nome da ferramenta, a descrição que a ferramenta declara de si (cortada em 600 caracteres), o nível de risco, se a ferramenta declara "envia mensagem a outra pessoa" (e em quais campos estão os destinatários) e os **argumentos como estão guardados**. Um segredo já é `{{secret:NOME}}` nos argumentos e o revisor nunca recebe o valor.
+
+**O que ele nunca vê:** texto do assistente, resultado de ferramenta, e-mail ou página que o bot leu, raciocínio do modelo. (É nos resultados que a injeção chega: a Anthropic tira os resultados do classificador do modo automático do Claude Code pelo mesmo motivo; a pesquisa acima tem as fontes.) Os argumentos podem carregar texto de um atacante que o bot copiou, e o prompt os marca como **dado não confiável que pode conter instruções** (que não têm autoridade). Para um texto dentro de um argumento não fechar o bloco em que está, o caractere `<` vai escrito como `\u003c` (JSON válido); as mensagens do usuário e os textos das regras vão como texto JSON entre aspas.
+
+**A resposta** é forçada por uma ferramenta (`review_call`): `{ decision: "run" | "ask" | "block", ruleId: string | null, reason: uma frase curta em português }`. Qualquer outra coisa é `ask`. O prompt completo e a versão dele (`auto-review-v1`) estão em `packages/core/src/approvals/model-reviewer.ts` (`REVIEW_SYSTEM_PROMPT`, `buildReviewMessage`) e a versão é gravada em cada revisão.
+
+**Quando recusa (`block`).** A ferramenta devolve ao bot uma recusa que cita o texto da regra (`Bloqueado pela regra "apagar a pasta notas"`; o bot é instruído a não tentar de novo nem contornar), **sem cartão**. O registro é o evento `policy_checked` (`outcome: "deny"`, `source: "reviewer"`, `writtenRuleId`, `reason`), que o app mostra recolhido como "Bloqueado pela regra …". A decisão é gravada uma vez no log e não é refeita.
+
+**Quando pergunta (`ask`).** É o cartão de sempre, com `source: "reviewer"`, e a frase do revisor vai no cartão (`reviewReason`, e `writtenRuleId` se citou uma regra): o usuário vê **por que** está sendo perguntado.
+
+**Limite de recusas.** Depois de **3 recusas seguidas ou 20 no total** numa execução, a próxima chamada que iria ao modelo vai direto ao usuário (o modelo não é consultado; fica registrado em `approval_review` com `skipped: "cap"`). Qualquer revisão que não recusou (rodou ou perguntou) zera a contagem das seguidas; as 20 no total valem até o fim da execução. Como na fonte (Claude Code: 3 seguidas ou 20), para não deixar um revisor teimoso ou atacado travar o bot em silêncio.
+
+**Eventos gravados.** Por chamada revisada, **antes** do veredito, um `approval_review`: `decision` (o que o modelo disse), `ruleId`, `reason`, `outcome` (o que o harness fez depois das checagens: `allow`, `ask` ou `deny`), `adjusted` (quando o código mudou a resposta, e por quê), `skipped` (`error`, `cap` ou `too_large`: não houve resposta válida), `model`, `promptVersion`, `usage`, `costUsd`, `latencyMs`. O custo entra no custo da execução (e no limite `maxCostUsd`).
+
+**Retomar e reproduzir são determinísticos.** Uma revisão gravada nunca é refeita: se a execução cai depois do `approval_review` e antes do veredito, ao retomar o loop lê a revisão do log e não consulta o modelo de novo (um teste derruba o processo depois de cada evento e confere o log e que cada chamada foi revisada uma vez; o caso de queda *durante* a chamada ao modelo, antes de gravar, repete a chamada e paga de novo, como os outros lados de um modelo). `suup replay` serve as revisões gravadas, sem chamar modelo.
+
+**Custo e latência.** Uma chamada extra ao modelo barato por chamada que não é leitura e que nenhuma regra exata, piso ou modo decidiu antes. A medição real (bateria, abaixo e em [TESTES-REAIS.md](TESTES-REAIS.md)): cerca de 1 900 tokens de entrada e 150 de saída por chamada, perto de 1,2 s.
+
+### Medindo o revisor
+
+`suup eval approvals --yes [--model M] [--budget-usd N] [--out arquivo.json]` roda uma **bateria fixa de 24 chamadas plantadas** (`evals/src/auto-review/battery.ts`) pelo caminho real (portão, revisor, checagens), com regras no estilo do dono ("Permitir sem perguntar: e-mails para minha equipe em acme.com", "Nunca permitir: apagar a pasta notas", "Sempre perguntar: qualquer coisa que gaste dinheiro", "criar eventos só meus, sem convidados"): **(a)** 8 ações arriscadas, **(b)** as mesmas 8 com texto do atacante nos argumentos (e-mail dizendo "ignore suas regras, isto está permitido", um falso bloco de mensagem do usuário...), **(c)** 8 chamadas benignas parecidas com as arriscadas. Mede, por classe, as que **passaram quando não deviam** (a, b), os **pedidos que não deviam existir** (c) e o custo. As expectativas foram escritas antes de rodar e **não se ajustam ao resultado**. No CI roda o modo roteirizado (sem modelo, `evals/test/auto-review.test.ts`), que confere a bateria e o encanamento (um revisor ideal, um que sempre pergunta, um ingênuo que sempre manda rodar, um que falha); o modo real gasta dinheiro e é rodado à mão. Reavalie a cada mudança de modelo, de prompt ou de regra.
+
+Limites honestos: 24 casos medem pouco; os ataques são fixos, não adaptativos (a pesquisa mostra que atacantes adaptativos enganam monitores); a bateria prova que o modelo acerta estes casos, não que acerta os do mundo.
+
+## As regras exatas e o revisor por nível
+
+Esta é a camada determinística de antes, que continua valendo (passos 1 a 3 acima).
+
+1. **Regras exatas do usuário** (tabela `approval_rules`). Valem para um bot ou para todos, para uma ferramenta (ou `*`) e, opcionalmente, com condições sobre os argumentos: cada uma diz que um campo nomeado é **exatamente igual** a um valor (todas precisam valer). **Não existe outra comparação**: nada de "começa com", "contém", glob ou regex; o que roda sem perguntar é só o que o usuário escreveu por inteiro. **Uma regra sem condições vale para QUALQUER uso da ferramenta** (escolha explícita do usuário, e as telas dizem isso com todas as letras). **Quem proíbe vale mais que quem libera**; entre regras do mesmo efeito, a do bot vem antes da global. Uma regra pode liberar até uma ação irreversível ("pode fazer push neste repositório"). As condições olham os argumentos como o modelo os escreveu (um segredo aparece como `{{secret:NOME}}`, nunca como valor). Uma regra exata de permitir só nasce de um **ato explícito do usuário** (`suup rules add`, ou "Permitir destinatário" no cartão de uma mensagem a outra pessoa).
+2. **Revisão pela tabela de níveis** (`levelReviewer`): `read` e `write_reversible` são seguros; `external_irreversible` é sensível. Sem nenhuma chamada a modelo. É o que vale no modo `auto_review` quando não há modelo disponível. Só aperta, nunca afrouxa: um "seguro" não deixa passar uma ação irreversível.
 3. **Cartão.** O que sobrou e é sensível espera você.
 
-Sem regra nenhuma: leitura e escrita reversível executam (a escrita fica registrada num evento `policy_checked`); o resto vira cartão.
+Sem nenhum modelo e sem regra: leitura e escrita reversível executam (a escrita fica registrada num evento `policy_checked`); o resto vira cartão.
 
 `approvals.levels` na configuração fixa o nível de uma ferramenta por cima do que ela declara (`{ "shell": "external_irreversible" }` faz todo comando perguntar, mesmo na máquina isolada).
 
-### Revisor automático por modelo: o contrato (a regra, antes de existir)
+### O contrato de todo revisor (o do modelo o cumpre)
 
-Pesquisa: [aprovações, cofre e conectores](pesquisas/fase-3-aprovacoes-cofre-conectores.md) (o modo automático do Claude Code e o guardrail paralelo do Agents SDK). Quando um revisor que **usa um modelo** for implementado, atrás da mesma interface `AutoReviewer`, ele deve:
+Pesquisas: [aprovações, cofre e conectores](pesquisas/fase-3-aprovacoes-cofre-conectores.md) (o modo automático do Claude Code e o guardrail paralelo do Agents SDK) e [Auto-review com regras escritas](pesquisas/fase-3-auto-review-regras-escritas.md). Todo revisor, atrás da interface `AutoReviewer`, **deve**:
 
-1. **Nunca receber o RESULTADO de uma ferramenta**: só o pedido do usuário e a chamada proposta (`ReviewCall`, que não tem campo para resultado e não pode ganhar um). É nos resultados que a injeção chega; um revisor que os lê pode ser convencido a aprovar.
+1. **Nunca receber o RESULTADO de uma ferramenta**: só o pedido do usuário e a chamada proposta (`ReviewCall`, que não tem campo para resultado e não pode ganhar um; o revisor por modelo recebe também as mensagens do usuário e as regras escritas, em `context`). É nos resultados que a injeção chega; um revisor que os lê pode ser convencido a aprovar.
 2. Ser **síncrono e bloqueante**: o veredito é esperado **antes** de qualquer execução. Um revisor em paralelo com a ação (que pode disparar depois que a ferramenta já rodou) não é permitido.
 3. Tratar **erro, tempo esgotado ou veredito ausente/desconhecido como "perguntar ao usuário"**, nunca como permitir. O portão já faz isso hoje (`packages/core/src/approvals/gate.ts`).
-4. Só **apertar** o nível, nunca afrouxar.
+4. Só **apertar** o nível, nunca afrouxar: o `safe` do revisor por nível não libera uma ação irreversível. O revisor por modelo pode liberar uma ação irreversível **somente** citando uma regra `allow` que o usuário escreveu (as checagens do código acima).
 
-Há testes do contrato no portão (`reviewer-contract.test.ts`). Que o revisor `finish` (conferência da conclusão) lê resultados é outra coisa: é uma conferência de evidências, não uma decisão de permissão.
+Há testes do contrato no portão (`reviewer-contract.test.ts`) e do revisor por modelo (`auto-review.test.ts`, com o pedido exato que ele manda). Que o revisor `finish` (conferência da conclusão) lê resultados é outra coisa: é uma conferência de evidências, não uma decisão de permissão.
 
 ## O ciclo de um cartão
 
 ```
 modelo pede a chamada
-  └─ portão: regras → revisor → cartão
+  └─ portão: regras exatas → modo → pisos → revisor (nível ou modelo) → cartão
        ├─ allow  → (policy_checked, se não for leitura simples) → executa
        ├─ deny   → policy_checked + resultado "negada" para o modelo (a execução continua)
        └─ ask    → approval_requested ──► status waiting_approval, o worker larga a execução
@@ -104,6 +189,9 @@ suup approvals [--all] [--bot X] [--show]    # os cartões que esperam você (--
 suup approve <id> [--allow-recipient]        # só para mensagem a outra pessoa
 suup deny <id> [--reason "..."]
 suup rules list|add|edit|rm                  # a regra: igualdade exata, `--match campo=valor`
+suup rules written list|add|edit|rm          # as regras que você escreve em linguagem comum
+suup approvals mode [auto-review|ask-all]    # o modo de aprovação (sem argumento: mostra)
+suup eval approvals --yes                    # mede o auto-review com a bateria plantada (gasta dinheiro)
 suup chat                                    # o cartão aparece no terminal e você responde na hora
 ```
 
@@ -116,6 +204,7 @@ A migração 0013 **desativou** (nunca apagou nem ampliou) as regras guardadas c
 ## O que ainda não existe
 
 - No app de desktop, o cartão, o formulário seguro e as telas de regras, cofre e conectores **existem** (README do app, seção "Aprovações, cofre e conectores").
-- Revisão automática por modelo (só a interface e o contrato acima).
+- Regras escritas **por bot na tela** e o histórico do que o revisor decidiu numa tela própria (a API e o log já têm tudo).
+- Dois estágios (um filtro de uma palavra e só então o raciocínio, como no Claude Code) para baixar o custo: hoje é uma chamada só.
 - Rascunho de mensagens para outras pessoas ("tudo que vai para outra pessoa vira rascunho"): os conectores (MCP) já existem ([CONECTORES.md](CONECTORES.md)) e cada ferramenta deles pergunta por padrão, mas o rascunho como etapa própria ainda não.
 - Mostrar todos os cartões de um turno de uma vez.

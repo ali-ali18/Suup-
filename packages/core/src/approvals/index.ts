@@ -1,8 +1,11 @@
 export {
   type DecideInput,
+  decidedBeforeReview,
   decidePolicy,
   type PolicyDecision,
   type PolicyOutcome,
+  type ReviewResolution,
+  resolveReview,
 } from "./decide.js";
 export {
   allowAllGate,
@@ -10,15 +13,32 @@ export {
   createToolGate,
   type GateCall,
   type GateVerdict,
+  NETWORK_ACCESS_TOOL,
+  REVIEW_MAX_CONSECUTIVE_BLOCKS,
+  REVIEW_MAX_TOTAL_BLOCKS,
   type RuleSource,
   type ToolGate,
   type ToolGateOptions,
 } from "./gate.js";
 export { approvalIdFor } from "./id.js";
 export {
+  buildReviewMessage,
+  createModelReviewer,
+  MAX_REVIEW_ARGS_CHARS,
+  type ModelReviewerOptions,
+  REVIEW_PROMPT_VERSION,
+  REVIEW_SYSTEM_PROMPT,
+  REVIEW_TIMEOUT_MS,
+  REVIEW_TOOL_NAME,
+  REVIEW_TOOL_SPEC,
+  reviewArgsText,
+} from "./model-reviewer.js";
+export {
   type AutoReviewer,
   levelReviewer,
   levelVerdict,
+  type ModelAnswer,
+  type ModelReviewContext,
   REVIEW_VERDICTS,
   type ReviewCall,
   type ReviewVerdict,
@@ -36,3 +56,18 @@ export {
   recipientMatchers,
   ruleMatches,
 } from "./rules.js";
+export {
+  APPROVAL_MODES,
+  type ApprovalMode,
+  type ApprovalModeSource,
+  approvalModeSchema,
+  DEFAULT_APPROVAL_MODE,
+  MAX_WRITTEN_RULE_CHARS,
+  MAX_WRITTEN_RULES,
+  WRITTEN_RULE_KINDS,
+  type WrittenRule,
+  type WrittenRuleKind,
+  type WrittenRuleSource,
+  writtenRuleKindSchema,
+  writtenRuleTextSchema,
+} from "./written-rules.js";

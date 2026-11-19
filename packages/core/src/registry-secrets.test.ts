@@ -303,6 +303,7 @@ describe("assess and classification", () => {
       level: "write_reversible",
       args: { x: "a" },
       summary: "Do a",
+      toolDescription: "d",
       secrets: [],
     });
     const used = registry.assess("secretive", { k: "{{secret:T}}" }, { executor });

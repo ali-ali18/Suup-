@@ -1,16 +1,52 @@
 // Owns filter 2 of section 4.8, the automatic reviewer: the interface a reviewer implements and
 // the deterministic default that only maps the level. No model is called here; a reviewer that
 // asks one is a later addition behind the same interface.
+import type { ReviewDecision } from "../events.js";
 import type { JsonValue } from "../messages.js";
+import type { OutboundMessage } from "../outbound.js";
+import type { Usage } from "../provider.js";
 import type { RiskLevel } from "../risk.js";
+import type { WrittenRule } from "./written-rules.js";
 
 /** `safe` runs, `sensitive` waits for the user, `blocked` is refused. */
 export const REVIEW_VERDICTS = ["safe", "sensitive", "blocked"] as const;
 export type ReviewVerdictName = (typeof REVIEW_VERDICTS)[number];
 
+/** What a reviewer that asks a model reports besides its verdict (kept in `approval_review`). */
+export interface ModelAnswer {
+  /** What the model said. `ask` when it said nothing valid (then `failure` says why). */
+  decision: ReviewDecision;
+  /** The written rule it named, as it named it (the gate checks that it exists and what kind it is). */
+  ruleId: string | null;
+  /** One short sentence for the user. */
+  reason: string;
+  model: string;
+  promptVersion: string;
+  usage: Usage;
+  costUsd: number;
+  latencyMs: number;
+  /** The call failed, timed out or answered something invalid. */
+  failure?: "error" | "invalid_output" | undefined;
+}
+
 export interface ReviewVerdict {
   verdict: ReviewVerdictName;
   reason?: string | undefined;
+  /** Only a reviewer that asks a model sets it. */
+  model?: ModelAnswer | undefined;
+}
+
+/** What only the reviewer that asks a model is given (the level reviewer never is). */
+export interface ModelReviewContext {
+  /** What the tool declares it does. */
+  toolDescription: string;
+  /** Set when the tool declares the call as a message to another person. */
+  outbound?: OutboundMessage | undefined;
+  /** The user's own messages in this conversation, oldest first, already bounded. */
+  userMessages: readonly string[];
+  /** The enabled written rules of this bot (its own and the ones for every bot). */
+  rules: readonly WrittenRule[];
+  signal?: AbortSignal | undefined;
 }
 
 export interface ReviewCall {
@@ -19,6 +55,8 @@ export interface ReviewCall {
   args: JsonValue;
   level: RiskLevel;
   summary: string;
+  /** Present only for the reviewer that asks a model. Never a tool result, never assistant text. */
+  context?: ModelReviewContext | undefined;
 }
 
 /**

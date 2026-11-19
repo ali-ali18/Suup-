@@ -7,6 +7,7 @@ import {
   RunControlError,
   RunNotFoundError,
   SecretNotFoundError,
+  WrittenRuleError,
 } from "@suup/db";
 import { ConfigError, RuntimeError, VaultError } from "@suup/runtime";
 import { z } from "zod";
@@ -140,6 +141,11 @@ export function toHttpError(error: unknown): HttpError {
     });
   }
   if (error instanceof RuleError) {
+    return new HttpError(error.code === "not_found" ? "not_found" : "conflict", error.message, {
+      cause: error,
+    });
+  }
+  if (error instanceof WrittenRuleError) {
     return new HttpError(error.code === "not_found" ? "not_found" : "conflict", error.message, {
       cause: error,
     });

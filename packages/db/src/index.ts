@@ -272,3 +272,19 @@ export type {
   RunOrigin,
   RunStatus,
 } from "./types.js";
+export {
+  type CreateWrittenRuleInput,
+  createWrittenRule,
+  deleteWrittenRule,
+  getApprovalMode,
+  getWrittenRule,
+  type ListWrittenRulesOptions,
+  listWrittenRules,
+  type StoredWrittenRule,
+  setApprovalMode,
+  type UpdateWrittenRuleInput,
+  updateWrittenRule,
+  WrittenRuleError,
+  type WrittenRuleErrorCode,
+  writtenRulesForBot,
+} from "./written-rules.js";

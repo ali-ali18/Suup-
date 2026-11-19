@@ -113,15 +113,23 @@ Passar de um limite termina a execução como `failed` com origem `limit`.
 
 ### `approvals` (opcional)
 
-Como as ações dos bots pedem o seu OK ([APROVACOES.md](APROVACOES.md)). Sem esta seção valem os padrões: leitura e escrita reversível executam, o que sai para o mundo ou não tem volta vira cartão, e um cartão espera para sempre.
+Como as ações dos bots pedem o seu OK ([APROVACOES.md](APROVACOES.md)). Sem esta seção valem os padrões: leitura executa; com um modelo de `reviewer` configurado, o modo Auto-review o usa para revisar o resto; sem modelo, escrita reversível executa e o que sai para o mundo ou não tem volta vira cartão; e um cartão espera para sempre.
 
 | Campo | Padrão | Significado |
 |---|---|---|
 | `levels` | nenhum | Fixa o nível de risco de uma ferramenta, por cima do que ela declara: `{ "shell": "external_irreversible" }` faz todo comando perguntar, mesmo na máquina isolada; `{ "shell": "write_reversible" }` libera o shell mesmo na máquina `local`. Valores: `read`, `write_reversible`, `external_irreversible` |
 | `expireAfterMinutes` | nunca | Um cartão que ninguém decidiu em tanto tempo vira `expired`: o bot é avisado e segue. Sem o campo, **nada expira em silêncio** |
+| `autoReview.model` | o de `reviewer` | O modelo que revisa cada chamada no modo **Auto-review**, lendo as regras que o usuário escreveu ([APROVACOES.md](APROVACOES.md)): um `id` de `models`, de preferência o barato e rápido. **Ausente: o modelo de `reviewer`**; sem nenhum dos dois, o Auto-review só aplica a tabela de níveis e a API (`GET /v1/approval-settings`) e `suup approvals mode` dizem isso. A chave vem do provedor do modelo (`apiKeyEnv`), nunca daqui |
+| `autoReview.enabled` | `true` | `false` desliga o revisor por modelo nesta configuração (o Auto-review volta à tabela de níveis, e a API diz por quê). Serve para testes e para quem não quer uma chamada ao modelo por ação |
+
+O **modo** (`auto_review`, o padrão, ou `ask_all`) **não é desta configuração**: é uma escolha do usuário, guardada no servidor (`suup approvals mode`, `PATCH /v1/approval-settings`). Cada revisão custa uma chamada ao modelo (cerca de 1 900 tokens de entrada e 150 de saída), contada no custo da execução e no `maxCostUsd` dela.
 
 ```json
-"approvals": { "levels": { "shell": "external_irreversible" }, "expireAfterMinutes": 1440 }
+"approvals": {
+  "levels": { "shell": "external_irreversible" },
+  "expireAfterMinutes": 1440,
+  "autoReview": { "model": "model-y" }
+}
 ```
 
 Com a máquina `local` (sem isolamento) o `shell` pergunta a cada comando; para um uso diário sem Docker, a regra `suup rules add --tool shell --effect allow` (ou `levels`) diz que você aceita o risco.

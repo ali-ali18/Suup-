@@ -137,12 +137,17 @@ export function renderApprovalCard(card: {
   summary: string;
   args: unknown;
   secrets: readonly string[];
+  /** Why the card exists, when the automatic review said so. */
+  reviewReason?: string | null;
 }): string[] {
   const args = JSON.stringify(card.args, null, 2) ?? "null";
   return [
     `┌ Aprovação ${card.id.slice(0, 8)} · ${levelPt(card.level)}`,
     `│ ${card.summary}`,
     `│ ferramenta: ${card.tool}`,
+    ...(card.reviewReason === undefined || card.reviewReason === null
+      ? []
+      : [`│ por que pergunta: ${card.reviewReason}`]),
     ...(card.secrets.length === 0
       ? []
       : [`│ usa segredos: ${card.secrets.join(", ")} (o valor nunca é mostrado)`]),
@@ -151,6 +156,12 @@ export function renderApprovalCard(card: {
     "└",
   ];
 }
+
+const REVIEW_OUTCOME_PT = {
+  allow: "liberou",
+  ask: "mandou perguntar a você",
+  deny: "bloqueou",
+} as const;
 
 const NUDGE_PT: Record<string, string> = {
   repetition: "chamada repetida",
@@ -334,9 +345,14 @@ export function renderEvent(event: RawEvent, state: RenderState): string[] {
       return [
         `· política: ${e.payload.tool} (${levelPt(e.payload.level)}) ${e.payload.outcome === "allow" ? "liberada" : "recusada"} por ${SOURCE_PT[e.payload.source]}${e.payload.reason === undefined ? "" : `: ${oneLine(e.payload.reason, 120)}`}`,
       ];
+    case "approval_review":
+      return [
+        `· revisão automática: ${e.payload.tool} (${levelPt(e.payload.level)}) ${REVIEW_OUTCOME_PT[e.payload.outcome]}${e.payload.reason === "" ? "" : `: ${oneLine(e.payload.reason, 140)}`}`,
+      ];
     case "approval_requested":
       return [
         `? Aprovação necessária (${levelPt(e.payload.level)}): ${oneLine(e.payload.summary, 160)}`,
+        ...(e.payload.reason === undefined ? [] : [`  por quê: ${oneLine(e.payload.reason, 160)}`]),
       ];
     case "approval_decided":
       return [
@@ -420,6 +436,8 @@ export function summarizeEvent(event: RawEvent): string {
       return `${e.payload.droppedMessages} mensagens resumidas até seq ${e.payload.uptoSeq}${e.payload.degraded === true ? " (degradado)" : ""}`;
     case "policy_checked":
       return `${e.payload.callId} ${e.payload.tool} ${e.payload.level} → ${e.payload.outcome} (${e.payload.source}${e.payload.ruleId === undefined ? "" : ` ${e.payload.ruleId.slice(0, 8)}`})`;
+    case "approval_review":
+      return `${e.payload.callId} ${e.payload.tool} ${e.payload.level} → ${e.payload.decision}/${e.payload.outcome}${e.payload.ruleId === null ? "" : ` (regra ${e.payload.ruleId.slice(0, 8)})`}${e.payload.skipped === undefined ? "" : ` [${e.payload.skipped}]`}${e.payload.costUsd === undefined ? "" : ` US$ ${e.payload.costUsd.toFixed(5)}`}`;
     case "approval_requested":
       return `${e.payload.callId} ${e.payload.tool} ${e.payload.level} · ${oneLine(e.payload.summary, 80)}${e.payload.secrets.length === 0 ? "" : ` · segredos: ${e.payload.secrets.join(", ")}`}`;
     case "approval_decided":

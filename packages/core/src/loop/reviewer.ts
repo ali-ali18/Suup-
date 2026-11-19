@@ -1,17 +1,12 @@
 import type { Discrepancy, PlanStep, UncheckedItem } from "../events.js";
 import type { Block, JsonValue } from "../messages.js";
+import type { ModelPricing } from "../pricing.js";
 import type { Provider } from "../provider.js";
 import { validDiscrepancies, validUnchecked, verdictParseSchema } from "./control-tools.js";
 import { formatPlan } from "./prompts.js";
 import { ARGS_SNIPPET, type ToolLogEntry, type UserExchange } from "./state.js";
 
-export interface ModelPricing {
-  inputPerMTok: number;
-  outputPerMTok: number;
-  cachedInputPerMTok?: number;
-  /** Price of tokens written to the prompt cache; defaults to `inputPerMTok`. */
-  cacheWriteInputPerMTok?: number;
-}
+export type { ModelPricing } from "../pricing.js";
 
 /** A second opinion on `finish`, from a separate call with a fresh context. */
 export interface ReviewerConfig {

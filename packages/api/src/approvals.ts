@@ -63,6 +63,13 @@ export const approvalSchema = z.object({
   reason: z.string().nullable(),
   /** The rule "Permitir destinatário" created, when it did. */
   ruleId: uuid.nullable(),
+  /**
+   * Why the card exists, when the automatic review (or a fixed rule of the harness) sent the call
+   * to you: one short sentence in Portuguese. `null` (the server always sends the field) when nothing said why.
+   */
+  reviewReason: z.string().nullable().optional(),
+  /** The written rule that sentence rests on, if it cited one. It may have been deleted since. */
+  writtenRuleId: uuid.nullable().optional(),
   /** Only when the configuration makes requests expire. */
   expiresAt: isoDate.nullable(),
   decidedAt: isoDate.nullable(),
@@ -148,6 +155,85 @@ export const updateRuleBodySchema = z.object({
   enabled: z.boolean().optional(),
 });
 export type UpdateRuleBody = z.input<typeof updateRuleBodySchema>;
+
+// ---- written rules and the mode ---------------------------------------------------------
+
+export const WRITTEN_RULE_KINDS = ["never", "ask", "allow"] as const;
+export const writtenRuleKindSchema = z.enum(WRITTEN_RULE_KINDS);
+export type WrittenRuleKind = z.infer<typeof writtenRuleKindSchema>;
+
+/** The text of a written rule: free prose, trimmed, 1 to 500 characters. Nothing parses it. */
+export const MAX_WRITTEN_RULE_CHARS = 500;
+const writtenRuleText = z
+  .string()
+  .transform((text) => text.trim())
+  .pipe(z.string().min(1).max(MAX_WRITTEN_RULE_CHARS));
+
+/**
+ * A rule the user WROTE in plain language ("Permitir sem perguntar: e-mails para minha equipe em
+ * acme.com"). A model reads it when it reviews a call. `never`: the call is refused; `ask`: you are
+ * asked; `allow`: it may run without asking (an irreversible call needs one of these to run).
+ */
+export const writtenRuleSchema = z.object({
+  id: uuid,
+  kind: writtenRuleKindSchema,
+  text: z.string(),
+  /** `null`: every bot. */
+  botId: uuid.nullable(),
+  enabled: z.boolean(),
+  createdAt: isoDate,
+  updatedAt: isoDate,
+});
+export type WrittenRule = z.infer<typeof writtenRuleSchema>;
+export const writtenRuleListSchema = z.object({ items: z.array(writtenRuleSchema) });
+
+export const listWrittenRulesQuerySchema = z.object({
+  /** Only the rules that apply to this bot: its own and the ones for every bot. */
+  botId: uuid.optional(),
+});
+export interface ListWrittenRulesQuery {
+  botId?: string;
+}
+
+export const createWrittenRuleBodySchema = z.strictObject({
+  kind: writtenRuleKindSchema,
+  text: writtenRuleText,
+  botId: uuid.nullable().optional(),
+  enabled: z.boolean().optional(),
+});
+export type CreateWrittenRuleBody = z.input<typeof createWrittenRuleBodySchema>;
+
+export const updateWrittenRuleBodySchema = z.strictObject({
+  kind: writtenRuleKindSchema.optional(),
+  text: writtenRuleText.optional(),
+  enabled: z.boolean().optional(),
+});
+export type UpdateWrittenRuleBody = z.input<typeof updateWrittenRuleBodySchema>;
+
+export const APPROVAL_MODES = ["auto_review", "ask_all"] as const;
+export const approvalModeSchema = z.enum(APPROVAL_MODES);
+export type ApprovalMode = z.infer<typeof approvalModeSchema>;
+
+/**
+ * The approval mode and whether "Auto-review" can really review. `auto_review` asks a model that
+ * reads your written rules; `ask_all` asks you about every call that is not a plain read. When the
+ * reviewer is not available, `auto_review` still works as the table of risk levels does (reads and
+ * reversible writes run; what goes out or cannot be undone asks) and `reviewer.reason` says why.
+ */
+export const approvalSettingsSchema = z.object({
+  mode: approvalModeSchema,
+  reviewer: z.object({
+    available: z.boolean(),
+    /** The model that reviews, as configured; `null` when none is. */
+    model: z.string().nullable(),
+    /** Why it is not available, in words for the person. `null` when it is. */
+    reason: z.string().nullable(),
+  }),
+});
+export type ApprovalSettings = z.infer<typeof approvalSettingsSchema>;
+
+export const updateApprovalSettingsBodySchema = z.strictObject({ mode: approvalModeSchema });
+export type UpdateApprovalSettingsBody = z.input<typeof updateApprovalSettingsBodySchema>;
 
 // ---- decision ----------------------------------------------------------------------------
 

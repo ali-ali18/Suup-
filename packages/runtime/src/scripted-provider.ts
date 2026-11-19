@@ -10,6 +10,7 @@ import {
   type Provider,
   ProviderError,
   type ProviderEvent,
+  REVIEW_TOOL_NAME,
   stopReasonSchema,
   usageSchema,
 } from "@suup/core";
@@ -51,6 +52,8 @@ export type ScriptStep = z.infer<typeof stepSchema>;
 const sectionsShape = {
   review: z.exactOptional(z.array(stepSchema)),
   compaction: z.exactOptional(z.array(stepSchema)),
+  /** The answers of the model reviewer of "Auto-review" (the `review_call` tool), in order. */
+  autoReview: z.exactOptional(z.array(stepSchema)),
 };
 
 /** One script per task, chosen by the objective (see `ScriptFile.cases`). */
@@ -105,7 +108,7 @@ export interface ScriptedProviderOptions {
   textChunkSize?: number;
 }
 
-type Section = "agent" | "review" | "compaction";
+type Section = "agent" | "review" | "compaction" | "autoReview";
 
 /** The text of the whole conversation, to find the case a request belongs to. */
 function conversationText(req: GenerateRequest): string {
@@ -116,12 +119,14 @@ function conversationText(req: GenerateRequest): string {
 
 /**
  * Which section of the script a request belongs to: the reviewer forces the `verdict` tool, the
- * compaction summarizer has no tools, everything else is an agent turn.
+ * Auto-review reviewer forces `review_call`, the compaction summarizer has no tools, everything
+ * else is an agent turn.
  */
 function sectionOf(req: GenerateRequest): Section {
   if (req.tools.length === 0) return "compaction";
   const choice = req.toolChoice;
   if (typeof choice === "object" && choice.name === "verdict") return "review";
+  if (typeof choice === "object" && choice.name === REVIEW_TOOL_NAME) return "autoReview";
   return "agent";
 }
 
@@ -133,8 +138,8 @@ function sectionOf(req: GenerateRequest): Section {
  *   the second turn of a chat starts its script after the first one). It depends only on the request, so a run resumed in another
  *   process (after a pause, an escalation or a crash) goes on from the right step, and re-sending
  *   a recorded request (`suup resend`) gets the same answer again.
- * - `review` and `compaction`: consumed in order within the process; the last step repeats when
- *   the list runs out.
+ * - `review`, `autoReview` and `compaction`: consumed in order within the process; the last step
+ *   repeats when the list runs out.
  *
  * A file with `cases` holds one such script per task: the case whose `whenObjectiveContains` is in
  * the conversation answers (the objective is in the first message and in the reviewer's request).
@@ -168,7 +173,7 @@ export function createScriptedProvider(options: ScriptedProviderOptions): Provid
         const file = load();
         section = sectionOf(req);
         let key = "";
-        let sections: Pick<ScriptFile, "agent" | "review" | "compaction"> = file;
+        let sections: Pick<ScriptFile, "agent" | "review" | "compaction" | "autoReview"> = file;
         if (file.cases !== undefined) {
           const text = conversationText(req);
           const found = file.cases.findIndex((c) => text.includes(c.whenObjectiveContains));

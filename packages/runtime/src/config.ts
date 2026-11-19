@@ -256,6 +256,21 @@ const approvalsSchema = z.strictObject({
    * "external_irreversible" }` makes every shell command ask, even in the isolated machine.
    */
   levels: z.exactOptional(z.record(z.string().min(1), riskLevelEnum)),
+  /**
+   * The model that reviews each call in "Auto-review" mode, reading the rules the user wrote
+   * (docs/APROVACOES.md). `model` absent: the model of `reviewer`. Without either, the mode falls
+   * back to the table of risk levels and the app is told so.
+   */
+  autoReview: z.exactOptional(
+    z.strictObject({
+      model: z.exactOptional(z.string().min(1)),
+      /**
+       * `false` turns the model reviewer off in this configuration: "Auto-review" then applies the
+       * table of risk levels, and the app is told why. Default `true`.
+       */
+      enabled: z.exactOptional(z.boolean()),
+    }),
+  ),
 });
 
 const toolSearchSchema = z.strictObject({
@@ -331,6 +346,14 @@ export const configSchema = z
         code: "custom",
         path: ["reviewer", "model"],
         message: `modelo "${config.reviewer.model}" não existe em "models" (existentes: ${[...modelIds].join(", ")})`,
+      });
+    }
+    const autoReviewModel = config.approvals?.autoReview?.model;
+    if (autoReviewModel !== undefined && !modelIds.has(autoReviewModel)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["approvals", "autoReview", "model"],
+        message: `modelo "${autoReviewModel}" não existe em "models" (existentes: ${[...modelIds].join(", ")})`,
       });
     }
     const renew = config.worker?.leaseRenewMs ?? DEFAULT_WORKER.leaseRenewMs;

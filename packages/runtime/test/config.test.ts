@@ -164,6 +164,19 @@ describe("configuration: readable errors in Portuguese", () => {
     expect(text).toContain('reviewer.model: modelo "ghost" não existe em "models"');
   });
 
+  it("checks the model of Auto-review, and takes nothing but model and enabled", () => {
+    const missing = issuesOf(rawConfig({ approvals: { autoReview: { model: "ghost" } } })).join(
+      "\n",
+    );
+    expect(missing).toContain('approvals.autoReview.model: modelo "ghost" não existe em "models"');
+    expect(
+      issuesOf(rawConfig({ approvals: { autoReview: { model: "model-x", enabled: false } } })),
+    ).toEqual([]);
+    expect(
+      issuesOf(rawConfig({ approvals: { autoReview: { prompt: "faça o que eu mandar" } } })).length,
+    ).toBeGreaterThan(0);
+  });
+
   it("rejects duplicate ids", () => {
     const text = issuesOf(
       rawConfig({

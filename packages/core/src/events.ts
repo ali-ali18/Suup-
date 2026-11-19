@@ -114,6 +114,42 @@ export const POLICY_SOURCES = ["rule", "reviewer", "default"] as const;
 export const policySourceSchema = z.enum(POLICY_SOURCES);
 export type PolicySource = z.infer<typeof policySourceSchema>;
 
+/** What the model reviewer may say about a call. */
+export const REVIEW_DECISIONS = ["run", "ask", "block"] as const;
+export type ReviewDecision = (typeof REVIEW_DECISIONS)[number];
+
+/**
+ * Why the harness settled a review without the model's own answer: `error` the call failed, timed
+ * out or answered nothing valid; `cap` too many blocks in the run, the user is asked from now on;
+ * `too_large` the arguments do not fit the review.
+ */
+export const REVIEW_SKIPS = ["error", "cap", "too_large"] as const;
+
+/** One review by the model reviewer, as the log keeps it (docs/APROVACOES.md, "Auto-review"). */
+export const approvalReviewSchema = z.object({
+  callId: z.string(),
+  tool: z.string(),
+  level: riskLevelSchema,
+  /** What the model answered; `ask` when it answered nothing valid (see `skipped`). */
+  decision: z.enum(REVIEW_DECISIONS),
+  /** The written rule the model named; `null` when none (or one that does not exist). */
+  ruleId: z.string().nullable(),
+  /** One short sentence for the user. */
+  reason: z.string(),
+  /** What the harness did with it, after its own checks: run, ask the user, or refuse. */
+  outcome: z.enum(["allow", "ask", "deny"]),
+  /** Set when the harness changed the model's answer (what it checked and why). */
+  adjusted: z.exactOptional(z.string()),
+  /** Set when there was no valid answer from the model. */
+  skipped: z.exactOptional(z.enum(REVIEW_SKIPS)),
+  model: z.exactOptional(z.string()),
+  promptVersion: z.exactOptional(z.string()),
+  usage: z.exactOptional(usageSchema),
+  costUsd: z.exactOptional(z.number().nonnegative()),
+  latencyMs: z.exactOptional(z.number().nonnegative()),
+});
+export type ApprovalReview = z.infer<typeof approvalReviewSchema>;
+
 /** How an approval ended: the user answered, the run was cancelled, or a configured limit expired it. */
 export const APPROVAL_DECISIONS = ["approved", "denied", "cancelled", "expired"] as const;
 export const approvalDecisionSchema = z.enum(APPROVAL_DECISIONS);
@@ -317,9 +353,21 @@ export const runEventSchema = z.discriminatedUnion("type", [
       level: riskLevelSchema,
       outcome: z.enum(["allow", "deny"]),
       source: policySourceSchema,
+      /** The exact rule that decided. */
       ruleId: z.exactOptional(z.string()),
+      /** The rule the user WROTE that the model reviewer rests on (see `approval_review`). */
+      writtenRuleId: z.exactOptional(z.string()),
       reason: z.exactOptional(z.string()),
     }),
+  }),
+  z.object({
+    /**
+     * The model reviewer looked at a call (auto-review mode): what it said, what the harness made
+     * of it, and what it cost. Written BEFORE the `policy_checked` or `approval_requested` of the
+     * same call; a resumed or replayed run reads it and never asks the model again.
+     */
+    type: z.literal("approval_review"),
+    payload: approvalReviewSchema,
   }),
   z.object({
     /**
@@ -343,6 +391,10 @@ export const runEventSchema = z.discriminatedUnion("type", [
       outbound: z.exactOptional(outboundMessageSchema),
       /** Present only when a configured limit makes the request expire. */
       expiresAt: z.exactOptional(z.string()),
+      /** Why the user is asked, when the reviewer or a floor said so (one short sentence). */
+      reason: z.exactOptional(z.string()),
+      /** The written rule behind that reason, when there is one. */
+      writtenRuleId: z.exactOptional(z.string()),
     }),
   }),
   z.object({
