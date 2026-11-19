@@ -225,6 +225,128 @@ describe("connectors: per-tool grants, the review of a definition, the network",
   });
 });
 
+describe("the settings dialog: a modal with a left nav, groups of simple rows, nothing giant", () => {
+  const settings = (name: string) => read(join(SRC, "features", "settings", name));
+  const sections = [
+    "GeneralSettings",
+    "PermissionsSettings",
+    "VaultSettings",
+    "ConnectorsSettings",
+  ];
+
+  it("is a modal dialog with a nav on the left, closed by Escape and the X, with the focus trapped", () => {
+    const dialog = settings("SettingsDialog.tsx");
+    expect(dialog).toContain('aria-modal="true"');
+    expect(dialog).toContain('role="dialog"');
+    expect(dialog).toContain('role="tablist"');
+    expect(dialog).toContain("useModalFocus(close)");
+    expect(settings("parts.tsx")).toContain('aria-label="Fechar as configurações"');
+    // It is a dialog over the screen, not a screen of its own.
+    expect(read(join(SRC, "app", "ui-store.ts"))).not.toContain('"settings"');
+    expect(read(join(SRC, "features", "shell", "Shell.tsx"))).toContain("<SettingsDialog />");
+    // The focus helpers every dialog shares live in one place.
+    const primitives = read(join(SRC, "ui", "primitives.tsx"));
+    expect(primitives).toContain("export function useModalFocus");
+    expect(primitives).toContain('e.key === "Escape"');
+  });
+
+  it("has exactly the sections the backend can fill, and no hollow ones", () => {
+    const dialog = settings("SettingsDialog.tsx");
+    for (const label of ["Geral", "Permissões", "Cofre", "Conectores"])
+      expect(dialog, label).toContain(`label: "${label}"`);
+    for (const hollow of ["Uso e cobrança", "Atualizações", "Computador", "Conta"])
+      expect(dialog, hollow).not.toContain(`label: "${hollow}"`);
+  });
+
+  it("every section is built from the shared pieces: a group label, a card, rows with one control", () => {
+    for (const name of sections) {
+      const source = settings(`${name}.tsx`);
+      expect(source, name).toContain('from "./parts.js"');
+      expect(source, name).toContain("PaneHead");
+      // No old full-width card or uppercase heading in a section.
+      expect(source, name).not.toContain("<Card");
+      expect(source, name).not.toContain('className="section-label"');
+    }
+    const css = read(join(SRC, "features", "settings", "settings.css"));
+    for (const part of [".sdialog", ".snav", ".sgroup__label", ".scard", ".srow", ".sselect"])
+      expect(css, part).toContain(`${part} {`);
+    // Sizes come from tokens.
+    const tokens = read(join(SRC, "styles", "tokens.css"));
+    for (const token of ["--width-settings:", "--height-settings:", "--width-settings-nav:"])
+      expect(tokens, token).toContain(token);
+  });
+
+  it("a setting with two values is a switch, one with more is a quiet menu: never a row of pills", () => {
+    const general = settings("GeneralSettings.tsx");
+    expect(general).toContain("<Toggle");
+    expect(general).toContain("<SettingsSelect");
+    expect(general).not.toContain('role="radiogroup"');
+    expect(general).not.toContain('role="radio"');
+  });
+
+  it("Permissões is small: the approval mode, two rule rows with 'Adicionar regra', the connectors card", () => {
+    const page = settings("PermissionsSettings.tsx");
+    for (const text of [
+      'title="Aprovações"',
+      "Nunca permitir",
+      "Permitir sem perguntar",
+      "Adicionar regra",
+      "Permissões dos conectores",
+      "Abrir conectores",
+    ])
+      expect(page, text).toContain(text);
+    // What left the first view: pending cards (they are in Pendências), the card behaviour (Geral).
+    expect(page).not.toContain("pendingApprovals");
+    expect(page).not.toContain("ApprovalRow");
+    expect(page).not.toContain("BehaviourRow");
+    // The mode is drawn as the backend has it: no menu while the server cannot switch it.
+    expect(page).not.toContain("<SettingsSelect");
+    expect(page).not.toContain("<select");
+  });
+
+  it("the rule dialog asks for the tool only; the rest is behind 'Mais opções'; the comparison is exact", () => {
+    const dialog = settings("RuleDialog.tsx");
+    expect(dialog).toContain('data-testid="rule-more"');
+    expect(dialog.indexOf("{more && (")).toBeGreaterThan(dialog.indexOf('data-testid="rule-tool"'));
+    expect(dialog.indexOf('data-testid="rule-bot"')).toBeGreaterThan(dialog.indexOf("{more && ("));
+    expect(dialog.indexOf('data-testid="rule-condition"')).toBeGreaterThan(
+      dialog.indexOf("{more && ("),
+    );
+    expect(dialog).toContain("é exatamente");
+    expect(dialog.toLowerCase()).not.toContain("começa com");
+    expect(dialog.toLowerCase()).not.toContain("contém");
+  });
+
+  it("Cofre has 'Novo item' in the head, a search by exact substring, and never draws a value", () => {
+    const vault = settings("VaultSettings.tsx");
+    expect(vault).toContain("Novo item");
+    expect(vault).toContain('aria-label="Pesquisar no cofre"');
+    expect(vault).toContain(".includes(needle)");
+    expect(vault).not.toContain("RegExp");
+  });
+
+  it("Conectores shows the list first; a connector's details open on selecting it", () => {
+    const connectors = settings("ConnectorsSettings.tsx");
+    expect(connectors).toContain("function ConnectorRow");
+    expect(connectors).toContain("function ConnectorDetail");
+    expect(connectors).toContain("const [selected, setSelected]");
+    // The list row has a switch and "Abrir"; the grants, network and tools are only in the detail.
+    const list = connectors.slice(
+      connectors.indexOf("function ConnectorRow"),
+      connectors.indexOf("function ConnectorDetail"),
+    );
+    expect(list).not.toContain("<ConnectorGrants");
+    expect(list).not.toContain("<ConnectorNetwork");
+    expect(connectors).toContain('data-testid="connectors-back"');
+  });
+
+  it("a dialog opened from another is its own modal surface, on top", () => {
+    const primitives = read(join(SRC, "ui", "primitives.tsx"));
+    expect(primitives).toContain("createPortal(");
+    expect(read(join(SRC, "lib", "focus.ts"))).toContain("topModal");
+  });
+});
+
 describe("docs/DESIGN.md is the standard, and everyone is pointed to it", () => {
   const root = join(SRC, "..", "..", "..");
   it("exists and is referenced by the desktop README, FRONTEND.md and CLAUDE.md", () => {

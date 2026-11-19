@@ -65,3 +65,20 @@ export async function openWithBot(page: Page, world: World, name: string): Promi
   await openApp(page, world);
   await selectBot(page, name);
 }
+
+export type SettingsSection = "Geral" | "Permissões" | "Cofre" | "Conectores";
+
+/** Opens the settings dialog on a section (from the owner menu, as a person would). */
+export async function openSettings(page: Page, section: SettingsSection): Promise<void> {
+  await page.getByTestId("owner-menu").click();
+  await page.getByRole("menuitem", { name: "Configurações" }).click();
+  await expect(page.getByTestId("settings-screen")).toBeVisible();
+  await page.getByRole("tab", { name: section }).click();
+  await expect(page.getByRole("tab", { name: section })).toHaveAttribute("aria-selected", "true");
+}
+
+/** Closes the settings dialog with Escape; the focus goes back to where it was. */
+export async function closeSettings(page: Page): Promise<void> {
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("settings-screen")).toHaveCount(0);
+}

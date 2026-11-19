@@ -164,7 +164,7 @@ export function allowRecipientSentence(input: {
 }): string {
   const tool = toolTitle(input.tool, input.connectors ?? []);
   const who = input.recipients.map((r) => `${r.field} = ${quote(r.value)}`).join(" e ");
-  return `Passa a valer para o bot ${input.botName}: ${tool} envia sem perguntar só quando ${who}. Qualquer outro destinatário continua pedindo sua aprovação. Você pode apagar a regra em Configurações > Aprovações.`;
+  return `Passa a valer para o bot ${input.botName}: ${tool} envia sem perguntar só quando ${who}. Qualquer outro destinatário continua pedindo sua aprovação. Você pode apagar a regra em Configurações > Permissões.`;
 }
 
 /**

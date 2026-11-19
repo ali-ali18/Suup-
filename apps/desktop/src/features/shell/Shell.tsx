@@ -8,7 +8,7 @@ import { MemoryScreen } from "../memory/MemoryScreen.js";
 import { NewBotDialog } from "../new-bot/NewBotDialog.js";
 import { CommandPalette, ShortcutsDialog } from "../palette/CommandPalette.js";
 import { PendingScreen } from "../pending/PendingScreen.js";
-import { SettingsScreen } from "../settings/SettingsScreen.js";
+import { SettingsDialog } from "../settings/SettingsDialog.js";
 import { ApprovalAnnouncer } from "./ApprovalAnnouncer.js";
 import { GroupDialog } from "./GroupDialog.js";
 import { Sidebar } from "./Sidebar.js";
@@ -24,6 +24,7 @@ export function Shell() {
   const paletteOpen = useUi((s) => s.paletteOpen);
   const shortcutsOpen = useUi((s) => s.shortcutsOpen);
   const groupBotId = useUi((s) => s.groupBotId);
+  const settingsOpen = useUi((s) => s.settingsOpen);
   const list = useMemo(() => sortedBots(bots), [bots]);
 
   // Nothing selected yet (or the selected bot vanished): the main bot, else the first.
@@ -70,10 +71,10 @@ export function Shell() {
         {view === "chat" && <ChatScreen />}
         {view === "pending" && <PendingScreen />}
         {view === "memory" && <MemoryScreen />}
-        {view === "settings" && <SettingsScreen />}
         {view === "inspector" && <InspectorScreen />}
       </div>
       <ApprovalAnnouncer />
+      {settingsOpen && <SettingsDialog />}
       {newBotOpen && <NewBotDialog />}
       {groupBotId !== null && <GroupDialog />}
       {paletteOpen && <CommandPalette />}

@@ -66,7 +66,7 @@ Um conector MCP ([CONECTORES.md](CONECTORES.md)) cita segredos **pelo nome**, em
 
 ### Segredo em ação irreversível
 
-Uma chamada que contém um marcador é tratada como `external_irreversible`: **vira cartão**, a menos que você tenha uma regra que libere. O cartão mostra o marcador, nunca o valor. Para tornar o uso rotineiro, crie você mesmo uma regra de igualdade exata (Configurações > Aprovações, ou `suup rules add`); o cartão não cria regras. (Veja [APROVACOES.md](APROVACOES.md).)
+Uma chamada que contém um marcador é tratada como `external_irreversible`: **vira cartão**, a menos que você tenha uma regra que libere. O cartão mostra o marcador, nunca o valor. Para tornar o uso rotineiro, crie você mesmo uma regra de igualdade exata (Configurações > Permissões, ou `suup rules add`); o cartão não cria regras. (Veja [APROVACOES.md](APROVACOES.md).)
 
 ### O bot pede um segredo
 

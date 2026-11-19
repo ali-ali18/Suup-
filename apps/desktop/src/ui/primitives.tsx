@@ -8,6 +8,7 @@ import {
   useId,
   useRef,
 } from "react";
+import { createPortal } from "react-dom";
 
 type PillTone = "primary" | "secondary" | "ghost" | "danger";
 
@@ -216,11 +217,13 @@ export function Toggle({
   onChange,
   label,
   disabled,
+  testId,
 }: {
   checked: boolean;
   onChange(next: boolean): void;
   label: string;
   disabled?: boolean;
+  testId?: string;
 }) {
   return (
     <button
@@ -229,6 +232,7 @@ export function Toggle({
       aria-checked={checked}
       aria-label={label}
       disabled={disabled}
+      data-testid={testId}
       className={`ui-toggle${checked ? " ui-toggle--on" : ""}`}
       onClick={() => onChange(!checked)}
     >
@@ -383,6 +387,73 @@ export function ToastStack({
 }
 
 /** A modal with a focus trap, closed by Escape. */
+const FOCUSABLE = 'button, [href], input, textarea, select, [tabindex]:not([tabindex="-1"])';
+
+/**
+ * What every modal surface does about the focus: it takes it when it opens, keeps Tab inside, closes
+ * on Escape and gives the focus back to whatever had it. Returns the ref for the dialog element and
+ * its key handler.
+ */
+export function useModalFocus(onClose: () => void) {
+  const ref = useRef<HTMLDivElement>(null);
+  const closing = useRef(onClose);
+  closing.current = onClose;
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    const first = Array.from(ref.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []).filter(
+      (el) => !el.hasAttribute("disabled"),
+    )[0];
+    (first ?? ref.current)?.focus();
+    // When the focus is lost (what had it was removed: a row deleted from a dialog opened on top
+    // of this one), the keys still reach the topmost modal: Escape closes it, Tab brings the focus back.
+    const lost = (e: globalThis.KeyboardEvent) => {
+      const active = document.activeElement;
+      if (active !== null && active !== document.body) return;
+      const modals = document.querySelectorAll('[aria-modal="true"]');
+      if (modals.item(modals.length - 1) !== ref.current) return;
+      if (e.key === "Escape") closing.current();
+      else if (e.key === "Tab") {
+        e.preventDefault();
+        (first ?? ref.current)?.focus();
+      }
+    };
+    document.addEventListener("keydown", lost);
+    return () => {
+      document.removeEventListener("keydown", lost);
+      if (previous?.isConnected === true) previous.focus();
+      else {
+        // What had the focus is gone: hand it to the modal that is now on top, if there is one.
+        const modals = document.querySelectorAll<HTMLElement>('[aria-modal="true"]');
+        modals.item(modals.length - 1)?.focus();
+      }
+    };
+  }, []);
+  const onKeyDown = (e: KeyboardEvent) => {
+    // A dialog opened from this one (a portal) bubbles its keys through React: those are not ours.
+    if (!ref.current?.contains(e.target as Node)) return;
+    if (e.key === "Escape") {
+      e.stopPropagation();
+      onClose();
+      return;
+    }
+    if (e.key !== "Tab") return;
+    const items = Array.from(ref.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []).filter(
+      (el) => !el.hasAttribute("disabled"),
+    );
+    const first = items[0];
+    const last = items[items.length - 1];
+    if (first === undefined || last === undefined) return;
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
+  return { ref, onKeyDown };
+}
+
 export function Dialog({
   title,
   onClose,
@@ -396,43 +467,11 @@ export function Dialog({
   footer?: ReactNode;
   wide?: boolean;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
+  const { ref, onKeyDown } = useModalFocus(onClose);
   const titleId = useId();
-  useEffect(() => {
-    const previous = document.activeElement as HTMLElement | null;
-    const focusable = () =>
-      Array.from(
-        ref.current?.querySelectorAll<HTMLElement>(
-          'button, [href], input, textarea, select, [tabindex]:not([tabindex="-1"])',
-        ) ?? [],
-      ).filter((el) => !el.hasAttribute("disabled"));
-    (focusable()[0] ?? ref.current)?.focus();
-    return () => previous?.focus?.();
-  }, []);
-  const onKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "Escape") {
-      e.stopPropagation();
-      onClose();
-      return;
-    }
-    if (e.key !== "Tab") return;
-    const items = Array.from(
-      ref.current?.querySelectorAll<HTMLElement>(
-        'button, [href], input, textarea, select, [tabindex]:not([tabindex="-1"])',
-      ) ?? [],
-    ).filter((el) => !el.hasAttribute("disabled"));
-    const first = items[0];
-    const last = items[items.length - 1];
-    if (first === undefined || last === undefined) return;
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
-    }
-  };
-  return (
+  // In the body, not inside whatever opened it: a dialog opened from another dialog (a rule from the
+  // settings) is its own modal surface, the topmost one, with its own focus trap.
+  return createPortal(
     <div className="ui-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div
         ref={ref}
@@ -459,7 +498,8 @@ export function Dialog({
         <div className="ui-dialog__body">{children}</div>
         {footer !== undefined && <div className="ui-dialog__footer">{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

@@ -157,5 +157,5 @@ Antes de desenhar ou implementar uma fase ou entrega significativa de [PLANO.md]
 
 ## 3. Outras regras
 
-- Regras permanentes de aprovação só nascem de um **ato explícito do usuário** (Configurações > Aprovações, `suup rules`, ou "Permitir destinatário" no cartão de uma mensagem a outra pessoa), nunca de um cartão comum. Ver [APROVACOES.md](APROVACOES.md).
+- Regras permanentes de aprovação só nascem de um **ato explícito do usuário** (Configurações > Permissões, `suup rules`, ou "Permitir destinatário" no cartão de uma mensagem a outra pessoa), nunca de um cartão comum. Ver [APROVACOES.md](APROVACOES.md).
 - Ações comuns pedem só **aprovar ou recusar**; a escolha extra (menu do botão dividido) existe só para mensagens a outras pessoas, e só quando a ferramenta (ou o usuário, no conector) **declarou** que é uma. Ver [DESIGN.md](DESIGN.md).

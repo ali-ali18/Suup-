@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { DATABASE_URL, SKIP_REASON, startWorld, type World } from "./harness.js";
 import {
   botItem,
+  closeSettings,
   freshBot,
   openApp,
   openWithBot,
@@ -467,10 +468,11 @@ test.describe("bots, sidebar, palette, memory", () => {
 
     await page.getByTestId("owner-menu").click();
     await page.getByRole("menuitem", { name: "Configurações" }).click();
-    await page.getByTestId("setting-bubble-neutral").click();
-    await page.getByTestId("setting-density-compact").click();
+    await page.getByTestId("setting-bubble").selectOption("neutral");
+    await page.getByTestId("setting-density").selectOption("compact");
     await expect(page.locator("html")).toHaveAttribute("data-bubble", "neutral");
     await expect(page.locator("html")).toHaveAttribute("data-density", "compact");
+    await closeSettings(page);
     await selectBot(page, "Visual");
     // The user's bubble is neutral now (not the bot's green), and the column is denser.
     await expect(userBubbles(page).last().locator(".ui-bubble--user")).toHaveCSS(
@@ -513,7 +515,9 @@ test.describe("bots, sidebar, palette, memory", () => {
     });
     await page.getByTestId("owner-menu").click();
     await page.getByRole("menuitem", { name: "Configurações" }).click();
-    await page.getByTestId("setting-favicons-on").click();
+    await page.getByTestId("setting-favicons").click();
+    await expect(page.getByTestId("setting-favicons")).toHaveAttribute("aria-checked", "true");
+    await closeSettings(page);
     await selectBot(page, "Visual");
     await expect
       .poll(() => page.evaluate(() => (window as unknown as { __imgs: string[] }).__imgs))
@@ -521,18 +525,20 @@ test.describe("bots, sidebar, palette, memory", () => {
     // Wide column and "show all actions" are settings too.
     await page.getByTestId("owner-menu").click();
     await page.getByRole("menuitem", { name: "Configurações" }).click();
-    await page.getByTestId("setting-width-wide").click();
-    await page.getByTestId("setting-phrase-discreet").click();
-    await page.getByTestId("setting-fold-off").click();
+    await page.getByTestId("setting-width").selectOption("wide");
+    await page.getByTestId("setting-phrase").selectOption("discreet");
+    await page.getByTestId("setting-fold").click();
     await expect(page.locator("html")).toHaveAttribute("data-width", "wide");
     await expect(page.locator("html")).toHaveAttribute("data-phrase", "discreet");
     await expect(page.locator("html")).toHaveAttribute("data-fold", "off");
-    await page.getByTestId("setting-bubble-bot").click();
-    await page.getByTestId("setting-density-comfortable").click();
-    await page.getByTestId("setting-favicons-off").click();
-    await page.getByTestId("setting-width-default").click();
-    await page.getByTestId("setting-phrase-real").click();
-    await page.getByTestId("setting-fold-on").click();
+    await page.getByTestId("setting-bubble").selectOption("bot");
+    await page.getByTestId("setting-density").selectOption("comfortable");
+    await page.getByTestId("setting-favicons").click();
+    await expect(page.getByTestId("setting-favicons")).toHaveAttribute("aria-checked", "false");
+    await page.getByTestId("setting-width").selectOption("default");
+    await page.getByTestId("setting-phrase").selectOption("real");
+    await page.getByTestId("setting-fold").click();
+    await closeSettings(page);
   });
 
   test("the account menu leads to pendências and settings, and disconnects", async ({ page }) => {
@@ -546,9 +552,10 @@ test.describe("bots, sidebar, palette, memory", () => {
     const settings = page.getByTestId("settings-screen");
     await expect(settings.getByTestId("server-url")).toHaveText(world.serverUrl);
     await expect(settings.getByTestId("model-row")).toHaveCount(2);
-    await settings.getByTestId("setting-theme-light").click();
+    await settings.getByTestId("setting-theme").selectOption("light");
     await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
-    await settings.getByTestId("setting-theme-dark").click();
+    await settings.getByTestId("setting-theme").selectOption("dark");
+    await closeSettings(page);
     await page.getByTestId("owner-menu").click();
     await page.getByRole("menuitem", { name: "Desconectar" }).click();
     await expect(page.getByRole("button", { name: "Conectar" })).toBeVisible();

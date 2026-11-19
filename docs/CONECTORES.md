@@ -89,7 +89,7 @@ Ferramentas que só rodam como "tarefa de longa duração" (execução por taref
 
 O que o servidor diz de si mesmo (as *annotations* MCP) são **dicas de um programa que você não escreveu**. Elas só podem **apertar** o nível, nunca afrouxar, a não ser que a **sua** configuração diga: a marca por ferramenta, ou `trustAnnotations` no conector inteiro (e nem assim uma dica de "destrutivo" é ignorada). O nível final é o maior entre o que você configurou e o que as dicas exigem. `suup connectors tools` mostra a origem: *padrão*, *definido por você*, *dica do servidor (você confia)* ou *apertado pela dica do servidor*.
 
-Para deixar rodar sem cartão uma ferramenta que o servidor diz que escreve, **não** a marque como leitura: crie uma regra (`suup rules add`, ou Configurações > Aprovações; um cartão comum não cria regras). As regras funcionam como em qualquer ferramenta, com condições de **igualdade exata** sobre os argumentos (nada de padrão), e `approvals.levels` na configuração também vale (pelo nome registrado).
+Para deixar rodar sem cartão uma ferramenta que o servidor diz que escreve, **não** a marque como leitura: crie uma regra (`suup rules add`, ou Configurações > Permissões; um cartão comum não cria regras). As regras funcionam como em qualquer ferramenta, com condições de **igualdade exata** sobre os argumentos (nada de padrão), e `approvals.levels` na configuração também vale (pelo nome registrado).
 
 **Escopo `read_only`:** o conector inteiro só oferece as ferramentas cujo nível final é `read`. As outras **nem aparecem** para o modelo (para ele, são ferramentas desconhecidas) e `suup connectors tools` diz por que foram deixadas de fora.
 

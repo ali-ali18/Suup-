@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { mayTakeFocus } from "../lib/focus.js";
 import { makeApproval } from "../test-fixtures.js";
 import { ApprovalCard } from "./approval-card.js";
 import { Composer } from "./composer.js";
@@ -89,5 +90,22 @@ describe("a modal surface keeps the focus when the chat appears behind it", () =
       </Dialog>,
     );
     expect(screen.getByRole("dialog").contains(document.activeElement)).toBe(true);
+  });
+});
+
+describe("a dialog opened from another dialog is the modal that keeps the focus", () => {
+  it("the topmost modal may take the focus, the one under it may not", () => {
+    render(
+      <div role="dialog" aria-modal="true" aria-label="Configurações">
+        <input aria-label="Do diálogo de baixo" />
+      </div>,
+    );
+    render(
+      <div role="dialog" aria-modal="true" aria-label="Nova regra">
+        <input aria-label="Da janela de cima" />
+      </div>,
+    );
+    expect(mayTakeFocus(screen.getByLabelText("Da janela de cima"))).toBe(true);
+    expect(mayTakeFocus(screen.getByLabelText("Do diálogo de baixo"))).toBe(false);
   });
 });

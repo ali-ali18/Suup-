@@ -1,13 +1,14 @@
 import type { Secret } from "@suup/api";
-import { KeyRound, Plus } from "lucide-react";
+import { Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { sortedBots } from "../../app/selectors.js";
 import { orderedConnectors, orderedSecrets } from "../../data/reducers.js";
 import { nameProblem, writeSecret } from "../../lib/secret-form.js";
-import { Card, Dialog, EmptyState, Pill, Tag, TextField, Toggle } from "../../ui/primitives.js";
+import { Dialog, Pill, TextField, Toggle } from "../../ui/primitives.js";
 import { SecretInput, type SecretInputHandle } from "../../ui/secret-input.js";
 import { formatWhen } from "./formatting.js";
+import { PaneHead, type SectionProps, SettingsGroup, SettingsRow } from "./parts.js";
 import { useTask } from "./use-task.js";
 
 /**
@@ -156,7 +157,7 @@ export function SecretDialog({
 }
 
 /** The vault: secret names and who may use them. Values can be written and replaced, never read. */
-export function VaultSettings() {
+export function VaultSettings({ title, titleId, onClose }: SectionProps) {
   const { sync, api } = useServices();
   const bots = useData((s) => s.bots);
   const secretsByName = useData((s) => s.secrets);
@@ -172,6 +173,7 @@ export function VaultSettings() {
   const [dialog, setDialog] = useState<{ existing: string | undefined } | null>(null);
   const [deleting, setDeleting] = useState<Secret | null>(null);
   const [open, setOpen] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
   const grant = useTask();
   const removal = useTask();
 
@@ -181,29 +183,30 @@ export function VaultSettings() {
   }, [sync]);
 
   const blocked = vault !== null && !vault.ok;
+  // The filter is an exact substring over the names and descriptions already loaded (case folded).
+  const needle = query.trim().toLowerCase();
+  const shown =
+    needle === ""
+      ? secrets
+      : secrets.filter(
+          (s) =>
+            s.name.toLowerCase().includes(needle) || s.description.toLowerCase().includes(needle),
+        );
   return (
     <>
-      <Card aria-label="Estado do cofre" data-testid="vault-status">
-        <h2 className="section-label">Cofre de segredos</h2>
-        <p className="muted small">
-          Guarda credenciais (tokens, senhas) cifradas no servidor. Os bots usam o segredo pelo
-          nome, com o marcador <code>{"{{secret:NOME}}"}</code>, e nunca veem o valor. O valor só
-          pode ser escrito ou trocado: não existe “mostrar o valor”.
-        </p>
-        {vault === null ? (
-          <p className="muted">Consultando o servidor…</p>
-        ) : vault.ok ? (
-          <p data-testid="vault-ok">
-            <Tag>Pronto</Tag> O cofre está configurado
-            {vault.keyEnv !== null && (
-              <>
-                {" "}
-                (a chave está na variável <code>{vault.keyEnv}</code> do servidor)
-              </>
-            )}
-            .
-          </p>
-        ) : (
+      <PaneHead title={title} titleId={titleId} onClose={onClose}>
+        <Pill
+          tone="primary"
+          className="spill"
+          disabled={blocked}
+          data-testid="secret-new"
+          onClick={() => setDialog({ existing: undefined })}
+        >
+          Novo item
+        </Pill>
+      </PaneHead>
+      <div className="spane__body" data-testid="vault-list-card">
+        {vault !== null && !vault.ok && (
           <div className="ui-notice" role="status" data-testid="vault-missing">
             <strong>
               {vault.configured
@@ -219,59 +222,76 @@ export function VaultSettings() {
             </p>
           </div>
         )}
-      </Card>
-      <Card aria-label="Segredos" data-testid="vault-list-card">
-        <div className="row-between">
-          <h2 className="section-label">Segredos</h2>
-          <Pill
-            tone="secondary"
-            icon={<Plus size={16} aria-hidden="true" />}
-            disabled={blocked}
-            data-testid="secret-new"
-            onClick={() => setDialog({ existing: undefined })}
-          >
-            Novo segredo
-          </Pill>
-        </div>
+        <p className="sgroup__hint" data-testid="vault-status">
+          O valor só se escreve ou se troca: nunca é mostrado. Os bots usam o segredo pelo nome.
+          {vault?.ok === true && vault.keyEnv !== null && (
+            <span className="sr-only" data-testid="vault-ok">
+              {" "}
+              A chave está na variável {vault.keyEnv} do servidor.
+            </span>
+          )}
+        </p>
+        {secrets.length > 0 && (
+          <div className="stoolbar">
+            <label className="ssearch">
+              <Search size={16} aria-hidden="true" />
+              <input
+                type="search"
+                aria-label="Pesquisar no cofre"
+                placeholder="Pesquisar no cofre"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                autoComplete="off"
+              />
+            </label>
+          </div>
+        )}
         {!loaded ? (
-          <p className="muted">Carregando…</p>
+          <p className="sempty">Carregando…</p>
         ) : secrets.length === 0 ? (
-          <EmptyState
-            icon={<KeyRound size={16} />}
-            title="Nenhum segredo"
-            text="Cadastre um aqui, ou espere um bot pedir: o formulário seguro aparece na conversa."
-          />
+          <p className="sempty" data-testid="vault-empty">
+            Nada guardado ainda. Adicione uma credencial com Novo item, ou espere um bot pedir: o
+            formulário seguro aparece na conversa.
+          </p>
+        ) : shown.length === 0 ? (
+          <p className="sempty">Nenhum item com “{query.trim()}”.</p>
         ) : (
-          <ul className="rule-list" data-testid="secret-list">
-            {secrets.map((secret) => {
+          <SettingsGroup>
+            {shown.map((secret) => {
               const usedBy = connectors.filter((c) => c.secretNames.includes(secret.name));
               const expanded = open === secret.name;
               return (
-                <li
-                  key={secret.name}
-                  className="rule-row"
-                  data-testid="secret-row"
-                  data-name={secret.name}
-                >
-                  <div className="rule-row__main">
-                    <p>
-                      <strong className="mono">{secret.name}</strong>
-                    </p>
-                    {secret.description !== "" && (
-                      <p className="muted small wrap">{secret.description}</p>
-                    )}
-                    <p className="muted small">
-                      {secret.lastUsedAt === null
+                <div key={secret.name} data-testid="secret-row" data-name={secret.name}>
+                  <SettingsRow
+                    title={secret.name}
+                    description={[
+                      secret.description !== "" ? secret.description : undefined,
+                      secret.lastUsedAt === null
                         ? "Nunca usado"
-                        : `Usado pela última vez em ${formatWhen(secret.lastUsedAt)}`}
-                      {" · "}
-                      {secret.grantedBotIds.length === 0
+                        : `Usado em ${formatWhen(secret.lastUsedAt)}`,
+                      secret.grantedBotIds.length === 0
                         ? "nenhum bot pode usar"
-                        : `${secret.grantedBotIds.length} ${secret.grantedBotIds.length === 1 ? "bot pode usar" : "bots podem usar"}`}
-                      {usedBy.length > 0 &&
-                        ` · usado pelo conector ${usedBy.map((c) => c.name).join(", ")}`}
-                    </p>
-                    {expanded && (
+                        : `${secret.grantedBotIds.length} ${secret.grantedBotIds.length === 1 ? "bot pode usar" : "bots podem usar"}`,
+                      usedBy.length > 0
+                        ? `usado pelo conector ${usedBy.map((c) => c.name).join(", ")}`
+                        : undefined,
+                    ]
+                      .filter((part) => part !== undefined)
+                      .join(" · ")}
+                    control={
+                      <Pill
+                        tone="secondary"
+                        className="spill"
+                        aria-expanded={expanded}
+                        data-testid="secret-grants-toggle"
+                        onClick={() => setOpen(expanded ? null : secret.name)}
+                      >
+                        Gerenciar
+                      </Pill>
+                    }
+                  />
+                  {expanded && (
+                    <div className="sfold">
                       <fieldset className="grants" data-testid="secret-grants">
                         <legend className="ui-field__label">Quem pode usar</legend>
                         {botList.length === 0 && <p className="muted small">Nenhum bot.</p>}
@@ -304,39 +324,33 @@ export function VaultSettings() {
                         )}
                         <p className="muted small">A mudança vale a partir da próxima execução.</p>
                       </fieldset>
-                    )}
-                  </div>
-                  <div className="rule-row__actions">
-                    <Pill
-                      tone="ghost"
-                      aria-expanded={expanded}
-                      data-testid="secret-grants-toggle"
-                      onClick={() => setOpen(expanded ? null : secret.name)}
-                    >
-                      Quem pode usar
-                    </Pill>
-                    <Pill
-                      tone="secondary"
-                      disabled={blocked}
-                      data-testid="secret-replace"
-                      onClick={() => setDialog({ existing: secret.name })}
-                    >
-                      Trocar o valor
-                    </Pill>
-                    <Pill
-                      tone="danger"
-                      data-testid="secret-delete"
-                      onClick={() => setDeleting(secret)}
-                    >
-                      Apagar
-                    </Pill>
-                  </div>
-                </li>
+                      <div className="srow__control">
+                        <Pill
+                          tone="secondary"
+                          className="spill"
+                          disabled={blocked}
+                          data-testid="secret-replace"
+                          onClick={() => setDialog({ existing: secret.name })}
+                        >
+                          Trocar o valor
+                        </Pill>
+                        <Pill
+                          tone="ghost"
+                          className="spill spill--ghost"
+                          data-testid="secret-delete"
+                          onClick={() => setDeleting(secret)}
+                        >
+                          Apagar
+                        </Pill>
+                      </div>
+                    </div>
+                  )}
+                </div>
               );
             })}
-          </ul>
+          </SettingsGroup>
         )}
-      </Card>
+      </div>
       {dialog !== null && (
         <SecretDialog existing={dialog.existing} onClose={() => setDialog(null)} />
       )}

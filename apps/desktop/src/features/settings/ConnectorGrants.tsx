@@ -214,7 +214,7 @@ export function ConnectorGrants({
   const list = useMemo(() => grantableTools(connector.tools), [connector.tools]);
   return (
     <div className="grants" data-testid="connector-grants" role="group" aria-label="Quem pode usar">
-      <h3 className="section-label">Quem pode usar</h3>
+      <h3 className="sgroup__label">Quem pode usar</h3>
       {connector.tools === null ? (
         <p className="muted small" data-testid="grants-unlisted">
           Use “Testar” para o servidor listar as ferramentas: depois você escolhe, bot a bot, quais

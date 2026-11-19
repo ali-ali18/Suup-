@@ -253,7 +253,7 @@ export function Sidebar() {
       label: pending > 0 ? `Pendências (${pending})` : "Pendências",
       onSelect: () => go("pending"),
     },
-    { id: "settings", label: "Configurações", onSelect: () => go("settings") },
+    { id: "settings", label: "Configurações", onSelect: () => ui().openSettings() },
     { id: "shortcuts", label: "Atalhos de teclado", onSelect: () => ui().setShortcuts(true) },
     { id: "disconnect", label: "Desconectar", danger: true, onSelect: () => void disconnect() },
   ];

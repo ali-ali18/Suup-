@@ -1,6 +1,15 @@
 import { expect, type Locator, type Page, type Response, test } from "@playwright/test";
 import { DATABASE_URL, fakeMcpCommand, SKIP_REASON, startWorld, type World } from "./harness.js";
-import { botItem, freshBot, openApp, openWithBot, selectBot, send } from "./helpers.js";
+import {
+  botItem,
+  closeSettings,
+  freshBot,
+  openApp,
+  openSettings,
+  openWithBot,
+  selectBot,
+  send,
+} from "./helpers.js";
 
 // Phase 3 in the browser, part two: the secure form of a secret request (the value must appear
 // nowhere), the vault screen, and the connectors screen with a real MCP server (the in-repo fake).
@@ -8,12 +17,6 @@ import { botItem, freshBot, openApp, openWithBot, selectBot, send } from "./help
 const VALUE = "ghp_E2E_Super_Secret_Value_8f3a91c2";
 const botMessage = (page: Page, text: string) =>
   page.getByTestId("message-bot").filter({ hasText: text });
-
-async function openSettings(page: Page, tab: "Geral" | "Aprovações" | "Cofre" | "Conectores") {
-  await page.getByTestId("owner-menu").click();
-  await page.getByRole("menuitem", { name: "Configurações" }).click();
-  await page.getByRole("tab", { name: tab }).click();
-}
 
 const grantRow = (row: Locator, bot: string): Locator =>
   row.locator(`[data-testid="grant-row"][data-bot="${bot}"]`);
@@ -141,7 +144,7 @@ test.describe("secret requests and the vault", () => {
     await openApp(page, world);
     await openSettings(page, "Cofre");
     await expect(page.getByTestId("vault-ok")).toContainText("SUUP_E2E_VAULT_KEY");
-    await expect(page.getByTestId("vault-status")).toContainText("não existe “mostrar o valor”");
+    await expect(page.getByTestId("vault-status")).toContainText("nunca é mostrado");
     // Create.
     await page.getByTestId("secret-new").click();
     const dialog = page.getByRole("dialog", { name: "Novo segredo" });
@@ -163,6 +166,12 @@ test.describe("secret requests and the vault", () => {
     await expect(row).toContainText("Nunca usado");
     await expect(row).toContainText("nenhum bot pode usar");
     expect(await page.content()).not.toContain(VALUE);
+    // The search is an exact substring over the names already loaded.
+    await page.getByLabel("Pesquisar no cofre").fill("nada-assim");
+    await expect(row).toHaveCount(0);
+    await page.getByLabel("Pesquisar no cofre").fill("tela_t");
+    await expect(row).toBeVisible();
+    await page.getByLabel("Pesquisar no cofre").fill("");
     // Grants are toggles, per bot, and they come from the server.
     await row.getByTestId("secret-grants-toggle").click();
     const toggle = row.getByRole("switch", { name: "Usuário do cofre pode usar TELA_TOKEN" });
@@ -213,7 +222,7 @@ test.describe("a server without a vault", () => {
     await expect(notice).toContainText("Este servidor não tem cofre configurado");
     await expect(notice).toContainText("suup vault key generate");
     await expect(page.getByTestId("secret-new")).toBeDisabled();
-    await expect(page.getByText("Nenhum segredo")).toBeVisible();
+    await expect(page.getByTestId("vault-empty")).toContainText("Nada guardado ainda");
   });
 });
 
@@ -232,7 +241,7 @@ test.describe("connectors", () => {
   }) => {
     await openWithBot(page, world, "Conectado");
     await openSettings(page, "Conectores");
-    await expect(page.getByText("Nenhum conector", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("connectors-card")).toContainText("Nenhum conector");
     // The form says, in plain words, what a local program is.
     await page.getByTestId("connector-new").click();
     const dialog = page.getByRole("dialog", { name: "Adicionar conector" });
@@ -255,10 +264,16 @@ test.describe("connectors", () => {
     await expect(dialog.getByTestId("connector-grant-hint")).toContainText("Nenhum bot recebe");
     await expect(dialog.getByRole("checkbox", { name: "Conectado" })).toHaveCount(0);
     await dialog.getByTestId("connector-create").click();
+    // The list first: one calm row, with a line of state.
+    const item = page.getByTestId("connector-item").filter({ hasText: "fake" });
+    await expect(item).toBeVisible();
+    await expect(item).toContainText("Programa neste computador");
+    await expect(item).toContainText("nenhum bot");
+    await expect(page.getByTestId("connector-panel")).toHaveCount(0);
+    // Its details open on selecting it, not all expanded at once.
+    await item.getByTestId("connector-details").click();
     const row = page.getByTestId("connector-row").filter({ hasText: "fake" });
-    await expect(row).toBeVisible();
-    await expect(row).toContainText("Programa neste computador");
-    await expect(row).toContainText("Nenhum bot");
+    await expect(row.getByTestId("connector-panel")).toBeVisible();
     await expect(row.getByTestId("connector-health")).toContainText("Ainda não listado");
     // Test: it really starts the server, lists its tools and shows the result.
     await row.getByTestId("connector-test").click();
@@ -267,14 +282,12 @@ test.describe("connectors", () => {
     await expect(result).toContainText("fake-server 1.2.3");
     await expect(row.getByTestId("connector-health")).toContainText("ferramentas oferecidas");
     // The panel: the grants (a row per bot with a count), scope, the tools with the risk and origin.
-    await row.getByTestId("connector-details").click();
     const panel = row.getByTestId("connector-panel");
     const access = grantRow(row, "Conectado");
     await expect(access).toContainText("0 de");
     await access.getByRole("button", { name: /Conectado/ }).click();
     await access.getByTestId("grant-all").click();
     await access.getByTestId("grant-save").click();
-    await expect(row).toContainText("1 bot");
     await expect(access.getByTestId("grant-card")).toContainText("(todas)");
     await access.getByRole("button", { name: /Conectado/ }).click();
     await expect(panel.getByRole("switch", { name: "fake: somente leitura" })).toHaveAttribute(
@@ -282,6 +295,9 @@ test.describe("connectors", () => {
       "false",
     );
     const echo = panel.locator('[data-testid="connector-tool"][data-tool="echo"]');
+    // A tool is one row; its details open on its own button.
+    await expect(echo.getByTestId("tool-basis")).toHaveCount(0);
+    await echo.getByTestId("connector-tool-toggle").click();
     await expect(echo).toContainText("conn_fake__echo");
     await expect(echo).toContainText("Externa ou irreversível");
     await expect(echo.getByTestId("tool-basis")).toContainText("Padrão: pergunta antes de rodar.");
@@ -299,13 +315,18 @@ test.describe("connectors", () => {
     expect((await world.api.connectors.get("fake")).toolOverrides.echo?.risk).toBe("read");
     // The server says this one is destructive: it cannot be loosened, and the way out is explained.
     const contradicted = panel.locator('[data-testid="connector-tool"][data-tool="contradicted"]');
+    await contradicted.getByTestId("connector-tool-toggle").click();
     await contradicted.getByTestId("tool-risk").selectOption("read");
     await expect(contradicted.getByTestId("tool-basis")).toContainText("Apertado pelo servidor");
-    await expect(contradicted).toContainText("crie uma regra em Configurações > Aprovações");
+    await expect(contradicted).toContainText("crie uma regra em Configurações > Permissões");
     await expect(contradicted).toContainText("Externa ou irreversível");
     // Tools that are not offered have their own section, with the reason.
     const unavailable = panel.getByTestId("connector-tools-unavailable");
     await expect(unavailable).toContainText("bad_all_of");
+    await unavailable
+      .locator('[data-tool="bad_all_of"]')
+      .getByTestId("connector-tool-toggle")
+      .click();
     await expect(
       unavailable.locator('[data-tool="bad_all_of"]').getByTestId("tool-unavailable-reason"),
     ).toContainText("Não é oferecida aos bots");
@@ -314,7 +335,6 @@ test.describe("connectors", () => {
     await scope.click();
     await expect(scope).toHaveAttribute("aria-checked", "true");
     await expect(unavailable.locator('[data-tool="write_thing"]')).toBeVisible();
-    await expect(row).toContainText("Só leitura");
     await scope.click();
     await expect(scope).toHaveAttribute("aria-checked", "false");
     await expect(
@@ -333,6 +353,7 @@ test.describe("connectors", () => {
     await expect(enabled).toHaveAttribute("aria-checked", "true");
 
     // Now the bot: its write tool asks for approval, showing the connector and the tool apart.
+    await closeSettings(page);
     await selectBot(page, "Conectado");
     await send(page, "CASE-CONNECTOR crie uma coisa");
     const card = page.getByTestId("approval-card");
@@ -359,12 +380,18 @@ test.describe("connectors", () => {
     // Removing it asks first; the bot loses the tools.
     await openSettings(page, "Conectores");
     await page
+      .getByTestId("connector-item")
+      .filter({ hasText: "fake" })
+      .getByTestId("connector-details")
+      .click();
+    await page
       .getByTestId("connector-row")
       .filter({ hasText: "fake" })
       .getByTestId("connector-delete")
       .click();
     await page.getByTestId("connector-delete-confirm").click();
     await expect(page.getByTestId("connector-row")).toHaveCount(0);
+    await expect(page.getByTestId("connector-item")).toHaveCount(0);
     expect(await world.api.connectors.list()).toHaveLength(0);
   });
 
@@ -399,11 +426,16 @@ test.describe("connectors", () => {
 
     // 2. The user marks the tool in the connector's settings and names the recipient field.
     await openSettings(page, "Conectores");
+    await page
+      .getByTestId("connector-item")
+      .filter({ hasText: "fake" })
+      .getByTestId("connector-details")
+      .click();
     const row = page.getByTestId("connector-row").filter({ hasText: "fake" });
-    await row.getByTestId("connector-details").click();
     const tool = row
       .getByTestId("connector-panel")
       .locator('[data-testid="connector-tool"][data-tool="send_email"]');
+    await tool.getByTestId("connector-tool-toggle").click();
     await expect(tool.getByTestId("tool-outbound-check")).not.toBeChecked();
     await tool.getByTestId("tool-outbound-check").check();
     await tool.getByTestId("tool-outbound-fields").fill("to");
@@ -413,6 +445,7 @@ test.describe("connectors", () => {
       .toEqual({ outbound: { kind: "message", recipientFields: ["to"] } });
     // The server's other tools are untouched.
     expect((await world.api.connectors.get("fake")).toolOverrides.write_thing).toBeUndefined();
+    await closeSettings(page);
 
     // 3. Now its card is the message card: Descartar and the split button Enviar.
     await selectBot(page, "Postal");
@@ -433,10 +466,10 @@ test.describe("connectors", () => {
     await expect(items.first()).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(page.getByRole("menu")).toHaveCount(0);
-    // "Gerenciar regras" opens Configurações > Aprovações.
+    // "Gerenciar regras" opens Configurações > Permissões.
     await message.getByTestId("approval-more").click();
     await page.getByTestId("approval-manage-rules").click();
-    await expect(page.getByRole("tab", { name: "Aprovações" })).toHaveAttribute(
+    await expect(page.getByRole("tab", { name: "Permissões" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
@@ -453,7 +486,7 @@ test.describe("connectors", () => {
       createdBy: "approval",
       matchers: [{ field: "to", value: "ana@exemplo.com" }],
     });
-    await openSettings(page, "Aprovações");
+    await openSettings(page, "Permissões");
     await expect(page.getByTestId("rule-sentence")).toContainText(
       "o campo to é exatamente “ana@exemplo.com”",
     );
@@ -471,6 +504,11 @@ test.describe("connectors", () => {
     await dialog.getByLabel("Nome", { exact: true }).fill("quebrado");
     await dialog.getByLabel("Programa").fill("/caminho/que/nao/existe");
     await dialog.getByTestId("connector-create").click();
+    await page
+      .getByTestId("connector-item")
+      .filter({ hasText: "quebrado" })
+      .getByTestId("connector-details")
+      .click();
     const row = page.getByTestId("connector-row").filter({ hasText: "quebrado" });
     await expect(row).toBeVisible();
     await row.getByTestId("connector-test").click();
@@ -500,7 +538,7 @@ test.describe("connectors", () => {
     await dialog.getByRole("button", { name: "Authorization: Bearer (segredo)" }).click();
     await expect(dialog.getByLabel("Segredo")).toHaveValue("HTTP_TOKEN");
     await dialog.getByTestId("connector-create").click();
-    const row = page.getByTestId("connector-row").filter({ hasText: "remoto" });
+    const row = page.getByTestId("connector-item").filter({ hasText: "remoto" });
     await expect(row).toContainText("Servidor HTTP");
     const saved = await world.api.connectors.get("remoto");
     expect(saved.transport).toMatchObject({

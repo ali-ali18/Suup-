@@ -5,12 +5,18 @@
 
 const MODAL = '[aria-modal="true"]';
 
+/** The topmost modal surface: the last one in the document (a dialog opened from another is in the body, after it). */
+const topModal = (doc: Document): Element | null => {
+  const all = doc.querySelectorAll(MODAL);
+  return all.item(all.length - 1);
+};
+
 /** A modal surface (palette, dialog) is open. */
 export const modalOpen = (doc: Document = document): boolean => doc.querySelector(MODAL) !== null;
 
 /** `el` may take the focus now: no modal is open, or `el` is inside the open modal. */
 export function mayTakeFocus(el: Element, doc: Document = document): boolean {
-  const modal = doc.querySelector(MODAL);
+  const modal = topModal(doc);
   return modal === null || modal.contains(el);
 }
 

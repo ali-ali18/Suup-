@@ -1,0 +1,323 @@
+/* The settings dialog (docs/DESIGN.md §3c): a modal with a narrow left nav and one pane. Only tokens. */
+.sdialog {
+  display: flex;
+  width: min(var(--width-settings), 100%);
+  height: min(var(--height-settings), 100%);
+  overflow: hidden;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-popover);
+}
+.sdialog:focus-visible {
+  outline: none;
+}
+.snav {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: var(--width-settings-nav);
+  padding: var(--space-3);
+  border-right: 1px solid var(--color-border);
+}
+.snav__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 36px;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-inner);
+  background: transparent;
+  color: var(--color-text);
+  font-size: var(--text-label-size);
+  line-height: var(--text-label-line);
+  text-align: left;
+}
+.snav__item:hover,
+.snav__item[aria-selected="true"] {
+  background: var(--color-raised);
+}
+.snav__item:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: -2px;
+}
+.spane {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.spane__head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-5) var(--space-5) var(--space-3) var(--space-6);
+}
+.spane__title {
+  font-size: var(--text-settings-title-size);
+  line-height: var(--text-heading-line);
+  font-weight: var(--text-label-weight);
+}
+.spane__tools {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.spane__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-6) var(--space-6);
+}
+/* group label + card of rows */
+.sgroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.sgroup__label {
+  padding: 0 var(--space-2);
+  font-size: var(--text-small-size);
+  line-height: var(--text-small-line);
+  font-weight: var(--text-label-weight);
+  color: var(--color-text-muted);
+}
+.sgroup__hint {
+  padding: 0 var(--space-2);
+  font-size: var(--text-small-size);
+  line-height: var(--text-small-line);
+  color: var(--color-text-muted);
+}
+.scard {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-1) var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+}
+.scard--plain {
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+.srow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  min-height: 52px;
+  padding: var(--space-3) 0;
+}
+.scard:not(.scard--plain) > * + * {
+  border-top: 1px solid var(--color-border);
+}
+.srow--bare {
+  padding-inline: var(--space-2);
+}
+.srow__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.srow__title {
+  font-size: var(--text-label-size);
+  line-height: var(--text-label-line);
+  font-weight: var(--text-label-weight);
+  overflow-wrap: anywhere;
+}
+.srow__desc {
+  font-size: var(--text-small-size);
+  line-height: var(--text-small-line);
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+.srow__control {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 50%;
+}
+.srow__value {
+  font-size: var(--text-small-size);
+  color: var(--color-text-muted);
+  text-align: right;
+}
+/* a quiet dropdown: text and a chevron, no box until hover */
+.sselect {
+  appearance: none;
+  height: 32px;
+  padding: 0 28px 0 var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background-color: transparent;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--color-text-muted) 50%),
+    linear-gradient(135deg, var(--color-text-muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 15px) 14px,
+    calc(100% - 10px) 14px;
+  background-size:
+    5px 5px,
+    5px 5px;
+  background-repeat: no-repeat;
+  color: var(--color-text);
+  font-size: var(--text-small-size);
+  line-height: var(--text-small-line);
+  max-width: 100%;
+  text-overflow: ellipsis;
+}
+.sselect:hover {
+  background-color: var(--color-raised);
+}
+.sselect:focus-visible {
+  outline: var(--focus-ring);
+  border-color: var(--color-border-strong);
+}
+.sselect option {
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+.spill {
+  height: 32px;
+  padding: 0 var(--space-4);
+}
+.spill--ghost {
+  padding: 0 var(--space-3);
+  color: var(--color-text-muted);
+}
+.spill--ghost:hover:not(:disabled) {
+  color: var(--color-text);
+}
+/* a list of short rows under a heading row (the rules, the secrets, the connectors) */
+.slist {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0 var(--space-2);
+}
+.slist > li + li {
+  border-top: 1px solid var(--color-border);
+}
+.slist__empty {
+  padding: var(--space-1) var(--space-2) var(--space-3);
+  font-size: var(--text-small-size);
+  color: var(--color-text-muted);
+}
+.sempty {
+  padding: var(--space-7) var(--space-5);
+  text-align: center;
+  font-size: var(--text-label-size);
+  line-height: var(--text-label-line);
+  color: var(--color-text-muted);
+}
+/* Cofre: filter field and the "Novo item" pill in the head */
+.ssearch {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 36px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-pill);
+  color: var(--color-text-muted);
+}
+.ssearch input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  font-size: var(--text-label-size);
+}
+.ssearch input:focus-visible {
+  outline: none;
+}
+.ssearch:focus-within {
+  outline: var(--focus-ring);
+}
+.stoolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.sback {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  align-self: flex-start;
+  height: 32px;
+  padding: 0 var(--space-3) 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: var(--text-small-size);
+}
+.sback:hover {
+  background: var(--color-raised);
+  color: var(--color-text);
+}
+.sfold {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) 0 var(--space-4);
+}
+.srule-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+@media (max-width: 640px) {
+  .sdialog {
+    flex-direction: column;
+  }
+  .snav {
+    flex-direction: row;
+    width: auto;
+    overflow-x: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .snav__item {
+    flex: none;
+  }
+  .spane__body {
+    padding-inline: var(--space-4);
+  }
+  .srow {
+    flex-wrap: wrap;
+  }
+  .srow__control {
+    max-width: 100%;
+  }
+}
+.sdetail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+.stool {
+  padding: var(--space-3) 0;
+}
+.scard.tool-list {
+  gap: 0;
+  list-style: none;
+}
+.sroot {
+  display: contents;
+}
+.slist .srow__title {
+  font-weight: 400;
+}

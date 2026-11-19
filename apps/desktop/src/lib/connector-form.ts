@@ -203,7 +203,7 @@ export function parseRecipientFields(text: string): string[] {
 }
 
 export const TIGHTENED_HELP =
-  "O servidor declara que a ferramenta escreve ou destrói, então ela não pode ser marcada como leitura. Para deixá-la rodar sem cartão, crie uma regra em Configurações > Aprovações (a regra é um ato seu, nunca do cartão).";
+  "O servidor declara que a ferramenta escreve ou destrói, então ela não pode ser marcada como leitura. Para deixá-la rodar sem cartão, crie uma regra em Configurações > Permissões (a regra é um ato seu, nunca do cartão).";
 
 export const READ_WARNING =
   "Uma ferramenta marcada como leitura roda sem cartão de aprovação. Marque só o que você conhece.";

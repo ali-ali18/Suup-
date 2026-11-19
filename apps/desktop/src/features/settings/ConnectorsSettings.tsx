@@ -1,5 +1,5 @@
 import type { Connector, ConnectorTest, ConnectorTool, RiskLevel } from "@suup/api";
-import { Plug, Plus, Trash2 } from "lucide-react";
+import { ChevronLeft, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { LEVEL_LABEL, LEVELS } from "../../data/approval-text.js";
@@ -22,10 +22,11 @@ import {
 } from "../../lib/connector-form.js";
 import { RUNS_IN_LABEL } from "../../lib/network.js";
 import { reviewNotice } from "../../lib/tool-review.js";
-import { Card, Dialog, EmptyState, Pill, Tag, TextField, Toggle } from "../../ui/primitives.js";
+import { Dialog, Pill, Tag, TextField, Toggle } from "../../ui/primitives.js";
 import { ConnectorGrants } from "./ConnectorGrants.js";
 import { ConnectorNetwork } from "./ConnectorNetwork.js";
 import { formatWhen } from "./formatting.js";
+import { PaneHead, type SectionProps, SettingsGroup, SettingsRow } from "./parts.js";
 import { ReviewDialog, ToolHistory } from "./ToolReview.js";
 import { useTask } from "./use-task.js";
 import { SecretDialog } from "./VaultSettings.js";
@@ -413,17 +414,18 @@ function OutboundMark({ connector, tool }: { connector: Connector; tool: Connect
 function ToolRow({ connector, tool }: { connector: Connector; tool: ConnectorTool }) {
   const { sync, api } = useServices();
   const task = useTask();
+  const [open, setOpen] = useState(false);
   const chosen = connector.toolOverrides[tool.tool]?.risk ?? "";
   return (
     <li
-      className="tool-row"
+      className="tool-row stool"
       data-testid="connector-tool"
       data-tool={tool.tool}
       data-available={tool.available}
     >
       <div className="row-between">
         <p>
-          <strong>{tool.tool}</strong> <code className="muted">{tool.name}</code>
+          <strong>{tool.tool}</strong>
           {(tool.pin === "changed" || tool.pin === "new") && (
             <>
               {" "}
@@ -437,25 +439,41 @@ function ToolRow({ connector, tool }: { connector: Connector; tool: ConnectorToo
             </>
           )}
         </p>
-        <Tag
-          tone={
-            tool.risk === "external_irreversible"
-              ? "danger"
-              : tool.risk === "read"
-                ? "neutral"
-                : "outline"
-          }
-        >
-          {LEVEL_LABEL[tool.risk]}
-        </Tag>
+        <span className="srow__control">
+          <Tag
+            tone={
+              tool.risk === "external_irreversible"
+                ? "danger"
+                : tool.risk === "read"
+                  ? "neutral"
+                  : "outline"
+            }
+          >
+            {LEVEL_LABEL[tool.risk]}
+          </Tag>
+          <Pill
+            tone="ghost"
+            className="spill spill--ghost"
+            aria-expanded={open}
+            data-testid="connector-tool-toggle"
+            onClick={() => setOpen(!open)}
+          >
+            {open ? "Fechar" : "Detalhes"}
+          </Pill>
+        </span>
       </div>
-      {tool.description !== "" && (
+      {open && (
+        <p className="muted small">
+          Nome registrado: <code>{tool.name}</code>
+        </p>
+      )}
+      {open && tool.description !== "" && (
         <blockquote className="quote" data-testid="tool-description">
           <Tag tone="outline">escrito pelo servidor</Tag>
           <p className="wrap">{tool.description}</p>
         </blockquote>
       )}
-      {tool.available ? (
+      {!open ? null : tool.available ? (
         <>
           <p className="muted small" data-testid="tool-basis">
             {RISK_BASIS_TEXT[tool.riskBasis]}
@@ -528,15 +546,92 @@ function ToolRow({ connector, tool }: { connector: Connector; tool: ConnectorToo
 
 // ------------------------------------------------------------ one connector
 
-function ConnectorCard({
+/** The row of a connector in the list: name, one line of state, the switch and "Abrir". */
+function ConnectorRow({
   connector,
+  onOpen,
   onAskEnable,
 }: {
   connector: Connector;
+  onOpen(): void;
   onAskEnable(c: Connector): void;
 }) {
   const { sync, api } = useServices();
-  const [open, setOpen] = useState(false);
+  const toggling = useTask();
+  const withAccess = connector.grants.filter((g) => g.all || g.tools.length > 0).length;
+  const notice = reviewNotice(connector);
+  const offered = (connector.tools ?? []).filter((t) => t.available).length;
+  const lastError = connector.discovery.lastError;
+  const summary = [
+    KIND_LABEL[connector.transport.kind],
+    connector.tools === null
+      ? "ainda não listado"
+      : `${offered} ${offered === 1 ? "ferramenta" : "ferramentas"}`,
+    withAccess === 0 ? "nenhum bot" : `${withAccess} ${withAccess === 1 ? "bot" : "bots"}`,
+    lastError !== null ? "com erro" : undefined,
+    notice !== null ? "espera revisão" : undefined,
+    connector.enabled ? undefined : "desligado",
+  ]
+    .filter((part) => part !== undefined)
+    .join(" · ");
+  return (
+    <div data-testid="connector-item" data-name={connector.name}>
+      <SettingsRow
+        title={connector.name}
+        description={summary}
+        control={
+          <>
+            <Toggle
+              checked={connector.enabled}
+              disabled={toggling.busy}
+              label={`${connector.name}: ligado`}
+              onChange={(next) => {
+                if (next && connector.transport.kind === "stdio") return onAskEnable(connector);
+                void toggling.run(async () => {
+                  const result = await sync.connectorCall(() =>
+                    api.connectors.update(connector.name, { enabled: next }),
+                  );
+                  return result.ok ? { ok: true } : { ok: false, message: result.message };
+                });
+              }}
+            />
+            <Pill
+              tone="secondary"
+              className="spill"
+              data-testid="connector-details"
+              onClick={onOpen}
+            >
+              Abrir
+            </Pill>
+          </>
+        }
+      />
+      {toggling.error !== undefined && (
+        <p className="ui-field__error" role="alert">
+          {toggling.error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** What opens when a connector is selected: its state, its access, its network and its tools. */
+function ConnectorDetail({
+  connector,
+  title: _title,
+  titleId,
+  onBack,
+  onClose,
+  onAskEnable,
+}: {
+  connector: Connector;
+  title?: string;
+  titleId: string;
+  onBack(): void;
+  onClose(): void;
+  onAskEnable(c: Connector): void;
+}) {
+  const { sync, api } = useServices();
   const [test, setTest] = useState<ConnectorTest | undefined>(undefined);
   const [removing, setRemoving] = useState(false);
   const [reviewing, setReviewing] = useState(false);
@@ -549,218 +644,224 @@ function ConnectorCard({
   const unavailable = (connector.tools ?? []).filter((t) => !t.available);
   const lastError = connector.discovery.lastError;
   const notice = reviewNotice(connector);
-  const withAccess = connector.grants.filter((g) => g.all || g.tools.length > 0).length;
+  const testLine =
+    test === undefined
+      ? undefined
+      : test.ok
+        ? `Funcionou: ${test.serverName ?? "servidor"}${test.serverVersion === null ? "" : ` ${test.serverVersion}`}, ${test.tools.length} ${test.tools.length === 1 ? "ferramenta" : "ferramentas"}, em ${formatDuration(test.durationMs)}.`
+        : `Falhou: ${test.error ?? "sem detalhes"}`;
 
   return (
-    <li
-      className="connector"
+    <div
+      className="sroot"
       data-testid="connector-row"
       data-name={connector.name}
       data-enabled={connector.enabled}
     >
-      <div className="row-between">
-        <div className="connector__title">
-          <Plug size={16} aria-hidden="true" />
-          <strong>{connector.name}</strong>
-        </div>
-        <Toggle
-          checked={connector.enabled}
-          disabled={toggling.busy}
-          label={`${connector.name}: ligado`}
-          onChange={(next) => {
-            if (next && connector.transport.kind === "stdio") return onAskEnable(connector);
-            void toggling.run(async () => {
-              const result = await sync.connectorCall(() =>
-                api.connectors.update(connector.name, { enabled: next }),
-              );
-              return result.ok ? { ok: true } : { ok: false, message: result.message };
-            });
-          }}
-        />
-      </div>
-      {connector.description !== "" && <p className="muted small wrap">{connector.description}</p>}
-      <div className="inline-tags">
-        <Tag tone="outline">{KIND_LABEL[connector.transport.kind]}</Tag>
-        {connector.scope === "read_only" && <Tag tone="outline">Só leitura</Tag>}
-        {!connector.enabled && <Tag tone="outline">Desligado</Tag>}
-        {connector.runsIn !== null && (
-          <Tag tone="outline">
-            <span data-testid="connector-runs-tag">{RUNS_IN_LABEL[connector.runsIn]}</span>
-          </Tag>
-        )}
-        <Tag tone="outline">
-          {withAccess === 0 ? "Nenhum bot" : `${withAccess} ${withAccess === 1 ? "bot" : "bots"}`}
-        </Tag>
-        {connector.origin === "proposal" && <Tag tone="outline">Proposto por um bot</Tag>}
-      </div>
-      <p className="small" data-testid="connector-health">
-        {lastError !== null ? (
-          <span className="connector__error wrap">Último erro: {lastError}</span>
-        ) : connector.tools === null ? (
-          <span className="muted">Ainda não listado: use “Testar” para ver as ferramentas.</span>
-        ) : (
-          <span className="muted">
-            {available.length}{" "}
-            {available.length === 1 ? "ferramenta oferecida" : "ferramentas oferecidas"}
-            {connector.discovery.discoveredAt !== null &&
-              ` · listado em ${formatWhen(connector.discovery.discoveredAt)}`}
-          </span>
-        )}
-      </p>
-      {notice !== null && (
-        <div className="ui-notice review-notice" role="status" data-testid="review-notice">
-          <span>{notice}.</span>
-          <Pill tone="secondary" data-testid="connector-review" onClick={() => setReviewing(true)}>
-            Revisar
-          </Pill>
-        </div>
-      )}
-      {toggling.error !== undefined && (
-        <p className="ui-field__error" role="alert">
-          {toggling.error}
-        </p>
-      )}
-      <div className="settings__row connector__actions">
-        <Pill
-          tone="secondary"
-          disabled={testing.busy}
-          data-testid="connector-test"
-          onClick={() =>
-            void testing.run(async () => {
-              try {
-                setTest(await api.connectors.test(connector.name));
-                void sync.loadConnectors();
-                return { ok: true };
-              } catch (error) {
-                return {
-                  ok: false,
-                  message: error instanceof Error ? error.message : "Não foi possível testar.",
-                };
-              }
-            })
-          }
-        >
-          {testing.busy ? "Testando…" : "Testar"}
-        </Pill>
+      <PaneHead title={connector.name} titleId={titleId} onClose={onClose}>
         <Pill
           tone="ghost"
-          aria-expanded={open}
-          data-testid="connector-details"
-          onClick={() => setOpen(!open)}
+          className="spill spill--ghost"
+          data-testid="connector-delete"
+          onClick={() => setRemoving(true)}
         >
-          Ferramentas e acesso
-        </Pill>
-        <Pill tone="danger" onClick={() => setRemoving(true)} data-testid="connector-delete">
           Remover
         </Pill>
-      </div>
-      {testing.error !== undefined && (
-        <p className="ui-field__error" role="alert">
-          {testing.error}
-        </p>
-      )}
-      {test !== undefined && (
-        <p
-          className={test.ok ? "small" : "ui-field__error small"}
-          role="status"
-          data-testid="connector-test-result"
-          data-ok={test.ok}
-        >
-          {test.ok
-            ? `Funcionou: ${test.serverName ?? "servidor"}${test.serverVersion === null ? "" : ` ${test.serverVersion}`}, ${test.tools.length} ${test.tools.length === 1 ? "ferramenta" : "ferramentas"}, em ${formatDuration(test.durationMs)}.`
-            : `Falhou: ${test.error ?? "sem detalhes"}`}
-        </p>
-      )}
-      {open && (
-        <div className="connector__details" data-testid="connector-panel">
+      </PaneHead>
+      <div className="spane__body">
+        <button type="button" className="sback" data-testid="connectors-back" onClick={onBack}>
+          <ChevronLeft size={16} aria-hidden="true" />
+          Conectores
+        </button>
+        <SettingsGroup>
+          <SettingsRow
+            title="Ligado"
+            description={
+              <>
+                {connector.description !== "" && `${connector.description} · `}
+                {KIND_LABEL[connector.transport.kind]}
+                {connector.runsIn !== null && (
+                  <>
+                    {" · "}
+                    <span data-testid="connector-runs-tag">{RUNS_IN_LABEL[connector.runsIn]}</span>
+                  </>
+                )}
+                {connector.origin === "proposal" && " · proposto por um bot"}
+              </>
+            }
+            control={
+              <Toggle
+                checked={connector.enabled}
+                disabled={toggling.busy}
+                label={`${connector.name}: ligado`}
+                onChange={(next) => {
+                  if (next && connector.transport.kind === "stdio") return onAskEnable(connector);
+                  void toggling.run(async () => {
+                    const result = await sync.connectorCall(() =>
+                      api.connectors.update(connector.name, { enabled: next }),
+                    );
+                    return result.ok ? { ok: true } : { ok: false, message: result.message };
+                  });
+                }}
+              />
+            }
+          />
+          <SettingsRow
+            title="Testar a conexão"
+            descriptionTestId="connector-health"
+            description={
+              lastError !== null
+                ? `Último erro: ${lastError}`
+                : connector.tools === null
+                  ? "Ainda não listado: teste para ver as ferramentas."
+                  : `${available.length} ${available.length === 1 ? "ferramenta oferecida" : "ferramentas oferecidas"}${connector.discovery.discoveredAt !== null ? ` · listado em ${formatWhen(connector.discovery.discoveredAt)}` : ""}`
+            }
+            control={
+              <Pill
+                tone="secondary"
+                className="spill"
+                disabled={testing.busy}
+                data-testid="connector-test"
+                onClick={() =>
+                  void testing.run(async () => {
+                    try {
+                      setTest(await api.connectors.test(connector.name));
+                      void sync.loadConnectors();
+                      return { ok: true };
+                    } catch (error) {
+                      return {
+                        ok: false,
+                        message:
+                          error instanceof Error ? error.message : "Não foi possível testar.",
+                      };
+                    }
+                  })
+                }
+              >
+                {testing.busy ? "Testando…" : "Testar"}
+              </Pill>
+            }
+          />
+          {notice !== null && (
+            <SettingsRow
+              title="Definições para revisar"
+              description={`${notice}.`}
+              testId="review-notice"
+              role="status"
+              control={
+                <Pill
+                  tone="secondary"
+                  className="spill"
+                  data-testid="connector-review"
+                  onClick={() => setReviewing(true)}
+                >
+                  Revisar
+                </Pill>
+              }
+            />
+          )}
+        </SettingsGroup>
+        {(toggling.error ?? testing.error) !== undefined && (
+          <p className="ui-field__error" role="alert">
+            {toggling.error ?? testing.error}
+          </p>
+        )}
+        {testLine !== undefined && test !== undefined && (
+          <p
+            className={test.ok ? "small" : "ui-field__error small"}
+            role="status"
+            data-testid="connector-test-result"
+            data-ok={test.ok}
+          >
+            {testLine}
+          </p>
+        )}
+        <div className="sdetail" data-testid="connector-panel">
           <ConnectorGrants connector={connector} onReview={() => setReviewing(true)} />
-          <div className="settings__setting">
-            <div className="settings__setting-text">
-              <span>Somente leitura</span>
-              <span className="muted small">
-                Só as ferramentas de leitura são oferecidas aos bots; as outras nem aparecem para o
-                modelo.
-              </span>
-            </div>
-            <Toggle
-              checked={connector.scope === "read_only"}
-              disabled={scope.busy}
-              label={`${connector.name}: somente leitura`}
-              onChange={(next) =>
-                void scope.run(async () => {
-                  const result = await sync.connectorCall(() =>
-                    api.connectors.update(connector.name, {
-                      scope: next ? "read_only" : "read_write",
-                    }),
-                  );
-                  return result.ok ? { ok: true } : { ok: false, message: result.message };
-                })
+          <SettingsGroup label="Ajustes">
+            <SettingsRow
+              title="Somente leitura"
+              description="Só as ferramentas de leitura são oferecidas aos bots; as outras nem aparecem para o modelo."
+              control={
+                <Toggle
+                  checked={connector.scope === "read_only"}
+                  disabled={scope.busy}
+                  label={`${connector.name}: somente leitura`}
+                  onChange={(next) =>
+                    void scope.run(async () => {
+                      const result = await sync.connectorCall(() =>
+                        api.connectors.update(connector.name, {
+                          scope: next ? "read_only" : "read_write",
+                        }),
+                      );
+                      return result.ok ? { ok: true } : { ok: false, message: result.message };
+                    })
+                  }
+                />
               }
             />
-          </div>
-          <div className="settings__setting">
-            <div className="settings__setting-text">
-              <span>Confiar nas dicas do servidor</span>
-              <span className="muted small">
-                Ligado, uma ferramenta que o servidor diz que só lê passa a rodar sem cartão. O
-                servidor é um programa que você não escreveu: só ligue se confia nele. Uma dica de
-                “destrutiva” nunca é ignorada.
-              </span>
-            </div>
-            <Toggle
-              checked={connector.trustAnnotations}
-              disabled={trust.busy}
-              label={`${connector.name}: confiar nas dicas do servidor`}
-              onChange={(next) =>
-                void trust.run(async () => {
-                  const result = await sync.connectorCall(() =>
-                    api.connectors.update(connector.name, { trustAnnotations: next }),
-                  );
-                  return result.ok ? { ok: true } : { ok: false, message: result.message };
-                })
+            <SettingsRow
+              title="Confiar nas dicas do servidor"
+              description="Ligado, uma ferramenta que o servidor diz que só lê passa a rodar sem cartão. O servidor é um programa que você não escreveu: só ligue se confia nele. Uma dica de “destrutiva” nunca é ignorada."
+              control={
+                <Toggle
+                  checked={connector.trustAnnotations}
+                  disabled={trust.busy}
+                  label={`${connector.name}: confiar nas dicas do servidor`}
+                  onChange={(next) =>
+                    void trust.run(async () => {
+                      const result = await sync.connectorCall(() =>
+                        api.connectors.update(connector.name, { trustAnnotations: next }),
+                      );
+                      return result.ok ? { ok: true } : { ok: false, message: result.message };
+                    })
+                  }
+                />
               }
             />
-          </div>
+          </SettingsGroup>
           {(scope.error ?? trust.error) !== undefined && (
             <p className="ui-field__error" role="alert">
               {scope.error ?? trust.error}
             </p>
           )}
           {connector.secretNames.length > 0 && (
-            <p className="muted small">
+            <p className="sgroup__hint">
               Usa os segredos do cofre:{" "}
               <span className="mono">{connector.secretNames.join(", ")}</span>
             </p>
           )}
           <ConnectorNetwork connector={connector} />
           <ToolHistory connector={connector} />
-          <h3 className="section-label">Ferramentas</h3>
-          <p className="muted small">{READ_WARNING}</p>
-          {connector.tools === null ? (
-            <p className="muted">
-              Ainda não listado. Use “Testar” para o servidor listar as ferramentas.
-            </p>
-          ) : available.length === 0 ? (
-            <p className="muted">Nenhuma ferramenta é oferecida aos bots.</p>
-          ) : (
-            <ul className="tool-list" data-testid="connector-tools">
-              {available.map((tool) => (
-                <ToolRow key={tool.name} connector={connector} tool={tool} />
-              ))}
-            </ul>
-          )}
+          <section className="sgroup">
+            <h3 className="sgroup__label">Ferramentas</h3>
+            <p className="sgroup__hint">{READ_WARNING}</p>
+            {connector.tools === null ? (
+              <p className="sgroup__hint">
+                Ainda não listado. Use “Testar” para o servidor listar as ferramentas.
+              </p>
+            ) : available.length === 0 ? (
+              <p className="sgroup__hint">Nenhuma ferramenta é oferecida aos bots.</p>
+            ) : (
+              <ul className="scard tool-list" data-testid="connector-tools">
+                {available.map((tool) => (
+                  <ToolRow key={tool.name} connector={connector} tool={tool} />
+                ))}
+              </ul>
+            )}
+          </section>
           {unavailable.length > 0 && (
-            <>
-              <h3 className="section-label">Não oferecidas aos bots</h3>
-              <ul className="tool-list" data-testid="connector-tools-unavailable">
+            <section className="sgroup">
+              <h3 className="sgroup__label">Não oferecidas aos bots</h3>
+              <ul className="scard tool-list" data-testid="connector-tools-unavailable">
                 {unavailable.map((tool) => (
                   <ToolRow key={tool.name} connector={connector} tool={tool} />
                 ))}
               </ul>
-            </>
+            </section>
           )}
         </div>
-      )}
+      </div>
       {reviewing && <ReviewDialog connector={connector} onClose={() => setReviewing(false)} />}
       {removing && (
         <Dialog
@@ -775,7 +876,11 @@ function ConnectorCard({
                 tone="danger"
                 disabled={removal.busy}
                 data-testid="connector-delete-confirm"
-                onClick={() => void removal.run(() => sync.deleteConnector(connector.name))}
+                onClick={() =>
+                  void removal
+                    .run(() => sync.deleteConnector(connector.name))
+                    .then((ok) => ok && onBack())
+                }
               >
                 {removal.busy ? "Removendo…" : "Remover"}
               </Pill>
@@ -793,14 +898,14 @@ function ConnectorCard({
           )}
         </Dialog>
       )}
-    </li>
+    </div>
   );
 }
 
-// ----------------------------------------------------------------- the screen
+// ----------------------------------------------------------------- the section
 
 /** MCP connectors: external servers whose tools a bot can use, once you give it the connector. */
-export function ConnectorsSettings() {
+export function ConnectorsSettings({ title, titleId, onClose }: SectionProps) {
   const { sync, api } = useServices();
   const byName = useData((s) => s.connectors);
   const loaded = useData((s) => s.connectorsLoaded);
@@ -808,6 +913,7 @@ export function ConnectorsSettings() {
   const [adding, setAdding] = useState(false);
   const [newSecret, setNewSecret] = useState(false);
   const [enabling, setEnabling] = useState<Connector | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
   const enable = useTask();
 
   useEffect(() => {
@@ -815,41 +921,54 @@ export function ConnectorsSettings() {
     void sync.loadVault();
   }, [sync]);
 
+  const current = selected === null ? undefined : byName[selected];
   return (
     <>
-      <Card aria-label="Conectores" data-testid="connectors-card">
-        <div className="row-between">
-          <h2 className="section-label">Conectores (MCP)</h2>
-          <Pill
-            tone="secondary"
-            icon={<Plus size={16} aria-hidden="true" />}
-            data-testid="connector-new"
-            onClick={() => setAdding(true)}
-          >
-            Adicionar conector
-          </Pill>
-        </div>
-        <p className="muted small">
-          Um conector liga um servidor externo (Model Context Protocol) aos seus bots. As
-          ferramentas dele só aparecem para os bots a quem você der o conector, e por padrão cada
-          uma pede um cartão de aprovação antes de rodar.
-        </p>
-        {!loaded ? (
-          <p className="muted">Carregando…</p>
-        ) : connectors.length === 0 ? (
-          <EmptyState
-            icon={<Plug size={16} />}
-            title="Nenhum conector"
-            text="Adicione um servidor MCP, dê a um bot e veja as ferramentas dele aqui."
-          />
-        ) : (
-          <ul className="connector-list" data-testid="connector-list">
-            {connectors.map((c) => (
-              <ConnectorCard key={c.name} connector={c} onAskEnable={setEnabling} />
-            ))}
-          </ul>
-        )}
-      </Card>
+      {current !== undefined ? (
+        <ConnectorDetail
+          connector={current}
+          titleId={titleId}
+          onBack={() => setSelected(null)}
+          onClose={onClose}
+          onAskEnable={setEnabling}
+        />
+      ) : (
+        <>
+          <PaneHead title={title} titleId={titleId} onClose={onClose}>
+            <Pill
+              tone="primary"
+              className="spill"
+              data-testid="connector-new"
+              onClick={() => setAdding(true)}
+            >
+              Adicionar conector
+            </Pill>
+          </PaneHead>
+          <div className="spane__body" data-testid="connectors-card">
+            {!loaded ? (
+              <p className="sempty">Carregando…</p>
+            ) : connectors.length === 0 ? (
+              <p className="sempty">
+                Nenhum conector. Adicione um servidor MCP, dê a um bot e veja as ferramentas dele
+                aqui.
+              </p>
+            ) : (
+              <SettingsGroup hint="Um conector liga um servidor externo (MCP) aos seus bots. Cada ferramenta pede um cartão de aprovação antes de rodar, a não ser que você diga o contrário.">
+                <div data-testid="connector-list">
+                  {connectors.map((c) => (
+                    <ConnectorRow
+                      key={c.name}
+                      connector={c}
+                      onOpen={() => setSelected(c.name)}
+                      onAskEnable={setEnabling}
+                    />
+                  ))}
+                </div>
+              </SettingsGroup>
+            )}
+          </div>
+        </>
+      )}
       {adding && (
         <AddConnectorDialog
           onClose={() => setAdding(false)}

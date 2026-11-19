@@ -192,7 +192,7 @@ export function CommandPalette() {
         id: "settings",
         label: "Configurações",
         icon: <Settings size={18} />,
-        run: () => ui().go("settings"),
+        run: () => ui().openSettings(),
       },
       {
         id: "sidebar",

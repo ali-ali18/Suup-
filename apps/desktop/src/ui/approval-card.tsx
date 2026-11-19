@@ -50,7 +50,7 @@ export interface ApprovalCardProps {
   onDecide(body: DecideApprovalBody): Promise<DecideOutcome>;
   /** Called when the server says the card was already decided elsewhere. */
   onDecidedElsewhere?(approval: Approval | undefined): void;
-  /** "Gerenciar regras" (message cards only): opens Configurações > Aprovações. No item when it is missing. */
+  /** "Gerenciar regras" (message cards only): opens Configurações > Permissões. No item when it is missing. */
   onManageRules?(): void;
   now?: () => number;
 }

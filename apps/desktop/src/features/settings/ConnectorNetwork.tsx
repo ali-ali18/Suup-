@@ -60,7 +60,7 @@ export function ConnectorNetwork({ connector }: { connector: Connector }) {
 
   return (
     <div className="connector-network" data-testid="connector-network" data-runs-in={runsIn}>
-      <h3 className="section-label">Onde roda e que hosts alcança</h3>
+      <h3 className="sgroup__label">Onde roda e que hosts alcança</h3>
       {runsIn === "host" ? (
         <p className="ui-notice" role="note" data-testid="connector-runs-in">
           <strong>{RUNS_IN_LABEL.host}</strong>

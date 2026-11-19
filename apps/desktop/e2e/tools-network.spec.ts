@@ -4,7 +4,15 @@ import { join } from "node:path";
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { recordNetworkEvent } from "@suup/db";
 import { DATABASE_URL, fakeMcpCommand, SKIP_REASON, startWorld, type World } from "./harness.js";
-import { botItem, freshBot, openApp, selectBot, send } from "./helpers.js";
+import {
+  botItem,
+  closeSettings,
+  freshBot,
+  openApp,
+  openSettings,
+  selectBot,
+  send,
+} from "./helpers.js";
 
 // Phase 3, the rest: what a bot may use of a connector TOOL by TOOL, the review of a definition the
 // server changed, the network of a bot's machine, the card that asks for a host, and the measure of
@@ -15,17 +23,23 @@ import { botItem, freshBot, openApp, selectBot, send } from "./helpers.js";
 const botMessage = (page: Page, text: string) =>
   page.getByTestId("message-bot").filter({ hasText: text });
 
-async function openSettings(page: Page, tab: "Geral" | "Aprovações" | "Cofre" | "Conectores") {
-  await page.getByTestId("owner-menu").click();
-  await page.getByRole("menuitem", { name: "Configurações" }).click();
-  await page.getByRole("tab", { name: tab }).click();
-}
-
 const botId = async (world: World, name: string): Promise<string> =>
   (await world.api.bots.list()).find((b) => b.name === name)?.id as string;
 
 const connectorRow = (page: Page, name = "fake"): Locator =>
-  page.getByTestId("connector-row").filter({ has: page.locator(`strong:text-is("${name}")`) });
+  page.getByTestId("connector-row").filter({ hasText: name });
+
+/** Selects a connector in the list; its details open (and the list is gone). */
+async function openConnector(page: Page, name = "fake"): Promise<Locator> {
+  await page
+    .getByTestId("connector-item")
+    .filter({ hasText: name })
+    .getByTestId("connector-details")
+    .click();
+  const detail = connectorRow(page, name);
+  await expect(detail.getByTestId("connector-panel")).toBeVisible();
+  return detail;
+}
 
 const grantRow = (row: Locator, bot: string): Locator =>
   row.locator(`[data-testid="grant-row"][data-bot="${bot}"]`);
@@ -75,8 +89,7 @@ test.describe("per-tool grants and the review of a definition", () => {
 
     await openApp(page, world);
     await openSettings(page, "Conectores");
-    const row = connectorRow(page);
-    await row.getByTestId("connector-details").click();
+    const row = await openConnector(page);
     const bot = grantRow(row, "Seletivo");
     // Nothing is ticked at first, and the collapsed row says so.
     await expect(bot).toContainText(`0 de ${total}`);
@@ -103,7 +116,12 @@ test.describe("per-tool grants and the review of a definition", () => {
     // Collapsed, the row says "2 de N" and nothing else of the tools.
     await bot.getByRole("button", { name: /Seletivo/ }).click();
     await expect(bot.getByTestId("grant-card")).toContainText(`2 de ${total}`);
-    await expect(row).toContainText("1 bot");
+    await closeSettings(page);
+    await openSettings(page, "Conectores");
+    await expect(page.getByTestId("connector-item").filter({ hasText: "fake" })).toContainText(
+      "1 bot",
+    );
+    await closeSettings(page);
 
     // The bot: the ticked tool works, the unticked one does not exist for it.
     await selectBot(page, "Seletivo");
@@ -123,7 +141,7 @@ test.describe("per-tool grants and the review of a definition", () => {
 
     // "Nenhuma" and the shortcuts: "só as de leitura" ticks the reads, "todas" is the only `all`.
     await openSettings(page, "Conectores");
-    await connectorRow(page).getByTestId("connector-details").click();
+    await openConnector(page);
     const again = grantRow(connectorRow(page), "Seletivo");
     await again.getByRole("button", { name: /Seletivo/ }).click();
     await again.getByTestId("grant-read").click();
@@ -178,13 +196,16 @@ test.describe("per-tool grants and the review of a definition", () => {
 
     await openApp(page, world);
     await openSettings(page, "Conectores");
-    const row = connectorRow(page);
+    // In the list the connector only says it is waiting; the notice and "Revisar" are in its details.
+    await expect(page.getByTestId("connector-item").filter({ hasText: "fake" })).toContainText(
+      "espera revisão",
+    );
+    const row = await openConnector(page);
     const notice = row.getByTestId("review-notice");
     await expect(notice).toHaveAttribute("role", "status");
     await expect(notice).toContainText("1 ferramenta mudou e está desligada até você revisar");
     await expect(notice).toContainText("1 ferramenta nova está desligada até você revisar");
     // The grant row shows `echo` unticked, and why.
-    await row.getByTestId("connector-details").click();
     const bot = grantRow(row, "Revisor B");
     await bot.getByRole("button", { name: /Revisor B/ }).click();
     const echoBox = bot.locator('[data-tool="echo"]');
@@ -231,6 +252,7 @@ test.describe("per-tool grants and the review of a definition", () => {
     await dialog.getByTestId("review-close").click();
 
     // Nothing was approved, so `echo` is off for every bot: the call fails as an unknown tool.
+    await closeSettings(page);
     await selectBot(page, "Revisor A");
     await send(page, "CASE-GRANTS antes da revisão");
     await expect(botMessage(page, "Terminei: usei uma e não consegui a outra.")).toBeVisible();
@@ -240,6 +262,7 @@ test.describe("per-tool grants and the review of a definition", () => {
 
     // The version on screen is now the current one: approving it works.
     await openSettings(page, "Conectores");
+    await openConnector(page);
     await row.getByTestId("connector-review").click();
     await expect(items).toHaveCount(2);
     await echo.getByTestId("review-approve").click();
@@ -255,7 +278,6 @@ test.describe("per-tool grants and the review of a definition", () => {
     await expect(notice).not.toContainText("mudou");
 
     // The history says what happened.
-    await row.getByTestId("connector-details").click();
     await row.getByTestId("tool-history").getByRole("button").click();
     const history = row.getByTestId("tool-history-list");
     await expect(history).toContainText("Você aprovou a definição: echo");
@@ -265,6 +287,7 @@ test.describe("per-tool grants and the review of a definition", () => {
     // Approved, `echo` is back for the bots that have it ticked, and the bot uses it.
     await bot.getByRole("button", { name: /Revisor B/ }).click();
     await expect(bot.locator('[data-tool="echo"]').getByRole("checkbox")).toBeEnabled();
+    await closeSettings(page);
     await selectBot(page, "Revisor B");
     await send(page, "CASE-GRANTS depois da revisão");
     await expect(botMessage(page, "Terminei: usei uma e não consegui a outra.")).toBeVisible();
@@ -274,6 +297,7 @@ test.describe("per-tool grants and the review of a definition", () => {
 
     // The last one is approved from the notice again, and the notice goes away.
     await openSettings(page, "Conectores");
+    await openConnector(page);
     await connectorRow(page).getByTestId("connector-review").click();
     await page.getByTestId("review-approve").click();
     await expect(page.getByTestId("review-empty")).toBeVisible();
@@ -292,10 +316,9 @@ test.describe("per-tool grants and the review of a definition", () => {
     });
     await openApp(page, world);
     await openSettings(page, "Conectores");
-    const row = connectorRow(page);
     // Without Docker, the program runs on the server's own machine: no isolation, said in words.
+    const row = await openConnector(page);
     await expect(row.getByTestId("connector-runs-tag")).toHaveText("no servidor, sem isolamento");
-    await row.getByTestId("connector-details").click();
     const network = row.getByTestId("connector-network");
     await expect(network).toHaveAttribute("data-runs-in", "host");
     await expect(network.getByTestId("connector-runs-in")).toContainText("sem isolamento");

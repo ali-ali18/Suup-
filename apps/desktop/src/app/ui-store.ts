@@ -9,14 +9,16 @@ import {
 } from "../lib/pane-size.js";
 import type { ToastItem } from "../ui/primitives.js";
 
-export type View = "chat" | "pending" | "memory" | "settings" | "inspector";
+export type View = "chat" | "pending" | "memory" | "inspector";
 export type PanelTab = "activity" | "library";
-/** The sections of the settings screen. */
-export type SettingsTab = "general" | "approvals" | "vault" | "connectors";
+/** The sections of the settings dialog. */
+export type SettingsTab = "general" | "permissions" | "vault" | "connectors";
 
 export interface UiState {
   view: View;
-  /** The section of the settings screen that is open. */
+  /** The settings dialog (a modal over whatever screen is open). */
+  settingsOpen: boolean;
+  /** The section of the settings dialog that is open. */
   settingsTab: SettingsTab;
   selectedBotId: string | null;
   panelOpen: boolean;
@@ -56,8 +58,9 @@ export interface UiState {
   openNewBot(): void;
   closeNewBot(): void;
   go(view: View): void;
-  /** Opens the settings screen on a section. */
-  openSettings(tab: SettingsTab): void;
+  /** Opens the settings dialog on a section. */
+  openSettings(tab?: SettingsTab): void;
+  closeSettings(): void;
   setSettingsTab(tab: SettingsTab): void;
   selectBot(botId: string): void;
   openPanel(tab?: PanelTab): void;
@@ -109,6 +112,7 @@ let toastId = 0;
 /** What the person is looking at: screen, selected bot, panel, theme, toasts. Never server data. */
 export const useUi = create<UiState>((set, get) => ({
   view: "chat",
+  settingsOpen: false,
   settingsTab: "general",
   selectedBotId: null,
   // Closed by default on narrow windows (the layout has no room for three columns there).
@@ -160,7 +164,9 @@ export const useUi = create<UiState>((set, get) => ({
   openNewBot: () => set({ newBotOpen: true, editBotId: null, editBotStep: 1 }),
   closeNewBot: () => set({ newBotOpen: false, editBotId: null }),
   go: (view) => set({ view }),
-  openSettings: (settingsTab) => set({ view: "settings", settingsTab }),
+  openSettings: (settingsTab) =>
+    set((s) => ({ settingsOpen: true, settingsTab: settingsTab ?? s.settingsTab })),
+  closeSettings: () => set({ settingsOpen: false }),
   setSettingsTab: (settingsTab) => set({ settingsTab }),
   selectBot: (botId) => set({ view: "chat", selectedBotId: botId }),
   openPanel: (tab) => set((s) => ({ panelOpen: true, panelTab: tab ?? s.panelTab })),

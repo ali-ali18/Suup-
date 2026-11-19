@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
 import { recordNetworkEvent } from "@suup/db";
 import { DATABASE_URL, fakeMcpCommand, SKIP_REASON, startWorld, type World } from "./harness.js";
-import { connect, freshBot, selectBot, send } from "./helpers.js";
+import { closeSettings, connect, freshBot, openSettings, selectBot, send } from "./helpers.js";
 
 // Takes a screenshot of each main screen from a real run of the app, for the visual review against
 // the owner's references (1920x1080) and for the design review (1440x900 at 2x).
@@ -326,6 +326,7 @@ test.describe("screenshots", () => {
       await page.getByRole("menuitem", { name: "Configurações" }).click();
       await expect(page.getByTestId("model-row").first()).toBeVisible();
       await shot("15-configuracoes");
+      await closeSettings(page);
       await selectBot(page, "Nova");
       await page.getByTestId("bot-chip").click({ button: "right" });
       await page.getByRole("menuitem", { name: /Abrir o inspetor/ }).click();
@@ -420,14 +421,14 @@ test.describe("screenshots", () => {
       await shot("11b-editar-bot-rede");
       await page.getByRole("dialog").getByRole("button", { name: "Voltar" }).click();
       await page.getByRole("dialog").getByRole("button", { name: "Cancelar" }).click();
-      await page.getByTestId("owner-menu").click();
-      await page.getByRole("menuitem", { name: "Configurações" }).click();
-      await page.getByRole("tab", { name: "Aprovações" }).click();
+      await openSettings(page, "Permissões");
       await expect(page.getByTestId("rule-row")).toHaveCount(2);
       await settle();
-      await shot("20-config-aprovacoes");
-      await page.getByTestId("rule-new").click();
-      await page.getByTestId("rule-effect-deny").click();
+      await shot("20-config-permissoes");
+      await page.getByTestId("rule-new-deny").click();
+      await settle();
+      await shot("20a-config-adicionar-regra");
+      await page.getByTestId("rule-more").click();
       await page.getByRole("button", { name: "Adicionar condição" }).click();
       await page
         .getByTestId("rule-condition")
@@ -435,24 +436,32 @@ test.describe("screenshots", () => {
         .fill("path");
       await page.getByTestId("rule-condition").getByLabel("Valor exato").fill("/etc/passwd");
       await settle();
-      await shot("20b-config-nova-regra");
+      await shot("20b-config-regra-mais-opcoes");
       await page.getByRole("button", { name: "Cancelar" }).click();
       await page.getByRole("tab", { name: "Cofre" }).click();
       await expect(page.getByTestId("secret-row")).toHaveCount(2);
-      await page.getByTestId("secret-row").first().getByTestId("secret-grants-toggle").click();
       await settle();
       await shot("21-config-cofre");
+      await page.getByTestId("secret-row").first().getByTestId("secret-grants-toggle").click();
+      await settle();
+      await shot("21a-config-cofre-item-aberto");
       await page.getByTestId("secret-new").click();
       await settle();
       await shot("21b-config-novo-segredo");
       await page.getByRole("button", { name: "Cancelar" }).click();
       await page.getByRole("tab", { name: "Conectores" }).click();
+      await expect(page.getByTestId("connector-item").filter({ hasText: "fake" })).toBeVisible();
+      await settle();
+      await shot("22-config-conectores-lista");
+      await page
+        .getByTestId("connector-item")
+        .filter({ hasText: "fake" })
+        .getByTestId("connector-details")
+        .click();
       const connector = page.getByTestId("connector-row").filter({ hasText: "fake" });
-      await expect(connector).toBeVisible();
-      await connector.getByTestId("connector-details").click();
       await expect(connector.getByTestId("connector-tools")).toBeVisible();
       await settle();
-      await shot("22-config-conectores");
+      await shot("22a-config-conector-aberto");
       await connector.getByTestId("connector-tools").scrollIntoViewIfNeeded();
       await connector.getByTestId("connector-tools-unavailable").scrollIntoViewIfNeeded();
       await settle();
@@ -474,8 +483,13 @@ test.describe("screenshots", () => {
       await settle();
       await shot("22e-config-conectores-onde-roda");
       // A connector with tools waiting for a review: the calm notice, then the comparison.
+      await page.getByTestId("connectors-back").click();
+      await page
+        .getByTestId("connector-item")
+        .filter({ hasText: "revisao" })
+        .getByTestId("connector-details")
+        .click();
       const reviewed = page.getByTestId("connector-row").filter({ hasText: "revisao" });
-      await reviewed.scrollIntoViewIfNeeded();
       await expect(reviewed.getByTestId("review-notice")).toContainText("mudou");
       await settle();
       await shot("22f-config-conectores-aviso-de-revisao");
@@ -487,21 +501,23 @@ test.describe("screenshots", () => {
       await settle();
       await shot("22h-revisao-mantida-desligada");
       await page.getByTestId("review-close").click();
+      await page.getByTestId("connectors-back").click();
       await page.getByTestId("connector-new").click();
       await settle();
       await shot("23-adicionar-conector");
       await page.getByRole("button", { name: "Cancelar" }).click();
       await page.getByRole("tab", { name: "Geral" }).click();
+      await closeSettings(page);
 
       // Light theme, once.
-      await page.getByTestId("owner-menu").click();
-      await page.getByRole("menuitem", { name: "Configurações" }).click();
-      await page.getByRole("radio", { name: "Claro" }).click();
+      await openSettings(page, "Geral");
+      await page.getByTestId("setting-theme").selectOption("light");
+      await closeSettings(page);
       await selectBot(page, "Cookie");
       await shot("17-tema-claro");
-      await page.getByTestId("owner-menu").click();
-      await page.getByRole("menuitem", { name: "Configurações" }).click();
-      await page.getByRole("radio", { name: "Escuro" }).click();
+      await openSettings(page, "Geral");
+      await page.getByTestId("setting-theme").selectOption("dark");
+      await closeSettings(page);
       await context.close();
       await world.stop();
       await rm(world.dir, { recursive: true, force: true });
@@ -572,6 +588,50 @@ test.describe("screenshots", () => {
       await page.getByTestId("bot-network").scrollIntoViewIfNeeded();
       await page.waitForTimeout(250);
       await shot("11c-editar-bot-rede-sandbox-local");
+      await context.close();
+      await world.stop();
+    });
+  }
+  for (const size of SIZES) {
+    test(`the settings dialog with nothing configured, and in a small window, at ${size.dir}`, async ({
+      browser,
+    }) => {
+      const world = await startWorld();
+      const context = await browser.newContext({
+        viewport: size.viewport,
+        deviceScaleFactor: size.scale,
+        locale: "pt-BR",
+      });
+      const page = await context.newPage();
+      const shot = (name: string) =>
+        page.screenshot({ path: `screenshots/${size.dir}/${name}.png` });
+      const settle = async () => {
+        await page.evaluate(() => document.fonts.ready);
+        await page.waitForTimeout(250);
+      };
+      await connect(page, world);
+      await expect(page.getByTestId("sidebar")).toBeVisible();
+      await openSettings(page, "Permissões");
+      await expect(page.getByTestId("rule-row")).toHaveCount(0);
+      await settle();
+      await shot("20c-config-permissoes-vazio");
+      await page.getByRole("tab", { name: "Cofre" }).click();
+      await expect(page.getByTestId("vault-empty")).toBeVisible();
+      await settle();
+      await shot("21c-config-cofre-vazio");
+      await page.getByRole("tab", { name: "Conectores" }).click();
+      await expect(page.getByTestId("connectors-card")).toContainText("Nenhum conector");
+      await settle();
+      await shot("22i-config-conectores-vazio");
+      // A small window: the nav becomes a strip on top and nothing overflows the page.
+      await page.setViewportSize({ width: 560, height: 700 });
+      await page.getByRole("tab", { name: "Permissões" }).click();
+      await settle();
+      await shot("20d-config-permissoes-janela-pequena");
+      const overflow = await page
+        .getByTestId("settings-screen")
+        .evaluate((el) => el.scrollWidth > el.clientWidth);
+      expect(overflow).toBe(false);
       await context.close();
       await world.stop();
     });

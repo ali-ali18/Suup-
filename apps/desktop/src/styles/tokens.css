@@ -88,6 +88,10 @@
   --width-chat-min: 420px; /* the chat column never gets narrower than this */
   --width-reading: 700px; /* the widest a bot bubble gets */
   --width-content: 1200px; /* the widest the chat column (messages and composer) gets */
+  --width-settings: 880px; /* the settings dialog: nav + pane (docs/DESIGN.md §3c) */
+  --height-settings: 720px; /* ...and its height; it never passes the window */
+  --width-settings-nav: 208px; /* the narrow left nav of the settings dialog */
+  --text-settings-title-size: 20px; /* the section title in the settings dialog (reference: ~1.3x the body) */
   --size-rail-avatar: 56px;
   --size-panel-avatar: 72px;
   --focus-ring: 2px solid var(--color-focus);

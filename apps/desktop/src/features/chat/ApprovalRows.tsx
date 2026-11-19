@@ -59,7 +59,7 @@ export function ApprovalRow({
       collapseLong={settings.approvalLong === "collapse"}
       {...(autoFocus === undefined ? {} : { autoFocus })}
       onDecide={onDecide}
-      onManageRules={() => openSettings("approvals")}
+      onManageRules={() => openSettings("permissions")}
       onDecidedElsewhere={(card) =>
         toast(
           card === undefined
