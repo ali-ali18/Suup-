@@ -115,7 +115,15 @@ export function CommandPalette() {
           </>
         ),
         detail: plainText(conversation?.lastMessage?.text ?? ""),
-        icon: <Avatar avatar={bot.avatar} color={bot.color} seed={bot.id} size="md" />,
+        icon: (
+          <Avatar
+            avatar={bot.avatar}
+            avatarStyle={bot.avatarStyle}
+            color={bot.color}
+            seed={bot.id}
+            size="md"
+          />
+        ),
         text: bot.name,
         run: () => ui().selectBot(bot.id),
       });
