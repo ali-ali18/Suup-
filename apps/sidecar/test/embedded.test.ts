@@ -280,6 +280,9 @@ describe.skipIf(!CAN_RUN || process.env.SUUP_DOCKER_TESTS !== "1")(
       const connectorImage = process.env.SUUP_CONNECTOR_IMAGE ?? "suup-connector-runner:dev";
       execFileSync("docker", ["tag", sandboxImage, "suup-sandbox:app-dockertest"]);
       execFileSync("docker", ["tag", connectorImage, "suup-connector-runner:app-dockertest"]);
+      // The egress proxy image is NOT tagged here: the sidecar builds it from the Dockerfile and the
+      // bundle the app carries, as it does on a first run.
+      execFileSync("docker", ["rm", "--force", "suup-egress"], { stdio: "ignore" });
       const root = mkdtempSync(join(tmpdir(), "suup-embedded-docker-"));
       if (process.platform !== "win32") execFileSync("chmod", ["755", root]);
       execFileSync(process.execPath, [join(SIDECAR, "scripts", "prepare.mjs")], {
@@ -391,13 +394,34 @@ describe.skipIf(!CAN_RUN || process.env.SUUP_DOCKER_TESTS !== "1")(
           { encoding: "utf8" },
         );
         expect(machine.trim()).toBe("true");
+        // The proxy runs in its own container and the generated configuration says so; the server
+        // (a host process here, as on Windows) is its only controller, through the published port.
+        const proxy = execFileSync(
+          "docker",
+          ["inspect", "--format", "{{.State.Running}}", "suup-egress"],
+          { encoding: "utf8" },
+        );
+        expect(proxy.trim()).toBe("true");
+        const written = JSON.parse(readFileSync(join(appData, "suup.config.json"), "utf8")) as {
+          sandbox: { network: { proxy: { mode: string } } };
+        };
+        expect(written.sandbox.network.proxy.mode).toBe("container");
       } finally {
         proc.stdin?.write("stop\n");
         await new Promise<void>((resolve) => {
           proc.once("exit", () => resolve());
           setTimeout(() => proc.kill("SIGKILL"), 60_000);
         });
+        const left = execFileSync(
+          "docker",
+          ["ps", "--all", "--quiet", "--filter", "name=^suup-egress$"],
+          {
+            encoding: "utf8",
+          },
+        );
         execFileSync("docker", ["rm", "--force", "suup-machine"], { stdio: "ignore" });
+        execFileSync("docker", ["rm", "--force", "suup-egress"], { stdio: "ignore" });
+        expect(left.trim(), "o contêiner do proxy deve sumir quando o app para").toBe("");
       }
     });
   },

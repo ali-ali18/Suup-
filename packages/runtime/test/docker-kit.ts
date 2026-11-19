@@ -55,3 +55,6 @@ export async function removeNetwork(name: string): Promise<void> {
 }
 
 export { cp };
+
+/** The image of the egress proxy (built from docker/egress); the tests of the proxy container need it. */
+export const EGRESS_IMAGE = process.env.SUUP_EGRESS_IMAGE;

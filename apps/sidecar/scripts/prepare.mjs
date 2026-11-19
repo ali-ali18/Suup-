@@ -3,7 +3,7 @@
 //   src-tauri/resources/sidecar/sidecar.mjs  the server + worker + CLI, bundled into one file
 //   src-tauri/resources/postgres/            the PostgreSQL binaries of this platform
 //   src-tauri/resources/migrations/          the SQL migrations
-//   src-tauri/resources/docker/              the Dockerfiles of the bots' machine and the connector runner
+//   src-tauri/resources/docker/              the Dockerfiles of the bots' machine, the connector runner and the egress proxy
 // Run it on the platform being built (`pnpm --filter @suup/sidecar run bundle`); CI does.
 import { execFileSync } from "node:child_process";
 import {
@@ -20,6 +20,7 @@ import {
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import { bundleEgress } from "./egress-image.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const sidecar = join(here, "..");
@@ -97,6 +98,13 @@ cpSync(join(root, "docker", "sandbox"), join(resources, "docker", "sandbox"), { 
 cpSync(join(root, "docker", "connector-runner"), join(resources, "docker", "connector-runner"), {
   recursive: true,
 });
+
+// The egress proxy's image: its Dockerfile and the bundled program it carries.
+cpSync(
+  join(root, "docker", "egress", "Dockerfile"),
+  join(resources, "docker", "egress", "Dockerfile"),
+);
+await bundleEgress(join(resources, "docker", "egress"));
 
 // 3. PostgreSQL for this platform (symlinks become real files: the installer does not keep them).
 const key = `${process.platform}-${process.arch}`;

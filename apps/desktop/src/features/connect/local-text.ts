@@ -14,7 +14,7 @@ export const NO_ISOLATION_TEXT: Record<NoIsolationReason, string> = {
   docker_missing:
     "O Docker não está instalado ou não está aberto. Instale o Docker Desktop e abra-o para ter a máquina isolada.",
   gateway_unreachable:
-    "O Docker está aberto, mas este computador não alcança a rede interna dos bots (limitação conhecida do Docker Desktop).",
+    "O Docker está aberto, mas o proxy de saída dos bots não iniciou (nem em contêiner nem neste computador). Veja os registros para o motivo.",
   image_failed:
     "Não foi possível preparar as imagens da máquina dos bots. Veja os registros para o motivo.",
   network_failed: "Não foi possível criar a rede interna dos bots no Docker.",

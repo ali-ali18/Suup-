@@ -39,6 +39,10 @@ jobs:
         run: docker build --tag suup-sandbox:ci docker/sandbox
       - name: Build the connector runner image (stdio MCP servers in containers)
         run: docker build --tag suup-connector-runner:ci docker/connector-runner
+      - name: Build the egress proxy image (the proxy in its own container; the program is bundled first)
+        run: |
+          node apps/sidecar/scripts/egress-image.mjs docker/egress
+          docker build --tag suup-egress:ci docker/egress
       - name: Build the server image (not pushed)
         run: docker build --file docker/server/Dockerfile --tag suup:ci .
       - name: Smoke test the server image
@@ -62,6 +66,8 @@ jobs:
           SUUP_SANDBOX_IMAGE: suup-sandbox:ci
           # The network tests (internal network, egress proxy) and the containerised connector tests.
           SUUP_CONNECTOR_IMAGE: suup-connector-runner:ci
+          # The proxy in its own container, with the worker as a host process (the Windows topology).
+          SUUP_EGRESS_IMAGE: suup-egress:ci
       # The desktop app: the web build (the unit tests of the app ran with `pnpm test` above), then the
       # browser tests against a real server in this process (Postgres-backed, scripted provider).
       - name: Build the desktop web app

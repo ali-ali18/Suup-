@@ -34,7 +34,9 @@ export interface ConfigInput {
   isolation: Isolation;
   /** The folder the bots work in when they are not isolated. */
   workspace: string;
-  images: { sandbox: string; connectors: string };
+  images: { sandbox: string; connectors: string; egress: string };
+  /** Where the bots' proxy runs (`chooseIsolation` decided it). */
+  egress: "container" | "process" | null;
   networkName: string;
   /** The origins of the app's webview (the Rust side sends none; kept for the browser build). */
   allowedOrigins: readonly string[];
@@ -57,6 +59,9 @@ export function buildConfig(input: ConfigInput): Record<string, unknown> {
           network: {
             name: input.networkName,
             defaultHosts: ["registry.npmjs.org", "pypi.org", "files.pythonhosted.org"],
+            ...(input.egress === "container"
+              ? { proxy: { mode: "container", image: input.images.egress } }
+              : {}),
           },
           connectors: { image: input.images.connectors },
         }

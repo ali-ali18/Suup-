@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { createServer } from "node:net";
-import { ensureInternalNetwork } from "@suup/sandbox";
+import { ensureInternalNetwork, startEgressContainer } from "@suup/sandbox";
 import type { Isolation } from "./protocol.js";
 
 interface Ran {
@@ -85,34 +85,70 @@ export async function gatewayReachable(
   });
 }
 
+/**
+ * Whether the bots' proxy can run in its own container and be reached by this process: starts it (a
+ * throwaway one, with an empty policy) and opens the control channel through the port published on
+ * 127.0.0.1. That is the path of Docker Desktop on Windows: the networks live inside Docker's virtual
+ * machine, and only published ports are forwarded to the computer.
+ */
+export async function egressContainerWorks(
+  docker: string,
+  networkName: string,
+  image: string,
+): Promise<{ ok: true } | { ok: false; detail: string }> {
+  try {
+    const probe = await startEgressContainer({
+      dockerPath: docker,
+      image,
+      name: "suup-egress-probe",
+      internalNetwork: networkName,
+      policy: { allowedHosts: async () => new Set() },
+      startTimeoutMs: 30_000,
+    });
+    await probe.stop();
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, detail: String(error) };
+  }
+}
+
 export interface MachineImages {
   sandbox: string;
   connectors: string;
+  egress: string;
 }
+
+/** Where the bots' proxy runs: in its own container (works everywhere Docker does), or in this process. */
+export type EgressMode = "container" | "process";
 
 /**
  * Decides where the bots run. Docker answers and the images are (or get) ready and the network works:
- * `docker`. Anything else: `local`, with the reason as a code (the app writes the sentence).
+ * `docker`, with the proxy in a container; failing that, with the proxy in this process (a Linux host
+ * can listen on the network's gateway). Anything else: `local`, with the reason as a code (the app
+ * writes the sentence).
  */
 export async function chooseIsolation(options: {
   docker: string;
   images: MachineImages;
   networkName: string;
   /** Folders with the Dockerfile of each image. */
-  contexts: { sandbox: string; connectors: string };
+  contexts: { sandbox: string; connectors: string; egress: string };
   /** Called before the (slow) build of an image that is not there yet. */
   onBuild(): void;
   log(text: string): void;
-}): Promise<Isolation> {
+}): Promise<{ isolation: Isolation; egress: EgressMode | null }> {
   const { docker, images, contexts, log } = options;
-  if (!(await dockerAvailable(docker))) {
-    return { mode: "local", reason: "docker_missing", detail: null };
-  }
+  const local = (reason: Isolation["reason"], detail: string | null) => ({
+    isolation: { mode: "local", reason, detail } as Isolation,
+    egress: null,
+  });
+  if (!(await dockerAvailable(docker))) return local("docker_missing", null);
   try {
     let announced = false;
     for (const [tag, dir] of [
       [images.sandbox, contexts.sandbox],
       [images.connectors, contexts.connectors],
+      [images.egress, contexts.egress],
     ] as const) {
       if (await imageExists(docker, tag)) continue;
       if (!announced) {
@@ -122,9 +158,20 @@ export async function chooseIsolation(options: {
       await buildImage(docker, tag, dir, log);
     }
   } catch (error) {
-    return { mode: "local", reason: "image_failed", detail: String(error) };
+    return local("image_failed", String(error));
   }
+  const contained = await egressContainerWorks(docker, options.networkName, images.egress);
+  if (contained.ok) {
+    return { isolation: { mode: "docker", reason: null, detail: null }, egress: "container" };
+  }
+  log(`proxy de saída em contêiner indisponível: ${contained.detail}`);
+  // Last resort: the proxy in this process, on the gateway of the internal network.
   const gateway = await gatewayReachable(docker, options.networkName);
-  if (!gateway.ok) return { mode: "local", reason: gateway.reason, detail: gateway.detail };
-  return { mode: "docker", reason: null, detail: null };
+  if (gateway.ok) {
+    return { isolation: { mode: "docker", reason: null, detail: null }, egress: "process" };
+  }
+  return local(
+    gateway.reason,
+    `${gateway.detail}; proxy em contêiner: ${contained.detail}`.slice(0, 1500),
+  );
 }

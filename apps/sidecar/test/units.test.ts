@@ -69,7 +69,8 @@ describe("protocol", () => {
 describe("config", () => {
   const base = {
     workspace: "/w",
-    images: { sandbox: "s:1", connectors: "c:1" },
+    images: { sandbox: "s:1", connectors: "c:1", egress: "e:1" },
+    egress: "container" as const,
     networkName: "net",
     allowedOrigins: [],
   };
@@ -82,6 +83,7 @@ describe("config", () => {
     }
     expect(text).not.toContain("sk-");
     expect(text).toContain('"kind":"docker"');
+    expect(text).toContain('"proxy":{"mode":"container","image":"e:1"}');
   });
   it("runs the bots on this computer, in its own folder, when there is no Docker", () => {
     const config = buildConfig({

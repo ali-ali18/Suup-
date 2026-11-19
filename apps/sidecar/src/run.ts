@@ -140,11 +140,19 @@ export function startSidecar(env: SidecarEnv, emit: (event: SidecarEvent) => voi
     const images = {
       sandbox: `suup-sandbox:app-${env.version}`,
       connectors: `suup-connector-runner:app-${env.version}`,
+      egress: `suup-egress:app-${env.version}`,
     };
     const networkName = "suup-sandbox-net";
-    const isolation =
+    const { isolation, egress } =
       env.sandbox === "local"
-        ? ({ mode: "local", reason: "docker_missing", detail: "pedido pelo ambiente" } as const)
+        ? {
+            isolation: {
+              mode: "local",
+              reason: "docker_missing",
+              detail: "pedido pelo ambiente",
+            } as const,
+            egress: null,
+          }
         : await chooseIsolation({
             docker: env.dockerPath,
             images,
@@ -152,6 +160,7 @@ export function startSidecar(env: SidecarEnv, emit: (event: SidecarEvent) => voi
             contexts: {
               sandbox: join(env.resources, "docker", "sandbox"),
               connectors: join(env.resources, "docker", "connector-runner"),
+              egress: join(env.resources, "docker", "egress"),
             },
             onBuild: () =>
               logger.line("preparando as imagens da máquina dos bots (só na primeira vez)"),
@@ -179,7 +188,7 @@ export function startSidecar(env: SidecarEnv, emit: (event: SidecarEvent) => voi
       configPath,
       JSON.stringify(
         {
-          ...buildConfig({ isolation, workspace, images, networkName, allowedOrigins: [] }),
+          ...buildConfig({ isolation, egress, workspace, images, networkName, allowedOrigins: [] }),
           ...override,
         },
         null,
