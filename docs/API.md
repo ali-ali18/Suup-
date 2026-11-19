@@ -219,11 +219,11 @@ O que é seu escolher sobre a memória fica no servidor (uma linha só, como o m
 ```json
 {
   "consolidation": { "enabled": true, "idleMinutes": 5, "maxTurns": 15 },
-  "promptLimitChars": 6000,
+  "promptLimitItems": 200,
   "expiryDays": 90,
   "compactionThreshold": 0.8,
   "reviewer": { "available": true, "model": "claude-haiku-5-5", "reason": null },
-  "promptUsage": { "limitChars": 6000, "sharedChars": 1450, "overLimit": [] }
+  "promptUsage": { "limitItems": 200, "ceilingChars": 25000, "sharedItems": 12, "sharedChars": 1450, "overLimit": [] }
 }
 ```
 
@@ -232,11 +232,11 @@ O que é seu escolher sobre a memória fica no servidor (uma linha só, como o m
 | `consolidation.enabled` | `true` | verdadeiro ou falso |
 | `consolidation.idleMinutes` | 5 | inteiro de 1 a 120 |
 | `consolidation.maxTurns` | 15 | inteiro de 3 a 100 |
-| `promptLimitChars` | 6000 | inteiro de 1000 a 50000 |
+| `promptLimitItems` | 200 | inteiro de 20 a 1000 (memórias: regras e perfil ativos que entram em todo prompt) |
 | `expiryDays` | 90 | inteiro de 7 a 3650, ou `null` (nunca expira) |
 | `compactionThreshold` | 0.8 | número de 0.5 a 0.95 |
 
-`reviewer` diz se a consolidação (e a revisão do que o bot escreve depois de ler conteúdo de fora) tem um modelo agora: `available`, o `model` configurado e `reason` (em português) quando não tem; é só leitura, como o `reviewer` de `/v1/approval-settings`. `promptUsage` é o aviso do teto: `overLimit` lista os bots (`botId`, `name`, `usedChars`) cujas regras e perfil **ativos** passam de `promptLimitChars`; o app deve pedir que você apague ou encurte memórias, ou aumente o teto (nada é cortado em silêncio, o que não cabe só fica fora do prompt).
+`reviewer` diz se a consolidação (e a revisão do que o bot escreve depois de ler conteúdo de fora) tem um modelo agora: `available`, o `model` configurado e `reason` (em português) quando não tem; é só leitura, como o `reviewer` de `/v1/approval-settings`. `promptUsage` é o aviso do teto: `overLimit` lista os bots (`botId`, `name`, `usedItems`, `usedChars`) cujas regras e perfil **ativos** passam de `promptLimitItems` memórias ou de `ceilingChars` (o teto de segurança de 25000 caracteres, fixo e sem configuração, como o 25KB do `MEMORY.md` da Claude Code; veja [pesquisas/memoria-dos-agentes.md](pesquisas/memoria-dos-agentes.md)); `sharedItems`/`sharedChars` contam o que todos os bots carregam; o app deve pedir que você apague ou encurte memórias, ou aumente o teto (nada é cortado em silêncio, o que não cabe só fica fora do prompt).
 
 `MemoryConsolidation` (uma tentativa da consolidação): `id`, `conversationId`, `botId`, `reason` (`idle`, `max_turns`, `pre_compaction`), `status` (`queued`, `running`, `done`, `skipped`, `failed`), `fromSeq`, `toSeq`, `userTurns`, `model`, `promptVersion`, `inputTokens`, `outputTokens`, `costUsd`, `latencyMs`, `proposed` (o que o modelo disse), `kept` (o que foi gravado: ação, id da memória), `dropped` (o que o código descartou e por quê), `error`, `createdAt`, `finishedAt`.
 

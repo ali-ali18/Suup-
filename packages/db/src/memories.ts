@@ -2,6 +2,7 @@ import type { Fragment } from "postgres";
 import { z } from "zod";
 import type { Db } from "./client.js";
 import { withTransaction } from "./client.js";
+import { MEMORY_PROMPT_CEILING_CHARS } from "./memory-settings.js";
 import { SEARCH_HEADLINE_OPTIONS, searchQuerySchema } from "./messages.js";
 
 export const MEMORY_LAYERS = ["rule", "profile", "note", "journal"] as const;
@@ -856,20 +857,27 @@ export interface MemoryContext {
  * (`created_at`, `id`), so the text built from it stays byte-identical until a memory changes,
  * which keeps the prompt prefix cacheable.
  *
- * With `limitChars` the rules and profile facts together are taken in creation order while their
- * text fits; the first one that does not fit, and every one after it, is left out and counted in
- * `omitted` (the caller records it and the app asks the user to trim). Nothing is shortened.
+ * With `limitItems` the rules and profile facts together are taken in creation order while there
+ * are at most that many AND their text stays within `ceilingChars` (default
+ * `MEMORY_PROMPT_CEILING_CHARS`); the first one that does not fit, and every one after it, is left
+ * out and counted in `omitted` (the caller records it and the app asks the user to trim). Nothing
+ * is shortened.
  */
 export async function memoryContextFor(
   db: Db,
   botId: string,
-  options: { limitChars?: number } = {},
+  options: { limitItems?: number; ceilingChars?: number } = {},
 ): Promise<MemoryContext> {
   const id = uuidSchema.parse(botId);
   const limit =
-    options.limitChars === undefined
+    options.limitItems === undefined
       ? undefined
-      : z.number().int().positive().parse(options.limitChars);
+      : z.number().int().positive().parse(options.limitItems);
+  const ceiling = z
+    .number()
+    .int()
+    .positive()
+    .parse(options.ceilingChars ?? MEMORY_PROMPT_CEILING_CHARS);
   const { sql } = db;
   const rows = await sql<MemoryRow[]>`
     select ${sql(MEMORY_COLUMNS)} from memories
@@ -883,11 +891,11 @@ export async function memoryContextFor(
   const totalChars = all.reduce((n, m) => n + m.text.length, 0);
   let kept = all;
   let omitted = { count: 0, chars: 0 };
-  if (limit !== undefined && totalChars > limit) {
+  if (limit !== undefined && (all.length > limit || totalChars > ceiling)) {
     let used = 0;
     let cut = all.length;
     for (const [i, m] of all.entries()) {
-      if (used + m.text.length > limit) {
+      if (i >= limit || used + m.text.length > ceiling) {
         cut = i;
         break;
       }
@@ -905,30 +913,56 @@ export async function memoryContextFor(
 }
 
 export interface PromptUsage {
-  limitChars: number;
-  /** Characters of the active shared rules and profile (what every bot loads). */
+  limitItems: number;
+  ceilingChars: number;
+  /** Active shared rules and profile facts (what every bot loads). */
+  sharedItems: number;
+  /** Characters of those. */
   sharedChars: number;
-  /** The bots whose always-loaded memory does not fit under the limit. */
-  overBots: { botId: string; name: string; usedChars: number }[];
+  /** The bots whose always-loaded memory does not fit under the item limit or the ceiling. */
+  overBots: { botId: string; name: string; usedItems: number; usedChars: number }[];
 }
 
-/** Which bots have more always-loaded memory (active rules and profile) than `limitChars`. */
-export async function memoryPromptUsage(db: Db, limitChars: number): Promise<PromptUsage> {
-  const limit = z.number().int().positive().parse(limitChars);
+/**
+ * Which bots have more always-loaded memory (active rules and profile) than `limitItems`
+ * memories or than the character ceiling.
+ */
+export async function memoryPromptUsage(
+  db: Db,
+  limitItems: number,
+  ceilingChars: number = MEMORY_PROMPT_CEILING_CHARS,
+): Promise<PromptUsage> {
+  const limit = z.number().int().positive().parse(limitItems);
+  const ceiling = z.number().int().positive().parse(ceilingChars);
   const { sql } = db;
-  const [shared] = await sql<{ chars: string | null }[]>`
-    select sum(length(text)) as chars from memories
+  const [shared] = await sql<{ items: string; chars: string | null }[]>`
+    select count(*) as items, sum(length(text)) as chars from memories
     where archived_at is null and status = 'active'
       and scope = 'shared' and layer in ('rule', 'profile')`;
+  const sharedItems = Number(shared?.items ?? 0);
   const sharedChars = Number(shared?.chars ?? 0);
-  const bots = await sql<{ id: string; name: string; own: string | null }[]>`
+  const bots = await sql<{ id: string; name: string; items: string; own: string | null }[]>`
     select b.id, b.name,
+      (select count(*) from memories m
+        where m.bot_id = b.id and m.layer = 'rule' and m.scope = 'bot'
+          and m.archived_at is null and m.status = 'active') as items,
       (select sum(length(m.text)) from memories m
         where m.bot_id = b.id and m.layer = 'rule' and m.scope = 'bot'
           and m.archived_at is null and m.status = 'active') as own
     from bots b where b.archived_at is null order by b.created_at, b.id`;
   const overBots = bots
-    .map((b) => ({ botId: b.id, name: b.name, usedChars: sharedChars + Number(b.own ?? 0) }))
-    .filter((b) => b.usedChars > limit);
-  return { limitChars: limit, sharedChars, overBots };
+    .map((b) => ({
+      botId: b.id,
+      name: b.name,
+      usedItems: sharedItems + Number(b.items),
+      usedChars: sharedChars + Number(b.own ?? 0),
+    }))
+    .filter((b) => b.usedItems > limit || b.usedChars > ceiling);
+  return {
+    limitItems: limit,
+    ceilingChars: ceiling,
+    sharedItems,
+    sharedChars,
+    overBots,
+  };
 }

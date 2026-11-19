@@ -48,7 +48,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("migration 0019: waiting_timer"), () 
     const dir = await mkdtemp(join(tmpdir(), "suup-migrations-"));
     await cp(MIGRATIONS_DIR, dir, { recursive: true });
     const held = (await readdir(MIGRATIONS_DIR)).filter((f) => f >= "0019" && f.endsWith(".sql"));
-    expect(held).toEqual(["0019_waiting_timer.sql"]);
+    expect(held).toEqual(["0019_waiting_timer.sql", "0020_memory_prompt_limit_items.sql"]);
     for (const file of held) await rm(join(dir, file));
     await migrate(ctx.db, dir);
 

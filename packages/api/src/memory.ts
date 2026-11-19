@@ -188,7 +188,7 @@ export const memoryRevisionListSchema = list(memoryRevisionSchema);
 export const MEMORY_SETTING_LIMITS = {
   idleMinutes: { min: 1, max: 120 },
   maxTurns: { min: 3, max: 100 },
-  promptLimitChars: { min: 1000, max: 50_000 },
+  promptLimitItems: { min: 20, max: 1000 },
   expiryDays: { min: 7, max: 3650 },
   compactionThreshold: { min: 0.5, max: 0.95 },
 } as const;
@@ -196,7 +196,7 @@ export const MEMORY_SETTING_LIMITS = {
 /**
  * What the user controls about the memory (`GET`/`PATCH /v1/memory-settings`), plus two facts the
  * app should show: whether the background consolidation can really run, and which bots have more
- * always-loaded memory than `promptLimitChars` (so the app can ask to trim).
+ * always-loaded memory than `promptLimitItems` (so the app can ask to trim).
  */
 export const memorySettingsSchema = z.object({
   consolidation: z.object({
@@ -207,8 +207,8 @@ export const memorySettingsSchema = z.object({
     /** ...or when this many user turns piled up since the last consolidation. 3 to 100. */
     maxTurns: z.number().int(),
   }),
-  /** The most characters of ACTIVE rules and profile that go into every prompt. 1000 to 50000. */
-  promptLimitChars: z.number().int(),
+  /** The most ACTIVE rules and profile facts (memories) that go into every prompt. 20 to 1000. */
+  promptLimitItems: z.number().int(),
   /** Notes and journal entries not used for this many days are archived (restorable). 7 to 3650; `null`: never. */
   expiryDays: z.number().int().nullable(),
   /** Compact the chat history past this share of the context window. 0.5 to 0.95. */
@@ -220,11 +220,22 @@ export const memorySettingsSchema = z.object({
     reason: z.string().nullable(),
   }),
   promptUsage: z.object({
-    limitChars: z.number().int(),
-    /** Characters of the active shared rules and profile (every bot loads them). */
+    limitItems: z.number().int(),
+    /** The fixed safety ceiling, in characters, of what always enters the prompt (not a setting). */
+    ceilingChars: z.number().int(),
+    /** Active shared rules and profile facts (every bot loads them). */
+    sharedItems: z.number().int(),
+    /** Characters of those. */
     sharedChars: z.number().int(),
     /** Bots whose always-loaded memory does not fit: the app should ask you to trim it. */
-    overLimit: z.array(z.object({ botId: uuid, name: z.string(), usedChars: z.number().int() })),
+    overLimit: z.array(
+      z.object({
+        botId: uuid,
+        name: z.string(),
+        usedItems: z.number().int(),
+        usedChars: z.number().int(),
+      }),
+    ),
   }),
 });
 export type MemorySettings = z.infer<typeof memorySettingsSchema>;
@@ -251,7 +262,7 @@ export const updateMemorySettingsBodySchema = z.strictObject({
       maxTurns: whole(L.maxTurns.min, L.maxTurns.max).optional(),
     })
     .optional(),
-  promptLimitChars: whole(L.promptLimitChars.min, L.promptLimitChars.max).optional(),
+  promptLimitItems: whole(L.promptLimitItems.min, L.promptLimitItems.max).optional(),
   expiryDays: z
     .number()
     .nullable()

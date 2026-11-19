@@ -220,6 +220,7 @@ export {
 } from "./memory-consolidation.js";
 export {
   getMemorySettings,
+  MEMORY_PROMPT_CEILING_CHARS,
   MEMORY_SETTING_DEFAULTS,
   MEMORY_SETTING_LIMITS,
   type MemorySettings,

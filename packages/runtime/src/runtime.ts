@@ -783,7 +783,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
                 id,
                 config.defaults?.historyChars ?? DEFAULT_HISTORY_CHARS,
                 {
-                  promptLimitChars: memorySettings.promptLimitChars,
+                  promptLimitItems: memorySettings.promptLimitItems,
                   compactionThreshold: memorySettings.compactionThreshold,
                 },
               );

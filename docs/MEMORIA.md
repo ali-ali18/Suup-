@@ -29,7 +29,7 @@ Uma **atualização** de uma regra, de um fato ou de uma nota ativos **edita a m
 
 No início de cada execução o runtime lê, **uma vez**, e grava no log (evento `context_loaded`, logo depois de `run_started`):
 
-1. as **regras** (as compartilhadas e as do bot) e o **perfil** **ativos**, na ordem em que foram criadas, até o teto `memory.promptLimitChars` (padrão 6000 caracteres; veja "O teto do que entra em todo prompt"). Memória pendente não entra;
+1. as **regras** (as compartilhadas e as do bot) e o **perfil** **ativos**, na ordem em que foram criadas, até `promptLimitItems` memórias (padrão 200) e até o teto de segurança de 25 000 caracteres, o que vier primeiro (veja "O teto do que entra em todo prompt"). Memória pendente não entra;
 2. se a execução nasceu de uma conversa, o **histórico**: as mensagens anteriores dessa conversa, das mais novas para as mais antigas, até `defaults.historyChars` caracteres (padrão 12000), cortando só em mensagens inteiras. Se sobrou coisa de fora, o bot recebe um aviso para usar `search_conversations`.
 
 Regras e perfil vão para o **prompt do sistema**, em duas seções (`Standing rules from the user` e `What you know about the user`); o histórico vai no **começo da conversa**, antes do objetivo. Nada disso é lido de novo durante a execução. Por isso:
@@ -156,11 +156,11 @@ Cada nota e cada entrada do diário guarda, além do texto, um **fato curto** (a
 
 ## O teto do que entra em todo prompt
 
-Regras e perfil **ativos** entram inteiros em todo prompt, então somam um custo fixo. O teto é `memory.promptLimitChars` (padrão **6000** caracteres, de 1000 a 50 000). Passou do teto:
+Regras e perfil **ativos** entram inteiros em todo prompt, então somam um custo fixo. O limite que você controla conta **memórias**, não caracteres: `promptLimitItems` (padrão **200**, de 20 a 1000), como a Claude Code, que carrega as primeiras 200 linhas do `MEMORY.md` ("The first 200 lines of MEMORY.md, or the first 25KB, whichever comes first, are loaded at the start of every conversation", em [pesquisas/memoria-dos-agentes.md](pesquisas/memoria-dos-agentes.md)). Além dele há um **teto de segurança de 25 000 caracteres** (o 25KB da Claude Code), fixo no código (`MEMORY_PROMPT_CEILING_CHARS`) e **sem configuração**: protege a janela de contexto de um punhado de memórias enormes. Vale o que bater primeiro. Passou de um dos dois:
 
-- **nada é cortado em silêncio nem encurtado**: o carregador inclui, na ordem de criação, tudo o que cabe e **para na primeira memória que não cabe** (as seguintes ficam de fora, para o prefixo do prompt continuar estável); o que ficou de fora é contado no evento `context_loaded` (`memoryOmitted: { count, chars, limitChars }`);
+- **nada é cortado em silêncio nem encurtado**: o carregador inclui, na ordem de criação, tudo o que cabe e **para na primeira memória que não cabe** (as seguintes ficam de fora, para o prefixo do prompt continuar estável); o que ficou de fora é contado no evento `context_loaded` (`memoryOmitted: { count, chars, limitItems, ceilingChars }`; um log antigo, gravado quando o limite era em caracteres, tem `limitChars` no lugar e continua válido: o replay usa o contexto gravado);
 - **escrever continua funcionando**: o teto limita o que entra no prompt, não o que se grava;
-- `GET /v1/memory-settings` traz `promptUsage.overLimit` (os bots que passam do teto) e `suup doctor` mostra "Limite do prompt", para a tela pedir que você apague ou encurte memórias, ou aumente o teto.
+- `GET /v1/memory-settings` traz `promptUsage.overLimit` (os bots que passam do limite ou do teto, com `usedItems` e `usedChars`) e `suup doctor` mostra "Limite do prompt", para a tela pedir que você apague ou encurte memórias, ou aumente o teto.
 
 ## Expiração
 
@@ -183,11 +183,11 @@ O que é seu escolher fica no servidor (tabela `memory_settings`, uma linha só,
 | `consolidation.enabled` | ligada | | liga e desliga a consolidação em segundo plano |
 | `consolidation.idleMinutes` | 5 | 1 a 120 | minutos de silêncio que disparam |
 | `consolidation.maxTurns` | 15 | 3 a 100 | mensagens suas acumuladas que disparam |
-| `promptLimitChars` | 6000 | 1000 a 50 000 | teto de regras e perfil ativos em todo prompt |
+| `promptLimitItems` | 200 | 20 a 1000 | quantas memórias (regras e perfil ativos) entram em todo prompt; o teto fixo de 25 000 caracteres vale junto |
 | `expiryDays` | 90 | 7 a 3650, ou `null` | dias sem uso para arquivar notas e diário |
 | `compactionThreshold` | 0,8 | 0,5 a 0,95 | quando comprimir o histórico |
 
-`GET`/`PATCH /v1/memory-settings` ([API.md](API.md)), `suup memory settings [--consolidation on|off] [--idle-minutes N] [--max-turns N] [--prompt-limit N] [--expiry-days N|never] [--compaction-threshold X]`. Valores fora da faixa são recusados com mensagem em português. Só o **modelo** da consolidação fica no arquivo de configuração ([CONFIGURACAO.md](CONFIGURACAO.md), `memory.consolidation`), porque aponta para um provedor e uma chave.
+`GET`/`PATCH /v1/memory-settings` ([API.md](API.md)), `suup memory settings [--consolidation on|off] [--idle-minutes N] [--max-turns N] [--prompt-limit N] (memórias) [--expiry-days N|never] [--compaction-threshold X]`. Valores fora da faixa são recusados com mensagem em português. A migração 0020 trocou a coluna antiga `prompt_limit_chars` por `prompt_limit_items`: qualquer valor antigo vira 200 (caracteres e memórias não se convertem). Só o **modelo** da consolidação fica no arquivo de configuração ([CONFIGURACAO.md](CONFIGURACAO.md), `memory.consolidation`), porque aponta para um provedor e uma chave.
 
 ## Medindo a busca: por que ainda é busca por palavras
 

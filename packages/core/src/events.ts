@@ -278,14 +278,18 @@ export const runEventSchema = z.discriminatedUnion("type", [
       compactionThreshold: z.exactOptional(z.number().min(0.1).max(0.99)),
       /**
        * Rules and profile facts that did not fit under the size cap of what always enters the
-       * prompt (`memory.promptLimitChars`) and were left out, in creation order. Nothing is cut
-       * silently: this says how much, so the app can ask the user to trim.
+       * prompt (`promptLimitItems` memories, default 200, or the `ceilingChars` safety ceiling, 25,000
+       * characters) and were left out, in creation order. Nothing is cut silently: this says how
+       * much, so the app can ask the user to trim. A run recorded before the limit was counted in
+       * memories has `limitChars` instead of `limitItems` and `ceilingChars`: it still parses.
        */
       memoryOmitted: z.exactOptional(
         z.object({
           count: z.number().int().nonnegative(),
           chars: z.number().int().nonnegative(),
-          limitChars: z.number().int().positive(),
+          limitItems: z.exactOptional(z.number().int().positive()),
+          ceilingChars: z.exactOptional(z.number().int().positive()),
+          limitChars: z.exactOptional(z.number().int().positive()),
         }),
       ),
     }),

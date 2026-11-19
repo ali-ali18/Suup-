@@ -29,6 +29,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("migration 0017: memory consolidation
       "0017_memory_consolidation.sql",
       "0018_search_any_word.sql",
       "0019_waiting_timer.sql",
+      "0020_memory_prompt_limit_items.sql",
     ]);
     for (const file of held) await rm(join(dir, file));
     await migrate(ctx.db, dir);
@@ -71,7 +72,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("migration 0017: memory consolidation
       consolidationEnabled: true,
       idleMinutes: 5,
       maxTurns: 15,
-      promptLimitChars: 6000,
+      promptLimitItems: 200,
       expiryDays: 90,
       compactionThreshold: 0.8,
     });

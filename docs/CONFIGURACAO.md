@@ -137,7 +137,7 @@ Com a máquina `local` (sem isolamento) o `shell` pergunta a cada comando; para 
 
 ### `memory` (opcional)
 
-Só o que **não** é do usuário mudar pelo app ([MEMORIA.md](MEMORIA.md)): qual modelo faz a consolidação da memória em segundo plano. O resto (quando roda, o teto do prompt, a expiração, o ponto da compactação) são escolhas do usuário, guardadas no servidor: `suup memory settings`, `GET`/`PATCH /v1/memory-settings`.
+Só o que **não** é do usuário mudar pelo app ([MEMORIA.md](MEMORIA.md)): qual modelo faz a consolidação da memória em segundo plano. O resto (quando roda, o limite de memórias do prompt (padrão 200, mais o teto fixo de 25 000 caracteres), a expiração, o ponto da compactação) são escolhas do usuário, guardadas no servidor: `suup memory settings`, `GET`/`PATCH /v1/memory-settings`.
 
 | Campo | Padrão | Significado |
 |---|---|---|

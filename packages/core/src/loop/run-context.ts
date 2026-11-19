@@ -57,7 +57,14 @@ export interface RunContextSnapshot {
   /** Compact the history past this share of the context window (the user's setting; recorded). */
   compactionThreshold?: number;
   /** Rules and profile facts left out because they did not fit the size cap (recorded). */
-  memoryOmitted?: { count: number; chars: number; limitChars: number };
+  memoryOmitted?: {
+    count: number;
+    chars: number;
+    limitItems?: number;
+    ceilingChars?: number;
+    /** Only in a run recorded before the limit was counted in memories (it was in characters). */
+    limitChars?: number;
+  };
 }
 
 export interface LoopDeps {
