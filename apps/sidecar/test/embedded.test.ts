@@ -27,8 +27,17 @@ const IS_ROOT = typeof process.getuid === "function" && process.getuid() === 0;
 const CAN_RUN = !IS_ROOT || RUN_AS !== undefined;
 const TOKEN = "t".repeat(48);
 
+/** The processes whose command line has `match` (a path of this test, so nothing else matches). */
 function listProcesses(match: string): string[] {
-  if (process.platform === "win32") return [];
+  if (process.platform === "win32") {
+    const script =
+      "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine.Contains($env:SUUP_MATCH) } | ForEach-Object { $_.CommandLine }";
+    const out = execFileSync("powershell", ["-NoProfile", "-Command", script], {
+      encoding: "utf8",
+      env: { ...process.env, SUUP_MATCH: match },
+    });
+    return out.split("\n").filter((line) => line.trim() !== "");
+  }
   const out = execFileSync("ps", ["-eo", "pid,args"], { encoding: "utf8" });
   return out.split("\n").filter((line) => line.includes(match));
 }
@@ -69,7 +78,7 @@ describe.skipIf(!CAN_RUN)(
     beforeAll(() => {
       root = mkdtempSync(join(tmpdir(), "suup-embedded-"));
       // World-readable so the ordinary user can read what root wrote.
-      execFileSync("chmod", ["755", root]);
+      if (process.platform !== "win32") execFileSync("chmod", ["755", root]);
       execFileSync(process.execPath, [join(SIDECAR, "scripts", "prepare.mjs")], {
         env: { ...process.env, SUUP_PREPARE_OUT: root, SUUP_PREPARE_NO_NODE: "1" },
         stdio: "inherit",
@@ -256,6 +265,140 @@ describe.skipIf(!CAN_RUN)(
       again.stdin?.end();
       await new Promise<void>((resolve) => again.once("exit", () => resolve()));
       expect(listProcesses(join(appData, "postgres"))).toEqual([]);
+    });
+  },
+);
+
+// The same, with the bots' machine in Docker: the images come from the environment (CI builds them),
+// are tagged the way the app tags its own, and a shell command of a bot runs inside the container.
+describe.skipIf(!CAN_RUN || process.env.SUUP_DOCKER_TESTS !== "1")(
+  "the embedded server with the bots' machine in Docker",
+  { timeout: 300_000 },
+  () => {
+    it("reports Docker isolation and runs a bot's command inside the machine", async () => {
+      const sandboxImage = process.env.SUUP_SANDBOX_IMAGE ?? "suup-sandbox:dev";
+      const connectorImage = process.env.SUUP_CONNECTOR_IMAGE ?? "suup-connector-runner:dev";
+      execFileSync("docker", ["tag", sandboxImage, "suup-sandbox:app-dockertest"]);
+      execFileSync("docker", ["tag", connectorImage, "suup-connector-runner:app-dockertest"]);
+      const root = mkdtempSync(join(tmpdir(), "suup-embedded-docker-"));
+      if (process.platform !== "win32") execFileSync("chmod", ["755", root]);
+      execFileSync(process.execPath, [join(SIDECAR, "scripts", "prepare.mjs")], {
+        env: { ...process.env, SUUP_PREPARE_OUT: root, SUUP_PREPARE_NO_NODE: "1" },
+        stdio: "inherit",
+      });
+      const resources = join(root, "resources");
+      const appData = join(root, "app-data");
+      mkdirSync(appData, { recursive: true });
+      writeFileSync(
+        join(resources, "script.json"),
+        JSON.stringify({
+          cases: [
+            {
+              whenObjectiveContains: "ROTEIRO-DOCKER",
+              agent: [
+                {
+                  calls: [{ name: "shell", args: { command: "echo dentro-da-maquina; hostname" } }],
+                },
+                { text: "Rodei na máquina." },
+              ],
+            },
+          ],
+        }),
+      );
+      writeFileSync(
+        join(appData, "config.override.json"),
+        JSON.stringify({
+          providers: [
+            { id: "scripted", kind: "scripted", scriptPath: join(resources, "script.json") },
+          ],
+          models: [
+            { id: "model-x", provider: "scripted", contextWindow: 100000, maxOutputTokens: 4096 },
+          ],
+          reviewer: { model: "model-x" },
+          memory: { consolidation: { model: "model-x" } },
+        }),
+      );
+      if (IS_ROOT && RUN_AS !== undefined) {
+        const uid = Number(execFileSync("id", ["-u", RUN_AS], { encoding: "utf8" }));
+        execFileSync("chown", ["-R", String(uid), root]);
+      }
+      const env = {
+        ...process.env,
+        SUUP_APP_DATA: appData,
+        SUUP_RESOURCES: resources,
+        SUUP_PG_PASSWORD: "senha-do-banco-do-teste-1234",
+        SUUP_SERVER_TOKEN: TOKEN,
+        SUUP_VAULT_KEY: Buffer.alloc(32, 7).toString("base64"),
+        SUUP_APP_VERSION: "dockertest",
+      };
+      const bundle = join(resources, "sidecar", "sidecar.mjs");
+      const asOther = IS_ROOT && RUN_AS !== undefined;
+      const args = asOther
+        ? [
+            "-u",
+            RUN_AS as string,
+            ...(process.env.SUUP_TEST_RUN_GROUP === undefined
+              ? []
+              : ["-g", process.env.SUUP_TEST_RUN_GROUP]),
+            "--",
+            "env",
+            ...Object.entries(env)
+              .filter(([k]) => k.startsWith("SUUP_"))
+              .map(([k, v]) => `${k}=${v}`),
+            process.execPath,
+            bundle,
+          ]
+        : [bundle];
+      const proc = spawn(asOther ? "runuser" : process.execPath, args, {
+        env,
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      let out = "";
+      proc.stdout?.on("data", (c) => {
+        out += String(c);
+      });
+      try {
+        const deadline = Date.now() + 200_000;
+        while (!out.includes('"event":"ready"') && !out.includes('"event":"error"')) {
+          if (Date.now() > deadline) throw new Error(`não subiu: ${out}`);
+          await new Promise((r) => setTimeout(r, 200));
+        }
+        const readyLine = out
+          .split("\n")
+          .map(decodeEvent)
+          .find((e) => e?.event === "ready");
+        expect(readyLine, out).toBeDefined();
+        if (readyLine?.event !== "ready") return;
+        expect(readyLine.isolation).toEqual({ mode: "docker", reason: null, detail: null });
+        const api = createClient({ baseUrl: readyLine.url, token: TOKEN });
+        const [main] = await api.bots.list();
+        const conversation = await api.bots.openConversation(main?.id as string);
+        await api.conversations.send(conversation.id, "ROTEIRO-DOCKER");
+        const until = Date.now() + 120_000;
+        for (;;) {
+          const { items } = await api.conversations.messages(conversation.id);
+          if (items.some((m) => m.text === "Rodei na máquina.")) break;
+          // A command may ask for the owner's OK first: say yes, as the owner would in a card.
+          for (const card of await api.approvals.list({ status: "pending" })) {
+            await api.approvals.decide(card.id, { decision: "approve" });
+          }
+          if (Date.now() > until) throw new Error("o bot não terminou na máquina isolada");
+          await new Promise((r) => setTimeout(r, 200));
+        }
+        const machine = execFileSync(
+          "docker",
+          ["inspect", "--format", "{{.State.Running}}", "suup-machine"],
+          { encoding: "utf8" },
+        );
+        expect(machine.trim()).toBe("true");
+      } finally {
+        proc.stdin?.write("stop\n");
+        await new Promise<void>((resolve) => {
+          proc.once("exit", () => resolve());
+          setTimeout(() => proc.kill("SIGKILL"), 60_000);
+        });
+        execFileSync("docker", ["rm", "--force", "suup-machine"], { stdio: "ignore" });
+      }
     });
   },
 );

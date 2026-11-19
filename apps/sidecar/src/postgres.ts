@@ -110,6 +110,8 @@ export class EmbeddedPostgres {
         "--locale=C",
         "--locale-provider=builtin",
         "--builtin-locale=C.UTF-8",
+        // The search configuration the app's migrations use by name; also the cluster's default.
+        "--text-search-config=portuguese",
         "--no-instructions",
       ]);
       if (done.code !== 0) throw new Error(`initdb falhou (código ${done.code}): ${done.stderr}`);
