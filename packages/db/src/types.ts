@@ -99,6 +99,11 @@ export interface Run {
   pausedAt?: Date | null;
   /** A hard interrupt was asked for and the worker holding the run has not obeyed it yet. */
   interruptRequestedAt?: Date | null;
+  /**
+   * An evaluation run (`suup eval`): it never reads the user's memory and never writes to it, not
+   * even the journal entry at its end. Always present on runs read through this package.
+   */
+  isolated?: boolean;
   createdAt: Date;
   updatedAt: Date;
   startedAt: Date | null;

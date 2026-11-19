@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { createDb } from "@suup/db";
-import { parseConfig, type RuntimeConfig } from "@suup/runtime";
+import { createDb, getRun, listMemories } from "@suup/db";
+import { finishRun, parseConfig, type RuntimeConfig, reconcileRunEffects } from "@suup/runtime";
 import { describe, expect, it } from "vitest";
 import {
   type CellResult,
@@ -125,6 +125,19 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("the evaluation runner, end to end"),
         "web_fetch",
       ].sort(),
     );
+
+    // Isolated at the end too: the run is marked, and no journal entry is written for it, not by
+    // the end-of-run effects and not later by the reconciliation any worker runs at its start.
+    const runId = found.runId as string;
+    expect((await getRun(ctx.db, runId))?.isolated).toBe(true);
+    await finishRun(ctx.db, runId);
+    expect(await reconcileRunEffects(ctx.db)).not.toContain(runId);
+    const journal = await listMemories(ctx.db, {
+      layer: "journal",
+      includeArchived: true,
+      limit: 200,
+    });
+    expect(journal.filter((m) => m.sourceRunId === runId)).toEqual([]);
   });
 
   it("runs a 2 task x 2 model matrix: metrics, failure origins, reports and history", async () => {

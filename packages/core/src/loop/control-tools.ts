@@ -5,6 +5,7 @@ import {
   escalateOptionSchema,
   escalateQuestionSchema,
   type PlanStep,
+  type UncheckedItem,
 } from "../events.js";
 import type { JsonObject } from "../messages.js";
 import type { ToolSpec } from "../provider.js";
@@ -174,30 +175,91 @@ export function normalizeEscalateInput(
   return { ok: true, questions, text };
 }
 
-const discrepanciesField = z
-  .array(
-    z.object({
-      claimed: z.string().describe("What the assistant's work or evidence claims."),
-      shows: z.string().describe("What the tool results or files actually show instead."),
-      where: z
-        .string()
-        .describe('Where to see it: a digest id ("#3"), a file path, or an acceptance criterion.'),
-    }),
-  )
-  .optional()
-  .describe(
-    "REQUIRED when verdict is reject, at least one entry: each concrete discrepancy, as what the work claims / what the evidence shows / where. A reject without it is not accepted. If you cannot name one, answer approve or cannot_verify instead.",
-  );
+/**
+ * The discrepancies the reviewer lists. `real_mismatch` is the reviewer's own statement that the
+ * entry is a real difference between the claim and the evidence; one it marks `false` is dropped
+ * (a thing it checked and found matching). It is required for the model; reading it is lenient (see
+ * `verdictParseSchema`), so a missing flag costs a re-ask and not an approval by default.
+ */
+function discrepanciesField(flagRequired: boolean) {
+  const flag = z
+    .boolean()
+    .describe(
+      "true ONLY if what the evidence shows really DIFFERS from what the work claims. false if you checked and they match, or you found no real difference: such an entry is discarded. Things that match do not belong here (put them in `notes`).",
+    );
+  return z
+    .array(
+      z.object({
+        claimed: z.string().describe("What the assistant's work or evidence claims."),
+        shows: z
+          .string()
+          .describe("What the tool results or files actually show instead (a real difference)."),
+        where: z
+          .string()
+          .describe(
+            'Where to see it: a digest id ("#3"), a file path, or an acceptance criterion.',
+          ),
+        real_mismatch: flagRequired ? flag : flag.optional(),
+      }),
+    )
+    .optional()
+    .describe(
+      "Only for a reject: the REAL mismatches between the claim and the evidence, at least one, each with real_mismatch true. This is not a list of what you checked and found correct (that goes in `notes`). A reject with no real mismatch is not accepted: if you found none, answer approve or cannot_verify.",
+    );
+}
 
-/** The discrepancies of a reject that are usable: all three parts written. */
-export function validDiscrepancies(list: readonly Discrepancy[] | undefined): Discrepancy[] {
+/** What the reviewer says it could not check: what, and the reference it would need. */
+function uncheckedField(flagRequired: boolean) {
+  const item = z.object({
+    what: z.string().describe("The claim or fact you could not check."),
+    kind: flagRequired
+      ? z
+          .enum(["result", "call", "file", "other"])
+          .describe(
+            'What you would need: "result" (a tool result), "call" (the arguments of a tool call), "file" (a workspace file) or "other".',
+          )
+      : z.enum(["result", "call", "file", "other"]).optional(),
+    ref: flagRequired
+      ? z
+          .string()
+          .describe('The digest id ("#3"), the file path, or the reference of what you would need.')
+      : z.string().optional(),
+  });
+  const list = z
+    .array(item)
+    .describe(
+      "Only for cannot_verify, at least one: each thing you could NOT check, with what you would need to check it. Do not list what the digest or the evidence already showed you in full.",
+    );
+  return flagRequired ? list.optional() : list.optional().catch(undefined);
+}
+
+/** The discrepancies of a reject that are usable: all three parts written and marked as a real mismatch. */
+export function validDiscrepancies(
+  list: readonly (Discrepancy & { real_mismatch?: boolean | undefined })[] | undefined,
+): Discrepancy[] {
   return (list ?? [])
+    .filter((d) => d.real_mismatch === true)
     .map((d) => ({
       claimed: d.claimed.trim(),
       shows: d.shows.trim(),
       where: d.where.trim(),
     }))
     .filter((d) => d.claimed !== "" && d.shows !== "" && d.where !== "");
+}
+
+/** The unchecked items that name something (`what` written); kind and reference default to `other` / "". */
+export function validUnchecked(
+  list:
+    | readonly {
+        what: string;
+        kind?: UncheckedItem["kind"] | undefined;
+        ref?: string | undefined;
+      }[]
+    | undefined,
+): UncheckedItem[] {
+  return (list ?? [])
+    .map((u) => ({ what: u.what.trim(), kind: u.kind ?? "other", ref: (u.ref ?? "").trim() }))
+    .filter((u) => u.what !== "");
 }
 
 /** The discrepancies as a numbered list, for the assistant (and the user) to act on. */
@@ -214,35 +276,44 @@ export function formatDiscrepancies(list: readonly Discrepancy[]): string {
  * What the reviewer may answer. `need_evidence` asks the harness for items the digest only shows
  * in part (`results`: digest entries like "#3" or call ids; `calls`: the full ARGUMENTS of tool
  * calls, such as a script written inside a shell command; `files`: workspace paths);
- * `cannot_verify` says that something stayed unchecked even with the evidence. A `reject` must
- * carry `discrepancies` (checked by `parseVerdict`, not by the schema, so the reviewer can be asked
- * again instead of failing the call).
+ * `cannot_verify` says that something stayed unchecked even with the evidence, and lists it in
+ * `unchecked`. A `reject` must carry `discrepancies` with at least one `real_mismatch: true`, and a
+ * `cannot_verify` an `unchecked` that names something the harness had not already sent in full. Both
+ * are checked by `parseVerdict` and `finish.ts`, not by the schema, so the reviewer can be asked
+ * again instead of failing the call. `strict` is the schema the model sees (the flags required);
+ * reading uses the lenient one (`verdictParseSchema`).
  */
-export const verdictInputSchema = z.object({
-  verdict: z.enum(["approve", "reject", "need_evidence", "cannot_verify"]),
-  notes: z
-    .string()
-    .describe(
-      "Short explanation. Reject: what the assistant should fix. need_evidence: what you will check. cannot_verify: exactly what could not be verified.",
-    ),
-  discrepancies: discrepanciesField,
-  results: z
-    .array(z.string())
-    .optional()
-    .describe(
-      'need_evidence: tool RESULTS (what the tool returned) to see in full, as in the digest ("#3") or by call id.',
-    ),
-  calls: z
-    .array(z.string())
-    .optional()
-    .describe(
-      'need_evidence: tool CALLS whose full ARGUMENTS (the whole command, the content written to a file) you want to see, as in the digest ("#3"). Use it when the digest marks ARGUMENTS SHORTENED. Different from `results`.',
-    ),
-  files: z
-    .array(z.string())
-    .optional()
-    .describe("need_evidence: workspace files to read in full, by relative path."),
-});
+function verdictShape(strict: boolean) {
+  return z.object({
+    verdict: z.enum(["approve", "reject", "need_evidence", "cannot_verify"]),
+    notes: z
+      .string()
+      .describe(
+        "Short explanation. Reject: what the assistant should fix. need_evidence: what you will check. cannot_verify: what could not be verified. Put here what you checked and found correct, if useful.",
+      ),
+    discrepancies: discrepanciesField(strict),
+    unchecked: uncheckedField(strict),
+    results: z
+      .array(z.string())
+      .optional()
+      .describe(
+        'need_evidence: tool RESULTS (what the tool returned) to see in full, as in the digest ("#3") or by call id.',
+      ),
+    calls: z
+      .array(z.string())
+      .optional()
+      .describe(
+        'need_evidence: tool CALLS whose full ARGUMENTS (the whole command, the content written to a file) you want to see, as in the digest ("#3"). Use it when the digest marks ARGUMENTS SHORTENED. Different from `results`.',
+      ),
+    files: z
+      .array(z.string())
+      .optional()
+      .describe("need_evidence: workspace files to read in full, by relative path."),
+  });
+}
+
+export const verdictInputSchema = verdictShape(true);
+export const verdictParseSchema = verdictShape(false);
 
 function toolSpec(name: string, description: string, schema: z.ZodType): ToolSpec {
   const json = z.toJSONSchema(schema, { io: "input", unrepresentable: "any" }) as JsonObject;
@@ -265,9 +336,10 @@ const finalVerdictInputSchema = z.object({
   notes: z
     .string()
     .describe(
-      "Short explanation. Reject: what the assistant should fix. cannot_verify: exactly what could not be verified.",
+      "Short explanation. Reject: what the assistant should fix. cannot_verify: what could not be verified. Put here what you checked and found correct, if useful.",
     ),
-  discrepancies: discrepanciesField,
+  discrepancies: verdictInputSchema.shape.discrepancies,
+  unchecked: verdictInputSchema.shape.unchecked,
 });
 
 export function verdictToolSpec(canAskEvidence = true): ToolSpec {

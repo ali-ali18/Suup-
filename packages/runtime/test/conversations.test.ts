@@ -403,6 +403,48 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("conversation engine"), () => {
       await runtime.close();
     });
 
+    it("an isolated run (an evaluation) never writes a journal entry, neither by the hook nor by reconcile", async () => {
+      const runtime = await open({
+        agent: [
+          { calls: [call("shell", { command: "echo oi" })] },
+          { text: "Fiz." },
+          { calls: [call("shell", { command: "echo oi" })] },
+          { text: "Fiz de novo." },
+        ],
+      });
+      const bot = await newBot(runtime);
+      const objective = "tarefa de avaliação";
+      const isolated = await runtime.createRun({ botId: bot.id, objective, isolated: true });
+      const normal = await runtime.createRun({ botId: bot.id, objective });
+      expect((await getRun(runtime.db, isolated.id))?.isolated).toBe(true);
+      expect((await getRun(runtime.db, normal.id))?.isolated).toBe(false);
+
+      for (const run of [isolated, normal]) {
+        await claimRun(runtime.db, run.id, "worker-x");
+        // No explicit option: the run itself says it is isolated.
+        const deps = await runtime.buildDeps(run.id, "worker-x");
+        expect(await runLoop(deps, run.id)).toBe("done");
+        if (run === isolated) {
+          expect(deps.loadRunContext).toBeUndefined();
+          expect(deps.memoryFor).toBeUndefined();
+        }
+      }
+      // The hook, any number of times, and the reconciliation that a worker runs at its start.
+      for (let i = 0; i < 2; i++)
+        expect((await finishRun(runtime.db, isolated.id)).journalWritten).toBe(false);
+      const touched = await reconcileRunEffects(runtime.db);
+      expect(touched).not.toContain(isolated.id);
+      expect(touched).toContain(normal.id);
+
+      const journal = await listMemories(runtime.db, {
+        layer: "journal",
+        botId: bot.id,
+        limit: 10,
+      });
+      expect(journal.map((m) => m.sourceRunId)).toEqual([normal.id]);
+      await runtime.close();
+    });
+
     it("a run that ended before the hook ran (the process died) is caught up, once, by reconcile", async () => {
       const runtime = await open({
         agent: [{ calls: [call("shell", { command: "echo oi" })] }, { text: "Fiz." }],

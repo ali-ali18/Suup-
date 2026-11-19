@@ -14,6 +14,9 @@ export const SECRET_PATTERNS: readonly RegExp[] = [
 
 export const REDACTED = "[segredo removido]";
 
+/** Começo de uma marca já posta: nenhuma regra volta a casar sobre ela (as regras são idempotentes). */
+const MARKER_START = "\\[segredo removido\\]";
+
 const KEYWORDS =
   "password|passwd|passphrase|senha|secret|segredo|token|api[ _-]?key|chave|pin|cvv|código|codigo";
 
@@ -27,7 +30,7 @@ const REDACTIONS: readonly [RegExp, string][] = [
   // "senha ... é X", "password: X", "token = X": até 6 palavras entre a palavra-chave e o valor.
   [
     new RegExp(
-      `((?<![\\p{L}\\d])(?:${KEYWORDS})(?![\\p{L}\\d])(?:\\s+[^\\s:=]+){0,6}?\\s*(?:(?<![\\p{L}\\d])(?:is|é|são|are)(?![\\p{L}\\d])|:|=)\\s*)["'“”‘’\`]?[^\\s"'“”‘’\`]{4,}["'“”‘’\`]?`,
+      `((?<![\\p{L}\\d])(?:${KEYWORDS})(?![\\p{L}\\d])(?:\\s+[^\\s:=]+){0,6}?\\s*(?:(?<![\\p{L}\\d])(?:is|é|são|are)(?![\\p{L}\\d])|:|=)\\s*)["'“”‘’\`]?(?!${MARKER_START})[^\\s"'“”‘’\`]{4,}["'“”‘’\`]?`,
       "giu",
     ),
     `$1${REDACTED}`,

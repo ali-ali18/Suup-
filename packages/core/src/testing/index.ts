@@ -9,6 +9,7 @@ export {
   bareReject,
   CrashingStore,
   call,
+  cannotVerify,
   createRig,
   eventsOfType,
   eventTypes,

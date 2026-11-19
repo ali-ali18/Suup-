@@ -4,10 +4,10 @@
 // an explicit mark of what was cut or left out), and how the answer is written down so that resume
 // and replay rebuild exactly the same conversation. How it is shown is in `evidence-render.ts`.
 
-import type { RunEventPayload } from "../events.js";
+import type { RunEventPayload, UncheckedItem } from "../events.js";
 import type { JsonValue } from "../messages.js";
 import type { LoopContext } from "./run-context.js";
-import type { ToolLogEntry } from "./state.js";
+import { ARGS_SNIPPET, type ToolLogEntry } from "./state.js";
 
 /**
  * How many times the reviewer may ask for evidence in one review. Then it must decide. Three, not
@@ -110,6 +110,33 @@ function findEntry(
   const at = log.findIndex((e) => e.callId === text);
   const entry = log[at];
   return entry === undefined ? undefined : { entry, index: at + 1 };
+}
+
+/**
+ * Whether the reviewer already has the whole of what it says it could not check: a file or a tool
+ * result or call that an evidence round supplied with nothing cut, or that the digest itself shows
+ * whole (a short result, short arguments). Only the harness knows this; an `other` item, or a
+ * reference that names nothing, is never "already sent". Deterministic: it reads only the state
+ * rebuilt from the log.
+ */
+export function alreadySentInFull(
+  rounds: readonly EvidencePayload[],
+  log: readonly ToolLogEntry[],
+  item: UncheckedItem,
+): boolean {
+  const supplied = rounds.flatMap((r) => r.supplied);
+  const ref = item.ref.trim();
+  if (item.kind === "file") {
+    return supplied.some((s) => s.kind === "file" && s.ref === ref && s.sent === s.chars);
+  }
+  if (item.kind !== "result" && item.kind !== "call") return false;
+  const found = findEntry(log, ref);
+  if (found === undefined) return false;
+  const kind = item.kind === "result" ? "tool_result" : "tool_call";
+  if (supplied.some((s) => s.kind === kind && s.ref === found.entry.callId && s.sent === s.chars)) {
+    return true;
+  }
+  return item.kind === "result" ? found.entry.tail === "" : found.entry.argsLength <= ARGS_SNIPPET;
 }
 
 /** What the log holds in full, by call id: the content of each result and the arguments of each call. */

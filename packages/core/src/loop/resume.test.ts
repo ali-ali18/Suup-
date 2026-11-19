@@ -4,6 +4,7 @@ import {
   bareReject,
   CrashingStore,
   call,
+  cannotVerify,
   createRig,
   eventsOfType,
   FakeProvider,
@@ -157,6 +158,35 @@ const scenarios: Scenario[] = [
     name: "the reviewer rejects twice without a discrepancy: unverified, handed to the user",
     script: [use(finishCall("c1", "Done.")), use(finishCall("c2", "Done, accepted."))],
     reviewerScript: [bareReject("not sure"), bareReject("still not sure")],
+    answer: "Accept it.",
+  },
+  {
+    name: "the reviewer rejects with discrepancies it marks as not real, is asked again, then approves",
+    script: [use(finishCall("c1", "Done."))],
+    reviewerScript: [
+      verdict("reject", "everything matches", [
+        { claimed: "CNPJ", shows: "matches; no discrepancy", where: "#1", real_mismatch: false },
+      ]),
+      verdict("approve"),
+    ],
+  },
+  {
+    name: "the reviewer cannot_verify naming nothing, is asked again, then approves",
+    script: [use(finishCall("c1", "Done."))],
+    reviewerScript: [cannotVerify("it all checks out"), verdict("approve")],
+  },
+  {
+    name: "the reviewer cannot_verify something already sent in full, twice: unverified, handed to the user",
+    files: { "report.md": "Total: 42\n" },
+    script: [
+      use(finishCall("c1", "Total is 42.")),
+      use(finishCall("c2", "Total is 42, accepted.")),
+    ],
+    reviewerScript: [
+      needEvidence("v1", "need the report", { files: ["report.md"] }),
+      cannotVerify("cannot check", [{ what: "the total", kind: "file", ref: "report.md" }]),
+      cannotVerify("still cannot", [{ what: "the total", kind: "file", ref: "report.md" }]),
+    ],
     answer: "Accept it.",
   },
   {

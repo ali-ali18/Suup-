@@ -3,6 +3,7 @@ import { replayRun } from "../replay.js";
 import {
   bareReject,
   call,
+  cannotVerify,
   createRig,
   eventsOfType,
   finishCall,
@@ -237,5 +238,138 @@ describe("review: a reject must name a concrete discrepancy", () => {
     const report = await replayRun(await rig.events(), { bot: rig.bot });
     expect(report.identical).toBe(true);
     expect(report.requestDiffs).toEqual([]);
+  });
+});
+
+describe("review: a reject whose discrepancies are not real mismatches", () => {
+  const notReal = [
+    {
+      claimed: "CNPJ 0001-95",
+      shows: "matches; no discrepancy",
+      where: "#1",
+      real_mismatch: false,
+    },
+  ];
+
+  it("is a bare reject: asked once more, and approving then is an approval", async () => {
+    const rig = createRig({
+      script: [use(finishCall("c1", "Done."))],
+      reviewerScript: [verdict("reject", "all checks out", notReal), verdict("approve")],
+    });
+    expect(await rig.run()).toBe("done");
+    const events = await rig.events();
+    expect(eventsOfType(events, "review_reprompt")).toHaveLength(1);
+    expect(eventsOfType(events, "review").map((e) => e.payload.verdict)).toEqual(["approve"]);
+    // The reviewer sees what became of its entries, and that matches go in the notes.
+    expect(allText(rig, 1)).toContain("The 1 entry you listed was discarded");
+    expect(allText(rig, 1)).toContain("what matched goes in `notes`");
+    const report = await replayRun(events, { bot: rig.bot });
+    expect(report.identical).toBe(true);
+  });
+
+  it("twice is unverified, not a rejection, and a real one in the second answer stands", async () => {
+    const twice = createRig({
+      script: [use(finishCall("c1", "Done.")), use(finishCall("c2", "Done."))],
+      reviewerScript: [
+        verdict("reject", "fine", notReal),
+        verdict("reject", "still fine", notReal),
+      ],
+    });
+    expect(await twice.run()).toBe("waiting_user");
+    const [review] = eventsOfType(await twice.events(), "review");
+    expect(review?.payload.verdict).toBe("unverified");
+    expect(review?.payload.discrepancies).toBeUndefined();
+
+    const real = createRig({
+      script: [use(finishCall("c1", "Total 42.")), use(finishCall("c2", "Total 41."))],
+      reviewerScript: [
+        verdict("reject", "fine", notReal),
+        verdict("reject", "wrong total", [
+          { claimed: "Total 42", shows: "report says 41", where: "#1", real_mismatch: true },
+        ]),
+        verdict("approve"),
+      ],
+    });
+    expect(await real.run()).toBe("done");
+    const [rejected] = eventsOfType(await real.events(), "review");
+    expect(rejected?.payload.discrepancies).toHaveLength(1);
+  });
+});
+
+describe("review: cannot_verify must name something the reviewer lacks", () => {
+  it("naming nothing is asked once more; approving then is an approval", async () => {
+    const rig = createRig({
+      script: [use(finishCall("c1", "Done."))],
+      reviewerScript: [cannotVerify("most of it checks out"), verdict("approve")],
+    });
+    expect(await rig.run()).toBe("done");
+    const events = await rig.events();
+    expect(eventsOfType(events, "review_reprompt")).toHaveLength(1);
+    expect(allText(rig, 1)).toContain("you listed nothing");
+    expect(eventsOfType(events, "review").map((e) => e.payload.verdict)).toEqual(["approve"]);
+    expect((await replayRun(events, { bot: rig.bot })).identical).toBe(true);
+  });
+
+  it("naming only what was sent in full is asked again, and said so", async () => {
+    const rig = createRig({
+      script: [use(call("c1", "echo", { text: "hi" })), use(finishCall("c2", "Done."))],
+      reviewerScript: [
+        needEvidence("v1", "the contract", { files: ["contrato.md"] }),
+        cannotVerify("cannot check the CNPJ", [
+          { what: "the CNPJ", kind: "file", ref: "contrato.md" },
+        ]),
+        verdict("approve"),
+      ],
+    });
+    await rig.executor.writeFile("contrato.md", "CNPJ 12.345.678/0001-95");
+    expect(await rig.run()).toBe("done");
+    const events = await rig.events();
+    expect(eventsOfType(events, "review_reprompt")).toHaveLength(1);
+    expect(allText(rig, 2)).toContain(
+      "already sent to you in full in this review (file contrato.md)",
+    );
+    expect((await replayRun(events, { bot: rig.bot })).identical).toBe(true);
+  });
+
+  it("the same answer again stays unverified, recorded as naming nothing, and the owner is told", async () => {
+    const rig = createRig({
+      script: [use(call("c1", "echo", { text: "hi" })), use(finishCall("c2", "Done."))],
+      reviewerScript: [
+        cannotVerify("hmm", [{ what: "result of the echo", kind: "result", ref: "#1" }]),
+        cannotVerify("still hmm", [{ what: "result of the echo", kind: "result", ref: "#1" }]),
+      ],
+    });
+    expect(await rig.run()).toBe("waiting_user");
+    const events = await rig.events();
+    const [review] = eventsOfType(events, "review");
+    expect(review?.payload).toMatchObject({ verdict: "unverified", namedNothing: true });
+    expect(eventsOfType(events, "review_reprompt")).toHaveLength(1);
+    const question = eventsOfType(events, "escalated")[0]?.payload.question ?? "";
+    expect(question).toContain(
+      "did not name anything it lacked that it had not already been given",
+    );
+    expect(question).toContain("had already been sent to it in full");
+    expect((await replayRun(events, { bot: rig.bot })).identical).toBe(true);
+  });
+
+  it("an item it really lacks is kept, with no re-ask, and shown to the owner", async () => {
+    const rig = createRig({
+      script: [use(finishCall("c1", "Done."))],
+      reviewerScript: [
+        cannotVerify("the CNPJ", [
+          { what: "the CNPJ in the summary", kind: "file", ref: "contrato.md" },
+          { what: "the echo", kind: "result", ref: "#9" },
+        ]),
+      ],
+    });
+    expect(await rig.run()).toBe("waiting_user");
+    const events = await rig.events();
+    expect(eventsOfType(events, "review_reprompt")).toHaveLength(0);
+    const [review] = eventsOfType(events, "review");
+    expect(review?.payload.unchecked).toHaveLength(2);
+    expect(review?.payload.namedNothing).toBeUndefined();
+    expect(eventsOfType(events, "escalated")[0]?.payload.question).toContain(
+      "- the CNPJ in the summary (needs: file contrato.md)",
+    );
   });
 });

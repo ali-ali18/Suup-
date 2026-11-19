@@ -15,6 +15,7 @@ import {
   use,
   verdict,
 } from "../testing/index.js";
+import { verdictToolSpec } from "./control-tools.js";
 import { buildReviewDigest, parseVerdict } from "./reviewer.js";
 import type { ToolLogEntry } from "./state.js";
 
@@ -326,7 +327,7 @@ describe("parseVerdict", () => {
       verdictCall({
         verdict: "reject",
         notes: "wrong",
-        discrepancies: [{ claimed: "42", shows: " ", where: "#1" }],
+        discrepancies: [{ claimed: "42", shows: " ", where: "#1", real_mismatch: true }],
       }),
     );
     expect(parsed.invalidReject).toBeDefined();
@@ -337,13 +338,95 @@ describe("parseVerdict", () => {
       verdictCall({
         verdict: "reject",
         notes: "fix the total",
-        discrepancies: [{ claimed: "Total 42", shows: "report says 41", where: "#2" }],
+        discrepancies: [
+          { claimed: "Total 42", shows: "report says 41", where: "#2", real_mismatch: true },
+        ],
       }),
     );
     expect(parsed.invalidReject).toBeUndefined();
     expect(parsed.discrepancies).toEqual([
       { claimed: "Total 42", shows: "report says 41", where: "#2" },
     ]);
+  });
+
+  it("an entry the reviewer marks as not a real mismatch is dropped; none left is a bare reject", () => {
+    const parsed = parseVerdict(
+      verdictCall({
+        verdict: "reject",
+        notes: "all matches",
+        discrepancies: [
+          {
+            claimed: "CNPJ 0001-95",
+            shows: "matches; no discrepancy",
+            where: "#2",
+            real_mismatch: false,
+          },
+          { claimed: "Total 42", shows: "consistent", where: "#3", real_mismatch: false },
+        ],
+      }),
+    );
+    expect(parsed.discrepancies).toEqual([]);
+    expect(parsed.invalidReject).toContain("at least one concrete discrepancy");
+    expect(parsed.invalidReject).toContain("The 2 entries you listed were discarded");
+  });
+
+  it("keeps only the real ones when real and not-real entries are mixed", () => {
+    const parsed = parseVerdict(
+      verdictCall({
+        verdict: "reject",
+        notes: "one is wrong",
+        discrepancies: [
+          { claimed: "a", shows: "same", where: "#1", real_mismatch: false },
+          { claimed: "Total 42", shows: "report says 41", where: "#2", real_mismatch: true },
+        ],
+      }),
+    );
+    expect(parsed.invalidReject).toBeUndefined();
+    expect(parsed.discrepancies).toEqual([
+      { claimed: "Total 42", shows: "report says 41", where: "#2" },
+    ]);
+  });
+
+  it("an entry without the flag is not confirmed: it is dropped, not an approval by default", () => {
+    const parsed = parseVerdict(
+      verdictCall({
+        verdict: "reject",
+        notes: "x",
+        discrepancies: [{ claimed: "a", shows: "b", where: "#1" }],
+      }),
+    );
+    expect(parsed.verdict).toBe("reject");
+    expect(parsed.warning).toBeUndefined();
+    expect(parsed.invalidReject).toBeDefined();
+  });
+
+  it("the verdict tool asks for the flag (and the unchecked list) in its schema", () => {
+    const schema = JSON.stringify(verdictToolSpec(true).inputSchema);
+    expect(schema).toContain('"required":["claimed","shows","where","real_mismatch"]');
+    expect(schema).toContain('"required":["what","kind","ref"]');
+    expect(JSON.stringify(verdictToolSpec(false).inputSchema)).toContain("real_mismatch");
+  });
+
+  it("reads what a cannot_verify says it lacked; a malformed list is empty, not an approval", () => {
+    const parsed = parseVerdict(
+      verdictCall({
+        verdict: "cannot_verify",
+        notes: "n",
+        unchecked: [
+          { what: "the CNPJ", kind: "file", ref: "contrato.md" },
+          { what: " ", kind: "other", ref: "" },
+          { what: "the total" },
+        ],
+      }),
+    );
+    expect(parsed.unchecked).toEqual([
+      { what: "the CNPJ", kind: "file", ref: "contrato.md" },
+      { what: "the total", kind: "other", ref: "" },
+    ]);
+    const bad = parseVerdict(verdictCall({ verdict: "cannot_verify", notes: "n", unchecked: "x" }));
+    expect(bad.verdict).toBe("cannot_verify");
+    expect(bad.unchecked).toEqual([]);
+    expect(bad.warning).toBeUndefined();
   });
 
   it("an approval or cannot_verify needs no discrepancy", () => {

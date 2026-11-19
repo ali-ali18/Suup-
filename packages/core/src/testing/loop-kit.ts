@@ -53,11 +53,16 @@ export const finishCall = (
   evidence: { criterion: string; evidence: string }[] = [],
 ): Block => call(id, "finish", { summary, evidence });
 
-/** A verdict. A `reject` carries one discrepancy built from the notes unless `discrepancies` is given. */
+/**
+ * A verdict. A `reject` carries one real discrepancy built from the notes unless `discrepancies` is
+ * given (each is marked `real_mismatch: true` unless it says otherwise); a `cannot_verify` lists one
+ * unchecked item of kind `other` built from the notes unless `unchecked` is given.
+ */
 export const verdict = (
   v: "approve" | "reject" | "cannot_verify",
   notes = "ok",
-  discrepancies?: { claimed: string; shows: string; where: string }[],
+  discrepancies?: { claimed: string; shows: string; where: string; real_mismatch?: boolean }[],
+  unchecked?: { what: string; kind: "result" | "call" | "file" | "other"; ref: string }[],
 ): FakeResponse =>
   use(
     call("v", "verdict", {
@@ -65,13 +70,22 @@ export const verdict = (
       notes,
       ...(v === "reject"
         ? {
-            discrepancies: discrepancies ?? [
-              { claimed: "the summary and evidence", shows: notes, where: "#1" },
-            ],
+            discrepancies: (
+              discrepancies ?? [{ claimed: "the summary and evidence", shows: notes, where: "#1" }]
+            ).map((d) => ({ real_mismatch: true, ...d })),
           }
+        : {}),
+      ...(v === "cannot_verify"
+        ? { unchecked: unchecked ?? [{ what: notes, kind: "other", ref: "n/a" }] }
         : {}),
     }),
   );
+
+/** A `cannot_verify` with the given `unchecked` list (empty by default: it names nothing). */
+export const cannotVerify = (
+  notes: string,
+  unchecked: { what: string; kind: "result" | "call" | "file" | "other"; ref: string }[] = [],
+): FakeResponse => use(call("v", "verdict", { verdict: "cannot_verify", notes, unchecked }));
 
 /** A `reject` that names no discrepancy: the harness must not take it as a rejection. */
 export const bareReject = (notes: string): FakeResponse =>

@@ -83,7 +83,7 @@ export interface BuildDepsOptions {
    * Runs the loop with no memory at all: no rules, profile or conversation history are loaded
    * (so no `context_loaded` carries anything from the database) and the memory tools have no
    * `MemoryService` behind them. For evaluations, which must measure the harness and the model,
-   * never what a real user once told the system. Default `false`.
+   * never what a real user once told the system. Default: what the run says (`runs.isolated`).
    */
   isolated?: boolean;
 }
@@ -109,6 +109,8 @@ export interface Runtime {
     botId: string;
     objective: string;
     acceptanceCriteria?: string[];
+    /** An evaluation run: isolated from the user's memory, now and at its end (no journal). */
+    isolated?: boolean;
   }): Promise<Run>;
   buildDeps(runId: string, workerId: string, options?: BuildDepsOptions): Promise<LoopDeps>;
   createWorker(options?: CreateWorkerOptions): Worker;
@@ -370,7 +372,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
       bot: cfg,
       ...(reviewer === undefined ? {} : { reviewer }),
       // An isolated run (an evaluation) gets neither: nothing of the user's memory reaches it.
-      ...(buildOptions.isolated === true
+      ...((buildOptions.isolated ?? run.isolated) === true
         ? {}
         : {
             loadRunContext: (id: string) =>
@@ -440,6 +442,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
         ...(input.acceptanceCriteria === undefined
           ? {}
           : { acceptanceCriteria: input.acceptanceCriteria }),
+        ...(input.isolated === true ? { isolated: true } : {}),
       });
     },
     buildDeps,

@@ -73,7 +73,7 @@ export function renderEvidence(
   const next =
     left > 0
       ? `You may ask for evidence ${left} more time(s).${pending} Otherwise decide now.`
-      : `That was the last evidence round.${omitted.length > 0 ? " The items left out for budget stay unverified." : ""} Decide now with the \`verdict\` tool: "approve", "reject" (only for a concrete discrepancy, listed in \`discrepancies\`) or "cannot_verify" (say exactly what you could not verify).`;
+      : `That was the last evidence round.${omitted.length > 0 ? " The items left out for budget stay unverified." : ""} Decide now with the \`verdict\` tool: "approve", "reject" (only for a real mismatch, listed in \`discrepancies\` with \`real_mismatch\` true) or "cannot_verify" (list what you could not verify in \`unchecked\`).`;
   return [
     `Evidence round ${payload.round} of ${EVIDENCE_MAX_ROUNDS}.`,
     ...blocks,

@@ -19,6 +19,18 @@ describe("redactSecrets (best effort)", () => {
     expect(out).toContain(REDACTED);
   });
 
+  it("never doubles the marker when two rules match the same value", () => {
+    // `sk-...` casa a regra da chave conhecida e, depois dela, a de "palavra-chave = valor".
+    const once = redactSecrets("api_key=sk-live-ZZ99yy88xx77ww66vv55uu44tt");
+    expect(once).toBe(`api_key=${REDACTED}`);
+    const quoted = redactSecrets('token: "ghp_abcdefghijklmnopqrstuvwxyz0123"');
+    expect(quoted).toBe(`token: "${REDACTED}"`);
+    // Aplicar de novo não muda nada (idempotente).
+    expect(redactSecrets(once)).toBe(once);
+    expect(redactSecrets(`senha é ${REDACTED}`)).toBe(`senha é ${REDACTED}`);
+    expect((once.match(/removido/g) ?? []).length).toBe(1);
+  });
+
   it("leaves ordinary text alone", () => {
     for (const text of [
       "Hoje almocei macarrão.",

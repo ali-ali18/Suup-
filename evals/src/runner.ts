@@ -473,6 +473,8 @@ async function executeCell(
       botId: bot.id,
       objective: task.objective,
       acceptanceCriteria: task.criteria,
+      // Isolated also at the end: no journal entry, now or later by reconciliation.
+      isolated: true,
     });
     result.runId = run.id;
 

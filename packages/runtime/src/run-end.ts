@@ -191,7 +191,8 @@ export async function finishRun(db: Db, runId: string): Promise<RunEffects> {
     }
   }
   if (terminal) {
-    if (!(await isPlainChat(db, run))) {
+    // Uma execução isolada (avaliação) nunca escreve na memória do usuário: sem diário.
+    if (run.isolated !== true && !(await isPlainChat(db, run))) {
       const journal = await addJournalMemory(db, {
         botId: run.botId,
         text: journalText(run),
@@ -219,7 +220,7 @@ export async function reconcileRunEffects(
   const limit = options.limit ?? 200;
   const rows = await db.sql<{ id: string }[]>`
     select r.id from runs r
-    where (
+    where not r.isolated and ((
       r.status = 'waiting_user' and r.conversation_id is not null
     ) or (
       r.status in ('done', 'failed', 'cancelled')
@@ -252,7 +253,7 @@ export async function reconcileRunEffects(
           where i.run_id = r.id and i.kind = 'user_message' and i.consumed_at is null
         )
       )
-    )
+    ))
     order by r.updated_at
     limit ${limit}`;
   for (const row of rows) await finishRun(db, row.id);

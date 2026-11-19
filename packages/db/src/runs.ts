@@ -38,6 +38,7 @@ export interface RunRow {
   locked_at: Date | null;
   paused_at: Date | null;
   interrupt_requested_at: Date | null;
+  isolated: boolean;
   created_at: Date;
   updated_at: Date;
   started_at: Date | null;
@@ -69,6 +70,7 @@ export function mapRun(row: RunRow): Run {
     lockedAt: row.locked_at,
     pausedAt: row.paused_at,
     interruptRequestedAt: row.interrupt_requested_at,
+    isolated: row.isolated,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     startedAt: row.started_at,
@@ -86,6 +88,8 @@ export interface CreateRunInput {
   acceptanceCriteria?: string[];
   plan?: PlanStep[];
   traceId?: string;
+  /** An evaluation run: no memory is read for it and none is written (no journal entry). */
+  isolated?: boolean;
 }
 
 const originSchema = z.enum(RUN_ORIGINS);
@@ -96,7 +100,7 @@ export async function createRun(db: Db, input: CreateRunInput): Promise<Run> {
   const criteria = acceptanceCriteriaSchema.parse(input.acceptanceCriteria ?? []);
   const plan = planSchema.parse(input.plan ?? []);
   const [row] = await db.sql<RunRow[]>`
-    insert into runs (bot_id, parent_run_id, conversation_id, origin, objective, acceptance_criteria, plan, trace_id)
+    insert into runs (bot_id, parent_run_id, conversation_id, origin, objective, acceptance_criteria, plan, trace_id, isolated)
     values (
       ${input.botId},
       ${input.parentRunId ?? null},
@@ -105,7 +109,8 @@ export async function createRun(db: Db, input: CreateRunInput): Promise<Run> {
       ${input.objective},
       ${db.sql.json(criteria)},
       ${db.sql.json(plan)},
-      ${input.traceId ?? null}
+      ${input.traceId ?? null},
+      ${input.isolated === true}
     )
     returning *`;
   if (!row) throw new Error("insert into runs returned no row");

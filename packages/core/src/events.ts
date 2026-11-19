@@ -60,6 +60,17 @@ export const discrepancySchema = z.object({
 });
 export type Discrepancy = z.infer<typeof discrepancySchema>;
 
+/**
+ * Something the reviewer said it could not check, and what it would need to check it: a digest
+ * result or call ("#3"), a workspace file, or something else (`other`, with the reference it names).
+ */
+export const uncheckedItemSchema = z.object({
+  what: z.string(),
+  kind: z.enum(["result", "call", "file", "other"]),
+  ref: z.string(),
+});
+export type UncheckedItem = z.infer<typeof uncheckedItemSchema>;
+
 export const contextItemSchema = z.object({ id: z.string(), text: z.string() });
 export type ContextItem = z.infer<typeof contextItemSchema>;
 
@@ -250,13 +261,22 @@ export const runEventSchema = z.discriminatedUnion("type", [
       warning: z.exactOptional(z.string()),
       /** `reject`: the concrete discrepancies the reviewer named (at least one; else not a reject). */
       discrepancies: z.exactOptional(z.array(discrepancySchema).min(1)),
+      /** `unverified`: what the reviewer listed as unchecked and not already sent to it in full. */
+      unchecked: z.exactOptional(z.array(uncheckedItemSchema)),
+      /**
+       * `unverified` from a `cannot_verify` that, even after being asked once more, named nothing
+       * the harness had not already sent in full (or nothing at all): the owner is told so.
+       */
+      namedNothing: z.exactOptional(z.boolean()),
     }),
   }),
   z.object({
     /**
-     * The reviewer answered `reject` without naming a concrete discrepancy. The harness asked once
-     * more (this event is that question); `args` is what the reviewer sent, so the conversation
-     * can be rebuilt. A second invalid reject ends the review as `unverified`.
+     * The reviewer's answer was not usable and the harness asked once more (this event is that
+     * question): a `reject` with no discrepancy marked as a real mismatch, or a `cannot_verify` that
+     * named nothing it lacked (or only what had already been sent in full). `args` is what the
+     * reviewer sent, so the conversation can be rebuilt. A second unusable answer ends the review
+     * as `unverified`.
      */
     type: z.literal("review_reprompt"),
     payload: z.object({
