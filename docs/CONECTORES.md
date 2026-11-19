@@ -123,7 +123,7 @@ Pesquisa: [aprovações, cofre e conectores](pesquisas/fase-3-aprovacoes-cofre-c
 
 ## Muitas ferramentas: busca em vez de carregar todas
 
-Pesquisa: [muitas ferramentas de conectores](pesquisas/fase-3-muitas-ferramentas-mcp.md). Mandar a definição de dezenas de ferramentas em todo turno custa contexto e piora a escolha. As ferramentas **embutidas e de controle** (`plan`, `finish`, `escalate`, `request_secret`) ficam sempre carregadas; só as de **conectores concedidas ao bot** entram na regra:
+Pesquisa: [muitas ferramentas de conectores](pesquisas/fase-3-muitas-ferramentas-mcp.md). Mandar a definição de dezenas de ferramentas em todo turno custa contexto e piora a escolha. As ferramentas **embutidas e de controle** (`plan`, `finish`, `escalate`, `request_secret`, e, com o sandbox `docker`, `request_network_access`) ficam sempre carregadas, nunca adiadas nem escondidas atrás de `use_tool`; só as de **conectores concedidas ao bot** entram na regra:
 
 - **Abaixo do limite** (padrão: menos de 10 ferramentas **e** definições abaixo de ~10 mil tokens, estimados a 1 token por 4 caracteres) elas são carregadas direto, como antes.
 - **Acima**, ficam adiadas. A decisão é tomada **uma vez** no início da execução e gravada no evento `tool_catalog`: retomar ou reexecutar lê o log e não decide de novo, então o `tools` de **todos** os pedidos da execução é idêntico byte a byte e na mesma ordem (cache) e a conversa só cresce no fim.
@@ -137,6 +137,8 @@ Pesquisa: [muitas ferramentas de conectores](pesquisas/fase-3-muitas-ferramentas
 Quem suporta o quê é **declarado**, não adivinhado: por modelo, na configuração (`nativeToolSearch`, em [CONFIGURACAO.md](CONFIGURACAO.md)), e por adaptador (`capabilities.toolSearch`; só o da Anthropic implementa hoje). Sem as duas coisas, vale a alternativa fixa.
 
 **A alternativa fixa é transparente para as regras.** `use_tool` só **resolve** a chamada para a ferramenta real; dali em diante é a chamada da ferramenta real: os argumentos são validados contra o esquema real (um erro volta **com o esquema**, para o modelo corrigir), o risco, as regras, a revisão e o **cartão são os da ferramenta real** (o cartão nunca mostra `use_tool`), `{{secret:...}}` só nos campos que a ferramenta declara, o desfecho vem rotulado como dado externo e a declaração "mensagem a outra pessoa" vale. O evento `tool_call` é gravado com o nome e os argumentos reais. O resultado de `search_tools` (que carrega texto do servidor) também vem no envelope de dado não confiável. Uma ferramenta não concedida, ou que não está no catálogo da execução, é "ferramenta desconhecida" por `use_tool`, por nome direto e pela busca; chamar pelo nome uma ferramenta adiada de `meta` também é recusado (use `use_tool`).
+
+**O contêiner e a rede não dependem de como a ferramenta é oferecida.** Carregada direto, achada por `search_tools` ou chamada por `use_tool`, uma ferramenta de conector é sempre a mesma ferramenta registrada, e quem a executa é o mesmo gerenciador de conexões: com o sandbox `docker` o servidor `stdio` roda no contêiner do conector e sai só pelo proxy, com os `egressHosts` do conector ([REDE.md](REDE.md)). A medição (`suup doctor`, `toolReport`) conta `request_network_access` entre as embutidas, como o pedido de verdade.
 
 **A busca da alternativa fixa não usa regex.** Cada palavra da consulta e de cada ferramenta (nome, conector, descrição, nomes dos argumentos) é obtida dividindo o texto por **classe de caractere** (letra ou dígito de qualquer escrita; o resto separa) e passando para minúsculas; a pontuação é o número de palavras **distintas** da consulta que a ferramenta tem **iguais**; empate fica na ordem do catálogo. Sem radical, sem sinônimo: o modelo lê o resultado e escolhe.
 
@@ -172,11 +174,23 @@ Credenciais são **referências por nome**: no banco ficam `{"secret": "ERP_TOKE
 
 ## Onde roda, e o que isso implica
 
-**Um conector de processo local (`stdio`) roda no computador do worker, fora da máquina isolada dos bots.** Não é um comando de shell do bot dentro do contêiner descartável: é um programa que o harness inicia, no host (ou no contêiner do worker, numa implantação com Docker), com as **permissões do usuário que roda o Suup**. Ele pode ler os arquivos desse usuário, falar com a rede e fazer tudo que esse usuário faz. O isolamento da máquina dos bots **não vale** para ele. Por isso:
+**Com o sandbox `docker`, um conector de processo local (`stdio`) roda num contêiner próprio, isolado.** Com o sandbox `local`, ele continua sendo um programa do computador do worker, **sem isolamento** (e `suup doctor`, `suup connectors list` e o campo `runsIn` da API dizem isso com todas as letras: `container` ou `host`).
+
+**No contêiner (sandbox `docker`):**
+
+- Um contêiner por conector, da **imagem do runner** (`docker/connector-runner`, `sandbox.connectors.image`, padrão `suup-connector-runner:dev`): Node 22 com `npm`/`npx`, Python 3.12 com `pip`, `uv`/`uvx`, usuário sem root; sem compilador, `git` nem `curl`. O servidor em si (`npx -y pacote`, `uvx pacote`) é baixado ao iniciar, pelo proxy, dos registros liberados. Um servidor que precisa de mais que isso pede uma imagem derivada (`FROM suup-connector-runner:...`, configurada em `sandbox.connectors.image`).
+- O comando e os argumentos vão como **lista** para `docker run`, sem shell. O contêiner recebe **só** as variáveis declaradas no conector (valores do cofre resolvidos na hora de conectar, passados ao cliente do Docker pelo ambiente dele e nomeados com `-e NOME`: nunca na lista de argumentos nem em processo visível) mais as variáveis do proxy. Nada do servidor (`DATABASE_URL`, chave do cofre, token). Nomes que começam por `DOCKER_` são recusados no conector.
+- Sem acesso ao disco do host (nenhum volume), sistema de arquivos só de leitura com `tmpfs` para `/tmp` e `$HOME`, usuário `1000`, sem capacidades, `no-new-privileges`, memória (512 MB), CPU (1), processos (256) limitados, `--init`.
+- Rede: só pelo proxy do worker, com a lista de hosts: os padrões (registros de pacotes) mais `egressHosts` do conector (`suup connectors add --egress host`, `suup connectors set-egress`). Veja [REDE.md](REDE.md).
+- Ciclo de vida igual ao dos outros: abre na primeira necessidade, reaproveita, verifica a saúde, fecha ao encerrar o worker (os contêineres que o processo abriu são removidos). Se o servidor cai, a chamada vira erro de ferramenta e a próxima reconecta num contêiner novo.
+- Por isso a regra "só cadastre programas em que você confia" continua valendo (o servidor ainda recebe o segredo que você deu a ele e fala com os hosts que você liberou), mas ele não lê seus arquivos nem o ambiente do worker.
+- `cwd` do conector não vale no contêiner (é um caminho do host).
+
+**Sem isolamento (sandbox `local`)** o comportamento antigo se mantém: um programa que o harness inicia no computador do worker, com as **permissões do usuário que roda o Suup**: lê os arquivos desse usuário, fala com a rede e faz tudo que ele faz. Por isso:
 
 - só cadastre programas em que você confia (e confira o que o `npx` vai baixar: ele executa o pacote mais recente se você não fixar a versão: `--arg=@escopo/pacote@1.2.3`);
-- o programa precisa existir **onde o worker roda**. Na imagem de produção (`docker/server/Dockerfile`) há Node e `npx`, mas não há Python nem `uv`, e o contêiner do worker não vê os arquivos do seu computador; um servidor que precise de outra coisa pede uma imagem própria, ou use um conector HTTP;
-- o servidor da API **não** recebe o socket do Docker e, numa implantação separada, não é onde os bots rodam: `suup doctor` e `GET /v1/doctor` dizem "não verificados neste processo" para os conectores nesse caso. `POST /v1/connectors/{nome}/test` e `suup connectors test` rodam **onde são executados**: rode o teste no computador do worker;
+- o programa precisa existir **onde o worker roda**;
+- o servidor da API **não** recebe o socket do Docker e, numa implantação separada, não é onde os bots rodam: `suup doctor` e `GET /v1/doctor` dizem "não verificados neste processo" para os conectores nesse caso. `POST /v1/connectors/{nome}/test` e `suup connectors test` rodam **onde são executados**: rode o teste onde o worker roda;
 - o processo filho recebe **só** as variáveis que você declarou, mais as que o SDK herda por segurança (`HOME`, `LOGNAME`, `PATH`, `SHELL`, `TERM`, `USER`). Nunca `DATABASE_URL`, chaves de provedor nem a chave do cofre (há um teste). O comando e os argumentos vão como lista para `spawn`, sem shell, e uma mensagem do protocolo maior que 4 MB derruba a conexão (limita a memória);
 - o que o filho escreve no erro padrão é guardado (as últimas linhas) só para diagnóstico, passa pela redação e aparece nas mensagens de falha ("o servidor escreveu: ...").
 

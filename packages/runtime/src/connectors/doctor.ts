@@ -3,6 +3,7 @@
 // wrong credential, a server that exits) and never to the harness.
 import { listBots, listConnectors } from "@suup/db";
 import type { DoctorCheck } from "../diagnostics.js";
+import { describeConnectorIsolation } from "../network/doctor.js";
 import type { Runtime } from "../runtime.js";
 
 export async function checkConnectors(runtime: Runtime): Promise<DoctorCheck[]> {
@@ -31,7 +32,7 @@ export async function checkConnectors(runtime: Runtime): Promise<DoctorCheck[]> 
     checks.push({
       component,
       ok: true,
-      detail: `${connector.transport === "stdio" ? "processo local" : "HTTP"}, ${result.serverName} ${result.serverVersion}: ${result.tools.length} ferramenta(s), ${offered} oferecida(s)${hidden > 0 ? ` e ${hidden} fora (esquema não suportado, escopo ou nome)` : ""}, em ${result.durationMs} ms; ${connector.grantedBotIds.length} bot(s) com acesso`,
+      detail: `${connector.transport === "stdio" ? "processo (stdio)" : "HTTP"}, ${result.serverName} ${result.serverVersion}: ${result.tools.length} ferramenta(s), ${offered} oferecida(s)${hidden > 0 ? ` e ${hidden} fora (esquema não suportado, escopo ou nome)` : ""}, em ${result.durationMs} ms; ${connector.grantedBotIds.length} bot(s) com acesso${connector.transport === "stdio" ? `; ${describeConnectorIsolation(runtime)}` : ""}`,
     });
   }
   // The pins: a tool whose definition changed after approval, or a new one, is off for every bot.

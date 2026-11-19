@@ -11,6 +11,7 @@ import {
   connectorsRemove,
   connectorsReview,
   connectorsRevoke,
+  connectorsSetEgress,
   connectorsSetOutbound,
   connectorsSetRisk,
   connectorsTest,
@@ -29,6 +30,7 @@ import {
   memorySearch,
 } from "./commands/memory.js";
 import { sayCommand, stopCommand } from "./commands/messages.js";
+import { networkAllow, networkList, networkRemove } from "./commands/network.js";
 import { replayCommand } from "./commands/replay.js";
 import { resendCommand } from "./commands/resend.js";
 import { rulesAdd, rulesEdit, rulesList, rulesRemove } from "./commands/rules.js";
@@ -71,6 +73,9 @@ export const COMMANDS: readonly CommandSpec[] = [
   rulesAdd,
   rulesEdit,
   rulesRemove,
+  networkList,
+  networkAllow,
+  networkRemove,
   vaultSet,
   vaultList,
   vaultRemove,
@@ -88,6 +93,7 @@ export const COMMANDS: readonly CommandSpec[] = [
   connectorsReview,
   connectorsTools,
   connectorsSetOutbound,
+  connectorsSetEgress,
   connectorsSetRisk,
   connectorsTest,
   runCommand,
@@ -111,6 +117,7 @@ const GROUPS: Record<string, string> = {
   bot: "Bots",
   memory: "Memória",
   rules: "Regras de aprovação",
+  network: "Rede dos bots",
   vault: "Cofre de segredos",
   connectors: "Conectores MCP",
 };

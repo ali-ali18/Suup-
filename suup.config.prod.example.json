@@ -22,7 +22,13 @@
     "name": "suup-machine",
     "volume": "suup-workspace",
     "memory": "2g",
-    "cpus": 2
+    "cpus": 2,
+    "network": {
+      "name": "suup-sandbox-net",
+      "defaultHosts": ["registry.npmjs.org", "pypi.org", "files.pythonhosted.org"],
+      "proxy": { "listenHost": "172.29.77.2", "advertiseHost": "172.29.77.2", "port": 3128 }
+    },
+    "connectors": { "image": "suup-connector-runner:prod" }
   },
   "worker": {
     "concurrency": 4,

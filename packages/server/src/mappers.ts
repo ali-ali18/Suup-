@@ -33,7 +33,7 @@ import {
   type StoredRule,
 } from "./db-types.js";
 
-const iso = (date: Date): string => date.toISOString();
+export const iso = (date: Date): string => date.toISOString();
 const isoOrNull = (date: Date | null | undefined): string | null =>
   date === null || date === undefined ? null : date.toISOString();
 
@@ -257,6 +257,7 @@ export function toConnectorDto(view: ConnectorView): Connector {
     grants: view.grants,
     pendingReviews: view.pendingReviews,
     secretNames: view.secretNames,
+    runsIn: view.runsIn,
     connection: view.connection,
     discovery: {
       discoveredAt: isoOrNull(view.discovery.discoveredAt),

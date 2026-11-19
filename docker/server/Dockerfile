@@ -5,6 +5,12 @@
 #
 # Construir, a partir da raiz do repositório:
 #   docker build -f docker/server/Dockerfile -t suup:prod .
+#
+# Atrás de um proxy que reassina o TLS (docs/IMPLANTACAO.md, "Construir atrás de um proxy"): o proxy
+# e a CA existem SÓ durante o build (build args predefinidos de proxy e um segredo do BuildKit
+# montado em um RUN); nenhum dos dois entra numa camada nem na imagem final.
+#   docker build --network host --build-arg HTTPS_PROXY=$HTTPS_PROXY --secret id=build_ca,src=ca.crt \
+#     -f docker/server/Dockerfile -t suup:prod .
 
 ARG NODE_VERSION=22
 
@@ -27,7 +33,11 @@ COPY packages/runtime/package.json packages/runtime/
 COPY packages/sandbox/package.json packages/sandbox/
 COPY packages/server/package.json packages/server/
 COPY packages/tools/package.json packages/tools/
-RUN pnpm install --frozen-lockfile
+# `build_ca` (opcional) é a CA do proxy de build; o Node só a lê neste RUN. NODE_USE_ENV_PROXY faz o
+# `fetch` do Node (corepack) respeitar HTTPS_PROXY quando ele é passado como build arg.
+RUN --mount=type=secret,id=build_ca,required=false,mode=0444 \
+    if [ -s /run/secrets/build_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/build_ca; fi \
+    && NODE_USE_ENV_PROXY=1 pnpm install --frozen-lockfile
 
 COPY tsconfig.base.json tsconfig.json ./
 COPY apps apps

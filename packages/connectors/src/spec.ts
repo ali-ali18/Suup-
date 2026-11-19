@@ -7,6 +7,7 @@ import {
   isSecretName,
   type OutboundMessage,
   outboundMessageSchema,
+  parseAllowlistHost,
   type RiskLevel,
 } from "@suup/core";
 import { z } from "zod";
@@ -27,6 +28,11 @@ export type ConnectorTransport =
       /** Declared environment variables of the child process: the only ones it gets besides the safe defaults. */
       env: Record<string, ValueRef>;
       cwd?: string | undefined;
+      /**
+       * The exact host names the server may reach when it runs isolated in a container (through
+       * the egress proxy). Empty: no network at all. Ignored when the connector runs on the host.
+       */
+      egressHosts: string[];
     }
   | {
       kind: "http";
@@ -146,6 +152,22 @@ const stdioSchema = z.strictObject({
     .default([]),
   env: z.record(z.string(), valueRefSchema).default({}),
   cwd: z.string().min(1).max(1024).optional(),
+  egressHosts: z
+    .array(z.string().max(300))
+    .max(50)
+    .default([])
+    .transform((hosts, ctx) => {
+      const out: string[] = [];
+      for (const raw of hosts) {
+        const parsed = parseAllowlistHost(raw);
+        if (!parsed.ok) {
+          ctx.addIssue({ code: "custom", message: parsed.message });
+          return z.NEVER;
+        }
+        if (!out.includes(parsed.host)) out.push(parsed.host);
+      }
+      return out;
+    }),
 });
 
 const httpSchema = z.strictObject({

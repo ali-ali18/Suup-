@@ -53,7 +53,14 @@ docker build --tag suup-sandbox:dev docker/sandbox
 SUUP_DOCKER_TESTS=1 SUUP_SANDBOX_IMAGE=suup-sandbox:dev pnpm vitest run packages/sandbox
 ```
 
-Sem `SUUP_DOCKER_TESTS=1`, esses testes são pulados. O CI faz o build da imagem e roda com a variável ligada.
+Sem `SUUP_DOCKER_TESTS=1`, esses testes são pulados. O CI faz o build da imagem e roda com a variável ligada. Os testes de rede (proxy, rede interna, conectores em contêiner) também usam a imagem dos conectores:
+
+```sh
+docker build --tag suup-connector-runner:dev docker/connector-runner
+SUUP_DOCKER_TESTS=1 SUUP_SANDBOX_IMAGE=suup-sandbox:dev SUUP_CONNECTOR_IMAGE=suup-connector-runner:dev pnpm test
+```
+
+Atrás de um proxy que reassina o TLS (corporativo): veja "Construir atrás de um proxy que reassina o TLS" em [docs/IMPLANTACAO.md](docs/IMPLANTACAO.md).
 
 ### Primeiro uso (CLI)
 

@@ -65,6 +65,22 @@ export {
   validateConversation,
 } from "./messages.js";
 export {
+  type AddressFamily,
+  DEFAULT_ALLOWED_PORTS,
+  decideHost,
+  describeHostProblem,
+  type HostDecision,
+  type HostProblem,
+  type HostRequest,
+  ipVersion,
+  isForbiddenAddress,
+  MAX_HOST_LENGTH,
+  type NormalizedHost,
+  normalizeHost,
+  parseAllowlistHost,
+  type RefusalReason,
+} from "./network/index.js";
+export {
   MAX_RECIPIENT_FIELDS,
   type OutboundMessage,
   outboundMessage,
@@ -164,6 +180,7 @@ export {
   type MemoryLayerName,
   MemoryRuleError,
   type MemoryService,
+  type NetworkAccess,
   type RecallLayerName,
   resolveWorkspacePath,
   type Tool,

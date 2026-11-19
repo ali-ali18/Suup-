@@ -3,8 +3,11 @@ export { MEMORY_TOOL_NAMES } from "@suup/core";
 export {
   configPath,
   configSchema,
+  DEFAULT_ALLOWED_HOSTS,
   DEFAULT_CONFIG_FILE,
+  DEFAULT_CONNECTOR_IMAGE,
   DEFAULT_MAX_TURNS,
+  DEFAULT_NETWORK_NAME,
   DEFAULT_SERVER,
   DEFAULT_WORKER,
   describeIssues,
@@ -75,6 +78,11 @@ export {
 } from "./diagnostics.js";
 export { ConfigError, RuntimeError, type RuntimeErrorCode } from "./errors.js";
 export { createMemoryService } from "./memory-service.js";
+export {
+  type BotNetworkView,
+  createNetworkService,
+  type NetworkService,
+} from "./network/service.js";
 export { DEFAULT_HISTORY_CHARS, loadRunContext } from "./run-context.js";
 export {
   finishRun,
@@ -90,6 +98,7 @@ export {
   type CreateWorkerOptions,
   createRuntime,
   dockerWorkspace,
+  type EgressRuntime,
   type ProviderKeyStatus,
   type ResolvedModel,
   type Runtime,

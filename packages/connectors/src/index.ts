@@ -5,7 +5,7 @@ export {
   type ConnectorToolInfo,
   MAX_TOOL_DESCRIPTION,
 } from "./adapter.js";
-export { MAX_TOOLS, type RawTool } from "./connection.js";
+export { MAX_TOOLS, type RawTool, type StdioLauncher } from "./connection.js";
 export { ConnectorError, type ConnectorErrorKind } from "./errors.js";
 export {
   type CallOutcome,

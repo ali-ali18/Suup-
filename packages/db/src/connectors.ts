@@ -29,6 +29,8 @@ export interface StoredConnector {
   timeoutMs: number | null;
   enabled: boolean;
   origin: ConnectorOrigin;
+  /** The exact host names a stdio connector may reach from its container (empty: none). */
+  egressHosts: string[];
   /** The bots that may use it (the bots that have a grant). */
   grantedBotIds: string[];
   /** What each of those bots may use: every tool, or the listed ones (names ON THE SERVER). */
@@ -80,6 +82,7 @@ interface Row {
   timeout_ms: number | null;
   enabled: boolean;
   origin: ConnectorOrigin;
+  egress_hosts: unknown;
   granted: string[] | null;
   grants: { botId: string; all: boolean; tools: string[] }[] | null;
   created_at: Date;
@@ -111,6 +114,7 @@ function map(row: Row): StoredConnector {
     timeoutMs: row.timeout_ms,
     enabled: row.enabled,
     origin: row.origin,
+    egressHosts: argsSchema.parse(row.egress_hosts ?? []),
     grantedBotIds: row.granted ?? [],
     grants: (row.grants ?? []).map((g) => ({
       botId: g.botId,
@@ -161,6 +165,7 @@ export interface ConnectorWrite {
   timeoutMs: number | null;
   enabled: boolean;
   origin: ConnectorOrigin;
+  egressHosts?: string[];
 }
 
 export async function createConnector(db: Db, input: ConnectorWrite): Promise<StoredConnector> {
@@ -168,12 +173,12 @@ export async function createConnector(db: Db, input: ConnectorWrite): Promise<St
   if (taken.length > 0) throw new ConnectorNameTakenError(input.name);
   await db.sql`
     insert into connectors (name, description, transport, command, args, cwd, env, url, headers, scope,
-                            tool_overrides, trust_annotations, timeout_ms, enabled, origin)
+                            tool_overrides, trust_annotations, timeout_ms, enabled, origin, egress_hosts)
     values (${input.name}, ${input.description}, ${input.transport}, ${input.command},
             ${db.sql.json(input.args)}, ${input.cwd}, ${db.sql.json(input.env as never)}, ${input.url},
             ${db.sql.json(input.headers as never)}, ${input.scope},
             ${db.sql.json(input.toolOverrides)}, ${input.trustAnnotations}, ${input.timeoutMs},
-            ${input.enabled}, ${input.origin})`;
+            ${input.enabled}, ${input.origin}, ${db.sql.json(input.egressHosts ?? [])})`;
   const created = await getConnector(db, input.name);
   if (created === null) throw new Error("connector vanished after insert");
   return created;
@@ -202,7 +207,7 @@ export async function replaceConnector(
       url = ${input.url}, headers = ${db.sql.json(input.headers as never)}, scope = ${input.scope},
       tool_overrides = ${db.sql.json(input.toolOverrides)},
       trust_annotations = ${input.trustAnnotations}, timeout_ms = ${input.timeoutMs},
-      enabled = ${input.enabled}
+      enabled = ${input.enabled}, egress_hosts = ${db.sql.json(input.egressHosts ?? [])}
     where name = ${name} returning id`;
   if (rows.length === 0) throw new ConnectorNotFoundError(name);
   const updated = await getConnector(db, name);

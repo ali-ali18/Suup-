@@ -81,6 +81,7 @@ import {
   type SearchMemoriesQuery,
   type SearchMessagesQuery,
 } from "./memory.js";
+import { type BotNetwork, botNetworkSchema } from "./network.js";
 import {
   type ListRunsQuery,
   type Run,
@@ -226,6 +227,14 @@ export interface SuupClient {
     setToolOutbound(name: string, tool: string, body: SetToolOutboundBody): Promise<Connector>;
     /** Starts the server from scratch where THIS server runs, lists its tools and closes. */
     test(name: string): Promise<ConnectorTest>;
+  };
+  network: {
+    /** The hosts a bot's machine may reach (defaults, its own) and what the proxy refused lately. */
+    forBot(botId: string): Promise<BotNetwork>;
+    /** Allows one exact host for the bot (an act of the user). */
+    allow(botId: string, host: string): Promise<BotNetwork>;
+    /** Takes the host away from the bot's own list. */
+    remove(botId: string, host: string): Promise<BotNetwork>;
   };
   vault: {
     /** Whether the server has a vault it can write to (the section and the key), and why not. */
@@ -482,6 +491,13 @@ export function createClient(options: ClientOptions): SuupClient {
           body,
         }),
       test: (name) => call("POST", `/v1/connectors/${id(name)}/test`, connectorTestSchema, noBody),
+    },
+    network: {
+      forBot: (botId) => call("GET", `/v1/bots/${id(botId)}/network`, botNetworkSchema),
+      allow: (botId, host) =>
+        call("PUT", `/v1/bots/${id(botId)}/network/hosts/${id(host)}`, botNetworkSchema, noBody),
+      remove: (botId, host) =>
+        call("DELETE", `/v1/bots/${id(botId)}/network/hosts/${id(host)}`, botNetworkSchema),
     },
     vault: {
       status: () => call("GET", "/v1/vault", vaultStatusSchema),

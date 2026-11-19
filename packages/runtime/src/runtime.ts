@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { hostname } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
+import type { StdioLauncher } from "@suup/connectors";
 import {
   allowAllGate,
   type BotConfig,
@@ -36,10 +37,21 @@ import {
   rulesForBot,
 } from "@suup/db";
 import { createProvider, type ProviderConfig } from "@suup/providers";
-import { DockerExecutor, ensureMachine, LocalExecutor } from "@suup/sandbox";
-import { registerBuiltinTools } from "@suup/tools";
 import {
+  ContainerStdioLauncher,
+  DockerExecutor,
+  EgressProxy,
+  ensureInternalNetwork,
+  ensureMachine,
+  LocalExecutor,
+  type MachineNetwork,
+  NetworkedExecutor,
+} from "@suup/sandbox";
+import { networkTools, registerBuiltinTools, requestNetworkAccessTool } from "@suup/tools";
+import {
+  DEFAULT_CONNECTOR_IMAGE,
   DEFAULT_MAX_TURNS,
+  DEFAULT_NETWORK_NAME,
   DEFAULT_WORKER,
   type ModelEntry,
   type ProviderEntry,
@@ -53,6 +65,7 @@ import {
 } from "./connectors/service.js";
 import { ConfigError, RuntimeError } from "./errors.js";
 import { createMemoryService } from "./memory-service.js";
+import { createNetworkService, type NetworkService } from "./network/service.js";
 import { DEFAULT_HISTORY_CHARS, loadRunContext } from "./run-context.js";
 import { finishRun } from "./run-end.js";
 import { createScriptedProvider } from "./scripted-provider.js";
@@ -127,6 +140,16 @@ export interface Runtime {
    */
   toolReport(botId: string): Promise<BotToolReport>;
   /**
+   * The network allowlist of the bots' machines and connector containers (docker sandbox): the
+   * global defaults, each bot's hosts, the grants of a run, and what the proxy refused.
+   */
+  readonly network: NetworkService;
+  /**
+   * The egress of the docker sandbox: the internal network and the proxy the machines go out
+   * through, started at the first use. `null` for the `local` sandbox (no isolation, no proxy).
+   */
+  egress(): Promise<EgressRuntime | null>;
+  /**
    * `value` with every known secret value scrubbed out (a copy). It reloads the vault's values
    * when they are older than a few seconds, so a secret saved by another process is covered too.
    * A system without a usable vault returns `value` as it is.
@@ -154,6 +177,13 @@ export interface Runtime {
   buildDeps(runId: string, workerId: string, options?: BuildDepsOptions): Promise<LoopDeps>;
   createWorker(options?: CreateWorkerOptions): Worker;
   close(): Promise<void>;
+}
+
+export interface EgressRuntime {
+  network: MachineNetwork;
+  proxy: EgressProxy;
+  /** Where the machines reach the proxy (host and port). */
+  address: { host: string; port: number };
 }
 
 /** What `DockerExecutor` needs from a machine, built from the `docker` sandbox settings. */
@@ -205,7 +235,13 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     config.untrustedOutputTools === undefined
       ? {}
       : { externalOutputTools: config.untrustedOutputTools };
-  const tools = registerBuiltinTools(new ToolRegistry(registryOptions));
+  /** The built-in tools; the isolated machine also has the one that asks for a network host. */
+  const newRegistry = (): ToolRegistry => {
+    const registry = registerBuiltinTools(new ToolRegistry(registryOptions));
+    if (config.sandbox.kind === "docker") for (const tool of networkTools) registry.register(tool);
+    return registry;
+  };
+  const tools = newRegistry();
   const vaultSettings =
     config.vault === undefined
       ? undefined
@@ -216,9 +252,59 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
             : { previousKeyEnvs: config.vault.previousKeyEnvs }),
         };
   const vault = createVault(() => runtime.db, env, vaultSettings);
+  const sandboxConfig = config.sandbox;
+  const networkConfig = sandboxConfig.kind === "docker" ? sandboxConfig.network : undefined;
+  const network = createNetworkService({
+    db: () => runtime.db,
+    defaultHosts: networkConfig?.defaultHosts,
+  });
+  const networkName = networkConfig?.name ?? DEFAULT_NETWORK_NAME;
+  let egressStarted: Promise<EgressRuntime> | undefined;
+  /** The internal network and the proxy: made once, at the first use of the docker sandbox. */
+  const startEgress = (): Promise<EgressRuntime> => {
+    egressStarted ??= (async () => {
+      const net = await ensureInternalNetwork(networkName, {
+        ...(dockerPath === undefined ? {} : { dockerPath }),
+      });
+      const listenHost = networkConfig?.proxy?.listenHost ?? net.gateway;
+      const proxy = new EgressProxy({
+        policy: network.policy,
+        listenHost,
+        listenPort: networkConfig?.proxy?.port ?? 0,
+        ...(networkConfig?.proxy?.advertiseHost === undefined
+          ? {}
+          : { advertiseHost: networkConfig.proxy.advertiseHost }),
+        ...(networkConfig?.ports === undefined ? {} : { ports: networkConfig.ports }),
+        onEvent: (event) => network.record(event),
+      });
+      const address = await proxy.start();
+      return { network: net, proxy, address };
+    })();
+    egressStarted.catch(() => {
+      egressStarted = undefined; // try again at the next use
+    });
+    return egressStarted;
+  };
+  const containerLauncher =
+    sandboxConfig.kind === "docker"
+      ? new ContainerStdioLauncherLazy(
+          {
+            image: sandboxConfig.connectors?.image ?? DEFAULT_CONNECTOR_IMAGE,
+            ...(sandboxConfig.connectors?.memory === undefined
+              ? {}
+              : { memory: sandboxConfig.connectors.memory }),
+            ...(sandboxConfig.connectors?.cpus === undefined
+              ? {}
+              : { cpus: sandboxConfig.connectors.cpus }),
+            ...(dockerPath === undefined ? {} : { dockerPath }),
+          },
+          startEgress,
+        )
+      : undefined;
   const connectors = createConnectorService({
     db: () => runtime.db,
     vault,
+    launcher: containerLauncher,
     ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
   });
   // Every tool call goes through the approval policy: the user's rules, the reviewer, then a card.
@@ -387,24 +473,30 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
   const sandbox = config.sandbox;
   const ensureMachineOnce = (): Promise<void> => {
     if (sandbox.kind !== "docker") return Promise.resolve();
-    machine ??= ensureMachine({
-      name: sandbox.name,
-      image: sandbox.image,
-      volume: sandbox.volume,
-      ...(sandbox.memory === undefined ? {} : { memory: sandbox.memory }),
-      ...(sandbox.cpus === undefined ? {} : { cpus: sandbox.cpus }),
-      ...(dockerPath === undefined ? {} : { dockerPath }),
-    }).then(
-      () => undefined,
-      (error: unknown) => {
-        machine = undefined; // try again at the next use
-        throw new RuntimeError(
-          "sandbox_failed",
-          `Não foi possível preparar a máquina dos bots (contêiner "${sandbox.name}"): ${error instanceof Error ? error.message : String(error)}`,
-          { cause: error },
-        );
-      },
-    );
+    machine ??= startEgress()
+      .then(() => undefined)
+      .then(() =>
+        ensureMachine({
+          network: networkName,
+          name: sandbox.name,
+          image: sandbox.image,
+          volume: sandbox.volume,
+          ...(sandbox.memory === undefined ? {} : { memory: sandbox.memory }),
+          ...(sandbox.cpus === undefined ? {} : { cpus: sandbox.cpus }),
+          ...(dockerPath === undefined ? {} : { dockerPath }),
+        }),
+      )
+      .then(
+        () => undefined,
+        (error: unknown) => {
+          machine = undefined; // try again at the next use
+          throw new RuntimeError(
+            "sandbox_failed",
+            `Não foi possível preparar a máquina dos bots (contêiner "${sandbox.name}"): ${error instanceof Error ? error.message : String(error)}`,
+            { cause: error },
+          );
+        },
+      );
     return machine;
   };
 
@@ -438,8 +530,23 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
         `Não foi possível criar a pasta do bot ${botId} na máquina: ${made.stderr.trim() || `código de saída ${made.exitCode}`}`,
       );
     }
-    return dockerExecutor(dockerWorkspace(botId));
+    const { proxy } = await startEgress();
+    // The bot's commands go out through the proxy, with the bot's own allowlist.
+    return new NetworkedExecutor(dockerExecutor(dockerWorkspace(botId)), proxy, {
+      kind: "bot",
+      id: botId,
+    });
   };
+
+  /**
+   * On the isolated machine a bot can always ask for a host (the user decides on a card): the tool
+   * is a built-in one, always loaded (never part of the connector catalog, so tool search cannot
+   * defer or hide it). One function for the run and for the measurement, so both count it.
+   */
+  const withNetworkTool = <C extends { allowedTools: string[] }>(botCfg: C): C =>
+    sandbox.kind === "docker" && !botCfg.allowedTools.includes(requestNetworkAccessTool.name)
+      ? { ...botCfg, allowedTools: [...botCfg.allowedTools, requestNetworkAccessTool.name] }
+      : botCfg;
 
   /** How the connector tools of a bot reach its model (see `docs/CONFIGURACAO.md`, `toolSearch`). */
   const toolSearchSetup = (
@@ -494,7 +601,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     if (guarded) {
       const offered = await connectors.toolsForBot(bot.id);
       if (offered.tools.length > 0) {
-        runTools = registerBuiltinTools(new ToolRegistry(registryOptions));
+        runTools = newRegistry();
         const names: string[] = [];
         for (const tool of offered.tools) {
           try {
@@ -507,6 +614,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
         botCfg = { ...cfg, allowedTools: [...cfg.allowedTools, ...names] };
         toolSearch = toolSearchSetup(offered.candidates, bot.modelId);
       }
+      botCfg = withNetworkTool(botCfg);
     }
     return {
       store: new PgRunStore(handle, { workerId }),
@@ -539,6 +647,13 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
             memoryFor: (record: { botId: string; id: string }) =>
               createMemoryService(handle, { botId: record.botId, runId: record.id }),
           }),
+      ...(sandbox.kind === "docker" && guarded
+        ? {
+            networkFor: (record: { botId: string; id: string }) => ({
+              allowForRun: (host: string) => network.allowForRun(record.botId, record.id, host),
+            }),
+          }
+        : {}),
       now: () => new Date(),
       sleep: (ms) => new Promise<void>((done) => setTimeout(done, ms)),
     };
@@ -566,9 +681,9 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     async toolReport(botId) {
       const bot = await getBot(runtime.db, botId);
       if (bot === null) throw new RuntimeError("bot_not_found", `Bot ${botId} não encontrado.`);
-      const cfg = botConfig(bot);
+      const cfg = withNetworkTool(botConfig(bot));
       const offered = await connectors.toolsForBot(bot.id);
-      const reg = registerBuiltinTools(new ToolRegistry(registryOptions));
+      const reg = newRegistry();
       const connectorNames = new Set<string>();
       for (const tool of offered.tools) {
         try {
@@ -613,6 +728,10 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
         loadedTokens: stats.loadedTokens,
       };
     },
+    network,
+    async egress() {
+      return sandbox.kind === "docker" ? startEgress() : null;
+    },
     redactor: vault.redactor,
     async redactJson(value) {
       await vault.refresh(REDACTION_MAX_AGE_MS);
@@ -635,7 +754,12 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
         return new LocalExecutor({ root: path(sandbox.root), iUnderstandThisIsNotIsolated: true });
       }
       await ensureMachineOnce();
-      return dockerExecutor("/workspace");
+      const { proxy } = await startEgress();
+      // The harness subject has an EMPTY allowlist: whatever it asks of the network is refused.
+      return new NetworkedExecutor(dockerExecutor("/workspace"), proxy, {
+        kind: "harness",
+        id: "doctor",
+      });
     },
     botConfig,
     reviewerConfig,
@@ -697,6 +821,12 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     },
     async close() {
       await connectors.close();
+      await containerLauncher?.closeAll();
+      if (egressStarted !== undefined) {
+        const started = await egressStarted.catch(() => undefined);
+        egressStarted = undefined;
+        await started?.proxy.stop();
+      }
       const open = db;
       db = undefined;
       if (open !== undefined) await open.close();
@@ -719,4 +849,40 @@ function unavailableProvider(id: string, message: string): Provider {
       throw new ProviderError("auth", message, { retryable: false });
     },
   };
+}
+
+/**
+ * The container launcher of stdio connectors, which needs the egress proxy to be up before it can
+ * say what to run: it starts it (once) at the first connection.
+ */
+class ContainerStdioLauncherLazy implements StdioLauncher {
+  readonly where = "container" as const;
+  #inner: ContainerStdioLauncher | undefined;
+  constructor(
+    private readonly base: Omit<
+      ConstructorParameters<typeof ContainerStdioLauncher>[0],
+      "network" | "egress"
+    >,
+    private readonly start: () => Promise<EgressRuntime>,
+  ) {}
+
+  async #launcher(): Promise<ContainerStdioLauncher> {
+    if (this.#inner === undefined) {
+      const { network, proxy } = await this.start();
+      this.#inner = new ContainerStdioLauncher({
+        ...this.base,
+        network: network.name,
+        egress: proxy,
+      });
+    }
+    return this.#inner;
+  }
+
+  async wrap(input: Parameters<StdioLauncher["wrap"]>[0]) {
+    return (await this.#launcher()).wrap(input);
+  }
+
+  async closeAll(): Promise<void> {
+    await this.#inner?.closeAll();
+  }
 }

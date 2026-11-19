@@ -1,4 +1,5 @@
 import { assertName, DEFAULT_USER, DEFAULT_WORKSPACE, dockerClientEnv } from "./docker-executor.js";
+import { containerNetworks } from "./egress/network.js";
 import { runProcess } from "./run-process.js";
 
 export interface EnsureMachineOptions {
@@ -16,6 +17,12 @@ export interface EnsureMachineOptions {
   pidsLimit?: number;
   /** User the container's main process runs as. Default `bot`. */
   user?: string;
+  /**
+   * The (internal) Docker network the container joins. With it the machine has no direct network:
+   * only the egress proxy is reachable. A container that exists on another network is recreated
+   * (the workspace volume is kept). Without it: the default bridge, direct egress (legacy).
+   */
+  network?: string;
   /** Path of the docker CLI. Default `docker`. */
   dockerPath?: string;
 }
@@ -31,7 +38,8 @@ export interface EnsureMachineResult {
  *
  * The container: `sleep infinity` as the main process under `--init` (reaps zombies), non-root
  * user, all capabilities dropped, `no-new-privileges`, memory/CPU/pids limits, no swap, restart
- * policy `unless-stopped`. Network is the default bridge (egress is needed for web access).
+ * policy `unless-stopped`. Network: the internal one given in `network` (no direct egress; the
+ * proxy is the only way out), or the default bridge when none is given.
  */
 export async function ensureMachine(options: EnsureMachineOptions): Promise<EnsureMachineResult> {
   const docker = options.dockerPath ?? "docker";
@@ -50,7 +58,17 @@ export async function ensureMachine(options: EnsureMachineOptions): Promise<Ensu
   const user = options.user ?? DEFAULT_USER;
   if (!/^[A-Za-z0-9_.][A-Za-z0-9_.:-]*$/.test(user)) throw new Error(`invalid user "${user}"`);
 
-  const state = await inspectRunning(docker, options.name);
+  if (options.network !== undefined) assertName(options.network, "network name");
+
+  let state = await inspectRunning(docker, options.name);
+  if (state !== "absent" && options.network !== undefined) {
+    const attached = await containerNetworks(options.name, { dockerPath: docker });
+    if (attached.length !== 1 || attached[0] !== options.network) {
+      // Started before the network existed (or on another one): it may have a direct route out.
+      await run(docker, ["rm", "--force", options.name]);
+      state = "absent";
+    }
+  }
   if (state === "running") return { created: false };
   if (state === "stopped") {
     await run(docker, ["start", options.name]);
@@ -81,6 +99,7 @@ export async function ensureMachine(options: EnsureMachineOptions): Promise<Ensu
       String(cpus),
       "--pids-limit",
       String(pidsLimit),
+      ...(options.network === undefined ? [] : ["--network", options.network]),
       "--volume",
       `${options.volume}:${DEFAULT_WORKSPACE}`,
       "--workdir",

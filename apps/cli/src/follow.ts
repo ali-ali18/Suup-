@@ -1,7 +1,7 @@
 import { createInterface } from "node:readline";
 import type { Readable } from "node:stream";
 import { escalatedQuestions } from "@suup/core";
-import { getRun, postInbox, type Run } from "@suup/db";
+import { getRun, hasPendingInbox, postInbox, type Run } from "@suup/db";
 import { pendingCards, printCards } from "./approval-prompt.js";
 import type { Ctx } from "./context.js";
 import { CommandError, EXIT_FAILED, EXIT_OK } from "./errors.js";
@@ -226,12 +226,17 @@ export async function followRunCore(
       // resposta no log (`waiting.ts`). Uma linha com status de espera sem isso é o instante em que
       // uma execução retomada é recolocada onde o log está, antes de absorver a resposta que ele já
       // tem (alguns milissegundos, mais numa máquina ocupada): o worker está prestes a seguir.
+      // A caixa de entrada é lida ANTES do log: uma resposta absorvida entre as duas leituras já
+      // está no log (o evento é gravado antes de a caixa ser baixada), e uma ainda na caixa
+      // aparece como pendente. Na ordem inversa haveria uma janela em que o log é antigo e a caixa
+      // já está vazia.
+      const inboxPending = run.status === "waiting_user" ? await hasPendingInbox(db, runId) : false;
       const waitingLog =
         run.status === "waiting_user" || run.status === "waiting_approval"
           ? await readEvents(db, runId)
           : [];
       const cards = run.status === "waiting_approval" ? (await pendingCards(db, runId)).length : 0;
-      if (isReallyWaiting(run.status, waitingLog, cards)) {
+      if (isReallyWaiting(run.status, waitingLog, cards, inboxPending)) {
         if (run.status === "waiting_approval") break;
         if (!interactive) break;
         if (!prompted) {

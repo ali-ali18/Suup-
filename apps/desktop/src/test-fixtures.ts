@@ -221,6 +221,7 @@ export function makeConnector(over: Partial<Connector> = {}): Connector {
     grants: [],
     pendingReviews: 0,
     secretNames: [],
+    runsIn: "container",
     connection: { connected: false, failures: 0, lastError: null },
     discovery: { discoveredAt: null, lastError: null, lastErrorAt: null },
     tools: null,

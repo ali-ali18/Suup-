@@ -7,7 +7,7 @@ import type { Message } from "../messages.js";
 import type { Provider, ToolSpec } from "../provider.js";
 import type { InvokeOptions, ToolInvocation } from "../registry.js";
 import type { SecretAccess } from "../secrets.js";
-import type { Executor, MemoryService, ToolContext } from "../tool.js";
+import type { Executor, MemoryService, NetworkAccess, ToolContext } from "../tool.js";
 import type { ModelPricing, ReviewerConfig } from "./reviewer.js";
 import type { RunState } from "./state.js";
 import type { RunRecord, RunStore } from "./store.js";
@@ -93,6 +93,8 @@ export interface LoopDeps {
    * `{ replayOf }` with the recorded decision.
    */
   toolSearch?: ToolSearchDeps;
+  /** The network access the tools of this run may grant (only after an approved card). */
+  networkFor?(run: RunRecord): NetworkAccess;
   now(): Date;
   sleep(ms: number): Promise<void>;
 }
