@@ -39,6 +39,7 @@ export const RUN_EVENT_TYPES = [
   "finish_attempt",
   "review",
   "review_evidence",
+  "review_reprompt",
   "escalated",
   "status_changed",
   "compacted",

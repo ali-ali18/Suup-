@@ -89,7 +89,7 @@ export interface BuildDepsOptions {
    * Runs the loop with no memory at all: no rules, profile or conversation history are loaded
    * (so no `context_loaded` carries anything from the database) and the memory tools have no
    * `MemoryService` behind them. For evaluations, which must measure the harness and the model,
-   * never what a real user once told the system. Default `false`.
+   * never what a real user once told the system. Default: what the run says (`runs.isolated`).
    */
   isolated?: boolean;
 }
@@ -130,6 +130,8 @@ export interface Runtime {
     botId: string;
     objective: string;
     acceptanceCriteria?: string[];
+    /** An evaluation run: isolated from the user's memory, now and at its end (no journal). */
+    isolated?: boolean;
   }): Promise<Run>;
   buildDeps(runId: string, workerId: string, options?: BuildDepsOptions): Promise<LoopDeps>;
   createWorker(options?: CreateWorkerOptions): Worker;
@@ -417,9 +419,12 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     }
     const cfg = botConfig(bot);
     const reviewer = reviewerConfig();
-    // An evaluation runs unattended on a disposable machine: no card could ever be answered, and
-    // it must not depend on what the user keeps in the vault.
-    const guarded = buildOptions.isolated !== true;
+    // Uma única fonte da verdade: a opção explícita, ou então a marca `isolated` da própria
+    // execução. Uma avaliação roda sem ninguém por perto numa máquina descartável: sem diário,
+    // sem memória, sem conectores, portão que permite tudo e sem cofre (não depende do que o
+    // usuário guarda nele).
+    const isolated = (buildOptions.isolated ?? run.isolated) === true;
+    const guarded = !isolated;
     const vaultOn = guarded && vault.settings !== undefined;
     if (vaultOn) await vault.refresh(REDACTION_MAX_AGE_MS);
 
@@ -450,11 +455,13 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
       executor: await runtime.executorFor(bot.id),
       bot: botCfg,
       ...(reviewer === undefined ? {} : { reviewer }),
-      // An isolated run (an evaluation) runs unattended on a disposable machine: no card could ever
-      // be answered, so it opts out of the policy by name. Every other run is gated.
+      // Uma execução isolada (uma avaliação) roda sem ninguém para responder e numa máquina
+      // descartável: nenhum cartão poderia ser respondido, então ela sai da política pelo nome. Toda
+      // outra execução passa pelo portão.
       gate: guarded ? gateFor(runTools) : allowAllGate(),
       ...(vaultOn ? { secrets: vault.accessFor(bot.id) } : {}),
-      ...(buildOptions.isolated === true
+      // Uma execução isolada não carrega memória: nada do que o usuário contou chega a ela.
+      ...(!guarded
         ? {}
         : {
             loadRunContext: async (id: string) => {
@@ -540,6 +547,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
         ...(input.acceptanceCriteria === undefined
           ? {}
           : { acceptanceCriteria: input.acceptanceCriteria }),
+        ...(input.isolated === true ? { isolated: true } : {}),
       });
     },
     buildDeps,
@@ -562,7 +570,9 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
         // from the stored run, so it also happens for a run another worker finished after a crash.
         afterRun: async (end) => {
           if (end.outcome === "settled" || end.outcome === "failed") {
-            await finishRun(runtime.db, end.runId);
+            await finishRun(runtime.db, end.runId, {
+              redact: (value) => runtime.redactJson(value),
+            });
           }
         },
         concurrency: opts.concurrency ?? settings.concurrency,

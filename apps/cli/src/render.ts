@@ -267,16 +267,31 @@ export function renderEvent(event: RawEvent, state: RenderState): string[] {
       }[e.payload.verdict];
       return [
         `Revisor ${verdict}${e.payload.notes.trim() === "" ? "" : `: ${oneLine(e.payload.notes, 200)}`}`,
+        ...(e.payload.discrepancies ?? []).map(
+          (d) =>
+            `  - ${oneLine(d.claimed, 80)} → ${oneLine(d.shows, 80)} (${oneLine(d.where, 40)})`,
+        ),
+        ...(e.payload.unchecked ?? []).map(
+          (u) => `  - sem verificar (${u.kind} ${oneLine(u.ref, 40)}): ${oneLine(u.what, 80)}`,
+        ),
+        ...(e.payload.namedNothing === true
+          ? ["  ! o revisor não nomeou nada que lhe faltasse (nem depois de perguntado de novo)"]
+          : []),
         ...(e.payload.warning === undefined ? [] : [`  ! aviso: ${e.payload.warning}`]),
       ];
     }
     case "review_evidence": {
-      const { supplied, missing, round } = e.payload;
+      const { supplied, missing, round, omitted } = e.payload;
       const cut = supplied.filter((i) => i.sent < i.chars).length;
+      const left = omitted?.length ?? 0;
       return [
-        `· revisor pediu mais evidências (rodada ${round}): ${supplied.length} item(ns) enviado(s)${cut > 0 ? `, ${cut} cortado(s) pelo limite` : ""}${missing.length > 0 ? `, ${missing.length} indisponível(is)` : ""}`,
+        `· revisor pediu mais evidências (rodada ${round}): ${supplied.length} item(ns) enviado(s)${cut > 0 ? `, ${cut} cortado(s) pelo limite` : ""}${left > 0 ? `, ${left} ficou(aram) de fora pelo limite` : ""}${missing.length > 0 ? `, ${missing.length} indisponível(is)` : ""}`,
       ];
     }
+    case "review_reprompt":
+      return [
+        `· revisor reprovou sem apontar divergência; perguntado de novo (${e.payload.reason})`,
+      ];
     case "escalated":
       return [
         e.payload.reason !== "review_tie_break"
@@ -378,7 +393,9 @@ export function summarizeEvent(event: RawEvent): string {
     case "review":
       return `${e.payload.verdict}: ${oneLine(e.payload.notes, 80)}${e.payload.warning === undefined ? "" : ` (aviso: ${oneLine(e.payload.warning, 50)})`}`;
     case "review_evidence":
-      return `rodada ${e.payload.round}: ${e.payload.supplied.length} enviado(s), ${e.payload.missing.length} indisponível(is)`;
+      return `rodada ${e.payload.round}: ${e.payload.supplied.length} enviado(s), ${e.payload.omitted?.length ?? 0} de fora pelo limite, ${e.payload.missing.length} indisponível(is)`;
+    case "review_reprompt":
+      return `reprovação sem divergência: ${oneLine(e.payload.reason, 80)}`;
     case "escalated":
       return JSON.stringify(oneLine(e.payload.question, 90));
     case "status_changed": {

@@ -9,7 +9,7 @@ Como o harness lembra: o que é guardado, quem guarda, o que entra em toda execu
 | Regra (`rule`) | Ordem permanente do usuário ("responda sempre em português") | Você (`suup memory add rule`) ou o bot, quando você diz a regra (`remember`) | Todos os bots (compartilhada) ou só um (escopo do bot) | **Entra em toda execução**, no prompt do sistema, como regra que vale mais que as preferências do bot |
 | Perfil (`profile`) | Fato duradouro sobre você ("moro em Recife") | Você ou o bot (`remember`) | Todos os bots | **Entra em toda execução**, no prompt do sistema |
 | Nota (`note`) | O que um bot aprendeu fazendo o trabalho dele | O bot (`remember`) ou você (`--bot`) | Só aquele bot | **Buscada**: o bot usa `recall` quando precisa |
-| Diário (`journal`) | O que o bot fez, quando e com que resultado | O sistema, ao fim de cada execução (sem chamar modelo) | Só aquele bot | **Buscada** (`recall`) |
+| Diário (`journal`) | O que o bot fez, quando e com que resultado (nunca o texto que você digitou) | O sistema, ao fim de cada execução que fez algo (sem chamar modelo) | Só aquele bot | **Buscada** (`recall`) |
 
 Além delas, o **texto integral das conversas** fica guardado e o bot o consulta com `search_conversations` (busca por palavras, em português: "provas" acha "prova"). A busca, de memória e de conversas, **ignora acentos** ("avaliacao" acha "avaliação") onde o PostgreSQL tem a extensão `unaccent`, que a imagem Docker tem; num PostgreSQL sem ela a busca funciona como antes, só que com acentos (`suup doctor` e `GET /v1/doctor` dizem qual é o caso). Escrever sem acento *e* no plural contra um texto singular acentuado pode não achar ("avaliacoes" não acha "avaliação"): o radical muda.
 
@@ -32,7 +32,31 @@ Notas, diário e conversas antigas **não** entram sozinhos: ocupariam contexto 
 
 ## O diário
 
-Ao fim de toda execução (concluída, falha ou cancelada), o runtime acrescenta uma linha ao diário do bot: data, objetivo (cortado), resultado e, se concluiu, o resumo (cortado). É uma entrada por execução, mesmo que o fim seja processado duas vezes (por outro worker, depois de uma queda).
+Ao fim de toda execução que **fez algo** (concluída, falha ou cancelada), o runtime acrescenta uma linha ao diário do bot: data, resultado e, se concluiu, o resumo (cortado). É uma entrada por execução, mesmo que o fim seja processado duas vezes (por outro worker, depois de uma queda).
+
+**O diário não copia o que você escreveu.** Numa execução de conversa ele guarda só `data · Conversa · Resultado: ...`, com o resumo do `finish` que o próprio bot escreveu (o bot é instruído a nunca pôr segredo ali) e metadados neutros (concluída, falhou com a origem, cancelada). O objetivo, que é o texto literal da sua mensagem, **não entra**. Antes, o diário repetia o objetivo e, quando você dizia uma senha no chat, o bot recusava guardá-la mas o diário a gravava em claro. Numa execução sem conversa (`suup run`), o objetivo é a tarefa que quem opera deu e entra, cortado.
+
+Duas coisas completam isso:
+
+- **Redação (segunda linha de defesa, melhor esforço).** Todo texto que vai ao diário passa por `redactSecrets` (`packages/core/src/secret-patterns.ts`): chaves de formato conhecido (`sk-`, `ghp_`, `AKIA...`, chaves privadas), "senha / password / token / chave / segredo ... é|:|= valor" (até 6 palavras entre a palavra e o valor), números de cartão e sequências longas de letras e números sem espaço viram `[segredo removido]`. Pega o óbvio e deixa passar o resto (uma senha dita sem nenhuma palavra-chave por perto, por exemplo); por isso a primeira linha, não copiar o texto do usuário, é a que importa.
+- **Conversa que só respondeu não vira diário.** Uma execução de conversa que terminou bem sem usar nenhuma ferramenta além das de controle (`plan`, `finish`, `escalate`), como "bom dia", não cria entrada: o diário ficaria cheio de ruído. A reconciliação depois de uma queda sabe disso e não fica revisitando essas execuções.
+- **A marca de redação não se duplica.** As regras de `redactSecrets` são idempotentes: um valor já trocado por `[segredo removido]` não é casado de novo por outra regra (antes, `api_key=sk-...` virava `[segredo removido] removido]`, porque a regra "palavra-chave = valor" casava o `[segredo` que a regra de chave conhecida tinha posto). Aplicar a função duas vezes dá o mesmo texto.
+- **Execução de avaliação não escreve diário.** As execuções do `suup eval` são **isoladas**: já não liam memória (regras, perfil, histórico, ferramentas de memória); agora também **não escrevem**. A coluna `runs.isolated` (migração 0010) marca a execução, e `finishRun` não grava diário para ela, nem na hora nem depois: `reconcileRunEffects` a ignora, qualquer worker que a reconcilie. Antes, o avaliador não chamava o fim de execução, e a entrada só aparecia se algum worker rodasse a reconciliação mais tarde (as duas entradas de diário vistas nas tarefas difíceis eram isso); o resultado era inconsistente e o diário do usuário podia receber o texto de tarefas de avaliação. Uma avaliação mede o harness e o modelo, e não deve nem usar nem alterar a memória de ninguém; o diário de uma tarefa de avaliação, se alguém quiser ver, está no log da execução (`suup inspect`).
+
+### Entradas antigas
+
+Não há migração nem reescrita automática: entradas gravadas antes desta mudança podem conter o texto cru de uma mensagem. Para limpar, liste e esqueça (arquivar; nada é apagado, e `restore` desfaz):
+
+```
+suup memory list --layer journal --all --json     # procure o trecho sensível
+suup memory forget <id>
+```
+
+Para um segredo que **não pode** continuar no banco (a linha arquivada ainda existe), o texto também deve ser removido do registro: `suup memory edit <id> "texto sem o segredo"` corrige a linha no lugar (e `forget` depois, se quiser). O objetivo da execução e as mensagens da conversa, que ficam no log de eventos e no histórico, não são tocados por nada disto: são o registro do que foi dito.
+
+### Por que `suup memory search` não achou o diário
+
+Não era defeito do índice: o diário é indexado como as outras camadas. Sem `--bot`, a busca olha só as memórias **compartilhadas** (regra e perfil), e o diário e as notas são de um bot só, então não aparecem. Com `suup memory search "palavra" --bot <bot>` aparecem. A CLI agora avisa disso quando a busca sem `--bot` não acha nada.
 
 ## A conversa
 

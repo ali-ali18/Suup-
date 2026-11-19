@@ -1,4 +1,4 @@
-import { defineTool, MemoryRuleError } from "@suup/core";
+import { defineTool, MemoryRuleError, SECRET_PATTERNS } from "@suup/core";
 import { z } from "zod";
 import { isOutput, memoryOf } from "./memory-util.js";
 
@@ -23,16 +23,6 @@ const input = z.object({
       "Only for a rule. shared (the default) applies to every assistant of the user; bot applies only to you, for a rule that concerns just your own job. A profile is always shared and a note is always yours: leave this out for them.",
     ),
 });
-
-/** Text that looks like a credential. Cheap and conservative: a safety net, not a scanner. */
-const SECRET_PATTERNS: readonly RegExp[] = [
-  /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
-  /\b(?:sk|pk|rk)[-_][A-Za-z0-9_-]{20,}/,
-  /\bgh[pousr]_[A-Za-z0-9]{20,}/,
-  /\bxox[abprs]-[A-Za-z0-9-]{10,}/,
-  /\bAKIA[0-9A-Z]{16}\b/,
-  /\b(?:password|passwd|senha|secret|segredo|token|api[ _-]?key)\s*(?:is|é|:|=)\s*\S{6,}/i,
-];
 
 export const rememberTool = defineTool({
   name: "remember",

@@ -1,4 +1,4 @@
--- 0011_connectors: conectores MCP (plano 4.11) e as concessões por bot.
+-- 0012_connectors: conectores MCP (plano 4.11) e as concessões por bot.
 -- Cada arquivo roda dentro de uma transação aberta pelo runner: não use BEGIN/COMMIT aqui.
 --
 -- Um conector é um servidor MCP externo cujas ferramentas um bot pode usar: um processo filho

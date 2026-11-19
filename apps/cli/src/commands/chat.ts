@@ -140,7 +140,7 @@ export const chatCommand: CommandSpec = {
     const conversation = await createDirectConversation(db, bot.id);
     warnIfLocalSandbox(ctx);
     // Runs that ended while no worker was looking (a crash) still owe the conversation their end.
-    await reconcileRunEffects(db);
+    await reconcileRunEffects(db, { redact: (value) => runtime.redactJson(value) });
 
     // Messages already shown. Starts at the tail of the history.
     const tail = await listMessages(db, conversation.id, { limit: HISTORY_TAIL });

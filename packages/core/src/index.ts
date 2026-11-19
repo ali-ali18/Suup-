@@ -118,6 +118,7 @@ export {
   RISK_LEVELS,
   type RiskLevel,
 } from "./risk.js";
+export { REDACTED, redactSecrets, SECRET_PATTERNS } from "./secret-patterns.js";
 export {
   createRedactor,
   findPlaceholders,

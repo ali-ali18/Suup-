@@ -1,4 +1,4 @@
-// Owns the approval cards (table `approvals`, migration 0010): the projection of the run's
+// Owns the approval cards (table `approvals`, migration 0011): the projection of the run's
 // `approval_requested` events, the user's decision on them, and the hand-off of that decision back
 // to the loop. The run's event log stays the truth: a row here is created in the same transaction
 // as its event, and a decision is recorded in the log by the loop (which then marks the row

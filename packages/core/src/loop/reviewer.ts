@@ -1,9 +1,9 @@
-import type { PlanStep } from "../events.js";
-import type { Block } from "../messages.js";
+import type { Discrepancy, PlanStep, UncheckedItem } from "../events.js";
+import type { Block, JsonValue } from "../messages.js";
 import type { Provider } from "../provider.js";
-import { verdictInputSchema } from "./control-tools.js";
+import { validDiscrepancies, validUnchecked, verdictParseSchema } from "./control-tools.js";
 import { formatPlan } from "./prompts.js";
-import type { ToolLogEntry, UserExchange } from "./state.js";
+import { ARGS_SNIPPET, type ToolLogEntry, type UserExchange } from "./state.js";
 
 export interface ModelPricing {
   inputPerMTok: number;
@@ -49,13 +49,18 @@ export function buildReviewDigest(
   const entries = log.map((e, i) => {
     const status = e.isError ? `${e.outcome}, error` : e.outcome;
     const lines = [`#${i + 1} ${e.name} ${e.args} -> ${status} (${e.length} chars)`];
+    if (e.argsLength > ARGS_SNIPPET) {
+      lines.push(
+        `  [ARGUMENTS SHORTENED: only the first ${ARGS_SNIPPET} of ${e.argsLength} chars of the call's arguments are shown; ask for "#${i + 1}" in "calls" with need_evidence to see them all (this is different from the result below)]`,
+      );
+    }
     if (e.tail === "") {
       if (e.head !== "") lines.push(`  result: ${JSON.stringify(e.head)}`);
     } else {
       lines.push(`  start: ${JSON.stringify(e.head)}`);
       lines.push(`  end: ${JSON.stringify(e.tail)}`);
       lines.push(
-        `  [SHORTENED: only the start and end of ${e.length} chars are shown; ask for "#${i + 1}" with need_evidence to see all of it]`,
+        `  [SHORTENED: only the start and end of ${e.length} chars are shown; ask for "#${i + 1}" in "results" with need_evidence to see all of it]`,
       );
     }
     return lines.join("\n");
@@ -115,51 +120,77 @@ export function buildReviewMessage(input: {
     `## The assistant's evidence\n${evidence}`,
     `## Exchanges with the user (these are real: the harness records them itself)\n${buildUserExchangeDigest(input.userExchanges ?? [])}`,
     `## What the assistant actually did (tool calls, outcome, start and end of each result)\n${input.digest}`,
-    'Decide now and answer with the `verdict` tool. If you cannot verify something because the digest shows it only in part, ask for it with "need_evidence" (digest ids like "#3" and/or workspace file paths) instead of rejecting.',
+    'Decide now and answer with the `verdict` tool. If you cannot verify something because the digest shows it only in part, ask for it with "need_evidence" (digest ids like "#3" in "results" for what a tool returned or in "calls" for the full arguments of a call, and/or workspace file paths in "files") instead of rejecting. A "reject" must list at least one REAL mismatch in "discrepancies" (real_mismatch true; what matched goes in "notes"). A "cannot_verify" must list in "unchecked" what you could not check and what you would need.',
   ].join("\n\n");
 }
 
 export interface ParsedVerdict {
   verdict: "approve" | "reject" | "need_evidence" | "cannot_verify";
   notes: string;
-  /** The `verdict` call that carried the answer, for `need_evidence` (the evidence replies to it). */
+  /** The `verdict` call that carried the answer (the evidence or the new question replies to it). */
   callId?: string;
-  /** `need_evidence`: digest entries and workspace paths the reviewer asked for. */
+  /** The arguments as sent, kept to rebuild the conversation when the reviewer is asked again. */
+  rawArgs?: JsonValue;
+  /** `need_evidence`: digest entries (results, calls) and workspace paths the reviewer asked for. */
   results: string[];
+  calls: string[];
   files: string[];
+  /** `reject`: the real mismatches (all three parts written, marked `real_mismatch` by the reviewer). */
+  discrepancies: Discrepancy[];
+  /** `cannot_verify`: what the reviewer said it could not check (only entries that name something). */
+  unchecked: UncheckedItem[];
+  /** Set when a `reject` named no usable discrepancy: it is not a rejection. */
+  invalidReject?: string;
   /** Set when the answer was unusable and the verdict is an approval by default. */
   warning?: string;
+}
+
+const NO_DISCREPANCY =
+  "a reject must list at least one concrete discrepancy in `discrepancies` that is a real mismatch (what the work claims, what the evidence shows instead, where, with `real_mismatch` true)";
+
+/** Why a reject is not accepted; says what became of the entries it did list. */
+function noDiscrepancy(listed: number): string {
+  if (listed === 0) return NO_DISCREPANCY;
+  return `${NO_DISCREPANCY}. The ${listed} entr${listed === 1 ? "y" : "ies"} you listed ${listed === 1 ? "was" : "were"} discarded: marked \`real_mismatch\` false, left it out, or incomplete. What you checked and found correct goes in \`notes\`, not in \`discrepancies\``;
+}
+
+function byDefault(warning: string): ParsedVerdict {
+  return {
+    verdict: "approve",
+    notes: "",
+    results: [],
+    calls: [],
+    files: [],
+    discrepancies: [],
+    unchecked: [],
+    warning,
+  };
 }
 
 /** Reads the reviewer's answer. Anything unusable counts as an approval with a warning. */
 export function parseVerdict(blocks: readonly Block[]): ParsedVerdict {
   const call = blocks.find((b) => b.type === "tool_call" && b.name === "verdict");
   if (call === undefined || call.type !== "tool_call") {
-    return {
-      verdict: "approve",
-      notes: "",
-      results: [],
-      files: [],
-      warning: "the reviewer did not answer through the verdict tool; approved by default",
-    };
+    return byDefault("the reviewer did not answer through the verdict tool; approved by default");
   }
-  const parsed = verdictInputSchema.safeParse(call.args);
-  if (!parsed.success) {
-    return {
-      verdict: "approve",
-      notes: "",
-      results: [],
-      files: [],
-      warning: "the reviewer's verdict was malformed; approved by default",
-    };
-  }
+  const parsed = verdictParseSchema.safeParse(call.args);
+  if (!parsed.success)
+    return byDefault("the reviewer's verdict was malformed; approved by default");
   const notes = parsed.data.notes.trim();
   const { verdict } = parsed.data;
+  const discrepancies = validDiscrepancies(parsed.data.discrepancies);
   return {
     verdict,
     notes: notes === "" && verdict !== "approve" ? "(no reason given)" : notes,
     callId: call.id,
+    rawArgs: call.args,
     results: parsed.data.results ?? [],
+    calls: parsed.data.calls ?? [],
     files: parsed.data.files ?? [],
+    discrepancies,
+    unchecked: validUnchecked(parsed.data.unchecked),
+    ...(verdict === "reject" && discrepancies.length === 0
+      ? { invalidReject: noDiscrepancy(parsed.data.discrepancies?.length ?? 0) }
+      : {}),
   };
 }

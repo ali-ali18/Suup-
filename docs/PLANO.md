@@ -78,7 +78,7 @@ Regras:
 
 - Pergunta simples não precisa de plano. A partir do momento em que existe plano, `finish` é a única saída válida.
 - O plano e o objetivo vão sempre no fim do contexto, onde o modelo presta mais atenção.
-- Antes de aceitar `finish` em execução com plano, um **revisor** (outra chamada ao modelo, sem o histórico) recebe objetivo, critérios e evidência, e pode devolver. O resumo que ele recebe é curto: por isso pode **pedir evidência** (resultados inteiros e arquivos, em até 2 rodadas e com orçamento fixo) antes de decidir, e só reprova com uma divergência concreta; o que continua inverificável chega ao dono como "não consegui verificar X", nunca como reprovação.
+- Antes de aceitar `finish` em execução com plano, um **revisor** (outra chamada ao modelo, sem o histórico) recebe objetivo, critérios e evidência, e pode devolver. O resumo que ele recebe é curto: por isso pode **pedir evidência** (resultados inteiros, argumentos de chamadas e arquivos, em até 3 rodadas e com orçamento de caracteres) antes de decidir, e só reprova com ao menos uma divergência concreta e estruturada; o que continua inverificável chega ao dono como "não consegui verificar X", nunca como reprovação.
 - Estados: `queued`, `running`, `waiting_approval`, `waiting_user`, `done`, `failed`, `cancelled`.
 - Execuções longas rodam em segundo plano; a conversa continua livre.
 - Retomada: o contexto é reconstruído a partir dos eventos. Uma ferramenta interrompida no meio é marcada como "resultado desconhecido" e o modelo decide se confere ou repete.

@@ -1,7 +1,9 @@
 import {
+  CONTROL_TOOL_NAMES,
   type EscalateQuestion,
   escalatedQuestions,
   type FailureOrigin,
+  redactSecrets,
   runResultSchema,
 } from "@suup/core";
 import {
@@ -32,10 +34,20 @@ const clip = (text: string, max: number): string => {
 
 const isoDay = (date: Date): string => date.toISOString().slice(0, 10);
 
-/** The journal line of a finished run: when, what was asked, how it ended. No model involved. */
+/**
+ * A linha do diário de uma execução que terminou: quando, e como acabou. Sem modelo.
+ *
+ * O diário NUNCA copia o texto cru do usuário numa execução de conversa: o bot decide o que
+ * guardar (e é instruído a não guardar segredos), e o diário seguia o que o usuário digitou, o que
+ * vazava uma senha que o bot tinha se recusado a guardar. Aqui só entra o que o próprio bot
+ * escreveu (o resumo do `finish`) e metadados neutros. Numa execução sem conversa (`suup run`) o
+ * objetivo é uma tarefa dada por quem opera o sistema e entra, cortado. Todo o texto passa por
+ * `redactSecrets`, melhor esforço, como segunda linha de defesa (os valores exatos do cofre são
+ * tirados antes, em `finishRun`).
+ */
 export function journalText(run: Run): string {
   const when = isoDay(run.finishedAt ?? run.updatedAt);
-  const objective = clip(run.objective, 200);
+  const isConversation = run.conversationId !== null && run.conversationId !== undefined;
   let outcome: string;
   if (run.status === "done") {
     const summary = runResultSchema.safeParse(run.result);
@@ -45,7 +57,26 @@ export function journalText(run: Run): string {
   } else {
     outcome = "cancelada antes de terminar.";
   }
-  return `${when} · Objetivo: "${objective}" · Resultado: ${outcome}`;
+  const what = isConversation ? "Conversa" : `Objetivo: "${clip(run.objective, 200)}"`;
+  return redactSecrets(`${when} · ${what} · Resultado: ${outcome}`);
+}
+
+/** Nomes das ferramentas de controle, para distinguir uma execução que só conversou. */
+const CONTROL_NAMES: string[] = [...CONTROL_TOOL_NAMES];
+
+/**
+ * Uma execução de conversa que terminou bem sem usar nenhuma ferramenta além das de controle foi
+ * só uma resposta ("bom dia"): não vira entrada no diário, que ficaria cheio de ruído.
+ */
+async function isPlainChat(db: Db, run: Run): Promise<boolean> {
+  if (run.status !== "done" || run.conversationId === null || run.conversationId === undefined) {
+    return false;
+  }
+  const [row] = await db.sql<{ n: number }[]>`
+    select count(*)::int as n from run_events
+    where run_id = ${run.id} and type = 'tool_call'
+      and not (payload->>'name' = any(${CONTROL_NAMES}::text[]))`;
+  return (row?.n ?? 0) === 0;
 }
 
 /** The message the user sees for the end (or the pause) of a conversation run; `null` for none. */
@@ -130,6 +161,25 @@ async function outcomeMessage(
   }
 }
 
+/**
+ * Como o fim de uma execução limpa o texto que vai ao diário. `redact` é o redator do cofre
+ * (`runtime.redactJson`): ele conhece os valores exatos dos segredos e roda sobre o texto cru, ANTES
+ * do corte e da redação por padrões (`redactSecrets`, melhor esforço), porque um corte no meio de um
+ * valor deixaria um pedaço que nenhum dos dois reconheceria. Sem ele só valem os padrões.
+ */
+export interface RunEndOptions {
+  redact?: <T>(value: T) => Promise<T>;
+}
+
+/** A execução com os campos que alimentam o diário limpos pelo redator do cofre. */
+async function scrubbedForJournal(run: Run, options: RunEndOptions): Promise<Run> {
+  const { redact } = options;
+  if (redact === undefined) return run;
+  const { objective, failureDetail, result } = run;
+  const safe = await redact({ objective, failureDetail, result });
+  return { ...run, ...safe };
+}
+
 export interface RunEffects {
   /** A bot or system message was written to the conversation now (not already there). */
   messageWritten: boolean;
@@ -144,7 +194,8 @@ export interface RunEffects {
  * (never from memory of this process), and idempotent: calling it again, from the same worker
  * after a redelivery or from another one after a crash, writes nothing twice.
  *
- * - `done`, `failed`, `cancelled`: one `journal` memory for the bot (key: the run), and, for a
+ * - `done`, `failed`, `cancelled`: one `journal` memory for the bot (key: the run; not for a
+ *   conversation run that only answered, with no tool beyond the control ones), and, for a
  *   conversation run, the bot's side in the conversation (key: run + outcome): the final answer,
  *   or a system message in Portuguese saying it failed or was cancelled.
  * - `waiting_user`: the question the run asked, as a bot message (key: run + the position of the
@@ -152,7 +203,11 @@ export interface RunEffects {
  * - messages posted to a run that ended before reading them become the objective of a new run.
  * - any other status: nothing.
  */
-export async function finishRun(db: Db, runId: string): Promise<RunEffects> {
+export async function finishRun(
+  db: Db,
+  runId: string,
+  options: RunEndOptions = {},
+): Promise<RunEffects> {
   const effects: RunEffects = { messageWritten: false, journalWritten: false, rolledOver: null };
   const run = await getRun(db, runId);
   if (run === null) return effects;
@@ -174,13 +229,16 @@ export async function finishRun(db: Db, runId: string): Promise<RunEffects> {
     }
   }
   if (terminal) {
-    const journal = await addJournalMemory(db, {
-      botId: run.botId,
-      text: journalText(run),
-      sourceRunId: run.id,
-      ...(run.conversationId == null ? {} : { sourceConversationId: run.conversationId }),
-    });
-    effects.journalWritten = journal !== null;
+    // Uma execução isolada (avaliação) nunca escreve na memória do usuário: sem diário.
+    if (run.isolated !== true && !(await isPlainChat(db, run))) {
+      const journal = await addJournalMemory(db, {
+        botId: run.botId,
+        text: journalText(await scrubbedForJournal(run, options)),
+        sourceRunId: run.id,
+        ...(run.conversationId == null ? {} : { sourceConversationId: run.conversationId }),
+      });
+      effects.journalWritten = journal !== null;
+    }
     effects.rolledOver = await rolloverUnreadMessages(db, run.id);
   }
   return effects;
@@ -194,20 +252,31 @@ export async function finishRun(db: Db, runId: string): Promise<RunEffects> {
  */
 export async function reconcileRunEffects(
   db: Db,
-  options: { sinceDays?: number; limit?: number } = {},
+  options: RunEndOptions & { sinceDays?: number; limit?: number } = {},
 ): Promise<string[]> {
   const days = options.sinceDays ?? 7;
   const limit = options.limit ?? 200;
   const rows = await db.sql<{ id: string }[]>`
     select r.id from runs r
-    where (
+    where not r.isolated and ((
       r.status = 'waiting_user' and r.conversation_id is not null
     ) or (
       r.status in ('done', 'failed', 'cancelled')
       and r.updated_at > now() - make_interval(days => ${days}::integer)
       and (
-        not exists (
-          select 1 from memories m where m.source_run_id = r.id and m.layer = 'journal'
+        (
+          not exists (
+            select 1 from memories m where m.source_run_id = r.id and m.layer = 'journal'
+          )
+          -- uma conversa que só respondeu (sem ferramenta além das de controle) não tem diário
+          and not (
+            r.status = 'done' and r.conversation_id is not null
+            and not exists (
+              select 1 from run_events e
+              where e.run_id = r.id and e.type = 'tool_call'
+                and not (e.payload->>'name' = any(${CONTROL_NAMES}::text[]))
+            )
+          )
         )
         or (
           r.conversation_id is not null
@@ -222,9 +291,9 @@ export async function reconcileRunEffects(
           where i.run_id = r.id and i.kind = 'user_message' and i.consumed_at is null
         )
       )
-    )
+    ))
     order by r.updated_at
     limit ${limit}`;
-  for (const row of rows) await finishRun(db, row.id);
+  for (const row of rows) await finishRun(db, row.id, options);
   return rows.map((r) => r.id);
 }

@@ -93,6 +93,7 @@ function isActivity(event: RunEvent): boolean {
     "finish_attempt",
     "review",
     "review_evidence",
+    "review_reprompt",
     "escalated",
     "plan_updated",
     "user_message",
@@ -277,7 +278,13 @@ export function timelineNotices(events: readonly RunEvent[]): Timeline {
         if (p.verdict === "reject") {
           notices.push({ seq: event.seq, text: "O revisor recusou a conclusão." });
         } else if (p.verdict === "unverified") {
-          notices.push({ seq: event.seq, text: "O revisor não conseguiu verificar a conclusão." });
+          notices.push({
+            seq: event.seq,
+            text:
+              p.namedNothing === true
+                ? "O revisor não conseguiu verificar a conclusão e não nomeou o que lhe faltou."
+                : "O revisor não conseguiu verificar a conclusão.",
+          });
         }
         break;
       case "user_message":

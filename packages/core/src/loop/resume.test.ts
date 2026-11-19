@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { validateConversation } from "../messages.js";
 import {
+  bareReject,
   CrashingStore,
   call,
+  cannotVerify,
   createRig,
   eventsOfType,
   FakeProvider,
@@ -131,6 +133,61 @@ const scenarios: Scenario[] = [
       verdict("reject", "The summary says 42 but nothing shows it."),
       verdict("approve"),
     ],
+  },
+  {
+    name: "the reviewer asks for the arguments of a call and for a file outside the workspace",
+    script: [
+      use(call("c1", "echo", { text: `cat > /tmp/calc.py <<'EOF'\n${"x = 1\n".repeat(80)}EOF` })),
+      use(finishCall("c2", "Computed with /tmp/calc.py.")),
+    ],
+    reviewerScript: [
+      needEvidence("v1", "need the script", { calls: ["#1", "#7"], files: ["/tmp/calc.py"] }),
+      verdict("approve"),
+    ],
+  },
+  {
+    name: "the reviewer rejects without a discrepancy, is asked again, then rejects for real and approves",
+    script: [use(finishCall("c1", "Done.")), use(finishCall("c2", "Done, fixed."))],
+    reviewerScript: [
+      bareReject("something feels off"),
+      verdict("reject", "The total is 41, not 42."),
+      verdict("approve"),
+    ],
+  },
+  {
+    name: "the reviewer rejects twice without a discrepancy: unverified, handed to the user",
+    script: [use(finishCall("c1", "Done.")), use(finishCall("c2", "Done, accepted."))],
+    reviewerScript: [bareReject("not sure"), bareReject("still not sure")],
+    answer: "Accept it.",
+  },
+  {
+    name: "the reviewer rejects with discrepancies it marks as not real, is asked again, then approves",
+    script: [use(finishCall("c1", "Done."))],
+    reviewerScript: [
+      verdict("reject", "everything matches", [
+        { claimed: "CNPJ", shows: "matches; no discrepancy", where: "#1", real_mismatch: false },
+      ]),
+      verdict("approve"),
+    ],
+  },
+  {
+    name: "the reviewer cannot_verify naming nothing, is asked again, then approves",
+    script: [use(finishCall("c1", "Done."))],
+    reviewerScript: [cannotVerify("it all checks out"), verdict("approve")],
+  },
+  {
+    name: "the reviewer cannot_verify something already sent in full, twice: unverified, handed to the user",
+    files: { "report.md": "Total: 42\n" },
+    script: [
+      use(finishCall("c1", "Total is 42.")),
+      use(finishCall("c2", "Total is 42, accepted.")),
+    ],
+    reviewerScript: [
+      needEvidence("v1", "need the report", { files: ["report.md"] }),
+      cannotVerify("cannot check", [{ what: "the total", kind: "file", ref: "report.md" }]),
+      cannotVerify("still cannot", [{ what: "the total", kind: "file", ref: "report.md" }]),
+    ],
+    answer: "Accept it.",
   },
   {
     name: "a run that starts with rules, a profile and the history of the conversation",

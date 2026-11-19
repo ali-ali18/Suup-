@@ -1,4 +1,4 @@
-// Owns the vault's rows (tables `secrets` and `secret_grants`, migration 0010). The database only
+// Owns the vault's rows (tables `secrets` and `secret_grants`, migration 0011). The database only
 // ever holds ciphertext: encrypting and decrypting happen outside it (`@suup/runtime`, with a key
 // that never touches the database), so nothing in this module can read a secret value. The API
 // reads names and metadata through `listSecrets`; there is deliberately no "get value" function.

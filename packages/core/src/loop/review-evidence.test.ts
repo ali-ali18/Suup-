@@ -14,12 +14,13 @@ import {
   verdict,
 } from "../testing/index.js";
 import {
-  allocateBudget,
   EVIDENCE_BUDGET_CHARS,
   EVIDENCE_MAX_FILE_BYTES,
+  EVIDENCE_MAX_ROUNDS,
+  fillBudget,
   fingerprint,
-  showWithinBudget,
 } from "./evidence.js";
+import { showWithinBudget } from "./evidence-render.js";
 import { runLoop } from "./loop.js";
 
 const LONG = `${"A".repeat(3000)}MIDDLE-FACT${"Z".repeat(3000)}`;
@@ -51,7 +52,10 @@ describe("review: evidence rounds", () => {
     const text = allText(rig, 0);
     expect(text).toContain("#1 echo");
     expect(text).toContain("[SHORTENED: only the start and end of");
-    expect(text).toContain('ask for "#1" with need_evidence');
+    expect(text).toContain('ask for "#1" in "results" with need_evidence');
+    // The call's arguments are long too: that is marked apart, as ARGUMENTS, with its own request.
+    expect(text).toContain("[ARGUMENTS SHORTENED: only the first 200 of");
+    expect(text).toContain('ask for "#1" in "calls" with need_evidence');
     expect(text).not.toContain('MIDDLE-FACT"');
     // The reviewer is told what it can do, and the verdict tool lists the new outcomes.
     expect(rig.reviewerProvider?.requests[0]?.system).toContain("need_evidence");
@@ -72,7 +76,7 @@ describe("review: evidence rounds", () => {
     const second = requests[1]?.messages ?? [];
     expect(second.map((m) => m.role)).toEqual(["user", "assistant", "user"]);
     expect(allText(rig, 1)).toContain("MIDDLE-FACT");
-    expect(allText(rig, 1)).toContain("Evidence round 1 of 2");
+    expect(allText(rig, 1)).toContain("Evidence round 1 of 3");
     expect(allText(rig, 1)).toContain("shown in full");
 
     const events = await rig.events();
@@ -156,24 +160,25 @@ describe("review: evidence rounds", () => {
       reviewerScript: [
         needEvidence("v1", "first", { files: ["a.md"] }),
         needEvidence("v2", "second", { files: ["b.md"] }),
-        needEvidence("v3", "still not sure about the totals", { files: ["c.md"] }),
+        needEvidence("v3", "third", { files: ["c.md"] }),
+        needEvidence("v4", "still not sure about the totals", { files: ["d.md"] }),
       ],
     });
-    for (const f of ["a.md", "b.md", "c.md"]) await rig.executor.writeFile(f, `file ${f}`);
+    for (const f of ["a.md", "b.md", "c.md", "d.md"]) await rig.executor.writeFile(f, `file ${f}`);
     expect(await rig.run()).toBe("waiting_user");
 
     const requests = rig.reviewerProvider?.requests ?? [];
-    expect(requests).toHaveLength(3);
-    // Rounds 1 and 2 may ask; the third request offers only a decision, and says so.
+    expect(requests).toHaveLength(EVIDENCE_MAX_ROUNDS + 1);
+    // The rounds may ask; the last request offers only a decision, and says so.
     expect(JSON.stringify(requests[0]?.tools[0]?.inputSchema)).toContain("need_evidence");
-    expect(JSON.stringify(requests[2]?.tools[0]?.inputSchema)).not.toContain("need_evidence");
-    expect(allText(rig, 2)).toContain("That was the last evidence round");
+    expect(JSON.stringify(requests[3]?.tools[0]?.inputSchema)).not.toContain("need_evidence");
+    expect(allText(rig, 3)).toContain("That was the last evidence round");
 
     const events = await rig.events();
-    expect(eventsOfType(events, "review_evidence")).toHaveLength(2);
+    expect(eventsOfType(events, "review_evidence")).toHaveLength(3);
     const [review] = eventsOfType(events, "review");
     expect(review?.payload.verdict).toBe("unverified");
-    expect(review?.payload.notes).toContain("still asking for evidence after 2 rounds");
+    expect(review?.payload.notes).toContain("still asking for evidence after 3 rounds");
     expect(review?.payload.notes).toContain("still not sure about the totals");
 
     // Not a rejection of the work: the owner is asked, and the question says what was not verified.
@@ -185,13 +190,14 @@ describe("review: evidence rounds", () => {
     const [attempt] = eventsOfType(events, "finish_attempt");
     expect(attempt?.payload).toMatchObject({ accepted: false, handedToUser: true });
     expect(attempt?.payload.rejectionReasons[0]).toContain("not a rejection of the work");
-    // The extra calls (2 follow-ups) count as turns, besides the agent's own.
-    expect((await rig.record()).turns).toBe(3);
+    // The extra calls (3 follow-ups) count as turns, besides the agent's own.
+    expect((await rig.record()).turns).toBe(4);
 
     // When the owner answers, the finish is accepted without a new review.
     rig.store.postInbox(rig.runId, { kind: "user_message", text: "Looks fine." });
     expect(await rig.run()).toBe("done");
-    expect(rig.reviewerProvider?.calls).toBe(3);
+    // the tie-break is settled: one more evidence round than before (3), no new review
+    expect(rig.reviewerProvider?.calls).toBe(4);
   });
 
   it("cannot_verify ends the review as unverified with the reviewer's words", async () => {
@@ -318,11 +324,14 @@ describe("review: evidence rounds", () => {
 });
 
 describe("evidence helpers", () => {
-  it("shares the budget: small items whole, large ones equally", () => {
-    expect(allocateBudget([10, 100, 1000], 500)).toEqual([10, 100, 390]);
-    expect(allocateBudget([1000, 1000], 500)).toEqual([250, 250]);
-    expect(allocateBudget([5], 500)).toEqual([5]);
-    expect(allocateBudget([], 500)).toEqual([]);
+  it("fills the budget in the order asked: whole items first, one fragment, the rest left out", () => {
+    expect(fillBudget([10, 100, 20000], 10000)).toEqual([10, 100, 9890]);
+    // The first item that does not fit is the one cut; a later one that fits is shown whole.
+    expect(fillBudget([20000, 800, 3000], 10000)).toEqual([6200, 800, 3000]);
+    // Nothing worth showing is left: the item is left out (0) instead of a useless fragment.
+    expect(fillBudget([9000, 5000], 10000)).toEqual([9000, 0]);
+    expect(fillBudget([5], 500)).toEqual([5]);
+    expect(fillBudget([], 500)).toEqual([]);
   });
 
   it("shows the start and the end of a cut text, with the size of the cut", () => {
@@ -391,5 +400,67 @@ describe("review: evidence and secrets", () => {
     expect(JSON.stringify(rig.reviewerProvider?.requests)).not.toContain(value);
     expect(allText(rig, 1)).toContain("[REDACTED:API_TOKEN]");
     expect(allText(rig, 1)).toContain("END-MARK");
+  });
+  /** O texto que o revisor recebeu como resposta ao seu último pedido de evidência. */
+  function evidenceReply(rig: Rig, request: number): string {
+    const blocks = (rig.reviewerProvider?.requests[request]?.messages ?? []).flatMap(
+      (m) => m.blocks,
+    );
+    const last = blocks.filter((b) => b.type === "tool_result").at(-1);
+    return last?.type === "tool_result" ? last.content : "";
+  }
+
+  it("the full arguments of a call are scrubbed in the event and in what the reviewer sees", async () => {
+    const rig = createRig({
+      script: [
+        use(call("c1", "echo", { text: `${"x".repeat(400)} TOKEN=${value} END-ARGS` })),
+        use(finishCall("c2", "Echoed with the token.")),
+      ],
+      reviewerScript: [
+        needEvidence("v1", "see the arguments", { calls: ["#1"] }),
+        verdict("approve"),
+      ],
+    });
+    expect(await runLoop(rig.deps({ secrets }), rig.runId)).toBe("done");
+
+    const events = await rig.events();
+    expect(JSON.stringify(events)).not.toContain(value);
+    expect(JSON.stringify(rig.reviewerProvider?.requests)).not.toContain(value);
+    expect(evidenceReply(rig, 1)).toContain("TOKEN=[REDACTED:API_TOKEN] END-ARGS");
+    const [evidence] = eventsOfType(events, "review_evidence");
+    const item = evidence?.payload.supplied[0];
+    expect(item?.kind).toBe("tool_call");
+    // The numbers describe the scrubbed text the reviewer got, not the raw arguments.
+    const shown = evidenceReply(rig, 1);
+    expect(shown).toContain(`(${item?.chars} chars, shown in full)`);
+  });
+
+  it("a value learned only after the call was recorded is still scrubbed from call arguments and results", async () => {
+    // O redator começa vazio: o log guarda o valor cru. Ele é ensinado só quando o revisor pede
+    // a evidência; nem o evento de evidência nem o que o revisor recebe podem trazê-lo.
+    const late = createRedactor();
+    const lateSecrets = { redactor: late, resolve: async () => ({}) };
+    const rig = createRig({
+      script: [
+        use(call("c1", "echo", { text: `${"x".repeat(400)} TOKEN=${value} END-ARGS` })),
+        use(finishCall("c2", "Echoed with the token.")),
+      ],
+      reviewerScript: [
+        () => {
+          late.add("API_TOKEN", value);
+          return needEvidence("v1", "see both", { calls: ["#1"], results: ["#1"] });
+        },
+        verdict("approve"),
+      ],
+    });
+    expect(await runLoop(rig.deps({ secrets: lateSecrets }), rig.runId)).toBe("done");
+
+    const events = await rig.events();
+    expect(JSON.stringify(eventsOfType(events, "review_evidence"))).not.toContain(value);
+    const reply = evidenceReply(rig, 1);
+    expect(reply).not.toContain(value);
+    expect(reply).toContain("TOKEN=[REDACTED:API_TOKEN] END-ARGS");
+    expect(reply).toContain("Tool CALL #1");
+    expect(reply).toContain("Tool RESULT of call #1");
   });
 });

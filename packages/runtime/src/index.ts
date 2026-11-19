@@ -74,6 +74,7 @@ export {
   journalText,
   ORIGIN_TEXT_PT,
   type RunEffects,
+  type RunEndOptions,
   reconcileRunEffects,
 } from "./run-end.js";
 export {

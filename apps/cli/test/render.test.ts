@@ -285,6 +285,17 @@ describe("renderers: the live view", () => {
         payload: { verdict: "unverified", notes: "o CNPJ não foi checado" },
       }),
     ).toContain("Revisor não conseguiu verificar: o CNPJ não foi checado");
+    const named = render({
+      type: "review",
+      payload: {
+        verdict: "unverified",
+        notes: "faltou o contrato",
+        unchecked: [{ what: "o contrato", kind: "file", ref: "contrato.md" }],
+        namedNothing: true,
+      },
+    });
+    expect(named).toContain("sem verificar (file contrato.md): o contrato");
+    expect(named).toContain("não nomeou nada que lhe faltasse");
     const round = render({
       type: "review_evidence",
       payload: {

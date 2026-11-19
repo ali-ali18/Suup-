@@ -7,8 +7,10 @@ export {
   type RecordedRequest,
 } from "./fake-provider.js";
 export {
+  bareReject,
   CrashingStore,
   call,
+  cannotVerify,
   createRig,
   eventsOfType,
   eventTypes,

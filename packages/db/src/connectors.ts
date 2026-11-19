@@ -1,5 +1,5 @@
 // Owns the rows of connectors (tables `connectors`, `connector_grants` and `connector_discovery`,
-// migration 0011). The database holds configuration and REFERENCES to vault secrets by name, never a
+// migration 0012). The database holds configuration and REFERENCES to vault secrets by name, never a
 // credential value. What is stored is validated by whoever writes it (the runtime, with the rules of
 // `@suup/connectors`); this module only keeps it consistent and answers.
 import { z } from "zod";

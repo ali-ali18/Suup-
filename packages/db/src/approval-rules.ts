@@ -1,4 +1,4 @@
-// Owns the user's standing rules about tool calls (table `approval_rules`, migration 0010).
+// Owns the user's standing rules about tool calls (table `approval_rules`, migration 0011).
 import { type ApprovalRule, type ArgMatcher, argMatcherSchema } from "@suup/core";
 import { z } from "zod";
 import type { Db } from "./client.js";

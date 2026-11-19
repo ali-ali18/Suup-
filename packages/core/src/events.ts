@@ -69,6 +69,25 @@ export type ApprovalDecision = z.infer<typeof approvalDecisionSchema>;
 export const secretInfoSchema = z.object({ name: z.string(), description: z.string() });
 export type SecretInfo = z.infer<typeof secretInfoSchema>;
 
+/** One concrete discrepancy named by the reviewer: what the work claims, what the evidence shows, where. */
+export const discrepancySchema = z.object({
+  claimed: z.string(),
+  shows: z.string(),
+  where: z.string(),
+});
+export type Discrepancy = z.infer<typeof discrepancySchema>;
+
+/**
+ * Something the reviewer said it could not check, and what it would need to check it: a digest
+ * result or call ("#3"), a workspace file, or something else (`other`, with the reference it names).
+ */
+export const uncheckedItemSchema = z.object({
+  what: z.string(),
+  kind: z.enum(["result", "call", "file", "other"]),
+  ref: z.string(),
+});
+export type UncheckedItem = z.infer<typeof uncheckedItemSchema>;
+
 export const contextItemSchema = z.object({ id: z.string(), text: z.string() });
 export type ContextItem = z.infer<typeof contextItemSchema>;
 
@@ -319,6 +338,30 @@ export const runEventSchema = z.discriminatedUnion("type", [
        * verdict is then an approval by default and this says why.
        */
       warning: z.exactOptional(z.string()),
+      /** `reject`: the concrete discrepancies the reviewer named (at least one; else not a reject). */
+      discrepancies: z.exactOptional(z.array(discrepancySchema).min(1)),
+      /** `unverified`: what the reviewer listed as unchecked and not already sent to it in full. */
+      unchecked: z.exactOptional(z.array(uncheckedItemSchema)),
+      /**
+       * `unverified` from a `cannot_verify` that, even after being asked once more, named nothing
+       * the harness had not already sent in full (or nothing at all): the owner is told so.
+       */
+      namedNothing: z.exactOptional(z.boolean()),
+    }),
+  }),
+  z.object({
+    /**
+     * The reviewer's answer was not usable and the harness asked once more (this event is that
+     * question): a `reject` with no discrepancy marked as a real mismatch, or a `cannot_verify` that
+     * named nothing it lacked (or only what had already been sent in full). `args` is what the
+     * reviewer sent, so the conversation can be rebuilt. A second unusable answer ends the review
+     * as `unverified`.
+     */
+    type: z.literal("review_reprompt"),
+    payload: z.object({
+      callId: z.string(),
+      args: z.json(),
+      reason: z.string(),
     }),
   }),
   z.object({
@@ -337,7 +380,12 @@ export const runEventSchema = z.discriminatedUnion("type", [
       /** Why the reviewer wanted it, in its words. */
       notes: z.string(),
       /** What the reviewer named: digest entries (`#3` or a call id) and workspace paths. */
-      requested: z.object({ results: z.array(z.string()), files: z.array(z.string()) }),
+      requested: z.object({
+        results: z.array(z.string()),
+        files: z.array(z.string()),
+        /** Tool CALLS whose full arguments were asked for (absent in older logs: none). */
+        calls: z.exactOptional(z.array(z.string())),
+      }),
       /** What was supplied, in order. `sent` is how many characters were shown (the budget). */
       supplied: z.array(
         z.discriminatedUnion("kind", [
@@ -346,6 +394,14 @@ export const runEventSchema = z.discriminatedUnion("type", [
             /** The tool call id; the full content is that call's `tool_result` event. */
             ref: z.string(),
             /** Position in the digest (1-based). */
+            index: z.number().int().positive(),
+            chars: z.number().int().nonnegative(),
+            sent: z.number().int().nonnegative(),
+          }),
+          z.object({
+            kind: z.literal("tool_call"),
+            /** The tool call id; the arguments are that call's `tool_call` event, rendered. */
+            ref: z.string(),
             index: z.number().int().positive(),
             chars: z.number().int().nonnegative(),
             sent: z.number().int().nonnegative(),
@@ -363,7 +419,16 @@ export const runEventSchema = z.discriminatedUnion("type", [
         ]),
       ),
       /** Requested items that could not be supplied, and why. */
-      missing: z.array(z.object({ item: z.string(), reason: z.string() })),
+      missing: z.array(
+        z.object({
+          item: z.string(),
+          reason: z.string(),
+          /** What else the reviewer can try (for example: the content may be a call's arguments). */
+          hint: z.exactOptional(z.string()),
+        }),
+      ),
+      /** Requested items left out only because the budget ran out (absent in older logs: none). */
+      omitted: z.exactOptional(z.array(z.object({ item: z.string(), chars: z.number().int() }))),
       /** The most characters of evidence the harness shows in one round. */
       budgetChars: z.number().int().positive(),
     }),

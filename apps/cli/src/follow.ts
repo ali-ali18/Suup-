@@ -8,6 +8,7 @@ import { CommandError, EXIT_FAILED, EXIT_OK } from "./errors.js";
 import { readEvents } from "./lookup.js";
 import { needsQuestionnaire, Questionnaire } from "./questionnaire.js";
 import { primedRenderState, type RawEvent, renderEvent, renderFooter } from "./render.js";
+import { isReallyWaiting } from "./waiting.js";
 
 const POLL_MS = 120;
 /** How long a soft stop waits for the current turn before it gives up (a second Ctrl+C aborts sooner). */
@@ -221,15 +222,21 @@ export async function followRunCore(
       if (run === null) throw new CommandError(`A execução ${short} sumiu do banco.`);
       emit(await readEvents(db, runId, afterSeq));
       if (workerStopped || TERMINAL.has(run.status)) break;
-      // Waiting for a card means a card is pending. A `waiting_approval` row with none is the
-      // moment a resumed run is put back where its log is, before the decision it already holds is
-      // taken in (a few milliseconds, longer on a busy machine): the worker is about to go on.
-      if (run.status === "waiting_approval" && (await pendingCards(db, runId)).length > 0) break;
-      if (run.status === "waiting_user") {
+      // Esperar de verdade é haver algo pendente: um cartão sem decisão ou uma pergunta sem
+      // resposta no log (`waiting.ts`). Uma linha com status de espera sem isso é o instante em que
+      // uma execução retomada é recolocada onde o log está, antes de absorver a resposta que ele já
+      // tem (alguns milissegundos, mais numa máquina ocupada): o worker está prestes a seguir.
+      const waitingLog =
+        run.status === "waiting_user" || run.status === "waiting_approval"
+          ? await readEvents(db, runId)
+          : [];
+      const cards = run.status === "waiting_approval" ? (await pendingCards(db, runId)).length : 0;
+      if (isReallyWaiting(run.status, waitingLog, cards)) {
+        if (run.status === "waiting_approval") break;
         if (!interactive) break;
         if (!prompted) {
           await options.beforePrompt?.();
-          const log = await readEvents(db, runId);
+          const log = waitingLog;
           const secret = log
             .filter((e) => e.type === "escalated" || e.type === "secret_requested")
             .at(-1);
@@ -252,6 +259,8 @@ export async function followRunCore(
           }
           prompted = true;
         }
+      } else if (run.status === "waiting_user" || run.status === "waiting_approval") {
+        // A transição acima: nada pendente ainda; só espera o laço seguir.
       } else {
         prompted = false;
         questionnaire = undefined;

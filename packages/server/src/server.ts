@@ -425,7 +425,9 @@ export function createServer(runtime: Runtime, options: ServerOptions): SuupServ
       );
     }
     if (options.bootstrap !== false) {
-      const settled = await reconcileRunEffects(database);
+      const settled = await reconcileRunEffects(database, {
+        redact: (value) => runtime.redactJson(value),
+      });
       if (settled.length > 0) {
         log.info(`${settled.length} execução(ões) que terminaram sem aviso foram acertadas.`);
       }

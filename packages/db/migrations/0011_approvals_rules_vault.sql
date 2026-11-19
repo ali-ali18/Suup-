@@ -1,4 +1,4 @@
--- 0010_approvals_rules_vault: aprovações, regras do usuário e o cofre de segredos.
+-- 0011_approvals_rules_vault: aprovações, regras do usuário e o cofre de segredos.
 -- Cada arquivo roda dentro de uma transação aberta pelo runner: não use BEGIN/COMMIT aqui.
 --
 -- Aprovações (`approvals`): o cartão que espera o usuário. A linha é uma PROJEÇÃO do evento
