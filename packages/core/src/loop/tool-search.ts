@@ -28,6 +28,8 @@ export interface ToolSearchCandidate {
   name: string;
   /** The connector it belongs to. */
   group: string;
+  /** The connector as written in the tool names (`conn_<connector>`), as the model reads it. */
+  prefix?: string;
   /** What the server says it does (cleaned and bounded; untrusted). */
   summary: string;
 }
@@ -59,13 +61,40 @@ export interface ToolSearchSetup {
 /** A replay hands back what the recording decided instead of deciding again. */
 export type ToolSearchDeps = ToolSearchSetup | { replayOf: ToolCatalog };
 
-/** Characters per token of the estimate (a simple one, on purpose). */
-const CHARS_PER_TOKEN = 4;
+/**
+ * Characters per token of the estimate of a tool DEFINITION (name, description and JSON schema),
+ * a simple estimate on purpose (no tokenizer). Calibrated on the real run of 19/11/2026
+ * (docs/TESTES-REAIS.md, "Fase 3", item D): the 62 connector definitions made the first request
+ * 10.1k tokens longer by the provider's own `usage` (21 564 against 11 456), and the estimate at 4
+ * characters per token said 6.7k, so a definition is about 1.5 times denser than 4 characters per
+ * token: 4 / 1.5 = 2.65. JSON punctuation (braces, quotes, keys) is what makes it so dense. It is
+ * still an estimate: `model_response.measure` records the real input tokens beside it.
+ */
+export const DEFINITION_CHARS_PER_TOKEN = 2.65;
+
+/** Characters per token of the rest of a request (system prompt and messages: prose). */
+const PROSE_CHARS_PER_TOKEN = 4;
 
 export function estimateSpecTokens(spec: ToolSpec): number {
   const chars =
     spec.name.length + spec.description.length + (JSON.stringify(spec.inputSchema)?.length ?? 0);
-  return Math.ceil(chars / CHARS_PER_TOKEN);
+  return Math.ceil(chars / DEFINITION_CHARS_PER_TOKEN);
+}
+
+/**
+ * A rough estimate of the whole input of one request: the definitions (as above) plus the system
+ * prompt and the messages as prose. Only to put beside the provider's real count, never to decide.
+ */
+export function estimateRequestTokens(spec: {
+  system: string;
+  messages: readonly unknown[];
+  tools: readonly ToolSpec[];
+}): number {
+  const prose = spec.system.length + (JSON.stringify(spec.messages)?.length ?? 0);
+  return (
+    Math.ceil(prose / PROSE_CHARS_PER_TOKEN) +
+    spec.tools.reduce((sum, t) => sum + estimateSpecTokens(t), 0)
+  );
 }
 
 /** The size of the definitions of one request. `deferred` ones are sent but do not load. */
@@ -112,6 +141,7 @@ export function planToolSearch(
   const deferred = entries.map((e) => ({
     name: e.name,
     group: e.group,
+    ...(e.prefix === undefined ? {} : { prefix: e.prefix }),
     summary: e.summary,
     spec: mode === "meta" ? e.spec : { ...e.spec, deferLoading: true as const },
   }));
@@ -164,14 +194,36 @@ export function firstSentence(text: string, max = FIRST_SENTENCE_MAX): string {
   return `${sentence.slice(0, max - 1).trimEnd()}…`;
 }
 
-function connectorsOf(deferred: ToolCatalog["deferred"]): { group: string; count: number }[] {
-  const out: { group: string; count: number }[] = [];
+interface ConnectorInfo {
+  group: string;
+  /** The connector as written in the tool names (`conn_<connector>`), when the runtime declared it. */
+  prefix: string | undefined;
+  count: number;
+}
+
+function connectorsOf(deferred: ToolCatalog["deferred"]): ConnectorInfo[] {
+  const out: ConnectorInfo[] = [];
   for (const d of deferred) {
     const last = out.find((o) => o.group === d.group);
-    if (last === undefined) out.push({ group: d.group, count: 1 });
+    if (last === undefined) out.push({ group: d.group, prefix: d.prefix, count: 1 });
     else last.count += 1;
   }
   return out;
+}
+
+/** A connector as the model should write it in `connector`: its name, and its form in the tool names. */
+function connectorLabel(c: Pick<ConnectorInfo, "group" | "prefix">): string {
+  return c.prefix === undefined || c.prefix === c.group
+    ? c.group
+    : `${c.group} (the \`${c.prefix}\` of the tool names)`;
+}
+
+/** The sentence that says how to write `connector`, with a real example when there is one. */
+function connectorHint(connectors: readonly ConnectorInfo[]): string {
+  const example = connectors.find((c) => c.prefix !== undefined);
+  return example?.prefix === undefined
+    ? "`connector` is the connector name."
+    : `\`connector\` is the connector name or its form in the tool names (for example \`${example.group}\` or \`${example.prefix}\`).`;
 }
 
 /** The section of the system prompt that says what can be searched. Fixed for the whole run. */
@@ -181,7 +233,7 @@ export function buildIndex(
   maxChars: number,
 ): string {
   const connectors = connectorsOf(deferred);
-  const perConnector = connectors.map((c) => `- ${c.group}: ${c.count} tool(s)`);
+  const perConnector = connectors.map((c) => `- ${connectorLabel(c)}: ${c.count} tool(s)`);
   if (mode === "hosted") {
     return [
       "## Connector tools",
@@ -195,26 +247,27 @@ export function buildIndex(
     return [
       "## Connector tools",
       "",
-      `Tools of external connectors are not loaded. Call \`${SEARCH_TOOL_NAME}\` (by connector name and/or words) to load the ones you need; after it answers you can call them like any other tool. Connectors available:`,
+      `Tools of external connectors are not loaded. Call \`${SEARCH_TOOL_NAME}\` (by connector and/or words) to load the ones you need; after it answers you can call them like any other tool. ${connectorHint(connectors)} Connectors available:`,
       "",
       ...perConnector,
     ].join("\n");
   }
-  const intro = [
+  const first = deferred[0];
+  const introOf = (example: string | undefined) => [
     "## Connector tools",
     "",
-    `You may use tools of external connectors, but their definitions are not loaded. To use one: call \`${SEARCH_TOOL_NAME}\` (by connector name and/or words) to get the full definitions, then call \`${USE_TOOL_NAME}\` with \`tool\` (the exact name) and \`arguments\` (an object that follows the definition). The harness checks the arguments against the real definition and asks the user for approval exactly as it would for a direct call. Only the tools listed here exist for you.`,
+    `You may use tools of external connectors, but their definitions are not loaded. To use one: call \`${SEARCH_TOOL_NAME}\` (by connector and/or words) to get the full definitions, then call \`${USE_TOOL_NAME}\` with \`tool\` (the name exactly as listed${example === undefined ? "" : `, for example \`${example}\``}) and \`arguments\` (an object that follows the definition). ${connectorHint(connectors)} The harness checks the arguments against the real definition and asks the user for approval exactly as it would for a direct call. Only the tools listed here exist for you.`,
     "",
   ];
   const lines = deferred.map((d) => {
     const hint = firstSentence(d.summary);
     return hint === "" ? `- ${d.name}` : `- ${d.name}: ${hint}`;
   });
-  const full = [...intro, "Tools:", ...lines].join("\n");
+  const full = [...introOf(first?.name), "Tools:", ...lines].join("\n");
   if (full.length <= maxChars) return full;
   return [
-    ...intro,
-    `The list is long, so it is grouped by connector. Call \`${SEARCH_TOOL_NAME}\` with \`connector\` to list the tools of one:`,
+    ...introOf(undefined),
+    `The list is long, so it is grouped by connector. Call \`${SEARCH_TOOL_NAME}\` with \`connector\` to list the tools of one; the names it returns are the ones \`${USE_TOOL_NAME}\` accepts:`,
     "",
     ...perConnector,
   ].join("\n");
@@ -263,7 +316,10 @@ function propertyNames(schema: JsonObject): string[] {
 }
 
 export interface SearchQuery {
-  /** Only the tools of this connector (compared exactly, lowercased). */
+  /**
+   * Only the tools of this connector. Compared exactly, lowercased, with what the model reads: the
+   * connector's name (`led`) or its form in the tool names (`conn_led`, also with the `__`).
+   */
   connector?: string | undefined;
   /** Free words; a tool matches by the words it has in common with these. */
   words?: string | undefined;
@@ -273,12 +329,35 @@ export interface SearchQuery {
 
 export const DEFAULT_SEARCH_RESULTS = 5;
 export const MAX_SEARCH_RESULTS = 10;
+/** The names of a set of tools are listed only while they fit this many characters. */
+export const MAX_LISTED_NAMES_CHARS = 1_500;
 
 export interface SearchOutcome {
   /** The best matches, at most `limit`. */
   matches: ToolCatalog["deferred"];
   /** More tools matched than `limit`. */
   more: ToolCatalog["deferred"];
+  /** A connector was asked for and none of the catalog answers to that name. */
+  unknownConnector?: boolean;
+  /** The connectors of the catalog, as the model may write them (for the empty answer). */
+  connectors: { group: string; prefix?: string }[];
+  /**
+   * A word query where more tools than `limit` matched equally well (the same number of the words
+   * asked): the first ones are shown in catalog order, which says nothing about which is best.
+   */
+  tied?: { count: number; words: number; asked: number; names: string[] };
+}
+
+/** Whether `wanted` (lowercased, trimmed) names the connector of the tool. */
+function isConnectorOf(d: ToolCatalog["deferred"][number], wanted: string): boolean {
+  const prefix = d.prefix?.toLowerCase();
+  return (
+    d.group.toLowerCase() === wanted ||
+    prefix === wanted ||
+    (prefix !== undefined && `${prefix}__` === wanted) ||
+    // Older catalogs have no declared prefix: the tool's own name starts with it.
+    d.name.toLowerCase().startsWith(`${wanted}__`)
+  );
 }
 
 /**
@@ -296,12 +375,15 @@ export function searchCatalog(
     MAX_SEARCH_RESULTS,
   );
   const connector = query.connector?.trim().toLowerCase();
-  const pool =
-    connector === undefined || connector === ""
-      ? deferred
-      : deferred.filter((d) => d.group.toLowerCase() === connector);
+  const filtered = connector !== undefined && connector !== "";
+  const pool = filtered ? deferred.filter((d) => isConnectorOf(d, connector)) : deferred;
+  const connectors = connectorsOf(deferred).map((c) => ({
+    group: c.group,
+    ...(c.prefix === undefined ? {} : { prefix: c.prefix }),
+  }));
   const wanted = [...new Set(wordsOf(query.words ?? ""))];
   let ranked: ToolCatalog["deferred"];
+  let tied: SearchOutcome["tied"];
   if (wanted.length === 0) {
     ranked = pool;
   } else {
@@ -314,12 +396,28 @@ export function searchCatalog(
       ]);
       return { d, order, score: wanted.filter((w) => have.has(w)).length };
     });
-    ranked = scored
+    const hits = scored
       .filter((s) => s.score > 0)
-      .sort((a, b) => b.score - a.score || a.order - b.order)
-      .map((s) => s.d);
+      .sort((a, b) => b.score - a.score || a.order - b.order);
+    ranked = hits.map((s) => s.d);
+    const best = hits[0]?.score ?? 0;
+    const equal = hits.filter((s) => s.score === best);
+    if (equal.length > limit) {
+      tied = {
+        count: equal.length,
+        words: best,
+        asked: wanted.length,
+        names: equal.map((s) => s.d.name),
+      };
+    }
   }
-  return { matches: ranked.slice(0, limit), more: ranked.slice(limit) };
+  return {
+    matches: ranked.slice(0, limit),
+    more: ranked.slice(limit),
+    connectors,
+    ...(filtered && pool.length === 0 ? { unknownConnector: true } : {}),
+    ...(tied === undefined ? {} : { tied }),
+  };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -328,7 +426,9 @@ export function searchCatalog(
 export const searchToolsInputSchema = z.object({
   connector: z
     .exactOptional(z.string())
-    .describe("A connector name from the list: only its tools."),
+    .describe(
+      "Only the tools of this connector: its name, or its form in the tool names (for example `led` or `conn_led`).",
+    ),
   words: z
     .exactOptional(z.string())
     .describe('Words about what you need (for example: "search orders customer").'),
@@ -384,47 +484,69 @@ export function toolSearchControlSpecs(mode: ToolSearchMode | undefined): ToolSp
   return [];
 }
 
+/** The connectors of the catalog, as the model may write `connector`. */
+function validConnectors(outcome: SearchOutcome): string {
+  return outcome.connectors
+    .map((c) =>
+      c.prefix === undefined || c.prefix === c.group ? c.group : `${c.group} or ${c.prefix}`,
+    )
+    .join("; ");
+}
+
+/** What to say when nothing matched: which part of the query found nothing, and what is valid. */
+function renderNothing(outcome: SearchOutcome, query: SearchQuery): string {
+  if (outcome.unknownConnector === true) {
+    return `No connector answers to "${query.connector}". Valid values for \`connector\`: ${validConnectors(outcome)}.`;
+  }
+  return `No tool matched${query.connector === undefined ? "" : ` in connector "${query.connector}"`}${query.words === undefined ? "" : ` for "${query.words}"`}. Try other words (the words of a tool's name, description or argument names), or \`connector\` (${validConnectors(outcome)}).`;
+}
+
+/** The names, joined, only while they fit the bound; otherwise empty. */
+function namesThatFit(names: readonly string[]): string {
+  const joined = names.join(", ");
+  return joined.length <= MAX_LISTED_NAMES_CHARS ? joined : "";
+}
+
+/** The note after the results when more tools matched than were returned (or tied for the first place). */
+function renderRemainder(outcome: SearchOutcome, shown: string): string[] {
+  const { tied } = outcome;
+  if (tied !== undefined) {
+    const names = namesThatFit(tied.names);
+    return [
+      "",
+      `${tied.count} tools matched equally well (each has ${tied.words} of the ${tied.asked} word(s) asked), so ${shown} the first ${outcome.matches.length} in catalog order, which does not mean they are the best. Refine: use words only the right tool has (its action, its argument names), or give \`connector\`.${names === "" ? "" : ` Tied: ${names}`}`,
+    ];
+  }
+  if (outcome.more.length > 0) {
+    const names = namesThatFit(outcome.more.map((d) => d.name));
+    return [
+      "",
+      `${outcome.more.length} more matched; narrow the search to see them.${names === "" ? "" : ` They are: ${names}`}`,
+    ];
+  }
+  return [];
+}
+
 /** The text of an answer to `search_tools` in `meta` mode: the full definitions of the matches. */
 export function renderDefinitions(outcome: SearchOutcome, query: SearchQuery): string {
-  if (outcome.matches.length === 0) {
-    return `No tool matched${query.connector === undefined ? "" : ` in connector "${query.connector}"`}${query.words === undefined ? "" : ` for "${query.words}"`}. Try other words, or a connector name from the list.`;
-  }
+  if (outcome.matches.length === 0) return renderNothing(outcome, query);
   const blocks = outcome.matches.map(
     (d) =>
       `### ${d.name}\n${d.spec.description}\nInput schema (JSON):\n${JSON.stringify(d.spec.inputSchema)}`,
   );
-  const lines = [
+  return [
     `${outcome.matches.length} tool(s). Call one with ${USE_TOOL_NAME}: {"tool": "<name>", "arguments": {...}}.`,
     "",
     ...blocks,
-  ];
-  if (outcome.more.length > 0) {
-    lines.push(
-      "",
-      `${outcome.more.length} more matched; narrow the search to see them: ${outcome.more
-        .slice(0, 40)
-        .map((d) => d.name)
-        .join(", ")}${outcome.more.length > 40 ? ", ..." : ""}`,
-    );
-  }
-  return lines.join("\n");
+    ...renderRemainder(outcome, "these are"),
+  ].join("\n");
 }
 
 /** The text of an answer to `search_tools` in `client` mode: the names; the API loads the definitions. */
 export function renderLoaded(outcome: SearchOutcome, query: SearchQuery): string {
-  if (outcome.matches.length === 0) {
-    return `No tool matched${query.connector === undefined ? "" : ` in connector "${query.connector}"`}${query.words === undefined ? "" : ` for "${query.words}"`}. Try other words, or a connector name from the list.`;
-  }
-  const lines = [
+  if (outcome.matches.length === 0) return renderNothing(outcome, query);
+  return [
     `Loaded ${outcome.matches.length} tool(s): ${outcome.matches.map((d) => d.name).join(", ")}.`,
-  ];
-  if (outcome.more.length > 0) {
-    lines.push(
-      `${outcome.more.length} more matched and were not loaded: ${outcome.more
-        .slice(0, 40)
-        .map((d) => d.name)
-        .join(", ")}. Narrow the search to load them.`,
-    );
-  }
-  return lines.join("\n");
+    ...renderRemainder(outcome, "only"),
+  ].join("\n");
 }

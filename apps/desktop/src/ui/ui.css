@@ -1519,6 +1519,20 @@ html[data-resizing] * {
 .ui-args__more:hover {
   color: var(--color-text);
 }
+.ui-args__raw {
+  margin-top: var(--space-2);
+  color: var(--color-text-muted);
+  font-size: var(--text-small-size);
+  line-height: var(--text-small-line);
+}
+.ui-args__raw > summary {
+  cursor: pointer;
+  text-decoration: underline;
+  width: fit-content;
+}
+.ui-args__raw > summary:hover {
+  color: var(--color-text);
+}
 .ui-secret-seal {
   display: inline-flex;
   align-items: center;

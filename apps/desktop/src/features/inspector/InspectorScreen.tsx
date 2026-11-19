@@ -126,8 +126,9 @@ export function InspectorScreen() {
         <Card aria-label="Definições de ferramentas" data-testid="tool-stats-card">
           <h2 className="section-label">Definições de ferramentas</h2>
           <p className="muted small">
-            Quanto as definições das ferramentas pesam em cada pedido ao modelo. Os números são
-            estimativas, só para leitura.
+            Quanto as definições das ferramentas pesam em cada pedido ao modelo. As colunas
+            &quot;estimado&quot; são estimativas (cerca de 2,65 caracteres por token, sem
+            tokenizador); a entrada real é a que o provedor contou, quando já respondeu.
           </p>
           {catalog === undefined ? (
             <p data-testid="tool-catalog" data-mode="none">
@@ -161,8 +162,10 @@ export function InspectorScreen() {
                   <th scope="col">Pedido</th>
                   <th scope="col">Definições</th>
                   <th scope="col">Adiadas no pedido</th>
-                  <th scope="col">Tokens estimados</th>
-                  <th scope="col">Tokens carregados</th>
+                  <th scope="col">Definições (estimado)</th>
+                  <th scope="col">No contexto (estimado)</th>
+                  <th scope="col">Pedido inteiro (estimado)</th>
+                  <th scope="col">Entrada real (provedor)</th>
                 </tr>
               </thead>
               <tbody>
@@ -173,8 +176,26 @@ export function InspectorScreen() {
                     </th>
                     <td>{r.definitions}</td>
                     <td>{r.deferred}</td>
-                    <td>{r.estimatedTokens}</td>
-                    <td>{r.loadedTokens}</td>
+                    <td>~{r.estimatedTokens}</td>
+                    <td>~{r.loadedTokens}</td>
+                    <td>
+                      {r.requestEstimatedTokens === undefined
+                        ? "—"
+                        : `~${r.requestEstimatedTokens}`}
+                    </td>
+                    <td data-testid="tool-stats-real">
+                      {r.realInputTokens === undefined ? "—" : r.realInputTokens}
+                      {r.hostedToolSearch !== undefined && (
+                        <span
+                          className="muted small"
+                          data-testid="tool-stats-hosted"
+                          title="O provedor fez a busca de ferramentas por conta própria, em passagens internas: este número é a soma delas, não o tamanho de um pedido."
+                        >
+                          {" "}
+                          (soma de passagens da busca do provedor)
+                        </span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

@@ -96,6 +96,8 @@ export const toolCatalogSchema = z.object({
       name: z.string(),
       /** The connector the tool belongs to. */
       group: z.string(),
+      /** The connector as written in the tool names (`conn_<connector>`); absent in older logs. */
+      prefix: z.exactOptional(z.string()),
       /** What the server says it does, cleaned and bounded (untrusted text). */
       summary: z.string(),
       /** The definition, exactly as it goes in the request. */
@@ -257,6 +259,19 @@ export const runEventSchema = z.discriminatedUnion("type", [
       modelVersion: z.string(),
       durationMs: z.number().nonnegative(),
       purpose: z.exactOptional(modelCallPurposeSchema),
+      /**
+       * The estimate of this request's input beside the real count (`usage.inputTokens`), so the
+       * estimate can be judged: `estimatedTokens` for the whole input, `definitionTokens` for the
+       * tool definitions alone. With `hostedToolSearch` the provider ran the search itself in
+       * internal passes and `usage` SUMS them: it is not the size of one request.
+       */
+      measure: z.exactOptional(
+        z.object({
+          estimatedTokens: z.number().int().nonnegative(),
+          definitionTokens: z.number().int().nonnegative(),
+          hostedToolSearch: z.exactOptional(z.enum(["bm25", "regex"])),
+        }),
+      ),
     }),
   }),
   z.object({

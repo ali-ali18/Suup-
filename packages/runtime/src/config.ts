@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, isAbsolute, resolve } from "node:path";
 import { parseAllowlistHost } from "@suup/core";
 import { z } from "zod";
 import { ConfigError } from "./errors.js";
@@ -157,6 +157,21 @@ const sandboxSchema = z.discriminatedUnion(
       memory: z.exactOptional(memorySize),
       cpus: z.exactOptional(z.number().positive()),
       network: z.exactOptional(networkSchema),
+      /**
+       * OPTIONAL, off by default: absolute path of a CA bundle (PEM) of the host, mounted read-only
+       * into the bots' machine and the connector containers, with the variables the common clients
+       * read. For networks whose proxy re-signs TLS. No CA is ever baked into an image. See
+       * docs/REDE.md.
+       */
+      extraCaBundle: z.exactOptional(
+        z
+          .string()
+          .min(1)
+          .refine(
+            (path) => isAbsolute(path),
+            "esperado um caminho absoluto (ex.: /etc/ssl/corp-ca.pem)",
+          ),
+      ),
       /** Where stdio connectors run: a container of this image, on the same internal network. */
       connectors: z.exactOptional(
         z.strictObject({

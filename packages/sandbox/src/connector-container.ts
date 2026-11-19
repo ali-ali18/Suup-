@@ -5,6 +5,7 @@
 import { randomBytes } from "node:crypto";
 import { assertName, dockerClientEnv } from "./docker-executor.js";
 import type { EgressService } from "./egress/types.js";
+import { EXTRA_CA_ENV, extraCaMountArgs } from "./extra-ca.js";
 import { runProcess } from "./run-process.js";
 
 export interface ConnectorContainerOptions {
@@ -16,6 +17,8 @@ export interface ConnectorContainerOptions {
   memory?: string;
   cpus?: number;
   pidsLimit?: number;
+  /** OPTIONAL (off by default): a CA bundle file of the host, mounted read-only (see `extra-ca.ts`). */
+  extraCaBundle?: string;
   dockerPath?: string;
 }
 
@@ -57,6 +60,8 @@ export class ContainerStdioLauncher {
     // The values travel in the docker client's own environment and are named with `-e NAME`
     // (no value): they never appear in a process listing's argument list.
     const passed: Record<string, string> = {};
+    // Only with a configured bundle; a variable the connector declares itself wins over these.
+    if (this.#o.extraCaBundle !== undefined) Object.assign(passed, EXTRA_CA_ENV);
     for (const [key, value] of Object.entries(input.env)) {
       if (key.toUpperCase().startsWith(RESERVED_PREFIX)) {
         throw new Error(
@@ -99,6 +104,7 @@ export class ContainerStdioLauncher {
       String(this.#o.cpus ?? 1),
       "--pids-limit",
       String(this.#o.pidsLimit ?? 256),
+      ...extraCaMountArgs(this.#o.extraCaBundle),
       ...Object.keys(passed).flatMap((key) => ["--env", key]),
       this.#o.image,
       input.command,

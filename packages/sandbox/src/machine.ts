@@ -1,5 +1,6 @@
 import { assertName, DEFAULT_USER, DEFAULT_WORKSPACE, dockerClientEnv } from "./docker-executor.js";
 import { containerNetworks } from "./egress/network.js";
+import { EXTRA_CA_ENV, EXTRA_CA_LABEL, extraCaMountArgs } from "./extra-ca.js";
 import { runProcess } from "./run-process.js";
 
 export interface EnsureMachineOptions {
@@ -23,6 +24,12 @@ export interface EnsureMachineOptions {
    * (the workspace volume is kept). Without it: the default bridge, direct egress (legacy).
    */
   network?: string;
+  /**
+   * OPTIONAL (off by default): a CA bundle file of the host, mounted read-only into the machine with
+   * the variables the common clients read to trust it (`extra-ca.ts`), for networks that re-sign
+   * TLS. A machine started with another bundle (or none) is recreated; the volume is kept.
+   */
+  extraCaBundle?: string;
   /** Path of the docker CLI. Default `docker`. */
   dockerPath?: string;
 }
@@ -60,7 +67,7 @@ export async function ensureMachine(options: EnsureMachineOptions): Promise<Ensu
 
   if (options.network !== undefined) assertName(options.network, "network name");
 
-  let state = await inspectRunning(docker, options.name);
+  let { state, extraCa } = await inspectRunning(docker, options.name);
   if (state !== "absent" && options.network !== undefined) {
     const attached = await containerNetworks(options.name, { dockerPath: docker });
     if (attached.length !== 1 || attached[0] !== options.network) {
@@ -68,6 +75,11 @@ export async function ensureMachine(options: EnsureMachineOptions): Promise<Ensu
       await run(docker, ["rm", "--force", options.name]);
       state = "absent";
     }
+  }
+  if (state !== "absent" && extraCa !== (options.extraCaBundle ?? "")) {
+    // Started with another CA bundle (or none): the mount cannot change in place.
+    await run(docker, ["rm", "--force", options.name]);
+    state = "absent";
   }
   if (state === "running") return { created: false };
   if (state === "stopped") {
@@ -100,6 +112,10 @@ export async function ensureMachine(options: EnsureMachineOptions): Promise<Ensu
       "--pids-limit",
       String(pidsLimit),
       ...(options.network === undefined ? [] : ["--network", options.network]),
+      ...extraCaMountArgs(options.extraCaBundle),
+      ...(options.extraCaBundle === undefined
+        ? []
+        : Object.entries(EXTRA_CA_ENV).flatMap(([key, value]) => ["--env", `${key}=${value}`])),
       "--volume",
       `${options.volume}:${DEFAULT_WORKSPACE}`,
       "--workdir",
@@ -110,7 +126,7 @@ export async function ensureMachine(options: EnsureMachineOptions): Promise<Ensu
     ]);
   } catch (error) {
     // Lost a race with a concurrent ensureMachine: the container exists now, which is fine.
-    const now = await inspectRunning(docker, options.name);
+    const now = (await inspectRunning(docker, options.name)).state;
     if (now === "running") return { created: false };
     if (now === "stopped") {
       await run(docker, ["start", options.name]);
@@ -147,20 +163,27 @@ export async function removeMachine(
 async function inspectRunning(
   docker: string,
   name: string,
-): Promise<"running" | "stopped" | "absent"> {
+): Promise<{ state: "running" | "stopped" | "absent"; extraCa: string }> {
+  // One call: whether it runs, and the CA bundle it was started with (its label; "" for none).
   const result = await exec(docker, [
     "inspect",
     "--type",
     "container",
     "--format",
-    "{{.State.Running}}",
+    `{{.State.Running}} {{index .Config.Labels "${EXTRA_CA_LABEL}"}}`,
     name,
   ]);
   if (result.code !== 0) {
-    if (/no such (container|object)/i.test(result.stderr)) return "absent";
+    if (/no such (container|object)/i.test(result.stderr)) return { state: "absent", extraCa: "" };
     throw new Error(`docker inspect failed (exit ${result.code}): ${result.stderr.trim()}`);
   }
-  return result.stdout.trim() === "true" ? "running" : "stopped";
+  const out = result.stdout.trim();
+  const space = out.indexOf(" ");
+  const running = space === -1 ? out : out.slice(0, space);
+  return {
+    state: running === "true" ? "running" : "stopped",
+    extraCa: space === -1 ? "" : out.slice(space + 1).trim(),
+  };
 }
 
 async function run(docker: string, args: string[]): Promise<void> {

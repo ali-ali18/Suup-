@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  appendRunEvent,
   cancelRun,
   claimNextRun,
   getRun,
@@ -127,9 +128,29 @@ describe.skipIf(!DATABASE_URL)(
       ).rejects.toThrow(/runs_pause_only_when_active/);
     });
 
+    it("cancel ends a queued run that never started right away: no worker would be there to apply it", async () => {
+      await drain();
+      const run = await makeRun(ctx.db);
+      const cancelled = await cancelRun(ctx.db, run.id);
+      expect(cancelled.status).toBe("cancelled");
+      expect(await claimNextRun(ctx.db, "w")).toBeNull();
+      const log = await listRunEvents(ctx.db, run.id);
+      expect(log.map((e) => [e.type, e.payload])).toEqual([
+        ["status_changed", { from: "queued", to: "cancelled" }],
+      ]);
+      expect(await peekInboxEntries(ctx.db, run.id)).toEqual([]);
+    });
+
     it("cancel posts the stop item, lifts the pause so a worker can apply it, and interrupts a working run", async () => {
       await drain();
+      // A queued run WITH a log (it started before and was requeued) is closed by the loop.
       const queuedPaused = await makeRun(ctx.db);
+      await appendRunEvent(ctx.db, queuedPaused.id, "run_started", {
+        botId: queuedPaused.botId,
+        objective: "x",
+        acceptanceCriteria: [],
+        origin: "user",
+      });
       await pauseRun(ctx.db, queuedPaused.id);
       const cancelled = await cancelRun(ctx.db, queuedPaused.id);
       expect(cancelled).toMatchObject({

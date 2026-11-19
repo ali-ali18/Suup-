@@ -229,10 +229,12 @@ describe.skipIf(!DATABASE_URL)(
       expect(loaded.catalog.connectorTools).toBe(77);
       expect(loaded.request.toolStats.definitions).toBe(82);
       expect(searched.request.toolStats.definitions).toBe(7);
-      expect(loaded.request.toolStats.estimatedTokens).toBeGreaterThan(9_500);
-      expect(loaded.request.toolStats.estimatedTokens).toBeLessThan(11_500);
-      expect(searched.request.toolStats.estimatedTokens).toBeGreaterThan(2_000);
-      expect(searched.request.toolStats.estimatedTokens).toBeLessThan(3_300);
+      // The bounds follow the estimate of 2.65 characters per token (it was 4: about 10 400 and
+      // 2 600 then, 1.5 times more now).
+      expect(loaded.request.toolStats.estimatedTokens).toBeGreaterThan(14_000);
+      expect(loaded.request.toolStats.estimatedTokens).toBeLessThan(17_500);
+      expect(searched.request.toolStats.estimatedTokens).toBeGreaterThan(3_000);
+      expect(searched.request.toolStats.estimatedTokens).toBeLessThan(5_000);
       expect(loaded.catalog.mode).toBe("direct");
       expect(searched.catalog.mode).toBe("meta");
       expect(searched.catalog.connectorTools).toBeGreaterThanOrEqual(60);

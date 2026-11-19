@@ -69,6 +69,7 @@ A máquina dos bots. Cada bot trabalha na própria subpasta `bots/<id do bot>` d
 | `volume` | Volume do workspace (sobrevive ao contêiner) |
 | `memory` (opcional) | Limite de memória, por exemplo `"2g"` (padrão `2g`) |
 | `cpus` (opcional) | Limite de CPUs (padrão 2) |
+| `extraCaBundle` (opcional) | Caminho **absoluto** de um arquivo PEM com uma CA extra, montado **somente leitura** na máquina e nos conectores, para redes que reassinam o TLS. Desligado por padrão; nenhuma CA entra nas imagens. Veja [REDE.md](REDE.md) |
 | `network` (opcional) | A rede dos bots: o contêiner **não tem rede própria** e sai por um proxy do harness, só para os hosts da lista. `name` (rede interna, padrão `suup-sandbox-net`), `defaultHosts` (nomes exatos liberados a todos; padrão `registry.npmjs.org`, `pypi.org`, `files.pythonhosted.org`; `[]` = nenhum), `ports` (padrão `[80, 443]`), `proxy` (`listenHost`, `advertiseHost`, `port`: só se o worker não roda no host). Veja [REDE.md](REDE.md) |
 | `connectors` (opcional) | Onde rodam os conectores stdio: `image` (padrão `suup-connector-runner:dev`, de `docker/connector-runner`), `memory` (padrão 512m), `cpus` (padrão 1). Veja [CONECTORES.md](CONECTORES.md) |
 
@@ -151,7 +152,7 @@ Quando as ferramentas de **conectores** de um bot são **buscadas** em vez de ca
 | Campo | Padrão | Significado |
 |---|---|---|
 | `minTools` | `10` | Adia quando o bot tem pelo menos este número de ferramentas de conectores... |
-| `minDefinitionTokens` | `10000` | ...ou quando as definições somam pelo menos estes tokens (estimativa: 1 token a cada 4 caracteres) |
+| `minDefinitionTokens` | `10000` | ...ou quando as definições somam pelo menos estes tokens (**estimativa**, cerca de 2,65 caracteres por token, calibrada com um pedido real: [DIAGNOSTICO.md](DIAGNOSTICO.md); a decisão compara estimativa com estimativa, então o limite vale "cerca de 10 mil tokens reais") |
 | `maxIndexChars` | `6000` | Um índice maior que isto vira uma linha por conector |
 
 Abaixo dos dois limites, as ferramentas vão direto. Para desligar a busca, ponha valores enormes. As ferramentas embutidas e de controle nunca são adiadas.

@@ -18,6 +18,7 @@ export {
   CONNECTOR_NAME_MAX,
   CONNECTOR_NAME_PATTERN,
   connectorPrefix,
+  connectorTag,
   isConnectorName,
   registeredName,
   TOOL_PREFIX,

@@ -416,10 +416,19 @@ test.describe("the card that asks for a host", () => {
     );
     expect(await card.getByRole("button").allTextContents()).toEqual(["Recusar", "Aprovar"]);
     await expect(card.locator(".ui-split")).toHaveCount(0);
-    // The exact content, as for every card.
-    await expect(card.locator('[data-key="host"]').getByTestId("arg-value")).toHaveText(
+    // No rows that only repeat the title and the paragraph...
+    await expect(card.getByTestId("approval-content").getByTestId("arg-field")).toHaveCount(0);
+    // ...and the exact content stays one click away, all of it.
+    const raw = card.getByTestId("approval-raw");
+    await expect(raw.getByTestId("arg-field").first()).toBeHidden(); // closed
+    await raw.locator("summary").click();
+    await expect(raw.locator('[data-key="host"]').getByTestId("arg-value")).toHaveText(
       "api.novo.com",
     );
+    await expect(raw.locator('[data-key="reason"]').getByTestId("arg-value")).toHaveText(
+      "preciso baixar o relatório do mês",
+    );
+    await raw.locator("summary").click();
     await card.getByTestId("approval-approve").click();
     await expect(botMessage(page, "Tentei liberar o host.")).toBeVisible();
     // One row for the call: the category, the decision, and what it was.
@@ -504,7 +513,8 @@ test.describe("tool search: the measure of the definitions, and the real tool in
     expect(await stats.count()).toBeGreaterThanOrEqual(3);
     // Every request carries the definitions, with the tokens of what is loaded and of all of them.
     const cells = await stats.first().locator("td").allTextContents();
-    const [definitions, deferred, estimated, loaded] = cells.map(Number);
+    // The estimates are shown with a leading "~": they are estimates, not counts.
+    const [definitions, deferred, estimated, loaded] = cells.map((c) => Number(c.replace("~", "")));
     expect(definitions).toBeGreaterThan(0);
     // In this mode the connector tools are not in the request at all: only the index (in the
     // prompt) and the two tools that search and call. What all of them would cost is in the mode.

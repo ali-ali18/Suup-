@@ -484,7 +484,13 @@ describe("suup show: the failure origin is prominent", () => {
       { seq: 4, kind: "auth", message: "chave inválida", attempt: 1, retryable: false },
     ],
     question: null,
-    toolDefinitions: { mode: null, connectorTools: 0, requests: 0, lastRequest: null },
+    toolDefinitions: {
+      mode: null,
+      connectorTools: 0,
+      requests: 0,
+      lastRequest: null,
+      firstRequest: null,
+    },
   };
 
   it("puts the origin, its meaning and the detail up front", () => {
@@ -495,6 +501,28 @@ describe("suup show: the failure origin is prominent", () => {
     expect(text).toContain("Erros do provedor (1)");
     // the origin comes before the objective
     expect(text.indexOf("ORIGEM")).toBeLessThan(text.indexOf("Objetivo:"));
+  });
+
+  it("labels the tool estimate and shows the provider's real input beside it", () => {
+    const withFirst = (hostedToolSearch: string | null) => ({
+      ...extra,
+      toolDefinitions: {
+        ...extra.toolDefinitions,
+        lastRequest: { definitions: 77, deferred: 0, estimatedTokens: 12000, loadedTokens: 12000 },
+        firstRequest: {
+          realInputTokens: 21564,
+          estimatedRequestTokens: 19000,
+          estimatedDefinitionTokens: 12000,
+          hostedToolSearch,
+        },
+      },
+    });
+    const plain = describeRun(baseRun, null, withFirst(null)).join("\n");
+    expect(plain).toContain("ESTIMATIVA de ~12.000 tokens");
+    expect(plain).toContain("o provedor contou 21.564 tokens de entrada");
+    expect(plain).toContain("~19.000");
+    const hosted = describeRun(baseRun, null, withFirst("bm25")).join("\n");
+    expect(hosted).toContain("SOMA as passagens internas");
   });
 
   it("works for every origin", () => {

@@ -274,14 +274,6 @@ export const REGEX_ALLOWLIST: readonly RegexAllowance[] = [
     pending: true,
   },
   {
-    file: "packages/api/src/answers.ts",
-    count: 2,
-    group: "b",
-    why: "achata espaços em branco da pergunta para montar/ler a resposta de um questionário",
-    instead: "dividir sem regex",
-    pending: true,
-  },
-  {
     file: "packages/api/src/client.ts",
     count: 1,
     group: "c",

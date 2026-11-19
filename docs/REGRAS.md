@@ -26,6 +26,8 @@ Entender texto é trabalho do **modelo**. O harness tira estrutura de **dados de
 - **Exceção aprovada pelo dono (19/11/2026): a busca de ferramentas por regex da API da Anthropic.** A variante hospedada `tool_search_tool_regex` (ao lado da `bm25`) pode ser usada, porque o padrão é escrito pelo **modelo**, em tempo de execução, para procurar num catálogo: não é um filtro fixo do harness e **não barra nada** (o que o bot pode usar já foi decidido pela concessão por ferramenta e pelo portão de aprovação). Nosso código continua **sem nenhuma regex** para isso: o índice, a busca própria (`search_tools`, por palavras iguais depois de dividir por classe de caractere) e a validação dos argumentos não usam padrão. Ver [CONECTORES.md](CONECTORES.md), "Muitas ferramentas".
 - Também sem regex: roteamento HTTP do servidor (compara segmentos), ids da CLI (prefixo de id), nomes de variável proibidos de conector (conjunto exato), cabeçalho `X-Request-Id`, chave mestra do cofre, nome de campo de condição.
 
+- O texto da resposta a uma pergunta do bot (`answers.ts`, agora em `packages/core`) achata espaço em branco sem regex (`oneLine`); a resposta que é exatamente o número ou a letra de uma opção vira o rótulo por comparação exata.
+
 ### Dúvida: perguntar ao dono
 
 Itens sem decisão clara; **não foram removidos**:
@@ -39,7 +41,7 @@ Itens sem decisão clara; **não foram removidos**:
 
 ### Regex existentes aguardando decisão do dono
 
-Total: 193 regex em 77 arquivos (a: 68 · b: 18 · c: 104 · d: 3). Geradas por varredura da árvore sintática; o teste `packages/core/test/no-regex.test.ts` impede novas.
+Total: 191 regex em 76 arquivos (a: 68 · b: 16 · c: 104 · d: 3). Geradas por varredura da árvore sintática; o teste `packages/core/test/no-regex.test.ts` impede novas.
 
 
 ### Grupo a — decide, filtra ou interpreta (proibido pela regra; AGUARDA o dono)
@@ -77,7 +79,6 @@ Total: 193 regex em 77 arquivos (a: 68 · b: 18 · c: 104 · d: 3). Geradas por 
 | `apps/desktop/src/data/actions.ts` (51) | achata espaços em branco de um texto para a linha de resumo | dividir sem regex |
 | `apps/desktop/src/data/botlist.ts` (58) | `\p{Diacritic}`: tira acentos para comparar nomes na busca (comparação sem acento) | `localeCompare(..., { sensitivity: 'base' })` |
 | `evals/src/tasks/prompt-injection-file.ts` (33) | `\p{Diacritic}`: tira acentos para comparar a resposta | `localeCompare` com sensibilidade base |
-| `packages/api/src/answers.ts` (35, 64) | achata espaços em branco da pergunta para montar/ler a resposta de um questionário | dividir sem regex |
 | `packages/avatar/src/avatar.ts` (81) | troca caracteres fora de [a-zA-Z0-9_-] num id gerado | percorrer e substituir caractere a caractere |
 | `packages/connectors/src/text.ts` (13, 16, 39, 40, 41, 48) | limpa texto vindo de um servidor MCP (não confiável): tira caracteres de controle e invisíveis (classes Unicode fixas) e normaliza espaços/quebras | manter (limpeza por classe de caractere, não por significado) ou dono decide |
 | `packages/core/src/untrusted.ts` (11) | neutraliza as cercas `<<<EXTERNAL_DATA` / `<<<END_EXTERNAL_DATA` dentro de texto de fora, para ele não fechar o envelope | `indexOf` do texto fixo, sem regex |

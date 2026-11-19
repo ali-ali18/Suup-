@@ -4,6 +4,7 @@ import {
   isStructuredAnswer,
   parseAnswerText,
   type Question,
+  resolveOptionAnswer,
 } from "../src/index.js";
 
 const one: Question[] = [
@@ -91,5 +92,16 @@ describe("reading an answer back", () => {
     expect(parseAnswerText(one, "outra coisa qualquer")).toEqual([
       { chosen: ["outra coisa qualquer"] },
     ]);
+  });
+});
+
+describe("an option given by its number or letter", () => {
+  it("resolves exactly an index as shown, and nothing else", () => {
+    const q = one[0] as Question;
+    expect(resolveOptionAnswer(q, "2")).toBe("Verde");
+    expect(resolveOptionAnswer(q, "a")).toBe("Azul");
+    expect(resolveOptionAnswer(q, "3")).toBe("3");
+    expect(resolveOptionAnswer(q, "1 por favor")).toBe("1 por favor");
+    expect(resolveOptionAnswer({ question: "Quantos?" }, "2")).toBe("2");
   });
 });

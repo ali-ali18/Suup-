@@ -118,6 +118,16 @@ Uma ferramenta de um conector MCP ([CONECTORES.md](CONECTORES.md)) que falha dá
 
 **Definições de ferramentas.** Cada `model_request` grava `toolStats` (definições enviadas, adiadas, tokens estimados de todas e dos que entram no contexto) e `suup inspect` mostra isso na linha do pedido; o evento `tool_catalog` mostra como a execução ofereceu as ferramentas de conectores. `suup doctor` imprime **por bot** (`Ferramentas do bot <nome>`): ferramentas embutidas e de controle, de conectores concedidas, quantas carregadas direto ou adiadas (e por qual mecanismo), definições e tokens estimados por pedido. Se uma ferramenta mudou de definição, a linha `Conector <nome>: definições` avisa (`AVISO: ... esperando revisão`, falha do doctor) e `suup connectors review <nome>` mostra o antes e o agora.
 
+### Estimativa de tokens das definições
+
+`toolStats` e `definitionTokens` **estimam** o tamanho das definições de ferramenta sem tokenizador. A conta é `(nome + descrição + esquema JSON) / 2,65` caracteres por token (`DEFINITION_CHARS_PER_TOKEN` em `packages/core/src/loop/tool-search.ts`). **Origem do número:** o teste real de 19/11/2026 ([TESTES-REAIS.md](TESTES-REAIS.md), "Fase 3", item D): com 62 definições de conector a mais, o primeiro pedido cresceu 10,1 mil tokens pelo `usage` do provedor (21 564 contra 11 456) e a estimativa a 4 caracteres por token dizia 6,7 mil; 4 / 1,5 = 2,65. É uma média de um conjunto de esquemas (de um servidor de teste); outro conjunto dá outra razão, por isso é estimativa e sempre aparece como tal. Os registros gravados antes dessa mudança usam o fator antigo (cerca de 1,5 vez menor).
+
+Para julgar a estimativa, cada `model_response` do agente grava `measure` (`estimatedTokens` do pedido inteiro, `definitionTokens`) ao lado do `usage.inputTokens` **real**; `suup show` mostra o primeiro pedido com as duas coisas, `suup inspect` na linha da resposta, o Inspetor do app numa coluna "Entrada real (provedor)". `suup doctor` não faz chamada ao modelo: só tem a estimativa e diz isso.
+
+**Busca de ferramentas do provedor (`hosted`).** Nessa busca o provedor roda passagens internas e o `usage` da resposta **soma** todas: o número é maior que o tamanho de um pedido (no teste real, 20 a 36 mil contra 11 a 21 mil). Por isso `measure.hostedToolSearch` marca esses pedidos, e `suup show`, `suup inspect` e o Inspetor avisam que a entrada real é uma soma.
+
+O limite `minDefinitionTokens` (padrão 10 000) compara a **estimativa** com ele, então, com a calibração atual, vale "cerca de 10 mil tokens reais"; antes valia cerca de 15 mil reais.
+
 ## Quando os comandos acima não bastam
 
 - `suup doctor` confere cada componente (configuração, banco e migrações, sandbox, provedores, ferramentas). Com `--live` faz uma chamada minúscula de verdade a cada modelo e mostra a latência e a versão que o provedor devolveu.

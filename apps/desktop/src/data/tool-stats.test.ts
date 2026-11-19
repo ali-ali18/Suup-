@@ -18,6 +18,25 @@ describe("the tool definitions of a run's requests", () => {
     ]);
   });
 
+  it("puts the provider's real input tokens beside the estimates, and marks the hosted search", () => {
+    const events = [
+      makeEvent(2, "model_request", { omitted: true, toolCount: 14, toolStats: stats }),
+      makeEvent(3, "model_response", {
+        usage: { inputTokens: 21564, outputTokens: 40 },
+        measure: { estimatedTokens: 19000, definitionTokens: 5200 },
+      }),
+      makeEvent(4, "model_request", { omitted: true, toolCount: 14, toolStats: stats }),
+      makeEvent(5, "model_response", {
+        usage: { inputTokens: 30373, outputTokens: 40 },
+        measure: { estimatedTokens: 9000, definitionTokens: 5200, hostedToolSearch: "bm25" },
+      }),
+    ];
+    const [plain, hosted] = requestToolStats(events);
+    expect(plain).toMatchObject({ realInputTokens: 21564, requestEstimatedTokens: 19000 });
+    expect(plain?.hostedToolSearch).toBeUndefined();
+    expect(hosted).toMatchObject({ realInputTokens: 30373, hostedToolSearch: "bm25" });
+  });
+
   it("skips old requests with no measure and anything malformed", () => {
     const events = [
       makeEvent(1, "model_request", { omitted: true, toolCount: 3 }),

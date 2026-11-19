@@ -46,7 +46,7 @@ export async function handleSearchTools(ctx: LoopContext, call: ControlCall): Pr
     await recordResult(ctx, call.id, {
       outcome: "invalid_args",
       isError: true,
-      content: `Give \`connector\` and/or \`words\`. Connectors: ${[...new Set(catalog.deferred.map((d) => d.group))].join(", ")}.`,
+      content: `Give \`connector\` and/or \`words\`. Connectors: ${[...new Set(catalog.deferred.map((d) => (d.prefix === undefined ? d.group : `${d.group} or ${d.prefix}`)))].join("; ")}.`,
     });
     return;
   }

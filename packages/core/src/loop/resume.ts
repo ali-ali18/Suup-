@@ -1,6 +1,8 @@
 // Owns starting and resuming a run: the terminal/approval gate, logging `run_started`, reconciling
 // a status the log announced but the store never applied, and picking a `waiting_user` run back up
 // from the inbox (an answer, extra messages, or a stop).
+import { answerForModel } from "../answers.js";
+import { escalatedQuestions } from "../events.js";
 import { deliverApprovalDecisions } from "./approval-flow.js";
 import { freshInbox, recordUserMessage } from "./inbox.js";
 import { record, transition } from "./recording.js";
@@ -111,13 +113,19 @@ async function resumeFromWaiting(ctx: LoopContext): Promise<RunStatus | undefine
     }
     if (messages.length === 0) return "waiting_user";
     if (waiting.kind === "escalate" || waiting.kind === "secret") {
-      // The answer is the result of the pending escalate (or request_secret) call.
+      // The answer is the result of the pending escalate (or request_secret) call. For a question
+      // the model also reads which question it is, and an option typed by its number or letter is
+      // already its label (the one place every surface's answer passes through: `suup say`, the
+      // chat of the CLI, the server and the app).
+      const typed = messages.map((i) => (i.kind === "user_message" ? i.text : "")).join("\n\n");
+      const content =
+        waiting.kind === "escalate" ? answerForModel(escalatedQuestions(waiting), typed) : typed;
       await record(ctx, {
         type: "tool_result",
         payload: {
           callId: waiting.callId,
           outcome: "ok",
-          content: messages.map((i) => (i.kind === "user_message" ? i.text : "")).join("\n\n"),
+          content,
           isError: false,
           truncated: false,
           durationMs: 0,

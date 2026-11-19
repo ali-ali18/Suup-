@@ -731,6 +731,8 @@ function stopsOf(event: RecordedEvent | undefined): InboxItem[] {
 function comparable(event: RecordedEvent | { type: string; payload: unknown }): ComparableEvent {
   const payload = { ...(event.payload as Record<string, unknown>) };
   delete payload.durationMs;
+  // The estimate of a response's input derives from the request, which is compared on its own.
+  delete payload.measure;
   if (event.type === "model_request") {
     // The request is compared on its own (`requestDiffs`): here only that it was made, and what
     // for.

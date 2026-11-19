@@ -116,6 +116,12 @@ function PendingCard({
   const title = approvalTitle(approval.tool, approval.args, approval.summary, connectors);
   // A request to reach one more host: the bot's reason in its own words, and how far "Aprovar" goes.
   const network = networkRequestOf(approval.tool, approval.args);
+  // The title already says the host and the paragraph already quotes the reason: those two rows
+  // would only repeat them. They are left out of the rows, and the exact content (all of it) stays
+  // one click away under "Ver o conteúdo exato".
+  const repeated = new Set<string>();
+  if (network?.host !== undefined && title.includes(network.host)) repeated.add("host");
+  if (network?.reason !== undefined) repeated.add("reason");
 
   // The card appears: take the focus on the card itself (not on a button, so a stray Enter cannot
   // decide), unless the person is in the middle of typing something.
@@ -247,7 +253,12 @@ function PendingCard({
         )
       }
     >
-      <ArgsView args={approval.args} collapse={collapseLong} testId="approval-content">
+      <ArgsView
+        args={approval.args}
+        collapse={collapseLong}
+        testId="approval-content"
+        omitKeys={repeated}
+      >
         {ref !== null && (
           <>
             <ArgRow label="Conector" testId="approval-connector">
@@ -257,6 +268,12 @@ function PendingCard({
           </>
         )}
       </ArgsView>
+      {repeated.size > 0 && (
+        <details className="ui-args__raw" data-testid="approval-raw">
+          <summary>Ver o conteúdo exato</summary>
+          <ArgsView args={approval.args} collapse={collapseLong} testId="approval-raw-args" />
+        </details>
+      )}
     </DecisionCard>
   );
 }

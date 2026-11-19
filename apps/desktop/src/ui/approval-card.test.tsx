@@ -342,6 +342,41 @@ describe("ApprovalCard waiting for you", () => {
   });
 });
 
+describe("ApprovalCard asking for network access: only what is not repeated gets a row", () => {
+  it("an argument the card does not state in its own words keeps its row", () => {
+    show({
+      approval: makeApproval({
+        tool: "request_network_access",
+        args: { host: "api.novo.com", reason: "baixar", port: 8443 },
+      }),
+    });
+    const content = screen.getByTestId("approval-content");
+    expect(
+      within(content)
+        .getAllByTestId("arg-field")
+        .map((f) => f.getAttribute("data-key")),
+    ).toEqual(["port"]);
+  });
+
+  it("a host that is not in the title keeps its row", () => {
+    show({
+      approval: makeApproval({
+        tool: "request_network_access",
+        args: { host: "   ", reason: "baixar" },
+      }),
+    });
+    expect(
+      within(screen.getByTestId("approval-content")).queryAllByTestId("arg-field"),
+    ).toHaveLength(1);
+  });
+
+  it("other tools are untouched: no disclosure, every argument is a row", () => {
+    show({ approval: makeApproval({ tool: "shell", args: { command: "ls" } }) });
+    expect(screen.queryByTestId("approval-raw")).toBeNull();
+    expect(screen.getAllByTestId("arg-field")).toHaveLength(1);
+  });
+});
+
 describe("ApprovalCard asking for network access", () => {
   const network = (over = {}) =>
     makeApproval({
@@ -362,12 +397,22 @@ describe("ApprovalCard asking for network access", () => {
       "Motivo dado pelo bot: “preciso baixar o relatório do mês”",
     );
     expect(card.querySelectorAll(".ui-decision__lede")).toHaveLength(1);
-    // The exact content stays inspectable.
+    // The rows do not repeat what the title (host) and the paragraph (reason) already say...
     expect(
-      within(card)
+      within(screen.getByTestId("approval-content")).queryAllByTestId("arg-field"),
+    ).toHaveLength(0);
+    expect(within(card).queryByText("Esta ação não leva argumentos.")).toBeNull();
+    // ...and the exact content stays inspectable, all of it, under a disclosure.
+    const raw = within(card).getByTestId("approval-raw");
+    expect(raw.querySelector("summary")?.textContent).toBe("Ver o conteúdo exato");
+    expect(
+      within(raw)
         .getAllByTestId("arg-field")
         .map((f) => f.getAttribute("data-key")),
     ).toEqual(["host", "reason"]);
+    expect(within(raw).getAllByTestId("arg-value")[1]?.textContent).toBe(
+      "preciso baixar o relatório do mês",
+    );
     // The muted note: an approval reaches only this execution.
     expect(within(card).getByTestId("network-scope").textContent).toBe(
       "Aprovar vale só para esta execução.",

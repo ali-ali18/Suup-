@@ -20,11 +20,11 @@ Responde à pesquisa [fase-3-aprovacoes-cofre-conectores.md](pesquisas/fase-3-ap
 | Só esta execução | o que um cartão aprovado cria (abaixo); deixa de valer quando a execução termina | o usuário, no cartão |
 | Por conector | `egressHosts` do conector (`suup connectors add --egress`, `connectors set-egress`), somado aos padrões | o usuário |
 
-Ver e mexer: `suup network list <bot>`, `suup network allow <bot> <host>`, `suup network rm <bot> <host>`; na API `GET /v1/bots/:id/network` (padrões, hosts do bot, últimas recusas), `PUT` e `DELETE` em `/v1/bots/:id/network/hosts/:host`.
+Ver e mexer: `suup network list <bot>`, `suup network allow <bot> <host>`, `suup network rm <bot> <host>` (o bot é um argumento **posicional**, o nome ou o início do id; não existe `--bot` nestes comandos); na API `GET /v1/bots/:id/network` (padrões, hosts do bot, últimas recusas), `PUT` e `DELETE` em `/v1/bots/:id/network/hosts/:host`.
 
 ## Host novo: recusa, aviso e cartão
 
-1. O bot roda `curl https://api.novo.com`. O proxy recusa (`403`) e **registra** a recusa (tabela `network_events`, visível em `suup network list` e na API).
+1. O bot roda `curl https://api.novo.com`. O proxy recusa (`403`) e **registra** a recusa (tabela `network_events`, visível em `suup network list <bot>` e na API).
 2. O resultado da ferramenta mostra, no fim do `stderr`: `suup: network: host api.novo.com is not allowed for this bot. If the user agrees, ask for it with the request_network_access tool (host api.novo.com).`
 3. O bot chama `request_network_access { host, reason }`. É uma chamada comum de ferramenta, de nível `external_irreversible`: **sempre vira cartão** (a execução fica em `waiting_approval`), com o host exato e o motivo. O usuário aprova ou recusa como em qualquer cartão.
 4. Aprovado: o host fica liberado **para esta execução** (linha em `network_hosts` com `run_id`, que só vale enquanto a execução não terminou). O bot repete o comando.
@@ -83,6 +83,22 @@ Com o sandbox docker o `doctor` confere, **de dentro do contêiner**: (1) que um
 ```
 
 Tudo é opcional; sem `network` valem os padrões acima. `defaultHosts: []` não libera nada por padrão. `proxy` só se muda quando o worker não roda no host (veja IMPLANTACAO.md).
+
+## Rede com interceptação de TLS (CA extra, opcional)
+
+Alguns proxies (corporativos, ou o ambiente de um agente) **reassinam o HTTPS** com uma CA própria. O host está na lista e o túnel abre, mas dentro do contêiner o TLS falha ("self-signed certificate in certificate chain"), porque a CA do proxy não está na imagem. Isto **não** se resolve gravando uma CA na imagem (nenhuma CA entra em nenhuma imagem do projeto). Resolve-se por configuração, **desligada por padrão**:
+
+```json
+"sandbox": { "kind": "docker", "...": "...", "extraCaBundle": "/etc/ssl/certs/ca-da-empresa.pem" }
+```
+
+- `extraCaBundle` é o caminho **absoluto**, no computador do worker, de um arquivo PEM. Sem o campo, nada é montado e nenhuma variável é definida.
+- Com ele, a máquina dos bots **e** cada contêiner de conector recebem o arquivo **somente leitura** em `/etc/suup/extra-ca.pem` (`--mount ...,readonly`: o bot não consegue alterá-lo) e as variáveis `NODE_EXTRA_CA_CERTS`, `SSL_CERT_FILE`, `CURL_CA_BUNDLE`, `REQUESTS_CA_BUNDLE` e `GIT_SSL_CAINFO` apontando para ele. Uma variável que o próprio conector declara vale mais que estas.
+- **Cuidado:** `NODE_EXTRA_CA_CERTS` **soma** à lista do sistema, mas as outras quatro **substituem** a lista daquele programa. Numa rede em que todo HTTPS é reassinado, a CA do proxy basta; para manter também as do sistema, coloque as duas no mesmo arquivo (a CA do proxy mais o conteúdo de `/etc/ssl/certs/ca-certificates.crt`).
+- A CA só **confia**: não libera nenhum host. A lista de hosts continua sendo a única coisa que decide o que é alcançável, e a confiança numa CA de interceptação significa que o proxy dessa rede pode ler o tráfego dos bots. Use só onde isso já é assim.
+- Mudar o valor (ou tirá-lo) **recria a máquina** dos bots na próxima execução (o volume do workspace é mantido; o rótulo `suup.extra-ca` do contêiner guarda o caminho usado). O arquivo é montado, não copiado: trocar o conteúdo vale na hora.
+- Caminho que não existe, não é arquivo ou tem vírgula: o runtime recusa ao preparar a máquina, com a mensagem dizendo qual.
+- Teste: `packages/sandbox/test/extra-ca.test.ts` (a parte de Docker roda com `SUUP_DOCKER_TESTS=1 SUUP_SANDBOX_IMAGE=... SUUP_CONNECTOR_IMAGE=...`).
 
 ## O que o app de desktop vai precisar
 

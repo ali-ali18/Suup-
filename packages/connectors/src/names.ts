@@ -24,9 +24,14 @@ function hashOf(text: string): string {
   return createHash("sha256").update(text).digest("hex").slice(0, HASH_CHARS);
 }
 
+/** The connector as it appears in the names of its tools, e.g. `conn_gh` (what the model reads). */
+export function connectorTag(connector: string): string {
+  return `${TOOL_PREFIX}${connector.replaceAll("-", "_")}`;
+}
+
 /** The prefix every tool of the connector shares, e.g. `conn_gh__`. */
 export function connectorPrefix(connector: string): string {
-  return `${TOOL_PREFIX}${connector.replaceAll("-", "_")}${SEPARATOR}`;
+  return `${connectorTag(connector)}${SEPARATOR}`;
 }
 
 /**

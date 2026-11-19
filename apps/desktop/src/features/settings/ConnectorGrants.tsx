@@ -1,6 +1,6 @@
 import type { Bot, Connector } from "@suup/api";
 import { Bot as BotIcon } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { sortedBots } from "../../app/selectors.js";
 import { LEVEL_LABEL } from "../../data/approval-text.js";
@@ -47,10 +47,14 @@ function BotGrant({
   const [open, setOpen] = useState(false);
   const dirty = isDirty(draft, saved);
   // What the server holds changed (a save, another window): follow it, unless the person is editing.
+  // Adjusted while rendering, not in an effect: an effect also ran after the first render and could
+  // undo an edit made right after the card appeared.
   const savedKey = JSON.stringify(saved);
-  useEffect(() => {
+  const [shownKey, setShownKey] = useState(savedKey);
+  if (shownKey !== savedKey) {
+    setShownKey(savedKey);
     setDraft(saved);
-  }, [savedKey]);
+  }
 
   const save = () =>
     task.run(async () => {

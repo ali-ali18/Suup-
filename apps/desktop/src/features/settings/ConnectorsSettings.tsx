@@ -343,10 +343,15 @@ function OutboundMark({ connector, tool }: { connector: Connector; tool: Connect
   const saved = tool.outbound?.recipientFields.join(", ") ?? "";
   const [marked, setMarked] = useState(tool.outbound !== null);
   const [fields, setFields] = useState(saved);
-  useEffect(() => {
+  // What the server holds changed: show it again (while rendering, not in an effect, which also ran
+  // after the first render and could undo what was typed right after the field appeared).
+  const savedKey = JSON.stringify([tool.outbound !== null, saved]);
+  const [shownKey, setShownKey] = useState(savedKey);
+  if (shownKey !== savedKey) {
+    setShownKey(savedKey);
     setMarked(tool.outbound !== null);
     setFields(saved);
-  }, [tool.outbound, saved]);
+  }
   const id = `outbound-${connector.name}-${tool.tool}`;
   const parsed = parseRecipientFields(fields);
   const dirty = marked !== (tool.outbound !== null) || (marked && fields !== saved);

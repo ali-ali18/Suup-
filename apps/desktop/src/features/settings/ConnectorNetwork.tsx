@@ -26,7 +26,14 @@ export function ConnectorNetwork({ connector }: { connector: Connector }) {
   const saved = transport.kind === "stdio" ? transport.egressHosts : undefined;
   const [text, setText] = useState(hostsText(saved));
   const savedKey = JSON.stringify(saved ?? []);
-  useEffect(() => setText(hostsText(saved)), [savedKey]);
+  // When the saved hosts change (not on mount), the field shows them again. Done while rendering,
+  // not in an effect: an effect also ran after the first render and could undo what was typed
+  // right after the field appeared.
+  const [shownKey, setShownKey] = useState(savedKey);
+  if (shownKey !== savedKey) {
+    setShownKey(savedKey);
+    setText(hostsText(saved));
+  }
 
   // The defaults are the server's, the same for every bot: any bot's view carries them.
   const firstBot = useMemo(() => sortedBots(bots)[0], [bots]);

@@ -78,6 +78,8 @@ function project(events: readonly StoredEvent[]): unknown[] {
     .map((e) => {
       const payload: Record<string, unknown> = { ...e.payload };
       delete payload.durationMs;
+      // The estimate of a response's input derives from the request, which is left out.
+      delete payload.measure;
       delete payload.uptoSeq;
       delete payload.botId; // the in-memory run has a made-up bot, the database one a real uuid
       return { type: e.type, ...payload };

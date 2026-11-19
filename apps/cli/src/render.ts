@@ -368,7 +368,7 @@ export function summarizeEvent(event: RawEvent): string {
       const defs =
         stats === undefined
           ? ""
-          : ` (definições: ${stats.definitions} enviadas, ${stats.deferred} adiadas, ~${formatInt(stats.estimatedTokens)} tok no total, ~${formatInt(stats.loadedTokens)} no contexto)`;
+          : ` (definições: ${stats.definitions} enviadas, ${stats.deferred} adiadas, estimativa: ~${formatInt(stats.estimatedTokens)} tok no total, ~${formatInt(stats.loadedTokens)} no contexto)`;
       return `${purpose} ${e.payload.provider}/${e.payload.model} · ${e.payload.messages.length} msgs · ${e.payload.tools.length} ferramentas${defs}`;
     }
     case "model_response": {
@@ -377,7 +377,14 @@ export function summarizeEvent(event: RawEvent): string {
         .map((b) => (b.type === "tool_call" ? b.name : ""));
       const text = e.payload.blocks.flatMap((b) => (b.type === "text" ? [b.text] : [])).join(" ");
       const { inputTokens, outputTokens } = e.payload.usage;
-      return `${e.payload.stopReason} · ${e.payload.modelVersion} · ${formatInt(inputTokens)}→${formatInt(outputTokens)} tok · ${formatDuration(e.payload.durationMs)}${calls.length > 0 ? ` · chamadas: ${calls.join(", ")}` : ""}${text.trim() === "" ? "" : ` · "${oneLine(text, 50)}"`}`;
+      const measure = e.payload.measure;
+      // The provider's real count, with the estimate beside it so the estimate can be judged; with
+      // the provider's own tool search the count SUMS internal passes.
+      const measured =
+        measure === undefined
+          ? ""
+          : ` (pedido inteiro estimado em ~${formatInt(measure.estimatedTokens)}${measure.hostedToolSearch === undefined ? "" : "; busca do provedor: a entrada soma as passagens internas, não é o tamanho de um pedido"})`;
+      return `${e.payload.stopReason} · ${e.payload.modelVersion} · ${formatInt(inputTokens)}→${formatInt(outputTokens)} tok${measured} · ${formatDuration(e.payload.durationMs)}${calls.length > 0 ? ` · chamadas: ${calls.join(", ")}` : ""}${text.trim() === "" ? "" : ` · "${oneLine(text, 50)}"`}`;
     }
     case "model_error":
       return `${e.payload.kind} (tentativa ${e.payload.attempt}${e.payload.retryable ? ", retentável" : ""}): ${oneLine(e.payload.message, 80)}`;

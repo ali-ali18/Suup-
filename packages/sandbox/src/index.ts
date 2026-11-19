@@ -19,6 +19,13 @@ export type {
 } from "./egress/types.js";
 export { subjectKey } from "./egress/types.js";
 export {
+  assertExtraCaBundle,
+  EXTRA_CA_CONTAINER_PATH,
+  EXTRA_CA_ENV,
+  EXTRA_CA_LABEL,
+  extraCaMountArgs,
+} from "./extra-ca.js";
+export {
   DEFAULT_EXEC_TIMEOUT_MS,
   DEFAULT_MAX_FILE_BYTES,
   DEFAULT_MAX_OUTPUT_BYTES,

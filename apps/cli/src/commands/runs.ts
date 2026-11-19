@@ -145,11 +145,27 @@ export const showCommand: CommandSpec = {
       const t = typedEvent(e);
       return t?.type === "tool_catalog" ? [t.payload] : [];
     })[0];
+    // The first request of the run, with what the provider counted for it (when it answered).
+    const firstAnswer = events.flatMap((e) => {
+      const t = typedEvent(e);
+      return t?.type === "model_response" && (t.payload.purpose ?? "agent") === "agent"
+        ? [t.payload]
+        : [];
+    })[0];
     const toolDefinitions = {
       mode: catalog?.mode ?? null,
       connectorTools: catalog?.connectorTools ?? 0,
       requests: agentRequests.length,
       lastRequest: agentRequests.at(-1)?.toolStats ?? null,
+      firstRequest:
+        firstAnswer === undefined || firstAnswer.measure === undefined
+          ? null
+          : {
+              realInputTokens: firstAnswer.usage.inputTokens,
+              estimatedRequestTokens: firstAnswer.measure.estimatedTokens,
+              estimatedDefinitionTokens: firstAnswer.measure.definitionTokens,
+              hostedToolSearch: firstAnswer.measure.hostedToolSearch ?? null,
+            },
     };
     const lastQuestion = events
       .map((e) => typedEvent(e))
@@ -219,6 +235,13 @@ interface DescribeExtras {
       estimatedTokens: number;
       loadedTokens: number;
     } | null;
+    /** The first request of the run: the provider's real input tokens beside the estimates. */
+    firstRequest: {
+      realInputTokens: number;
+      estimatedRequestTokens: number;
+      estimatedDefinitionTokens: number;
+      hostedToolSearch: string | null;
+    } | null;
   };
 }
 
@@ -276,7 +299,15 @@ export function describeRun(run: Run, bot: Bot | null, extra: DescribeExtras): s
   const defs = extra.toolDefinitions;
   if (defs.lastRequest !== null) {
     lines.push(
-      `Definições de ferramentas por pedido: ${defs.lastRequest.definitions} (${defs.lastRequest.deferred} adiadas), ~${formatInt(defs.lastRequest.estimatedTokens)} tokens estimados, ~${formatInt(defs.lastRequest.loadedTokens)} no contexto${defs.mode === null ? "" : `; ferramentas de conectores: ${defs.connectorTools}, modo ${defs.mode}`}`,
+      `Definições de ferramentas por pedido: ${defs.lastRequest.definitions} (${defs.lastRequest.deferred} adiadas), ESTIMATIVA de ~${formatInt(defs.lastRequest.estimatedTokens)} tokens (~${formatInt(defs.lastRequest.loadedTokens)} no contexto)${defs.mode === null ? "" : `; ferramentas de conectores: ${defs.connectorTools}, modo ${defs.mode}`}`,
+    );
+  }
+  const first = defs.firstRequest;
+  if (first !== null) {
+    lines.push(
+      first.hostedToolSearch === null
+        ? `Primeiro pedido: o provedor contou ${formatInt(first.realInputTokens)} tokens de entrada; a estimativa do pedido inteiro era ~${formatInt(first.estimatedRequestTokens)} (definições ~${formatInt(first.estimatedDefinitionTokens)}). A estimativa é aproximada, sem tokenizador.`
+        : `Primeiro pedido, com busca de ferramentas do provedor (${first.hostedToolSearch}): o provedor contou ${formatInt(first.realInputTokens)} tokens de entrada, mas esse número SOMA as passagens internas da busca (não é o tamanho de um pedido); a estimativa do pedido inteiro era ~${formatInt(first.estimatedRequestTokens)}.`,
     );
   }
   lines.push(

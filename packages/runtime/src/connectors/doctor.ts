@@ -61,7 +61,7 @@ export async function checkConnectors(runtime: Runtime): Promise<DoctorCheck[]> 
       checks.push({
         component,
         ok: true,
-        detail: `${r.builtinTools} embutidas e de controle, ${r.connectorTools} de conectores concedidas${r.withheld > 0 ? ` (+${r.withheld} esperando revisão)` : ""}: ${how}; ${r.definitionsPerRequest} definições por pedido, ~${r.estimatedTokens} tokens (~${r.loadedTokens} no contexto)`,
+        detail: `${r.builtinTools} embutidas e de controle, ${r.connectorTools} de conectores concedidas${r.withheld > 0 ? ` (+${r.withheld} esperando revisão)` : ""}: ${how}; ${r.definitionsPerRequest} definições por pedido, ESTIMATIVA de ~${r.estimatedTokens} tokens (~${r.loadedTokens} no contexto; o número real do provedor aparece em suup show depois de uma execução)`,
       });
     } catch (error) {
       checks.push({

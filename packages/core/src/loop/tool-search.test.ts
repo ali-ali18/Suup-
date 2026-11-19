@@ -22,6 +22,7 @@ import {
   DEFAULT_TOOL_SEARCH,
   firstSentence,
   planToolSearch,
+  renderDefinitions,
   searchCatalog,
   type ToolSearchCandidate,
   type ToolSearchSetup,
@@ -190,6 +191,17 @@ describe("the decision (planToolSearch)", () => {
       {},
     );
     expect(large.index).toContain("- a: 12 tool(s)");
+    // The connector the way search_tools accepts it, next to its name.
+    const tagged = planToolSearch(
+      {
+        settings: DEFAULT_TOOL_SEARCH,
+        candidates: candidates.map((c) => ({ ...c, prefix: "conn_a" })),
+      },
+      specs,
+      {},
+    );
+    expect(tagged.index).toContain("`tool` (the name exactly as listed, for example `conn_a__t0`)");
+    expect(tagged.index).toContain("`a` or `conn_a`");
     expect(large.index).not.toContain("conn_a__t0");
   });
 });
@@ -256,6 +268,71 @@ describe("words, first sentence and ranking (no regular expressions)", () => {
     expect(out.matches).toHaveLength(3);
     expect(out.more).toHaveLength(10);
     expect(searchCatalog(deferred, { connector: "erp", limit: 500 }).matches).toHaveLength(10);
+  });
+
+  // The failure of a real run: 62 tools of connector `led`, every name `conn_led__gen_N`.
+  const ledger = Array.from({ length: 62 }, (_, i) => {
+    const name = `conn_led__gen_${i}`;
+    return {
+      name,
+      group: "led",
+      prefix: "conn_led",
+      summary: "Fetches a ledger record by id.",
+      spec: {
+        name,
+        description: "Fetches a ledger record by id.",
+        inputSchema: { type: "object", properties: { id: { type: "string" } } },
+      },
+    };
+  });
+
+  it("accepts the connector as it appears in the tool names, by exact comparison", () => {
+    for (const written of ["led", "LED", "conn_led", "Conn_Led", "conn_led__"]) {
+      expect(searchCatalog(ledger, { connector: written }).matches, written).toHaveLength(5);
+    }
+    // Not a partial match.
+    for (const written of ["conn_le", "conn_ledger", "conn_led_", "l"]) {
+      expect(searchCatalog(ledger, { connector: written }).matches, written).toEqual([]);
+    }
+    // A catalog recorded before the prefix was declared still answers to it (by the tool names).
+    const old = ledger.map(({ prefix: _p, ...rest }) => rest);
+    expect(searchCatalog(old, { connector: "conn_led" }).matches).toHaveLength(5);
+  });
+
+  it("an unknown connector says which ones are valid, in both forms", () => {
+    const out = searchCatalog(ledger, { connector: "nope" });
+    expect(out.unknownConnector).toBe(true);
+    const text = renderDefinitions(out, { connector: "nope" });
+    expect(text).toContain('No connector answers to "nope"');
+    expect(text).toContain("led or conn_led");
+  });
+
+  it("a query that ties across many tools says how many, shows a fixed first page and lists the names", () => {
+    const query = { words: "ledger id" };
+    const out = searchCatalog(ledger, query);
+    expect(out.tied).toMatchObject({ count: 62, words: 2, asked: 2 });
+    expect(out.matches.map((m) => m.name)).toEqual(ledger.slice(0, 5).map((m) => m.name));
+    expect(searchCatalog(ledger, query)).toEqual(out);
+    const text = renderDefinitions(out, query);
+    expect(text).toContain("62 tools matched equally well");
+    expect(text).toContain("Refine");
+    expect(text).toContain("conn_led__gen_61");
+    // A bound on the listing: a huge tie still says the count but not every name.
+    const huge = Array.from({ length: 400 }, (_, i) => ({
+      ...(ledger[0] as (typeof ledger)[number]),
+      name: `conn_led__operation_with_a_long_name_${i}`,
+    }));
+    const hugeText = renderDefinitions(searchCatalog(huge, query), query);
+    expect(hugeText).toContain("400 tools matched equally well");
+    expect(hugeText).not.toContain("Tied:");
+  });
+
+  it("a distinct best match is not reported as a tie", () => {
+    const mixed = [
+      { ...(ledger[0] as (typeof ledger)[number]), summary: "Fetches a ledger record by id." },
+      ...ledger.slice(1, 9).map((m) => ({ ...m, summary: "Lists things." })),
+    ];
+    expect(searchCatalog(mixed, { words: "ledger fetches" }).tied).toBeUndefined();
   });
 
   it("matches argument names too", () => {
@@ -438,6 +515,11 @@ describe("meta fallback: index + search_tools + use_tool", () => {
     expect(m?.deferred).toBe(0);
     expect(d?.definitions).toBeGreaterThan((m?.definitions ?? 0) + 10);
     expect(d?.estimatedTokens).toBeGreaterThan(m?.estimatedTokens ?? 0);
+    // The response records the estimate of the whole input beside the real count (`usage`).
+    const answer = eventsOfType(await direct.rig.events(), "model_response")[0]?.payload;
+    expect(answer?.measure?.definitionTokens).toBe(d?.estimatedTokens);
+    expect(answer?.measure?.estimatedTokens).toBeGreaterThan(d?.estimatedTokens ?? 0);
+    expect(answer?.measure?.hostedToolSearch).toBeUndefined();
   });
 });
 
@@ -478,6 +560,10 @@ describe("native deferred loading", () => {
       expect(r.tools.some((t) => t.name === "search_tools")).toBe(false);
       expect(r.toolStats?.deferred).toBe(14);
       expect(r.toolStats?.loadedTokens ?? 0).toBeLessThan(r.toolStats?.estimatedTokens ?? 0);
+    }
+    // Its responses are marked: the usage of a hosted search sums the provider's internal passes.
+    for (const e of eventsOfType(events, "model_response")) {
+      expect(e.payload.measure?.hostedToolSearch).toBe("bm25");
     }
     // The model called a tool it discovered through the provider's search: same gate, same registry.
     const [result] = eventsOfType(events, "tool_result");

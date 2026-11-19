@@ -9,6 +9,7 @@ import {
   ConnectorManager,
   type ConnectorSpec,
   type ConnectorToolInfo,
+  connectorTag,
   type PinnedDefinition,
   parseConnectorSpec,
   pinnedDefinition,
@@ -148,6 +149,8 @@ export interface BotConnectorCandidate {
   name: string;
   /** The connector. */
   group: string;
+  /** The connector as it appears in the tool names (`conn_<connector>`), as the model reads it. */
+  prefix: string;
   /** What the server says the tool does (cleaned and bounded; untrusted). */
   summary: string;
 }
@@ -680,6 +683,7 @@ export function createConnectorService(options: {
           out.candidates.push({
             name: tool.name,
             group: a.connector,
+            prefix: connectorTag(a.connector),
             summary: byName.get(tool.name)?.description ?? "",
           });
         }

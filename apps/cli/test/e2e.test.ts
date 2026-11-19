@@ -680,6 +680,16 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup, end to end"), { timeout: 30_00
     expect(none.stdout).toContain("Nenhuma execução encontrada.");
   });
 
+  it("stop cancels a queued run that never started right away, without a worker", async () => {
+    const detached = await p.suup(["run", "Faça algo", "--bot", "ajudante", "--detach", "--json"]);
+    const { id } = JSON.parse(detached.stdout) as { id: string };
+    expect((await show(p, id)).status).toBe("queued");
+    const stopped = await p.suup(["stop", id]);
+    expect(stopped.code).toBe(0);
+    expect(stopped.stdout).toContain("cancelada: estava na fila e nunca começou");
+    expect((await show(p, id)).status).toBe("cancelled");
+  });
+
   it("run --detach only creates the run; a standalone worker processes it and stops on Ctrl+C", async () => {
     await p.script("roteiro.json", { agent: [{ text: "Feito pelo worker." }] });
     const detached = await p.suup(["run", "Faça algo", "--bot", "ajudante", "--detach", "--json"]);

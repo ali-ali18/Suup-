@@ -15,7 +15,7 @@ import {
 import { record } from "./recording.js";
 import type { ModelPricing } from "./reviewer.js";
 import type { LoopContext } from "./run-context.js";
-import { toolDefinitionStats } from "./tool-search.js";
+import { estimateRequestTokens, toolDefinitionStats } from "./tool-search.js";
 
 /** Loop-level retries of a retryable provider error (the adapter already retried). */
 export const MAX_MODEL_RETRIES = 2;
@@ -64,6 +64,7 @@ export async function callModel(ctx: LoopContext, spec: CallSpec): Promise<CallO
   const choiceField = spec.toolChoice === undefined ? {} : { toolChoice: spec.toolChoice };
   const hostedField =
     spec.hostedToolSearch === undefined ? {} : { hostedToolSearch: spec.hostedToolSearch };
+  const stats = toolDefinitionStats(spec.tools);
   await record(ctx, {
     type: "model_request",
     payload: {
@@ -73,7 +74,7 @@ export async function callModel(ctx: LoopContext, spec: CallSpec): Promise<CallO
       messages: spec.messages,
       tools: spec.tools,
       ...hostedField,
-      toolStats: toolDefinitionStats(spec.tools),
+      toolStats: stats,
       ...choiceField,
       maxOutputTokens: spec.model.maxOutputTokens,
       ...purposeField,
@@ -117,6 +118,11 @@ export async function callModel(ctx: LoopContext, spec: CallSpec): Promise<CallO
           modelVersion: result.modelVersion,
           durationMs: Math.max(0, now().getTime() - startedAt.getTime()),
           ...purposeField,
+          measure: {
+            estimatedTokens: estimateRequestTokens(spec),
+            definitionTokens: stats.estimatedTokens,
+            ...hostedField,
+          },
         },
       });
       return { kind: "ok", result };

@@ -91,9 +91,14 @@ function ReviewItem({
 }) {
   const { sync, api } = useServices();
   const task = useTask();
-  const [kept, setKept] = useState(false);
-  // The comparison belongs to the definition the person is looking at: a new fingerprint resets it.
-  useEffect(() => setKept(false), [review.currentFingerprint]);
+  // "Keep it off" belongs to the definition the person is looking at: it is stored WITH that
+  // definition's fingerprint, so a new fingerprint is simply not kept. (An effect that reset a
+  // boolean on every new fingerprint also ran after the first render and could undo a click made
+  // right after the item appeared.)
+  const [keptFingerprint, setKeptFingerprint] = useState<string | undefined>(undefined);
+  const kept = keptFingerprint === review.currentFingerprint;
+  const setKept = (value: boolean) =>
+    setKeptFingerprint(value ? review.currentFingerprint : undefined);
   const sections = compareDefinitions(review);
   const isNew = review.status === "new";
 

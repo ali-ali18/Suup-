@@ -120,17 +120,24 @@ export function ArgsView({
   collapse,
   children,
   testId = "approval-args",
+  omitKeys,
 }: {
   args: unknown;
   collapse: boolean;
   children?: ReactNode;
   testId?: string;
+  /**
+   * Arguments the card already states in its own words (compared exactly by name): they get no row
+   * here. The card must then offer the full content some other way.
+   */
+  omitKeys?: ReadonlySet<string>;
 }) {
-  const fields = formatArgs(args);
+  const all = formatArgs(args);
+  const fields = all.filter((f) => f.key === null || omitKeys?.has(f.key) !== true);
   return (
     <div className="ui-args" data-testid={testId}>
       {children}
-      {fields.length === 0 && (
+      {all.length === 0 && (
         <p className="ui-action__label ui-args__empty">Esta ação não leva argumentos.</p>
       )}
       {fields.map((field, i) => (

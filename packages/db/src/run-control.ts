@@ -99,9 +99,13 @@ export async function resumeRun(db: Db, runId: string): Promise<Run> {
  * at a safe point and the run ends `cancelled`), clears a pause so a worker can take the run to
  * apply it, and, when the run is working right now, also asks for a hard interrupt so it does not
  * go on for a whole turn first. A run waiting for the user is put back in the queue by the post.
- * A run waiting for an approval is cancelled directly (no worker holds it).
+ * A run waiting for an approval is cancelled directly (no worker holds it), and so is a run that is
+ * still queued and has never started (its log is empty: there is nothing to unwind, and waiting
+ * for a worker that may never come would leave it queued forever). A queued run that already has a
+ * log (it was requeued after an answer, or a lease expired) still goes through the loop, which
+ * closes its log the way the loop always does.
  *
- * Applying it needs a worker alive. Throws `RunControlError`: `not_found`, `finished`.
+ * Applying it otherwise needs a worker alive. Throws `RunControlError`: `not_found`, `finished`.
  */
 export async function cancelRun(db: Db, runId: string): Promise<Run> {
   return withTransaction(db, async (tx) => {
@@ -124,6 +128,15 @@ export async function cancelRun(db: Db, runId: string): Promise<Run> {
       });
       const done = await setRunStatus(tx, run.id, { from: "waiting_approval", to: "cancelled" });
       if (done !== null) return done;
+    }
+    if (run.status === "queued") {
+      const [{ n } = { n: 0 }] = await tx.sql<{ n: number }[]>`
+        select count(*)::int as n from run_events where run_id = ${run.id}`;
+      if (n === 0) {
+        await appendRunEvent(tx, run.id, "status_changed", { from: "queued", to: "cancelled" });
+        const done = await setRunStatus(tx, run.id, { from: "queued", to: "cancelled" });
+        if (done !== null) return done;
+      }
     }
     await postInbox(tx, run.id, { kind: "stop" });
     const [row] = await tx.sql<RunRow[]>`

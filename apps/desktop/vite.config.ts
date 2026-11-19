@@ -8,6 +8,9 @@ const source = (path: string) => fileURLToPath(new URL(`../../packages/${path}`,
 export const apiSource = source("api/src/index.ts");
 export const workspaceAliases = [
   { find: /^@suup\/api$/, replacement: apiSource },
+  // The text of an answer: pure, and the only part of `core` the browser needs (the index of
+  // `core` has Node modules).
+  { find: "@suup/core/answers", replacement: source("core/src/answers.ts") },
   { find: /^@suup\/avatar$/, replacement: source("avatar/src/index.ts") },
   { find: /^@suup\/avatar\/browser$/, replacement: source("avatar/src/browser.ts") },
 ];

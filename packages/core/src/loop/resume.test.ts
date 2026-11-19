@@ -239,6 +239,8 @@ function project(events: readonly StoredEvent[], ignoreMidRunMessage = false): u
       .map((e) => {
         const payload: Record<string, unknown> = { ...e.payload };
         delete payload.durationMs;
+        // The estimate of a response's input derives from the request, which is left out above.
+        delete payload.measure;
         // Positions shift when a request was logged twice (died before its response).
         delete payload.uptoSeq;
         return { type: e.type, ...payload };

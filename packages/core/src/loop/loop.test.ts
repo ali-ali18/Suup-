@@ -476,6 +476,71 @@ describe("runLoop: escalate", () => {
     expect(resultsIn(rig, 1).c1).toBe(reply);
   });
 
+  describe("an option answered by its number or letter", () => {
+    const options = [{ label: "Postgres" }, { label: "SQLite" }, { label: "Duck" }];
+    /** Asks one question (or the questionnaire), answers it with `reply` and gives what the model got. */
+    async function answered(input: Record<string, unknown>, reply: string): Promise<string> {
+      const rig = createRig({ script: [use(call("c1", "escalate", input)), say("ok")] });
+      expect(await rig.run()).toBe("waiting_user");
+      rig.store.postInbox(rig.runId, { kind: "user_message", text: reply });
+      expect(await rig.run()).toBe("done");
+      return resultsIn(rig, 1).c1 as string;
+    }
+
+    it("a number is the option, and the answer names the question", async () => {
+      expect(await answered({ question, options }, "2")).toBe(
+        `Answer to your question "${question}" (option 2): SQLite`,
+      );
+    });
+
+    it("the letter of the app's card is the option too, in either case", async () => {
+      expect(await answered({ question, options }, "C")).toContain(": Duck");
+      expect(await answered({ question, options }, " b ")).toContain(": SQLite");
+    });
+
+    it("a question without options keeps a number as the free text it is", async () => {
+      expect(await answered({ question }, "1")).toBe("1");
+    });
+
+    it("a number outside the options, or text around it, stays as typed", async () => {
+      expect(await answered({ question, options }, "4")).toBe("4");
+      expect(await answered({ question, options }, "0")).toBe("0");
+      expect(await answered({ question, options }, "2 e meia")).toBe("2 e meia");
+      expect(await answered({ question, options }, "1,2")).toBe("1,2");
+    });
+
+    it("an option whose label is the number typed is not resolved to another", async () => {
+      const odd = [{ label: "2" }, { label: "1" }];
+      expect(await answered({ question, options: odd }, "1")).toBe("1");
+    });
+
+    it("several numbers pick several options when the question allows several", async () => {
+      expect(await answered({ questions: [{ question, options, multiple: true }] }, "1,3")).toBe(
+        `Answer to your question "${question}" (option 1,3): Postgres; Duck`,
+      );
+      expect(await answered({ questions: [{ question, options, multiple: true }] }, "1,9")).toBe(
+        "1,9",
+      );
+    });
+
+    it("a questionnaire in the documented format has its indexes resolved; other text is left alone", async () => {
+      const questions = [
+        { question: "Which database?", options },
+        {
+          question: "Which extras?",
+          options: [{ label: "Cache" }, { label: "Queue" }],
+          multiple: true,
+        },
+      ];
+      expect(await answered({ questions }, "1. Which database? → 3\n2. Which extras? → 1; 2")).toBe(
+        "1. Which database? → Duck\n2. Which extras? → Cache; Queue",
+      );
+      expect(await answered({ questions }, "2")).toBe("2");
+      const named = "1. Which database? → Postgres\n2. Which extras? → (pulou)";
+      expect(await answered({ questions }, named)).toBe(named);
+    });
+  });
+
   it("rejects an invalid escalate (both forms, neither, bad options, stray flags) and lets the model retry", async () => {
     const opt = (label: string) => ({ label });
     const rig = createRig({

@@ -296,6 +296,9 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
             ...(sandboxConfig.connectors?.cpus === undefined
               ? {}
               : { cpus: sandboxConfig.connectors.cpus }),
+            ...(sandboxConfig.extraCaBundle === undefined
+              ? {}
+              : { extraCaBundle: sandboxConfig.extraCaBundle }),
             ...(dockerPath === undefined ? {} : { dockerPath }),
           },
           startEgress,
@@ -483,6 +486,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
           volume: sandbox.volume,
           ...(sandbox.memory === undefined ? {} : { memory: sandbox.memory }),
           ...(sandbox.cpus === undefined ? {} : { cpus: sandbox.cpus }),
+          ...(sandbox.extraCaBundle === undefined ? {} : { extraCaBundle: sandbox.extraCaBundle }),
           ...(dockerPath === undefined ? {} : { dockerPath }),
         }),
       )
