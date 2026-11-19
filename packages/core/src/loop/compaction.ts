@@ -1,9 +1,10 @@
 // Owns compaction orchestration: deciding when the next request is too large, and summarizing
 // the oldest part of the conversation through a model call (the cut and the transcript rendering
 // themselves live in context.ts).
+import type { Message } from "../messages.js";
 import { COMPACTION_THRESHOLD, chooseCutIndex, renderTranscript } from "./context.js";
 import { callModel } from "./model-call.js";
-import { COMPACTION_SYSTEM } from "./prompts.js";
+import { COMPACTION_SYSTEM, isReminderBlock } from "./prompts.js";
 import { record } from "./recording.js";
 import { fixedParts } from "./request.js";
 import { Interrupted, type LoopContext } from "./run-context.js";
@@ -18,7 +19,22 @@ const SUMMARY_MAX_OUTPUT_TOKENS = 4096;
  * verbatim right after the summary).
  */
 export const SUMMARIZE_INTRO =
-  "Summarize this earlier part of the conversation. The messages that come right after it are kept word for word and are not shown here, so whatever the LAST message below asks or reports is answered or acted on there: do not list it as pending, unanswered or not yet done; just say what it asked or reported.";
+  "Summarize this earlier part of the conversation. The messages that come right after it are kept word for word and are not summarized, so whatever the LAST message below asks or reports is answered or acted on there: do not list it as pending, unanswered or not yet done; just say what it asked or reported.";
+
+/** How much of the first kept message the summarizer is shown, so it knows how the last request was answered. */
+const KEPT_HEAD_CHARS = 700;
+
+/** The text of the first kept message (if it has any), as a trailer after the transcript. */
+export function keptHeadNote(message: Message | undefined): string {
+  if (message === undefined) return "";
+  const text = message.blocks
+    .flatMap((b) => (b.type === "text" && !isReminderBlock(b) ? [b.text.trim()] : []))
+    .filter((t) => t !== "")
+    .join("\n");
+  if (text === "") return "";
+  const shown = text.length > KEPT_HEAD_CHARS ? `${text.slice(0, KEPT_HEAD_CHARS)} [...]` : text;
+  return `\n\n--- The kept part starts with this ${message.role} message (it is NOT part of what you summarize; it only shows how the last message above was answered):\n${shown}`;
+}
 
 /** Compacts when the next request is estimated above the threshold of the context window. */
 export async function compactIfNeeded(ctx: LoopContext): Promise<void> {
@@ -64,7 +80,7 @@ export async function compact(ctx: LoopContext): Promise<boolean> {
         blocks: [
           {
             type: "text",
-            text: `${SUMMARIZE_INTRO}\n\n${transcript}`,
+            text: `${SUMMARIZE_INTRO}\n\n${transcript}${keptHeadNote(state.messages[cut])}`,
           },
         ],
       },
