@@ -131,6 +131,7 @@ As telas que aparecem antes do app abrir (`features/connect/`) são **um cartão
 - [ ] **A chave do modelo** (`LocalScreen`, passo da primeira vez): um `SecretInput` (campo de senha, nunca mostrado de volta), "Guardar e continuar" e "Fazer depois". A chave nunca aparece em tela, registro, captura ou mensagem; em Configurações a linha só diz "Guardada no chaveiro do sistema" ou "Ainda não definida".
 - [ ] **Iniciar**: "Iniciando o Suup…" com **uma** linha do estágio real (banco, atualização do banco, máquina dos bots, servidor); falha mostra o **motivo**, a pasta dos registros, "Tentar de novo" e "Abrir a pasta de registros"; nunca um laço silencioso. Um reinício automático aparece como aviso calmo (`Notice`) com o motivo e a espera.
 - [ ] **A máquina dos bots** (Configurações > Geral > Servidor, "Máquina dos bots"): "Isolada (Docker)" ou "Sem isolamento: <motivo>" e, quando não há isolamento, a linha de aviso fixa (`role="note"`) com o texto verdadeiro de que os comandos rodam neste computador.
+- [ ] **Uma vez, na primeira vez que os bots rodam sem isolamento** (`features/shell/IsolationNotice.tsx`): uma janelinha com o mesmo texto verdadeiro do aviso fixo e um botão "Entendi"; não volta depois (a marca fica no `localStorage`, só uma conveniência).
 - [ ] As telas usam as peças de `ui/` (`WelcomeCard`, `ChoiceCard`, `SecretInput`, `Pill`, `Notice`); nenhuma lista de classes própria. `design-rules.test.ts` confere.
 
 ## 4. Balões e links

@@ -53,6 +53,11 @@ test.describe("first run: this computer or a VPS", () => {
     await page.getByTestId("choose-local").click();
     await page.getByTestId("key-later").click();
     await expect(page.getByTestId("sidebar")).toBeVisible();
+    // Once, the truthful warning about running without isolation; "Entendi" and it does not come back.
+    await expect(page.getByTestId("isolation-notice")).toContainText(
+      "rodam diretamente neste computador",
+    );
+    await page.getByTestId("isolation-ok").click();
     await page.reload();
     await expect(page.getByTestId("first-run")).toHaveCount(0);
     await expect(page.getByTestId("sidebar")).toBeVisible();
@@ -87,6 +92,7 @@ test.describe("first run: this computer or a VPS", () => {
     await page.getByTestId("choose-local").click();
     await page.getByTestId("key-later").click();
     await expect(page.getByTestId("sidebar")).toBeVisible();
+    await page.getByTestId("isolation-ok").click();
     await openSettings(page, "Geral");
     await page.getByTestId("server-switch").click();
     await page.getByTestId("switch-confirm").click();
