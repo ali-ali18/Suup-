@@ -1,4 +1,5 @@
 import type { Bot, Connector } from "@suup/api";
+import { Users } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { sortedBots } from "../../app/selectors.js";
@@ -209,6 +210,7 @@ export function ConnectorGrants({
   return (
     <SettingsGroup
       label="Quem pode usar"
+      icon={Users}
       hint="Dar uma ferramenta a um bot dá a ele o que o servidor faz com as credenciais do conector. Nenhuma vem marcada: você escolhe."
       testId="connector-grants"
     >

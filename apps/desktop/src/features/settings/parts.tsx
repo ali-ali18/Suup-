@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { type LucideIcon, X } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 import { Dropdown } from "../../ui/dropdown.js";
 import { Pill } from "../../ui/primitives.js";
@@ -9,6 +9,7 @@ import { Pill } from "../../ui/primitives.js";
  */
 export function SettingsGroup({
   label,
+  icon: Icon,
   hint,
   plain,
   children,
@@ -16,6 +17,8 @@ export function SettingsGroup({
 }: {
   /** The small faded label above the card; omitted for a card that stands alone. */
   label?: string;
+  /** A small muted icon before the label (the same size as the nav's). */
+  icon?: LucideIcon;
   /** One faded line under the card. */
   hint?: string;
   /** Rows with no card around them (a heading row and its list). */
@@ -25,15 +28,25 @@ export function SettingsGroup({
 }) {
   return (
     <section className="sgroup" aria-label={label} data-testid={testId}>
-      {label !== undefined && <h3 className="sgroup__label">{label}</h3>}
+      {label !== undefined && (
+        <h3 className="sgroup__label">
+          {Icon !== undefined && <Icon size={16} aria-hidden="true" />}
+          {label}
+        </h3>
+      )}
       <div className={`scard${plain === true ? " scard--plain" : ""}`}>{children}</div>
       {hint !== undefined && <p className="sgroup__hint">{hint}</p>}
     </section>
   );
 }
 
-/** A row: the title (and one faded line) on the left, the control on the right. */
+/**
+ * A row: the title (and one faded line) on the left, the control on the right. `icon` is the one
+ * leading slot of every row (16 px, muted, the size and stroke of the nav's icons): the same place
+ * in every section, never a second control.
+ */
 export function SettingsRow({
+  icon: Icon,
   title,
   description,
   descriptionTestId,
@@ -43,6 +56,7 @@ export function SettingsRow({
   titleTestId,
   role,
 }: {
+  icon?: LucideIcon;
   title: string;
   description?: ReactNode;
   descriptionTestId?: string;
@@ -55,42 +69,62 @@ export function SettingsRow({
 }) {
   return (
     <div className="srow" data-testid={testId} {...(role === undefined ? {} : { role })}>
-      <div className="srow__text">
-        <span className="srow__title" id={titleId} data-testid={titleTestId}>
-          {title}
-        </span>
-        {description !== undefined && (
-          <span className="srow__desc" data-testid={descriptionTestId}>
-            {description}
+      <div className="srow__main">
+        {Icon !== undefined && (
+          <span className="srow__icon" aria-hidden="true">
+            <Icon size={16} />
           </span>
         )}
+        <div className="srow__text">
+          <span className="srow__title" id={titleId} data-testid={titleTestId}>
+            {title}
+          </span>
+          {description !== undefined && (
+            <span className="srow__desc" data-testid={descriptionTestId}>
+              {description}
+            </span>
+          )}
+        </div>
       </div>
       {control !== undefined && <div className="srow__control">{control}</div>}
     </div>
   );
 }
 
-/** The quiet dropdown of a row: its text and a chevron, no box until it is hovered (`ui/dropdown.tsx`). */
+/**
+ * The quiet dropdown of a row: its text and a chevron, no box until it is hovered (`ui/dropdown.tsx`).
+ * An option may carry a third item, a faded line shown under its name in the open menu.
+ */
 export function SettingsSelect<V extends string>({
   label,
   value,
   options,
   onChange,
   testId,
+  disabled,
+  placeholder,
 }: {
   label: string;
   value: V;
-  options: readonly (readonly [V, string])[];
+  options: readonly (readonly [V, string] | readonly [V, string, string])[];
   onChange(value: V): void;
   testId?: string;
+  disabled?: boolean;
+  placeholder?: string;
 }) {
   return (
     <Dropdown
       label={label}
       value={value}
-      options={options.map(([v, text]) => ({ value: v, label: text }))}
+      options={options.map(([v, text, description]) => ({
+        value: v,
+        label: text,
+        ...(description === undefined ? {} : { description }),
+      }))}
       onChange={onChange}
       {...(testId === undefined ? {} : { testId })}
+      {...(disabled === undefined ? {} : { disabled })}
+      {...(placeholder === undefined ? {} : { placeholder })}
     />
   );
 }

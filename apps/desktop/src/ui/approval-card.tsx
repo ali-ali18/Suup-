@@ -143,6 +143,13 @@ function PendingCard({
   const waiting = busy !== null;
   const approving = busy === "approve" || busy === "allow";
   const recipients = outbound?.recipients ?? null;
+  // When the automatic review sent the call to you, its one sentence is the card's light line.
+  const reviewReason =
+    approval.reviewReason !== undefined &&
+    approval.reviewReason !== null &&
+    approval.reviewReason.trim() !== ""
+      ? approval.reviewReason
+      : undefined;
   const note = (): ReactNode => {
     if (error !== undefined) {
       return (
@@ -213,9 +220,11 @@ function PendingCard({
       }
       title={title}
       lede={
-        network === null
-          ? `${instructionLine(botName, approval.tool, ref?.connector ?? null)} Está perguntando porque ${SOURCE_REASON[approval.source]}.`
-          : networkLede(botName, network.reason)
+        network !== null
+          ? networkLede(botName, network.reason)
+          : reviewReason !== undefined
+            ? reviewReason
+            : `${instructionLine(botName, approval.tool, ref?.connector ?? null)} Está perguntando porque ${SOURCE_REASON[approval.source]}.`
       }
       ledeTestId="approval-why"
       footerNote={note()}

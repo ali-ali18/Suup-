@@ -965,7 +965,7 @@ input.ui-field__control {
   right: auto;
   z-index: 60;
   overflow: hidden;
-  max-width: calc(100vw - 16px);
+  max-width: min(380px, calc(100vw - 16px));
 }
 .ui-dropdown__list {
   position: relative;

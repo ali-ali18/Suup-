@@ -23,7 +23,12 @@ export function SettingsDialog() {
   const tab = useUi((s) => s.settingsTab);
   const setTab = useUi((s) => s.setSettingsTab);
   const close = useUi((s) => s.closeSettings);
-  const { ref, onKeyDown } = useModalFocus(close);
+  const connector = useUi((s) => s.settingsConnector);
+  const setConnector = useUi((s) => s.setSettingsConnector);
+  // Esc goes back one step: a connector's details return to the list; the second Esc closes.
+  const { ref, onKeyDown } = useModalFocus(() =>
+    tab === "connectors" && connector !== null ? setConnector(null) : close(),
+  );
   const titleId = useId();
   const refs = useRef<Record<string, HTMLButtonElement | null>>({});
   const current = SECTIONS.find((s) => s.id === tab) ?? SECTIONS[0];

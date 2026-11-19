@@ -10,6 +10,7 @@ import type {
   Run,
   RunEvent,
   Secret,
+  WrittenRule,
 } from "@suup/api";
 
 let n = 0;
@@ -151,6 +152,8 @@ export function makeApproval(over: Partial<Approval> = {}): Approval {
     status: "pending",
     reason: null,
     ruleId: null,
+    reviewReason: null,
+    writtenRuleId: null,
     expiresAt: null,
     decidedAt: null,
     createdAt: iso(),
@@ -170,6 +173,19 @@ export function makeRule(over: Partial<ApprovalRule> = {}): ApprovalRule {
     note: null,
     createdBy: "user",
     sourceApprovalId: null,
+    createdAt: iso(),
+    updatedAt: iso(),
+    ...over,
+  };
+}
+
+export function makeWrittenRule(over: Partial<WrittenRule> = {}): WrittenRule {
+  return {
+    id: uuid(),
+    kind: "never",
+    text: "Apagar a pasta notas",
+    botId: null,
+    enabled: true,
     createdAt: iso(),
     updatedAt: iso(),
     ...over,

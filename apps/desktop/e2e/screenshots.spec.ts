@@ -127,6 +127,19 @@ test.describe("screenshots", () => {
       effect: "deny",
       matchers: [{ field: "url", value: "https://exemplo-ruim.com/" }],
     });
+    // The rules the owner writes (the main view of Permissões), one group each; the two exact rules
+    // above are only the quiet "Regras exatas (avançado)" row.
+    await api.writtenRules.create({ kind: "never", text: "Apagar a pasta notas" });
+    await api.writtenRules.create({
+      kind: "never",
+      text: "Mandar dinheiro por Pix",
+      botId: phase3Id("Nova"),
+    });
+    await api.writtenRules.create({ kind: "ask", text: "Qualquer coisa que gaste dinheiro" });
+    await api.writtenRules.create({
+      kind: "allow",
+      text: "E-mails para minha equipe em acme.com",
+    });
     const mcp = fakeMcpCommand();
     await api.connectors.create({
       name: "fake",
@@ -436,22 +449,24 @@ test.describe("screenshots", () => {
       await page.getByRole("dialog").getByRole("button", { name: "Voltar" }).click();
       await page.getByRole("dialog").getByRole("button", { name: "Cancelar" }).click();
       await openSettings(page, "Permissões");
-      await expect(page.getByTestId("rule-row")).toHaveCount(2);
+      await expect(page.getByTestId("written-rule")).toHaveCount(4);
+      await expect(page.getByTestId("rules-exact")).toContainText("2 regras");
       await settle();
       await shot("20-config-permissoes");
-      await page.getByTestId("rule-new-deny").click();
+      await page.getByTestId("rule-new-never").click();
       await settle();
       await shot("20a-config-adicionar-regra");
-      await page.getByTestId("rule-more").click();
-      await page.getByRole("button", { name: "Adicionar condição" }).click();
       await page
-        .getByTestId("rule-condition")
-        .getByLabel("Campo dos argumentos (ex.: command)")
-        .fill("path");
-      await page.getByTestId("rule-condition").getByLabel("Valor exato").fill("/etc/passwd");
+        .getByTestId("written-rule-text")
+        .fill("Apagar qualquer arquivo fora da pasta do projeto");
       await settle();
-      await shot("20b-config-regra-mais-opcoes");
+      await shot("20b-config-regra-preenchida");
       await page.getByRole("button", { name: "Cancelar" }).click();
+      await page.getByTestId("rules-exact-open").click();
+      await expect(page.getByTestId("rule-row")).toHaveCount(2);
+      await settle();
+      await shot("20e-config-regras-exatas");
+      await page.getByTestId("rules-exact-close").click();
       await page.getByRole("tab", { name: "Cofre" }).click();
       await expect(page.getByTestId("secret-row")).toHaveCount(2);
       await settle();
@@ -497,7 +512,7 @@ test.describe("screenshots", () => {
       await settle();
       await shot("22e-config-conectores-onde-roda");
       // A connector with tools waiting for a review: the calm notice, then the comparison.
-      await page.getByTestId("connectors-back").click();
+      await page.getByRole("tab", { name: "Conectores" }).click();
       await page
         .getByTestId("connector-item")
         .filter({ hasText: "revisao" })
@@ -515,7 +530,7 @@ test.describe("screenshots", () => {
       await settle();
       await shot("22h-revisao-mantida-desligada");
       await page.getByTestId("review-close").click();
-      await page.getByTestId("connectors-back").click();
+      await page.getByRole("tab", { name: "Conectores" }).click();
       await page.getByTestId("connector-new").click();
       await settle();
       await shot("23-adicionar-conector");
@@ -626,7 +641,8 @@ test.describe("screenshots", () => {
       await connect(page, world);
       await expect(page.getByTestId("sidebar")).toBeVisible();
       await openSettings(page, "Permissões");
-      await expect(page.getByTestId("rule-row")).toHaveCount(0);
+      await expect(page.getByTestId("written-rule")).toHaveCount(0);
+      await expect(page.getByTestId("rules-exact")).toHaveCount(0);
       await settle();
       await shot("20c-config-permissoes-vazio");
       await page.getByRole("tab", { name: "Cofre" }).click();

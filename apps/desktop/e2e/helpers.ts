@@ -77,9 +77,15 @@ export async function openSettings(page: Page, section: SettingsSection): Promis
   await expect(page.getByRole("tab", { name: section })).toHaveAttribute("aria-selected", "true");
 }
 
-/** Closes the settings dialog with Escape; the focus goes back to where it was. */
+/** Closes the settings dialog with Escape (twice from a connector's details); the focus goes back to where it was. */
 export async function closeSettings(page: Page): Promise<void> {
+  // Inside a connector's details the first Escape only goes back to the list; the second closes.
+  const inDetails = (await page.getByTestId("connector-panel").count()) > 0;
   await page.keyboard.press("Escape");
+  if (inDetails) {
+    await expect(page.getByTestId("connector-panel")).toHaveCount(0);
+    await page.keyboard.press("Escape");
+  }
   await expect(page.getByTestId("settings-screen")).toHaveCount(0);
 }
 

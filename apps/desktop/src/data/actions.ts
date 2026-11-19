@@ -43,6 +43,33 @@ export interface ActionItem {
   fromApproval?: true;
   /** A rule of the user let the call through with no card (`policy_checked`, allow, rule). */
   allowedByRule?: true;
+  /**
+   * A rule the user WROTE ("Nunca permitir") refused the call: no card, the bot got the reason back
+   * as an error (`policy_checked`, deny, reviewer, with the rule's id). The row says so and is `stopped`.
+   */
+  blocked?: { writtenRuleId: string | null; reason: string };
+}
+
+const BLOCK_PREFIX = 'Bloqueado pela regra "';
+
+/**
+ * What a blocked call's row says after "Bloqueado pela regra ·": the text of the rule when it is
+ * known, else the quoted text out of the reason the server gave (exact prefix and suffix, no pattern),
+ * else the reason as it came.
+ */
+export function blockedRuleText(
+  blocked: NonNullable<ActionItem["blocked"]>,
+  rule?: { text: string },
+): string {
+  if (rule !== undefined) return rule.text;
+  const { reason } = blocked;
+  if (
+    reason.startsWith(BLOCK_PREFIX) &&
+    reason.endsWith('"') &&
+    reason.length > BLOCK_PREFIX.length
+  )
+    return reason.slice(BLOCK_PREFIX.length, -1);
+  return reason === "" ? "uma regra sua" : reason;
 }
 
 const str = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
@@ -197,14 +224,18 @@ export function actionsOf(
   const byCall = new Map<string, ActionItem>();
   // The calls a rule of the user let through without a card.
   const byRule = new Set<string>();
+  // The calls a written "never" rule refused.
+  const blockedCalls = new Map<string, NonNullable<ActionItem["blocked"]>>();
   for (const event of events) {
-    if (
-      event.type === "policy_checked" &&
-      event.payload.outcome === "allow" &&
-      event.payload.source === "rule"
-    ) {
-      const callId = str(event.payload.callId);
-      if (callId !== undefined) byRule.add(callId);
+    if (event.type !== "policy_checked") continue;
+    const callId = str(event.payload.callId);
+    if (callId === undefined) continue;
+    if (event.payload.outcome === "allow" && event.payload.source === "rule") byRule.add(callId);
+    else if (event.payload.outcome === "deny" && event.payload.source === "reviewer") {
+      blockedCalls.set(callId, {
+        writtenRuleId: str(event.payload.writtenRuleId) ?? null,
+        reason: str(event.payload.reason) ?? "",
+      });
     }
   }
   for (const event of events) {
@@ -226,13 +257,18 @@ export function actionsOf(
         truncated: false,
         startedAt: event.createdAt,
         ...(byRule.has(callId) ? { allowedByRule: true as const } : {}),
+        ...(blockedCalls.has(callId)
+          ? { blocked: blockedCalls.get(callId) as NonNullable<ActionItem["blocked"]> }
+          : {}),
       };
       byCall.set(callId, item);
       items.push(item);
     } else if (event.type === "tool_result") {
       const item = byCall.get(str(event.payload.callId) ?? "");
       if (item === undefined) continue;
-      item.state = event.payload.isError === true ? "failed" : "done";
+      // A refused call is not a failure of the tool: it never ran.
+      item.state =
+        item.blocked !== undefined ? "stopped" : event.payload.isError === true ? "failed" : "done";
       item.output = str(event.payload.content) ?? "";
       item.truncated = event.payload.truncated === true;
       if (typeof event.payload.durationMs === "number") item.durationMs = event.payload.durationMs;
@@ -325,6 +361,7 @@ export function mergeApprovals(
  */
 export function callStateLabel(item: ActionItem): string | undefined {
   const { approval } = item;
+  if (item.blocked !== undefined) return "Bloqueado pela regra";
   if (approval === undefined) return undefined;
   if (approval.status !== "approved") return STATUS_LABEL[approval.status] ?? approval.status;
   if (item.fromApproval === true) return "Aprovado";

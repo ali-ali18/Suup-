@@ -483,6 +483,11 @@ export async function startWorld(
      * The e2e has no Docker: the card is real, and the tool says it has no proxy to act on.
      */
     networkTool?: boolean;
+    /**
+     * A model for the Auto-review reviewer (the model id of the configuration), so the mode really
+     * has a reviewer. Its answers come from the `autoReview` section of the scripts.
+     */
+    autoReviewModel?: string;
   } = {},
 ): Promise<World> {
   if (DATABASE_URL === undefined) throw new Error(SKIP_REASON);
@@ -532,7 +537,12 @@ export async function startWorld(
     sandbox: { kind: "local", root: "workspace" },
     // The shell does not ask (most scripts use it); writing a file does, which is what the approval
     // tests call. Phase 3 also has the vault, and connectors need nothing here.
-    approvals: { levels: { shell: "write_reversible", write_file: "external_irreversible" } },
+    approvals: {
+      levels: { shell: "write_reversible", write_file: "external_irreversible" },
+      ...(options.autoReviewModel === undefined
+        ? {}
+        : { autoReview: { model: options.autoReviewModel } }),
+    },
     ...(vault ? { vault: { keyEnv: VAULT_KEY_ENV } } : {}),
     // The scripts call the fake connector server's tools directly (it has 17): the tool search,
     // which would defer them, has its own tests (docs/CONECTORES.md).

@@ -12,6 +12,7 @@ import {
   makeRule,
   makeRun,
   makeSecret,
+  makeWrittenRule,
 } from "../test-fixtures.js";
 import {
   addOptimisticMessage,
@@ -28,6 +29,7 @@ import {
   mergeRun,
   mergeRunEvents,
   mergeSecret,
+  mergeWrittenRule,
   orderedEvents,
   orderedMessages,
   orderedRules,
@@ -35,6 +37,7 @@ import {
   removeConnector,
   removeRule,
   removeSecret,
+  removeWrittenRule,
   resolveOptimisticMessage,
   rollbackOptimisticMessage,
   setBotNetwork,
@@ -45,8 +48,10 @@ import {
   setRules,
   setSecrets,
   setVaultStatus,
+  setWrittenRules,
   stalePendingIds,
   upsertMessage,
+  writtenRulesOf,
 } from "./reducers.js";
 import { type DataState, emptyData } from "./state.js";
 
@@ -365,6 +370,26 @@ describe("rules, vault and connectors (no stream frame: read again after writing
       first.id,
       second.id,
     ]);
+  });
+
+  it("written rules: a list read keeps a newer row, merge is idempotent and never goes back, kinds keep the oldest first", () => {
+    const older = makeWrittenRule({ updatedAt: at(1000), createdAt: at(1000) });
+    const second = makeWrittenRule({ kind: "never", createdAt: at(2000) });
+    const other = makeWrittenRule({ kind: "allow" });
+    let s = setWrittenRules(emptyData(), [second, older, other]);
+    expect(s.writtenRulesLoaded).toBe(true);
+    expect(writtenRulesOf(s, "never").map((r) => r.id)).toEqual([older.id, second.id]);
+    expect(writtenRulesOf(s, "allow").map((r) => r.id)).toEqual([other.id]);
+    expect(writtenRulesOf(s, "ask")).toEqual([]);
+    const edited = { ...older, text: "Outra frase", updatedAt: at(5000) };
+    s = mergeWrittenRule(s, edited);
+    s = setWrittenRules(s, [older, second, other]);
+    expect(s.writtenRules[older.id]?.text).toBe("Outra frase");
+    const same = mergeWrittenRule(s, edited);
+    expect(same).toBe(s);
+    expect(mergeWrittenRule(s, { ...older, updatedAt: at(10), text: "velha" })).toBe(s);
+    expect(removeWrittenRule(s, "nope")).toBe(s);
+    expect(Object.keys(removeWrittenRule(s, other.id).writtenRules)).not.toContain(other.id);
   });
 
   it("secrets are held by name with their metadata only, and removed by name", () => {

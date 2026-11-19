@@ -239,7 +239,7 @@ describe("the settings dialog: a modal with a left nav, groups of simple rows, n
     expect(dialog).toContain('aria-modal="true"');
     expect(dialog).toContain('role="dialog"');
     expect(dialog).toContain('role="tablist"');
-    expect(dialog).toContain("useModalFocus(close)");
+    expect(dialog).toContain("useModalFocus(");
     expect(settings("parts.tsx")).toContain('aria-label="Fechar as configurações"');
     // It is a dialog over the screen, not a screen of its own.
     expect(read(join(SRC, "app", "ui-store.ts"))).not.toContain('"settings"');
@@ -304,11 +304,8 @@ describe("the settings dialog: a modal with a left nav, groups of simple rows, n
     ])
       expect(dropdown, part).toContain(part);
     expect(dropdown).not.toContain("RegExp");
-    // No native select element anywhere in the app. RuleDialog.tsx is the one exception, until the
-    // written rules replace it (substituído pelas regras escritas).
-    const offenders = files(SRC, /\.tsx$/)
-      .filter((f) => !f.endsWith("RuleDialog.tsx"))
-      .filter((f) => read(f).includes("<select"));
+    // No native select element anywhere in the app, with no exception.
+    const offenders = files(SRC, /\.tsx$/).filter((f) => read(f).includes("<select"));
     expect(offenders.map(rel)).toEqual([]);
     // The quiet row control of Geral is that same dropdown.
     expect(settings("parts.tsx")).toContain("<Dropdown");
@@ -338,42 +335,82 @@ describe("the settings dialog: a modal with a left nav, groups of simple rows, n
       expect(settings(`${name}.tsx`), name).toContain("<SettingsGroup");
     // The rule groups are a labelled card whose first row has the title and "Adicionar regra".
     const permissions = settings("PermissionsSettings.tsx");
-    expect(permissions).toContain("label={kind.title}");
-    expect(permissions).toContain("hint: RULE_PRECEDENCE");
+    expect(permissions).toContain("label={KIND_TEXT[kind].title}");
+    expect(permissions).toContain("precedenceHint(settings)");
     expect(permissions).not.toContain('className="srow"');
   });
 
-  it("Permissões is small: the approval mode, two rule rows with 'Adicionar regra', the connectors card", () => {
+  it("separators run the card's full width, and a row has one optional leading icon slot", () => {
+    const css = read(join(SRC, "features", "settings", "settings.css"));
+    // The line between rows is drawn out to the card's edges (it reaches back over the card's padding).
+    expect(css).toContain("--scard-pad: var(--space-4)");
+    expect(css).toContain("left: calc(-1 * var(--scard-pad))");
+    expect(css).toContain("right: calc(-1 * var(--scard-pad))");
+    expect(css).not.toContain("> * + * {\n  border-top");
+    // One icon slot, in `SettingsRow` (and a group's label): a lucide icon at the nav's size, muted.
+    const parts = settings("parts.tsx");
+    expect(parts).toContain("icon?: LucideIcon");
+    expect(parts).toContain('className="srow__icon"');
+    expect(parts).toContain("<Icon size={16}");
+    expect(css).toContain(".srow__icon {");
+    expect(settings("SettingsDialog.tsx")).toContain("size={16}");
+    // Geral's rows all carry one.
+    const general = settings("GeneralSettings.tsx");
+    expect(general).toContain("icon={row.icon}");
+    expect(general).toContain("icon={Server}");
+    expect(general).toContain("icon={Key}");
+  });
+
+  it("Permissões: the mode, three groups of rules you write, the connectors card; no native select", () => {
     const page = settings("PermissionsSettings.tsx");
     for (const text of [
       'label="Aprovações"',
-      "Nunca permitir",
-      "Permitir sem perguntar",
+      '"Auto-review"',
+      '"Perguntar tudo"',
       "Adicionar regra",
+      "Regras exatas (avançado)",
       "Permissões dos conectores",
       "Abrir conectores",
+      "<SettingsSelect",
     ])
       expect(page, text).toContain(text);
+    // The groups are in the owner's order: Nunca permitir, Sempre perguntar, Permitir sem perguntar.
+    const dialog = settings("WrittenRuleDialog.tsx");
+    const never = dialog.indexOf('title: "Nunca permitir"');
+    const ask = dialog.indexOf('title: "Sempre perguntar"');
+    const allow = dialog.indexOf('title: "Permitir sem perguntar"');
+    expect(never).toBeGreaterThan(-1);
+    expect(ask).toBeGreaterThan(never);
+    expect(allow).toBeGreaterThan(ask);
+    const groups = page.indexOf("const GROUPS");
+    expect(page.indexOf('kind: "never"', groups)).toBeLessThan(page.indexOf('kind: "ask"', groups));
+    expect(page.indexOf('kind: "ask"', groups)).toBeLessThan(page.indexOf('kind: "allow"', groups));
+    // The reviewer's truth is told, not hidden; the mode rolls back when the server refuses it.
+    expect(page).toContain("reviewer-unavailable");
+    expect(page).toContain("setSettings(before)");
     // What left the first view: pending cards (they are in Pendências), the card behaviour (Geral).
     expect(page).not.toContain("pendingApprovals");
     expect(page).not.toContain("ApprovalRow");
     expect(page).not.toContain("BehaviourRow");
-    // The mode is drawn as the backend has it: no menu while the server cannot switch it.
-    expect(page).not.toContain("<SettingsSelect");
     expect(page).not.toContain("<select");
   });
 
-  it("the rule dialog asks for the tool only; the rest is behind 'Mais opções'; the comparison is exact", () => {
-    const dialog = settings("RuleDialog.tsx");
-    expect(dialog).toContain('data-testid="rule-more"');
-    expect(dialog.indexOf("{more && (")).toBeGreaterThan(dialog.indexOf('data-testid="rule-tool"'));
-    expect(dialog.indexOf('data-testid="rule-bot"')).toBeGreaterThan(dialog.indexOf("{more && ("));
-    expect(dialog.indexOf('data-testid="rule-condition"')).toBeGreaterThan(
-      dialog.indexOf("{more && ("),
+  it("'Adicionar regra' is a written rule: one text area, one dropdown, nothing to hunt for in a menu", () => {
+    const dialog = settings("WrittenRuleDialog.tsx");
+    expect(dialog).toContain("<textarea");
+    expect(dialog).toContain("Aplica-se a");
+    expect(dialog).toContain("Diga qual é a ação e quem ou o que ela afeta.");
+    expect(dialog).toContain("Para qual bot");
+    expect(dialog).toContain("Todos os bots");
+    expect(dialog).toContain("<Dropdown");
+    expect(dialog).not.toContain("<select");
+    // The counter is only near the limit; the text is never parsed here.
+    expect(dialog).toContain("COUNTER_FROM");
+    expect(dialog).not.toContain("RegExp");
+    // The old dialog (a tool menu, exact conditions) is gone.
+    expect(files(join(SRC, "features", "settings"), /\.tsx$/).map(rel)).not.toContain(
+      join("features", "settings", "RuleDialog.tsx"),
     );
-    expect(dialog).toContain("é exatamente");
-    expect(dialog.toLowerCase()).not.toContain("começa com");
-    expect(dialog.toLowerCase()).not.toContain("contém");
   });
 
   it("Cofre has 'Novo item' in the head, a search by exact substring, and never draws a value", () => {
@@ -388,7 +425,7 @@ describe("the settings dialog: a modal with a left nav, groups of simple rows, n
     const connectors = settings("ConnectorsSettings.tsx");
     expect(connectors).toContain("function ConnectorRow");
     expect(connectors).toContain("function ConnectorDetail");
-    expect(connectors).toContain("const [selected, setSelected]");
+    expect(connectors).toContain("useUi((s) => s.settingsConnector)");
     // The list row has a switch and "Abrir"; the grants, network and tools are only in the detail.
     const list = connectors.slice(
       connectors.indexOf("function ConnectorRow"),
@@ -396,7 +433,27 @@ describe("the settings dialog: a modal with a left nav, groups of simple rows, n
     );
     expect(list).not.toContain("<ConnectorGrants");
     expect(list).not.toContain("<ConnectorNetwork");
-    expect(connectors).toContain('data-testid="connectors-back"');
+  });
+
+  it("there is no back button inside the Settings dialog: the nav item and Esc return to the list", () => {
+    for (const name of [...sections, "ConnectorGrants", "ConnectorNetwork", "ToolReview"]) {
+      const source = settings(`${name}.tsx`);
+      expect(source, name).not.toContain("connectors-back");
+      expect(source, name).not.toContain("ChevronLeft");
+      expect(source, name).not.toContain('className="sback"');
+    }
+    const dialog = settings("SettingsDialog.tsx");
+    // Esc inside a connector goes back to the list first; the second one closes the dialog.
+    expect(dialog).toContain(
+      'tab === "connectors" && connector !== null ? setConnector(null) : close()',
+    );
+    // The store: selecting a section (even the selected one) lands on its first view.
+    const store = read(join(SRC, "app", "ui-store.ts"));
+    expect(store).toContain(
+      "setSettingsTab: (settingsTab) => set({ settingsTab, settingsConnector: null })",
+    );
+    // The pane title is the connector's name while its details are open.
+    expect(settings("ConnectorsSettings.tsx")).toContain("<PaneHead title={connector.name}");
   });
 
   it("a dialog opened from another is its own modal surface, on top", () => {

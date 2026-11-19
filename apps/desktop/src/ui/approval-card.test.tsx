@@ -27,6 +27,31 @@ function show(over: Partial<ApprovalCardProps> = {}) {
 }
 
 describe("ApprovalCard waiting for you", () => {
+  it("when the automatic review sent the call to you, its one sentence is the card's light line", () => {
+    show({
+      approval: makeApproval({
+        source: "reviewer",
+        reviewReason: "Não está claro se você quer isto.",
+        writtenRuleId: null,
+      }),
+    });
+    const card = screen.getByTestId("approval-card");
+    expect(within(card).getByTestId("approval-why").textContent).toBe(
+      "Não está claro se você quer isto.",
+    );
+    // The chrome is the same: only Recusar and Aprovar.
+    expect(
+      within(card)
+        .getAllByRole("button")
+        .map((b) => b.textContent),
+    ).toEqual(["Recusar", "Aprovar"]);
+  });
+
+  it("an empty review reason falls back to the usual sentence", () => {
+    show({ approval: makeApproval({ source: "reviewer", reviewReason: "  " }) });
+    expect(screen.getByTestId("approval-why").textContent).toContain("Está perguntando porque");
+  });
+
   it("is a calm card: category, bold title in pt-BR, one muted paragraph, the exact content, buttons at the right", () => {
     show({
       approval: makeApproval({

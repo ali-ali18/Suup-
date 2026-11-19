@@ -1,4 +1,24 @@
 import type { ModelInfo } from "@suup/api";
+import {
+  Activity,
+  Bell,
+  CircleCheck,
+  Clock,
+  Cpu,
+  DollarSign,
+  FoldVertical,
+  Image,
+  Key,
+  Layers,
+  type LucideIcon,
+  MessageSquareText,
+  MoveHorizontal,
+  Palette,
+  Repeat,
+  Rows3,
+  Server,
+  Sun,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { sortedBots } from "../../app/selectors.js";
@@ -17,6 +37,7 @@ import {
 /** A setting of the app, drawn as one row: a quiet dropdown, or a switch for an on/off pair. */
 interface Choice<K extends keyof Settings> {
   key: K;
+  icon: LucideIcon;
   title: string;
   description?: string;
   options: readonly (readonly [Settings[K], string])[];
@@ -24,6 +45,7 @@ interface Choice<K extends keyof Settings> {
 // The switches: [the value that means "on", the one that means "off"].
 interface Switch<K extends keyof Settings> {
   key: K;
+  icon: LucideIcon;
   title: string;
   description?: string;
   on: Settings[K];
@@ -33,6 +55,7 @@ interface Switch<K extends keyof Settings> {
 const APPEARANCE: readonly Choice<keyof Settings>[] = [
   {
     key: "theme",
+    icon: Sun,
     title: "Tema",
     options: [
       ["dark", "Escuro"],
@@ -41,6 +64,7 @@ const APPEARANCE: readonly Choice<keyof Settings>[] = [
   },
   {
     key: "bubble",
+    icon: Palette,
     title: "Cor do balão do usuário",
     description: "Segue a cor do bot, ou fica sempre neutro.",
     options: [
@@ -50,6 +74,7 @@ const APPEARANCE: readonly Choice<keyof Settings>[] = [
   },
   {
     key: "width",
+    icon: MoveHorizontal,
     title: "Largura da conversa",
     options: [
       ["default", "Padrão"],
@@ -58,6 +83,7 @@ const APPEARANCE: readonly Choice<keyof Settings>[] = [
   },
   {
     key: "density",
+    icon: Rows3,
     title: "Densidade",
     options: [
       ["comfortable", "Confortável"],
@@ -66,6 +92,7 @@ const APPEARANCE: readonly Choice<keyof Settings>[] = [
   },
   {
     key: "motion",
+    icon: Activity,
     title: "Movimento reduzido",
     options: [
       ["system", "Seguir o sistema"],
@@ -77,6 +104,7 @@ const APPEARANCE: readonly Choice<keyof Settings>[] = [
 const CHAT_CHOICES: readonly Choice<keyof Settings>[] = [
   {
     key: "phrase",
+    icon: MessageSquareText,
     title: "Frase do indicador de trabalho",
     description: "O que o bot está fazendo agora, ou só os três pontos.",
     options: [
@@ -86,6 +114,7 @@ const CHAT_CHOICES: readonly Choice<keyof Settings>[] = [
   },
   {
     key: "approvalResolved",
+    icon: CircleCheck,
     title: "Cartões já decididos",
     description: "Uma linha que abre ao clicar, ou já abertos.",
     options: [
@@ -95,6 +124,7 @@ const CHAT_CHOICES: readonly Choice<keyof Settings>[] = [
   },
   {
     key: "approvalLong",
+    icon: FoldVertical,
     title: "Conteúdo longo de um cartão",
     description: "O que vai rodar aparece sempre; o que passa de oito linhas pode ficar recolhido.",
     options: [
@@ -107,6 +137,7 @@ const CHAT_CHOICES: readonly Choice<keyof Settings>[] = [
 const CHAT_SWITCHES: readonly Switch<keyof Settings>[] = [
   {
     key: "fold",
+    icon: Layers,
     title: "Dobrar as ações antigas",
     description: "As mais antigas viram uma linha “Mais N ações”.",
     on: "on",
@@ -114,6 +145,7 @@ const CHAT_SWITCHES: readonly Switch<keyof Settings>[] = [
   },
   {
     key: "notifyApprovals",
+    icon: Bell,
     title: "Avisar quando um bot pedir aprovação",
     description: "Notificação do sistema, só com a janela sem foco.",
     on: "on",
@@ -121,6 +153,7 @@ const CHAT_SWITCHES: readonly Switch<keyof Settings>[] = [
   },
   {
     key: "favicons",
+    icon: Image,
     title: "Ícone dos sites nos links",
     description:
       "Ligado, o app busca o ícone no site de cada link, e o site fica sabendo. Desligado, nada é buscado.",
@@ -129,10 +162,10 @@ const CHAT_SWITCHES: readonly Switch<keyof Settings>[] = [
   },
 ];
 
-const LIMIT_LABEL: [string, string][] = [
-  ["maxTurns", "Turnos"],
-  ["maxCostUsd", "Custo (US$)"],
-  ["maxDurationMs", "Duração (ms)"],
+const LIMIT_LABEL: [string, string, LucideIcon][] = [
+  ["maxTurns", "Turnos", Repeat],
+  ["maxCostUsd", "Custo (US$)", DollarSign],
+  ["maxDurationMs", "Duração (ms)", Clock],
 ];
 
 function ChoiceRow({ row }: { row: Choice<keyof Settings> }) {
@@ -140,6 +173,7 @@ function ChoiceRow({ row }: { row: Choice<keyof Settings> }) {
   const update = useSettings((s) => s.update);
   return (
     <SettingsRow
+      icon={row.icon}
       title={row.title}
       {...(row.description === undefined ? {} : { description: row.description })}
       control={
@@ -160,6 +194,7 @@ function SwitchRow({ row }: { row: Switch<keyof Settings> }) {
   const update = useSettings((s) => s.update);
   return (
     <SettingsRow
+      icon={row.icon}
       title={row.title}
       {...(row.description === undefined ? {} : { description: row.description })}
       control={
@@ -197,12 +232,14 @@ export function GeneralSettings({ title, titleId, onClose }: SectionProps) {
       <div className="spane__body">
         <SettingsGroup label="Servidor" testId="server-group">
           <SettingsRow
+            icon={Server}
             title="Servidor"
             description={connection.serverUrl}
             descriptionTestId="server-url"
             control={<RowAction onClick={() => void disconnect()}>Desconectar</RowAction>}
           />
           <SettingsRow
+            icon={Key}
             title="Token de acesso"
             description={
               platform.kind === "tauri"
@@ -240,6 +277,7 @@ export function GeneralSettings({ title, titleId, onClose }: SectionProps) {
           {models?.map((m) => (
             <SettingsRow
               key={m.id}
+              icon={Cpu}
               testId="model-row"
               title={m.id}
               description={
@@ -260,9 +298,10 @@ export function GeneralSettings({ title, titleId, onClose }: SectionProps) {
           label="Limites do bot principal"
           hint="Os limites padrão (turnos, custo e tempo de cada execução) ficam no arquivo de configuração do servidor."
         >
-          {LIMIT_LABEL.map(([key, label]) => (
+          {LIMIT_LABEL.map(([key, label, icon]) => (
             <SettingsRow
               key={key}
+              icon={icon}
               title={label}
               control={
                 <span className="srow__value">

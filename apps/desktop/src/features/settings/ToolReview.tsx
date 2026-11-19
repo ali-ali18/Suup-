@@ -4,6 +4,7 @@ import {
   type ConnectorToolEvent,
   type ConnectorToolReview,
 } from "@suup/api";
+import { History } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useServices } from "../../app/context.js";
 import {
@@ -340,7 +341,7 @@ export function ToolHistory({ connector }: { connector: Connector }) {
     .slice(0, EVENTS_SHOWN);
   return (
     <div className="sroot" data-testid="tool-history">
-      <SettingsGroup label="Histórico">
+      <SettingsGroup label="Histórico" icon={History}>
         <SettingsRow
           testId="tool-history-card"
           title="Histórico das ferramentas"

@@ -11,8 +11,8 @@ import {
 } from "./helpers.js";
 
 // Phase 3 in the browser: the approval card (approve, deny (one click), decided elsewhere,
-// cancelled; a normal action has ONLY Recusar and Aprovar), the permanent rules (exact equality
-// only), and the secure form of a secret request. The message card (the split button) is in
+// cancelled; a normal action has ONLY Recusar and Aprovar), the old exact rules (read and remove
+// in settings; the written rules and the mode are in auto-review.spec.ts), and the secure form of a secret request. The message card (the split button) is in
 // vault-connectors.spec.ts, because only a connector tool the user marked is one. Everything
 // runs against the real server with the scripted provider: nothing is mocked.
 
@@ -186,7 +186,7 @@ test.describe("approval cards", () => {
     expect(JSON.stringify(events.items)).not.toContain('"outcome":"ok"');
   });
 
-  test("a normal card makes no rule; the user's own exact rule (written in settings) lets the next call through", async ({
+  test("a normal card makes no rule; an exact rule (the advanced layer) lets the next call through and is only read and removed in settings", async ({
     page,
   }) => {
     await openWithBot(page, world, "Permissivo");
@@ -205,37 +205,21 @@ test.describe("approval cards", () => {
     expect((await world.api.rules.list()).filter((r) => r.createdBy === "approval")).toHaveLength(
       0,
     );
-    // The user's explicit act: a rule in Configurações > Permissões, exact equality on two fields.
+    // Nothing exact exists: the settings page has no row for them.
     await openSettings(page, "Permissões");
-    await page.getByTestId("rule-new-allow").click();
-    await page.getByTestId("rule-tool").selectOption("write_file");
-    // Only the tool is asked for: the bot and the conditions are behind "Mais opções".
-    await expect(page.getByTestId("rule-bot")).toHaveCount(0);
-    await expect(page.getByTestId("rule-condition")).toHaveCount(0);
-    await page.getByTestId("rule-more").click();
-    await page.getByTestId("rule-bot").selectOption({ label: "Permissivo" });
-    await expect(page.getByTestId("rule-any-use")).toContainText("qualquer uso");
-    for (const [field, value] of [
-      ["path", "sempre.txt"],
-      ["content", "pode sempre"],
-    ] as const) {
-      await page.getByRole("button", { name: "Adicionar condição" }).click();
-      const condition = page.getByTestId("rule-condition").last();
-      await condition.getByLabel("Campo dos argumentos (ex.: command)").fill(field);
-      await condition.getByLabel("Valor exato").fill(value);
-    }
-    // There is no way to pick "starts with / contains / pattern".
-    await expect(page.getByLabel("Como comparar")).toHaveCount(0);
-    await expect(page.getByTestId("rule-any-use")).toHaveCount(0);
-    await expect(page.getByTestId("rule-preview")).toContainText(
-      "Libera Escrever arquivo para o bot Permissivo quando o campo path é exatamente “sempre.txt” e o campo content é exatamente “pode sempre”.",
-    );
-    await page.getByTestId("rule-save").click();
-    await expect(page.getByTestId("rule-row").filter({ hasText: "Permissivo" })).toHaveCount(1);
-    await expect(page.getByTestId("rules-allow").getByTestId("rule-row")).toHaveCount(1);
-    await expect(page.getByTestId("rules-deny").getByTestId("rule-row")).toHaveCount(0);
-    // Back to the chat: the same call goes through without a card.
+    await expect(page.getByTestId("rules-exact")).toHaveCount(0);
     await closeSettings(page);
+    // An exact rule, made through the API (the app has no way to write one any more): equality on two fields.
+    const exact = await world.api.rules.create({
+      tool: "write_file",
+      effect: "allow",
+      botId: await botId(world, "Permissivo"),
+      matchers: [
+        { field: "path", value: "sempre.txt" },
+        { field: "content", value: "pode sempre" },
+      ],
+    });
+    // The same call goes through without a card.
     await selectBot(page, "Permissivo");
     await send(page, "CASE-AGAIN agora faça de novo");
     await expect(botMessage(page, "Segundo arquivo escrito, sem perguntar.")).toBeVisible();
@@ -245,56 +229,46 @@ test.describe("approval cards", () => {
     expect(
       await world.api.approvals.list({ botId: await botId(world, "Permissivo") }),
     ).toHaveLength(1);
-    // The rule is listed in plain language and can be deleted there.
+    // Settings: not in the main view; one quiet row at the end with the count, opening the old list.
     await openSettings(page, "Permissões");
-    const ruleRow = page.getByTestId("rule-row").filter({ hasText: "Permissivo" });
+    await expect(page.getByTestId("rule-row")).toHaveCount(0);
+    await expect(page.getByTestId("settings-screen")).not.toContainText("sempre permitir");
+    const quiet = page.getByTestId("rules-exact");
+    await expect(quiet).toContainText("Regras exatas (avançado)");
+    await expect(quiet).toContainText("1 regra");
+    await page.getByTestId("rules-exact-open").click();
+    const list = page.getByTestId("rules-exact-list");
+    const ruleRow = list.getByTestId("rule-row").filter({ hasText: "Permissivo" });
     await expect(ruleRow).toHaveCount(1);
     await expect(ruleRow.getByTestId("rule-sentence")).toContainText(
       "Libera Escrever arquivo para o bot Permissivo quando o campo path é exatamente “sempre.txt” e o campo content é exatamente “pode sempre”.",
     );
-    await expect(ruleRow).not.toContainText("Criada num cartão");
-    // No setting for "always allow" any more.
-    await expect(page.getByTestId("settings-screen")).not.toContainText("sempre permitir");
+    // Read and remove only: nothing here makes or edits a rule.
+    await expect(page.getByTestId("rule-edit")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Adicionar condição" })).toHaveCount(0);
     await ruleRow.getByTestId("rule-delete").click();
     await page.getByTestId("rule-delete-confirm").click();
-    await expect(page.getByTestId("rule-row").filter({ hasText: "Permissivo" })).toHaveCount(0);
+    await expect(list.getByTestId("rule-row")).toHaveCount(0);
     expect(await world.api.rules.list()).toHaveLength(0);
+    expect(exact.id).toBeTruthy();
+    await page.getByTestId("rules-exact-close").click();
+    // With none left, the row is gone.
+    await expect(page.getByTestId("rules-exact")).toHaveCount(0);
     await closeSettings(page);
   });
 
-  test("rules: create a forbidding rule, edit it, see it work (no card, the bot is told), delete it", async ({
+  test("an exact deny rule still refuses the call (no card, the bot is told), and it is removed from the advanced list", async ({
     page,
   }) => {
     await openWithBot(page, world, "Regrado");
-    await openSettings(page, "Permissões");
-    await expect(page.getByTestId("rules-card")).toContainText(
-      "Quem proíbe vale mais do que quem libera",
-    );
-    await page.getByTestId("rule-new-deny").click();
-    await page.getByTestId("rule-tool").selectOption("write_file");
-    await page.getByTestId("rule-more").click();
-    await page.getByTestId("rule-bot").selectOption({ label: "Regrado" });
-    await page.getByRole("button", { name: "Adicionar condição" }).click();
-    const condition = page.getByTestId("rule-condition");
-    await condition.getByLabel("Campo dos argumentos (ex.: command)").fill("path");
-    await condition.getByLabel("Valor exato").fill("proibido/segredo.txt");
-    await expect(page.getByTestId("rule-preview")).toContainText(
-      "Proíbe Escrever arquivo para o bot Regrado quando o campo path é exatamente “proibido/segredo.txt”.",
-    );
-    await page.getByTestId("rule-save").click();
-    const row = page.getByTestId("rule-row").filter({ hasText: "Regrado" });
-    await expect(row).toBeVisible();
-    await expect(row).toHaveAttribute("data-effect", "deny");
-    await expect(page.getByTestId("rules-deny").getByTestId("rule-row")).toHaveCount(1);
-    // Edit: the note.
-    await row.getByTestId("rule-edit").click();
-    await page.getByLabel("Anotação (opcional)").fill("este arquivo é só meu");
-    await page.getByTestId("rule-save").click();
-    await expect(row).toContainText("este arquivo é só meu");
-    expect((await world.api.rules.list())[0]?.note).toBe("este arquivo é só meu");
-    await closeSettings(page);
+    await world.api.rules.create({
+      tool: "write_file",
+      effect: "deny",
+      botId: await botId(world, "Regrado"),
+      matchers: [{ field: "path", value: "proibido/segredo.txt" }],
+      note: "este arquivo é só meu",
+    });
     // It works: the call is refused by the rule, with no card, and the bot is told and goes on.
-    await page.getByTestId("bot-item").filter({ hasText: "Regrado" }).click();
     await send(page, "CASE-RULEDENY escreva em proibido/segredo.txt");
     await expect(botMessage(page, "A regra não deixou eu escrever lá.")).toBeVisible();
     await expect(card(page)).toHaveCount(0);
@@ -308,16 +282,19 @@ test.describe("approval cards", () => {
           e.payload.source === "rule",
       ),
     ).toBe(true);
-    // Delete it.
+    // It is not a written rule: the written groups are empty, and the advanced row has it.
     await openSettings(page, "Permissões");
-    await page
-      .getByTestId("rule-row")
-      .filter({ hasText: "Regrado" })
-      .getByTestId("rule-delete")
-      .click();
+    await expect(page.getByTestId("written-rule")).toHaveCount(0);
+    await expect(page.getByTestId("rules-exact")).toContainText("1 regra");
+    await page.getByTestId("rules-exact-open").click();
+    const ruleRow = page.getByTestId("rule-row").filter({ hasText: "Regrado" });
+    await expect(ruleRow).toHaveAttribute("data-effect", "deny");
+    await expect(ruleRow).toContainText("este arquivo é só meu");
+    await ruleRow.getByTestId("rule-delete").click();
     await page.getByTestId("rule-delete-confirm").click();
-    await expect(page.getByTestId("rule-row").filter({ hasText: "Regrado" })).toHaveCount(0);
+    await expect(page.getByTestId("rule-row")).toHaveCount(0);
     expect(await world.api.rules.list()).toHaveLength(0);
+    await page.getByTestId("rules-exact-close").click();
     await closeSettings(page);
   });
 

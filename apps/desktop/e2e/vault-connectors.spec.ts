@@ -492,9 +492,12 @@ test.describe("connectors", () => {
       matchers: [{ field: "to", value: "ana@exemplo.com" }],
     });
     await openSettings(page, "Permissões");
+    // An exact rule is not in the main view: the quiet row at the end opens the old list.
+    await page.getByTestId("rules-exact-open").click();
     await expect(page.getByTestId("rule-sentence")).toContainText(
       "o campo to é exatamente “ana@exemplo.com”",
     );
+    await page.getByTestId("rules-exact-close").click();
     await world.api.rules.remove(rules[0]?.id as string);
     await world.api.connectors.remove("fake");
   });
@@ -553,5 +556,71 @@ test.describe("connectors", () => {
     expect(JSON.stringify(saved)).not.toContain("um-token-http-123");
     await world.api.connectors.remove("remoto");
     await world.api.vault.remove("HTTP_TOKEN");
+  });
+
+  test("a connector's details have no back button: the nav item and Esc return to the list; separators run edge to edge and rows carry an icon", async ({
+    page,
+  }) => {
+    await world.api.connectors.create({
+      name: "navega",
+      description: "Para andar entre a lista e os detalhes",
+      transport: { kind: "stdio", ...fakeMcpCommand() },
+      scope: "read_write",
+    });
+    await openApp(page, world);
+    await openSettings(page, "Conectores");
+    const item = page.getByTestId("connector-item").filter({ hasText: "navega" });
+    await expect(item).toBeVisible();
+    // The connector row has the plug icon in the one icon slot.
+    await expect(item.locator(".srow__icon svg")).toHaveCount(1);
+    await item.getByTestId("connector-details").click();
+    const dialog = page.getByTestId("settings-screen");
+    // Detail: the pane title is the connector's name; there is no back pill (nothing says "Conectores" as a button).
+    await expect(dialog.locator("h2")).toHaveText("navega");
+    await expect(page.getByTestId("connector-panel")).toBeVisible();
+    await expect(page.getByTestId("connectors-back")).toHaveCount(0);
+    await expect(dialog.getByRole("button", { name: "Conectores", exact: true })).toHaveCount(0);
+    // The detail's groups have their icons (Quem pode usar, Ajustes, Ferramentas, Histórico...).
+    for (const label of ["Quem pode usar", "Ajustes", "Histórico"]) {
+      await expect(dialog.locator("h3", { hasText: label }).locator("svg")).toHaveCount(1);
+    }
+    await page.evaluate(() => document.fonts.ready);
+    await page.screenshot({
+      path: "screenshots/1440x900@2x/22j-config-conector-sem-botao-voltar.png",
+    });
+    // Separators: the line between rows starts at the card's left edge and ends at its right edge.
+    const card = page
+      .getByTestId("connector-panel")
+      .locator("section", { has: page.locator("h3", { hasText: "Ajustes" }) })
+      .locator(".scard");
+    const second = card.locator(":scope > * + *").first();
+    const edges = await second.evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      const line = getComputedStyle(el, "::before");
+      const parent = (el.parentElement as HTMLElement).getBoundingClientRect();
+      return {
+        left: rect.left + Number.parseFloat(line.left),
+        right: rect.right - Number.parseFloat(line.right),
+        cardLeft: parent.left,
+        cardRight: parent.right,
+      };
+    });
+    expect(Math.abs(edges.left - edges.cardLeft)).toBeLessThanOrEqual(2);
+    expect(Math.abs(edges.right - edges.cardRight)).toBeLessThanOrEqual(2);
+    // Esc goes back to the list first; the second Esc closes the dialog.
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("connector-panel")).toHaveCount(0);
+    await expect(page.getByTestId("connector-item").filter({ hasText: "navega" })).toBeVisible();
+    await expect(dialog).toBeVisible();
+    await expect(dialog.locator("h2")).toHaveText("Conectores");
+    // Clicking "Conectores" in the nav, even when it is the selected one, also returns to the list.
+    await item.getByTestId("connector-details").click();
+    await expect(page.getByTestId("connector-panel")).toBeVisible();
+    await page.getByRole("tab", { name: "Conectores" }).click();
+    await expect(page.getByTestId("connector-panel")).toHaveCount(0);
+    await expect(item).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await world.api.connectors.remove("navega");
   });
 });

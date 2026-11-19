@@ -14,6 +14,7 @@ import type {
   Secret,
   StreamEvent,
   VaultStatus,
+  WrittenRule,
 } from "@suup/api";
 import {
   type Connection,
@@ -382,6 +383,37 @@ export function removeRule(state: DataState, id: string): DataState {
   if (state.rules[id] === undefined) return state;
   const { [id]: _gone, ...rest } = state.rules;
   return { ...state, rules: rest };
+}
+
+export function setWrittenRules(state: DataState, items: readonly WrittenRule[]): DataState {
+  return {
+    ...state,
+    writtenRules: replaceSet(state.writtenRules, items, (r) => r.id),
+    writtenRulesLoaded: true,
+  };
+}
+
+export function mergeWrittenRule(state: DataState, rule: WrittenRule): DataState {
+  const current = state.writtenRules[rule.id];
+  if (current !== undefined && current.updatedAt > rule.updatedAt) return state;
+  if (current !== undefined && sameJson(current, rule)) return state;
+  return { ...state, writtenRules: { ...state.writtenRules, [rule.id]: rule } };
+}
+
+export function removeWrittenRule(state: DataState, id: string): DataState {
+  if (state.writtenRules[id] === undefined) return state;
+  const { [id]: _gone, ...rest } = state.writtenRules;
+  return { ...state, writtenRules: rest };
+}
+
+/** The written rules of one kind, the oldest first (the order the server gives). */
+export function writtenRulesOf(
+  state: Pick<DataState, "writtenRules">,
+  kind: WrittenRule["kind"],
+): WrittenRule[] {
+  return Object.values(state.writtenRules)
+    .filter((r) => r.kind === kind)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
 }
 
 /** Rules in the order the screen lists them: the oldest first, as the server does. */

@@ -1,7 +1,8 @@
 import type { Connector, ConnectorTest, ConnectorTool, RiskLevel } from "@suup/api";
-import { ChevronLeft, Plus, Trash2 } from "lucide-react";
+import { Ban, Plug, Plus, Power, SlidersHorizontal, Trash2, Wrench } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
+import { useUi } from "../../app/ui-store.js";
 import { LEVEL_LABEL, LEVELS } from "../../data/approval-text.js";
 import { formatDuration } from "../../data/derive.js";
 import { orderedConnectors, orderedSecrets } from "../../data/reducers.js";
@@ -581,6 +582,7 @@ function ConnectorRow({
   return (
     <div data-testid="connector-item" data-name={connector.name}>
       <SettingsRow
+        icon={Plug}
         title={connector.name}
         description={summary}
         control={
@@ -663,17 +665,9 @@ function ConnectorDetail({
         </RowAction>
       </PaneHead>
       <div className="spane__body">
-        <div className="sback">
-          <RowAction
-            icon={<ChevronLeft size={16} aria-hidden="true" />}
-            data-testid="connectors-back"
-            onClick={onBack}
-          >
-            Conectores
-          </RowAction>
-        </div>
         <SettingsGroup>
           <SettingsRow
+            icon={Power}
             title="Ligado"
             description={
               <>
@@ -770,7 +764,7 @@ function ConnectorDetail({
         )}
         <div className="sdetail" data-testid="connector-panel">
           <ConnectorGrants connector={connector} onReview={() => setReviewing(true)} />
-          <SettingsGroup label="Ajustes">
+          <SettingsGroup label="Ajustes" icon={SlidersHorizontal}>
             <SettingsRow
               title="Somente leitura"
               description="Só as ferramentas de leitura são oferecidas aos bots; as outras nem aparecem para o modelo."
@@ -825,7 +819,7 @@ function ConnectorDetail({
           )}
           <ConnectorNetwork connector={connector} />
           <ToolHistory connector={connector} />
-          <SettingsGroup label="Ferramentas" hint={READ_WARNING}>
+          <SettingsGroup label="Ferramentas" icon={Wrench} hint={READ_WARNING}>
             {connector.tools === null ? (
               <SettingsRow
                 title="Ainda não listado"
@@ -842,7 +836,7 @@ function ConnectorDetail({
             )}
           </SettingsGroup>
           {unavailable.length > 0 && (
-            <SettingsGroup label="Não oferecidas aos bots">
+            <SettingsGroup label="Não oferecidas aos bots" icon={Ban}>
               <ul className="sroot-list" data-testid="connector-tools-unavailable">
                 {unavailable.map((tool) => (
                   <ToolRow key={tool.name} connector={connector} tool={tool} />
@@ -903,7 +897,9 @@ export function ConnectorsSettings({ title, titleId, onClose }: SectionProps) {
   const [adding, setAdding] = useState(false);
   const [newSecret, setNewSecret] = useState(false);
   const [enabling, setEnabling] = useState<Connector | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
+  // Which connector is open lives with the dialog: the nav item and Esc go back to the list.
+  const selected = useUi((s) => s.settingsConnector);
+  const setSelected = useUi((s) => s.setSettingsConnector);
   const enable = useTask();
 
   useEffect(() => {

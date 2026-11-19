@@ -1,4 +1,5 @@
 import type { Connector } from "@suup/api";
+import { Globe } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { sortedBots } from "../../app/selectors.js";
@@ -63,6 +64,7 @@ export function ConnectorNetwork({ connector }: { connector: Connector }) {
     <div className="sroot" data-testid="connector-network" data-runs-in={runsIn}>
       <SettingsGroup
         label="Onde roda e que hosts alcança"
+        icon={Globe}
         hint={`${EXACT_HOST_NOTE}${runsIn === "host" ? " Enquanto o programa rodar no servidor, esta lista não é usada." : ""}`}
       >
         {runsIn === "host" ? (

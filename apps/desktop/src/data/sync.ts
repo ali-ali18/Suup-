@@ -13,6 +13,7 @@ import {
   type StreamEvent,
   type Subscription,
   type SuupClient,
+  type WrittenRule,
 } from "@suup/api";
 import {
   addOptimisticMessage,
@@ -32,9 +33,11 @@ import {
   mergeRunEvents,
   mergeRuns,
   mergeSecret,
+  mergeWrittenRule,
   removeConnector,
   removeRule,
   removeSecret,
+  removeWrittenRule,
   resolveOptimisticMessage,
   rollbackOptimisticMessage,
   setBotNetwork,
@@ -45,6 +48,7 @@ import {
   setRules,
   setSecrets,
   setVaultStatus,
+  setWrittenRules,
   stalePendingIds,
   upsertMessage,
 } from "./reducers.js";
@@ -562,6 +566,42 @@ export class Sync {
     } catch (error) {
       if (error instanceof ApiError && error.code === "not_found") {
         update(this.store, (s) => removeRule(s, id));
+        return { ok: true };
+      }
+      return { ok: false, message: messageOf(error) };
+    }
+  }
+
+  async loadWrittenRules(): Promise<void> {
+    try {
+      const items = await this.deps.api.writtenRules.list();
+      update(this.store, (s) => setWrittenRules(s, items));
+    } catch (error) {
+      this.fail(error);
+    }
+  }
+
+  /** Runs a write that answers with the written rule, merges it, and says whether it worked (the server's message is shown by the caller). */
+  async writtenRuleCall(
+    call: () => Promise<WrittenRule>,
+  ): Promise<{ ok: true } | { ok: false; message: string }> {
+    try {
+      const rule = await call();
+      update(this.store, (s) => mergeWrittenRule(s, rule));
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, message: messageOf(error) };
+    }
+  }
+
+  async deleteWrittenRule(id: string): Promise<{ ok: true } | { ok: false; message: string }> {
+    try {
+      await this.deps.api.writtenRules.remove(id);
+      update(this.store, (s) => removeWrittenRule(s, id));
+      return { ok: true };
+    } catch (error) {
+      if (error instanceof ApiError && error.code === "not_found") {
+        update(this.store, (s) => removeWrittenRule(s, id));
         return { ok: true };
       }
       return { ok: false, message: messageOf(error) };

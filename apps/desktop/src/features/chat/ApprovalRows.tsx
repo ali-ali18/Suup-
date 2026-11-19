@@ -1,5 +1,5 @@
-import type { Approval, ApprovalRule } from "@suup/api";
-import { useCallback, useMemo } from "react";
+import type { Approval, ApprovalRule, WrittenRule } from "@suup/api";
+import { useCallback, useEffect, useMemo } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { useSettings } from "../../app/settings-store.js";
 import { useUi } from "../../app/ui-store.js";
@@ -96,6 +96,16 @@ export function CallRow({
   const rule: ApprovalRule | undefined = useData((s) =>
     approval?.ruleId == null ? undefined : s.rules[approval.ruleId],
   );
+  const { sync } = useServices();
+  const writtenRuleId = item.blocked?.writtenRuleId ?? null;
+  const writtenRule: WrittenRule | undefined = useData((s) =>
+    writtenRuleId === null ? undefined : s.writtenRules[writtenRuleId],
+  );
+  const writtenLoaded = useData((s) => s.writtenRulesLoaded);
+  // A call a written rule refused says that rule's text: read the rules once if they are not here yet.
+  useEffect(() => {
+    if (item.blocked !== undefined && !writtenLoaded) void sync.loadWrittenRules();
+  }, [item.blocked, writtenLoaded, sync]);
   const settings = useSettings((s) => s.settings);
   const key = callKey(item);
   const expanded =
@@ -107,16 +117,18 @@ export function CallRow({
       item={item}
       expanded={expanded}
       onToggle={() => onToggle(key)}
-      {...(approval === undefined
-        ? {}
-        : {
+      {...(approval !== undefined
+        ? {
             context: {
               botName: bot?.name ?? "O bot",
               rule,
               connectors,
               collapseLong: settings.approvalLong === "collapse",
             },
-          })}
+          }
+        : item.blocked !== undefined
+          ? { context: { writtenRule } }
+          : {})}
     />
   );
 }

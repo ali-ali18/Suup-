@@ -1,6 +1,6 @@
-import type { ApprovalRule } from "@suup/api";
+import type { ApprovalRule, WrittenRule } from "@suup/api";
 import type { ReactNode } from "react";
-import { type ActionItem, callStateLabel } from "../../data/actions.js";
+import { type ActionItem, blockedRuleText, callStateLabel } from "../../data/actions.js";
 import { type RuleContext, ruleSentence, STATUS_DETAIL } from "../../data/approval-text.js";
 import { diffLines } from "../../lib/diff.js";
 import { ActionCard } from "../../ui/action-card.js";
@@ -13,6 +13,8 @@ export interface CallContext {
   /** The rule an "always allow" of the approval created, when it is known. */
   rule?: ApprovalRule | undefined;
   connectors?: RuleContext["connectors"];
+  /** The written rule that refused the call, when it is loaded (its text is the row's). */
+  writtenRule?: WrittenRule | undefined;
   /** Long content is collapsed with a button to show it all. */
   collapseLong?: boolean;
 }
@@ -74,6 +76,13 @@ export function ActionDetail({ item, context = {} }: { item: ActionItem; context
         </p>,
       );
     }
+  } else if (item.blocked !== undefined) {
+    blocks.push(
+      <p key="blocked" className="ui-action__label" data-testid="action-blocked-detail">
+        Não rodou: uma regra que você escreveu proíbe isto (“
+        {blockedRuleText(item.blocked, context.writtenRule)}”). O bot recebeu o aviso e seguiu.
+      </p>,
+    );
   } else if (item.allowedByRule === true) {
     blocks.push(
       <p key="allowed" className="ui-action__label" data-testid="action-rule-allowed">
@@ -155,7 +164,11 @@ export function ActionRow({
       icon={categoryGlyph(item.icon)}
       kind={item.kindLabel}
       state={item.state}
-      summary={item.summary}
+      summary={
+        item.blocked === undefined
+          ? item.summary
+          : blockedRuleText(item.blocked, context?.writtenRule)
+      }
       {...(stateLabel === undefined ? {} : { stateLabel })}
       expanded={expanded}
       onToggle={onToggle}

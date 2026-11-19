@@ -1,5 +1,5 @@
 import type { Secret } from "@suup/api";
-import { Search } from "lucide-react";
+import { KeyRound, Search, Users } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { sortedBots } from "../../app/selectors.js";
@@ -263,6 +263,7 @@ export function VaultSettings({ title, titleId, onClose }: SectionProps) {
               return (
                 <div key={secret.name} data-testid="secret-row" data-name={secret.name}>
                   <SettingsRow
+                    icon={KeyRound}
                     title={secret.name}
                     description={[
                       secret.description !== "" ? secret.description : undefined,
@@ -290,7 +291,7 @@ export function VaultSettings({ title, titleId, onClose }: SectionProps) {
                   />
                   {expanded && (
                     <div className="sfold">
-                      <SettingsGroup label="Quem pode usar" testId="secret-grants">
+                      <SettingsGroup label="Quem pode usar" icon={Users} testId="secret-grants">
                         {botList.length === 0 && <SettingsRow title="Nenhum bot" />}
                         {botList.map((b) => {
                           const on = secret.grantedBotIds.includes(b.id);

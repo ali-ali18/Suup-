@@ -11,6 +11,7 @@ import type {
   RunEvent,
   Secret,
   VaultStatus,
+  WrittenRule,
 } from "@suup/api";
 
 /** Where the connection to the server is (what the realtime stream says, nothing more). */
@@ -65,6 +66,9 @@ export interface DataState {
   /** The user's permanent approval rules, by id (no stream frame: read again after writing). */
   rules: Record<string, ApprovalRule>;
   rulesLoaded: boolean;
+  /** The rules the user WROTE (never / ask / allow), by id. Read when Permissões opens and when the chat needs a rule's text. */
+  writtenRules: Record<string, WrittenRule>;
+  writtenRulesLoaded: boolean;
   /** The vault: secret NAMES and metadata, never a value. By name. */
   secrets: Record<string, Secret>;
   secretsLoaded: boolean;
@@ -91,6 +95,8 @@ export const emptyData = (): DataState => ({
   approvalsLoaded: false,
   rules: {},
   rulesLoaded: false,
+  writtenRules: {},
+  writtenRulesLoaded: false,
   secrets: {},
   secretsLoaded: false,
   vault: null,

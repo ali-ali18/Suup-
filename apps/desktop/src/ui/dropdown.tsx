@@ -110,16 +110,19 @@ export function Dropdown<V extends string>({
     });
   }, [open, variant, shown.length]);
 
-  // Focus: the filter field when there is one, else the chosen option (or the first).
+  // Focus: the filter field when there is one, else the chosen option (or the first). Only once the
+  // panel has its place: until then it is hidden, and a hidden element cannot take the focus (Esc
+  // would then reach the dialog around instead of closing just this menu).
+  const placed = pos !== undefined;
   useEffect(() => {
-    if (!open) return;
+    if (!open || !placed) return;
     if (filtered) filterRef.current?.focus({ preventScroll: true });
     else
       focusOption(
         panelRef.current?.querySelector<HTMLElement>('[aria-selected="true"]') ??
           first(panelRef.current),
       );
-  }, [open, filtered]);
+  }, [open, filtered, placed]);
 
   // Outside click, a resize or a scroll of the page behind (the trigger moved) close it.
   useEffect(() => {

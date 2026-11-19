@@ -4,6 +4,7 @@ import { makeApproval, makeEvent } from "../test-fixtures.js";
 import {
   type ActionItem,
   actionsOf,
+  blockedRuleText,
   callStateLabel,
   describeAction,
   foldActions,
@@ -416,6 +417,64 @@ describe("mergeApprovals: one row per tool call, the link is the call id", () =>
     expect(calls).toHaveLength(1);
     expect(calls[0]).toMatchObject({ allowedByRule: true, state: "done" });
     expect(calls[0]?.approval).toBeUndefined();
+  });
+
+  it("a call a written 'never' rule refused is one stopped row that names the rule, not a failure", () => {
+    const text = 'Bloqueado pela regra "apagar a pasta notas"';
+    const events = [
+      call(1, "x", "shell", { command: "rm -rf notas" }),
+      makeEvent(2, "policy_checked", {
+        callId: "x",
+        tool: "shell",
+        level: "write_reversible",
+        outcome: "deny",
+        source: "reviewer",
+        writtenRuleId: "11111111-1111-4111-8111-111111111111",
+        reason: text,
+      }),
+      result(3, "x", text, true),
+    ];
+    const { calls } = merge(events, []);
+    expect(calls).toHaveLength(1);
+    const [item] = calls as [ActionItem];
+    expect(item.state).toBe("stopped");
+    expect(item.blocked).toEqual({
+      writtenRuleId: "11111111-1111-4111-8111-111111111111",
+      reason: text,
+    });
+    expect(callStateLabel(item)).toBe("Bloqueado pela regra");
+    // The rule's text when it is known; else the quoted text of the reason; else the reason itself.
+    expect(
+      blockedRuleText(item.blocked as NonNullable<ActionItem["blocked"]>, { text: "Notas" }),
+    ).toBe("Notas");
+    expect(blockedRuleText(item.blocked as NonNullable<ActionItem["blocked"]>)).toBe(
+      "apagar a pasta notas",
+    );
+    expect(blockedRuleText({ writtenRuleId: null, reason: "Outra frase" })).toBe("Outra frase");
+    expect(blockedRuleText({ writtenRuleId: null, reason: "" })).toBe("uma regra sua");
+  });
+
+  it("a call that failed on its own, or one the reviewer let run, is not 'blocked'", () => {
+    const { calls } = merge(
+      [
+        call(1, "a", "shell", { command: "false" }),
+        result(2, "a", "exit 1", true),
+        call(3, "b", "shell", { command: "ls" }),
+        makeEvent(4, "policy_checked", {
+          callId: "b",
+          tool: "shell",
+          level: "write_reversible",
+          outcome: "allow",
+          source: "reviewer",
+        }),
+        result(5, "b"),
+      ],
+      [],
+    );
+    expect(calls.map((c) => [c.state, c.blocked])).toEqual([
+      ["failed", undefined],
+      ["done", undefined],
+    ]);
   });
 
   it("the fold counts calls: two approved-and-done calls fold as 2, a stopped one stays where it is", () => {

@@ -63,7 +63,10 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("the vault service"), () => {
     const access = vault.accessFor(allowed.id);
     expect(await access.resolve(["SCOPED_TOKEN"])).toEqual({ SCOPED_TOKEN: VALUE });
     expect(access.redactor.redact(`x ${VALUE} y`)).toBe("x [REDACTED:SCOPED_TOKEN] y");
-    expect((await getSecretMeta(ctx.db, "SCOPED_TOKEN"))?.lastUsedAt).not.toBeNull();
+    // The vault records "last used" without making the bot wait (fire and forget), so wait for it.
+    await expect
+      .poll(async () => (await getSecretMeta(ctx.db, "SCOPED_TOKEN"))?.lastUsedAt ?? null)
+      .not.toBeNull();
 
     await expect(vault.accessFor(stranger.id).resolve(["SCOPED_TOKEN"])).rejects.toBeInstanceOf(
       SecretUnavailableError,

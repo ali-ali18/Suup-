@@ -20,6 +20,8 @@ export interface UiState {
   settingsOpen: boolean;
   /** The section of the settings dialog that is open. */
   settingsTab: SettingsTab;
+  /** The connector whose details are open in Conectores (`null`: the list). Clicking "Conectores" in the nav, or Esc, goes back to the list. */
+  settingsConnector: string | null;
   selectedBotId: string | null;
   panelOpen: boolean;
   panelTab: PanelTab;
@@ -61,7 +63,10 @@ export interface UiState {
   /** Opens the settings dialog on a section. */
   openSettings(tab?: SettingsTab): void;
   closeSettings(): void;
+  /** Selects a section. Always lands on its first view: a connector's details close. */
   setSettingsTab(tab: SettingsTab): void;
+  /** Opens a connector's details (or goes back to the list with `null`). */
+  setSettingsConnector(name: string | null): void;
   selectBot(botId: string): void;
   openPanel(tab?: PanelTab): void;
   togglePanel(): void;
@@ -114,6 +119,7 @@ export const useUi = create<UiState>((set, get) => ({
   view: "chat",
   settingsOpen: false,
   settingsTab: "general",
+  settingsConnector: null,
   selectedBotId: null,
   // Closed by default on narrow windows (the layout has no room for three columns there).
   // Quem abriu ou fechou o painel guardou a escolha; sem ela, aberto só em janelas largas.
@@ -165,9 +171,14 @@ export const useUi = create<UiState>((set, get) => ({
   closeNewBot: () => set({ newBotOpen: false, editBotId: null }),
   go: (view) => set({ view }),
   openSettings: (settingsTab) =>
-    set((s) => ({ settingsOpen: true, settingsTab: settingsTab ?? s.settingsTab })),
-  closeSettings: () => set({ settingsOpen: false }),
-  setSettingsTab: (settingsTab) => set({ settingsTab }),
+    set((s) => ({
+      settingsOpen: true,
+      settingsTab: settingsTab ?? s.settingsTab,
+      settingsConnector: null,
+    })),
+  closeSettings: () => set({ settingsOpen: false, settingsConnector: null }),
+  setSettingsTab: (settingsTab) => set({ settingsTab, settingsConnector: null }),
+  setSettingsConnector: (settingsConnector) => set({ settingsConnector }),
   selectBot: (botId) => set({ view: "chat", selectedBotId: botId }),
   openPanel: (tab) => set((s) => ({ panelOpen: true, panelTab: tab ?? s.panelTab })),
   togglePanel: () => {
