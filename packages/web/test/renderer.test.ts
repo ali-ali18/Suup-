@@ -1,4 +1,6 @@
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { chromium } from "playwright-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createReader } from "../src/reader.js";
 import { createPlaywrightRenderer } from "../src/renderer.js";
@@ -8,15 +10,21 @@ import { localSite, PUBLIC_IP, tableResolver } from "./helpers.js";
 // fixture site is local, so the name is mapped to a "public" address by the resolver and the proxy's
 // connection is sent to the local server (the same seams the proxy's own tests use).
 //
-// The browser is the one the environment provides (SUUP_CHROMIUM_PATH, or PLAYWRIGHT_BROWSERS_PATH);
-// in CI and in the reader image it is the Playwright one. The test needs it: no browser, no pass.
+// The browser is the one the environment provides: SUUP_CHROMIUM_PATH, else the one Playwright
+// installed for this version, else any Chromium under PLAYWRIGHT_BROWSERS_PATH. CI installs it
+// (`playwright install chromium`) and so does the reader image. Without a browser the file is
+// skipped, and says so: the real check of the renderer then happens in CI.
 function chromiumPath(): string | undefined {
   const explicit = process.env.SUUP_CHROMIUM_PATH;
   if (explicit !== undefined && explicit !== "") return explicit;
+  const own = chromium.executablePath();
+  if (existsSync(own)) return own;
   const base = process.env.PLAYWRIGHT_BROWSERS_PATH;
-  if (base === undefined) return undefined;
-  for (const dir of ["chromium-1243/chrome-linux64/chrome"]) {
-    if (existsSync(`${base}/${dir}`)) return `${base}/${dir}`;
+  if (base === undefined || !existsSync(base)) return undefined;
+  for (const name of readdirSync(base)) {
+    if (!name.startsWith("chromium-")) continue;
+    const candidate = join(base, name, "chrome-linux64", "chrome");
+    if (existsSync(candidate)) return candidate;
   }
   return undefined;
 }
@@ -31,10 +39,12 @@ const JS_ONLY = `<!doctype html><html><head><title>App shell</title></head><body
   }, 50);
 </script></body></html>`;
 
+const CHROMIUM = chromiumPath();
 let site: Awaited<ReturnType<typeof localSite>>;
 let renderer: Awaited<ReturnType<typeof createPlaywrightRenderer>>;
 
 beforeAll(async () => {
+  if (CHROMIUM === undefined) return;
   site = await localSite((req, res) => {
     if (req.url === "/robots.txt") return res.writeHead(404).end();
     if (req.url === "/app") return res.writeHead(200, { "content-type": "text/html" }).end(JS_ONLY);
@@ -48,7 +58,7 @@ beforeAll(async () => {
     dial: () => site.dial("", 0),
     noSandbox: true,
     timeoutMs: 15_000,
-    ...(chromiumPath() === undefined ? {} : { executablePath: chromiumPath() as string }),
+    ...(CHROMIUM === undefined ? {} : { executablePath: CHROMIUM }),
   });
 }, 60_000);
 afterAll(async () => {
@@ -56,7 +66,7 @@ afterAll(async () => {
   await site?.close();
 });
 
-describe("the renderer", () => {
+describe.skipIf(CHROMIUM === undefined)("the renderer", () => {
   it("reads a page that is empty without JavaScript", async () => {
     const reader = createReader({
       resolver: tableResolver({ "app.example.com": [PUBLIC_IP] }),
@@ -110,7 +120,7 @@ describe("the renderer", () => {
       resolver: tableResolver({ "jar.example.com": [PUBLIC_IP] }),
       dial: () => jar.dial("", 0),
       noSandbox: true,
-      ...(chromiumPath() === undefined ? {} : { executablePath: chromiumPath() as string }),
+      ...(CHROMIUM === undefined ? {} : { executablePath: CHROMIUM }),
     });
     try {
       await own.render("http://jar.example.com/set");

@@ -21,6 +21,7 @@ export default defineConfig({
               find: /^@suup\/connectors\/testing$/,
               replacement: src("connectors", "testing/index.ts"),
             },
+            { find: /^@suup\/web\/engines$/, replacement: src("web", "engines.ts") },
             {
               find: /^@suup\/(core|providers|tools|connectors|db|sandbox|web|runtime|api|server)$/,
               replacement: src("$1"),
