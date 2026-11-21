@@ -230,6 +230,7 @@ async function ensureContext(ctx: LoopContext): Promise<void> {
       ...(snapshot.machine === undefined ? {} : { machine: snapshot.machine }),
       ...(snapshot.connectors === undefined ? {} : { connectors: snapshot.connectors }),
       ...(snapshot.reception === undefined ? {} : { reception: snapshot.reception }),
+      ...(snapshot.supervisor === undefined ? {} : { supervisor: snapshot.supervisor }),
       ...(snapshot.compactionThreshold === undefined
         ? {}
         : { compactionThreshold: snapshot.compactionThreshold }),

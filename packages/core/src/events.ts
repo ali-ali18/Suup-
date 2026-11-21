@@ -208,6 +208,15 @@ export const RECEPTION_KINDS = ["general", "bot"] as const;
 export const receptionKindSchema = z.enum(RECEPTION_KINDS);
 export type ReceptionKind = z.infer<typeof receptionKindSchema>;
 
+/**
+ * The place of the bot in the team, for the prompt (docs/SUPERVISOR.md): `principal` is the main
+ * bot with the supervisor's tools in this run (`team_recall`, `delegate`); `member` is any other bot.
+ * Absent when the run is not told (a reception, an evaluation, an older recording).
+ */
+export const SUPERVISOR_ROLES = ["principal", "member"] as const;
+export const supervisorRoleSchema = z.enum(SUPERVISOR_ROLES);
+export type SupervisorRole = z.infer<typeof supervisorRoleSchema>;
+
 /** Why a pending return was dropped: the user wrote, the run was stopped, a new call replaced it, or the run finished. */
 export const WAIT_CANCEL_REASONS = ["user_message", "cancelled", "replaced", "finished"] as const;
 export type WaitCancelReason = (typeof WAIT_CANCEL_REASONS)[number];
@@ -314,6 +323,8 @@ export const runEventSchema = z.discriminatedUnion("type", [
       connectors: z.exactOptional(z.array(z.string())),
       /** Set when the run is a reception: which one. */
       reception: z.exactOptional(receptionKindSchema),
+      /** The place of the bot in the team (docs/SUPERVISOR.md). */
+      supervisor: z.exactOptional(supervisorRoleSchema),
       /**
        * The share of the context window past which this run compacts its history (the user's
        * setting at the start of the run). Recorded so that a replay compacts at the same point.

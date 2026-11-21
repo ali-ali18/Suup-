@@ -1,4 +1,11 @@
-import type { MachineInfo, PlanStep, ReceptionKind, RunClock, Teammate } from "../events.js";
+import type {
+  MachineInfo,
+  PlanStep,
+  ReceptionKind,
+  RunClock,
+  SupervisorRole,
+  Teammate,
+} from "../events.js";
 
 /** Shown to the model for the harness's own messages, so it can tell them from the user's. */
 const NOTICE_PREFIX = "[Harness notice]";
@@ -41,6 +48,8 @@ export interface RunPromptContext {
   connectors?: readonly string[];
   /** The run is the welcome of the bot (docs/RECEPCAO.md). */
   reception?: ReceptionKind;
+  /** The place of the bot in the team: the supervisor's powers, or what the supervisor may do to it. */
+  supervisor?: SupervisorRole;
 }
 
 /** Most teammates, and longest description of each, the prompt lists (the rest is not named). */
@@ -77,7 +86,18 @@ function knownTimeZone(timeZone: string): string {
   }
 }
 
-function teamSection(team: readonly Teammate[]): string {
+/** What the main bot is told about being the supervisor (docs/SUPERVISOR.md). */
+export const SUPERVISOR_PROMPT = `You are the supervisor of this team. The other bots talk to the user directly and do their own work; you know what they did because you read it:
+- \`team_recall\` reads another bot's notes, its journal and what it has open, read-only. Use it when the user asks what a bot did or learned ("what did I do with the Tutor this week?"). You can never write to another bot's memory: you only read it.
+- \`delegate\` hands a task to another bot when the user asks you to ("tell the Tutor to..."). Give it a clear objective, the acceptance criteria and all the context it needs: it does not see this conversation. Then tell the user you delegated and that the result will come back to this chat; do not wait for it and do not poll. The other bot keeps its own tools and approvals (the user still decides on its cards), and a delegated bot cannot delegate again.
+- Once a night you review what the other bots did (their journal, notes and open items, never what their tools returned) and keep notes about it in your own memory; if something needs the user's attention you leave one short message in this chat in the morning. A note you find about the team is something you wrote from that review.
+Use these only when the user asks or it clearly helps: most of what the user asks you is your own work.`;
+
+/** What every other bot is told about the supervisor (docs/SUPERVISOR.md). */
+export const SUPERVISED_PROMPT =
+  "The Principal, the user's main bot, supervises the team. It may delegate a task to you: it arrives as a task in this chat with what to do and how to know it is done; do it with your own tools, and the user decides on your approvals as usual. Once a night it also reads your journal and notes, read-only; it never changes your memory.";
+
+function teamSection(team: readonly Teammate[], supervisor?: SupervisorRole): string {
   const shown = team.slice(0, TEAM_PROMPT_MAX_BOTS);
   const listed =
     shown.length === 0
@@ -90,7 +110,13 @@ function teamSection(team: readonly Teammate[]): string {
           .join(
             "\n",
           )}${team.length > shown.length ? `\n- and ${team.length - shown.length} more` : ""}`;
-  return `## Your team\n\n${listed}\n\nIf a request is clearly another bot's area, say which bot it belongs to instead of doing it badly yourself. If the user keeps bringing an area that no bot covers, you may suggest creating one for it: the user decides, and you cannot create a bot yourself.`;
+  return `## Your team\n\n${listed}\n\nIf a request is clearly another bot's area, say which bot it belongs to instead of doing it badly yourself. If the user keeps bringing an area that no bot covers, you may suggest creating one for it: the user decides, and you cannot create a bot yourself.${
+    supervisor === "principal"
+      ? `\n\n${SUPERVISOR_PROMPT}`
+      : supervisor === "member"
+        ? `\n\n${SUPERVISED_PROMPT}`
+        : ""
+  }`;
 }
 
 function whatYouHaveSection(input: {
@@ -211,7 +237,7 @@ export function buildSystemPrompt(
     now === undefined
       ? ""
       : `## Now\n\nIt is ${formatClock(new Date(now.iso), now.timeZone)}, in the user's time zone. That is when this run started: the STATE REMINDER at the end of each user turn gives the current time. Use this time zone for every date and time you say, schedule or compare, unless the user says otherwise.`,
-    context?.team === undefined ? "" : teamSection(context.team),
+    context?.team === undefined ? "" : teamSection(context.team, context.supervisor),
     whatYouHaveSection({
       machine: context?.machine,
       connectors: context?.connectors,

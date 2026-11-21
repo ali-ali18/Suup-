@@ -22,6 +22,7 @@ import {
   type ReviewerConfig,
   type RunContextSnapshot,
   type RunEnd,
+  type SupervisorRole,
   ToolRegistry,
   type ToolSearchMode,
   type ToolSearchSetup,
@@ -35,6 +36,7 @@ import {
   type Db,
   getApprovalMode,
   getBot,
+  getDefaultBot,
   getMemorySettings,
   getRun,
   listBots,
@@ -87,6 +89,14 @@ import { PROPOSE_TEAM_TOOL, proposeTeamTool } from "./reception.js";
 import { DEFAULT_HISTORY_CHARS, loadRunContext } from "./run-context.js";
 import { finishRun } from "./run-end.js";
 import { createScriptedProvider } from "./scripted-provider.js";
+import {
+  delegateTool,
+  type ReviewOutcome,
+  runMorningMessage,
+  runNightlyReview,
+  SUPERVISOR_TOOL_NAMES,
+  teamRecallTool,
+} from "./supervisor.js";
 import { createVault, DEFAULT_VAULT_KEY_ENV, type Vault } from "./vault/service.js";
 
 type Env = Record<string, string | undefined>;
@@ -130,6 +140,8 @@ export interface CreateWorkerOptions {
   memoryEveryMs?: { consolidation?: number; expiry?: number };
   /** How often the job that wakes the runs parked for a return looks for due ones (ms). Default 5000. */
   wakeEveryMs?: number;
+  /** How often the jobs of the supervisor (nightly review, morning message) check the clock (ms). Default 60000. */
+  supervisorEveryMs?: number;
   onRunEnd?(end: RunEnd): void;
   onError?(error: unknown, context: string): void;
 }
@@ -223,6 +235,17 @@ export interface Runtime {
     now?: Date;
     log?: (message: string) => void;
   }): Promise<ConsolidationOutcome | null>;
+  /**
+   * One pass of the nightly review of the main bot (docs/SUPERVISOR.md), as the worker does it:
+   * `null` when it is not due, it is off, or the Principal's model cannot be used now.
+   */
+  reviewOnce(options?: {
+    workerId?: string;
+    now?: Date;
+    log?: (message: string) => void;
+  }): Promise<ReviewOutcome | null>;
+  /** One pass of the morning message: whether it posted one. */
+  morningOnce(options?: { now?: Date }): Promise<boolean>;
   close(): Promise<void>;
 }
 
@@ -771,6 +794,22 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
       runTools.register(proposeTeamTool(runtime));
       botCfg = { ...botCfg, allowedTools: [...botCfg.allowedTools, PROPOSE_TEAM_TOOL] };
     }
+    // The place of the bot in the team (docs/SUPERVISOR.md). The Principal gets the supervisor's
+    // two tools in a normal run (not in its welcome, and never in a delegated run: depth 1).
+    const supervisor: SupervisorRole | undefined =
+      !guarded || receptionKind !== undefined
+        ? undefined
+        : bot.isDefault !== true
+          ? "member"
+          : run.origin === "delegation"
+            ? undefined
+            : "principal";
+    if (supervisor === "principal") {
+      if (runTools === tools) runTools = newRegistry();
+      runTools.register(teamRecallTool(handle));
+      runTools.register(delegateTool(handle));
+      botCfg = { ...botCfg, allowedTools: [...botCfg.allowedTools, ...SUPERVISOR_TOOL_NAMES] };
+    }
     const executor = await runtime.executorFor(bot.id);
     return {
       store: new PgRunStore(handle, { workerId }),
@@ -821,6 +860,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
                 },
                 connectors: connectorNames,
                 ...(receptionKind === undefined ? {} : { reception: receptionKind }),
+                ...(supervisor === undefined ? {} : { supervisor }),
               };
               // The model is told which secrets exist (names and purpose), never their values.
               return vault.status().ok
@@ -992,6 +1032,33 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
         ...(opts.log === undefined ? {} : { log: opts.log }),
       });
     },
+    async reviewOnce(opts = {}) {
+      const principal = await getDefaultBot(runtime.db);
+      if (principal === null) return null;
+      const { model, provider: providerEntry } = resolveModel(principal.modelId);
+      if (!keyStatus(providerEntry.id).ok) return null;
+      return runNightlyReview({
+        db: runtime.db,
+        workerId: opts.workerId ?? `review-${hostname()}-${process.pid}`,
+        provider: getProvider(providerEntry.id),
+        model: {
+          id: model.id,
+          maxOutputTokens: model.maxOutputTokens,
+          pricing: model.pricing,
+          supportsForcedToolChoice: model.supportsForcedToolChoice,
+        },
+        timeZone: resolveTimeZone(config),
+        ...(opts.now === undefined ? {} : { now: () => opts.now as Date }),
+        ...(opts.log === undefined ? {} : { log: opts.log }),
+      });
+    },
+    async morningOnce(opts = {}) {
+      return runMorningMessage({
+        db: runtime.db,
+        timeZone: resolveTimeZone(config),
+        ...(opts.now === undefined ? {} : { now: () => opts.now as Date }),
+      });
+    },
     async createRun(input) {
       const bot = await getBot(runtime.db, input.botId);
       if (bot === null) {
@@ -1068,6 +1135,19 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
                   everyMs: opts.wakeEveryMs ?? 5_000,
                   run: async () => {
                     await wakeDueRuns(runtime.db);
+                  },
+                },
+                {
+                  // The nightly review of the main bot and its morning message: the database
+                  // allows one review per night, so any number of workers can run them.
+                  name: "team-review",
+                  everyMs: opts.supervisorEveryMs ?? 60_000,
+                  run: async () => {
+                    await runtime.reviewOnce({
+                      workerId,
+                      log: (message) => opts.onError?.(new Error(message), "team review"),
+                    });
+                    await runtime.morningOnce();
                   },
                 },
                 {

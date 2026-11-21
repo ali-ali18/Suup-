@@ -8,6 +8,7 @@ import type {
   ReceptionKind,
   RunClock,
   SecretInfo,
+  SupervisorRole,
   Teammate,
 } from "../events.js";
 import type { Message } from "../messages.js";
@@ -71,6 +72,8 @@ export interface RunContextSnapshot {
   connectors?: string[];
   /** The run is a reception (the welcome of the bot): which one. */
   reception?: ReceptionKind;
+  /** The place of the bot in the team (docs/SUPERVISOR.md). */
+  supervisor?: SupervisorRole;
   /** Compact the history past this share of the context window (the user's setting; recorded). */
   compactionThreshold?: number;
   /** Rules and profile facts left out because they did not fit the size cap (recorded). */

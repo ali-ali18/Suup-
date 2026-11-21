@@ -141,6 +141,20 @@ export {
   type SecretAnswer,
 } from "./secret-request.js";
 export {
+  DELEGATE_TOOL,
+  delegatedObjective,
+  delegateTool,
+  REVIEW_LEASE_MS,
+  type ReviewDeps,
+  type ReviewOutcome,
+  returnDelegatedResult,
+  runMorningMessage,
+  runNightlyReview,
+  SUPERVISOR_TOOL_NAMES,
+  TEAM_RECALL_TOOL,
+  teamRecallTool,
+} from "./supervisor.js";
+export {
   decrypt,
   encrypt,
   fingerprint,

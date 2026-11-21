@@ -15,6 +15,7 @@ import {
   type Run,
   rolloverUnreadMessages,
 } from "@suup/db";
+import { returnDelegatedResult } from "./supervisor.js";
 
 /** What a failure origin means, in plain Portuguese, for the message the user reads. */
 export const ORIGIN_TEXT_PT: Record<FailureOrigin, string> = {
@@ -288,6 +289,8 @@ export async function finishRun(
       effects.journalWritten = journal !== null;
     }
     effects.rolledOver = await rolloverUnreadMessages(db, run.id);
+    // A task another bot delegated to this one: its short result goes back to that bot's chat.
+    if (run.origin === "delegation") await returnDelegatedResult(db, run);
   }
   return effects;
 }
@@ -333,6 +336,9 @@ export async function reconcileRunEffects(
             where g.conversation_id = r.conversation_id
               and g.dedupe_key = 'run:' || r.id::text || ':' || r.status
           )
+        )
+        or exists (
+          select 1 from delegations d where d.to_run_id = r.id and d.returned_at is null
         )
         or exists (
           select 1 from run_inbox i

@@ -339,6 +339,7 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
           ? {}
           : { connectors: structuredClone(event.payload.connectors) }),
         ...(event.payload.reception === undefined ? {} : { reception: event.payload.reception }),
+        ...(event.payload.supervisor === undefined ? {} : { supervisor: event.payload.supervisor }),
       };
       state.compactionThreshold = event.payload.compactionThreshold ?? null;
       // The user's earlier messages come before the objective (the history is text only).

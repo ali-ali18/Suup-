@@ -265,3 +265,39 @@ describe("system prompt: the welcome", () => {
     );
   });
 });
+
+describe("system prompt: the supervisor", () => {
+  const bot = { name: "Principal", personality: "" };
+  const team = [{ name: "Tutor", description: "Faculdade." }];
+
+  it("tells the main bot it is the supervisor: reads read-only, delegates on request, reviews at night", () => {
+    const prompt = buildSystemPrompt(bot, {
+      rules: [],
+      profile: [],
+      team,
+      supervisor: "principal",
+    });
+    expect(prompt).toContain("You are the supervisor of this team");
+    expect(prompt).toContain("`team_recall`");
+    expect(prompt).toContain("read-only");
+    expect(prompt).toContain("You can never write to another bot's memory");
+    expect(prompt).toContain("`delegate`");
+    expect(prompt).toContain("a delegated bot cannot delegate again");
+    expect(prompt).toContain("Once a night you review");
+    expect(prompt).toContain("never what their tools returned");
+    expect(prompt).not.toContain("The Principal, the user's main bot, supervises the team");
+  });
+
+  it("tells the other bots the Principal may delegate to them and reads their journal at night", () => {
+    const prompt = buildSystemPrompt(bot, { rules: [], profile: [], team, supervisor: "member" });
+    expect(prompt).toContain("The Principal, the user's main bot, supervises the team");
+    expect(prompt).toContain("may delegate a task to you");
+    expect(prompt).toContain("reads your journal and notes, read-only");
+    expect(prompt).not.toContain("You are the supervisor of this team");
+  });
+
+  it("says nothing about it when the run is not told (older recordings, a welcome, an evaluation)", () => {
+    const prompt = buildSystemPrompt(bot, { rules: [], profile: [], team });
+    expect(prompt).not.toContain("supervis");
+  });
+});
