@@ -13,6 +13,7 @@ export {
 } from "./avatar.js";
 export { identityFor } from "./identity.js";
 export { type BrainBudget, createBrainBudget } from "./model/brain-budget.js";
+export * from "./pixel/index.js";
 export { PART_SLOTS, type PartAttrs } from "./render/parts.js";
 export {
   type AvatarRenderData,

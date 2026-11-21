@@ -1,0 +1,484 @@
+{
+  "source": "figma:c1FraH70ehfVHADeOXKspp pagina 0:1 frame 1:2 (17 conjuntos Mascote/#N nome x 10 variantes Estado=...) e pagina 5:2 conjunto 5:3 (Folha / animada)",
+  "extractedAt": "2026-11-19",
+  "unit": 12,
+  "margin": 4,
+  "grid": 19,
+  "glyphs": "B corpo (cor do mascote) | e branco | a escuro (1b1f3b) | l amarelo (ffd23f) | g brilho (fff0a8) | . vazio",
+  "fnv": {
+    "#1 folha": "e433f212",
+    "#2 xicara": "19716e7e",
+    "#3 gota": "2c76b6da",
+    "#4 nuvem": "5ceec10a",
+    "#5 brasa": "c18128c2",
+    "#6 gato": "2b8a8d2a",
+    "#7 broto": "2b96c9da",
+    "#8 estrela": "7a7d512a",
+    "#9 cogumelo": "548730fe",
+    "#10 polvo": "1d61a9ba",
+    "#11 robo": "9283af82",
+    "#12 urso": "814f5422",
+    "#13 coruja": "2471128a",
+    "#14 lua": "1734f702",
+    "#15 fantasma": "69e7b862",
+    "#16 raposa": "b8eacaf2",
+    "#17 cacto": "1b71ac71"
+  },
+  "fnvAnimation": "f0998545",
+  "fnvAnimationNote": "FNV-1a dos 22 quadros (dy|linhas, unidos por #) calculado dentro do Figma",
+  "fnvNote": "FNV-1a 32 bits das 10 grades (ordem Parado..Teve uma ideia, linhas unidas por / e estados por |) calculado DENTRO do Figma e conferido contra estes dados",
+  "characters": [
+    {
+      "id": "#1 folha",
+      "body": "2fb36b",
+      "base": ".................../.................../.................../.................../.................../.................../.........BB......../........BBBB......./.......BBBBBB....../......BBBBBBBB...../.....BBBBBBBBB...../.....BeeBBeeBBB..../.....BeeBBeeBBB..../.....BBBBBBBBB...../......BBBBBBB....../.......BBBBB......./......B.BBB......../.....B............./...................",
+      "d": {
+        "Pensando": "g1B h1B g2B h2B e3B d5B 6ae 7ae aae bae 6cB 7cB acB bcB",
+        "Trabalhando": "c1a d1a e1a f1a g1a h1a c2a d2e e2a f2a g2a h2a c3a d3a e3e f3a g3a h3a c4a d4e e4a f4e g4e h4a c5a d5a e5a f5a g5a h5a 6bB 7bB abB bbB",
+        "Com dúvida": "e1a f1a g1a g2a f3a f5a abB bbB",
+        "Pedindo permissão": "e1a f1a g1a d2a e2a f2e g2a h2a d3a e3a f3e g3a h3a d4a e4a f4a g4a h4a e5a f5e g5a",
+        "Concluiu": "h1a g2a h2a d3a f3a g3a d4a e4a f4a e5a 7bB abB 5ce 6cB bcB cce",
+        "Levou bronca": "g5a g6a f7a g7a h7a f8a g8a h8a g9a 6bB bbB 7cB acB",
+        "Falhou": "e1a f1a g1a d2a e2e f2a g2e h2a d3a e3a f3e g3a h3a d4a e4e f4a g4e h4a e5a f5a g5a 5ae 7ae aae cae 7bB abB 5ce 6cB bcB cce",
+        "Pausado": "d1a e1a g1a h1a d2a e2a g2a h2a d3a e3a g3a h3a d4a e4a g4a h4a d5a e5a g5a h5a 6bB 7bB abB bbB 6ca 7ca aca bca",
+        "Teve uma ideia": "71l 91l a1l c1l 82l 92l a2l b2l 83l 93l a3l b3l 94l a4l 95a a5a 6ae 7ae aae bae"
+      }
+    },
+    {
+      "id": "#2 xicara",
+      "body": "ff5b1f",
+      "base": ".................../.................../.................../.................../.................../.................../......B..B.B......./.......B..B......../.................../....BBBBBBBB......./....BBBBBBBBB....../....BeeBBeeBBB...../....BeeBBee.BB...../....BBBBBBBB.B...../....BBBBBBBBBB...../.....BBBBBB......../...BBBBBBBBBBBB..../....BBBBBBBBBB...../...................",
+      "d": {
+        "Pensando": "g1B h1B g2B h2B e3B d5B 5ae 6ae 9ae aae 5cB 6cB 9cB acB",
+        "Trabalhando": "c1a d1a e1a f1a g1a h1a c2a d2e e2a f2a g2a h2a c3a d3a e3e f3a g3a h3a c4a d4e e4a f4e g4e h4a c5a d5a e5a f5a g5a h5a 5bB 6bB 9bB abB",
+        "Com dúvida": "e1a f1a g1a g2a f3a f5a 9bB abB",
+        "Pedindo permissão": "e1a f1a g1a d2a e2a f2e g2a h2a d3a e3a f3e g3a h3a d4a e4a f4a g4a h4a e5a f5e g5a",
+        "Concluiu": "h1a g2a h2a d3a f3a g3a d4a e4a f4a e5a 6bB abB 4ce 5cB 8ce 9cB",
+        "Levou bronca": "g5a g6a f7a g7a h7a f8a g8a h8a g9a 5bB abB 6cB 9cB",
+        "Falhou": "e1a f1a g1a d2a e2e f2a g2e h2a d3a e3a f3e g3a h3a d4a e4e f4a g4e h4a e5a f5a g5a 4ae 6ae 8ae aae 6bB abB 4ce 5cB 8ce 9cB",
+        "Pausado": "d1a e1a g1a h1a d2a e2a g2a h2a d3a e3a g3a h3a d4a e4a g4a h4a d5a e5a g5a h5a 5bB 6bB 9bB abB 5ca 6ca 9ca aca",
+        "Teve uma ideia": "71l 91l a1l c1l 82l 92l a2l b2l 83l 93l a3l b3l 94l a4l 95a a5a 5ae 6ae 9ae aae"
+      }
+    },
+    {
+      "id": "#3 gota",
+      "body": "377fe6",
+      "base": ".................../.................../.................../.................../.................../.................../........BB........./.......BBBB......../.......BBBB......../......BBBBBB......./.....BBBBBBBB....../.....BeeBBeeB....../....BBeeBBeeBB...../....BBBBBBBBBB...../....BBBBBBBBBB...../.....BBBBBBBB....../......BBBBBB......./.................../...................",
+      "d": {
+        "Pensando": "g1B h1B g2B h2B e3B d5B 6ae 7ae aae bae 6cB 7cB acB bcB",
+        "Trabalhando": "c1a d1a e1a f1a g1a h1a c2a d2e e2a f2a g2a h2a c3a d3a e3e f3a g3a h3a c4a d4e e4a f4e g4e h4a c5a d5a e5a f5a g5a h5a 6bB 7bB abB bbB",
+        "Com dúvida": "e1a f1a g1a g2a f3a f5a abB bbB",
+        "Pedindo permissão": "e1a f1a g1a d2a e2a f2e g2a h2a d3a e3a f3e g3a h3a d4a e4a f4a g4a h4a e5a f5e g5a",
+        "Concluiu": "h1a g2a h2a d3a f3a g3a d4a e4a f4a e5a 7bB abB 5ce 6cB bcB cce",
+        "Levou bronca": "g5a g6a f7a g7a h7a f8a g8a h8a g9a 6bB bbB 7cB acB",
+        "Falhou": "e1a f1a g1a d2a e2e f2a g2e h2a d3a e3a f3e g3a h3a d4a e4e f4a g4e h4a e5a f5a g5a 5ae 7ae aae cae 7bB abB 5ce 6cB bcB cce",
+        "Pausado": "d1a e1a g1a h1a d2a e2a g2a h2a d3a e3a g3a h3a d4a e4a g4a h4a d5a e5a g5a h5a 6bB 7bB abB bbB 6ca 7ca aca bca",
+        "Teve uma ideia": "71l 91l a1l c1l 82l 92l a2l b2l 83l 93l a3l b3l 94l a4l 95a a5a 6ae 7ae aae bae"
+      }
+    },
+    {
+      "id": "#4 nuvem",
+      "body": "8057c8",
+      "base": ".................../.................../.................../.................../.................../.................../.................../.......BBB........./......BBBBB.BB...../.....BBBBBBBBB...../....BBBBBBBBBBB..../...BBeeBBeeBBBB..../...BBeeBBeeBBBB..../...BBBBBBBBBBBB..../...BBBBBBBBBBBB..../....BBBBBBBBBBB..../.....B.BB.BB.B...../.................../...................",
+      "d": {
+        "Pensando": "g1B h1B g2B h2B e3B d5B 5ae 6ae 9ae aae 5cB 6cB 9cB acB",
+        "Trabalhando": "c1a d1a e1a f1a g1a h1a c2a d2e e2a f2a g2a h2a c3a d3a e3e f3a g3a h3a c4a d4e e4a f4e g4e h4a c5a d5a e5a f5a g5a h5a 5bB 6bB 9bB abB",
+        "Com dúvida": "e1a f1a g1a g2a f3a f5a 9bB abB",
+        "Pedindo permissão": "e1a f1a g1a d2a e2a f2e g2a h2a d3a e3a f3e g3a h3a d4a e4a f4a g4a h4a e5a f5e g5a",
+        "Concluiu": "h1a g2a h2a d3a f3a g3a d4a e4a f4a e5a 6bB 9bB 4ce 5cB acB bce",
+        "Levou bronca": "g5a g6a f7a g7a h7a f8a g8a h8a g9a 5bB abB 6cB 9cB",
+        "Falhou": "e1a f1a g1a d2a e2e f2a g2e h2a d3a e3a f3e g3a h3a d4a e4e f4a g4e h4a e5a f5a g5a 4ae 6ae 9ae bae 6bB 9bB 4ce 5cB acB bce",
+        "Pausado": "d1a e1a g1a h1a d2a e2a g2a h2a d3a e3a g3a h3a d4a e4a g4a h4a d5a e5a g5a h5a 5bB 6bB 9bB abB 5ca 6ca 9ca aca",
+        "Teve uma ideia": "71l 91l a1l c1l 82l 92l a2l b2l 83l 93l a3l b3l 94l a4l 95a a5a 5ae 6ae 9ae aae"
+      }
+    },
+    {
+      "id": "#5 brasa",
+      "body": "e5634e",
+      "base": ".................../.................../.................../.................../.................../.................../........B........../.......BB...B....../.......BBB.BB....../......BBBBBBB....../.....BBBBBBBBB...../.....BeeBBBeeB...../....BBeeBBBeeB...../....BBBBBBBBBB...../....BBBBBBBBBB...../.....BBBBBBBB....../......BBBBBB......./.................../...................",
+      "d": {
+        "Pensando": "g1B h1B g2B h2B e3B d5B 6ae 7ae bae cae 6cB 7cB bcB ccB",
+        "Trabalhando": "c1a d1a e1a f1a g1a h1a c2a d2e e2a f2a g2a h2a c3a d3a e3e f3a g3a h3a c4a d4e e4a f4e g4e h4a c5a d5a e5a f5a g5a h5a 6bB 7bB bbB cbB",
+        "Com dúvida": "e1a f1a g1a g2a f3a f5a bbB cbB",
+        "Pedindo permissão": "e1a f1a g1a d2a e2a f2e g2a h2a d3a e3a f3e g3a h3a d4a e4a f4a g4a h4a e5a f5e g5a",
+        "Concluiu": "h1a g2a h2a d3a f3a g3a d4a e4a f4a e5a 7bB bbB 5ce 6cB ccB dce",
+        "Levou bronca": "g5a g6a f7a g7a h7a f8a g8a h8a g9a 6bB cbB 7cB bcB",
+        "Falhou": "e1a f1a g1a d2a e2e f2a g2e h2a d3a e3a f3e g3a h3a d4a e4e f4a g4e h4a e5a f5a g5a 5ae 7ae bae dae 7bB bbB 5ce 6cB ccB dce",
+        "Pausado": "d1a e1a g1a h1a d2a e2a g2a h2a d3a e3a g3a h3a d4a e4a g4a h4a d5a e5a g5a h5a 6bB 7bB bbB cbB 6ca 7ca bca cca",
+        "Teve uma ideia": "71l 91l a1l c1l 82l 92l a2l b2l 83l 93l a3l b3l 94l a4l 95a a5a 6ae 7ae bae cae"
+      }
+    },
+    {
+      "id": "#6 gato",
+      "body": "0ea5c6",
+      "base": ".................../.................../.................../.................../.................../.................../.................../....B........B...../....BB......BB...../....BBBBBBBBBB...../....BBBBBBBBBB...../....BeeBBBBeeB...../....BeeBBBBeeB...../....BBBBBBBBBB...../....BBBBBBBBBB...../.....BBBBBBBB....../.....BB....BB....../.................../...................",
+      "d": {
+        "Pensando": "g1B h1B g2B h2B e3B d5B 5ae 6ae bae cae 5cB 6cB bcB ccB",
+        "Trabalhando": "c1a d1a e1a f1a g1a h1a c2a d2e e2a f2a g2a h2a c3a d3a e3e f3a g3a h3a c4a d4e e4a f4e g4e h4a c5a d5a e5a f5a g5a h5a 5bB 6bB bbB cbB",
+        "Com dúvida": "e1a f1a g1a g2a f3a f5a bbB cbB",
+        "Pedindo permissão": "e1a f1a g1a d2a e2a f2e g2a h2a d3a e3a f3e g3a h3a d4a e4a f4a g4a h4a e5a f5e g5a",
+        "Concluiu": "h1a g2a h2a d3a f3a g3a d4a e4a f4a e5a 6bB bbB 4ce 5cB ccB dce",
+        "Levou bronca": "g5a g6a f7a g7a h7a f8a g8a h8a g9a 5bB cbB 6cB bcB",
+        "Falhou": "e1a f1a g1a d2a e2e f2a g2e h2a d3a e3a f3e g3a h3a d4a e4e f4a g4e h4a e5a f5a g5a 4ae 6ae bae dae 6bB bbB 4ce 5cB ccB dce",
+        "Pausado": "d1a e1a g1a h1a d2a e2a g2a h2a d3a e3a g3a h3a d4a e4a g4a h4a d5a e5a g5a h5a 5bB 6bB bbB cbB 5ca 6ca bca cca",
+        "Teve uma ideia": "71l 91l a1l c1l 82l 92l a2l b2l 83l 93l a3l b3l 94l a4l 95a a5a 5ae 6ae bae cae"
+      }
+    },
+    {
+      "id": "#7 broto",
+      "body": "01a492",
+      "base": ".................../.................../.................../.................../.................../.................../.....BB....BB....../....BBBB..BBBB...../.....BBB..BBB....../.......BBBB......../........BB........./.....BBBBBBBB....../....BBBBBBBBBB...../....BeeBBBBeeB...../....BeeBBBBeeB...../....BBBBBBBBBB...../.....BBBBBBBB....../.................../...................",
+      "d": {
+        "Pensando": "g1B h1B g2B h2B e3B d5B 5ce 6ce bce cce 5eB 6eB beB ceB",
+        "Trabalhando": "c1a d1a e1a f1a g1a h1a c2a d2e e2a f2a g2a h2a c3a d3a e3e f3a g3a h3a c4a d4e e4a f4e g4e h4a c5a d5a e5a f5a g5a h5a 5dB 6dB bdB cdB",
+        "Com dúvida": "e1a f1a g1a g2a f3a f5a bdB cdB",
+        "Pedindo permissão": "e1a f1a g1a d2a e2a f2e g2a h2a d3a e3a f3e g3a h3a d4a e4a f4a g4a h4a e5a f5e g5a",
+        "Concluiu": "h1a g2a h2a d3a f3a g3a d4a e4a f4a e5a 6dB bdB 4ee 5eB ceB dee",
+        "Levou bronca": "g5a g6a f7a g7a h7a f8a g8a h8a g9a 5dB cdB 6eB beB",
+        "Falhou": "e1a f1a g1a d2a e2e f2a g2e h2a d3a e3a f3e g3a h3a d4a e4e f4a g4e h4a e5a f5a g5a 4ce 6ce bce dce 6dB bdB 4ee 5eB ceB dee",
+        "Pausado": "d1a e1a g1a h1a d2a e2a g2a h2a d3a e3a g3a h3a d4a e4a g4a h4a d5a e5a g5a h5a 5dB 6dB bdB cdB 5ea 6ea bea cea",
+        "Teve uma ideia": "71l 91l a1l c1l 82l 92l a2l b2l 83l 93l a3l b3l 94l a4l 95a a5a 5ce 6ce bce cce"
+      }
+    },
+    {
+      "id": "#8 estrela",
+      "body": "d8a729",
+      "base": ".................../.................../.................../.................../.................../.................../........BB........./........BB........./.......BBBB......../...BBBBBBBBBBBB..../....BBBBBBBBBB...../.....BeeBBeeB....../.....BeeBBeeB....../.....BBBBBBBB....../....BBBBBBBBBB...../....BBB....BBB...../...BB........BB..../.................../...................",
+      "d": {
+        "Pensando": "g1B h1B g2B h2B e3B d5B 6ae 7ae aae bae 6cB 7cB acB bcB",
+        "Trabalhando": "c1a d1a e1a f1a g1a h1a c2a d2e e2a f2a g2a h2a c3a d3a e3e f3a g3a h3a c4a d4e e4a f4e g4e h4a c5a d5a e5a f5a g5a h5a 6bB 7bB abB bbB",
+        "Com dúvida": "e1a f1a g1a g2a f3a f5a abB bbB",
+        "Pedindo permissão": "e1a f1a g1a d2a e2a f2e g2a h2a d3a e3a f3e g3a h3a d4a e4a f4a g4a h4a e5a f5e g5a",
+        "Concluiu": "h1a g2a h2a d3a f3a g3a d4a e4a f4a e5a 7bB abB 5ce 6cB bcB cce",
+        "Levou bronca": "g5a g6a f7a g7a h7a f8a g8a h8a g9a 6bB bbB 7cB acB",
+        "Falhou": "e1a f1a g1a d2a e2e f2a g2e h2a d3a e3a f3e g3a h3a d4a e4e f4a g4e h4a e5a f5a g5a 5ae 7ae aae cae 7bB abB 5ce 6cB bcB cce",
+        "Pausado": "d1a e1a g1a h1a d2a e2a g2a h2a d3a e3a g3a h3a d4a e4a g4a h4a d5a e5a g5a h5a 6bB 7bB abB bbB 6ca 7ca aca bca",
+        "Teve uma ideia": "71l 91l a1l c1l 82l 92l a2l b2l 83l 93l a3l b3l 94l a4l 95a a5a 6ae 7ae aae bae"
+      }
+    },
+    {
+      "id": "#9 cogumelo",
+      "body": "d94b52",
+      "base": ".................../.................../.................../.................../.................../.................../.......BBBB......../.....BBBBBBBB....../....BBBBBBBBBB...../...BBBBBBBBBBBB..../...BBBBBBBBBBBB..../.................../......BBBBBB......./......BeeBee......./......BeeBee......./......BBBBBB......./......BBBBBB......./.................../...................",
+      "d": {
+        "Pensando": "g1B h1B g2B h2B e3B d5B 7ce 8ce ace bce 7eB 8eB aeB beB",
+        "Trabalhando": "c1a d1a e1a f1a g1a h1a c2a d2e e2a f2a g2a h2a c3a d3a e3e f3a g3a h3a c4a d4e e4a f4e g4e h4a c5a d5a e5a f5a g5a h5a 7dB 8dB adB bdB",
+        "Com dúvida": "e1a f1a g1a g2a f3a f5a adB bdB",
+        "Pedindo permissão": "e1a f1a g1a d2a e2a f2e g2a h2a d3a e3a f3e g3a h3a d4a e4a f4a g4a h4a e5a f5e g5a",
+        "Concluiu": "h1a g2a h2a d3a f3a g3a d4a e4a f4a e5a 8dB bdB 6ee 7eB 9ee aeB",
+        "Levou bronca": "g5a g6a f7a g7a h7a f8a g8a h8a g9a 7dB bdB 8eB aeB",
+        "Falhou": "e1a f1a g1a d2a e2e f2a g2e h2a d3a e3a f3e g3a h3a d4a e4e f4a g4e h4a e5a f5a g5a 6ce 8ce 9ce bce 8dB bdB 6ee 7eB 9ee aeB",
+        "Pausado": "d1a e1a g1a h1a d2a e2a g2a h2a d3a e3a g3a h3a d4a e4a g4a h4a d5a e5a g5a h5a 7dB 8dB adB bdB 7ea 8ea aea bea",
+        "Teve uma ideia": "71l 91l a1l c1l 82l 92l a2l b2l 83l 93l a3l b3l 94l a4l 95a a5a 7ce 8ce ace bce"
+      }
+    },
+    {
+      "id": "#10 polvo",
+      "body": "d84f8b",
+      "base": ".................../.................../.................../.................../.................../.................../.......BBBB......../.....BBBBBBBB....../....BBBBBBBBBB...../....BBBBBBBBBB...../....BeeBBBBeeB...../....BeeBBBBeeB...../....BBBBBBBBBB...../....BBBBBBBBBB...../....BB.BB.BB.B...../....B..B..B..B...../....B..B..B..B...../.................../...................",
+      "d": {
+        "Pensando": "g1B h1B g2B h2B e3B d5B 59e 69e b9e c9e 5bB 6bB bbB cbB",
+        "Trabalhando": "c1a d1a e1a f1a g1a h1a c2a d2e e2a f2a g2a h2a c3a d3a e3e f3a g3a h3a c4a d4e e4a f4e g4e h4a c5a d5a e5a f5a g5a h5a 5aB 6aB baB caB",
+        "Com dúvida": "e1a f1a g1a g2a f3a f5a baB caB",
+        "Pedindo permissão": "e1a f1a g1a d2a e2a f2e g2a h2a d3a e3a f3e g3a h3a d4a e4a f4a g4a h4a e5a f5e g5a",
+        "Concluiu": "h1a g2a h2a d3a f3a g3a d4a e4a f4a e5a 6aB baB 4be 5bB cbB dbe",
+        "Levou bronca": "g5a g6a f7a g7a h7a f8a g8a h8a g9a 5aB caB 6bB bbB",
+        "Falhou": "e1a f1a g1a d2a e2e f2a g2e h2a d3a e3a f3e g3a h3a d4a e4e f4a g4e h4a e5a f5a g5a 49e 69e b9e d9e 6aB baB 4be 5bB cbB dbe",
+        "Pausado": "d1a e1a g1a h1a d2a e2a g2a h2a d3a e3a g3a h3a d4a e4a g4a h4a d5a e5a g5a h5a 5aB 6aB baB caB 5ba 6ba bba cba",
+        "Teve uma ideia": "71l 91l a1l c1l 82l 92l a2l b2l 83l 93l a3l b3l 94l a4l 95a a5a 59e 69e b9e c9e"
+      }
+    },
+    {
+      "id": "#11 robo",
+      "body": "a8adb4",
+      "base": ".................../.................../.................../.................../.................../.................../........BB........./........BB........./.....BBBBBBBB....../....BBBBBBBBBB...../...BBBeeBBeeBB...../...BBBeeBBeeBB...../....BBBBBBBBBB...../....BBBBBBBBBB...../.....BBBBBBBB....../......B....B......./.....BB....BB....../.................../...................",
+      "d": {
+        "Pensando": "g1B h1B g2B h2B e3B d5B 69e 79e a9e b9e 6bB 7bB abB bbB",
+        "Trabalhando": "c1a d1a e1a f1a g1a h1a c2a d2e e2a f2a g2a h2a c3a d3a e3e f3a g3a h3a c4a d4e e4a f4e g4e h4a c5a d5a e5a f5a g5a h5a 6aB 7aB aaB baB",
+        "Com dúvida": "e1a f1a g1a g2a f3a f5a aaB baB",
+        "Pedindo permissão": "e1a f1a g1a d2a e2a f2e g2a h2a d3a e3a f3e g3a h3a d4a e4a f4a g4a h4a e5a f5e g5a",
+        "Concluiu": "h1a g2a h2a d3a f3a g3a d4a e4a f4a e5a 7aB aaB 5be 6bB bbB cbe",
+        "Levou bronca": "g5a g6a f7a g7a h7a f8a g8a h8a g9a 6aB baB 7bB abB",
+        "Falhou": "e1a f1a g1a d2a e2e f2a g2e h2a d3a e3a f3e g3a h3a d4a e4e f4a g4e h4a e5a f5a g5a 59e 79e a9e c9e 7aB aaB 5be 6bB bbB cbe",
+        "Pausado": "d1a e1a g1a h1a d2a e2a g2a h2a d3a e3a g3a h3a d4a e4a g4a h4a d5a e5a g5a h5a 6aB 7aB aaB baB 6ba 7ba aba bba",
+        "Teve uma ideia": "71l 91l a1l c1l 82l 92l a2l b2l 83l 93l a3l b3l 94l a4l 95a a5a 69e 79e a9e b9e"
+      }
+    },
+    {
+      "id": "#12 urso",
+      "body": "a06b39",
+      "base": ".................../.................../.................../.................../.................../.................../....BB......BB...../...BBBB....BBBB..../...BBBBBBBBBBBB..../....BBBBBBBBBB...../....BeeBBBBeeB...../....BeeBBBBeeB...../....BBBBBBBBBB...../....BBBB..BBBB...../....BBBBBBBBBB...../.....BBBBBBBB....../......BBBBBB......./.................../...................",
+      "d": {
+        "Pensando": "g1B h1B g2B h2B e3B d5B 59e 69e b9e c9e 5bB 6bB bbB cbB",
+        "Trabalhando": "c1a d1a e1a f1a g1a h1a c2a d2e e2a f2a g2a h2a c3a d3a e3e f3a g3a h3a c4a d4e e4a f4e g4e h4a c5a d5a e5a f5a g5a h5a 5aB 6aB baB caB",
+        "Com dúvida": "e1a f1a g1a g2a f3a f5a baB caB",
+        "Pedindo permissão": "e1a f1a g1a d2a e2a f2e g2a h2a d3a e3a f3e g3a h3a d4a e4a f4a g4a h4a e5a f5e g5a",
+        "Concluiu": "h1a g2a h2a d3a f3a g3a d4a e4a f4a e5a 6aB baB 4be 5bB cbB dbe",
+        "Levou bronca": "g5a g6a f7a g7a h7a f8a g8a h8a g9a 5aB caB 6bB bbB",
+        "Falhou": "e1a f1a g1a d2a e2e f2a g2e h2a d3a e3a f3e g3a h3a d4a e4e f4a g4e h4a e5a f5a g5a 49e 69e b9e d9e 6aB baB 4be 5bB cbB dbe",
+        "Pausado": "d1a e1a g1a h1a d2a e2a g2a h2a d3a e3a g3a h3a d4a e4a g4a h4a d5a e5a g5a h5a 5aB 6aB baB caB 5ba 6ba bba cba",
+        "Teve uma ideia": "71l 91l a1l c1l 82l 92l a2l b2l 83l 93l a3l b3l 94l a4l 95a a5a 59e 69e b9e c9e"
+      }
+    },
+    {
+      "id": "#13 coruja",
+      "body": "e78531",
+      "base": ".................../.................../.................../.................../.................../.................../....B........B...../....BB......BB...../....BBBBBBBBBB...../...BBBBBBBBBBB...../...BBeeBBBBeeBB..../...BBeeBBBBeeBB..../...BBBBBBBBBBBB..../....BBBBBBBBBBB..../....BBBBBBBBBB...../.....BBBBBBBB....../......B....B......./.................../...................",
+      "d": {
+        "Pensando": "g1B h1B g2B h2B e3B d5B 59e 69e b9e c9e 5bB 6bB bbB cbB",
+        "Trabalhando": "c1a d1a e1a f1a g1a h1a c2a d2e e2a f2a g2a h2a c3a d3a e3e f3a g3a h3a c4a d4e e4a f4e g4e h4a c5a d5a e5a f5a g5a h5a 5aB 6aB baB caB",
+        "Com dúvida": "e1a f1a g1a g2a f3a f5a baB caB",
+        "Pedindo permissão": "e1a f1a g1a d2a e2a f2e g2a h2a d3a e3a f3e g3a h3a d4a e4a f4a g4a h4a e5a f5e g5a",
+        "Concluiu": "h1a g2a h2a d3a f3a g3a d4a e4a f4a e5a 6aB baB 4be 5bB cbB dbe",
+        "Levou bronca": "g5a g6a f7a g7a h7a f8a g8a h8a g9a 5aB caB 6bB bbB",
+        "Falhou": "e1a f1a g1a d2a e2e f2a g2e h2a d3a e3a f3e g3a h3a d4a e4e f4a g4e h4a e5a f5a g5a 49e 69e b9e d9e 6aB baB 4be 5bB cbB dbe",
+        "Pausado": "d1a e1a g1a h1a d2a e2a g2a h2a d3a e3a g3a h3a d4a e4a g4a h4a d5a e5a g5a h5a 5aB 6aB baB caB 5ba 6ba bba cba",
+        "Teve uma ideia": "71l 91l a1l c1l 82l 92l a2l b2l 83l 93l a3l b3l 94l a4l 95a a5a 59e 69e b9e c9e"
+      }
+    },
+    {
+      "id": "#14 lua",
+      "body": "377fe6",
+      "base": ".................../.................../.................../.................../.................../.................../.......BBBBB......./.....BBBBBBB......./....BBBBB........../....BBBB.........../...BBee............/...BBee............/...BBBB............/....BBBB.........../....BBBBBB........./.....BBBBBBBB....../.......BBBBB......./.................../...................",
+      "d": {
+        "Pensando": "g1B h1B g2B h2B e3B d5B 59e 69e 5bB 6bB",
+        "Trabalhando": "c1a d1a e1a f1a g1a h1a c2a d2e e2a f2a g2a h2a c3a d3a e3e f3a g3a h3a c4a d4e e4a f4e g4e h4a c5a d5a e5a f5a g5a h5a 5aB 6aB",
+        "Com dúvida": "e1a f1a g1a g2a f3a f5a 5aB 6aB",
+        "Pedindo permissão": "e1a f1a g1a d2a e2a f2e g2a h2a d3a e3a f3e g3a h3a d4a e4a f4a g4a h4a e5a f5e g5a",
+        "Concluiu": "h1a g2a h2a d3a f3a g3a d4a e4a f4a e5a 6aB 4be 5bB",
+        "Levou bronca": "g5a g6a f7a g7a h7a f8a g8a h8a g9a 5aB 6bB",
+        "Falhou": "e1a f1a g1a d2a e2e f2a g2e h2a d3a e3a f3e g3a h3a d4a e4e f4a g4e h4a e5a f5a g5a 49e 69e 6aB 4be 5bB",
+        "Pausado": "d1a e1a g1a h1a d2a e2a g2a h2a d3a e3a g3a h3a d4a e4a g4a h4a d5a e5a g5a h5a 5aB 6aB 5ba 6ba",
+        "Teve uma ideia": "71l 91l a1l c1l 82l 92l a2l b2l 83l 93l a3l b3l 94l a4l 95a a5a 59e 69e"
+      }
+    },
+    {
+      "id": "#15 fantasma",
+      "body": "8057c8",
+      "base": ".................../.................../.................../.................../.................../.................../.......BBBB......../.....BBBBBBBB....../....BBBBBBBBBB...../....BBBBBBBBBB...../....BeeBBBBeeB...../....BeeBBBBeeB...../....BBBBBBBBBB...../....BBBBBBBBBB...../....BBBBBBBBBB...../....BBBBBBBBBB...../....BB.BBBB.BB...../....B...BB...B...../...................",
+      "d": {
+        "Pensando": "g1B h1B g2B h2B e3B d5B 59e 69e b9e c9e 5bB 6bB bbB cbB",
+        "Trabalhando": "c1a d1a e1a f1a g1a h1a c2a d2e e2a f2a g2a h2a c3a d3a e3e f3a g3a h3a c4a d4e e4a f4e g4e h4a c5a d5a e5a f5a g5a h5a 5aB 6aB baB caB",
+        "Com dúvida": "e1a f1a g1a g2a f3a f5a baB caB",
+        "Pedindo permissão": "e1a f1a g1a d2a e2a f2e g2a h2a d3a e3a f3e g3a h3a d4a e4a f4a g4a h4a e5a f5e g5a",
+        "Concluiu": "h1a g2a h2a d3a f3a g3a d4a e4a f4a e5a 6aB baB 4be 5bB cbB dbe",
+        "Levou bronca": "g5a g6a f7a g7a h7a f8a g8a h8a g9a 5aB caB 6bB bbB",
+        "Falhou": "e1a f1a g1a d2a e2e f2a g2e h2a d3a e3a f3e g3a h3a d4a e4e f4a g4e h4a e5a f5a g5a 49e 69e b9e d9e 6aB baB 4be 5bB cbB dbe",
+        "Pausado": "d1a e1a g1a h1a d2a e2a g2a h2a d3a e3a g3a h3a d4a e4a g4a h4a d5a e5a g5a h5a 5aB 6aB baB caB 5ba 6ba bba cba",
+        "Teve uma ideia": "71l 91l a1l c1l 82l 92l a2l b2l 83l 93l a3l b3l 94l a4l 95a a5a 59e 69e b9e c9e"
+      }
+    },
+    {
+      "id": "#16 raposa",
+      "body": "ff5b1f",
+      "base": ".................../.................../.................../.................../.................../.................../...B..........B..../...BB........BB..../...BBB......BBB..../...BBBBBBBBBBBB..../....BBBBBBBBBB...../....BeeBBBBeeB...../....BeeBBBBeeB...../.....BBBBBBBB....../......BBBBBB......./.......BBBB......../........BB........./.................../...................",
+      "d": {
+        "Pensando": "g1B h1B g2B h2B e3B d5B 5ae 6ae bae cae 5cB 6cB bcB ccB",
+        "Trabalhando": "c1a d1a e1a f1a g1a h1a c2a d2e e2a f2a g2a h2a c3a d3a e3e f3a g3a h3a c4a d4e e4a f4e g4e h4a c5a d5a e5a f5a g5a h5a 5bB 6bB bbB cbB",
+        "Com dúvida": "e1a f1a g1a g2a f3a f5a bbB cbB",
+        "Pedindo permissão": "e1a f1a g1a d2a e2a f2e g2a h2a d3a e3a f3e g3a h3a d4a e4a f4a g4a h4a e5a f5e g5a",
+        "Concluiu": "h1a g2a h2a d3a f3a g3a d4a e4a f4a e5a 6bB bbB 4ce 5cB ccB dce",
+        "Levou bronca": "g5a g6a f7a g7a h7a f8a g8a h8a g9a 5bB cbB 6cB bcB",
+        "Falhou": "e1a f1a g1a d2a e2e f2a g2e h2a d3a e3a f3e g3a h3a d4a e4e f4a g4e h4a e5a f5a g5a 4ae 6ae bae dae 6bB bbB 4ce 5cB ccB dce",
+        "Pausado": "d1a e1a g1a h1a d2a e2a g2a h2a d3a e3a g3a h3a d4a e4a g4a h4a d5a e5a g5a h5a 5bB 6bB bbB cbB 5ca 6ca bca cca",
+        "Teve uma ideia": "71l 91l a1l c1l 82l 92l a2l b2l 83l 93l a3l b3l 94l a4l 95a a5a 5ae 6ae bae cae"
+      }
+    },
+    {
+      "id": "#17 cacto",
+      "body": "009957",
+      "base": ".................../.................../.................../.................../.................../.................../.......BBBB......../......BBBBBB......./......BBBBBB......./...B..BeBBeB..B..../...B..BeBBeB..B..../...BB.BBBBBB.BB..../....BBBBBBBBBB...../......BBBBBB......./......BBBBBB......./.....BBBBBBBB....../.....BBBBBBBB....../.................../...................",
+      "d": {
+        "Pensando": "g1B h1B g2B h2B e3B d5B 78e a8e 7aB aaB",
+        "Trabalhando": "c1a d1a e1a f1a g1a h1a c2a d2e e2a f2a g2a h2a c3a d3a e3e f3a g3a h3a c4a d4e e4a f4e g4e h4a c5a d5a e5a f5a g5a h5a 79B a9B",
+        "Com dúvida": "e1a f1a g1a g2a f3a f5a a9B",
+        "Pedindo permissão": "e1a f1a g1a d2a e2a f2e g2a h2a d3a e3a f3e g3a h3a d4a e4a f4a g4a h4a e5a f5e g5a",
+        "Concluiu": "h1a g2a h2a d3a f3a g3a d4a e4a f4a e5a 6ae 7aB 8ae 9ae aaB bae",
+        "Levou bronca": "g5a g6a f7a g7a h7a f8a g8a h8a 79B a9B g9a",
+        "Falhou": "e1a f1a g1a d2a e2e f2a g2e h2a d3a e3a f3e g3a h3a d4a e4e f4a g4e h4a e5a f5a g5a 68e 88e 98e b8e 6ae 7aB 8ae 9ae aaB bae",
+        "Pausado": "d1a e1a g1a h1a d2a e2a g2a h2a d3a e3a g3a h3a d4a e4a g4a h4a d5a e5a g5a h5a 79B a9B 7aa aaa",
+        "Teve uma ideia": "71l 91l a1l c1l 82l 92l a2l b2l 83l 93l a3l b3l 94l a4l 95a a5a 78e a8e"
+      }
+    }
+  ],
+  "animation": {
+    "character": "folha",
+    "note": "quadros da pagina 5:2; cada quadro: dy (unidades do Figma, sprite sobe) | espera ms (AFTER_TIMEOUT) | transicao ms (SMART_ANIMATE) | curva (io = ease in-out, o = ease out, n = sem transicao) | linhas",
+    "states": {
+      "Parado": [
+        [
+          0,
+          1400,
+          600,
+          "io",
+          ".................../.................../.................../.................../.................../.................../.........BB......../........BBBB......./.......BBBBBB....../......BBBBBBBB...../.....BBBBBBBBB...../.....BeeBBeeBBB..../.....BeeBBeeBBB..../.....BBBBBBBBB...../......BBBBBBB....../.......BBBBB......./......B.BBB......../.....B............./..................."
+        ],
+        [
+          -4,
+          900,
+          600,
+          "io",
+          ".................../.................../.................../.................../.................../.................../.........BB......../........BBBB......./.......BBBBBB....../......BBBBBBBB...../.....BBBBBBBBB...../.....BeeBBeeBBB..../.....BeeBBeeBBB..../.....BBBBBBBBB...../......BBBBBBB....../.......BBBBB......./......B.BBB......../.....B............./..................."
+        ],
+        [
+          0,
+          120,
+          100,
+          "o",
+          ".................../.................../.................../.................../.................../.................../.........BB......../........BBBB......./.......BBBBBB....../......BBBBBBBB...../.....BBBBBBBBB...../.....BBBBBBBBBB..../.....BeeBBeeBBB..../.....BBBBBBBBB...../......BBBBBBB....../.......BBBBB......./......B.BBB......../.....B............./..................."
+        ]
+      ],
+      "Pensando": [
+        [
+          0,
+          450,
+          150,
+          "o",
+          ".................../.................../.................../.................../.................../.............B...../.........BB......../........BBBB......./.......BBBBBB....../......BBBBBBBB...../.....BeeBBeeBB...../.....BeeBBeeBBB..../.....BBBBBBBBBB..../.....BBBBBBBBB...../......BBBBBBB....../.......BBBBB......./......B.BBB......../.....B............./..................."
+        ],
+        [
+          0,
+          450,
+          150,
+          "o",
+          ".................../.................../.................../..............B..../.................../.............B...../.........BB......../........BBBB......./.......BBBBBB....../......BBBBBBBB...../.....BeeBBeeBB...../.....BeeBBeeBBB..../.....BBBBBBBBBB..../.....BBBBBBBBB...../......BBBBBBB....../.......BBBBB......./......B.BBB......../.....B............./..................."
+        ],
+        [
+          0,
+          450,
+          150,
+          "o",
+          ".................../................BB./................BB./..............B..../.................../.............B...../.........BB......../........BBBB......./.......BBBBBB....../......BBBBBBBB...../.....BeeBBeeBB...../.....BeeBBeeBBB..../.....BBBBBBBBBB..../.....BBBBBBBBB...../......BBBBBBB....../.......BBBBB......./......B.BBB......../.....B............./..................."
+        ]
+      ],
+      "Trabalhando": [
+        [
+          0,
+          500,
+          0,
+          "n",
+          ".................../............aaaaaa./............awaaaa./............aawaaa./............awawwa./............aaaaaa./.........BB......../........BBBB......./.......BBBBBB....../......BBBBBBBB...../.....BBBBBBBBB...../.....BBBBBBBBBB..../.....BeeBBeeBBB..../.....BBBBBBBBB...../......BBBBBBB....../.......BBBBB......./......B.BBB......../.....B............./..................."
+        ],
+        [
+          0,
+          500,
+          0,
+          "n",
+          ".................../............aaaaaa./............awaaaa./............aawaaa./............awaaaa./............aaaaaa./.........BB......../........BBBB......./.......BBBBBB....../......BBBBBBBB...../.....BBBBBBBBB...../.....BBBBBBBBBB..../.....BeeBBeeBBB..../.....BBBBBBBBB...../......BBBBBBB....../.......BBBBB......./......B.BBB......../.....B............./..................."
+        ]
+      ],
+      "Com dúvida": [
+        [
+          0,
+          900,
+          600,
+          "io",
+          ".................../..............aaa../................a../...............a.../.................../...............a.../.........BB......../........BBBB......./.......BBBBBB....../......BBBBBBBB...../.....BBBBBBBBB...../.....BeeBBBBBBB..../.....BeeBBeeBBB..../.....BBBBBBBBB...../......BBBBBBB....../.......BBBBB......./......B.BBB......../.....B............./..................."
+        ],
+        [
+          -4,
+          900,
+          600,
+          "io",
+          ".................../..............aaa../................a../...............a.../.................../...............a.../.........BB......../........BBBB......./.......BBBBBB....../......BBBBBBBB...../.....BBBBBBBBB...../.....BeeBBBBBBB..../.....BeeBBeeBBB..../.....BBBBBBBBB...../......BBBBBBB....../.......BBBBB......./......B.BBB......../.....B............./..................."
+        ]
+      ],
+      "Pedindo permissão": [
+        [
+          0,
+          900,
+          600,
+          "io",
+          ".................../..............aaa../.............aawaa./.............aawaa./.............aaaaa./..............awa../.........BB......../........BBBB......./.......BBBBBB....../......BBBBBBBB...../.....BBBBBBBBB...../.....BeeBBeeBBB..../.....BeeBBeeBBB..../.....BBBBBBBBB...../......BBBBBBB....../.......BBBBB......./......B.BBB......../.....B............./..................."
+        ],
+        [
+          -4,
+          900,
+          600,
+          "io",
+          ".................../..............aaa../.............aawaa./.............aawaa./.............aaaaa./..............awa../.........BB......../........BBBB......./.......BBBBBB....../......BBBBBBBB...../.....BBBBBBBBB...../.....BeeBBeeBBB..../.....BeeBBeeBBB..../.....BBBBBBBBB...../......BBBBBBB....../.......BBBBB......./......B.BBB......../.....B............./..................."
+        ]
+      ],
+      "Concluiu": [
+        [
+          0,
+          900,
+          600,
+          "io",
+          ".................../.................a./................aa./.............a.aa../.............aaa.../..............a..../.........BB......../........BBBB......./.......BBBBBB....../......BBBBBBBB...../.....BBBBBBBBB...../.....BeBBBBeBBB..../.....eBeBBeBeBB..../.....BBBBBBBBB...../......BBBBBBB....../.......BBBBB......./......B.BBB......../.....B............./..................."
+        ],
+        [
+          -4,
+          900,
+          600,
+          "io",
+          ".................../.................a./................aa./.............a.aa../.............aaa.../..............a..../.........BB......../........BBBB......./.......BBBBBB....../......BBBBBBBB...../.....BBBBBBBBB...../.....BeBBBBeBBB..../.....eBeBBeBeBB..../.....BBBBBBBBB...../......BBBBBBB....../.......BBBBB......./......B.BBB......../.....B............./..................."
+        ]
+      ],
+      "Levou bronca": [
+        [
+          0,
+          900,
+          600,
+          "io",
+          ".................../.................../.................../.................../.................../................a../.........BB.....a../........BBBB...aaa./.......BBBBBB..aaa./......BBBBBBBB..a../.....BBBBBBBBB...../.....BBeBBeBBBB..../.....BeBBBBeBBB..../.....BBBBBBBBB...../......BBBBBBB....../.......BBBBB......./......B.BBB......../.....B............./..................."
+        ],
+        [
+          -4,
+          900,
+          600,
+          "io",
+          ".................../.................../.................../.................../.................../................a../.........BB.....a../........BBBB...aaa./.......BBBBBB..aaa./......BBBBBBBB..a../.....BBBBBBBBB...../.....BBeBBeBBBB..../.....BeBBBBeBBB..../.....BBBBBBBBB...../......BBBBBBB....../.......BBBBB......./......B.BBB......../.....B............./..................."
+        ]
+      ],
+      "Falhou": [
+        [
+          0,
+          900,
+          600,
+          "io",
+          ".................../..............aaa../.............awawa./.............aawaa./.............awawa./..............aaa../.........BB......../........BBBB......./.......BBBBBB....../......BBBBBBBB...../.....eBeBBeBeB...../.....BeBBBBeBBB..../.....eBeBBeBeBB..../.....BBBBBBBBB...../......BBBBBBB....../.......BBBBB......./......B.BBB......../.....B............./..................."
+        ],
+        [
+          -4,
+          900,
+          600,
+          "io",
+          ".................../..............aaa../.............awawa./.............aawaa./.............awawa./..............aaa../.........BB......../........BBBB......./.......BBBBBB....../......BBBBBBBB...../.....eBeBBeBeB...../.....BeBBBBeBBB..../.....eBeBBeBeBB..../.....BBBBBBBBB...../......BBBBBBB....../.......BBBBB......./......B.BBB......../.....B............./..................."
+        ]
+      ],
+      "Pausado": [
+        [
+          0,
+          1400,
+          900,
+          "io",
+          ".................../.............aa.aa./.............aa.aa./.............aa.aa./.............aa.aa./.............aa.aa./.........BB......../........BBBB......./.......BBBBBB....../......BBBBBBBB...../.....BBBBBBBBB...../.....BBBBBBBBBB..../.....BEEBBEEBBB..../.....BBBBBBBBB...../......BBBBBBB....../.......BBBBB......./......B.BBB......../.....B............./..................."
+        ],
+        [
+          -4,
+          1400,
+          900,
+          "io",
+          ".................../.............aa.aa./.............aa.aa./.............aa.aa./.............aa.aa./.............aa.aa./.........BB......../........BBBB......./.......BBBBBB....../......BBBBBBBB...../.....BBBBBBBBB...../.....BBBBBBBBBB..../.....BEEBBEEBBB..../.....BBBBBBBBB...../......BBBBBBB....../.......BBBBB......./......B.BBB......../.....B............./..................."
+        ]
+      ],
+      "Teve uma ideia": [
+        [
+          0,
+          400,
+          150,
+          "o",
+          ".................../.......l.ll.l....../........llll......./........llll......./.........ll......../.........aa......../.........BB......../........BBBB......./.......BBBBBB....../......BBBBBBBB...../.....BeeBBeeBB...../.....BeeBBeeBBB..../.....BeeBBeeBBB..../.....BBBBBBBBB...../......BBBBBBB....../.......BBBBB......./......B.BBB......../.....B............./..................."
+        ],
+        [
+          0,
+          400,
+          150,
+          "o",
+          ".................../.........gg......../........gggg......./........gggg......./.........gg......../.........aa......../.........BB......../........BBBB......./.......BBBBBB....../......BBBBBBBB...../.....BeeBBeeBB...../.....BeeBBeeBBB..../.....BeeBBeeBBB..../.....BBBBBBBBB...../......BBBBBBB....../.......BBBBB......./......B.BBB......../.....B............./..................."
+        ]
+      ]
+    }
+  }
+}

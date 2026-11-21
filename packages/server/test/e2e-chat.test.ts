@@ -600,6 +600,23 @@ describe.skipIf(!DATABASE_URL)(
       });
       const plain = await api.bots.create({ name: "Simples", modelId: "model-x" });
       expect(plain).toMatchObject({ color: null, groupName: null, pinned: false, sortOrder: null });
+      // The avatar style: old bots (and bots created without one) stay on the shapes.
+      expect(plain.avatarStyle).toBe("shapes");
+      expect(bot.avatarStyle).toBe("shapes");
+      const pixel = await api.bots.create({
+        name: "Pixelado",
+        modelId: "model-x",
+        avatar: "mascot:gato",
+        avatarStyle: "pixel",
+      });
+      expect(pixel).toMatchObject({ avatar: "mascot:gato", avatarStyle: "pixel" });
+      expect(await api.bots.update(pixel.id, { avatarStyle: "shapes" })).toMatchObject({
+        avatarStyle: "shapes",
+      });
+      expect(await api.bots.update(pixel.id, { avatarStyle: "pixel" })).toMatchObject({
+        avatarStyle: "pixel",
+        avatar: "mascot:gato",
+      });
 
       const moved = await api.bots.update(bot.id, {
         pinned: false,
@@ -624,6 +641,9 @@ describe.skipIf(!DATABASE_URL)(
       expect(
         await code(api.bots.update(bot.id, { color: "red; background:url(x)" as never })),
       ).toBe("invalid_request");
+      expect(await code(api.bots.update(bot.id, { avatarStyle: "neon" as never }))).toBe(
+        "invalid_request",
+      );
       expect(await code(api.bots.update(bot.id, { groupName: "   " }))).toBe("invalid_request");
       expect(await code(api.bots.update(bot.id, { groupName: "x".repeat(61) }))).toBe(
         "invalid_request",

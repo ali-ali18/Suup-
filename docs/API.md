@@ -106,7 +106,7 @@ As ferramentas que se pode liberar a um bot. `200 { "items": [ToolInfo], "contro
 |---|---|---|
 | `GET /v1/bots?includeArchived=true` | | `200 { items: [Bot] }`, o mais novo primeiro |
 | `GET /v1/bots/{id}` | | `200 Bot`; `404` |
-| `POST /v1/bots` | `{ name, modelId, description?, personality?, allowedTools?, limits?, avatar?, pinned?, groupName?, sortOrder?, color? }` | `201 Bot`; `400` (modelo ou ferramenta que não existem, nome vazio, cor fora da paleta, grupo vazio ou com mais de 60 caracteres) |
+| `POST /v1/bots` | `{ name, modelId, description?, personality?, allowedTools?, limits?, avatar?, pinned?, groupName?, sortOrder?, color?, avatarStyle? }` | `201 Bot`; `400` (modelo ou ferramenta que não existem, nome vazio, cor fora da paleta, estilo que não é `shapes` nem `pixel`, grupo vazio ou com mais de 60 caracteres) |
 | `PATCH /v1/bots/{id}` | qualquer subconjunto dos campos acima, pelo menos um (é por aqui que o app fixa, agrupa e pinta: `{ pinned }`, `{ groupName }`, `{ color }`; `null` limpa `groupName`, `sortOrder` e `color`) | `200 Bot`; `400`, `404` |
 | `POST /v1/bots/{id}/archive` | | `200 Bot` (idempotente); `404` |
 | `POST /v1/bots/{id}/default` | | `200 Bot`; `404`; `409` se estiver arquivado |

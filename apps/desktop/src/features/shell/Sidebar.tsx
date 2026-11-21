@@ -124,6 +124,7 @@ function BotEntry({
         <span className="relative inline-flex flex-none">
           <Avatar
             avatar={bot.avatar}
+            avatarStyle={bot.avatarStyle}
             color={bot.color}
             seed={bot.id}
             size={size}

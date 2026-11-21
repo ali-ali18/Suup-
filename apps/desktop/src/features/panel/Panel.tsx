@@ -39,7 +39,13 @@ export function Panel({ botId }: { botId: string }) {
         >
           <X size={18} aria-hidden="true" />
         </RoundButton>
-        <Avatar avatar={bot.avatar} color={bot.color} seed={bot.id} size="xl" />
+        <Avatar
+          avatar={bot.avatar}
+          avatarStyle={bot.avatarStyle}
+          color={bot.color}
+          seed={bot.id}
+          size="xl"
+        />
         <h2 className="text-title font-label">{bot.name}</h2>
         <Tabs
           tabs={TABS}

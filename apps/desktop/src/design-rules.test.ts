@@ -730,3 +730,35 @@ describe("docs/DESIGN.md is the standard, and everyone is pointed to it", () => 
     }
   });
 });
+
+describe("avatares: dois estilos, desenhados só pelo motor (docs/DESIGN.md, Mascotes)", () => {
+  it("o mascote pixel só é montado por `ui/avatar.tsx` e pelo seletor do bot", () => {
+    const users = files(SRC, /\.tsx$/)
+      .filter((f) => !f.endsWith("pixel-mascot.tsx") && read(f).includes("<PixelMascot"))
+      .map(rel)
+      .sort();
+    expect(users).toEqual(["features/new-bot/NewBotDialog.tsx", "ui/avatar.tsx"]);
+  });
+
+  it("o pixel é desenhado em escala inteira, sem suavização, e movido pelo relógio compartilhado", () => {
+    const code = read(join(SRC, "ui", "pixel-mascot.tsx"));
+    expect(code).toContain("layoutPixels(");
+    expect(code).toContain("devicePixelRatio");
+    expect(code).toContain('imageRendering: "pixelated"');
+    expect(code).toContain("getPixelClock()");
+    // nenhum laço próprio: nem rAF nem timer por avatar
+    expect(code).not.toContain("requestAnimationFrame");
+    expect(code).not.toContain("setInterval");
+  });
+
+  it("o estilo vem do bot (`avatarStyle`) em toda tela que desenha o avatar de um bot", () => {
+    for (const file of [
+      "features/shell/Sidebar.tsx",
+      "features/chat/ChatScreen.tsx",
+      "features/panel/Panel.tsx",
+      "features/palette/CommandPalette.tsx",
+      "features/pending/PendingScreen.tsx",
+    ])
+      expect(read(join(SRC, file)), file).toContain("avatarStyle={bot.avatarStyle}");
+  });
+});

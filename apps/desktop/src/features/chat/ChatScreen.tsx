@@ -14,7 +14,7 @@ import {
 } from "../../data/reducers.js";
 import { secretRequestsOf } from "../../data/secret-requests.js";
 import { cx } from "../../lib/cx.js";
-import { colorVars, effectiveColor } from "../../lib/mascots.js";
+import { colorVars, themeColor } from "../../lib/mascots.js";
 import { Avatar } from "../../ui/avatar.js";
 import { BotTitle } from "../../ui/bot-title.js";
 import { EventLineButton } from "../../ui/chat-lines.js";
@@ -187,7 +187,7 @@ function ChatForBot({ botId }: { botId: string }) {
   );
   const phrase =
     active === undefined ? "Pensando" : workingPhrase(active, actions, planOf(active, events));
-  const color = bot === undefined ? "cinza" : effectiveColor(bot.color, bot.id);
+  const color = bot === undefined ? "cinza" : themeColor(bot, bot.id);
 
   const send = useCallback(
     async (text: string) => {
@@ -263,6 +263,7 @@ function ChatForBot({ botId }: { botId: string }) {
           >
             <Avatar
               avatar={bot.avatar}
+              avatarStyle={bot.avatarStyle}
               color={bot.color}
               seed={bot.id}
               size="sm"

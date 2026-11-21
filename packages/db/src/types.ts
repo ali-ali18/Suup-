@@ -64,6 +64,8 @@ export interface Bot {
   sortOrder?: number | null;
   /** An id of the palette of `@suup/api` (the server validates it); `null` for the mascot's own. */
   color?: string | null;
+  /** `shapes` or `pixel`: the family of mascots `avatar` names. (Optional like `avatar`.) */
+  avatarStyle?: "shapes" | "pixel";
   createdAt: Date;
   updatedAt: Date;
   archivedAt: Date | null;
