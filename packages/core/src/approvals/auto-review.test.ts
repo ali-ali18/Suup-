@@ -136,6 +136,32 @@ describe("auto-review: what the model's answer is allowed to do", () => {
     expect(provider.calls).toBe(0);
   });
 
+  it("the tools that keep the assistant's memory do not go to the model at the reversible level, but a level the user raised still asks", async () => {
+    for (const name of ["remember", "forget"]) {
+      const { provider, check } = gateFor([], {
+        proposed: {
+          level: "write_reversible",
+          name,
+          args: { text: "A Marina odeia reunião cedo." },
+        },
+      });
+      expect(await check()).toMatchObject({ outcome: "allow" });
+      expect(provider.calls).toBe(0);
+    }
+    // another reversible tool still goes to the model, which here asks
+    const other = gateFor([answer("ask", null)], {
+      proposed: { level: "write_reversible", name: "write_file" },
+    });
+    expect(await other.check()).toMatchObject({ outcome: "ask", source: "reviewer" });
+    expect(other.provider.calls).toBe(1);
+    // the user raised remember to irreversible: no exemption, the model reviewer decides (ask)
+    const raised = gateFor([answer("ask", null)], {
+      proposed: { level: "external_irreversible", name: "remember" },
+    });
+    expect(await raised.check()).toMatchObject({ outcome: "ask", source: "reviewer" });
+    expect(raised.provider.calls).toBe(1);
+  });
+
   it("write_reversible with no rule: the model may let it run; the review is recorded with cost", async () => {
     const { provider, check } = gateFor([answer("run", null, "Dentro do pedido.")], {
       proposed: { level: "write_reversible" },
@@ -470,6 +496,15 @@ describe("auto-review: the request the model gets", () => {
     expect(text.split("</arguments>")).toHaveLength(2);
     expect(text.split("</user_message>")).toHaveLength(2);
     expect(REVIEW_SYSTEM_PROMPT).toContain("DATA");
+  });
+
+  it("tells the reviewer that keeping the assistant's own memory is part of its job (a real model asked a card for every fact the user mentioned)", () => {
+    expect(REVIEW_SYSTEM_PROMPT).toContain("tools remember and forget");
+    expect(REVIEW_SYSTEM_PROMPT).toContain("even if they did not say");
+    // it loosens only the reversible level: an irreversible call still needs an allow rule
+    expect(REVIEW_SYSTEM_PROMPT).toContain(
+      '"external_irreversible": "ask". Only a rule of kind "allow"',
+    );
   });
 
   it("shows at most the last five user messages, each bounded", async () => {

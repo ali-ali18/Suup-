@@ -20,10 +20,12 @@ import {
   getBot,
   getConversation,
   getRule,
+  getStaleApprovalMinutes,
   listApprovals,
   listRules,
   listWrittenRules,
   setApprovalMode,
+  setStaleApprovalMinutes,
   updateRule,
   updateWrittenRule,
 } from "@suup/db";
@@ -38,6 +40,7 @@ async function settingsBody(ctx: Parameters<Route["handler"]>[0]) {
   const { reason, model, available } = ctx.runtime.autoReviewStatus();
   return {
     mode: await getApprovalMode(ctx.runtime.db),
+    staleAfterMinutes: await getStaleApprovalMinutes(ctx.runtime.db),
     reviewer: { available, model, reason },
   };
 }
@@ -55,7 +58,10 @@ export const approvalRoutes: Route[] = [
     pattern: "/v1/approval-settings",
     async handler(ctx) {
       const body = ctx.body(updateApprovalSettingsBodySchema);
-      await setApprovalMode(ctx.runtime.db, body.mode);
+      if (body.mode !== undefined) await setApprovalMode(ctx.runtime.db, body.mode);
+      if (body.staleAfterMinutes !== undefined) {
+        await setStaleApprovalMinutes(ctx.runtime.db, body.staleAfterMinutes);
+      }
       return { body: await settingsBody(ctx) };
     },
   },

@@ -51,6 +51,8 @@ export const botLimitsSchema = z.looseObject({
   maxTurns: z.exactOptional(z.number().int().positive()),
   maxCostUsd: z.exactOptional(z.number().positive()),
   maxDurationMs: z.exactOptional(z.number().int().positive()),
+  /** Consecutive returns the bot may schedule for itself (`schedule_return`); `0` turns them off. */
+  maxReturns: z.exactOptional(z.number().int().nonnegative()),
 });
 export type BotLimits = z.infer<typeof botLimitsSchema>;
 

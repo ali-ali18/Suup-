@@ -107,6 +107,7 @@ Limites usados quando o bot não define os próprios (`suup bot create --max-tur
 | `maxTurns` | 50 | Chamadas ao modelo por execução |
 | `maxCostUsd` | sem limite | Custo máximo por execução, em dólares |
 | `maxDurationMs` | sem limite | Duração máxima por execução, em milissegundos |
+| `maxReturns` | 6 | Quantos retornos seguidos o bot pode marcar para si na mesma execução (`schedule_return`); `0` desliga ([RETORNO.md](RETORNO.md)). Também pode ser definido por bot em `limits.maxReturns` |
 | `historyChars` | 12000 | Quanto da conversa anterior (em caracteres, só mensagens inteiras, das mais novas para as mais antigas) uma execução recebe como histórico. As mais antigas ficam de fora e o bot é avisado de que pode buscá-las com `search_conversations` |
 
 Passar de um limite termina a execução como `failed` com origem `limit`.
@@ -119,6 +120,7 @@ Como as ações dos bots pedem o seu OK ([APROVACOES.md](APROVACOES.md)). Sem es
 |---|---|---|
 | `levels` | nenhum | Fixa o nível de risco de uma ferramenta, por cima do que ela declara: `{ "shell": "external_irreversible" }` faz todo comando perguntar, mesmo na máquina isolada; `{ "shell": "write_reversible" }` libera o shell mesmo na máquina `local`. Valores: `read`, `write_reversible`, `external_irreversible` |
 | `expireAfterMinutes` | nunca | Um cartão que ninguém decidiu em tanto tempo vira `expired`: o bot é avisado e segue. Sem o campo, **nada expira em silêncio** |
+| (não é do arquivo) `staleAfterMinutes` | 60 | **Não fica na configuração**: é uma configuração do servidor, como o modo, em Configurações > Permissões, `suup approvals stale [minutos]` e `PATCH /v1/approval-settings`. De 5 minutos a 1 semana. Aprovar um cartão que esperou mais que isto não executa a ação na hora (o bot a confere e pede de novo); não expira nada. Veja [APROVACOES.md](APROVACOES.md) |
 | `autoReview.model` | o de `reviewer` | O modelo que revisa cada chamada no modo **Auto-review**, lendo as regras que o usuário escreveu ([APROVACOES.md](APROVACOES.md)): um `id` de `models`, de preferência o barato e rápido. **Ausente: o modelo de `reviewer`**; sem nenhum dos dois, o Auto-review só aplica a tabela de níveis e a API (`GET /v1/approval-settings`) e `suup approvals mode` dizem isso. A chave vem do provedor do modelo (`apiKeyEnv`), nunca daqui |
 | `autoReview.enabled` | `true` | `false` desliga o revisor por modelo nesta configuração (o Auto-review volta à tabela de níveis, e a API diz por quê). Serve para testes e para quem não quer uma chamada ao modelo por ação |
 
@@ -136,7 +138,7 @@ Com a máquina `local` (sem isolamento) o `shell` pergunta a cada comando; para 
 
 ### `memory` (opcional)
 
-Só o que **não** é do usuário mudar pelo app ([MEMORIA.md](MEMORIA.md)): qual modelo faz a consolidação da memória em segundo plano. O resto (quando roda, o teto do prompt, a expiração, o ponto da compactação) são escolhas do usuário, guardadas no servidor: `suup memory settings`, `GET`/`PATCH /v1/memory-settings`.
+Só o que **não** é do usuário mudar pelo app ([MEMORIA.md](MEMORIA.md)): qual modelo faz a consolidação da memória em segundo plano. O resto (quando roda, o limite de memórias do prompt (padrão 200, mais o teto fixo de 25 000 caracteres), a expiração, o ponto da compactação) são escolhas do usuário, guardadas no servidor: `suup memory settings`, `GET`/`PATCH /v1/memory-settings`.
 
 | Campo | Padrão | Significado |
 |---|---|---|

@@ -703,6 +703,24 @@ describe("the settings dialog: a modal with a left nav, groups of simple rows, n
   });
 });
 
+describe("o retorno interno do bot não tem marcador próprio na interface (docs/DESIGN.md, Princípios)", () => {
+  it("a chamada de `schedule_return` não vira cartão, e nenhuma tela do chat desenha o estado de espera", () => {
+    expect(read(join(SRC, "data", "derive.ts"))).toContain('"schedule_return"');
+    // O estado `waiting_timer` só é lido onde decide o que NÃO se desenha (avatar calmo, chip vazio, a
+    // execução ainda é a ativa para poder ser cancelada) e no inspetor, que é diagnóstico.
+    const readers = files(SRC, /\.tsx?$/)
+      .filter((f) => read(f).includes("waiting_timer"))
+      .map(rel)
+      .sort();
+    expect(readers).toEqual([
+      "data/derive.ts",
+      "features/chat/ChatScreen.tsx",
+      "features/inspector/InspectorScreen.tsx",
+      "lib/avatar-state.ts",
+    ]);
+  });
+});
+
 describe("docs/DESIGN.md is the standard, and everyone is pointed to it", () => {
   const root = join(SRC, "..", "..", "..");
   it("exists and is referenced by the desktop README, FRONTEND.md and CLAUDE.md", () => {

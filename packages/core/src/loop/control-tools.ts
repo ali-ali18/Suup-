@@ -22,6 +22,7 @@ export const CONTROL_TOOL_NAMES = [
   "finish",
   "escalate",
   "request_secret",
+  "schedule_return",
   "search_tools",
   "use_tool",
 ] as const;
@@ -73,6 +74,36 @@ export const REQUEST_SECRET_DESCRIPTION = `Ask the user for a credential you nee
 To USE a secret, write the placeholder \`{{secret:NAME}}\` where the value belongs, in a field of a tool that accepts it (for example inside a shell command or a request header). The harness puts the real value in at the moment of the action. Never try to read, print, store or repeat a secret value. A call that uses a secret may need the user's approval.
 
 Arguments: \`name\` (capital letters, digits and underscores, e.g. GITHUB_TOKEN) and \`reason\` (one sentence the user reads: what it is for). Call it ALONE in its turn; the run pauses until the user answers.`;
+
+/** Largest wait a return may ask for, in minutes; anything longer is a routine, which the user sees. */
+export const MAX_RETURN_MINUTES = 60;
+/** Longest note a return may carry, in characters. */
+export const MAX_RETURN_NOTE_CHARS = 500;
+/** Consecutive returns one run may have, unless `limits.maxReturns` says otherwise. */
+export const DEFAULT_MAX_RETURNS = 6;
+
+export const SCHEDULE_RETURN_DESCRIPTION = `Agenda um retorno seu, sozinho, daqui a alguns minutos, na mesma conversa. Use quando você disparou algo que demora (um deploy, um pipeline de CI, um build, uma migração, uma fila) e o resultado só existe depois de um tempo: em vez de ficar em laço de espera, agende e termine o turno. Não use para esperar a resposta do usuário (para isso há \`escalate\`) nem para tarefas que se repetem (isso é uma rotina, que o usuário cria).
+
+Argumentos:
+- \`inMinutes\`: inteiro de 1 a ${MAX_RETURN_MINUTES}. Se o que você espera demora mais que isso, agende ${MAX_RETURN_MINUTES} e, ao voltar, confira e agende de novo.
+- \`note\`: até ${MAX_RETURN_NOTE_CHARS} caracteres, escrita por você para você mesmo: o que conferir quando voltar e o que fazer com o resultado. É a única coisa que você recebe ao voltar além do plano, então inclua o que for preciso (ids, comandos, endereços).
+
+Como funciona: depois desta chamada, escreva ao usuário, em texto, uma mensagem curta dizendo o que você deixou rodando, quando você volta e o que vai conferir (é assim que ele fica sabendo; não há aviso nenhum além da sua mensagem). Não chame outras ferramentas depois disso: o turno termina com a sua mensagem e a execução fica parada, sem custo, até a hora. Ao voltar você retoma a mesma execução, com o mesmo plano e o mesmo histórico, e recebe a sua nota. Se o usuário escrever antes da hora, o retorno é cancelado e você responde a ele; se ainda precisar conferir depois, agende de novo.
+
+Limites: um retorno pendente por vez (uma nova chamada substitui a anterior) e no máximo ${DEFAULT_MAX_RETURNS} retornos seguidos; passado isso, termine o trabalho ou pergunte ao usuário. Os limites de turnos e de custo da execução continuam valendo através dos retornos. Uma ação que pede aprovação continua pedindo depois que você volta.`;
+
+export const scheduleReturnInputSchema = z.object({
+  inMinutes: z
+    .number()
+    .int()
+    .min(1)
+    .max(MAX_RETURN_MINUTES)
+    .describe(`Minutos até voltar, inteiro de 1 a ${MAX_RETURN_MINUTES}.`),
+  note: z
+    .string()
+    .max(MAX_RETURN_NOTE_CHARS)
+    .describe(`O que conferir ao voltar (até ${MAX_RETURN_NOTE_CHARS} caracteres).`),
+});
 
 export const requestSecretInputSchema = z.object({
   name: z.string().describe("The secret's name, e.g. GITHUB_TOKEN."),
@@ -343,10 +374,15 @@ function toolSpec(name: string, description: string, schema: z.ZodType): ToolSpe
 
 /**
  * The specs of the control tools, in the order the model sees them. `request_secret` is offered
- * only to a run that has a vault.
+ * only to a run that has a vault, `schedule_return` only to a run that may come back by itself.
  */
 export function controlToolSpecs(
-  options: { secrets?: boolean; toolSearch?: ToolSearchMode | undefined } = {},
+  options: {
+    secrets?: boolean;
+    /** The run may come back by itself (a conversation run): see `schedule_return`. */
+    scheduleReturn?: boolean;
+    toolSearch?: ToolSearchMode | undefined;
+  } = {},
 ): ToolSpec[] {
   return [
     toolSpec("plan", PLAN_DESCRIPTION, planInputSchema),
@@ -354,6 +390,9 @@ export function controlToolSpecs(
     toolSpec("escalate", ESCALATE_DESCRIPTION, escalateInputSchema),
     ...(options.secrets === true
       ? [toolSpec("request_secret", REQUEST_SECRET_DESCRIPTION, requestSecretInputSchema)]
+      : []),
+    ...(options.scheduleReturn === true
+      ? [toolSpec("schedule_return", SCHEDULE_RETURN_DESCRIPTION, scheduleReturnInputSchema)]
       : []),
     ...toolSearchControlSpecs(options.toolSearch),
   ];

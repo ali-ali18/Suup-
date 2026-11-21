@@ -370,8 +370,8 @@ export const memorySettings: CommandSpec = {
     },
     "prompt-limit": {
       type: "string",
-      value: "caracteres",
-      help: "Teto do que entra em todo prompt: regras e perfil ativos (1000 a 50000)",
+      value: "memórias",
+      help: "Quantas memórias (regras e perfil ativos) entram em todo prompt (20 a 1000; padrão 200)",
     },
     "expiry-days": {
       type: "string",
@@ -414,7 +414,7 @@ export const memorySettings: CommandSpec = {
     if (turns !== undefined) consolidation.maxTurns = turns;
     if (Object.keys(consolidation).length > 0) patch.consolidation = consolidation;
     const limit = number("prompt-limit", "deve ser um número.");
-    if (limit !== undefined) patch.promptLimitChars = limit;
+    if (limit !== undefined) patch.promptLimitItems = limit;
     const expiryRaw = str(ctx.args, "expiry-days");
     if (expiryRaw !== undefined) {
       patch.expiryDays =
@@ -445,9 +445,9 @@ export const memorySettings: CommandSpec = {
         ...(checked.data.consolidation?.maxTurns === undefined
           ? {}
           : { maxTurns: checked.data.consolidation.maxTurns }),
-        ...(checked.data.promptLimitChars === undefined
+        ...(checked.data.promptLimitItems === undefined
           ? {}
-          : { promptLimitChars: checked.data.promptLimitChars }),
+          : { promptLimitItems: checked.data.promptLimitItems }),
         ...(checked.data.expiryDays === undefined ? {} : { expiryDays: checked.data.expiryDays }),
         ...(checked.data.compactionThreshold === undefined
           ? {}
@@ -456,7 +456,7 @@ export const memorySettings: CommandSpec = {
     }
     const s = await getMemorySettings(db);
     const status = ctx.runtime().memoryReviewerStatus();
-    const usage = await memoryPromptUsage(db, s.promptLimitChars);
+    const usage = await memoryPromptUsage(db, s.promptLimitItems);
     if (ctx.json) {
       ctx.out.data({
         consolidation: {
@@ -464,12 +464,14 @@ export const memorySettings: CommandSpec = {
           idleMinutes: s.idleMinutes,
           maxTurns: s.maxTurns,
         },
-        promptLimitChars: s.promptLimitChars,
+        promptLimitItems: s.promptLimitItems,
         expiryDays: s.expiryDays,
         compactionThreshold: s.compactionThreshold,
         reviewer: { available: status.available, model: status.model, reason: status.reason },
         promptUsage: {
-          limitChars: usage.limitChars,
+          limitItems: usage.limitItems,
+          ceilingChars: usage.ceilingChars,
+          sharedItems: usage.sharedItems,
           sharedChars: usage.sharedChars,
           overLimit: usage.overBots,
         },
@@ -483,7 +485,7 @@ export const memorySettings: CommandSpec = {
       `  roda quando a conversa fica ${s.idleMinutes} min em silêncio, ou com ${s.maxTurns} mensagens suas novas, ou antes de compactar o histórico`,
     );
     ctx.out.line(
-      `Limite do que entra em todo prompt (regras e perfil ativos): ${s.promptLimitChars} caracteres`,
+      `Limite do que entra em todo prompt (regras e perfil ativos): ${s.promptLimitItems} memórias (e no máximo ${usage.ceilingChars} caracteres)`,
     );
     ctx.out.line(
       `Expiração de notas e diário sem uso: ${s.expiryDays === null ? "nunca" : `${s.expiryDays} dias`}`,
@@ -499,7 +501,7 @@ export const memorySettings: CommandSpec = {
     if (usage.overBots.length > 0) {
       ctx.out.line("");
       ctx.out.line(
-        `Aviso: regras e perfil ativos passam do limite (${usage.limitChars}) para: ${usage.overBots.map((b) => `${b.name} (${b.usedChars})`).join(", ")}.`,
+        `Aviso: regras e perfil ativos passam do limite (${usage.limitItems} memórias ou ${usage.ceilingChars} caracteres) para: ${usage.overBots.map((b) => `${b.name} (${b.usedItems} memórias, ${b.usedChars} caracteres)`).join(", ")}.`,
       );
       ctx.out.line(
         "O que não cabe fica de fora do prompt, na ordem de criação. Apague ou encurte algumas (suup memory forget/edit) ou aumente o limite.",

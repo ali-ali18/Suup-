@@ -2,6 +2,7 @@ import { GLOBAL_OPTIONS, type OptionSpec, parseCommandArgs } from "./args.js";
 import {
   approvalsCommand,
   approvalsMode,
+  approvalsStale,
   approveCommand,
   denyCommand,
 } from "./commands/approvals.js";
@@ -100,6 +101,7 @@ export const COMMANDS: readonly CommandSpec[] = [
   memorySettings,
   approvalsCommand,
   approvalsMode,
+  approvalsStale,
   approveCommand,
   denyCommand,
   rulesList,

@@ -156,6 +156,45 @@ test.describe("approval cards", () => {
     await expect(row(page)).toContainText("Aprovado e concluído · Escrever aprovado.txt");
   });
 
+  test("approved after the card waited for hours: the row says so, the bot resumes the old task and asks again, and the identical call needs no second card", async ({
+    page,
+  }) => {
+    await openWithBot(page, world, "Retardatario");
+    await send(page, "CASE-STALE escreva o arquivo");
+    await expect(card(page)).toHaveAttribute("data-state", "needs-action");
+    // The card has been waiting for 5 hours (the limit is 1 hour): forced in the database.
+    const [pending] = await world.api.approvals.list({
+      botId: await botId(world, "Retardatario"),
+      status: "pending",
+    });
+    await world.db
+      .sql`update approvals set created_at = now() - interval '5 hours' where id = ${pending?.id as string}`;
+    expect(await card(page).getByRole("button").allTextContents()).toEqual(["Recusar", "Aprovar"]);
+    await card(page).getByTestId("approval-approve").click();
+    await expect(botMessage(page, "Escrevi o arquivo tardio.")).toBeVisible();
+    // One card only: the second, identical call ran on the grant. The first row is the old card.
+    await expect(card(page)).toHaveCount(0);
+    await expect(row(page)).toHaveCount(2);
+    await expect(row(page).first()).toContainText("Aprovado depois de 5 h · Escrever tardio.txt");
+    await expect(row(page).first().getByRole("button")).toHaveCount(1);
+    await expect(row(page).last()).toContainText("Escrever tardio.txt");
+    await expect(row(page).last()).not.toContainText("Aprovado");
+    await row(page).first().getByRole("button").click();
+    await expect(row(page).first().getByTestId("approval-detail")).toContainText(
+      "Você aprovou depois de 5 h: a ação não rodou na hora",
+    );
+    const approvals = await world.api.approvals.list({ botId: pending?.botId as string });
+    expect(approvals).toHaveLength(1);
+    expect(approvals[0]).toMatchObject({ status: "approved", stale: true });
+    const events = (await world.api.runs.events(pending?.runId as string, { limit: 500 })).items;
+    expect(events.filter((e) => e.type === "approval_stale")).toHaveLength(1);
+    expect(events.filter((e) => e.type === "approval_grant_used")).toHaveLength(1);
+    // After a reload the row is the same, read from the server.
+    await page.reload();
+    await botItem(page, "Retardatario").click();
+    await expect(row(page).first()).toContainText("Aprovado depois de 5 h · Escrever tardio.txt");
+  });
+
   test("deny is one click, with no reason field: the bot is told, goes on and says so", async ({
     page,
   }) => {

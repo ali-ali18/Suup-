@@ -5,9 +5,13 @@ import {
   decideApproval,
   getApproval,
   getApprovalMode,
+  getStaleApprovalMinutes,
   listApprovals,
   listBots,
+  STALE_APPROVAL_MAX_MINUTES,
+  STALE_APPROVAL_MIN_MINUTES,
   setApprovalMode,
+  setStaleApprovalMinutes,
 } from "@suup/db";
 import { flag, posInt, str } from "../args.js";
 import type { CommandSpec, Ctx } from "../context.js";
@@ -252,6 +256,41 @@ export const approvalsMode: CommandSpec = {
     } else if (mode === "auto_review") {
       ctx.out.line(`Revisor: ${status.model}.`);
     }
+    return EXIT_OK;
+  },
+};
+
+export const approvalsStale: CommandSpec = {
+  name: "approvals stale",
+  summary: "Mostra ou muda depois de quantos minutos um cartão aprovado deixa de rodar na hora",
+  options: {},
+  positionals: { names: ["minutos?"] },
+  notes: [
+    `Um cartão nunca expira sozinho. Mas aprovar um que esperou mais que este limite (padrão 60; de ${STALE_APPROVAL_MIN_MINUTES} a ${STALE_APPROVAL_MAX_MINUTES} minutos) não executa a ação na hora: o bot é avisado, confere se ainda faz sentido e, se fizer, chama de novo (a aprovação vale uma vez, para a chamada idêntica, nesta execução).`,
+  ],
+  async run(ctx) {
+    const db = ctx.runtime().db;
+    const [wanted] = ctx.args.positionals as [string | undefined];
+    if (wanted !== undefined) {
+      const minutes = Number(wanted);
+      if (
+        !Number.isInteger(minutes) ||
+        minutes < STALE_APPROVAL_MIN_MINUTES ||
+        minutes > STALE_APPROVAL_MAX_MINUTES
+      ) {
+        throw new UsageError(
+          `Informe um número inteiro de minutos, de ${STALE_APPROVAL_MIN_MINUTES} a ${STALE_APPROVAL_MAX_MINUTES}.`,
+          "approvals stale",
+        );
+      }
+      await setStaleApprovalMinutes(db, minutes);
+    }
+    const minutes = await getStaleApprovalMinutes(db);
+    if (ctx.json) {
+      ctx.out.data({ staleAfterMinutes: minutes });
+      return EXIT_OK;
+    }
+    ctx.out.line(`Um cartão aprovado depois de mais de ${minutes} minutos não roda na hora.`);
     return EXIT_OK;
   },
 };

@@ -974,11 +974,16 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("memory: pending, review and consolid
         objective: "x",
       });
       const snap = await loadRunContext(ctx.db, run.id, 12_000, {
-        promptLimitChars: 1000,
+        promptLimitItems: 2,
         compactionThreshold: 0.8,
       });
       expect(snap.rules.map((r) => r.text[0])).toEqual(["1", "2"]);
-      expect(snap.memoryOmitted).toEqual({ count: 1, chars: 400, limitChars: 1000 });
+      expect(snap.memoryOmitted).toEqual({
+        count: 1,
+        chars: 400,
+        limitItems: 2,
+        ceilingChars: 25_000,
+      });
       expect(snap.compactionThreshold).toBe(0.8);
       // writes still succeed over the cap
       await addMemory(ctx.db, {
@@ -988,11 +993,38 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("memory: pending, review and consolid
         createdBy: "user",
       });
       const roomy = await loadRunContext(ctx.db, run.id, 12_000, {
-        promptLimitChars: 50_000,
+        promptLimitItems: 1000,
         compactionThreshold: 0.5,
       });
       expect(roomy.memoryOmitted).toBeUndefined();
       expect(roomy.rules).toHaveLength(4);
+    });
+
+    it("stops at the 25,000-character ceiling even when the item limit leaves room", async () => {
+      await clearShared();
+      const w = await world(["agora"]);
+      for (const i of [1, 2, 3]) {
+        await addMemory(ctx.db, {
+          layer: "rule",
+          botId: w.bot.id,
+          text: `${i}`.repeat(10_000),
+          createdBy: "user",
+        });
+      }
+      const run = await createRun(ctx.db, {
+        botId: w.bot.id,
+        conversationId: w.conversation.id,
+        origin: "user",
+        objective: "x",
+      });
+      const snap = await loadRunContext(ctx.db, run.id, 12_000, { promptLimitItems: 200 });
+      expect(snap.rules.map((r) => r.text[0])).toEqual(["1", "2"]);
+      expect(snap.memoryOmitted).toEqual({
+        count: 1,
+        chars: 10_000,
+        limitItems: 200,
+        ceilingChars: 25_000,
+      });
     });
 
     it("the expiry pass archives what nobody used for the chosen number of days, and never when the user chose never", async () => {
@@ -1030,7 +1062,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("memory: pending, review and consolid
         model: "model-s",
         reason: null,
       });
-      await updateMemorySettings(ctx.db, { promptLimitChars: 2000, compactionThreshold: 0.6 });
+      await updateMemorySettings(ctx.db, { promptLimitItems: 50, compactionThreshold: 0.6 });
       const bot = await createBot(runtime.db, {
         name: `wired${++n}`,
         modelProvider: "script",
@@ -1066,7 +1098,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("memory: pending, review and consolid
       ).toEqual([]);
       await updateMemorySettings(ctx.db, {
         consolidationEnabled: true,
-        promptLimitChars: 6000,
+        promptLimitItems: 200,
         compactionThreshold: 0.8,
       });
       await runtime.close();

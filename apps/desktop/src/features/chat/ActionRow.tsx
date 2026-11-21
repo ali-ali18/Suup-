@@ -1,6 +1,11 @@
 import type { ApprovalRule, WrittenRule } from "@suup/api";
 import type { ReactNode } from "react";
-import { type ActionItem, blockedRuleText, callStateLabel } from "../../data/actions.js";
+import {
+  type ActionItem,
+  blockedRuleText,
+  callStateLabel,
+  waitedText,
+} from "../../data/actions.js";
 import { type RuleContext, ruleSentence, STATUS_DETAIL } from "../../data/approval-text.js";
 import { diffLines } from "../../lib/diff.js";
 import { ActionCard, ActionLabel, ActionPre, DiffLine } from "../../ui/action-card.js";
@@ -40,7 +45,9 @@ export function ActionDetail({ item, context = {} }: { item: ActionItem; context
     const decided = approval.decidedAt === null ? undefined : new Date(approval.decidedAt);
     blocks.push(
       <ActionLabel key="approval" data-testid="approval-detail">
-        {STATUS_DETAIL[approval.status] ?? ""}
+        {approval.stale && approval.waitedMs !== null
+          ? `Você aprovou depois de ${waitedText(approval.waitedMs)}: a ação não rodou na hora. O bot foi avisado, conferiu se ainda fazia sentido e só então seguiu.`
+          : (STATUS_DETAIL[approval.status] ?? "")}
         {decided !== undefined &&
           ` Decidido às ${decided.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}.`}
       </ActionLabel>,

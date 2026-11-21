@@ -8,9 +8,13 @@ export {
   CONTROL_TOOL_NAMES,
   type ControlToolName,
   controlToolSpecs,
+  DEFAULT_MAX_RETURNS,
   ESCALATE_DESCRIPTION,
   FINISH_DESCRIPTION,
+  MAX_RETURN_MINUTES,
+  MAX_RETURN_NOTE_CHARS,
   PLAN_DESCRIPTION,
+  SCHEDULE_RETURN_DESCRIPTION,
   validateFinish,
   validatePlan,
 } from "./control-tools.js";

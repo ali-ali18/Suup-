@@ -6,6 +6,8 @@ export const RUN_STATUSES = [
   "running",
   "waiting_approval",
   "waiting_user",
+  /** Parked until `wakeAt`, by a return the bot scheduled for itself (`docs/RETORNO.md`). */
+  "waiting_timer",
   "done",
   "failed",
   "cancelled",
@@ -48,7 +50,12 @@ export const RUN_EVENT_TYPES = [
   "approval_review",
   "approval_requested",
   "approval_decided",
+  "approval_stale",
+  "approval_grant_used",
   "secret_requested",
+  "wait_scheduled",
+  "wait_fired",
+  "wait_cancelled",
 ] as const;
 export const runEventTypeSchema = z.enum(RUN_EVENT_TYPES);
 export type RunEventType = z.infer<typeof runEventTypeSchema>;
@@ -82,6 +89,12 @@ export const runSchema = z.object({
    * waits for `resume`; with `running` it is on its way to stopping.
    */
   paused: z.boolean(),
+  /**
+   * With `status` `waiting_timer`: when the run wakes and the note the bot left itself. A
+   * diagnostic view (`suup show`, the inspector): the chat has no mark for it. Otherwise `null`.
+   */
+  wakeAt: isoDate.nullable().optional(),
+  wakeNote: z.string().nullable().optional(),
   failureOrigin: z.enum(FAILURE_ORIGINS).nullable(),
   failureDetail: z.string().nullable(),
   result: runResultSchema.nullable(),

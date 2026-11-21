@@ -46,6 +46,10 @@ export interface Approval {
   expiresAt: Date | null;
   decidedAt: Date | null;
   createdAt: Date;
+  /** How long the card waited until the user decided it (milliseconds); `null` while pending or ended without the user. */
+  waitedMs: number | null;
+  /** Approved after waiting longer than the staleness limit that held when the user decided. */
+  stale: boolean;
 }
 
 interface ApprovalRow {
@@ -69,6 +73,8 @@ interface ApprovalRow {
   expires_at: Date | null;
   decided_at: Date | null;
   created_at: Date;
+  waited_ms: string | null;
+  stale_after_ms: string | null;
 }
 
 function mapApproval(row: ApprovalRow): Approval {
@@ -93,13 +99,25 @@ function mapApproval(row: ApprovalRow): Approval {
     expiresAt: row.expires_at,
     decidedAt: row.decided_at,
     createdAt: row.created_at,
+    waitedMs: row.waited_ms === null ? null : Number(row.waited_ms),
+    stale: isStale(row),
   };
+}
+
+/** Approved after a wait longer than the limit of that moment. */
+function isStale(row: Pick<ApprovalRow, "status" | "waited_ms" | "stale_after_ms">): boolean {
+  return (
+    row.status === "approved" &&
+    row.waited_ms !== null &&
+    row.stale_after_ms !== null &&
+    Number(row.waited_ms) > Number(row.stale_after_ms)
+  );
 }
 
 const SELECT = (db: Db) => db.sql`
   select a.id, a.run_id, a.bot_id, r.conversation_id, a.call_id, a.tool, a.args, a.level,
          a.summary, a.secrets, a.source, a.outbound, a.status, a.reason, a.rule_id, a.review_reason, a.written_rule_id, a.expires_at,
-         a.decided_at, a.created_at
+         a.decided_at, a.created_at, a.waited_ms, a.stale_after_ms
   from approvals a join runs r on r.id = a.run_id`;
 
 export type ApprovalErrorCode = "not_found" | "conflict";
@@ -274,9 +292,13 @@ export async function decideApproval(
       });
       ruleId = rule.id;
     }
+    // How long it waited, and against which limit: written now, so the loop (and a replay) read
+    // numbers instead of a clock and a setting that may have changed since.
     await tx.sql`
       update approvals set status = ${body.decision}, reason = ${body.reason ?? null},
-        rule_id = ${ruleId}, decided_at = now()
+        rule_id = ${ruleId}, decided_at = now(),
+        waited_ms = floor(extract(epoch from (now() - created_at)) * 1000),
+        stale_after_ms = (select stale_after_minutes::bigint * 60000 from approval_settings limit 1)
       where id = ${row.id}`;
     await wakeRun(tx, row.run_id);
     const [done] = await tx.sql<ApprovalRow[]>`${SELECT(tx)} where a.id = ${row.id}`;
@@ -306,9 +328,11 @@ export async function peekApprovalDecisionRows(
       status: ApprovalDecision;
       reason: string | null;
       rule_id: string | null;
+      waited_ms: string | null;
+      stale_after_ms: string | null;
     }[]
   >`
-    select id, call_id, status, reason, rule_id from approvals
+    select id, call_id, status, reason, rule_id, waited_ms, stale_after_ms from approvals
     where run_id = ${runId} and status <> 'pending' and delivered_at is null
     order by decided_at, id`;
   return rows.map((r) => ({
@@ -317,6 +341,9 @@ export async function peekApprovalDecisionRows(
     decision: r.status,
     ...(r.reason === null ? {} : { reason: r.reason }),
     ...(r.rule_id === null ? {} : { ruleId: r.rule_id }),
+    ...(isStale(r)
+      ? { stale: { waitedMs: Number(r.waited_ms), thresholdMs: Number(r.stale_after_ms) } }
+      : {}),
   }));
 }
 

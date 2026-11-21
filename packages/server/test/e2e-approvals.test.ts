@@ -35,6 +35,19 @@ const SCRIPTS = {
         agent: [s({ calls: [shell("echo nunca-roda")] }), s({ text: "Nunca chega aqui." })],
       },
       {
+        whenObjectiveContains: "CASE-STALE",
+        agent: [
+          s({ calls: [shell("echo tarde-1")] }),
+          // The bot read the notice, checked, and asks again with the same arguments.
+          s({ text: "Retomando a tarefa antiga.", calls: [shell("echo tarde-1")] }),
+          s({ text: "Pronto." }),
+        ],
+      },
+      {
+        whenObjectiveContains: "CASE-LINK",
+        agent: [s({ calls: [shell("echo ligada")] }), s({ text: "Ok, entendi o recado." })],
+      },
+      {
         whenObjectiveContains: "CASE-SECRET-USE",
         agent: [
           s({ calls: [shell('echo "chave={{secret:SRV_TOKEN}}"')] }),
@@ -207,6 +220,55 @@ describe.skipIf(!DATABASE_URL)(
       const result = (await api.runs.events(sent.run.id, { types: ["tool_result"] })).items[0];
       expect(result?.payload).toMatchObject({ outcome: "denied", isError: true });
       expect(String(result?.payload.content)).toContain("hoje não");
+      f.close();
+    });
+
+    it("a card approved after waiting too long does not run; the identical re-call runs without a card", async () => {
+      const { api, conversation, f } = await setup("Tardio");
+      const sent = await api.conversations.send(conversation.id, "CASE-STALE");
+      const card = await pendingOf(sent.run.id);
+      expect(card.stale).toBe(false);
+      // The card has been waiting for 3 hours (the limit is 60 minutes).
+      await w.db
+        .sql`update approvals set created_at = now() - interval '3 hours' where id = ${card.id}`;
+      const decided = await api.approvals.decide(card.id, { decision: "approve" });
+      expect(decided.approval.status).toBe("approved");
+      expect(decided.approval.stale).toBe(true);
+      expect(decided.approval.waitedMs).toBeGreaterThanOrEqual(3 * 3_600_000);
+      await until(
+        async () => (await api.runs.get(sent.run.id)).status === "done" || undefined,
+        "the run to finish",
+      );
+      const events = (await api.runs.events(sent.run.id, { limit: 1000 })).items;
+      const results = events.filter((e) => e.type === "tool_result");
+      // First call: held back with the notice. Second (identical): ran.
+      expect(results.map((e) => e.payload.outcome)).toEqual(["denied", "ok"]);
+      expect(String(results[0]?.payload.content)).toContain("Harness notice");
+      expect(String(results[1]?.payload.content)).toContain("tarde-1");
+      expect(events.filter((e) => e.type === "approval_stale")).toHaveLength(1);
+      expect(events.filter((e) => e.type === "approval_grant_used")).toHaveLength(1);
+      // One card only: the second call needed none.
+      expect(events.filter((e) => e.type === "approval_requested")).toHaveLength(1);
+      expect((await api.approvals.get(card.id)).stale).toBe(true);
+      f.close();
+    });
+
+    it("a message sent while the card waits, and a denial, reach the bot linked to the denied action", async () => {
+      const { api, conversation, f } = await setup("Recado");
+      const sent = await api.conversations.send(conversation.id, "CASE-LINK");
+      const card = await pendingOf(sent.run.id);
+      const note = await api.conversations.send(conversation.id, "melhor mandar por e-mail");
+      expect(note.queuedForRun).toBe(true);
+      await api.approvals.decide(card.id, { decision: "deny" });
+      await until(
+        async () => (await api.runs.get(sent.run.id)).status === "done" || undefined,
+        "done",
+      );
+      const events = (await api.runs.events(sent.run.id, { limit: 1000 })).items;
+      const message = events.find(
+        (e) => e.type === "user_message" && e.payload.text === "melhor mandar por e-mail",
+      );
+      expect(message?.payload.linkedApprovalId).toBe(card.id);
       f.close();
     });
 

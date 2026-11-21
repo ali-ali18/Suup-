@@ -25,6 +25,17 @@ export interface TransitionExtra {
    * so the acknowledgement has to come in between.
    */
   ackInboxIds?: string[];
+  /**
+   * Parking for a return (`to: "waiting_timer"`): when, the note, the count, and the bot's message
+   * to the user (logged in the status change, where the runtime reads it to write the chat message).
+   */
+  wake?: { at: string; note: string; count: number; message: string };
+  /**
+   * The status the STORE has, when it is not the one the log says the run left (a resumed run
+   * that was parked and was claimed again is `running` in the store while the log says
+   * `waiting_timer`).
+   */
+  storeFrom?: RunStatus;
 }
 
 export interface ControlCall {
@@ -70,8 +81,11 @@ export async function transition(
     await ctx.deps.store.ackInbox(ctx.runId, extra.ackInboxIds);
   }
   return ctx.deps.store.setStatus(ctx.runId, {
-    from: [from],
+    from: [extra.storeFrom ?? from],
     to,
+    ...(extra.wake === undefined
+      ? {}
+      : { wake: { at: extra.wake.at, note: extra.wake.note, count: extra.wake.count } }),
     ...(extra.failure === undefined ? {} : { failure: extra.failure }),
     ...(extra.result === undefined ? {} : { result: extra.result }),
     ...(extra.requeueIfInbox === true ? { requeueIfInbox: true } : {}),
@@ -91,7 +105,11 @@ async function recordStatus(
       from,
       to,
       ...(extra.failure === undefined ? {} : { failure: extra.failure }),
-      ...(extra.result === undefined ? {} : { result: extra.result }),
+      ...(extra.result === undefined
+        ? extra.wake === undefined
+          ? {}
+          : { result: { summary: extra.wake.message } }
+        : { result: extra.result }),
       ...(extra.inboxIds === undefined ? {} : { inboxIds: extra.inboxIds }),
     },
   });

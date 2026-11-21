@@ -85,6 +85,9 @@ describe("actionsOf", () => {
       call(3, "b", "edit_file", { path: "a.ts", old_string: "x", new_string: "y" }),
       call(4, "c", "escalate"),
       call(5, "d", "read_file", { path: "z" }),
+      // The bot's own return has no card: its message is the whole notice.
+      call(8, "r", "schedule_return", { inMinutes: 1, note: "conferir" }),
+      result(9, "r", "Retorno agendado"),
       result(6, "a", "arquivos"),
       result(7, "b", "falhou", true),
     ]);
@@ -330,6 +333,19 @@ describe("mergeApprovals: one row per tool call, the link is the call id", () =>
     expect(calls).toHaveLength(1);
     expect(calls[0]).toMatchObject({ callId: "w", state: "running", kindLabel: "Arquivo" });
     expect(callStateLabel(calls[0] as ActionItem)).toBe("Aprovado, rodando");
+  });
+
+  it("approved after waiting too long: the row says how long, whatever happened to the call", () => {
+    const stale = { stale: true, waitedMs: 5 * 3_600_000 };
+    const held = merge([write(), result(2, "w", "Aviso do sistema")], [approvalOf(stale)]);
+    expect(callStateLabel(held.calls[0] as ActionItem)).toBe("Aprovado depois de 5 h");
+    const running = merge([write()], [approvalOf({ stale: true, waitedMs: 40 * 60_000 })]);
+    expect(callStateLabel(running.calls[0] as ActionItem)).toBe("Aprovado depois de 40 min");
+    const days = merge([write()], [approvalOf({ stale: true, waitedMs: 72 * 3_600_000 })]);
+    expect(callStateLabel(days.calls[0] as ActionItem)).toBe("Aprovado depois de 3 dias");
+    // A fresh approval says nothing about time.
+    const fresh = merge([write(), result(2, "w", "ok")], [approvalOf({ waitedMs: 5000 })]);
+    expect(callStateLabel(fresh.calls[0] as ActionItem)).toBe("Aprovado e concluído");
   });
 
   it("approved and done: one row with the result", () => {

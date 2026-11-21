@@ -73,6 +73,7 @@ Ações: criar, editar, arquivar, tornar principal, listar (com ou sem arquivado
 | `running` | Trabalhando | Indicador de atividade, plano vivo |
 | `waiting_user` | O bot fez uma pergunta | A pergunta em destaque e o campo de resposta |
 | `waiting_approval` | Há uma ação aguardando aprovação (existe): `GET /v1/approvals?runId=&status=pending` | Cartão de aprovação |
+| `waiting_timer` | O bot marcou um retorno para si mesmo (`wakeAt`, `wakeNote` na `Run`) e a execução está parada até a hora | **Nada**: sem marcador, sem indicador de trabalho (decisão do dono); o bot já avisou na própria mensagem. Avatar calmo (`idle`). Só o inspetor mostra a hora |
 | `done` | Concluída | Resumo e evidência |
 | `failed` | Falhou | Origem da falha em destaque |
 | `cancelled` | Você mandou parar | "Cancelada" |
@@ -104,7 +105,7 @@ Cada execução tem um log de eventos numerados (`seq`), só de acréscimo. É a
 | `tool_call` | `callId`, `name`, `args` | Linha recolhível "usando ferramenta" |
 | `tool_result` | `callId`, `content`, `isError`, `truncated`, `durationMs` | Resultado dentro da mesma linha |
 | `plan_updated` | `plan` | Lista de checagem que se atualiza |
-| `user_message` | `text` | Sua mensagem, marcada como "lida pelo bot" |
+| `user_message` | `text`, `inboxId?`, `linkedApprovalId?` | Sua mensagem, marcada como "lida pelo bot". `linkedApprovalId` existe quando ela chegou logo depois de uma recusa sua e antes do próximo turno do bot: o bot a leu como sendo sobre a ação recusada (o app não precisa desenhar nada diferente) |
 | `nudge` | `reason`, `text` | Aviso discreto: "o Suup pediu ao bot que continuasse" |
 | `finish_attempt` | `summary`, `evidence`, `accepted`, `rejectionReasons` | Conclusão aceita, ou "conclusão recusada" com os motivos |
 | `review` | `verdict` (`approve`, `reject` ou `unverified`), `notes`, `discrepancies?` (num `reject`: lista de `{ claimed, shows, where }`, ao menos uma), `warning?` | Selo do revisor. `unverified`: o revisor não conseguiu verificar algo mesmo com as evidências; `notes` diz o quê, e a decisão vai para o dono |
@@ -112,7 +113,7 @@ Cada execução tem um log de eventos numerados (`seq`), só de acréscimo. É a
 | `review_evidence` | `round`, `callId`, `notes`, `requested` (`results`, `calls?`, `files`), `supplied`, `missing` (com `hint?`), `omitted?`, `budgetChars` | Aviso discreto ("o revisor pediu mais evidências"). Resultados de ferramenta e argumentos de chamada (`kind: tool_call`) vêm por referência (`ref` = id da chamada, o conteúdo já está no log); `omitted` lista o que só não coube no orçamento; arquivos trazem `content` e `hash`, para a retomada e o replay não dependerem do disco |
 | `escalated` | `question`, `questions?`, `reason?` | Pergunta em destaque. `questions` (1 a 5 itens `{ question, options?, multiple?, allowOther? }`) existe quando há escolhas ou várias perguntas; `options` só quando as respostas são discretas |
 | `status_changed` | `from`, `to`, `failure?`, `result?` | Mudança de estado |
-| `context_loaded` | `rules`, `profile`, `history`, `historyNote?`, `compactionThreshold?`, `memoryOmitted?` | Logo depois de `run_started`: o que a memória e a conversa deram à execução. Aviso discreto ("3 regras, 1 fato do perfil, 6 mensagens anteriores"); `rules` e `profile` têm `id` e `text` e aparecem na tela de memória. `memoryOmitted` (`{ count, chars, limitChars }`) existe quando regras e perfil ativos **não couberam** no teto do prompt: aviso "N memórias ficaram de fora do prompt; apague ou encurte algumas". `compactionThreshold` é o ponto de compactação que a execução usou |
+| `context_loaded` | `rules`, `profile`, `history`, `historyNote?`, `compactionThreshold?`, `memoryOmitted?` | Logo depois de `run_started`: o que a memória e a conversa deram à execução. Aviso discreto ("3 regras, 1 fato do perfil, 6 mensagens anteriores"); `rules` e `profile` têm `id` e `text` e aparecem na tela de memória. `memoryOmitted` (`{ count, chars, limitItems, ceilingChars }`; em logs antigos, `limitChars`) existe quando regras e perfil ativos **não couberam** no teto do prompt: aviso "N memórias ficaram de fora do prompt; apague ou encurte algumas". `compactionThreshold` é o ponto de compactação que a execução usou |
 | `model_error` | `kind`, `message`, `retryable`, `attempt` | "Tentando de novo" ou erro |
 | `compacted` | `summary`, `droppedMessages` | Aviso discreto: "histórico resumido" |
 | `model_request` | A requisição inteira enviada ao modelo | Só no inspetor de diagnóstico |
@@ -120,6 +121,11 @@ Cada execução tem um log de eventos numerados (`seq`), só de acréscimo. É a
 | `approval_review` | `callId`, `tool`, `level`, `decision` (`run`/`ask`/`block`), `ruleId`, `reason`, `outcome` (`allow`/`ask`/`deny`), `adjusted?`, `skipped?`, `model?`, `promptVersion?`, `usage?`, `costUsd?`, `latencyMs?` | O modelo do Auto-review olhou a chamada (vem **antes** do `policy_checked` ou do `approval_requested` dela). Detalhe recolhido ("revisado: pode / perguntar / bloquear, e a frase"); o custo e o modelo vão no detalhe técnico |
 | `approval_requested` | `approvalId`, `callId`, `tool`, `args`, `level`, `summary`, `secrets`, `source`, `expiresAt?`, `reason?`, `writtenRuleId?` | **O cartão de aprovação** (seção 8, fase 3). `args` é o conteúdo exato; segredos aparecem como `{{secret:NOME}}` |
 | `approval_decided` | `approvalId`, `callId`, `decision` (`approved`, `denied`, `cancelled`, `expired`), `reason?`, `ruleId?` | O cartão resolvido; entra no log quando o worker retoma a execução |
+| `approval_stale` | `approvalId`, `callId`, `waitedMs`, `thresholdMs` | Só no inspetor: o cartão foi aprovado depois de esperar mais que o limite (`staleAfterMinutes`); a ação **não** rodou, o bot foi avisado. A linha do chat vem do `Approval` (`stale`, `waitedMs`): "Aprovado depois de 5 h · Escrever a.txt" |
+| `approval_grant_used` | `approvalId`, `callId`, `tool` | Só no inspetor: uma chamada idêntica à aprovada tarde rodou sem novo cartão (a permissão de uma vez, desta execução) |
+| `wait_scheduled` | `at`, `note`, `minutes`, `callId?` | Só no inspetor: o bot marcou um retorno. A chamada de `schedule_return` não vira cartão |
+| `wait_fired` | `at`, `note`, `delayMs?` | Só no inspetor: a hora do retorno chegou (gravado pelo job que acorda as execuções) |
+| `wait_cancelled` | `reason` (`user_message`, `cancelled`, `replaced`, `finished`) | Só no inspetor: o retorno não vai disparar |
 | `secret_requested` | `callId`, `name`, `reason?` | O bot pede um segredo: abre o formulário seguro (seção 8, fase 3). A execução fica em `waiting_user` |
 
 Observações:
@@ -315,4 +321,5 @@ O rosto é desenhado pelo motor `@suup/avatar` (formatos, cores e estados no `RE
 - **Datas** são sempre texto ISO 8601 em UTC; **custos**, texto decimal.
 - **Mensagem para uma execução pausada** fica guardada (`sent`) e é lida depois do `resume`.
 - **`risk` de uma ferramenta** (`GET /v1/tools`) passou de `read`/`write`/`external` para `read`/`write_reversible`/`external_irreversible` (fase 3), e ganhou `dynamicRisk`, `acceptsSecrets` e `externalOutput`.
+- **Uma execução em `waiting_timer` também não pode ser pausada** (`409`): nenhum worker a segura. Uma mensagem no chat cancela o retorno e a execução segue com ela; `cancel` a cancela na hora. Ver [RETORNO.md](RETORNO.md).
 - **Uma execução em `waiting_approval` não pode ser pausada** (`409`): ela já não usa um worker. Cancelar funciona e cancela o cartão. Mensagem no chat não aprova nada.

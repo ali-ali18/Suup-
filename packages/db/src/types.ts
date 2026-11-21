@@ -30,6 +30,8 @@ export const botLimitsSchema = z.looseObject({
   maxTurns: z.exactOptional(z.number().int().positive()),
   maxCostUsd: z.exactOptional(z.number().positive()),
   maxDurationMs: z.exactOptional(z.number().int().positive()),
+  /** Consecutive returns one run may schedule for itself (`schedule_return`); default 6. */
+  maxReturns: z.exactOptional(z.number().int().nonnegative()),
 });
 export type BotLimits = z.infer<typeof botLimitsSchema>;
 
@@ -104,6 +106,11 @@ export interface Run {
    * even the journal entry at its end. Always present on runs read through this package.
    */
   isolated?: boolean;
+  /** While `waiting_timer`: when the run is woken, and the note it left itself. Always present on runs read through this package. */
+  wakeAt?: Date | null;
+  wakeNote?: string | null;
+  /** Returns that fired in a row since the user last wrote to the run. */
+  wakeCount?: number;
   createdAt: Date;
   updatedAt: Date;
   startedAt: Date | null;

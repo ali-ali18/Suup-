@@ -86,19 +86,21 @@ async function memorySettingsBody(ctx: Parameters<Route["handler"]>[0]) {
   const { db } = ctx.runtime;
   const settings = await getMemorySettings(db);
   const { available, model, reason } = ctx.runtime.memoryReviewerStatus();
-  const usage = await memoryPromptUsage(db, settings.promptLimitChars);
+  const usage = await memoryPromptUsage(db, settings.promptLimitItems);
   return {
     consolidation: {
       enabled: settings.consolidationEnabled,
       idleMinutes: settings.idleMinutes,
       maxTurns: settings.maxTurns,
     },
-    promptLimitChars: settings.promptLimitChars,
+    promptLimitItems: settings.promptLimitItems,
     expiryDays: settings.expiryDays,
     compactionThreshold: settings.compactionThreshold,
     reviewer: { available, model, reason },
     promptUsage: {
-      limitChars: usage.limitChars,
+      limitItems: usage.limitItems,
+      ceilingChars: usage.ceilingChars,
+      sharedItems: usage.sharedItems,
       sharedChars: usage.sharedChars,
       overLimit: usage.overBots,
     },
@@ -156,7 +158,7 @@ export const memoryRoutes: Route[] = [
         ...(body.consolidation?.maxTurns === undefined
           ? {}
           : { maxTurns: body.consolidation.maxTurns }),
-        ...(body.promptLimitChars === undefined ? {} : { promptLimitChars: body.promptLimitChars }),
+        ...(body.promptLimitItems === undefined ? {} : { promptLimitItems: body.promptLimitItems }),
         ...(body.expiryDays === undefined ? {} : { expiryDays: body.expiryDays }),
         ...(body.compactionThreshold === undefined
           ? {}

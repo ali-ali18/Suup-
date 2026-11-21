@@ -90,7 +90,7 @@ As ferramentas que se pode liberar a um bot. `200 { "items": [ToolInfo], "contro
 | `id`, `name`, `description`, `personality` | texto | |
 | `modelProvider`, `modelId` | texto | O provedor sai do modelo, pela configuração |
 | `allowedTools` | lista de textos | |
-| `limits` | `{ maxTurns?, maxCostUsd?, maxDurationMs? }` | Sem o campo, vale o padrão da configuração |
+| `limits` | `{ maxTurns?, maxCostUsd?, maxDurationMs?, maxReturns? }` | Sem o campo, vale o padrão da configuração |
 | `avatar` | texto ou `null` | Referência opaca que o app interpreta (emoji, id de arquivo...) |
 | `isDefault` | booleano | O bot principal: recebe as mensagens quando nenhum é escolhido |
 | `pinned` | booleano | Fixado no topo da lista do app |
@@ -173,9 +173,11 @@ O servidor **não roda o loop**: quem trabalha é um worker, que pode ser outro 
 | `pause` | O worker termina a volta em andamento (a chamada ao modelo **e** as ferramentas que ela pediu) e, no próximo ponto seguro, para sem iniciar outra chamada ao modelo | `queued`, `running` | `status: queued`, `paused: true` |
 | `interrupt` | O worker vê o pedido no próximo batimento (`worker.controlPollMs`, padrão 2 s) e **aborta** a chamada ao modelo e a ferramenta em curso; a ferramenta cortada fica registrada como interrompida, com resultado desconhecido | `queued`, `running` | `status: queued`, `paused: true` |
 | `resume` | Tira a pausa; um worker pega a execução e ela continua de onde o log parou | pausada | volta a `queued`/`running` |
-| `cancel` | Posta o pedido de parada, tira a pausa (para um worker poder aplicar) e, se a execução trabalha agora, também interrompe; ela termina `cancelled` e a conversa recebe o aviso | `queued`, `running`, `waiting_user` (o pedido a recoloca na fila), `waiting_approval` | `cancelled` |
+| `cancel` | Posta o pedido de parada, tira a pausa (para um worker poder aplicar) e, se a execução trabalha agora, também interrompe; ela termina `cancelled` e a conversa recebe o aviso | `queued`, `running`, `waiting_user` (o pedido a recoloca na fila), `waiting_approval`, `waiting_timer` (cancelada na hora, sem worker) | `cancelled` |
 
-Erros: `404` se a execução não existe; `409` para `pause` e `interrupt` numa execução que terminou ou espera você ou uma aprovação (`pause` numa já pausada é idempotente, e `interrupt` a endurece); para `resume`, numa execução que não está pausada ou que terminou; para `cancel`, numa que já terminou. **`cancel` e a retomada precisam de um worker vivo** para serem aplicados.
+Uma execução em `waiting_timer` (o bot marcou um retorno para si, [RETORNO.md](RETORNO.md)) tem `wakeAt` (a hora) e `wakeNote` (o que conferir) na `Run`, e as duas são `null` em qualquer outro estado. Nenhum worker a segura: `cancel` a cancela na hora (o log guarda `wait_cancelled`, motivo `cancelled`), uma mensagem em `POST /v1/conversations/{id}/messages` cancela o retorno (`user_message`) e a execução segue com ela, e `pause`/`interrupt` dão `409`.
+
+Erros: `404` se a execução não existe; `409` para `pause` e `interrupt` numa execução que terminou ou espera você, uma aprovação ou a hora de um retorno (`pause` numa já pausada é idempotente, e `interrupt` a endurece); para `resume`, numa execução que não está pausada ou que terminou; para `cancel`, numa que já terminou. **`cancel` e a retomada precisam de um worker vivo** para serem aplicados.
 
 ---
 
@@ -217,11 +219,11 @@ O que é seu escolher sobre a memória fica no servidor (uma linha só, como o m
 ```json
 {
   "consolidation": { "enabled": true, "idleMinutes": 5, "maxTurns": 15 },
-  "promptLimitChars": 6000,
+  "promptLimitItems": 200,
   "expiryDays": 90,
   "compactionThreshold": 0.8,
   "reviewer": { "available": true, "model": "claude-haiku-5-5", "reason": null },
-  "promptUsage": { "limitChars": 6000, "sharedChars": 1450, "overLimit": [] }
+  "promptUsage": { "limitItems": 200, "ceilingChars": 25000, "sharedItems": 12, "sharedChars": 1450, "overLimit": [] }
 }
 ```
 
@@ -230,11 +232,11 @@ O que é seu escolher sobre a memória fica no servidor (uma linha só, como o m
 | `consolidation.enabled` | `true` | verdadeiro ou falso |
 | `consolidation.idleMinutes` | 5 | inteiro de 1 a 120 |
 | `consolidation.maxTurns` | 15 | inteiro de 3 a 100 |
-| `promptLimitChars` | 6000 | inteiro de 1000 a 50000 |
+| `promptLimitItems` | 200 | inteiro de 20 a 1000 (memórias: regras e perfil ativos que entram em todo prompt) |
 | `expiryDays` | 90 | inteiro de 7 a 3650, ou `null` (nunca expira) |
 | `compactionThreshold` | 0.8 | número de 0.5 a 0.95 |
 
-`reviewer` diz se a consolidação (e a revisão do que o bot escreve depois de ler conteúdo de fora) tem um modelo agora: `available`, o `model` configurado e `reason` (em português) quando não tem; é só leitura, como o `reviewer` de `/v1/approval-settings`. `promptUsage` é o aviso do teto: `overLimit` lista os bots (`botId`, `name`, `usedChars`) cujas regras e perfil **ativos** passam de `promptLimitChars`; o app deve pedir que você apague ou encurte memórias, ou aumente o teto (nada é cortado em silêncio, o que não cabe só fica fora do prompt).
+`reviewer` diz se a consolidação (e a revisão do que o bot escreve depois de ler conteúdo de fora) tem um modelo agora: `available`, o `model` configurado e `reason` (em português) quando não tem; é só leitura, como o `reviewer` de `/v1/approval-settings`. `promptUsage` é o aviso do teto: `overLimit` lista os bots (`botId`, `name`, `usedItems`, `usedChars`) cujas regras e perfil **ativos** passam de `promptLimitItems` memórias ou de `ceilingChars` (o teto de segurança de 25000 caracteres, fixo e sem configuração, como o 25KB do `MEMORY.md` da Claude Code; veja [pesquisas/memoria-dos-agentes.md](pesquisas/memoria-dos-agentes.md)); `sharedItems`/`sharedChars` contam o que todos os bots carregam; o app deve pedir que você apague ou encurte memórias, ou aumente o teto (nada é cortado em silêncio, o que não cabe só fica fora do prompt).
 
 `MemoryConsolidation` (uma tentativa da consolidação): `id`, `conversationId`, `botId`, `reason` (`idle`, `max_turns`, `pre_compaction`), `status` (`queued`, `running`, `done`, `skipped`, `failed`), `fromSeq`, `toSeq`, `userTurns`, `model`, `promptVersion`, `inputTokens`, `outputTokens`, `costUsd`, `latencyMs`, `proposed` (o que o modelo disse), `kept` (o que foi gravado: ação, id da memória), `dropped` (o que o código descartou e por quê), `error`, `createdAt`, `finishedAt`.
 
@@ -244,7 +246,7 @@ O que é seu escolher sobre a memória fica no servidor (uma linha só, como o m
 
 Uma chamada de ferramenta que precisa do seu OK vira um **cartão** (`Approval`); a execução fica em `waiting_approval` e libera o worker até você decidir. Como e por quê: [APROVACOES.md](APROVACOES.md).
 
-`Approval`: `id`, `runId`, `botId`, `conversationId` (a da execução, ou `null`), `callId`, `tool`, **`args`** (o conteúdo exato que vai rodar, com segredos como `{{secret:NOME}}`, nunca valores), `level` (`read`, `write_reversible`, `external_irreversible`), `summary` (uma linha: o título do cartão), `secrets` (nomes usados), `source` (`rule`, `reviewer` ou `default`: quem mandou perguntar), `reviewReason` (uma frase em português dizendo por que o cartão existe, quando foi o revisor ou um piso fixo; senão `null`), `writtenRuleId` (a regra escrita em que essa frase se apoia, se citou uma; ela pode ter sido apagada depois), `status` (`pending`, `approved`, `denied`, `cancelled`, `expired`), `reason` (o motivo de uma negação), `outbound` (`null`, ou `{ kind: "message", recipientFields, recipients }`: a ferramenta **declarou** que a chamada é uma mensagem a outra pessoa; `recipients` é o que "Permitir destinatário" fixaria, ou `null` se não dá para dizer exatamente), `ruleId` (a regra criada por "Permitir destinatário"), `expiresAt` (só se a configuração faz cartões expirarem), `decidedAt`, `createdAt`.
+`Approval`: `id`, `runId`, `botId`, `conversationId` (a da execução, ou `null`), `callId`, `tool`, **`args`** (o conteúdo exato que vai rodar, com segredos como `{{secret:NOME}}`, nunca valores), `level` (`read`, `write_reversible`, `external_irreversible`), `summary` (uma linha: o título do cartão), `secrets` (nomes usados), `source` (`rule`, `reviewer` ou `default`: quem mandou perguntar), `reviewReason` (uma frase em português dizendo por que o cartão existe, quando foi o revisor ou um piso fixo; senão `null`), `writtenRuleId` (a regra escrita em que essa frase se apoia, se citou uma; ela pode ter sido apagada depois), `status` (`pending`, `approved`, `denied`, `cancelled`, `expired`), `reason` (o motivo de uma negação), `outbound` (`null`, ou `{ kind: "message", recipientFields, recipients }`: a ferramenta **declarou** que a chamada é uma mensagem a outra pessoa; `recipients` é o que "Permitir destinatário" fixaria, ou `null` se não dá para dizer exatamente), `ruleId` (a regra criada por "Permitir destinatário"), `expiresAt` (só se a configuração faz cartões expirarem), `decidedAt`, `createdAt`, `waitedMs` (quanto o cartão esperou até a decisão, em ms; `null` enquanto pendente) e `stale` (`true` se foi **aprovado** depois de esperar mais que o limite `staleAfterMinutes` que valia na hora: a ação não rodou na hora, o bot foi avisado e a aprovação ficou como permissão de uma vez para a chamada idêntica, nesta execução; veja [APROVACOES.md](APROVACOES.md), "Aprovação depois de muito tempo").
 
 | Método e caminho | Corpo | Resposta |
 |---|---|---|
@@ -277,7 +279,9 @@ Dois modos, guardados **no servidor**: `auto_review` (padrão: um modelo lê as 
 | Método e caminho | Corpo | Resposta |
 |---|---|---|
 | `GET /v1/approval-settings` | | `200 ApprovalSettings` |
-| `PATCH /v1/approval-settings` | `{ mode }` (estrito) | `200 ApprovalSettings`; `400` para um modo que não existe. Vale para as próximas chamadas, também nas execuções em andamento |
+| `PATCH /v1/approval-settings` | `{ mode?, staleAfterMinutes? }` (estrito; pelo menos um) | `200 ApprovalSettings`; `400` para um modo que não existe, ou `staleAfterMinutes` que não é inteiro de 5 a 10080. Vale para as próximas chamadas, também nas execuções em andamento |
+
+`ApprovalSettings`: `mode`, `staleAfterMinutes` (padrão 60, de 5 minutos a 1 semana: aprovar um cartão que esperou mais que isto não executa a ação na hora; cartões **nunca** expiram por causa disto) e `reviewer`. O limite é gravado no cartão na hora em que você decide (`waitedMs` e o limite daquele momento), então mudar o valor depois não reescreve o que já aconteceu.
 
 ### Regras escritas
 

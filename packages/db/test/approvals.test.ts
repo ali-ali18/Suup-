@@ -15,6 +15,7 @@ import {
   getApproval,
   getRule,
   getRun,
+  getStaleApprovalMinutes,
   hasUndeliveredDecision,
   listApprovals,
   listChanges,
@@ -24,6 +25,7 @@ import {
   peekInboxEntries,
   rulesForBot,
   setRunStatus,
+  setStaleApprovalMinutes,
   updateRule,
 } from "../src/index.js";
 import { DATABASE_URL, dbSuiteName, useIsolatedDb } from "./helpers.js";
@@ -425,5 +427,62 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("approvals and rules"), () => {
       text: "oi",
     });
     expect(await listApprovals(ctx.db, { conversationId: conversation.id, limit: 5 })).toEqual([]);
+  });
+
+  describe("a card approved after waiting too long", () => {
+    const pastBy = (id: string, minutes: number) =>
+      ctx.db
+        .sql`update approvals set created_at = now() - make_interval(mins => ${minutes}) where id = ${id}`;
+
+    it("the limit starts at 60 minutes and only takes 5 to 10080", async () => {
+      expect(await getStaleApprovalMinutes(ctx.db)).toBe(60);
+      expect(await setStaleApprovalMinutes(ctx.db, 360)).toBe(360);
+      expect(await getStaleApprovalMinutes(ctx.db)).toBe(360);
+      await expect(setStaleApprovalMinutes(ctx.db, 4)).rejects.toThrow();
+      await expect(setStaleApprovalMinutes(ctx.db, 10081)).rejects.toThrow();
+      await expect(setStaleApprovalMinutes(ctx.db, 90.5)).rejects.toThrow();
+      await expect(
+        ctx.db.sql`update approval_settings set stale_after_minutes = 1`,
+      ).rejects.toThrow();
+      await setStaleApprovalMinutes(ctx.db, 60);
+    });
+
+    it("records how long it waited and the limit of that moment; the loop gets them as `stale`", async () => {
+      const { run, approvalId } = await waiting();
+      await pastBy(approvalId, 180);
+      const { approval } = await decideApproval(ctx.db, approvalId, { decision: "approved" });
+      expect(approval.status).toBe("approved");
+      expect(approval.stale).toBe(true);
+      expect(approval.waitedMs).toBeGreaterThanOrEqual(180 * 60_000);
+      const [item] = await peekApprovalDecisionRows(ctx.db, run.id);
+      expect(item?.stale?.thresholdMs).toBe(60 * 60_000);
+      expect(item?.stale?.waitedMs).toBe(approval.waitedMs);
+    });
+
+    it("a fresh approval, and a denial however old, carry no stale mark", async () => {
+      const fresh = await waiting();
+      const { approval } = await decideApproval(ctx.db, fresh.approvalId, { decision: "approved" });
+      expect(approval.stale).toBe(false);
+      const [item] = await peekApprovalDecisionRows(ctx.db, fresh.run.id);
+      expect(item?.stale).toBeUndefined();
+      const old = await waiting();
+      await pastBy(old.approvalId, 600);
+      const denied = await decideApproval(ctx.db, old.approvalId, { decision: "denied" });
+      expect(denied.approval.stale).toBe(false);
+      const [row] = await peekApprovalDecisionRows(ctx.db, old.run.id);
+      expect(row?.stale).toBeUndefined();
+    });
+
+    it("uses the limit that held when the user decided, not the one set later", async () => {
+      await setStaleApprovalMinutes(ctx.db, 1440);
+      const { run, approvalId } = await waiting();
+      await pastBy(approvalId, 180);
+      const { approval } = await decideApproval(ctx.db, approvalId, { decision: "approved" });
+      expect(approval.stale).toBe(false);
+      await setStaleApprovalMinutes(ctx.db, 5);
+      expect(await getApproval(ctx.db, approvalId)).toMatchObject({ stale: false });
+      expect((await peekApprovalDecisionRows(ctx.db, run.id))[0]?.stale).toBeUndefined();
+      await setStaleApprovalMinutes(ctx.db, 60);
+    });
   });
 });

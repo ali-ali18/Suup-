@@ -1,15 +1,17 @@
 // Owns executing the tool calls of a response: dispatching control tools (plan, finish, escalate)
 // versus registry tools, the heartbeat and hard-interruption check between calls, and the
 // "interrupted" results that keep the conversation valid after an abort or a crash mid-call.
+import type { JsonValue } from "../messages.js";
 import type { ToolInvocation } from "../registry.js";
 import type { ToolContext } from "../tool.js";
 import {
   askGate,
   type CallClearance,
   clearanceFromLog,
+  grantFor,
   SKIPPED_AFTER_DENIAL,
 } from "./approval-flow.js";
-import { handleEscalate, handlePlan } from "./control-calls.js";
+import { handleEscalate, handlePlan, handleScheduleReturn } from "./control-calls.js";
 import { handleFinish } from "./finish.js";
 import { type ControlCall, ensureToolCall, INTERRUPTED_RESULT, recordResult } from "./recording.js";
 import type { LoopContext } from "./run-context.js";
@@ -59,6 +61,9 @@ export async function executeCalls(
         break;
       case "request_secret":
         await handleRequestSecret(ctx, call, alone);
+        break;
+      case "schedule_return":
+        await handleScheduleReturn(ctx, call);
         break;
       case "search_tools":
         await handleSearchTools(ctx, call);
@@ -134,7 +139,14 @@ async function handleTool(
     });
     return false;
   }
-  const clearance: CallClearance = logged ?? (await askGate(ctx, call));
+  // A call identical to one the user approved too late: the gate still speaks first (deny wins),
+  // and the grant only replaces the card it would have asked for.
+  const grant = logged === undefined ? grantFor(ctx, call) : undefined;
+  const clearance: CallClearance =
+    logged ??
+    (grant?.consumed === true
+      ? { kind: "run", args: call.args as JsonValue }
+      : await askGate(ctx, call, grant));
   if (clearance.kind === "wait") return true;
   if (clearance.kind === "denied") {
     await deny(ctx, call, clearance.text);

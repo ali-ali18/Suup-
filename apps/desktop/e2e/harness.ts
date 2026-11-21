@@ -255,6 +255,21 @@ export const SCRIPTS = {
         ],
       },
       {
+        // Approved after the card waited for hours: the first call is held back, the bot asks again.
+        whenObjectiveContains: "CASE-STALE",
+        agent: [
+          s({
+            text: "Vou gravar o arquivo.",
+            calls: [writeCall("tardio.txt", "conteúdo tardio")],
+          }),
+          s({
+            text: "Retomando a tarefa antiga: ainda faz sentido.",
+            calls: [writeCall("tardio.txt", "conteúdo tardio")],
+          }),
+          s({ text: "Escrevi o arquivo tardio." }),
+        ],
+      },
+      {
         whenObjectiveContains: "CASE-DENY",
         agent: [
           s({ calls: [writeCall("negado.txt", "isto não deve ser escrito")] }),
@@ -488,6 +503,8 @@ export async function startWorld(
      * has a reviewer. Its answers come from the `autoReview` section of the scripts.
      */
     autoReviewModel?: string;
+    /** How often the worker looks for runs whose scheduled return is due (default: its own, 5 s). */
+    wakeEveryMs?: number;
   } = {},
 ): Promise<World> {
   if (DATABASE_URL === undefined) throw new Error(SKIP_REASON);
@@ -595,6 +612,7 @@ export async function startWorld(
   const worker: Worker = workerRuntime.createWorker({
     concurrency: 4,
     idleBackoff: { minMs: 15, maxMs: 80 },
+    ...(options.wakeEveryMs === undefined ? {} : { wakeEveryMs: options.wakeEveryMs }),
     onError: (error, context) => console.error(`worker: ${context}:`, error),
   });
   worker.start();

@@ -7,6 +7,7 @@ import {
 } from "@suup/core";
 import {
   firstLines,
+  formatClock,
   formatDuration,
   formatInt,
   formatUsd,
@@ -255,7 +256,9 @@ export function renderEvent(event: RawEvent, state: RenderState): string[] {
     case "plan_updated":
       return ["Plano:", ...renderPlan(e.payload.plan)];
     case "user_message":
-      return [`✉ sua mensagem chegou ao bot: ${oneLine(e.payload.text, 160)}`];
+      return [
+        `✉ sua mensagem chegou ao bot${e.payload.linkedApprovalId === undefined ? "" : " (ligada à ação que você recusou)"}: ${oneLine(e.payload.text, 160)}`,
+      ];
     case "nudge":
       return [
         `↻ o harness lembrou o bot (${NUDGE_PT[e.payload.reason] ?? e.payload.reason}): ${oneLine(e.payload.text, 140)}`,
@@ -332,6 +335,10 @@ export function renderEvent(event: RawEvent, state: RenderState): string[] {
         lines.push("● aguardando sua resposta");
       } else if (to === "waiting_approval") {
         lines.push("● aguardando aprovação");
+      } else if (to === "waiting_timer") {
+        lines.push("● parada até a hora do retorno");
+      } else if (to === "running" && e.payload.from === "waiting_timer") {
+        lines.push("● retomada");
       } else if (to === "running" && e.payload.from === "waiting_user") {
         lines.push("● retomada");
       }
@@ -360,12 +367,26 @@ export function renderEvent(event: RawEvent, state: RenderState): string[] {
           ? "● aprovada"
           : `● ${e.payload.decision === "denied" ? "negada" : e.payload.decision === "expired" ? "expirada" : "cancelada"}${e.payload.reason === undefined ? "" : `: ${oneLine(e.payload.reason, 160)}`}`,
       ];
+    case "approval_stale":
+      return [
+        `● aprovada tarde (esperou ${formatDuration(e.payload.waitedMs)}): a chamada não rodou; o bot foi avisado e a aprovação vale uma vez para a chamada idêntica`,
+      ];
+    case "approval_grant_used":
+      return [`● chamada idêntica à aprovada tarde: rodou sem novo cartão (${e.payload.tool})`];
     case "secret_requested":
       return [
         `? O bot pede o segredo ${e.payload.name}${e.payload.reason === undefined ? "" : ` (${oneLine(e.payload.reason, 120)})`}`,
       ];
     case "tool_catalog":
       return [`· ferramentas de conectores: ${summarizeEvent(event)}`];
+    case "wait_scheduled":
+      return [
+        `· retorno agendado para ${formatClock(new Date(e.payload.at))} (${e.payload.minutes} min): ${oneLine(e.payload.note, 160)}`,
+      ];
+    case "wait_fired":
+      return [`· hora do retorno: ${oneLine(e.payload.note, 160)}`];
+    case "wait_cancelled":
+      return [`· retorno cancelado (${WAIT_CANCEL_PT[e.payload.reason]})`];
   }
 }
 
@@ -413,7 +434,7 @@ export function summarizeEvent(event: RawEvent): string {
       return `${done}/${e.payload.plan.length} passos feitos`;
     }
     case "user_message":
-      return JSON.stringify(oneLine(e.payload.text, 90));
+      return `${e.payload.linkedApprovalId === undefined ? "" : `[ligada à aprovação ${e.payload.linkedApprovalId.slice(0, 8)}] `}${JSON.stringify(oneLine(e.payload.text, 90))}`;
     case "nudge":
       return `${e.payload.reason}: ${oneLine(e.payload.text, 80)}`;
     case "finish_attempt":
@@ -442,12 +463,29 @@ export function summarizeEvent(event: RawEvent): string {
       return `${e.payload.callId} ${e.payload.tool} ${e.payload.level} · ${oneLine(e.payload.summary, 80)}${e.payload.secrets.length === 0 ? "" : ` · segredos: ${e.payload.secrets.join(", ")}`}`;
     case "approval_decided":
       return `${e.payload.callId} ${e.payload.decision}${e.payload.reason === undefined ? "" : `: ${oneLine(e.payload.reason, 80)}`}`;
+    case "approval_stale":
+      return `${e.payload.callId} esperou ${formatDuration(e.payload.waitedMs)} (limite ${formatDuration(e.payload.thresholdMs)})`;
+    case "approval_grant_used":
+      return `${e.payload.callId} ${e.payload.tool} (aprovação ${e.payload.approvalId.slice(0, 8)})`;
     case "secret_requested":
       return `${e.payload.callId} ${e.payload.name}`;
+    case "wait_scheduled":
+      return `${e.payload.at} (${e.payload.minutes} min) · ${oneLine(e.payload.note, 90)}`;
+    case "wait_fired":
+      return `${e.payload.at}${e.payload.delayMs === undefined ? "" : ` · ${Math.round(e.payload.delayMs / 1000)} s depois da hora`} · ${oneLine(e.payload.note, 80)}`;
+    case "wait_cancelled":
+      return WAIT_CANCEL_PT[e.payload.reason];
     case "tool_catalog":
       return `${MODE_PT[e.payload.mode]}: ${e.payload.connectorTools} ferramenta(s) de conectores, ~${formatInt(e.payload.definitionTokens)} tok de definições${e.payload.deferred.length > 0 ? `, ${e.payload.deferred.length} adiada(s)` : ""}`;
   }
 }
+
+const WAIT_CANCEL_PT = {
+  user_message: "o usuário escreveu",
+  cancelled: "a execução foi cancelada",
+  replaced: "substituído por um novo retorno",
+  finished: "a execução terminou",
+} as const;
 
 const MODE_PT = {
   direct: "carregadas direto",

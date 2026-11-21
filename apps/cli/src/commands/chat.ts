@@ -31,7 +31,11 @@ function hideOutcome(event: RawEvent): boolean {
   if (event.type === "tool_call")
     return event.payload.name === "escalate" || event.payload.name === "finish";
   if (event.type === "status_changed") {
-    return event.payload.to === "done" || event.payload.to === "waiting_user";
+    return (
+      event.payload.to === "done" ||
+      event.payload.to === "waiting_user" ||
+      event.payload.to === "waiting_timer"
+    );
   }
   return false;
 }

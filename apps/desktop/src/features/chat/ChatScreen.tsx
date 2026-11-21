@@ -47,6 +47,7 @@ const ACTIVE: ReadonlySet<Run["status"]> = new Set([
   "running",
   "waiting_user",
   "waiting_approval",
+  "waiting_timer",
 ]);
 
 /** The run controls and the bot's own options, as menu items (the chip's context menu, the palette). */

@@ -58,7 +58,9 @@ export async function pauseRun(
         "not_pausable",
         run.status === "waiting_user"
           ? "A execução está esperando a sua resposta; não há o que pausar."
-          : "A execução está esperando uma aprovação; não há o que pausar.",
+          : run.status === "waiting_timer"
+            ? "A execução está parada até a hora do retorno que ela marcou; não há o que pausar."
+            : "A execução está esperando uma aprovação; não há o que pausar.",
       );
     }
     const interrupt = options.hard === true && run.status === "running";
@@ -99,7 +101,8 @@ export async function resumeRun(db: Db, runId: string): Promise<Run> {
  * at a safe point and the run ends `cancelled`), clears a pause so a worker can take the run to
  * apply it, and, when the run is working right now, also asks for a hard interrupt so it does not
  * go on for a whole turn first. A run waiting for the user is put back in the queue by the post.
- * A run waiting for an approval is cancelled directly (no worker holds it), and so is a run that is
+ * A run waiting for an approval is cancelled directly (no worker holds it), and so is a run parked
+ * for a return of its own (`waiting_timer`; its pending return is cancelled in the log), and so is a run that is
  * still queued and has never started (its log is empty: there is nothing to unwind, and waiting
  * for a worker that may never come would leave it queued forever). A queued run that already has a
  * log (it was requeued after an answer, or a lease expired) still goes through the loop, which
@@ -127,6 +130,17 @@ export async function cancelRun(db: Db, runId: string): Promise<Run> {
         to: "cancelled",
       });
       const done = await setRunStatus(tx, run.id, { from: "waiting_approval", to: "cancelled" });
+      if (done !== null) return done;
+    }
+    if (run.status === "waiting_timer") {
+      // Parked for a return of its own: nobody holds it, so it ends right here. The return does not
+      // fire any more; the log says why, then the run ends.
+      await appendRunEvent(tx, run.id, "wait_cancelled", { reason: "cancelled" });
+      await appendRunEvent(tx, run.id, "status_changed", {
+        from: "waiting_timer",
+        to: "cancelled",
+      });
+      const done = await setRunStatus(tx, run.id, { from: "waiting_timer", to: "cancelled" });
       if (done !== null) return done;
     }
     if (run.status === "queued") {

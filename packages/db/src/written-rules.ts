@@ -169,3 +169,30 @@ export async function setApprovalMode(db: Db, mode: ApprovalMode): Promise<Appro
     on conflict (singleton) do update set mode = excluded.mode`;
   return next;
 }
+
+// ---- the staleness limit of a card ------------------------------------------------------
+
+export const STALE_APPROVAL_MIN_MINUTES = 5;
+export const STALE_APPROVAL_MAX_MINUTES = 10080;
+export const DEFAULT_STALE_APPROVAL_MINUTES = 60;
+
+const staleMinutesSchema = z
+  .number()
+  .int()
+  .min(STALE_APPROVAL_MIN_MINUTES)
+  .max(STALE_APPROVAL_MAX_MINUTES);
+
+/** How many minutes a card may wait before approving it stops running the call at once. */
+export async function getStaleApprovalMinutes(db: Db): Promise<number> {
+  const [row] = await db.sql<{ minutes: number }[]>`
+    select stale_after_minutes as minutes from approval_settings`;
+  return row?.minutes ?? DEFAULT_STALE_APPROVAL_MINUTES;
+}
+
+export async function setStaleApprovalMinutes(db: Db, minutes: number): Promise<number> {
+  const next = staleMinutesSchema.parse(minutes);
+  await db.sql`
+    insert into approval_settings (singleton, stale_after_minutes) values (true, ${next})
+    on conflict (singleton) do update set stale_after_minutes = excluded.stale_after_minutes`;
+  return next;
+}

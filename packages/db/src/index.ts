@@ -220,6 +220,7 @@ export {
 } from "./memory-consolidation.js";
 export {
   getMemorySettings,
+  MEMORY_PROMPT_CEILING_CHARS,
   MEMORY_SETTING_DEFAULTS,
   MEMORY_SETTING_LIMITS,
   type MemorySettings,
@@ -333,16 +334,22 @@ export type {
   RunOrigin,
   RunStatus,
 } from "./types.js";
+export { type WakeDueOptions, type WokenRun, wakeDueRuns } from "./wake.js";
 export {
   type CreateWrittenRuleInput,
   createWrittenRule,
+  DEFAULT_STALE_APPROVAL_MINUTES,
   deleteWrittenRule,
   getApprovalMode,
+  getStaleApprovalMinutes,
   getWrittenRule,
   type ListWrittenRulesOptions,
   listWrittenRules,
+  STALE_APPROVAL_MAX_MINUTES,
+  STALE_APPROVAL_MIN_MINUTES,
   type StoredWrittenRule,
   setApprovalMode,
+  setStaleApprovalMinutes,
   type UpdateWrittenRuleInput,
   updateWrittenRule,
   WrittenRuleError,

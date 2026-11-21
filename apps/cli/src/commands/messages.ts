@@ -35,7 +35,11 @@ export const sayCommand: CommandSpec = {
       ctx.out.data({ runId: run.id, inboxId: posted.id, requeued: posted.requeued });
       return EXIT_OK;
     }
-    if (posted.requeued) {
+    if (run.status === "waiting_timer") {
+      ctx.out.line(
+        `Mensagem registrada: o retorno agendado foi cancelado e a execução voltou para a fila (suup resume ${run.id.slice(0, 8)}, ou deixe um worker pegá-la).`,
+      );
+    } else if (posted.requeued) {
       ctx.out.line(
         `Resposta registrada. A execução voltou para a fila: continue com suup resume ${run.id.slice(0, 8)} (ou deixe um worker pegá-la).`,
       );
@@ -62,6 +66,14 @@ export const stopCommand: CommandSpec = {
     const run = await findRun(db, ctx.args.positionals[0] as string);
     if (TERMINAL.has(run.status)) {
       throw new CommandError(`A execução ${run.id.slice(0, 8)} já terminou (${run.status}).`);
+    }
+    if (run.status === "waiting_timer") {
+      // Parked for a return of its own: nobody holds it, so it is cancelled right here (the
+      // pending return is cancelled in the log).
+      await cancelRun(db, run.id);
+      if (ctx.json) ctx.out.data({ runId: run.id, cancelled: true });
+      else ctx.out.line(`Execução ${run.id.slice(0, 8)} cancelada: estava parada até o retorno.`);
+      return EXIT_OK;
     }
     if (run.status === "queued") {
       // Nobody holds it: a run that never started is cancelled right here; one that has a log is

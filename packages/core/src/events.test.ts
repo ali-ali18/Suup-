@@ -106,6 +106,15 @@ const samples: RunEventData[] = [
   },
   { type: "compacted", payload: { summary: "s", uptoSeq: 7, droppedMessages: 3 } },
   {
+    type: "wait_scheduled",
+    payload: { at: "2026-11-19T20:00:00.000Z", note: "check", minutes: 20, callId: "c1" },
+  },
+  {
+    type: "wait_fired",
+    payload: { at: "2026-11-19T20:00:00.000Z", note: "check", delayMs: 1200 },
+  },
+  { type: "wait_cancelled", payload: { reason: "user_message" } },
+  {
     type: "policy_checked",
     payload: {
       callId: "1",
@@ -151,6 +160,15 @@ const samples: RunEventData[] = [
   {
     type: "approval_decided",
     payload: { approvalId: "a1", callId: "1", decision: "denied", reason: "no", ruleId: "r2" },
+  },
+  {
+    type: "approval_stale",
+    payload: { approvalId: "a1", callId: "1", waitedMs: 18_000_000, thresholdMs: 3_600_000 },
+  },
+  { type: "approval_grant_used", payload: { approvalId: "a1", callId: "2", tool: "send" } },
+  {
+    type: "user_message",
+    payload: { text: "mande por e-mail", inboxId: "i1", linkedApprovalId: "a1" },
   },
   { type: "secret_requested", payload: { callId: "1", name: "GITHUB_TOKEN", reason: "push" } },
   {

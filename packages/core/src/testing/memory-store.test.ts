@@ -18,6 +18,7 @@ describeRunStoreContract("InMemoryRunStore", () => {
     outcome: async (runId) => memory.outcome(runId),
     takeLease: async (runId) => memory.assignLease(runId, "worker-2"),
     leased: async (runId) => memory.leaseHolder(runId) !== null,
+    wake: async (now) => memory.wakeDue(now).length,
     decideApproval: async (runId, approvalId, decision) => {
       memory.decideApproval(runId, approvalId, decision);
     },

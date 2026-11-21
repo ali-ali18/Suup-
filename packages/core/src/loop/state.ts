@@ -14,6 +14,7 @@ import { historyMessages } from "./history.js";
 import {
   isReminderBlock,
   renderNotice,
+  renderReturnNotice,
   renderSummaryMessage,
   renderUserMessage,
 } from "./prompts.js";
@@ -55,6 +56,16 @@ export type Waiting =
   | { kind: "approval"; callId: string; approvalId: string }
   /** The bot asked the user for a credential. */
   | { kind: "secret"; callId: string; name: string };
+
+/** A return the bot asked for (`wait_scheduled`) that has neither fired nor been cancelled. */
+export interface PendingReturn {
+  at: string;
+  note: string;
+  minutes: number;
+  callId?: string;
+  /** The run was settled into `waiting_timer` for it (the status change is in the log). */
+  parked: boolean;
+}
 
 /** The approval of one call, as the log tells it. */
 export interface ApprovalRecord {
@@ -143,6 +154,14 @@ export interface RunState {
   /** Outcomes of the calls of the turn in progress, for the no-progress count. */
   turnOutcomes: { name: string; failed: boolean }[];
   waiting: Waiting | null;
+  /** The return the bot scheduled and that has not fired or been cancelled yet; one at most. */
+  wait: PendingReturn | null;
+  /** Returns that fired since the user last wrote to the run (the cap counts these). */
+  wakeCount: number;
+  /** Milliseconds the run spent parked for returns; the duration limit does not count them. */
+  waitedMs: number;
+  /** When the run was parked, while it is. */
+  parkedAt: Date | null;
   /** A `finish` was accepted but the run has not been closed yet. */
   acceptedFinish: { summary: string; evidence: { criterion: string; evidence: string }[] } | null;
   finishAttempts: Map<string, FinishAttemptRecord>;
@@ -180,6 +199,20 @@ export interface RunState {
   deliveredInbox: Set<string>;
   /** Approvals by call id: the request and, once it is in the log, the decision. */
   approvals: Map<string, ApprovalRecord>;
+  /** Approvals given too late (`approval_stale`), by the call id of the card. */
+  staleApprovals: Map<string, RunEventPayload<"approval_stale">>;
+  /**
+   * The one-time grants a late approval left (see `grants.ts`), oldest first. `used` is set by an
+   * `approval_grant_used`; the grant never outlives the run.
+   */
+  grants: { approvalId: string; tool: string; args: JsonValue; used: boolean }[];
+  /** Calls that ran on a grant, by the new call id: the approval whose grant they consumed. */
+  grantUses: Map<string, string>;
+  /**
+   * The card the user denied and that no model request has come after yet. A user message
+   * delivered while it is set is about that denial (by the order of the log, never the text).
+   */
+  denialLink: { approvalId: string; tool: string } | null;
   /** The verdicts the policy gave (allow or deny), by call id. A resumed loop reuses them. */
   policies: Map<string, RunEventPayload<"policy_checked">>;
   /** A call of the turn in progress was denied: the calls after it are not run. */
@@ -227,6 +260,10 @@ export function createRunState(): RunState {
     sawRequest: false,
     turnOutcomes: [],
     waiting: null,
+    wait: null,
+    wakeCount: 0,
+    waitedMs: 0,
+    parkedAt: null,
     acceptedFinish: null,
     finishAttempts: new Map(),
     currentReview: null,
@@ -245,6 +282,10 @@ export function createRunState(): RunState {
     deliveredInbox: new Set(),
     approvals: new Map(),
     policies: new Map(),
+    staleApprovals: new Map(),
+    grants: [],
+    grantUses: new Map(),
+    denialLink: null,
     denied: null,
     reviews: new Map(),
     reviewBlocks: { total: 0, consecutive: 0 },
@@ -458,9 +499,33 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
     case "approval_decided": {
       const record = state.approvals.get(event.payload.callId);
       if (record !== undefined) record.decided = event.payload;
+      if (record !== undefined && event.payload.decision === "denied") {
+        state.denialLink = { approvalId: event.payload.approvalId, tool: record.requested.tool };
+      }
       if (state.waiting?.kind === "approval" && state.waiting.callId === event.payload.callId) {
         state.waiting = null;
       }
+      break;
+    }
+
+    case "approval_stale": {
+      state.staleApprovals.set(event.payload.callId, event.payload);
+      const record = state.approvals.get(event.payload.callId);
+      if (record !== undefined) {
+        state.grants.push({
+          approvalId: event.payload.approvalId,
+          tool: record.requested.tool,
+          args: structuredClone(record.requested.args as JsonValue),
+          used: false,
+        });
+      }
+      break;
+    }
+
+    case "approval_grant_used": {
+      state.grantUses.set(event.payload.callId, event.payload.approvalId);
+      const grant = state.grants.find((g) => g.approvalId === event.payload.approvalId);
+      if (grant !== undefined) grant.used = true;
       break;
     }
 
@@ -488,7 +553,15 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
       state.userSaid.push(event.payload.text);
       appendUserBlock(
         state,
-        { type: "text", text: renderUserMessage(event.payload.text) },
+        {
+          type: "text",
+          text: renderUserMessage(
+            event.payload.text,
+            event.payload.linkedApprovalId === undefined
+              ? undefined
+              : linkedTool(state, event.payload.linkedApprovalId),
+          ),
+        },
         event.seq,
       );
       // New information from the user: the model deserves a fresh start on its counters.
@@ -562,8 +635,49 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
           : { kind: "review_tie_break", question: event.payload.question };
       break;
 
+    case "wait_scheduled":
+      state.wait = {
+        at: event.payload.at,
+        note: event.payload.note,
+        minutes: event.payload.minutes,
+        ...(event.payload.callId === undefined ? {} : { callId: event.payload.callId }),
+        parked: false,
+      };
+      break;
+
+    case "wait_fired":
+      endWait(state, event.createdAt);
+      state.wakeCount += 1;
+      // The model reads it as a message of the harness, never as the user's.
+      appendUserBlock(
+        state,
+        {
+          type: "text",
+          text: renderNotice(
+            renderReturnNotice({
+              note: event.payload.note,
+              plan: state.plan,
+              ...(event.payload.delayMs === undefined ? {} : { delayMs: event.payload.delayMs }),
+            }),
+          ),
+        },
+        event.seq,
+      );
+      state.noProgressStreak = 0;
+      break;
+
+    case "wait_cancelled":
+      endWait(state, event.createdAt);
+      // The user wrote: a person is in the loop again, so the count of returns starts over.
+      if (event.payload.reason === "user_message") state.wakeCount = 0;
+      break;
+
     case "status_changed":
       for (const id of event.payload.inboxIds ?? []) state.deliveredInbox.add(id);
+      if (event.payload.to === "waiting_timer") {
+        state.parkedAt = event.createdAt;
+        if (state.wait !== null) state.wait.parked = true;
+      }
       state.status = event.payload.to;
       state.statusDetail = {
         ...(event.payload.failure === undefined ? {} : { failure: event.payload.failure }),
@@ -597,7 +711,11 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
     }
 
     case "model_request": {
-      if (event.payload.purpose === undefined) state.sawRequest = true;
+      if (event.payload.purpose === undefined) {
+        state.sawRequest = true;
+        // The model goes on: what the user writes from here on is no longer about the denial.
+        state.denialLink = null;
+      }
       // The STATE REMINDER sent with an agent request becomes a permanent part of that user
       // message, so later requests extend this one instead of rewriting it.
       if (event.payload.purpose !== undefined) break;
@@ -612,6 +730,23 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
 
     case "model_error":
       break;
+  }
+}
+
+/** The tool of the card a message was linked to ("" if the card is not in the log). */
+function linkedTool(state: RunState, approvalId: string): string {
+  for (const record of state.approvals.values()) {
+    if (record.requested.approvalId === approvalId) return record.requested.tool;
+  }
+  return "";
+}
+
+/** The pending return ended (fired or cancelled): the time parked stops counting. */
+function endWait(state: RunState, at: Date): void {
+  state.wait = null;
+  if (state.parkedAt !== null) {
+    state.waitedMs += Math.max(0, at.getTime() - state.parkedAt.getTime());
+    state.parkedAt = null;
   }
 }
 

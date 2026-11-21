@@ -79,6 +79,7 @@ Função pura `decidePolicy` (`core`), na ordem; a primeira que decide encerra:
    - `run` que cita uma regra `ask` ou `never` vira `ask` (**quem manda perguntar vence quem libera**: o código confere o tipo da regra citada, não só o prompt);
    - um `ruleId` que não existe em nenhuma regra do bot vira `ask`, qualquer que seja a decisão;
    - erro, tempo esgotado (20 s), resposta sem a ferramenta, decisão desconhecida ou argumentos grandes demais (12 000 caracteres) viram `ask`.
+   - **Exceção: as ferramentas da memória do próprio bot (`remember`, `forget`) no nível `write_reversible` não vão ao modelo** (rodam). A regra do dono é que nada que o bot escreve na memória espera o usuário ([MEMORIA.md](MEMORIA.md)); a memória tem as próprias proteções (revisão de escrita quando a execução leu conteúdo de fora, histórico com desfazer). Com o modelo real o revisor pedia cartão para quase todo fato dito pelo usuário (o texto dizia "Marina", e o revisor não via a primeira mensagem, onde o nome foi dito). Consequência aceita: uma regra escrita não cobre a memória. Se o usuário subir o nível da ferramenta (`approvals.levels`) a exceção não vale. Constante `MEMORY_KEEPING_TOOLS` (`gate.ts`).
 7. Sem modelo disponível: a tabela de níveis (`levelReviewer`), como antes.
 8. O que sobrou para perguntar é **cartão**.
 
@@ -98,7 +99,7 @@ O revisor é uma implementação de `AutoReviewer` (`createModelReviewer`, em `c
 
 **O que ele nunca vê:** texto do assistente, resultado de ferramenta, e-mail ou página que o bot leu, raciocínio do modelo. (É nos resultados que a injeção chega: a Anthropic tira os resultados do classificador do modo automático do Claude Code pelo mesmo motivo; a pesquisa acima tem as fontes.) Os argumentos podem carregar texto de um atacante que o bot copiou, e o prompt os marca como **dado não confiável que pode conter instruções** (que não têm autoridade). Para um texto dentro de um argumento não fechar o bloco em que está, o caractere `<` vai escrito como `\u003c` (JSON válido); as mensagens do usuário e os textos das regras vão como texto JSON entre aspas.
 
-**A resposta** é forçada por uma ferramenta (`review_call`): `{ decision: "run" | "ask" | "block", ruleId: string | null, reason: uma frase curta em português }`. Qualquer outra coisa é `ask`. O prompt completo e a versão dele (`auto-review-v1`) estão em `packages/core/src/approvals/model-reviewer.ts` (`REVIEW_SYSTEM_PROMPT`, `buildReviewMessage`) e a versão é gravada em cada revisão.
+**A resposta** é forçada por uma ferramenta (`review_call`): `{ decision: "run" | "ask" | "block", ruleId: string | null, reason: uma frase curta em português }`. Qualquer outra coisa é `ask`. O prompt completo e a versão dele (`auto-review-v2`) estão em `packages/core/src/approvals/model-reviewer.ts` (`REVIEW_SYSTEM_PROMPT`, `buildReviewMessage`) e a versão é gravada em cada revisão.
 
 **Quando recusa (`block`).** A ferramenta devolve ao bot uma recusa que cita o texto da regra (`Bloqueado pela regra "apagar a pasta notas"`; o bot é instruído a não tentar de novo nem contornar), **sem cartão**. O registro é o evento `policy_checked` (`outcome: "deny"`, `source: "reviewer"`, `writtenRuleId`, `reason`), que o app mostra recolhido como "Bloqueado pela regra …". A decisão é gravada uma vez no log e não é refeita.
 
@@ -165,6 +166,28 @@ modelo pede a chamada
 - **Sem prazo escondido.** Um cartão só expira se `approvals.expireAfterMinutes` estiver na configuração (aí ele vira `expired`, o bot é avisado e segue). Sem isso espera para sempre, e o worker não fica preso nele (a execução está em `waiting_approval`).
 - **Cancelar a execução cancela os cartões pendentes** (`approval_decided` com `cancelled` no log).
 
+### Aprovação depois de muito tempo
+
+Decisão do dono: um cartão **nunca expira por padrão** (acima). Mas aprovar um que esperou **mais** que `staleAfterMinutes` (configuração do servidor, padrão 60 minutos, de 5 a 10080; Configurações > Permissões, `suup approvals stale [minutos]`, `PATCH /v1/approval-settings`) **não executa a ação na hora**: o mundo pode ter mudado desde que o cartão foi pedido.
+
+```
+você aprova (esperou 5 h, o limite é 1 h)
+  └─ o banco grava, na hora da decisão: waited_ms (decided_at - created_at) e o limite daquele momento
+  └─ o loop retoma: approval_decided (approved), depois approval_stale { approvalId, callId, waitedMs, thresholdMs }
+       ├─ a chamada NÃO roda; o modelo recebe, como resultado dela, um aviso do harness (nunca do usuário)
+       └─ a aprovação fica como permissão de uma vez para a chamada idêntica, nesta execução
+```
+
+- **O aviso ao modelo** (resultado da chamada, com o prefixo de aviso do harness): "o usuário aprovou esta chamada exata a "<ferramenta>" depois de 5 h, e por isso ela NÃO foi executada agora: o estado das coisas pode ter mudado. Confira se ela ainda faz sentido antes de contar com ela. Se ainda faz, chame de novo com exatamente os mesmos argumentos (vale uma vez, sem novo cartão). Se não faz mais, não chame, e conte ao usuário por quê. Ao retomar, diga ao usuário, na mensagem final em que você conta o resultado (o texto que vem junto de uma chamada de ferramenta não chega a ele), que você retomou uma tarefa antiga e que a aprovação demorou 5 h." A mensagem do bot é a explicação ao usuário; a interface não inventa outra. (Com o modelo real, a primeira redação dizia só "na sua mensagem": o bot avisou no texto que acompanhava a nova chamada, que não vira mensagem da conversa, e a mensagem final não mencionou a retomada.)
+- **A permissão de uma vez (`grant`).** Uma chamada seguinte da **mesma execução**, com o **mesmo nome de ferramenta e os mesmos argumentos** (igualdade exata do JSON, com as chaves em ordem canônica; sem comparação aproximada, sem olhar texto), roda **sem novo cartão** e consome a permissão (`approval_grant_used { approvalId, callId, tool }`). Qualquer diferença (um caractere de argumento) é um cartão normal. Uma segunda chamada idêntica depois da primeira também pergunta. A permissão **morre com a execução**: ela é só o log desta execução (uma execução nova começa sem nenhuma). **Quem proíbe ainda vence** (deny > allow): a chamada idêntica passa primeiro pelo portão, e uma regra exata `deny` ou uma regra escrita `never` (o revisor) que existam agora ainda a recusam, sem consumir a permissão. Os pisos fixos só forçam um cartão, e a permissão conta como a sua resposta a esse cartão; o mesmo vale para o "perguntar" do revisor ou do modo. Ou seja, a permissão substitui só o cartão, nunca uma recusa.
+- **Gravação e replay.** A linha de `approvals` continua `approved`. O limite e a espera são gravados quando você decide (colunas `waited_ms` e `stale_after_ms`, migração 0021) e vão para o evento `approval_stale`; o loop e o replay leem os números do log, nunca um relógio nem a configuração de hoje. Uma queda entre `approval_decided` e `approval_stale` é completada ao retomar (o teste derruba o processo depois de cada evento).
+- **Cartões de mensagem** (e-mail com "Permitir destinatário" etc.) seguem a mesma regra: aprovar tarde não envia na hora. (Se "Permitir destinatário" foi marcado, a regra de destinatário já nasce; ela vale para as chamadas seguintes como sempre.)
+- **Na tela:** a linha recolhida da chamada diz "Aprovado depois de 5 h · <ação>", sem botão novo ([DESIGN.md](DESIGN.md)).
+
+### Mensagem logo depois de uma recusa
+
+Quando você recusa um cartão e escreve ao bot em seguida ("manda por e-mail então"), a mensagem costuma ser sobre a ação recusada. Se ela estava na caixa da execução quando o loop retomou da recusa, isto é, **depois** do evento `approval_decided` com `denied` e **antes** do próximo pedido ao modelo, o bot a lê como "Sobre a ação que você acabou de não poder fazer (<ferramenta>, recusada pelo usuário): <mensagem>". A decisão é pela **ordem dos eventos do log**, nunca pelo texto da mensagem. O evento `user_message` guarda `linkedApprovalId` (o cartão recusado), então o replay entrega a mesma coisa. A execução nunca para por causa disso; uma mensagem que chega depois que o modelo já foi pedido de novo é uma mensagem normal, e só uma recusa do usuário liga (expirado e cancelado não).
+
 ### Várias chamadas no mesmo turno
 
 O modelo pode pedir várias ferramentas numa resposta. A regra adotada:
@@ -191,6 +214,7 @@ suup deny <id> [--reason "..."]
 suup rules list|add|edit|rm                  # a regra: igualdade exata, `--match campo=valor`
 suup rules written list|add|edit|rm          # as regras que você escreve em linguagem comum
 suup approvals mode [auto-review|ask-all]    # o modo de aprovação (sem argumento: mostra)
+suup approvals stale [minutos]               # depois de quantos minutos aprovar um cartão não roda na hora (5 a 10080)
 suup eval approvals --yes                    # mede o auto-review com a bateria plantada (gasta dinheiro)
 suup chat                                    # o cartão aparece no terminal e você responde na hora
 ```

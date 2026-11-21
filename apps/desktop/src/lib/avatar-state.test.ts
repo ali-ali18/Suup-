@@ -13,6 +13,7 @@ describe("avatarStateOf", () => {
     ["running a tool, then paused", "running", true, true, "paused"],
     ["waiting for the user's answer", "waiting_user", false, false, "asking"],
     ["waiting for an approval", "waiting_approval", false, false, "waiting"],
+    ["parked until its own return", "waiting_timer", false, false, "idle"],
     ["done", "done", false, false, "done"],
     ["failed", "failed", false, false, "failed"],
     ["cancelled", "cancelled", false, false, "idle"],

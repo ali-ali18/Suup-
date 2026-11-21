@@ -7,10 +7,12 @@ import {
   createBot,
   createDirectConversation,
   createRun,
+  listChanges,
   pruneChangeLog,
   setRunStatus,
 } from "@suup/db";
 import { describe, expect, it } from "vitest";
+import { createDbSource } from "../src/stream/db-source.js";
 import { DATABASE_URL, dbSuiteName, follow, until, useWorld } from "./world.js";
 
 // The realtime stream across the processes of a deployment: two servers on one database, resuming,
@@ -70,6 +72,15 @@ describe.skipIf(!DATABASE_URL)(
             ? [`${e.id}:${e.type}`]
             : [],
         );
+      // A snapshot frame missing from one side was folded into a later frame of the same kind.
+      const coalesced = (frameId: string, other: string[]) => {
+        const id = Number(frameId.split(":")[0]);
+        const later = other.some(
+          (y) => Number(y.split(":")[0]) > id && kindOf(y) === kindOf(frameId),
+        );
+        expect(later, `${frameId} is missing and nothing later replaces it`).toBe(true);
+      };
+      const kindOf = (x: string) => x.slice(x.indexOf(":") + 1);
       const onA = idsOf(fa.events, sent.run.id);
       const onB = idsOf(fb.events, sent.run.id);
       // Same changes, same ids: compare from the first change both of them were following.
@@ -77,7 +88,23 @@ describe.skipIf(!DATABASE_URL)(
       const from = Math.max(first(onA), first(onB));
       const since = (list: string[]) => list.filter((x) => Number(x.split(":")[0]) >= from);
       expect(since(onA).length).toBeGreaterThan(5);
-      expect(since(onA)).toEqual(since(onB));
+      // What is promised is the same ids and no loss, not the same frames: a server that reads
+      // several changes of one row in a single batch sends only the last (a snapshot of the row),
+      // so a `run.updated` can be missing on one side. Everything else is the same on both, and
+      // every frame one server sent carries the same id and type on the other.
+      const SNAPSHOTS = new Set(["run.updated", "conversation.updated", "bot.updated"]);
+      const rest = (list: string[]) => since(list).filter((x) => !SNAPSHOTS.has(kindOf(x)));
+      expect(rest(onA)).toEqual(rest(onB));
+      const inB = new Set(since(onB));
+      const inA = new Set(since(onA));
+      for (const x of since(onA)) if (SNAPSHOTS.has(kindOf(x)) && !inB.has(x)) coalesced(x, onB);
+      for (const x of since(onB)) if (SNAPSHOTS.has(kindOf(x)) && !inA.has(x)) coalesced(x, onA);
+      // The last state of each kind of snapshot is the same on both.
+      const lastOfKind = (list: string[], kind: string) =>
+        since(list)
+          .filter((x) => kindOf(x) === kind)
+          .at(-1);
+      for (const kind of SNAPSHOTS) expect(lastOfKind(onA, kind)).toEqual(lastOfKind(onB, kind));
       // Both carry the run's events complete.
       const seqs = (f: { events: StreamEvent[] }) =>
         f.events.flatMap((e) =>
@@ -118,6 +145,37 @@ describe.skipIf(!DATABASE_URL)(
       fetch(`${url}/v1/stream${query}`, {
         headers: { Authorization: `Bearer ${token}`, ...headers },
       });
+
+    it("two servers may batch the same changes differently: a snapshot row is sent once per batch, under the id of its last change", async () => {
+      const bot = await createBot(w.db, {
+        name: "Lote",
+        modelProvider: "roteiro",
+        modelId: "model-x",
+      });
+      const conversation = await createDirectConversation(w.db, bot.id);
+      const head =
+        (await w.db.sql<{ n: string }[]>`select max(id) as n from change_log`)[0]?.n ?? "0";
+      const run = await createRun(w.db, {
+        botId: bot.id,
+        conversationId: conversation.id,
+        origin: "user",
+        objective: "x",
+      });
+      await setRunStatus(w.db, run.id, { from: "queued", to: "running" });
+      await setRunStatus(w.db, run.id, { from: "running", to: "cancelled" });
+      const changes = (await listChanges(w.db, Number(head), 100)).filter(
+        (c) => c.kind === "run" && c.ref === run.id,
+      );
+      expect(changes.length).toBeGreaterThan(2);
+      const source = createDbSource(w.db);
+      const all = (list: typeof changes) =>
+        source.resolve(list, () => false).then((r) => r.map((x) => x.id));
+      // One server reads everything at once; the other reads change by change.
+      const together = await all(changes);
+      const apart = (await Promise.all(changes.map((c) => all([c])))).flat();
+      expect(apart).toEqual(changes.map((c) => c.id));
+      expect(together).toEqual([changes[changes.length - 1]?.id]);
+    });
 
     it("starting a server settles runs that ended without their effects and makes sure a main bot exists", async () => {
       const bot = await createBot(w.db, {

@@ -25,7 +25,7 @@ export interface BotConfig {
   };
   /** Names of registry tools the bot may use. The control tools are always available. */
   allowedTools: string[];
-  limits: { maxTurns: number; maxCostUsd?: number; maxDurationMs?: number };
+  limits: { maxTurns: number; maxCostUsd?: number; maxDurationMs?: number; maxReturns?: number };
 }
 
 /** The part of `ToolRegistry` the loop needs, so a replay invoker can stand in for it. */
@@ -57,7 +57,14 @@ export interface RunContextSnapshot {
   /** Compact the history past this share of the context window (the user's setting; recorded). */
   compactionThreshold?: number;
   /** Rules and profile facts left out because they did not fit the size cap (recorded). */
-  memoryOmitted?: { count: number; chars: number; limitChars: number };
+  memoryOmitted?: {
+    count: number;
+    chars: number;
+    limitItems?: number;
+    ceilingChars?: number;
+    /** Only in a run recorded before the limit was counted in memories (it was in characters). */
+    limitChars?: number;
+  };
 }
 
 export interface LoopDeps {
@@ -106,6 +113,12 @@ export interface LoopDeps {
   toolSearch?: ToolSearchDeps;
   /** The network access the tools of this run may grant (only after an approved card). */
   networkFor?(run: RunRecord): NetworkAccess;
+  /**
+   * The run may schedule its own return (`schedule_return`): set for a conversation run of the
+   * user, left out for an evaluation (isolated) run. It is also required that the run's origin is
+   * `user`. The tool is offered, or not, for the whole run.
+   */
+  allowReturns?: boolean;
   now(): Date;
   sleep(ms: number): Promise<void>;
 }

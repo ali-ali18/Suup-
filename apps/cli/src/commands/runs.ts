@@ -47,7 +47,7 @@ export const runsCommand: CommandSpec = {
     status: {
       type: "string",
       value: "status",
-      help: "Só neste status: queued, running, waiting_approval, waiting_user, done, failed, cancelled",
+      help: "Só neste status: queued, running, waiting_approval, waiting_user, waiting_timer, done, failed, cancelled",
     },
     limit: { type: "string", value: "N", help: "Quantas mostrar (padrão 20)" },
   },
@@ -280,6 +280,14 @@ export function describeRun(run: Run, bot: Bot | null, extra: DescribeExtras): s
     for (const item of result.evidence ?? []) {
       lines.push(`  - ${oneLine(item.criterion, 80)}: ${oneLine(item.evidence, 200)}`);
     }
+  }
+  if (run.status === "waiting_timer") {
+    lines.push(
+      `Retorno agendado: ${run.wakeAt == null ? "?" : formatDateTime(run.wakeAt)}${run.wakeNote == null ? "" : ` — nota: ${oneLine(run.wakeNote, 200)}`}`,
+    );
+    lines.push(
+      `Uma mensagem sua cancela o retorno (suup say ${run.id.slice(0, 8)} "<texto>"); suup stop ${run.id.slice(0, 8)} cancela a execução.`,
+    );
   }
   if (run.status === "waiting_user" && extra.question !== null) {
     lines.push("Pergunta aguardando resposta:");

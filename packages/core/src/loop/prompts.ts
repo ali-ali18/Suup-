@@ -162,7 +162,10 @@ export function renderStateReminder(input: {
   ].join("\n\n");
 }
 
-export function renderUserMessage(text: string): string {
+export function renderUserMessage(text: string, deniedTool?: string): string {
+  if (deniedTool !== undefined) {
+    return `${USER_PREFIX}\nSobre a ação que você acabou de não poder fazer (${deniedTool}, recusada pelo usuário): ${text}`;
+  }
   return `${USER_PREFIX}\n${text}`;
 }
 
@@ -173,6 +176,23 @@ export function renderHistoryNote(text: string): string {
 
 export function renderNotice(text: string): string {
   return `${NOTICE_PREFIX} ${text}`;
+}
+
+/**
+ * What the model reads when a return it scheduled comes due: its own note and the plan as it
+ * stands. It goes in a harness notice, so it is never mistaken for a message of the user.
+ */
+export function renderReturnNotice(input: {
+  note: string;
+  plan: readonly PlanStep[];
+  delayMs?: number;
+}): string {
+  const late =
+    input.delayMs !== undefined && input.delayMs >= 120_000
+      ? ` (veio ${Math.round(input.delayMs / 60_000)} minutos depois da hora marcada)`
+      : "";
+  const plan = input.plan.length === 0 ? "" : `\nPlano até aqui:\n${formatPlan(input.plan)}`;
+  return `Retorno agendado${late}: ${input.note}${plan}\nEste aviso é do sistema, escrito por você mesmo ao agendar o retorno: não é uma mensagem do usuário. Faça o que a nota diz e conte ao usuário o resultado.`;
 }
 
 /** The first user message of a summarized conversation. */

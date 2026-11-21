@@ -523,6 +523,11 @@ export async function replayRun(
     firstRequest?.type === "model_request" &&
     firstRequest.payload.tools.some((t) => t.name === "request_secret");
 
+  // The run could schedule returns if the model was offered the tool.
+  const hadReturns =
+    firstRequest?.type === "model_request" &&
+    firstRequest.payload.tools.some((t) => t.name === "schedule_return");
+
   // The way the connector tools were offered is what the recording decided.
   const recordedCatalog = recorded.find((e) => e.type === "tool_catalog");
 
@@ -548,6 +553,7 @@ export async function replayRun(
     ...(recordedCatalog?.type === "tool_catalog"
       ? { toolSearch: { replayOf: recordedCatalog.payload } }
       : {}),
+    ...(hadReturns ? { allowReturns: true } : {}),
     now: clock,
     sleep: async () => {},
   };
@@ -565,6 +571,17 @@ export async function replayRun(
     // next look at the inbox finds the recorded delivery. If nothing moved, the replay is stuck
     // and the comparison below reports where.
     if (status === "waiting_user" && appended < recorded.length && appended > before) continue;
+    if (status === "waiting_timer" && appended < recorded.length) {
+      const next = recorded[appended];
+      if (next?.type === "wait_fired") {
+        // What the job that wakes runs does: the event, then the run is claimable and claimed.
+        await store.appendEvent(run.id, { type: next.type, payload: next.payload });
+        await memory.setStatus(run.id, { from: ["waiting_timer"], to: "running" });
+        continue;
+      }
+      // Otherwise the user wrote or stopped the run: the loop finds it where the recording did.
+      if (appended > before) continue;
+    }
     if (status === "waiting_approval" && appended < recorded.length && appended > before) {
       // The decision was made by the user, outside the loop: the store is handed back as a worker
       // would claim it, and the loop finds the recorded decision.
@@ -674,6 +691,17 @@ class ReplayStore implements RunStore {
     const items: ApprovalDecisionItem[] = [];
     for (let i = this.#position(); ; i++) {
       const event = this.#recorded[i];
+      if (event?.type === "approval_stale") {
+        // The late-approval note that follows its decision: the numbers are the recorded ones.
+        const item = items.find((it) => it.approvalId === event.payload.approvalId);
+        if (item !== undefined) {
+          item.stale = {
+            waitedMs: event.payload.waitedMs,
+            thresholdMs: event.payload.thresholdMs,
+          };
+        }
+        continue;
+      }
       if (event?.type !== "approval_decided") break;
       const p = event.payload;
       items.push({
@@ -689,7 +717,9 @@ class ReplayStore implements RunStore {
 
   /** The items the recording delivered at this very position of the log, with their ids. */
   async peekInbox(): Promise<InboxItem[]> {
-    const at = this.#position();
+    let at = this.#position();
+    // The loop logs that the pending return is cancelled just before it delivers what was said.
+    if (this.#recorded[at]?.type === "wait_cancelled") at += 1;
     const next = this.#recorded[at];
     if (next === undefined) return [];
 
@@ -733,6 +763,9 @@ function comparable(event: RecordedEvent | { type: string; payload: unknown }): 
   delete payload.durationMs;
   // The estimate of a response's input derives from the request, which is compared on its own.
   delete payload.measure;
+  // The instant a return was scheduled for is the wall clock of the original run plus the minutes:
+  // like a duration, a replay cannot reproduce it (the minutes and the note are compared).
+  if (event.type === "wait_scheduled") delete payload.at;
   if (event.type === "model_request") {
     // The request is compared on its own (`requestDiffs`): here only that it was made, and what
     // for.

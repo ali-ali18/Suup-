@@ -181,11 +181,17 @@ export type UncheckedItem = z.infer<typeof uncheckedItemSchema>;
 export const contextItemSchema = z.object({ id: z.string(), text: z.string() });
 export type ContextItem = z.infer<typeof contextItemSchema>;
 
+/** Why a pending return was dropped: the user wrote, the run was stopped, a new call replaced it, or the run finished. */
+export const WAIT_CANCEL_REASONS = ["user_message", "cancelled", "replaced", "finished"] as const;
+export type WaitCancelReason = (typeof WAIT_CANCEL_REASONS)[number];
+
 export const runStatusSchema = z.enum([
   "queued",
   "running",
   "waiting_approval",
   "waiting_user",
+  /** Parked by `schedule_return` until `wake_at`: no worker holds it (docs/RETORNO.md). */
+  "waiting_timer",
   "done",
   "failed",
   "cancelled",
@@ -272,14 +278,18 @@ export const runEventSchema = z.discriminatedUnion("type", [
       compactionThreshold: z.exactOptional(z.number().min(0.1).max(0.99)),
       /**
        * Rules and profile facts that did not fit under the size cap of what always enters the
-       * prompt (`memory.promptLimitChars`) and were left out, in creation order. Nothing is cut
-       * silently: this says how much, so the app can ask the user to trim.
+       * prompt (`promptLimitItems` memories, default 200, or the `ceilingChars` safety ceiling, 25,000
+       * characters) and were left out, in creation order. Nothing is cut silently: this says how
+       * much, so the app can ask the user to trim. A run recorded before the limit was counted in
+       * memories has `limitChars` instead of `limitItems` and `ceilingChars`: it still parses.
        */
       memoryOmitted: z.exactOptional(
         z.object({
           count: z.number().int().nonnegative(),
           chars: z.number().int().nonnegative(),
-          limitChars: z.number().int().positive(),
+          limitItems: z.exactOptional(z.number().int().positive()),
+          ceilingChars: z.exactOptional(z.number().int().positive()),
+          limitChars: z.exactOptional(z.number().int().positive()),
         }),
       ),
     }),
@@ -428,6 +438,34 @@ export const runEventSchema = z.discriminatedUnion("type", [
     }),
   }),
   z.object({
+    /**
+     * An approved card waited longer than the staleness limit (`approvals.staleAfterMinutes`, kept
+     * by the server). Written right after the `approval_decided` that approved it, from numbers the
+     * store recorded when the user decided: `waitedMs` and the `thresholdMs` it was measured
+     * against. The call is NOT run: the model is told, and the approval stays as a one-time grant
+     * for the identical call within this run (`approval_grant_used`).
+     */
+    type: z.literal("approval_stale"),
+    payload: z.object({
+      approvalId: z.string(),
+      callId: z.string(),
+      waitedMs: z.number().int().nonnegative(),
+      thresholdMs: z.number().int().nonnegative(),
+    }),
+  }),
+  z.object({
+    /**
+     * A call identical (same tool, same arguments, compared exactly) to one approved late ran
+     * without a new card, consuming that approval's grant. `callId` is the NEW call.
+     */
+    type: z.literal("approval_grant_used"),
+    payload: z.object({
+      approvalId: z.string(),
+      callId: z.string(),
+      tool: z.string(),
+    }),
+  }),
+  z.object({
     /** The bot asks the user for a credential; the answer is only that it is now available. */
     type: z.literal("secret_requested"),
     payload: z.object({
@@ -447,6 +485,12 @@ export const runEventSchema = z.discriminatedUnion("type", [
       text: z.string(),
       /** The inbox item this event delivers. A resumed loop never delivers the same id twice. */
       inboxId: z.exactOptional(z.string()),
+      /**
+       * The card the user had just denied, when this message was delivered after that denial and
+       * before the model's next request (decided by the order of the log, never by the text).
+       * The model reads the message as being about that denied action.
+       */
+      linkedApprovalId: z.exactOptional(z.string()),
     }),
   }),
   z.object({
@@ -619,6 +663,39 @@ export const runEventSchema = z.discriminatedUnion("type", [
       /** Set when the change is a cancellation asked for through the inbox (the `stop` items). */
       inboxIds: z.exactOptional(z.array(z.string())),
     }),
+  }),
+  z.object({
+    /**
+     * The bot asked to come back by itself (`schedule_return`). `at` is the instant, ISO 8601, fixed
+     * when the call was made (so a resumed or replayed run never recomputes it). One pending return
+     * per run: a second call logs `wait_cancelled` (`replaced`) and then a new `wait_scheduled`.
+     */
+    type: z.literal("wait_scheduled"),
+    payload: z.object({
+      at: z.string(),
+      note: z.string(),
+      minutes: z.number().int().positive(),
+      /** The `schedule_return` call that asked for it (a resumed run does not log it twice). */
+      callId: z.exactOptional(z.string()),
+    }),
+  }),
+  z.object({
+    /**
+     * The return came due. Written by the database job that wakes the run, in the same transaction
+     * that makes the run claimable again (so it is written exactly once); the resumed loop reads
+     * it and tells the model. `delayMs` is how late it fired (a worker that was down): it fires once.
+     */
+    type: z.literal("wait_fired"),
+    payload: z.object({
+      at: z.string(),
+      note: z.string(),
+      delayMs: z.exactOptional(z.number().int().nonnegative()),
+    }),
+  }),
+  z.object({
+    /** The pending return will not fire: why. */
+    type: z.literal("wait_cancelled"),
+    payload: z.object({ reason: z.enum(WAIT_CANCEL_REASONS) }),
   }),
   z.object({
     type: z.literal("compacted"),

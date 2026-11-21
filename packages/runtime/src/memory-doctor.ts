@@ -30,13 +30,13 @@ export async function checkMemory(runtime: Runtime): Promise<DoctorCheck[]> {
       detail: `${pending.length} proposta(s) de antes ainda esperam você (suup memory pending); o que o bot escreve agora vale na hora`,
     });
   }
-  const usage = await memoryPromptUsage(db, settings.promptLimitChars);
+  const usage = await memoryPromptUsage(db, settings.promptLimitItems);
   if (usage.overBots.length > 0) {
     checks.push({
       component: "Limite do prompt",
       ok: false,
-      detail: `regras e perfil ativos passam de ${usage.limitChars} caracteres para: ${usage.overBots
-        .map((b) => `${b.name} (${b.usedChars})`)
+      detail: `regras e perfil ativos passam de ${usage.limitItems} memórias (ou de ${usage.ceilingChars} caracteres) para: ${usage.overBots
+        .map((b) => `${b.name} (${b.usedItems} memórias, ${b.usedChars} caracteres)`)
         .join(
           ", ",
         )}. O que não cabe fica de fora do prompt, na ordem de criação (nada é cortado em silêncio): apague ou encurte algumas memórias, ou aumente o limite (suup memory settings --prompt-limit N)`,
