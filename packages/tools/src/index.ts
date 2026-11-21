@@ -10,6 +10,8 @@ import { searchConversationsTool } from "./search-conversations.js";
 import { searchFilesTool } from "./search-files.js";
 import { shellTool } from "./shell.js";
 import { webFetchTool } from "./web-fetch.js";
+import { webReadTool } from "./web-read.js";
+import { webSearchTool } from "./web-search.js";
 import { writeFileTool } from "./write-file.js";
 
 export { editFileTool } from "./edit-file.js";
@@ -25,6 +27,8 @@ export { buildSearchCommand, searchFilesTool } from "./search-files.js";
 export { shellTool } from "./shell.js";
 export { shellJoin, shellQuote } from "./shell-quote.js";
 export { buildCurlCommand, webFetchTool } from "./web-fetch.js";
+export { formatRead, webReadTool } from "./web-read.js";
+export { formatSearch, webSearchTool } from "./web-search.js";
 export { writeFileTool } from "./write-file.js";
 
 /** Every built-in tool, in the order they are shown to the model. */
@@ -36,6 +40,8 @@ export const builtinTools: readonly Tool<unknown>[] = [
   erase(listFilesTool),
   erase(searchFilesTool),
   erase(webFetchTool),
+  erase(webSearchTool),
+  erase(webReadTool),
 ];
 
 /**

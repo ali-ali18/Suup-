@@ -40,6 +40,8 @@ export {
   buildSystemPrompt,
   MEMORY_TOOL_NAMES,
   renderStateReminder,
+  WEB_READ_TOOL_NAME,
+  WEB_SEARCH_TOOL_NAME,
 } from "./prompts.js";
 export {
   type ApprovalRecord,

@@ -11,6 +11,8 @@ import {
   isReminderBlock,
   MEMORY_TOOL_NAMES,
   renderStateReminder,
+  WEB_READ_TOOL_NAME,
+  WEB_SEARCH_TOOL_NAME,
 } from "./prompts.js";
 import type { LoopContext } from "./run-context.js";
 
@@ -51,6 +53,10 @@ export function fixedParts(ctx: LoopContext): {
   return {
     system: buildSystemPrompt(bot, ctx.state.context ?? undefined, {
       memoryTools,
+      web: {
+        search: offered.some((spec) => spec.name === WEB_SEARCH_TOOL_NAME),
+        read: offered.some((spec) => spec.name === WEB_READ_TOOL_NAME),
+      },
       returns: canScheduleReturn(ctx),
       secrets: ctx.deps.secrets !== undefined,
       approvals: ctx.deps.gate.allowsEverything !== true,

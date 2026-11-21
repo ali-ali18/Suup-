@@ -1,4 +1,4 @@
-import { defineTool } from "@suup/core";
+import { defineTool, type ToolContext } from "@suup/core";
 import { z } from "zod";
 import { htmlToText } from "./html-to-text.js";
 import { shellQuote } from "./shell-quote.js";
@@ -44,69 +44,14 @@ export const webFetchTool = defineTool({
   externalOutput: true,
   timeoutMs: (CURL_TIME_LIMIT_SECONDS + 30) * 1000,
   async execute({ url, headers }, ctx) {
-    let parsed: URL;
-    try {
-      parsed = new URL(url.trim());
-    } catch {
-      return {
-        isError: true,
-        content: `${JSON.stringify(url)} is not a valid absolute URL. Give a full URL such as https://example.com/page.`,
-      };
-    }
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      return {
-        isError: true,
-        content: `Only http and https URLs can be fetched, not ${parsed.protocol.replace(":", "")}. Use a http(s) URL.`,
-      };
-    }
-    if (parsed.hostname === "") {
-      return { isError: true, content: `${JSON.stringify(url)} has no host name.` };
-    }
-
-    for (const [name, value] of Object.entries(headers ?? {})) {
-      if (/[\r\n\0]/.test(value)) {
-        return { isError: true, content: `The value of header ${name} has a line break.` };
-      }
-    }
-
-    let result: Awaited<ReturnType<typeof ctx.executor.exec>>;
-    try {
-      result = await ctx.executor.exec(buildCurlCommand(parsed.href, headers), {
-        timeoutMs: (CURL_TIME_LIMIT_SECONDS + 20) * 1000,
-        signal: ctx.signal,
-      });
-    } catch (error) {
-      return { isError: true, content: describeError(error) };
-    }
-    if (result.timedOut) {
-      return {
-        isError: true,
-        content: `Fetching ${parsed.href} took too long and was stopped. The server may be slow or unreachable; try again later or try a different URL.`,
-      };
-    }
-
-    const newline = result.stdout.indexOf("\n");
-    const metaLine = newline === -1 ? result.stdout : result.stdout.slice(0, newline);
-    const body = newline === -1 ? "" : result.stdout.slice(newline + 1);
-    const meta = parseMeta(metaLine);
-    if (meta === undefined) {
-      return {
-        isError: true,
-        content: `Could not run the fetch on the bot machine${result.exitCode === null ? "" : ` (exit code ${result.exitCode})`}: ${result.stderr.trim() || "no output"}. Is curl installed there? You can try the shell tool with curl yourself.`,
-      };
-    }
-
-    if (meta.curlExit !== 0) {
-      return { isError: true, content: curlFailure(meta.curlExit, parsed.href, result.stderr) };
-    }
-
-    const finalUrl = meta.finalUrl || parsed.href;
-    const contentType = meta.contentType;
+    const fetched = await fetchOnMachine(url, headers, ctx);
+    if (!fetched.ok) return { isError: true, content: fetched.message };
+    const { meta, finalUrl, contentType, body, parsedHref } = fetched;
     const header = [
       `URL: ${finalUrl}`,
-      ...(finalUrl !== parsed.href
+      ...(finalUrl !== parsedHref
         ? [
-            `Requested URL: ${parsed.href} (${meta.redirects} redirect${meta.redirects === 1 ? "" : "s"} followed)`,
+            `Requested URL: ${parsedHref} (${meta.redirects} redirect${meta.redirects === 1 ? "" : "s"} followed)`,
           ]
         : []),
       `Status: ${meta.status}`,
@@ -150,6 +95,89 @@ export const webFetchTool = defineTool({
   },
 });
 
+export type MachineFetch =
+  | {
+      ok: true;
+      meta: FetchMeta;
+      finalUrl: string;
+      contentType: string;
+      body: string;
+      parsedHref: string;
+    }
+  | { ok: false; message: string };
+
+/**
+ * One GET made by the bot's own machine (so through its allowlist proxy, with the approval cards that
+ * implies). Shared by `web_fetch` and by `web_read` when the reader service is turned off.
+ */
+export async function fetchOnMachine(
+  url: string,
+  headers: Record<string, string> | undefined,
+  ctx: ToolContext,
+): Promise<MachineFetch> {
+  let parsed: URL;
+  try {
+    parsed = new URL(url.trim());
+  } catch {
+    return {
+      ok: false,
+      message: `${JSON.stringify(url)} is not a valid absolute URL. Give a full URL such as https://example.com/page.`,
+    };
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return {
+      ok: false,
+      message: `Only http and https URLs can be fetched, not ${parsed.protocol.replace(":", "")}. Use a http(s) URL.`,
+    };
+  }
+  if (parsed.hostname === "")
+    return { ok: false, message: `${JSON.stringify(url)} has no host name.` };
+
+  for (const [name, value] of Object.entries(headers ?? {})) {
+    if (/[\r\n\0]/.test(value)) {
+      return { ok: false, message: `The value of header ${name} has a line break.` };
+    }
+  }
+
+  let result: Awaited<ReturnType<typeof ctx.executor.exec>>;
+  try {
+    result = await ctx.executor.exec(buildCurlCommand(parsed.href, headers), {
+      timeoutMs: (CURL_TIME_LIMIT_SECONDS + 20) * 1000,
+      signal: ctx.signal,
+    });
+  } catch (error) {
+    return { ok: false, message: describeError(error) };
+  }
+  if (result.timedOut) {
+    return {
+      ok: false,
+      message: `Fetching ${parsed.href} took too long and was stopped. The server may be slow or unreachable; try again later or try a different URL.`,
+    };
+  }
+
+  const newline = result.stdout.indexOf("\n");
+  const metaLine = newline === -1 ? result.stdout : result.stdout.slice(0, newline);
+  const body = newline === -1 ? "" : result.stdout.slice(newline + 1);
+  const meta = parseMeta(metaLine);
+  if (meta === undefined) {
+    return {
+      ok: false,
+      message: `Could not run the fetch on the bot machine${result.exitCode === null ? "" : ` (exit code ${result.exitCode})`}: ${result.stderr.trim() || "no output"}. Is curl installed there? You can try the shell tool with curl yourself.`,
+    };
+  }
+  if (meta.curlExit !== 0) {
+    return { ok: false, message: curlFailure(meta.curlExit, parsed.href, result.stderr) };
+  }
+  return {
+    ok: true,
+    meta,
+    finalUrl: meta.finalUrl || parsed.href,
+    contentType: meta.contentType,
+    body,
+    parsedHref: parsed.href,
+  };
+}
+
 /** `curl` command line for one GET. The URL is the only model-controlled value and is quoted. */
 export function buildCurlCommand(url: string, headers: Record<string, string> = {}): string {
   const limit = WEB_FETCH_MAX_DOWNLOAD_BYTES;
@@ -174,7 +202,7 @@ export function buildCurlCommand(url: string, headers: Record<string, string> = 
   ].join(" ");
 }
 
-interface FetchMeta {
+export interface FetchMeta {
   curlExit: number;
   status: number;
   finalUrl: string;
@@ -214,9 +242,9 @@ function curlFailure(code: number, url: string, stderr: string): string {
   return `Fetching ${url} failed (curl exit code ${code}). ${hints[code] ?? "The request did not complete."}${detail === "" ? "" : ` Details: ${detail}`}`;
 }
 
-type ContentKind = "html" | "text" | "binary";
+export type ContentKind = "html" | "text" | "binary";
 
-function classify(contentType: string, body: string): ContentKind {
+export function classify(contentType: string, body: string): ContentKind {
   const type = (contentType.split(";")[0] ?? "").trim().toLowerCase();
   if (body.includes("\0")) return "binary";
   if (type === "text/html" || type === "application/xhtml+xml") return "html";
