@@ -421,6 +421,16 @@ export const runEventSchema = z.discriminatedUnion("type", [
       inboxIds: z.exactOptional(z.array(z.string())),
       /** Set on the answer to `search_tools` with client-side tool search: the tools it loads. */
       toolReferences: z.exactOptional(z.array(z.string())),
+      /**
+       * The URLs (normalized) this result put in front of the model: the hits of a `web_search`, the
+       * links of a page read with `web_read`. From the next call on `web_read` may open them without
+       * a card (docs/BUSCA.md). Part of the log so a replay clears the same addresses.
+       */
+      webUrls: z.exactOptional(z.array(z.string())),
+      /** `web_read`: how the address was cleared (`approved`: the user said yes on a card). */
+      urlProvenance: z.exactOptional(
+        z.enum(["user_message", "search_result", "page_link", "approved"]),
+      ),
     }),
   }),
   z.object({

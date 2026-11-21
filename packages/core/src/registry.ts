@@ -11,8 +11,9 @@ import {
   SecretUnavailableError,
   substituteSecrets,
 } from "./secrets.js";
-import type { Executor, Tool, ToolContext, ToolOutput } from "./tool.js";
+import type { ClassifyEnv, Executor, Tool, ToolContext, ToolOutput } from "./tool.js";
 import { wrapUntrusted } from "./untrusted.js";
+import { WEB_URLS_PER_RESULT_MAX, type WebUrlSource } from "./web.js";
 
 export const TOOL_NAME_PATTERN = /^[a-z][a-z0-9_]{0,63}$/;
 
@@ -67,6 +68,8 @@ export interface AssessOptions {
   allowed?: string[];
   /** The machine the call would run on (some tools classify differently on a real computer). */
   executor: Executor;
+  /** The URLs the run has seen and where each came from (docs/BUSCA.md). */
+  webSeen?: ReadonlyMap<string, WebUrlSource>;
 }
 
 export interface InvokeOptions {
@@ -165,7 +168,11 @@ export class ToolRegistry {
     const parsed = tool.input.safeParse(rawArgs);
     if (!parsed.success) return undefined;
     const secrets = [...new Set(placeholderSites(rawArgs).flatMap((site) => site.names))];
-    let level = classifyCall(tool, parsed.data, { executor: opts.executor });
+    const env: ClassifyEnv = {
+      executor: opts.executor,
+      ...(opts.webSeen === undefined ? {} : { webSeen: opts.webSeen }),
+    };
+    let level = classifyCall(tool, parsed.data, env);
     // A call that carries a secret exists to prove who the user is to somebody else.
     if (secrets.length > 0) level = maxRisk(level, "external_irreversible");
     // A message to another person cannot be taken back: it is never a plain read.
@@ -173,7 +180,7 @@ export class ToolRegistry {
     return {
       level,
       args: structuredClone(rawArgs) as JsonValue,
-      summary: describeCall(tool, parsed.data, rawArgs),
+      summary: describeCall(tool, parsed.data, rawArgs, env),
       toolDescription: tool.description,
       secrets,
       ...(tool.outbound === undefined ? {} : { outbound: structuredClone(tool.outbound) }),
@@ -315,6 +322,12 @@ export class ToolRegistry {
     const output: ToolOutput = { content };
     if (raw.isError === true) output.isError = true;
     if (external) output.untrusted = true;
+    if (Array.isArray(raw.webUrls) && raw.webUrls.length > 0) {
+      output.webUrls = raw.webUrls
+        .filter((u): u is string => typeof u === "string")
+        .slice(0, WEB_URLS_PER_RESULT_MAX);
+    }
+    if (raw.urlProvenance !== undefined) output.urlProvenance = raw.urlProvenance;
     return finish(raw.isError === true ? "tool_error" : "ok", content, {
       output,
       truncated: clipped.truncated,
@@ -433,10 +446,15 @@ function renderIssues(toolName: string, error: z.ZodError): string {
 const SUMMARY_ARGS_CHARS = 300;
 
 /** The line of the approval card: the tool's own words, or its name and clipped arguments. */
-function describeCall(tool: Tool<unknown>, input: unknown, rawArgs: unknown): string {
+function describeCall(
+  tool: Tool<unknown>,
+  input: unknown,
+  rawArgs: unknown,
+  env: ClassifyEnv,
+): string {
   if (tool.describe !== undefined) {
     try {
-      const text = tool.describe(input);
+      const text = tool.describe(input, env);
       if (typeof text === "string" && text.trim() !== "") return text.trim();
     } catch {
       // fall through to the default

@@ -4,7 +4,7 @@
 // patterns: Readability works on the document structure, and a page it cannot read falls back to
 // the text of the body.
 import { Readability } from "@mozilla/readability";
-import type { WebPage } from "@suup/core";
+import { normalizeWebUrl, WEB_URLS_PER_RESULT_MAX, type WebPage } from "@suup/core";
 import { JSDOM, VirtualConsole } from "jsdom";
 import TurndownService from "turndown";
 
@@ -31,6 +31,8 @@ export function extractPage(
   const meta = readMeta(document);
   const title = document.title.trim();
   const turndown = markdownWriter(url);
+  // Taken from the whole document, before anything is cut out of it.
+  const links = pageLinks(document, url);
 
   let markdown = "";
   let extraction: WebPage["extraction"] = "readability";
@@ -73,11 +75,28 @@ export function extractPage(
     ...(published === undefined || published === "" ? {} : { published }),
     ...(siteName === undefined || siteName.trim() === "" ? {} : { siteName: siteName.trim() }),
     extraction,
+    ...(links.length === 0 ? {} : { links }),
     markdown: truncated ? markdown.slice(0, maxChars) : markdown,
     truncated,
     fullLength,
     rendered: options.rendered === true,
   };
+}
+
+/**
+ * The addresses of the page's `<a href>` links, resolved against the page URL and normalized
+ * (`normalizeWebUrl`), each once, in page order. Read from the document structure: nothing in the
+ * text decides what is a link.
+ */
+function pageLinks(document: Document, base: string): string[] {
+  const out = new Set<string>();
+  for (const anchor of document.querySelectorAll("a[href]")) {
+    const target = safeLink(anchor.getAttribute("href") ?? "", base);
+    const normalized = target === undefined ? undefined : normalizeWebUrl(target);
+    if (normalized !== undefined) out.add(normalized);
+    if (out.size >= WEB_URLS_PER_RESULT_MAX) break;
+  }
+  return [...out];
 }
 
 function readMeta(document: Document): { published?: string } {

@@ -178,14 +178,56 @@ describe("web_read", () => {
     expect(seen).toEqual([true, undefined]);
   });
 
-  it("is a read: no card", () => {
-    expect(
+  describe("which addresses need a card", () => {
+    const level = (url: string, seen: string[]): string | undefined =>
       registry.assess(
         "web_read",
-        { url: "https://x.test" },
+        { url },
+        {
+          executor: { isolated: true } as never,
+          webSeen: new Map(seen.map((u) => [u, "search_result" as const])),
+        },
+      )?.level;
+
+    it("an address that already appeared is a read: no card", () => {
+      expect(level("https://x.test/a", ["https://x.test/a"])).toBe("read");
+    });
+
+    it("an address nobody showed is a card, with the whole URL in the line", () => {
+      expect(level("https://x.test/a", [])).toBe("external_irreversible");
+      const long = `https://x.test/a?q=${"b".repeat(300)}&token=abc#frag`;
+      const assessed = registry.assess(
+        "web_read",
+        { url: long },
         { executor: { isolated: true } as never },
-      )?.level,
-    ).toBe("read");
+      );
+      expect(assessed?.summary).toBe(`Read a new page: ${long}`);
+    });
+
+    it("compares normalized addresses by equality, nothing looser", () => {
+      const seen = ["https://example.com/a/b?x=1%2F2"];
+      // Same address written differently by the URL standard: scheme and host case, default port, fragment.
+      expect(level("HTTPS://Example.COM:443/a/b?x=1%2F2#part", seen)).toBe("read");
+      // Different addresses: a trailing slash, another query, percent-encoding written another way, another host.
+      expect(level("https://example.com/a/b/?x=1%2F2", seen)).toBe("external_irreversible");
+      expect(level("https://example.com/a/b?x=1/2", seen)).toBe("external_irreversible");
+      expect(level("https://example.com/a/b?x=1%2f2", seen)).toBe("external_irreversible");
+      expect(level("https://example.com/a/b?x=1%2F2&y=2", seen)).toBe("external_irreversible");
+      expect(level("https://www.example.com/a/b?x=1%2F2", seen)).toBe("external_irreversible");
+      expect(level("http://example.com/a/b?x=1%2F2", seen)).toBe("external_irreversible");
+      expect(level("https://example.com:8443/a/b?x=1%2F2", seen)).toBe("external_irreversible");
+      expect(level("not a url", seen)).toBe("external_irreversible");
+    });
+
+    it("an address with no history at all (a run without the list) is a card", () => {
+      expect(
+        registry.assess(
+          "web_read",
+          { url: "https://x.test" },
+          { executor: { isolated: true } as never },
+        )?.level,
+      ).toBe("external_irreversible");
+    });
   });
 
   it("explains a refusal and what to do next", () => {

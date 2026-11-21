@@ -33,6 +33,21 @@ describe("extractPage", () => {
     expect(page?.rendered).toBe(false);
   });
 
+  it("collects the addresses of every link of the page, resolved, normalized and without repeats", () => {
+    const html = `<html><body><nav><a href="/menu">Menu</a></nav><article><p>${"Text of the article. ".repeat(30)}</p>
+      <a href="../up#part">up</a><a href="https://Other.EXAMPLE:443/a?x=1%2F2">other</a>
+      <a href="/menu#again">again</a><a href="javascript:void(0)">no</a><a href="mailto:a@b.c">mail</a>
+      <a href="/dir/">dir</a><a href="/dir">dirless</a></article></body></html>`;
+    const result = extractPage(html, "https://example.com/post/1");
+    expect(result?.links).toEqual([
+      "https://example.com/menu",
+      "https://example.com/up",
+      "https://other.example/a?x=1%2F2",
+      "https://example.com/dir/",
+      "https://example.com/dir",
+    ]);
+  });
+
   it("cuts at the limit and says how long the whole text was", () => {
     const cut = extractPage(ARTICLE_HTML, "https://example.com/post/1", { maxChars: 120 });
     expect(cut?.truncated).toBe(true);

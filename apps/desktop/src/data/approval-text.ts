@@ -295,8 +295,10 @@ export function approvalTitle(
       return url === undefined ? "Acessar uma página" : `Acessar ${oneLine(url)}`;
     }
     case "web_read": {
+      // A read that asks is always of an address that had not appeared in the run (docs/BUSCA.md):
+      // the card says so and shows the WHOLE address, query string included, never cut.
       const url = text(args, "url");
-      return url === undefined ? "Ler uma página" : `Ler ${oneLine(url)}`;
+      return url === undefined ? "Ler uma página nova" : `Ler uma página nova: ${url}`;
     }
     case "web_search": {
       const query = text(args, "query");

@@ -7,6 +7,7 @@ import type { OutboundMessage } from "../outbound.js";
 import type { AssessOptions, ToolAssessment } from "../registry.js";
 import type { RiskLevel } from "../risk.js";
 import type { Executor } from "../tool.js";
+import type { WebUrlSource } from "../web.js";
 import {
   decidedBeforeReview,
   decidePolicy,
@@ -52,6 +53,8 @@ export interface GateCall {
    * oldest first. Never the assistant's text or a tool result. Only the loop fills it.
    */
   userMessages?: readonly string[] | undefined;
+  /** The URLs the run has seen and where each came from (the loop derives them from the log). */
+  webSeen?: ReadonlyMap<string, WebUrlSource> | undefined;
   /** The refusals the model reviewer already gave in this run (read from the log). */
   reviewBlocks?: { total: number; consecutive: number } | undefined;
   /** A review of THIS call already in the log (a resumed run): it is used, the model is not asked again. */
@@ -188,6 +191,7 @@ export function createToolGate(options: ToolGateOptions): ToolGate {
     async check(call) {
       const assessed = options.tools.assess(call.name, call.args, {
         executor: call.executor,
+        ...(call.webSeen === undefined ? {} : { webSeen: call.webSeen }),
         ...(call.allowed === undefined ? {} : { allowed: call.allowed }),
       });
       if (assessed === undefined) return null;

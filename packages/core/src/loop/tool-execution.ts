@@ -20,6 +20,7 @@ import type { PendingResponse } from "./state.js";
 import type { RunStatus } from "./store.js";
 import { USE_TOOL_NAME } from "./tool-search.js";
 import { handleSearchTools, resolveUseTool } from "./tool-search-calls.js";
+import { webUrlsSeen } from "./web-seen.js";
 
 export async function executeCalls(
   ctx: LoopContext,
@@ -164,6 +165,7 @@ async function handleTool(
     now: () => now(),
     ...(memory === undefined ? {} : { memory }),
     runFacts: { userMessages: [...ctx.state.userSaid], toolsUsed: [...ctx.state.toolsUsed] },
+    webSeen: webUrlsSeen(ctx.state),
     ...(network === undefined ? {} : { network }),
     ...(web === undefined ? {} : { web }),
   };
@@ -192,6 +194,10 @@ async function handleTool(
     content: withSchema,
     truncated: invocation.truncated,
     durationMs: invocation.durationMs,
+    ...(invocation.output.webUrls === undefined ? {} : { webUrls: invocation.output.webUrls }),
+    ...(invocation.output.urlProvenance === undefined
+      ? {}
+      : { urlProvenance: invocation.output.urlProvenance }),
   });
   return false;
 }

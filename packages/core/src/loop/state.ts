@@ -7,6 +7,7 @@ import type {
 } from "../events.js";
 import type { Block, JsonValue, Message, ToolCallBlock } from "../messages.js";
 import type { GenerateResult, StopReason } from "../provider.js";
+import type { WebUrlSource } from "../web.js";
 import { formatDiscrepancies, isControlTool } from "./control-tools.js";
 import { historyMessages } from "./history.js";
 import {
@@ -232,6 +233,12 @@ export interface RunState {
    * outside cannot write rules or facts about the user without a review.
    */
   toolsUsed: string[];
+  /**
+   * The URLs that tool results put in front of the model, and which tool did: `web_search` hits
+   * (`search_result`) and the links of pages read with `web_read` (`page_link`). Read from the
+   * `webUrls` of `tool_result` events. The user's own URLs are in `userSaid` (see `webUrlsSeen`).
+   */
+  webSeen: Map<string, WebUrlSource>;
   /** The share of the context window past which the run compacts (recorded in `context_loaded`). */
   compactionThreshold: number | null;
 }
@@ -250,6 +257,7 @@ export function createRunState(): RunState {
     contextLoaded: false,
     context: null,
     toolsUsed: [],
+    webSeen: new Map(),
     compactionThreshold: null,
     lastSeq: 0,
     responses: 0,
@@ -461,6 +469,12 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
         !state.toolsUsed.includes(call.name)
       ) {
         state.toolsUsed.push(call.name);
+      }
+      for (const url of event.payload.webUrls ?? []) {
+        const source = call.name === "web_search" ? "search_result" : "page_link";
+        if (call.name === "web_search" || call.name === "web_read") {
+          if (!state.webSeen.has(url)) state.webSeen.set(url, source);
+        }
       }
       if (outcome === "denied" && state.denied === null) {
         state.denied = { callId: call.id, name: call.name };

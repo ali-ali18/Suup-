@@ -13,6 +13,7 @@ import { renderNotice } from "./prompts.js";
 import { type ControlCall, record } from "./recording.js";
 import type { LoopContext } from "./run-context.js";
 import type { ApprovalDecisionItem } from "./store.js";
+import { webUrlsSeen } from "./web-seen.js";
 
 /** What the gate (and the user) said about one call. */
 export type CallClearance =
@@ -130,6 +131,7 @@ export async function askGate(
     allowed: bot.allowedTools,
     executor,
     userMessages: ctx.state.userSaid,
+    webSeen: webUrlsSeen(ctx.state),
     reviewBlocks: ctx.state.reviewBlocks,
     ...(ctx.state.reviews.has(call.id) ? { recordedReview: ctx.state.reviews.get(call.id) } : {}),
     signal: ctx.signal,

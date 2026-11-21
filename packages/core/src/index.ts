@@ -203,14 +203,18 @@ export {
   WorkspaceEscapeError,
 } from "./tool.js";
 export { EXTERNAL_CLOSE, EXTERNAL_OPEN, wrapUntrusted } from "./untrusted.js";
-export type {
-  WebAccess,
-  WebPage,
-  WebReadOutcome,
-  WebReadRequest,
-  WebSearchHit,
-  WebSearchOutcome,
-  WebSearchRequest,
+export {
+  normalizeWebUrl,
+  urlsInText,
+  WEB_URLS_PER_RESULT_MAX,
+  type WebAccess,
+  type WebPage,
+  type WebReadOutcome,
+  type WebReadRequest,
+  type WebSearchHit,
+  type WebSearchOutcome,
+  type WebSearchRequest,
+  type WebUrlSource,
 } from "./web.js";
 export {
   type BackgroundJob,

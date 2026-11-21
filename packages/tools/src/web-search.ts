@@ -1,4 +1,4 @@
-import { defineTool, type WebSearchOutcome } from "@suup/core";
+import { defineTool, normalizeWebUrl, type ToolOutput, type WebSearchOutcome } from "@suup/core";
 import { z } from "zod";
 
 const input = z.object({
@@ -62,11 +62,7 @@ export const webSearchTool = defineTool({
   },
 });
 
-export function formatSearch(outcome: WebSearchOutcome): {
-  content: string;
-  isError?: boolean;
-  untrusted?: boolean;
-} {
+export function formatSearch(outcome: WebSearchOutcome): ToolOutput {
   if (!outcome.ok) {
     return {
       isError: true,
@@ -98,5 +94,17 @@ export function formatSearch(outcome: WebSearchOutcome): {
       lines.push(`   (engine: ${hit.engine})`);
     });
   }
-  return { content: lines.join("\n"), untrusted: true };
+  const webUrls = [
+    ...new Set(
+      outcome.hits.flatMap((hit) => {
+        const normalized = normalizeWebUrl(hit.url);
+        return normalized === undefined ? [] : [normalized];
+      }),
+    ),
+  ];
+  return {
+    content: lines.join("\n"),
+    untrusted: true,
+    ...(webUrls.length === 0 ? {} : { webUrls }),
+  };
 }

@@ -271,7 +271,12 @@ export class ReplayInvoker implements ToolInvoker {
     }
     this.served.push(callId);
     return {
-      output: { content: recorded.content, ...(recorded.isError ? { isError: true } : {}) },
+      output: {
+        content: recorded.content,
+        ...(recorded.isError ? { isError: true } : {}),
+        ...(recorded.webUrls === undefined ? {} : { webUrls: recorded.webUrls }),
+        ...(recorded.urlProvenance === undefined ? {} : { urlProvenance: recorded.urlProvenance }),
+      },
       durationMs: recorded.durationMs,
       outcome: recorded.outcome,
       truncated: recorded.truncated,
