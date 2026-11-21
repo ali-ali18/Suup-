@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import type { OutboundMessage } from "./outbound.js";
 import type { RiskLevel } from "./risk.js";
+import type { WebAccess } from "./web.js";
 
 /** Compatibility name of `RiskLevel` (see `risk.ts`). */
 export type ToolRisk = RiskLevel;
@@ -222,6 +223,8 @@ export interface ToolContext {
   runFacts?: RunFacts;
   /** Present when the bot's machine reaches the internet through the egress proxy. */
   network?: NetworkAccess;
+  /** Present when the runtime wired the web (search and the reader service); see `web.ts`. */
+  web?: WebAccess;
 }
 
 export interface ToolOutput {

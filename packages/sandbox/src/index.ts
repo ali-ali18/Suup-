@@ -4,7 +4,12 @@ export {
   type ContainerLauncherInput,
   ContainerStdioLauncher,
 } from "./connector-container.js";
-export { DockerExecutor, type DockerExecutorOptions } from "./docker-executor.js";
+export {
+  assertName,
+  DockerExecutor,
+  type DockerExecutorOptions,
+  dockerClientEnv,
+} from "./docker-executor.js";
 export { containerNetworks, ensureInternalNetwork, type MachineNetwork } from "./egress/network.js";
 export { NetworkedExecutor } from "./egress/networked-executor.js";
 export { EgressProxy, type EgressProxyOptions, parseAuthority } from "./egress/proxy.js";
@@ -37,3 +42,8 @@ export {
   ensureMachine,
   removeMachine,
 } from "./machine.js";
+export {
+  type RunProcessOptions,
+  type RunProcessResult,
+  runProcess,
+} from "./run-process.js";

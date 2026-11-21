@@ -22,7 +22,7 @@ export default defineConfig({
               replacement: src("connectors", "testing/index.ts"),
             },
             {
-              find: /^@suup\/(core|providers|tools|connectors|db|sandbox|runtime|api|server)$/,
+              find: /^@suup\/(core|providers|tools|connectors|db|sandbox|web|runtime|api|server)$/,
               replacement: src("$1"),
             },
             {
