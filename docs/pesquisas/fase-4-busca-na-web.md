@@ -162,3 +162,207 @@ Inferência, com base nos fatos acima. Não decide nada: é uma proposta para o 
 | Como medir | Conjunto pequeno de tarefas de pesquisa com resposta conhecida (5 a 10 perguntas com fonte), comparando: acerto da resposta, presença da fonte correta nas citações, número de buscas por tarefa, tokens por tarefa e custo por tarefa, para cada provedor e cada modo | Projeto; seção "O que não foi verificado" |
 
 Próximo passo sugerido: antes de implementar, pesquisar preços e limites de Brave, Tavily e Exa com acesso à página de preços (a rede do ambiente bloqueou esses hosts nesta pesquisa), e definir a lista de tarefas de medição.
+
+## Adendo: busca e leitura próprias, sem depender de provedor (21/11/2026)
+
+Data da leitura: 21/11/2026. Acrescentado depois da seção "Implicação para o Suup", com a decisão do dono:
+
+> "Não, quero criar a nossa, não vale a pena se prender a provedor."
+
+O objetivo passa a ser uma capacidade própria do Suup, equivalente ao Firecrawl (busca, leitura de página em Markdown, depois rastreio), sem usar as ferramentas hospedadas do provedor do modelo. As seções de fatos acima continuam valendo para o caso em que o provedor oferece a busca de servidor; este adendo trata do caminho próprio.
+
+### Fontes deste adendo
+
+Lidas em 21/11/2026, com acesso direto ao texto (GitHub raw ou registro npm):
+
+- SearXNG, documentação de API de busca: https://raw.githubusercontent.com/searxng/searxng/master/docs/dev/search_api.rst
+- SearXNG, instalação em contêiner: https://raw.githubusercontent.com/searxng/searxng/master/docs/admin/installation-docker.rst
+- SearXNG, compose oficial: https://raw.githubusercontent.com/searxng/searxng/master/container/docker-compose.yml e https://raw.githubusercontent.com/searxng/searxng/master/container/.env.example
+- SearXNG, configuração padrão: https://raw.githubusercontent.com/searxng/searxng/master/searx/settings.yml
+- SearXNG, limitador: https://raw.githubusercontent.com/searxng/searxng/master/searx/limiter.toml, https://raw.githubusercontent.com/searxng/searxng/master/searx/botdetection/ip_limit.py e https://raw.githubusercontent.com/searxng/searxng/master/searx/limiter.py
+- SearXNG, formato do JSON: https://raw.githubusercontent.com/searxng/searxng/master/searx/webutils.py e https://raw.githubusercontent.com/searxng/searxng/master/searx/result_types/_base.py
+- SearXNG, licença AGPL v3 (texto já lido acima): https://raw.githubusercontent.com/searxng/searxng/master/LICENSE
+- searxng-docker (repositório antigo): https://raw.githubusercontent.com/searxng/searxng-docker/master/README.md
+- Firecrawl, auto-hospedagem: https://raw.githubusercontent.com/firecrawl/firecrawl/main/SELF_HOST.md
+- Firecrawl, dependências da API: https://raw.githubusercontent.com/firecrawl/firecrawl/main/apps/api/package.json
+- Firecrawl, serviço de Playwright: https://raw.githubusercontent.com/firecrawl/firecrawl/main/apps/playwright-service-ts/package.json, https://raw.githubusercontent.com/firecrawl/firecrawl/main/apps/playwright-service-ts/README.md e https://raw.githubusercontent.com/firecrawl/firecrawl/main/apps/playwright-service-ts/api.ts
+- Pacotes npm (versão `latest` lida no registro): `@mozilla/readability`, `turndown`, `linkedom`, `jsdom`, `playwright`, `playwright-core`, `robots-parser`, `crawlee`, `firecrawl`, `@mendable/firecrawl-js`. Endereço: `https://registry.npmjs.org/<pacote>/latest`
+- Mozilla Readability, README e LICENSE: https://raw.githubusercontent.com/mozilla/readability/main/README.md e https://raw.githubusercontent.com/mozilla/readability/main/LICENSE.md
+- Turndown, README: https://raw.githubusercontent.com/mixmark-io/turndown/master/README.md
+- Playwright, LICENSE (Apache 2.0): https://raw.githubusercontent.com/microsoft/playwright/main/LICENSE
+- Chromium, LICENSE: https://raw.githubusercontent.com/chromium/chromium/main/LICENSE
+- Crawlee, código do crawler base (branch `master`, não necessariamente a versão 3.18.2 do npm): https://raw.githubusercontent.com/apify/crawlee/master/packages/basic-crawler/src/internals/basic-crawler.ts e README em https://raw.githubusercontent.com/apify/crawlee/master/README.md
+- Google, biblioteca de robots.txt (README e LICENSE): https://raw.githubusercontent.com/google/robotstxt/master/README.md e https://raw.githubusercontent.com/google/robotstxt/master/LICENSE
+- Google, robots.txt do domínio principal: https://www.google.com/robots.txt
+- Whoogle, README (com aviso de encerramento) e LICENSE: https://raw.githubusercontent.com/benbusby/whoogle-search/main/README.md e https://raw.githubusercontent.com/benbusby/whoogle-search/main/LICENSE
+- YaCy, README: https://raw.githubusercontent.com/yacy/yacy_search_server/master/README.md; arquivo `gpl.txt`: https://raw.githubusercontent.com/yacy/yacy_search_server/master/gpl.txt
+- Marginalia Search, README: https://raw.githubusercontent.com/MarginaliaSearch/MarginaliaSearch/master/README.md
+
+**Host bloqueado ou não lido:**
+
+- `docs.searxng.org`: não lido nesta rodada (o SearXNG tem a documentação no próprio repositório, e foi usada a versão do GitHub).
+- RFC 9309 (`rfc-editor.org`, `ietf.org`, `datatracker.ietf.org`): **host bloqueado** (código 000 em todas as tentativas). O texto da RFC **não foi lido** e não é citado aqui.
+- Documentação do Google sobre robots (`developers.google.com`): **host bloqueado**.
+- Termos de uso de Google, Bing e DuckDuckGo (`policies.google.com`, `bing.com`, `duckduckgo.com`): **host bloqueado**. Não há como dizer o que eles proíbem.
+- Mojeek (página de API) e Marginalia (`api.marginalia.nu`): **host bloqueado**.
+- LICENSE do Crawlee (`apify/crawlee`, branches `main` e `master`), do robots-parser (repositório não localizado) e do Stract (`stract`, `StractOrg`): **404** nas tentativas. A licença do Crawlee e a do robots-parser vêm só dos metadados do npm.
+
+### 1. SearXNG: o que é, como roda e como responde
+
+**Instalação em contêiner (oficial).**
+
+- Imagem e Valkey, do `container/docker-compose.yml`: `image: docker.io/searxng/searxng:${SEARXNG_VERSION:-latest}` e `image: docker.io/valkey/valkey:9-alpine`. O Valkey guarda o estado do limitador (ver abaixo).
+- Passos da documentação: baixar o compose oficial com `curl -fsSL -O https://raw.githubusercontent.com/searxng/searxng/master/container/docker-compose.yml`, copiar `.env.example`, `docker compose up -d`, e depois ajustar `core-config/settings.yml`. (installation-docker.rst)
+- O repositório `searxng/searxng-docker` está marcado como superado: "*searxng-docker* repository is superseded." Usar o compose do repositório principal. (searxng-docker README)
+- A documentação avisa: "DockerHub now applies rate limits to unauthenticated image pulls." Há um espelho no GHCR (`ghcr.io/searxng/searxng`). (installation-docker.rst)
+- Variáveis do `.env.example`: `SEARXNG_VERSION` (com exemplo "2026.3.25-541c6c3cb"), `SEARXNG_HOST` e `SEARXNG_PORT` (padrão 8080 no compose). Recomenda-se fixar a versão, não usar `latest`. (inferência a partir do exemplo do arquivo)
+- Segredo: em `settings.yml`, `secret_key: "ultrasecretkey"  # Is overwritten by ${SEARXNG_SECRET}`. O valor de exemplo precisa ser trocado por variável de ambiente. Se a instância roda com o valor padrão, não verificado o efeito exato; tratar como obrigatório trocar.
+
+**API JSON.**
+
+- O formato JSON vem desligado: em `settings.yml`, `search: formats: - html`. O comentário diz: "# remove format to deny access, use lower case. # formats: [html, csv, json, rss]". Para ligar, acrescentar `json` na lista. (settings.yml)
+- Regra da API: "If you want to consume the results as JSON, CSV, or RSS, you need to set the `format` parameter accordingly... Requesting an unset format will return a 403 Forbidden error. Be aware that many public instances have these formats disabled." (search_api.rst)
+- Exemplo oficial: `curl 'https://searx.example.org/search?q=searxng&format=json'`. Aceita `GET /search` e `POST /search`, com `q` obrigatório e, entre outros, `categories`, `language`, `pageno`, `time_range` (`day`, `month`, `year`) e `safesearch`. (search_api.rst)
+- Campos da resposta JSON (`get_json_response`): `query`, `results`, `answers`, `corrections`, `infoboxes`, `suggestions`, `unresponsive_engines`. (webutils.py)
+- Campos de cada resultado: a classe base traz `url`, `engine` e `parsed_url`; o tipo de resultado principal acrescenta `title`, `content`, `img_src`, `iframe_src` e `template`. (result_types/_base.py) Não verificado: a presença de data de publicação e de pontuação no JSON final (o trecho lido não as mostrou).
+
+**Motores consultados por padrão.**
+
+- O arquivo `settings.yml` lista 358 motores. Pela leitura do YAML em 21/11/2026, 82 não têm `disabled` nem `inactive` (contagem feita sobre o arquivo, não por execução). Entre os motores de web geral, o arquivo mostra:
+  - `google`: `disabled: true`; `bing`: `disabled: true`; `duckduckgo web` (`duckduckgo_web`): `disabled: true`; `brave`: `disabled: true`; `qwant`: `disabled: true`.
+  - `startpage` e `mojeek`: `inactive: true`.
+  - `duckduckgo` (entrada sem `disabled`), `wikipedia` (categoria `general`), `google cse` (sem `disabled`, mas a entrada não traz `api_key`; não verificado se responde sem chave).
+- Consequência: a configuração padrão não consulta Google nem Bing na web geral. Quais destinos cada motor ativo realmente chama, e com que taxa, não foi verificado.
+
+**Bloqueio e captcha (o motor que é bloqueado para a instância toda).**
+
+- Comentário no `settings.yml`, em `search.suspended_times`: "# For error "CAPTCHA"" com `SearxEngineCaptcha: 3600`; "# For error "Too many request" and "HTTP error 429"" com `SearxEngineTooManyRequests: 180`; "# For error "Access denied" and "HTTP error [402, 403]"" com `SearxEngineAccessDenied: 180`. Cloudflare e reCAPTCHA têm tempos próprios (`cf_SearxEngineCaptcha: 1296000`, `recaptcha_SearxEngineCaptcha: 604800`).
+- Ou seja: o próprio SearXNG suspende o motor que devolve captcha ou 429. Essa suspensão é a instância inteira, para todos os usuários, porque todos saem pelo mesmo IP. Esse é o risco central de um metabuscador sem chave.
+
+**Limitador (controle de bots).**
+
+- Ligado por `server: limiter:`, que no `settings.yml` lido está como `limiter: false`. (settings.yml)
+- Quando ligado, as janelas do método `ip_limit` (ip_limit.py) são: `BURST_WINDOW = 20` com `BURST_MAX = 15`; `LONG_WINDOW = 600` com `LONG_MAX = 150`; e `API_WINDOW = 3600` com `API_MAX = 4`. O comentário de `API_WINDOW` diz: "Time (sec) before sliding window for API requests (format != html) expires." Ou seja, pedidos em formato `json` do mesmo IP têm teto de 4 por hora, se o limitador estiver ligado. (ip_limit.py)
+- `limiter.toml`: `pass_ip` dá "unrestricted access" a IPs da lista; `trusted_proxies` faz o SearXNG tirar o IP do cliente de `X-Forwarded-For` e `X-Real-IP`, só para IPs de proxy confiáveis; `pass_searxng_org = true` libera a lista de IPs da própria organização SearXNG. (limiter.toml)
+- Inferência: com o limitador desligado (padrão), o `API_MAX` não se aplica; a proteção fica só com os bloqueios por motor. Não testado.
+
+**Recursos.** A documentação lida não dá requisitos de CPU ou memória. O exemplo de listagem de imagens em installation-docker.rst mostra imagem de "271 MB", mas isso é só um exemplo de saída, não requisito. Não verificado.
+
+**Licença (AGPL v3), texto lido.**
+
+- Seção 13, "Remote Network Interaction; Use with the GNU General Public License.": "Notwithstanding any other provision of this License, if you modify the Program, your modified version must prominently offer all users interacting with it remotely through a computer network (if your version supports such interaction) an opportunity to receive the Corresponding Source of your version by providing access to the Corresponding Source from a network server at no charge..." (LICENSE, lido em 21/11/2026)
+- Inferência sobre o nosso caso: a obrigação da seção 13 começa com "if you modify the Program". Rodar o SearXNG sem alteração, como serviço interno chamado por HTTP, não aciona essa oferta pelo texto lido. Se alterarmos código, template ou motor do SearXNG, a oferta de código-fonte passa a valer para quem interage com a versão modificada pela rede. Se os "usuários" dessa interação são só os bots internos ou também as pessoas do Suup, é questão jurídica. **Não verificado; consultar o dono ou o jurídico antes de modificar o SearXNG.** Também não verificado: se usar a API HTTP de um serviço AGPL torna o código do Suup AGPL (a leitura comum é que não, mas não foi checado aqui).
+
+### 2. Leitura de página: o que o Firecrawl usa (fatos)
+
+**Auto-hospedagem (SELF_HOST.md, lido em 21/11/2026).**
+
+- "**Scraping: bundled Playwright with basic fetch fallback.** Connect and configure a separate engine such as Fire-engine only when you need it."
+- "At this revision, Compose runs the Firecrawl API and workers, Playwright, Redis, RabbitMQ, NuQ PostgreSQL, and FoundationDB services for the optional queue backend. Only the API is published to the host by default, on port `3002`."
+- "The default API is unauthenticated." e "If the API will leave a trusted network, add a complete authentication design, TLS termination, and network policy first."
+
+**Dependências da API (apps/api/package.json).** `cheerio` `^1.0.0-rc.12`, `jsdom` `^29.1.1`, `robots-parser` `^3.0.1`, `turndown` `^7.1.3`, `bullmq`, `ioredis`, `pdf-parse` e `@mendable/firecrawl-rs` (workspace, Rust). O `package.json` não lista `@mozilla/readability`. Não verificado: qual caminho converte HTML em Markdown dentro do pacote Rust. Quanto a `turndown`, o arquivo confirma o uso como dependência da API, não o fluxo exato.
+
+**Serviço de Playwright (apps/playwright-service-ts).**
+
+- `package.json`: `playwright` `^1.65.0`, `express` `^5.2.1`, `ipaddr.js`, `proxy-chain`, `user-agents`. Licença declarada no `package.json`: ISC. Exige `node` `>=22.13.0`.
+- README: "Blocks requests to known ad-serving domains." e "Uses random user-agent strings to avoid detection." Este segundo ponto vai contra a identificação honesta de um robô (ver seção 3).
+- `api.ts`: há um proxy de SSRF local (`startSSRFProxy`, `ssrfPrepareRequest`) e as mensagens "resolves to a private/internal address" e "navigation to private/internal resource is not allowed". Ou seja, o serviço recusa navegar para endereços privados.
+- Fórmula de integração: "Add `PLAYWRIGHT_MICROSERVICE_URL=http://localhost:3003/scrape` to `/apps/api/.env`". (README do serviço)
+
+**Licença do Firecrawl.** O repositório principal é AGPL v3 (já registrado acima). O pacote do servidor MCP e o SDK são MIT: `firecrawl` 4.54.0 e `@mendable/firecrawl-js` 4.54.0 (npm, MIT). Copiar código da API do Firecrawl para o Suup tornaria o Suup AGPL (inferência a partir da licença do repositório). Usar as ideias, não o código.
+
+**Bibliotecas permissivas (npm `latest`, lidos em 21/11/2026).**
+
+| Pacote | Versão | Licença (npm) | Para que serve | Nota |
+|---|---|---|---|---|
+| `@mozilla/readability` | 0.6.0 | Apache-2.0 | Extrai o texto principal da página | README: "new Readability(document).parse()"; recomenda sanitizar a saída |
+| `turndown` | 7.2.5 | MIT | HTML para Markdown | README: `new TurndownService()` e `turndown('<h1>Hello world!</h1>')` |
+| `jsdom` | 31.0.1 | MIT | DOM em Node para o Readability | Scripts vêm desligados por padrão (ver segurança); Firecrawl usa `^29.1.1` |
+| `linkedom` | 0.18.15 | ISC | DOM leve em Node, alternativa ao jsdom | Não testado com o Readability nesta rodada |
+| `playwright` / `playwright-core` | 1.65.1 | Apache-2.0 | Chromium headless para páginas com JavaScript | LICENSE da Microsoft: Apache License 2.0 |
+| `robots-parser` | 3.1.1 | MIT | Lê robots.txt | Versão do npm; o repositório não foi localizado |
+| `crawlee` | 3.18.2 | Apache-2.0 | Rastreio com limites de concorrência e atraso | Ver abaixo |
+
+- Chromium (o navegador que o Playwright baixa): o arquivo LICENSE do repositório `chromium/chromium` tem o texto de redistribuição do BSD de três cláusulas, com "Neither the name of Google LLC nor the names of its". Inferência: o Chromium é BSD-3; a lista de componentes de terceiros do próprio navegador não foi lida. **Não verificado** para os binários distribuídos pelo Playwright.
+- Mozilla Readability, sobre entrada não confiável: "If you're going to use Readability with untrusted input (whether in HTML or DOM form), we **strongly** recommend you use a sanitizer library like [DOMPurify] to avoid script injection when you use the output of Readability."
+- jsdom, sobre scripts: "For security reasons these are disabled by default ... and we **strongly** recommend you keep them that way." (README do Readability, citando o jsdom)
+- Crawlee, o que o código lido do branch `master` oferece no crawler base: as opções `maxConcurrency`, `maxRequestsPerMinute`, `respectRobotsTxtFile` e `sameDomainDelaySecs` (esta última com a lógica de "one clock per site"). A documentação dela diz: "If set to `true`, the crawler will automatically try to fetch the robots.txt file for each domain,". (basic-crawler.ts, linhas 511 a 517 e 1018 a 1124). README do Crawlee: "Integrated **proxy rotation** and session management" e "Integrated fast **HTML parsers**. Cheerio and JSDOM". **Não verificado** que a versão 3.18.2 publicada tenha exatamente este código.
+
+### 3. Politeness e legal (com o que foi possível ler)
+
+- RFC 9309 (Robots Exclusion Protocol): **não lida** (host bloqueado). O que se pode dizer com fonte lida: o README da biblioteca do Google cita "[Robots Exclusion Protocol standard](https://www.rfc-editor.org/rfc/rfc9309.html)" como o padrão de referência. Não foi citada nenhuma frase da RFC.
+- Biblioteca de referência do Google: "The repository contains Google's robots.txt parser and matcher as a C++ library (compliant to C++14)." Licença Apache License, Version 2.0 (LICENSE lido). Serve como referência de comportamento, não como dependência de Node.
+- robots.txt do Google (lido em 21/11/2026): o grupo `User-agent: *` tem `Disallow: /search` e `Allow: /search/about`. Isso mostra que a própria página de busca do Google está marcada para não ser rastreada por robôs que respeitam o padrão. Um metabuscador que consulta o Google raspando a página de resultados vai contra essa diretiva, independentemente dos termos de uso, que não foram lidos.
+- Identificação do robô: não há fonte lida que defina o formato do user-agent. Recomendação (inferência): identificar o Suup com um nome e um contato, sem fingir ser navegador. O README do serviço de Playwright do Firecrawl faz o contrário ("random user-agent strings to avoid detection"); não copiar essa prática.
+- Limite de taxa: as fontes lidas não trazem números de limite por site. Os números que temos são os do limitador do SearXNG (acima), que são limites de servidor, não de cliente. O Crawlee oferece as opções, sem valor recomendado.
+- Termos de uso dos buscadores: **não verificado** (host bloqueado). Antes de usar qualquer motor de busca raspado em produção, ler os termos. Nenhuma conclusão jurídica aqui.
+- Whoogle: o README traz aviso de encerramento. "Since early 2025, Google has steadily shut the door on search queries made without JavaScript, banning working User-Agent strings as fast as they were found." e "active work on this repository has come to an end: No further commits or releases". Licença MIT (LICENSE lido). Não usar como base: o projeto diz que não funciona mais.
+- YaCy (README lido): "a full search engine application containing a server hosting a search index ... and a production-ready web crawler with a scheduler to keep a search index fresh." Tem rede peer-to-peer. O arquivo `gpl.txt` do repositório é o texto da GPL versão 2. A licença declarada do projeto **não foi confirmada** (o LICENSE da raiz devolveu 404).
+- Marginalia Search (README lido): "The bulk of the project is available with AGPL 3.0, with exceptions. Some parts are co-licensed under MIT". A API pública não foi lida (host bloqueado).
+- Mojeek e Stract: **não verificado** nesta rodada (host bloqueado ou licença não localizada).
+
+### 4. Segurança
+
+**Navegador sobre páginas não confiáveis.**
+
+- Renderizar JavaScript de página desconhecida executa código de terceiros. O Readability recomenda sanitização antes de usar a saída (ver seção 2). Não fica dentro do bot sem isolamento: inferência, a partir do modelo de ameaça do Firecrawl (que roda o navegador num serviço separado, com checagem de SSRF) e do aviso do Readability.
+- O serviço de Playwright do Firecrawl bloqueia navegação para endereços privados: "navigation to private/internal resource is not allowed". Isso confirma que o risco de SSRF por navegador é real e precisa de uma checagem no próprio serviço de renderização. (api.ts)
+
+**SSRF e a lista de saída do Suup (`docs/REDE.md`, lido).**
+
+- "O proxy só deixa passar nomes de host da lista. Comparação por **igualdade exata** do nome normalizado ... Não há curinga, sufixo nem padrão."
+- "Endereços IP, `localhost` e o endereço de metadados são recusados sempre, mesmo que alguém os ponha na lista ... Depois de resolver o nome, o endereço é conferido **numericamente** contra as faixas privadas ... O proxy resolve **uma vez** e conecta ao endereço que validou (contra *DNS rebinding*)."
+- REDE.md já avisa: "Um host liberado é um canal."
+
+**Consequências para a busca e a leitura (inferência).**
+
+- O navegador de renderização precisa de saída para qualquer site, porque a página pede recursos de terceiros (CDN, fontes, anúncios). Uma lista exata de hosts não cobre isso. Então a renderização de JS não pode usar a lista fechada do bot. Opções: (i) um contêiner de renderização separado, com saída para a internet pública mas sem faixas privadas, usando o mesmo tipo de checagem do proxy; ou (ii) restringir o navegador a uma lista de hosts da página pedida, o que quebra páginas com recursos de terceiros. Escolha para o dono. **Não verificado** se o Chromium do Playwright respeita a variável `HTTP_PROXY` do ambiente; precisa de teste.
+- O SearXNG precisa de saída para os motores que consulta. Como a lista é de igualdade exata, cada motor exige seus hosts listados um por um, sem curinga. Um contêiner de busca com saída só para esses hosts é compatível com `REDE.md`, mas a lista muda quando um motor muda de domínio. **Não verificado** quais hosts cada motor padrão usa.
+- Injeção de instrução: o texto de página e de resultado é dado externo. Não há fonte lida sobre detecção de injeção nesse caminho próprio. Tratar como nas seções anteriores: dado, nunca instrução.
+- Auto-hospedar o Firecrawl inteiro é pesado (ver seção 2: sete serviços, incluindo banco, filas e o contêiner de Playwright), e a própria documentação diz que a API vem sem autenticação por padrão. Inferência: para o Suup, não compensa importar o Firecrawl inteiro; é melhor reproduzir o fluxo (busca, extração, Markdown) com as bibliotecas acima.
+
+### Implicação para o Suup
+
+Inferência, com base nos fatos acima. Não decide nada: é uma proposta para o dono.
+
+| Assunto | Proposta | Base |
+|---|---|---|
+| (a) `web_search`, ferramenta embutida com backend trocável | Interface única `web_search` com backend plugável. Padrão: contêiner SearXNG, versão fixada (não `latest`), `formats: [html, json]`, segredo por variável, motores padrão revistos. Adaptadores opcionais para Brave, Tavily ou Exa, com a chave no cofre (`docs/COFRE.md`) e no cabeçalho, nunca na URL. Trocar de backend não exige mudar o bot | Seções 1 e 6 do texto acima; `search_api.rst`; `settings.yml` |
+| Limite do SearXNG por IP | Antes de confiar no SearXNG, medir: captcha ou 429 suspendem o motor para todos os usuários por 3600 s ou 180 s. Se o limitador for ligado, o formato JSON tem teto de 4 por hora por IP | `settings.yml`; `ip_limit.py` |
+| (b) `web_read`, evolução do `web_fetch` atual | Pipeline: baixar, extrair o texto principal com `@mozilla/readability` (Apache-2.0), sanitizar, converter com `turndown` (MIT). `jsdom` com scripts desligados. Respeitar `robots.txt` com `robots-parser` (MIT), identificando o Suup. Sem JS por padrão | Seção 2 e 3 |
+| Renderização de JS | Opcional, num serviço separado (Playwright, Apache-2.0), com checagem de faixa privada na navegação, como o do Firecrawl faz. Só quando `web_read` não extrai conteúdo suficiente, ou se o dono pedir | Seções 2 e 4 |
+| (c) `web_crawl` / `web_map`, depois | `crawlee` (Apache-2.0) com `maxConcurrency`, `maxRequestsPerMinute`, `sameDomainDelaySecs` e `respectRobotsTxtFile`, limites de páginas, profundidade e mesmo domínio. Fase posterior; não é necessário para a primeira entrega | Seção 2 (código lido em `master`, não na 3.18.2) |
+| (d) Rede | Contêiner SearXNG: saída só para os hosts dos motores ativos, listados um a um (`REDE.md` não aceita curinga). Leitura de página: não cabe na lista fechada do bot, porque cada site tem recursos de terceiros e o universo de sites é aberto. Duas opções para o dono: (i) a leitura usa uma rede própria de "web aberta", que continua bloqueando IP literal, loopback, metadados e faixas privadas, e passa por `REDE.md`; (ii) a leitura usa a lista do bot, com `request_network_access` para cada domínio novo. A opção (i) é a que faz `web_read` funcionar; a (ii) é mais segura e limita o uso | `REDE.md`; seção 4 |
+| Aprovação | Nível de leitura, sem cartão (como `docs/APROVACOES.md`), porque busca e leitura não alteram nada. Limite de buscas e de páginas por execução fica como guarda de custo, não como aprovação | Projeto |
+| Custo | Busca pelo SearXNG: zero por consulta, custo de máquina e de rede. Busca paga (Brave, Tavily, Exa): preço por consulta **não verificado** nesta pesquisa (páginas de preço bloqueadas). Registrar a contagem de chamadas por execução em qualquer caso | Seções 1 e 6 do texto acima; I5 |
+| Conteúdo como dado | Todo texto de busca ou de página entra marcado como dado externo, como o `web_fetch` atual faz. Nunca em instrução | Seção 7 |
+| Licença | Não copiar código do Firecrawl (AGPL v3). Não modificar o SearXNG sem revisão jurídica (seção 13 da AGPL). Usar só como serviço por HTTP, sem alteração | Seção 1 e 2 deste adendo |
+| Medição | Conjunto pequeno de tarefas de pesquisa com resposta conhecida (5 a 10 perguntas com fonte), comparando SearXNG, um provedor pago e a leitura própria: presença da fonte correta, qualidade da página extraída (texto principal sem menus), buscas por tarefa, tempo e falhas por motor (captcha, 429). Antes disso, nada de produção | Projeto |
+
+**Riscos principais (inferência):**
+
+- O IP do Suup é único. Se um motor bloquear o IP, a instância toda fica sem aquele motor. A medida é a suspensão já prevista no SearXNG e um backend pago de reserva. Sem chave, não há garantia de disponibilidade.
+- Com o padrão do SearXNG, o Google e o Bing web estão desligados. A qualidade de busca dependerá dos motores que restarem. Não medido.
+- Se o SearXNG for modificado, passa a valer a seção 13 da AGPL.
+- Renderizar JS sem contêiner separado e sem checagem de faixa privada reabre o SSRF que `REDE.md` fecha no proxy.
+
+### O que não foi verificado
+
+- RFC 9309 (texto e frases): host bloqueado. Nenhuma frase da RFC foi citada.
+- Termos de uso de Google, Bing, DuckDuckGo: host bloqueado. Não há conclusão sobre eles.
+- Documentação e preços de Brave, Tavily, Exa e Firecrawl (`firecrawl.dev` não foi tentado nesta rodada): preço e limites continuam não verificados.
+- Documentação do SearXNG em `docs.searxng.org`: não tentada nesta rodada (na pesquisa anterior estava bloqueada); a leitura usou só o repositório.
+- Motores que o SearXNG consulta de fato, os hosts de cada um e se respondem sem chave. Contagem de 82 motores "ativos" é só leitura do YAML.
+- Requisitos de CPU e memória do SearXNG e do Playwright, em produção.
+- Se o Chromium do Playwright respeita `HTTP_PROXY` do ambiente do bot.
+- Licença declarada do YaCy (LICENSE da raiz, 404), de Marginalia (só o README), do Stract e do Mojeek.
+- Código do Crawlee na versão publicada 3.18.2 (lido o branch `master`) e a licença do Crawlee pelo LICENSE do repositório (404).
+- Caminho de conversão HTML para Markdown dentro do `@mendable/firecrawl-rs` (pacote Rust, não lido).
+- Se a checagem de faixa privada no serviço de Playwright do Firecrawl cobre DNS rebinding (só se leu a mensagem de erro e a existência do proxy SSRF, não a lógica completa de `helpers/ssrf`).
+- Se o limitador do SearXNG está ativo no padrão da imagem oficial: `settings.yml` diz `limiter: false`, mas não foi lido o código de inicialização da imagem.
+- Efeito real de usar o `secret_key` padrão do SearXNG, se não for trocado.
+
+### Próximo passo sugerido
+
+Antes de implementar: (1) ler `docs.searxng.org` e a página de preços de Brave, Tavily e Exa com outro acesso, para fechar os itens bloqueados acima; (2) rodar o SearXNG em um contêiner de teste, com a versão fixada, e medir captcha e 429 em um conjunto de consultas; (3) decidir com o dono a opção de rede para a leitura de página, (i) ou (ii) da tabela; (4) só então desenhar a tela de configuração do `web_search`, pelo `docs/DESIGN.md`.
