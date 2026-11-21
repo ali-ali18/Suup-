@@ -228,4 +228,6 @@ A mesma memória está na API (`/v1/memories`, [API.md](API.md)): listar, criar,
 
 ## O que o bot nunca deve guardar
 
+O bot guarda **em silêncio**: não avisa que salvou (decisão do dono: sem ruído de memória); o usuário vê tudo na tela de Memória. Também nunca guarda número de documento de identidade, antecedentes criminais, número de conta bancária ou financeira nem situação migratória (a lista do Claude; está no prompt e na descrição de `remember`). A recepção ([RECEPCAO.md](RECEPCAO.md)) salva assim o que aprende.
+
 Senhas, chaves, tokens, números de cartão e detalhes de uma tarefa pontual. Nem a ferramenta `remember` nem a consolidação recusam nada **por aparência** (a detecção por padrão foi removida, veja acima): quem pede isso é o prompt do bot, a descrição da ferramenta e o prompt da consolidação. A defesa adicional é a de estrutura: o que o bot escreve depois de ler conteúdo de fora passa por um revisor que **decide** (sem liberação, não grava), a consolidação só cita o que **você** disse e nunca vê o conteúdo lido, e tudo tem origem, histórico e desfazer. Na medição com o modelo real, a senha dita no meio da conversa **não** foi para nenhuma memória, mas isso é o modelo, não uma garantia do código (TESTES-REAIS.md).

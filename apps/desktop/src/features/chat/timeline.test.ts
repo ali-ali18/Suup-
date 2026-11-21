@@ -10,6 +10,38 @@ const local = (h: number, m = 0, d = 18) => new Date(2026, 10, d, h, m, 0).toISO
 const kinds = (items: ReturnType<typeof buildTimeline>) => items.map((i) => i.kind);
 const none: ActionItem[] = [];
 
+describe("buildTimeline: the team card", () => {
+  const conversationId = makeMessage().conversationId;
+
+  it("a bot message that proposes a team is the team card, not a bubble, and it keeps its state", () => {
+    const team = {
+      items: [{ name: "Casa", description: "Rotina.", personality: "Você organiza." }],
+      status: "pending" as const,
+      created: [],
+    };
+    const items = buildTimeline(
+      [
+        makeMessage({
+          conversationId,
+          seq: 1,
+          authorKind: "bot",
+          authorBotId: "b1",
+          text: "Montei uma proposta de equipe para você.",
+          createdAt: local(14, 1),
+          team,
+        }),
+      ],
+      {},
+      none,
+      NOW,
+    );
+    expect(kinds(items)).toEqual(["separator", "team"]);
+    expect(items[1]).toMatchObject({ kind: "team", team });
+    // It is a card: it breaks the groups of bubbles around it.
+    expect(bubblePositions(items).size).toBe(0);
+  });
+});
+
 describe("buildTimeline", () => {
   const conversationId = makeMessage().conversationId;
   const msg = (seq: number, over = {}) =>

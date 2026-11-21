@@ -505,6 +505,13 @@ export async function startWorld(
     autoReviewModel?: string;
     /** How often the worker looks for runs whose scheduled return is due (default: its own, 5 s). */
     wakeEveryMs?: number;
+    /**
+     * Whether a new conversation is born waiting for its bot's welcome (docs/RECEPCAO.md), as in
+     * production. Default `false`: the other specs open chats of bots whose scripts know nothing of
+     * a welcome, so here a conversation is born `done` (`alter ... set default`). The reception spec
+     * turns it on.
+     */
+    reception?: boolean;
   } = {},
 ): Promise<World> {
   if (DATABASE_URL === undefined) throw new Error(SKIP_REASON);
@@ -526,16 +533,21 @@ export async function startWorld(
   const db = createDb(DATABASE_URL, { schema });
   cleanups.unshift(() => db.close());
   await migrate(db);
+  if (options.reception !== true) {
+    await db.sql.unsafe("alter table conversations alter column reception set default 'done'");
+  }
 
   const dir = await mkdtemp(join(tmpdir(), "suup-desktop-e2e-"));
   cleanups.push(() => rm(dir, { recursive: true, force: true }));
   for (const [name, content] of Object.entries(options.scripts ?? SCRIPTS)) {
     await writeFile(join(dir, `${name}.json`), JSON.stringify(content, null, 2));
   }
-  await writeFile(
-    join(dir, "outro.json"),
-    JSON.stringify({ cases: [{ whenObjectiveContains: "X", agent: [{ text: "x", usage }] }] }),
-  );
+  if (options.scripts?.outro === undefined) {
+    await writeFile(
+      join(dir, "outro.json"),
+      JSON.stringify({ cases: [{ whenObjectiveContains: "X", agent: [{ text: "x", usage }] }] }),
+    );
+  }
   const config: RuntimeConfig = parseConfig({
     providers: [
       { id: "roteiro", kind: "scripted", scriptPath: "roteiro.json" },

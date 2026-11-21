@@ -277,6 +277,22 @@ describe("chat cards share one chrome and one collapsed row", () => {
     expect(ui("action-card.tsx")).toContain('from "./decision-card.js"');
   });
 
+  it("the team card is one decision card on the shared chrome (title, light line, rows, two buttons), decided into one collapsed row", () => {
+    const source = ui("team-card.tsx");
+    expect(source).toContain('from "./decision-card.js"');
+    expect(source).toContain('from "./action-card.js"');
+    expect(source).not.toMatch(/className="ui-action[ "]/);
+    // The footer: "Agora não" as plain text (quiet) and "Criar selecionados" as the pill (primary).
+    expect(source).toContain('tone="quiet"');
+    expect(source).toContain('tone="primary"');
+    expect(source).toContain("Agora não");
+    expect(source).toContain("Criar selecionados");
+    // A tick per proposed bot, the mascot of the bot, and nothing created without a tick.
+    expect(source).toContain("CheckInput");
+    expect(source).toContain("<Avatar");
+    expect(source).toContain("ticked.size === 0");
+  });
+
   it("the tool actions are drawn by the same collapsed row", () => {
     expect(read(join(SRC, "features", "chat", "ActionRow.tsx"))).toContain("ActionCard");
   });

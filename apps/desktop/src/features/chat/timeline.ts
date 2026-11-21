@@ -1,4 +1,4 @@
-import type { Approval, Question, Run } from "@suup/api";
+import type { Approval, Question, Run, TeamProposal } from "@suup/api";
 import {
   type ActionEntry,
   type ActionItem,
@@ -28,6 +28,8 @@ export type TimelineItem =
         tieBreak: boolean;
       };
     }
+  /** The main bot's proposal of a team of bots: the card where the user ticks which to create. */
+  | { kind: "team"; key: string; messageId: string; text: string; team: TeamProposal }
   /** The tool calls made between two messages, as cards (older finished ones folded). */
   | { kind: "actions"; key: string; entries: ActionEntry[] }
   /** An approval that waits for the user: the decision card (a decided one is part of its call's row). */
@@ -195,6 +197,14 @@ export function buildTimeline(
       } else {
         items.push({ kind: "notice", key: message.id, text: message.text });
       }
+    } else if (message.team !== undefined) {
+      items.push({
+        kind: "team",
+        key: message.id,
+        messageId: message.id,
+        text: message.text,
+        team: message.team,
+      });
     } else if (message.question === undefined) {
       items.push({ kind: "bot", key: message.id, text: message.text });
     } else {

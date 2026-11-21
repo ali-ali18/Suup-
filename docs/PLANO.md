@@ -299,6 +299,8 @@ O inspetor e a origem da falha entram na fase 1 (pela CLI). As cinco verificaç�
 
 O bot não espera ser chamado: percebe o que pode resolver, adianta tudo o que não tem risco e deixa para o usuário só a decisão final. Entra na fase 4, porque é construída sobre rotinas e aprovações.
 
+**Recepção do bot (fase 4, feita).** Todo bot recebe o usuário na primeira conversa (perguntas do papel dele, uma de cada vez, puláveis); o Principal faz a recepção geral e propõe uma equipe num cartão em que o usuário marca o que criar. O prompt ganhou quem é, agora, equipe e o que o bot tem. Desenho em [RECEPCAO.md](RECEPCAO.md); pesquisa em [pesquisas/fase-4-recepcao-inicial.md](pesquisas/fase-4-recepcao-inicial.md).
+
 **Primeira peça da fase 4, já feita: o bot volta sozinho.** Ele dispara algo que demora (CI, deploy), diz "volto em 20 minutos" na própria mensagem e a mesma execução acorda sozinha na hora, sem rotina e sem marcador na tela (decisão do dono). É a ferramenta `schedule_return` e o estado `waiting_timer`; o desenho, os limites e como parar estão em [RETORNO.md](RETORNO.md), e a pesquisa que o embasa em [pesquisas/fase-4-acordar-sozinho.md](pesquisas/fase-4-acordar-sozinho.md). Fica de fora dela o que é do resto da iniciativa: acordar por evento de conector ou webhook, horário fixo (isso é rotina) e trabalho por iniciativa própria (`proactive`).
 
 **De onde vem o "perceber"**

@@ -7,6 +7,8 @@ import {
   Cpu,
   DollarSign,
   FoldVertical,
+  Globe,
+  HandHelping,
   Image,
   Key,
   Layers,
@@ -23,6 +25,7 @@ import { useEffect, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { sortedBots } from "../../app/selectors.js";
 import { useSettings } from "../../app/settings-store.js";
+import { useUi } from "../../app/ui-store.js";
 import type { Settings } from "../../lib/settings.js";
 import { Toggle } from "../../ui/primitives.js";
 import {
@@ -216,7 +219,7 @@ function SwitchRow({ row }: { row: Switch<keyof Settings> }) {
  * read-only: the server has no endpoint to change them).
  */
 export function GeneralSettings({ title, titleId, onClose }: SectionProps) {
-  const { api, connection, disconnect, platform } = useServices();
+  const { api, connection, disconnect, platform, sync } = useServices();
   const bots = useData((s) => s.bots);
   const [models, setModels] = useState<ModelInfo[] | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -227,7 +230,26 @@ export function GeneralSettings({ title, titleId, onClose }: SectionProps) {
         setError(e instanceof Error ? e.message : "Não foi possível listar os modelos."),
       );
   }, [api]);
+  const [timeZone, setTimeZone] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    api.info().then(
+      (info) => setTimeZone(info.timeZone),
+      () => setTimeZone(""),
+    );
+  }, [api]);
+  const redo = async (bot: Parameters<typeof sync.resetReception>[0]) => {
+    const result = await sync.resetReception(bot);
+    useUi
+      .getState()
+      .toast(
+        result.ok
+          ? `Na próxima vez que você abrir a conversa com ${bot.name}, a recepção recomeça.`
+          : result.message,
+        result.ok ? "info" : "error",
+      );
+  };
   const main = sortedBots(bots).find((b) => b.isDefault);
+  const active = sortedBots(bots).filter((b) => b.archivedAt === null);
   return (
     <>
       <PaneHead title={title} titleId={titleId} onClose={onClose} />
@@ -292,6 +314,31 @@ export function GeneralSettings({ title, titleId, onClose }: SectionProps) {
                   {m.available ? "Disponível" : "Indisponível"}
                   {!m.priced && " · sem preço"}
                 </RowValue>
+              }
+            />
+          ))}
+        </SettingsGroup>
+        <SettingsGroup
+          label="Hora e recepção"
+          hint="O fuso vem da configuração do servidor e é a hora que os bots usam para datas e lembretes. A recepção é a primeira conversa de cada bot; o que ele aprende fica em Memória."
+          testId="reception-group"
+        >
+          <SettingsRow
+            icon={Globe}
+            testId="time-zone-row"
+            title="Fuso horário"
+            control={<RowValue data-testid="time-zone">{timeZone ?? "…"}</RowValue>}
+          />
+          {active.map((b) => (
+            <SettingsRow
+              key={b.id}
+              icon={HandHelping}
+              testId="reception-row"
+              title={`Refazer a recepção de ${b.name}`}
+              control={
+                <RowAction data-testid="reception-redo" onClick={() => void redo(b)}>
+                  Refazer
+                </RowAction>
               }
             />
           ))}

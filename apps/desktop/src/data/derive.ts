@@ -74,7 +74,8 @@ export const TOOL_LABEL: Record<string, string> = {
 
 /**
  * The control tools are not cards: `request_secret` is the secure form, not an "action", and
- * `schedule_return` has no mark of its own (the bot says it in its message; docs/RETORNO.md).
+ * `schedule_return` has no mark of its own (the bot says it in its message; docs/RETORNO.md), and
+ * `propose_team` is the team card (docs/RECEPCAO.md).
  */
 export const CONTROL_TOOLS: ReadonlySet<string> = new Set([
   "plan",
@@ -82,6 +83,7 @@ export const CONTROL_TOOLS: ReadonlySet<string> = new Set([
   "escalate",
   "request_secret",
   "schedule_return",
+  "propose_team",
 ]);
 
 export const toolLabel = (name: string): string => TOOL_LABEL[name] ?? name;

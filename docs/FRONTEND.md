@@ -280,6 +280,7 @@ Uma tela separada do chat, para quando algo dá errado. A API serve os mesmos c�
 | Lista de bots | `GET /v1/bots` (cada bot já traz `latestRun` e `unreadCount`) e o stream (`run.updated`, `conversation.updated`, `bot.updated`) |
 | Conversa | `GET /v1/conversations/{id}/messages` e `GET /v1/runs/{id}/events?view=chat`; no stream, `message.*` e `run.event` |
 | Sala de grupo | O mesmo, com vários bots |
+| Recepção e equipe | `POST /v1/bots/{id}/reception` (ao abrir o chat), `POST /v1/bots/{id}/reception/reset` (Configurações), `POST /v1/messages/{id}/team` (o cartão de equipe, [RECEPCAO.md](RECEPCAO.md)), `GET /v1/info` (fuso, só leitura) |
 | Criar e editar bot | `GET /v1/models`, `GET /v1/tools`, `POST /v1/bots`, `PATCH /v1/bots/{id}`, `POST /v1/bots/draft` |
 | Memória | `GET /v1/memories` (`?status=pending` é a fila de confirmação), `POST`, `PATCH`, `archive`, `restore`, `confirm`, `reject`, `GET /v1/memories/search`, `GET /v1/memories/{id}/revisions` e `POST .../revisions/{id}/undo` (histórico e desfazer), `GET`/`PATCH /v1/memory-settings` (consolidação, teto do prompt, expiração, compactação, com o aviso `promptUsage.overLimit` e o `reviewer`), `GET /v1/memory-consolidations` |
 | Rotinas | Rotinas e histórico de disparos |
