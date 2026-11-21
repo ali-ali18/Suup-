@@ -98,6 +98,7 @@ import {
   teamRecallTool,
 } from "./supervisor.js";
 import { createVault, DEFAULT_VAULT_KEY_ENV, type Vault } from "./vault/service.js";
+import { dbSearchCache } from "./web/search-cache.js";
 import { createWebWiring, type WebWiring } from "./web/wiring.js";
 
 type Env = Record<string, string | undefined>;
@@ -343,6 +344,8 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
   // Web search and page reading (docs/BUSCA.md): nothing starts until a tool asks for it.
   const web = createWebWiring(config.web, {
     ...(dockerPath === undefined ? {} : { dockerPath }),
+    // Identical searches are answered from the database: it outlives a restart and is shared.
+    searchCache: dbSearchCache(() => runtime.db),
   });
   let egressStarted: Promise<EgressRuntime> | undefined;
   /** The internal network and the proxy: made once, at the first use of the docker sandbox. */

@@ -398,6 +398,12 @@ export type {
 } from "./types.js";
 export { type WakeDueOptions, type WokenRun, wakeDueRuns } from "./wake.js";
 export {
+  clearWebSearchCache,
+  getWebSearchCache,
+  putWebSearchCache,
+  type WebSearchCacheRow,
+} from "./web-search-cache.js";
+export {
   type CreateWrittenRuleInput,
   createWrittenRule,
   DEFAULT_STALE_APPROVAL_MINUTES,
