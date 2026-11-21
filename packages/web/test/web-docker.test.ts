@@ -74,6 +74,22 @@ describe.skipIf(!REAL)("web services, real Docker", () => {
       for (const hit of out.hits) expect(hit.url.startsWith("http")).toBe(true);
     }, 90_000);
 
+    it("DuckDuckGo is loaded by the real image with Suup's honest user agent, and no engine is left that is not on the list", async () => {
+      const out = await docker([
+        "exec",
+        "--workdir",
+        "/usr/local/searxng",
+        searchContainer,
+        "/usr/local/searxng/.venv/bin/python",
+        "-c",
+        "from searx import settings, engines; engines.load_engines(settings['engines']); print('UA=' + engines.engines['duckduckgo']._HTTP_User_Agent); print('ENGINES=' + ','.join(sorted(engines.engines)))",
+      ]);
+      expect(out.code, out.err).toBe(0);
+      expect(out.out).toContain("UA=SuupBot/");
+      expect(out.out).not.toContain("Mozilla");
+      expect(out.out).toContain(`ENGINES=${[...DEFAULT_ENGINES].sort().join(",")}`);
+    }, 60_000);
+
     it("the container has no route out of its own network", async () => {
       const direct = await docker([
         "exec",
