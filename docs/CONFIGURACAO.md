@@ -187,6 +187,25 @@ Quando as ferramentas de **conectores** de um bot são **buscadas** em vez de ca
 
 Abaixo dos dois limites, as ferramentas vão direto. Para desligar a busca, ponha valores enormes. As ferramentas embutidas e de controle nunca são adiadas.
 
+### `web` (opcional)
+
+Busca e leitura de páginas, feitas por peças de código aberto que o Suup mesmo roda ([BUSCA.md](BUSCA.md)). Tudo é opcional.
+
+| Campo | Padrão | Significado |
+|---|---|---|
+| `search.enabled` | `true` | `false` desliga `web_search` (a ferramenta diz que está desligada) |
+| `search.engines` | `["wikipedia","arxiv","stackoverflow","github"]` | ids dos motores (BUSCA.md lista todos). Os gerais (`duckduckgo`, `brave`, `startpage`) leem páginas de resultados e ficam **desligados** até você ligá-los. Id desconhecido é recusado |
+| `search.languages` | `["en","pt"]` | idiomas cujo host da Wikipédia o contêiner de busca alcança (`pt-br` vira `pt-br.wikipedia.org`; só letras, números e hífen) |
+| `search.maxResults` | `10` | no máximo, por busca (1 a 20) |
+| `search.url` | (nenhum) | use um SearXNG seu, nesta URL http(s), em vez do contêiner que o Suup sobe (o formato `json` tem de estar ligado nele) |
+| `search.image`, `search.network`, `search.proxy` | imagem fixada, `suup-search-net`, gateway da rede e porta 3129 | avançado: imagem, rede interna e onde o proxy de motores escuta (necessário com o worker em contêiner: `{ "listenHost", "advertiseHost", "port" }`) |
+| `reader.enabled` | `true` | `false`: `web_read` lê pela máquina do bot, pela lista de hosts e com cartões, em vez do serviço leitor |
+| `reader.render` | `true` | permite `render: true` (Chromium no contêiner leitor) |
+| `reader.image` | `suup-reader:dev` | imagem do leitor |
+| `reader.repositoryUrl` | o repositório do projeto | o endereço no user agent `SuupBot/<versão> (+<endereço>)` |
+
+`suup doctor` mostra se a busca e o leitor estão ligados e, depois do primeiro uso, o que está rodando. Sem Docker, `web_search` fica indisponível e `web_read` lê no próprio processo, sem `render`. A saída do `web_search` e do `web_read` já chega ao modelo como dado externo (`<<<EXTERNAL_DATA`), sem precisar de `untrustedOutputTools`.
+
 ### Conectores
 
 Não há seção de conectores neste arquivo: eles ficam no banco (`suup connectors ...`, [CONECTORES.md](CONECTORES.md)), porque são criados em tempo de execução e carregam referências a segredos do cofre. A seção `vault` é necessária para um conector que use credenciais.

@@ -131,7 +131,7 @@ Cada ferramenta declara: nome, descrição, esquema de entrada (zod), nível de 
 |---|---|---|
 | Controle | `plan`, `finish`, `escalate` | 1 |
 | Máquina | `shell`, `read_file`, `write_file`, `edit_file`, `list_files`, `search_files` | 1 |
-| Web | `web_search`, `web_fetch` | 1 |
+| Web | `web_search`, `web_read`, `web_fetch` | 1; busca e leitura próprias na fase 4 ([BUSCA.md](BUSCA.md); pesquisa [fase-4-busca-na-web.md](pesquisas/fase-4-busca-na-web.md)) |
 | Memória | `remember`, `recall`, `forget`, `search_conversations` | 2 |
 | Bots | `delegate`, `message_bot` | 4 |
 | Rotinas | `create_routine`, `update_routine`, `list_routines` | 4 |
@@ -302,6 +302,8 @@ O inspetor e a origem da falha entram na fase 1 (pela CLI). As cinco verificaç�
 O bot não espera ser chamado: percebe o que pode resolver, adianta tudo o que não tem risco e deixa para o usuário só a decisão final. Entra na fase 4, porque é construída sobre rotinas e aprovações.
 
 **Recepção do bot (fase 4, feita).** Todo bot recebe o usuário na primeira conversa (perguntas do papel dele, uma de cada vez, puláveis); o Principal faz a recepção geral e propõe uma equipe num cartão em que o usuário marca o que criar. O prompt ganhou quem é, agora, equipe e o que o bot tem. Desenho em [RECEPCAO.md](RECEPCAO.md); pesquisa em [pesquisas/fase-4-recepcao-inicial.md](pesquisas/fase-4-recepcao-inicial.md).
+
+**Busca e leitura de páginas na web (fase 4, feita).** Decisão do dono: "não quero me prender a provedor" e "tem que ser 100% open". `web_search` (contêiner SearXNG fixado, sem modificação, motores de API pública por padrão) e `web_read` (leitor próprio: Readability e Turndown, `robots.txt`, ritmo por host, só páginas públicas; `render` num Chromium separado) são ferramentas embutidas de nível leitura, sem cartão, concedidas por bot. A busca hospedada do provedor não é usada; adaptadores de Brave, Tavily e Exa **não** estão no núcleo (o usuário pode acrescentar um conector MCP de busca). Desenho, rede, licenças (AGPL do SearXNG), motores e o que não impede: [BUSCA.md](BUSCA.md); pesquisa: [pesquisas/fase-4-busca-na-web.md](pesquisas/fase-4-busca-na-web.md). Fica de fora: `web_crawl`/`web_map` (a pesquisa os põe depois), tela de configuração dos motores, ligar o sidecar do app embutido e restringir `web_read` a URLs vistas na conversa (decisão do dono).
 
 **Primeira peça da fase 4, já feita: o bot volta sozinho.** Ele dispara algo que demora (CI, deploy), diz "volto em 20 minutos" na própria mensagem e a mesma execução acorda sozinha na hora, sem rotina e sem marcador na tela (decisão do dono). É a ferramenta `schedule_return` e o estado `waiting_timer`; o desenho, os limites e como parar estão em [RETORNO.md](RETORNO.md), e a pesquisa que o embasa em [pesquisas/fase-4-acordar-sozinho.md](pesquisas/fase-4-acordar-sozinho.md). Fica de fora dela o que é do resto da iniciativa: acordar por evento de conector ou webhook, horário fixo (isso é rotina) e trabalho por iniciativa própria (`proactive`).
 

@@ -25,6 +25,7 @@ Uma ferramenta que não declara nada, ou declara um nível que não existe, vale
 |---|---|---|
 | `read_file`, `list_files`, `search_files`, `recall`, `search_conversations` | `read` | Só observam |
 | `web_fetch` | `read` | Sempre GET. Com um segredo nos argumentos (cabeçalho, URL) sobe para `external_irreversible` |
+| `web_search`, `web_read` | `read` | Só leem: a busca vai ao serviço de busca do próprio Suup; a leitura é um GET de página pública feito pelo serviço leitor, sem cookies nem segredo (não aceitam cabeçalho nem `{{secret:...}}`). **Sem cartão**, por decisão do dono. A URL lida é um canal de saída: [BUSCA.md](BUSCA.md), "O que isto NÃO impede" |
 | `write_file`, `edit_file`, `remember`, `forget` | `write_reversible` | Mudam a pasta do próprio bot ou a memória, e dá para desfazer |
 | `shell` | `write_reversible` **na máquina isolada** (Docker); `external_irreversible` na máquina `local` | Veja abaixo |
 | `request_network_access` | `external_irreversible` (fixo) | Pede ao usuário que a máquina alcance **um host** (nome exato). Sempre é cartão, com o host e o motivo; aprovar libera o host só para a execução. Veja [REDE.md](REDE.md) |

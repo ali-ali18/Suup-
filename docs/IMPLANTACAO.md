@@ -123,6 +123,18 @@ A máquina dos bots (e cada conector stdio) fica numa rede Docker **interna** e 
 
 Contêineres criados antes desta versão (na rede padrão, com saída direta) são **recriados sozinhos** na primeira execução (o volume do workspace é mantido); `suup doctor` confere que a máquina não tem saída direta.
 
+## Busca e leitura de páginas (`web_search`, `web_read`)
+
+[BUSCA.md](BUSCA.md). No Compose de produção:
+
+- `reader-image` constrói a imagem do leitor e renderizador (`docker/reader/Dockerfile`, base `mcr.microsoft.com/playwright:v1.65.1-noble`, vários GB; a tag é a versão exata do `playwright-core`) e `searxng-image` puxa a imagem do SearXNG **fixada** (`docker.io/searxng/searxng:2026.3.25-541c6c3cb`, nunca `latest`; AGPL v3, usado sem modificação).
+- O **worker** sobe os dois contêineres no primeiro uso (`suup-searxng` e `suup-reader`), pelo socket do Docker. Nada novo escuta em porta alguma.
+- A rede `suup-search-net` (`172.29.78.0/24`, **interna**) é a do SearXNG; o worker entra nela em `172.29.78.2` e o proxy de motores escuta aí (`web.search.proxy` no `suup.config.prod.example.json`). Se mudar a sub-rede, mude os dois, como na rede dos bots.
+- **Nenhum segredo novo no `.env.prod`:** a `secret_key` do SearXNG é gerada na criação do contêiner.
+- Construir a imagem do leitor atrás de um proxy que reassina o TLS: os mesmos argumentos da seção seguinte, com `-f docker/reader/Dockerfile`.
+- Sem o leitor ou sem a busca: `"web": { "reader": { "enabled": false } }` e/ou `"search": { "enabled": false }`.
+- Desenvolvimento: `docker compose --profile web up -d searxng` (com `SEARXNG_SECRET`) sobe só o SearXNG na porta `127.0.0.1:8080`, **com a saída do host** (sem a lista): só para desenvolvimento.
+
 ## Construir atrás de um proxy que reassina o TLS
 
 Numa rede com um proxy que intercepta HTTPS (corporativo, ou o ambiente de um agente), `docker build` falha no `apt-get update`/`npm`/`pip`: o build não tem o proxy nem a CA dele. Passe os dois **só durante o build**, sem gravá-los na imagem:
