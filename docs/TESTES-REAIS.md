@@ -695,6 +695,24 @@ Conferido nas duas: `wait_scheduled` e `wait_fired` uma vez cada; a execução p
 - Não medi o laço induzido por instrução de página externa, a mensagem do usuário durante a espera com modelo real, nem o custo de um retorno com cache frio depois de mais de 5 minutos (a espera medida foi de 1 minuto, dentro do TTL do cache).
 - O app (Playwright) foi testado só com o provedor roteirizado; o acordar pelo job do worker (e não pelo acompanhamento da CLI) foi testado com o servidor e o worker em runtimes separados, mas não com o modelo real.
 
+## Recepção do bot (21/11/2026)
+
+Segunda peça da fase 4 ([RECEPCAO.md](RECEPCAO.md)). Modelo `claude-sonnet-5-5` em todos os bots (a API devolveu a mesma versão; preços 2 / 10 / 0,10 / 2,50 US$/MTok, sem escolha forçada de ferramenta), chave só pelo nome (`SUUP_ANTHROPIC_KEY` em `apiKeyEnv`; o valor não foi impresso nem gravado), PostgreSQL 16 descartável (porta 5489), sandbox `local`, fuso `America/Sao_Paulo`. Teto de US$ 0,40 para tudo; `maxCostUsd` 0,12 por execução. **Gasto real: US$ 0,137** (Principal 0,0735 · Tutor faculdade 0,0443 · Finanças 0,0192). Um roteiro de teste respondeu às perguntas (a primeira opção que não é "Pular"; texto livre quando não há opções); cada recepção foi pedida duas vezes seguidas.
+
+| Conferido | Resultado |
+|---|---|
+| Começa uma vez só | A segunda chamada de `startBotReception` devolveu `started=false` nas três |
+| Perguntas do papel, no máximo 3, uma de cada vez | **Tutor**: matéria/período, depois prova ou trabalho (2 perguntas, com "Pular"). **Finanças**: maior dor com dinheiro, depois como acompanhar gastos (2). Nenhuma repetiu o que o perfil já dizia (o Finanças até usou a faculdade como opção). **Principal**: as 3 da recepção geral + a pergunta se queria mais 2 + as 2 extras (6 cartões; as 3 obrigatórias respeitam o limite) |
+| Memória em silêncio | Nenhuma mensagem disse "salvei". Salvou 3 fatos de perfil (Direito à noite, trabalho de dia, respostas curtas) e 3 notas dos bots (matéria atual, prova em breve, gastos) |
+| Cartão de equipe só cria o marcado | 2 bots propostos (Expediente, Rotina); marcado só o primeiro: criou 1, o outro não existe |
+| Fecho | Terminou com a frase combinada, depois de próximos passos em texto |
+
+O que o modelo fez de **errado ou estranho**:
+- O Principal repetiu na mensagem final o que o cartão já dizia ("Montei um cartão com dois bots…"). Inofensivo; não mudei o prompt por uma execução.
+- Propôs 2 bots, não 3, e um deles (Expediente) soa parecido com "trabalho" mais que "equipe"; as propostas saíram do que o usuário contou.
+- Meu roteiro de resposta acertou mal a pergunta do nome ("Como você quer ser chamado?" recebeu a resposta da outra pergunta), então o nome não foi testado.
+- Não medi: outra língua, usuário que escreve um pedido no meio, usuário que digita uma senha (o prompt manda lembrar do Cofre; não foi provocado), nem o Principal com um perfil já cheio.
+
 ---
 
 # Estabilização (19/11/2026)
