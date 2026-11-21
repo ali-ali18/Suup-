@@ -834,3 +834,21 @@ O Ops tentou `curl` a `files.pythonhosted.org` (fora da lista): o proxy recusou 
 ## Verificações do repositório (depois dos consertos)
 
 `pnpm lint` e `pnpm typecheck` limpos; `tsc -b` limpo; suíte completa com banco novo e Docker (`SUUP_DOCKER_TESTS=1`, imagens `suup-sandbox:dev` e `suup-connector-runner:dev`): **3196 passaram, 4 puladas, 0 falhas** (200 arquivos); Playwright do app (`pnpm build` e `test:e2e`): **66 passaram**. Na primeira rodada, 1 teste falhou porque fixava a versão do prompt do revisor (`auto-review-v1`); ele passou a esperar `auto-review-v2` (commit `be23e26`), sem afrouxar nada.
+
+## Busca e leitura de páginas na web (`web_search`, `web_read`)
+
+Data: 21/11/2026. Desenho em [BUSCA.md](BUSCA.md).
+
+**Execução com modelo real: NÃO feita, por falta de rede.** A tarefa prevista ("pesquise X e resuma com fontes", Sonnet, teto de US$ 0,30) exige que o contêiner de busca alcance os motores e que o leitor alcance páginas públicas. Nesta máquina de desenvolvimento os hosts dos motores não são alcançáveis (`en.wikipedia.org`, `export.arxiv.org` e `api.stackexchange.com` falham no DNS; `api.github.com` passa pela lista mas o TLS do ambiente é reassinado por uma CA que o contêiner não tem) e o leitor, que não usa o proxy do ambiente, não sai para a internet. Nenhuma chamada ao modelo foi feita, nenhum gasto (US$ 0,00). **O que isso deixa sem prova:** a qualidade das respostas do modelo com as duas ferramentas, o texto que ele recebe com resultados reais e a taxa de captcha e 429 dos motores. Fazer numa máquina com rede, com `SUUP_WEB_NETWORK_TESTS=1` para as partes de rede e a tarefa acima por `suup`.
+
+**O que foi exercitado de verdade aqui (sem modelo):**
+
+| O quê | Resultado |
+|---|---|
+| Imagem **oficial** do SearXNG (`2026.3.25-541c6c3cb`) com o `settings.yml` gerado, atrás do proxy de motores | sobe, responde JSON em `/search?format=json`, reconhece só os motores da lista; com motores inalcançáveis devolve `unresponsive_engines` com cada motor e o motivo, e a ferramenta mostra isso |
+| Contêiner de busca sem rota para fora | `wget` direto a um IP e a um nome **falha**; o proxy recusa host fora da lista e endereço privado (`403`) |
+| Hosts dos motores | o proxy registrou os pedidos exatos `en.wikipedia.org:443`, `export.arxiv.org:443` e `api.stackexchange.com:443` (recusados só pelo DNS do ambiente); `api.github.com` passou pela lista |
+| Imagem do leitor (variante **sem** navegador) | contêiner com `cap_drop ALL`, raiz só leitura, nenhuma porta nem montagem, nenhuma variável secreta; recusa `127.0.0.1`, `localhost`, `169.254.169.254`, `10.0.0.1`, `[::1]`, `file:` e URL com senha |
+| Renderizador com Chromium **real** do ambiente (fora do Docker) | lê uma página que só existe depois do JavaScript; o `fetch` da página a `127.0.0.1` não chega a lugar nenhum; nome privado e IP recebem `403`; sem cookies entre páginas |
+
+**Só em CI (não rodou aqui):** a imagem do leitor **com** Chromium (`mcr.microsoft.com/playwright:v1.65.1-noble`, vários GB: o disco desta máquina não comporta; tentada, falhou por falta de espaço) e a leitura de uma página pública real (`SUUP_WEB_NETWORK_TESTS=1`). O app embutido (sidecar) não existe neste ramo.

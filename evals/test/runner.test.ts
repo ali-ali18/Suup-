@@ -110,7 +110,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("the evaluation runner, end to end"),
     for (const memoryTool of ["remember", "recall", "forget", "search_conversations"]) {
       expect(tools).not.toContain(memoryTool);
     }
-    // Exactly what a bot had before memory existed: the control tools and the seven built-ins.
+    // Exactly what a bot had before memory existed: the control tools and the built-ins (the web tools are built-ins too; with no web wired they only say so).
     expect(tools).toEqual(
       [
         "plan",
@@ -123,6 +123,8 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("the evaluation runner, end to end"),
         "list_files",
         "search_files",
         "web_fetch",
+        "web_search",
+        "web_read",
       ].sort(),
     );
 
