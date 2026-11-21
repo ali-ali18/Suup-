@@ -117,6 +117,14 @@ import {
 } from "./runs.js";
 import { errorOf, type SubscribeOptions, type Subscription, subscribe } from "./subscribe.js";
 import {
+  type ListTeamReviewsQuery,
+  type SupervisorSettings,
+  supervisorSettingsSchema,
+  type TeamReview,
+  teamReviewListSchema,
+  type UpdateSupervisorSettingsBody,
+} from "./supervisor.js";
+import {
   type AnswerSecretRequestBody,
   type AnswerSecretRequestResult,
   answerSecretRequestResultSchema,
@@ -229,6 +237,15 @@ export interface SuupClient {
     undo(id: string, revisionId: string): Promise<Memory>;
     /** The attempts of the background consolidation, newest first. */
     consolidations(query?: ListMemoryConsolidationsQuery): Promise<MemoryConsolidation[]>;
+  };
+  /** The Principal as the supervisor of the team (docs/SUPERVISOR.md). */
+  supervisor: {
+    settings: {
+      get(): Promise<SupervisorSettings>;
+      update(body: UpdateSupervisorSettingsBody): Promise<SupervisorSettings>;
+    };
+    /** The history of the nightly reviews, newest first. */
+    reviews(query?: ListTeamReviewsQuery): Promise<TeamReview[]>;
   };
   memorySettings: {
     get(): Promise<MemorySettings>;
@@ -501,6 +518,19 @@ export function createClient(options: ClientOptions): SuupClient {
       consolidations: async (query) =>
         (
           await call("GET", "/v1/memory-consolidations", memoryConsolidationListSchema, {
+            query: query as Query | undefined,
+          })
+        ).items,
+    },
+    supervisor: {
+      settings: {
+        get: () => call("GET", "/v1/supervisor/settings", supervisorSettingsSchema),
+        update: (body) =>
+          call("PATCH", "/v1/supervisor/settings", supervisorSettingsSchema, { body }),
+      },
+      reviews: async (query) =>
+        (
+          await call("GET", "/v1/supervisor/reviews", teamReviewListSchema, {
             query: query as Query | undefined,
           })
         ).items,

@@ -68,6 +68,8 @@ export interface WorldOptions {
   memoryEveryMs?: { consolidation?: number; expiry?: number };
   /** How often the worker looks for runs whose scheduled return is due (default: its own, 5 s). */
   wakeEveryMs?: number;
+  /** How often the worker looks at the clock for the nightly review and the morning message (default: 60 s). */
+  supervisorEveryMs?: number;
 }
 
 /**
@@ -169,6 +171,9 @@ export function useWorld(options: WorldOptions = {}): World {
         idleBackoff: { minMs: 15, maxMs: 80 },
         ...(options.memoryEveryMs === undefined ? {} : { memoryEveryMs: options.memoryEveryMs }),
         ...(options.wakeEveryMs === undefined ? {} : { wakeEveryMs: options.wakeEveryMs }),
+        ...(options.supervisorEveryMs === undefined
+          ? {}
+          : { supervisorEveryMs: options.supervisorEveryMs }),
         onError: (error, context) => {
           console.error(`worker: ${context}:`, error);
         },

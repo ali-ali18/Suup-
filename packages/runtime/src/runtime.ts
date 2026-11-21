@@ -1035,7 +1035,14 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     async reviewOnce(opts = {}) {
       const principal = await getDefaultBot(runtime.db);
       if (principal === null) return null;
-      const { model, provider: providerEntry } = resolveModel(principal.modelId);
+      // A main bot whose model the configuration lacks (or whose key is missing) cannot review: quiet.
+      let resolved: ResolvedModel;
+      try {
+        resolved = resolveModel(principal.modelId);
+      } catch {
+        return null;
+      }
+      const { model, provider: providerEntry } = resolved;
       if (!keyStatus(providerEntry.id).ok) return null;
       return runNightlyReview({
         db: runtime.db,
