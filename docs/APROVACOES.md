@@ -11,8 +11,8 @@ Uma ferramenta **só declara**; quem decide é o harness (a ferramenta nunca imp
 | Declaração | Para quê |
 |---|---|
 | `risk` | O nível padrão de uma chamada: `read`, `write_reversible` ou `external_irreversible` |
-| `classify(args, { executor })` (opcional) | O nível **desta** chamada, a partir dos argumentos (e da máquina onde roda). Se lançar erro, vale `external_irreversible` |
-| `describe(args)` (opcional) | A linha do cartão. Padrão: o nome da ferramenta e os argumentos |
+| `classify(args, { executor, webSeen })` (opcional) | O nível **desta** chamada, a partir dos argumentos, da máquina onde roda e dos endereços que a execução já viu (`webSeen`, só `web_read` o usa). Se lançar erro, vale `external_irreversible` |
+| `describe(args, env)` (opcional) | A linha do cartão. Padrão: o nome da ferramenta e os argumentos |
 | `secretFields` | Os campos que podem receber `{{secret:NOME}}` (veja COFRE.md) |
 | `externalOutput` | A saída vem de fora: chega ao modelo rotulada como dado não confiável |
 | `outbound` (opcional) | `{ kind: "message", recipientFields: ["to", ...] }`: a chamada **envia uma mensagem a outra pessoa** (e-mail e afins) e os destinatários estão nesses campos dos argumentos. Veja "Mensagens a outras pessoas" |
@@ -25,12 +25,23 @@ Uma ferramenta que não declara nada, ou declara um nível que não existe, vale
 |---|---|---|
 | `read_file`, `list_files`, `search_files`, `recall`, `search_conversations` | `read` | Só observam |
 | `web_fetch` | `read` | Sempre GET. Com um segredo nos argumentos (cabeçalho, URL) sobe para `external_irreversible` |
-| `web_search`, `web_read` | `read` | Só leem: a busca vai ao serviço de busca do próprio Suup; a leitura é um GET de página pública feito pelo serviço leitor, sem cookies nem segredo (não aceitam cabeçalho nem `{{secret:...}}`). **Sem cartão**, por decisão do dono. A URL lida é um canal de saída: [BUSCA.md](BUSCA.md), "O que isto NÃO impede" |
+| `web_search` | `read` | Só lê: vai ao serviço de busca do próprio Suup, com limites por minuto e cache ([BUSCA.md](BUSCA.md), "Busca educada"). Sem cartão |
+| `web_read` | `read` para um endereço que **já apareceu** nesta execução; **`external_irreversible` (cartão) para qualquer outro** | A leitura é um GET de página pública feito pelo serviço leitor, sem cookies nem segredo (não aceita cabeçalho nem `{{secret:...}}`). A URL é um canal de saída, então só abre sem cartão o que já apareceu numa mensagem do usuário, num resultado de `web_search` ou nos links de uma página lida (igualdade exata do endereço normalizado). Veja "O cartão de uma página nova" abaixo e [BUSCA.md](BUSCA.md), "A leitura só abre o que já apareceu" |
 | `write_file`, `edit_file`, `remember`, `forget` | `write_reversible` | Mudam a pasta do próprio bot ou a memória, e dá para desfazer |
 | `shell` | `write_reversible` **na máquina isolada** (Docker); `external_irreversible` na máquina `local` | Veja abaixo |
 | `request_network_access` | `external_irreversible` (fixo) | Pede ao usuário que a máquina alcance **um host** (nome exato). Sempre é cartão, com o host e o motivo; aprovar libera o host só para a execução. Veja [REDE.md](REDE.md) |
 
 | `conn_<conector>__<ferramenta>` (conectores MCP) | `external_irreversible`, a não ser que **você** a marque como leitura (ou confie nas dicas do servidor) | O servidor é um programa externo e o que ele diz de si (`readOnlyHint`...) é só uma dica: ela pode apertar o nível, nunca afrouxar. Veja [CONECTORES.md](CONECTORES.md) |
+
+### O cartão de uma página nova (`web_read`)
+
+O nível de `web_read` é decidido **por chamada**, por `classify`, comparando o endereço pedido com os que a execução já viu (`webSeen`, derivado do log: mensagens do usuário, `webUrls` dos resultados de `web_search` e `web_read`). Endereço visto: `read`, roda sem cartão e o resultado grava a origem (`urlProvenance`: `user_message`, `search_result` ou `page_link`). Endereço **não** visto: `external_irreversible`, e o cartão é o de sempre (Aprovar / Recusar), com:
+
+- título: **"Ler uma página nova: `<url inteira>`"** (a URL com a consulta, sem cortar; a linha quebra, não some), categoria Web, risco "irreversível";
+- a linha do servidor (`summary`, no log e na API): `Read a new page: <url>`;
+- o conteúdo exato nos argumentos (`url`, `render`), como em qualquer cartão.
+
+Quem decide o cartão é o piso do nível, não a ferramenta: no modo **Perguntar tudo** ele aparece (não é leitura); no **Auto-review** o revisor por modelo só libera uma chamada `external_irreversible` se citar uma regra `allow` do usuário (as checagens do código de sempre), então, sem uma regra escrita que cubra, **vira cartão**. Uma regra exata `allow` para `web_read` sem condições (escolha explícita do usuário) deixa o bot ler qualquer endereço sem perguntar, e as telas dizem isso. **Aprovar** lê (e o resultado grava `urlProvenance: "approved"`); **recusar** é uma recusa normal: nada é lido e o bot recebe o motivo. Os links da página lida depois de aprovada passam a valer na execução.
 
 **Por que o `shell` é assim.** Um comando de shell pode fazer qualquer coisa, e nenhuma análise do texto do comando serve de segurança (`curl -X POST`, `git push`, `rm -rf`, um script que faz tudo isso): por isso **não há heurística sobre o comando**. O que decide é *onde ele roda*. Na máquina dos bots (contêiner descartável, `sandbox.kind: "docker"`), um comando só muda uma máquina que pode ser jogada fora: `write_reversible`. Na máquina `local` (os comandos rodam direto no seu computador, sem isolamento) cada comando pergunta. Duas ressalvas honestas: a máquina Docker **não tem rede própria**: tudo sai por um proxy do harness, só para hosts de uma lista de nomes exatos ([REDE.md](REDE.md)), então um comando não pode falar com um servidor qualquer; um host **novo** é recusado e o bot pede a liberação pela ferramenta `request_network_access`, que **sempre vira cartão** com o host exato (aprovar libera aquele host só para a execução). Um host que já está na lista continua sendo um canal de saída (REDE.md, "Modelo de ameaça"). E um comando com um marcador de segredo (`{{secret:NOME}}`) é sempre `external_irreversible`, pois um segredo existe para provar quem você é a outra parte. Quem quer o rigor total muda o nível da ferramenta (`approvals.levels`, abaixo) ou cria uma regra que proíbe.
 

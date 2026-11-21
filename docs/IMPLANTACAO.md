@@ -130,6 +130,7 @@ Contêineres criados antes desta versão (na rede padrão, com saída direta) s�
 - `reader-image` constrói a imagem do leitor e renderizador (`docker/reader/Dockerfile`, base `mcr.microsoft.com/playwright:v1.65.1-noble`, vários GB; a tag é a versão exata do `playwright-core`) e `searxng-image` puxa a imagem do SearXNG **fixada** (`docker.io/searxng/searxng:2026.3.25-541c6c3cb`, nunca `latest`; AGPL v3, usado sem modificação).
 - O **worker** sobe os dois contêineres no primeiro uso (`suup-searxng` e `suup-reader`), pelo socket do Docker. Nada novo escuta em porta alguma.
 - A rede `suup-search-net` (`172.29.78.0/24`, **interna**) é a do SearXNG; o worker entra nela em `172.29.78.2` e o proxy de motores escuta aí (`web.search.proxy` no `suup.config.prod.example.json`). Se mudar a sub-rede, mude os dois, como na rede dos bots.
+- O cache da busca fica no banco (tabela `web_search_cache`, migração 0024, aplicada sozinha pelo `migrate`): sobrevive a reinício. `duckduckgo` está ligado por padrão e sai só por `html.duckduckgo.com` (BUSCA.md).
 - **Nenhum segredo novo no `.env.prod`:** a `secret_key` do SearXNG é gerada na criação do contêiner.
 - Construir a imagem do leitor atrás de um proxy que reassina o TLS: os mesmos argumentos da seção seguinte, com `-f docker/reader/Dockerfile`.
 - Sem o leitor ou sem a busca: `"web": { "reader": { "enabled": false } }` e/ou `"search": { "enabled": false }`.
