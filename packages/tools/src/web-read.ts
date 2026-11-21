@@ -65,7 +65,7 @@ export const webReadTool = defineTool({
     }
     let page: WebPage | undefined;
     if (kind === "html") {
-      page = web?.extract({ html: fetched.body, url: fetched.finalUrl });
+      page = await web?.extract({ html: fetched.body, url: fetched.finalUrl });
       if (page === undefined) {
         const converted = htmlToText(fetched.body, fetched.finalUrl);
         const text = converted.text.slice(0, WEB_FETCH_MAX_CHARS);

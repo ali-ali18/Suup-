@@ -44,7 +44,7 @@ export const webSearchTool = defineTool({
   externalOutput: true,
   timeoutMs: 60_000,
   async execute({ query, limit, language, time_range }, ctx) {
-    if (ctx.web === undefined || !ctx.web.searchAvailable) {
+    if (ctx.web === undefined) {
       return {
         isError: true,
         content:

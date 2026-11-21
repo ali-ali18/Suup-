@@ -56,7 +56,7 @@ function web(
       reads.push(request.url);
       return { ok: true, page: PAGE } satisfies WebReadOutcome;
     },
-    extract: () => undefined,
+    extract: async () => undefined,
   };
   return Object.assign({ ...base, ...over }, { searches, reads });
 }
@@ -112,8 +112,19 @@ describe("web_search", () => {
     const none = await run("web_search", { query: "anything" });
     expect(none.outcome).toBe("tool_error");
     expect(none.output.content).toContain("not available");
-    const down = await run("web_search", { query: "anything" }, web({ searchAvailable: false }));
+    const down = await run(
+      "web_search",
+      { query: "anything" },
+      web({
+        search: async () => ({
+          ok: false,
+          reason: "unavailable",
+          message: "Docker is not available.",
+        }),
+      }),
+    );
     expect(down.outcome).toBe("tool_error");
+    expect(down.output.content).toContain("Docker is not available.");
   });
 
   it("an empty result suggests other words", () => {
@@ -218,7 +229,7 @@ describe("web_read", () => {
     } as unknown as ToolContext["executor"];
     const w = web({
       readerEnabled: false,
-      extract: ({ url }) => ({ ...PAGE, url, requestedUrl: url, markdown: "CONVERTED" }),
+      extract: async ({ url }) => ({ ...PAGE, url, requestedUrl: url, markdown: "CONVERTED" }),
     });
     const result = await run("web_read", { url: "https://example.com/p" }, w, executor);
     expect(result.outcome).toBe("ok");

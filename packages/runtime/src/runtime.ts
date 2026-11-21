@@ -98,6 +98,7 @@ import {
   teamRecallTool,
 } from "./supervisor.js";
 import { createVault, DEFAULT_VAULT_KEY_ENV, type Vault } from "./vault/service.js";
+import { createWebWiring, type WebWiring } from "./web/wiring.js";
 
 type Env = Record<string, string | undefined>;
 
@@ -246,6 +247,8 @@ export interface Runtime {
   }): Promise<ReviewOutcome | null>;
   /** One pass of the morning message: whether it posted one. */
   morningOnce(options?: { now?: Date }): Promise<boolean>;
+  /** The web (search and reading): starts its services if needed and says what is running. */
+  webStatus(): ReturnType<WebWiring["status"]>;
   close(): Promise<void>;
 }
 
@@ -337,6 +340,10 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     defaultHosts: networkConfig?.defaultHosts,
   });
   const networkName = networkConfig?.name ?? DEFAULT_NETWORK_NAME;
+  // Web search and page reading (docs/BUSCA.md): nothing starts until a tool asks for it.
+  const web = createWebWiring(config.web, {
+    ...(dockerPath === undefined ? {} : { dockerPath }),
+  });
   let egressStarted: Promise<EgressRuntime> | undefined;
   /** The internal network and the proxy: made once, at the first use of the docker sandbox. */
   const startEgress = (): Promise<EgressRuntime> => {
@@ -897,6 +904,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
               });
             },
           }),
+      webFor: () => web.access,
       ...(sandbox.kind === "docker" && guarded
         ? {
             networkFor: (record: { botId: string; id: string }) => ({
@@ -1175,7 +1183,9 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
         ...(opts.onError === undefined ? {} : { onError: opts.onError }),
       });
     },
+    webStatus: () => web.status(),
     async close() {
+      await web.close();
       await connectors.close();
       await containerLauncher?.closeAll();
       if (egressStarted !== undefined) {

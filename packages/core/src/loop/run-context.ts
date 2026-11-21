@@ -16,6 +16,7 @@ import type { Provider, ToolSpec } from "../provider.js";
 import type { InvokeOptions, ToolInvocation } from "../registry.js";
 import type { SecretAccess } from "../secrets.js";
 import type { Executor, MemoryService, NetworkAccess, ToolContext } from "../tool.js";
+import type { WebAccess } from "../web.js";
 import type { ModelPricing, ReviewerConfig } from "./reviewer.js";
 import type { RunState } from "./state.js";
 import type { RunRecord, RunStore } from "./store.js";
@@ -133,6 +134,8 @@ export interface LoopDeps {
   toolSearch?: ToolSearchDeps;
   /** The network access the tools of this run may grant (only after an approved card). */
   networkFor?(run: RunRecord): NetworkAccess;
+  /** The web (search and the reader service) the tools of this run may use; see `web.ts`. */
+  webFor?(run: RunRecord): WebAccess;
   /**
    * The run may schedule its own return (`schedule_return`): set for a conversation run of the
    * user, left out for an evaluation (isolated) run. It is also required that the run's origin is

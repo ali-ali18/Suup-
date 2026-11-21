@@ -22,7 +22,7 @@ import {
   runProcess,
 } from "@suup/sandbox";
 import { DEFAULT_ENGINES, DEFAULT_LANGUAGES, engineHosts, SEARXNG_IMAGE } from "./engines.js";
-import type { SearxBackend } from "./search.js";
+import { httpSearxBackend, type SearxBackend } from "./search.js";
 import { execSearxBackend } from "./searx-exec.js";
 import { renderSearxSettings } from "./searx-settings.js";
 import { createStdioReaderClient, type StdioReaderClient } from "./stdio-client.js";
@@ -39,6 +39,8 @@ export interface WebServicesOptions {
   engines?: readonly string[];
   languages?: readonly string[];
   searchEnabled?: boolean;
+  /** Use a SearXNG you run yourself at this URL (JSON enabled) instead of starting the container. */
+  searchUrl?: string;
   searchNetwork?: string;
   /** Where the engine proxy listens on the search network; default: its gateway, port 3129. */
   searchProxy?: { listenHost?: string; advertiseHost?: string; port?: number };
@@ -109,14 +111,18 @@ export async function startWebServices(options: WebServicesOptions = {}): Promis
     },
   };
 
+  if (options.searchEnabled !== false && options.searchUrl !== undefined) {
+    result.searchBackend = httpSearxBackend(options.searchUrl);
+  }
+  const wantsContainerSearch = options.searchEnabled !== false && options.searchUrl === undefined;
   if (!(await dockerAvailable(path))) {
     const why = "Docker is not available on this computer";
-    if (options.searchEnabled !== false) result.searchProblem = why;
+    if (wantsContainerSearch) result.searchProblem = why;
     if (options.readerEnabled !== false) result.readerProblem = why;
     return result;
   }
 
-  if (options.searchEnabled !== false) {
+  if (wantsContainerSearch) {
     try {
       const started = await startSearch({ ...options, dockerPath: path, engines, languages });
       result.searchBackend = started.backend;

@@ -8,6 +8,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./engines": {
+      "types": "./dist/engines.d.ts",
+      "default": "./dist/engines.js"
     }
   },
   "files": [

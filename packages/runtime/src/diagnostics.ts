@@ -27,6 +27,7 @@ import { checkNetwork } from "./network/doctor.js";
 import type { Runtime } from "./runtime.js";
 import { loadScript } from "./scripted-provider.js";
 import { checkVaultAndApprovals } from "./vault/doctor.js";
+import { checkWeb } from "./web/doctor.js";
 
 // ---------------------------------------------------------------------------------------------
 // Reading a run's events
@@ -720,6 +721,9 @@ export async function runDoctorChecks(
   );
   checks.push(...(await guarded("Cofre", () => checkVaultAndApprovals(runtime))));
   checks.push(...(await guarded("Memória", () => checkMemory(runtime))));
+  if (options.sandbox !== false) {
+    checks.push(...(await guarded("Web", () => checkWeb(runtime))));
+  }
   checks.push(
     ...(options.connectors === false
       ? [

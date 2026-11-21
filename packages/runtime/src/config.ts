@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { parseAllowlistHost } from "@suup/core";
+import { DEFAULT_ENGINES, unknownEngines } from "@suup/web/engines";
 import { z } from "zod";
 import { ConfigError } from "./errors.js";
 
@@ -324,6 +325,87 @@ const memoryConfigSchema = z.strictObject({
   ),
 });
 
+/** A language code of a search engine host (`en`, `pt`, `pt-br`): letters, digits and hyphens, no dots. */
+function isLanguageCode(code: string): boolean {
+  if (code.length < 2 || code.length > 10 || code.startsWith("-") || code.endsWith("-"))
+    return false;
+  for (const ch of code) {
+    const ok = (ch >= "a" && ch <= "z") || (ch >= "0" && ch <= "9") || ch === "-";
+    if (!ok) return false;
+  }
+  return true;
+}
+
+/** An absolute http(s) URL (the scheme is compared, not matched). */
+const httpUrl = z.string().refine((text) => {
+  try {
+    const { protocol } = new URL(text);
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
+}, "esperado uma URL http(s) completa");
+
+/**
+ * Search and page reading for the bots, built from open-source parts that Suup runs itself
+ * (docs/BUSCA.md): no provider account, no key. Everything is optional; the defaults are the safe
+ * list of engines and a reader that respects robots.txt.
+ */
+const webSchema = z.strictObject({
+  search: z.exactOptional(
+    z.strictObject({
+      /** `false` turns `web_search` off (the tool then says it is not available). Default `true`. */
+      enabled: z.exactOptional(z.boolean()),
+      /**
+       * The engines SearXNG asks, by id (docs/BUSCA.md lists them). Default: the ones with a documented
+       * public API (`wikipedia`, `arxiv`, `stackoverflow`, `github`). General web engines
+       * (`duckduckgo`, `brave`, `startpage`) read result pages and are OFF until you turn them on.
+       */
+      engines: z.exactOptional(z.array(z.string().min(1)).min(1).max(20)),
+      /** Languages whose Wikipedia host the search container may reach. Default `["en", "pt"]`. */
+      languages: z.exactOptional(
+        z
+          .array(
+            z.string().refine(isLanguageCode, "código de idioma inválido (ex.: en, pt, pt-br)"),
+          )
+          .min(1)
+          .max(10),
+      ),
+      /** Use a SearXNG instance you run yourself, at this URL, instead of the container Suup starts. */
+      url: z.exactOptional(httpUrl),
+      /** Most results one search returns (1 to 20). Default 10. */
+      maxResults: z.exactOptional(z.number().int().min(1).max(20)),
+      /** The SearXNG image. Default: the version pinned in the code. */
+      image: z.exactOptional(z.string().min(1)),
+      /** The internal network of the search container. Default `suup-search-net`. */
+      network: z.exactOptional(z.string().min(1)),
+      /** Where the engine proxy listens on that network (needed when the worker runs in a container). */
+      proxy: z.exactOptional(
+        z.strictObject({
+          listenHost: z.exactOptional(z.string().min(1)),
+          advertiseHost: z.exactOptional(z.string().min(1)),
+          port: z.exactOptional(z.number().int().min(1).max(65535)),
+        }),
+      ),
+    }),
+  ),
+  reader: z.exactOptional(
+    z.strictObject({
+      /**
+       * `false`: `web_read` does not use the reader service; it reads with the bot's own machine,
+       * through its allowlist, with the approval cards that means. Default `true`.
+       */
+      enabled: z.exactOptional(z.boolean()),
+      /** Allow `render: true` (a headless browser in the reader container). Default `true`. */
+      render: z.exactOptional(z.boolean()),
+      /** The reader image. Default `suup-reader:dev`. */
+      image: z.exactOptional(z.string().min(1)),
+      /** Where the user agent points (`SuupBot/<version> (+<this>)`). */
+      repositoryUrl: z.exactOptional(httpUrl),
+    }),
+  ),
+});
+
 const toolSearchSchema = z.strictObject({
   /** Defer the connector tools of a bot when it has at least this many (default 10)... */
   minTools: z.exactOptional(positiveInt),
@@ -355,6 +437,8 @@ export const configSchema = z
     memory: z.exactOptional(memoryConfigSchema),
     /** When the connector tools of a bot are searched instead of all loaded (docs/CONFIGURACAO.md). */
     toolSearch: z.exactOptional(toolSearchSchema),
+    /** Web search and page reading (docs/BUSCA.md). */
+    web: z.exactOptional(webSchema),
   })
   .superRefine((config, ctx) => {
     const providerIds = new Set<string>();
@@ -414,6 +498,14 @@ export const configSchema = z
         code: "custom",
         path: ["memory", "consolidation", "model"],
         message: `modelo "${consolidationModel}" não existe em "models" (existentes: ${[...modelIds].join(", ")})`,
+      });
+    }
+    const wrongEngines = unknownEngines(config.web?.search?.engines ?? DEFAULT_ENGINES);
+    if (wrongEngines.length > 0) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["web", "search", "engines"],
+        message: `motor desconhecido: ${wrongEngines.join(", ")} (use os ids de docs/BUSCA.md)`,
       });
     }
     const renew = config.worker?.leaseRenewMs ?? DEFAULT_WORKER.leaseRenewMs;

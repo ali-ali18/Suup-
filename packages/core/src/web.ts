@@ -99,5 +99,5 @@ export interface WebAccess {
   search(request: WebSearchRequest): Promise<WebSearchOutcome>;
   read(request: WebReadRequest): Promise<WebReadOutcome>;
   /** HTML already downloaded (by the bot's machine) to Markdown. No network. */
-  extract(input: { html: string; url: string }): WebPage | undefined;
+  extract(input: { html: string; url: string }): Promise<WebPage | undefined>;
 }

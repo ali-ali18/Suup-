@@ -155,6 +155,7 @@ async function handleTool(
   await ensureToolCall(ctx, call);
   const memory = ctx.deps.memoryFor?.(ctx.run);
   const network = ctx.deps.networkFor?.(ctx.run);
+  const web = ctx.deps.webFor?.(ctx.run);
   const toolCtx: ToolContext = {
     runId: ctx.runId,
     botId: bot.id,
@@ -164,6 +165,7 @@ async function handleTool(
     ...(memory === undefined ? {} : { memory }),
     runFacts: { userMessages: [...ctx.state.userSaid], toolsUsed: [...ctx.state.toolsUsed] },
     ...(network === undefined ? {} : { network }),
+    ...(web === undefined ? {} : { web }),
   };
   let invocation: ToolInvocation;
   try {

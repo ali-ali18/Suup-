@@ -52,5 +52,11 @@ export {
 } from "./search.js";
 export { execSearxBackend } from "./searx-exec.js";
 export { renderSearxSettings, type SearxSettingsInput } from "./searx-settings.js";
-export { createWebAccess, type WebAccessOptions } from "./service.js";
+export {
+  createWebAccess,
+  type StartedServices,
+  type WebAccessOptions,
+  type WebAccessWithStatus,
+  type WebStatus,
+} from "./service.js";
 export { createStdioReaderClient, type StdioReaderClient, type StdioSpec } from "./stdio-client.js";
