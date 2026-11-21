@@ -175,6 +175,10 @@ Cada evento tem um id que só cresce; reconectar com o último id visto retoma *
 
 Ainda não existem: novo cartão de aprovação (fase 3), notificação do sistema por aviso (a pergunta do bot já chega como `message.created`; mostrar a notificação é do app) e os quadros da tela do bot (fase 5).
 
+## 7b. O Principal como supervisor
+
+O app só desenha o que o backend oferece: a **estrela** no avatar do bot com `isDefault` (barra lateral, cabeçalho do chat, painel, paleta); em Configurações > Memória, "Principal" (`/v1/supervisor/settings`) e "Revisões da equipe" (`/v1/supervisor/reviews`); a mensagem da manhã e o resumo de uma delegação são mensagens comuns do bot no chat dele; a delegação e `team_recall` são linhas de ação da categoria "Equipe"; as chamadas `remember` e `forget` **não** viram linha nem indicador (decisão do dono). Detalhes visuais em [DESIGN.md](DESIGN.md) §5 e §3c; regras do comportamento em [SUPERVISOR.md](SUPERVISOR.md).
+
 ## 8. O que entra depois
 
 ### Fase 2: conversas e memória (existe)

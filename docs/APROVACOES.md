@@ -197,6 +197,10 @@ O modelo pode pedir várias ferramentas numa resposta. A regra adotada:
 
 Por quê: as chamadas de um turno saíram da mesma resposta, sem o modelo ter visto o resultado de nenhuma, e podem depender umas das outras (gravar o arquivo, depois enviá-lo). Executar a que vem depois de uma negada "às cegas" aplicaria um lote pela metade. O custo é um turno a mais depois de uma negação, e vários cartões em sequência em vez de todos de uma vez; a vantagem é um estado simples (no máximo um cartão pendente por execução, garantido pelo banco) e nenhum efeito fora de ordem. Mostrar todos os cartões de uma vez é uma melhoria possível, e exigiria decidir o que fazer com as chamadas dependentes.
 
+## Delegação não muda as aprovações
+
+Uma tarefa delegada pelo Principal ([SUPERVISOR.md](SUPERVISOR.md)) roda como execução do bot de destino, com as ferramentas, as concessões, as regras escritas e o modo de aprovação **dele**: o cartão aparece no chat do bot de destino e **só o usuário decide**. Nenhum bot tem ferramenta para aprovar, e o Principal não herda nem empresta permissão. Uma execução delegada que espera aprovação fica `waiting_approval`; o resumo só volta ao Principal quando ela termina.
+
 ## Sobrevivendo a quedas e reexecução
 
 O log de eventos continua sendo a verdade:

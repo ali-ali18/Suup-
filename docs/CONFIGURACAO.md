@@ -137,6 +137,10 @@ O **modo** (`auto_review`, o padrão, ou `ask_all`) **não é desta configuraç�
 
 Com a máquina `local` (sem isolamento) o `shell` pergunta a cada comando; para um uso diário sem Docker, a regra `suup rules add --tool shell --effect allow` (ou `levels`) diz que você aceita o risco.
 
+### O Principal como supervisor
+
+Nada no arquivo de configuração, além do fuso (`defaults.timeZone`, em que ficam a hora da revisão e a da mensagem da manhã) e do modelo do próprio bot principal (a revisão usa esse modelo e precisa da chave dele). O resto é escolha do usuário, guardada no servidor: revisão ligada ou não, hora (padrão 03:00), mensagem da manhã (padrão 08:00, ou desligada), teto de custo por noite (padrão: sem teto): `GET`/`PATCH /v1/supervisor/settings`, Configurações > Memória. O worker roda o job a cada 60 s (`supervisorEveryMs` ao criar o worker). Veja [SUPERVISOR.md](SUPERVISOR.md).
+
 ### `memory` (opcional)
 
 Só o que **não** é do usuário mudar pelo app ([MEMORIA.md](MEMORIA.md)): qual modelo faz a consolidação da memória em segundo plano. O resto (quando roda, o limite de memórias do prompt (padrão 200, mais o teto fixo de 25 000 caracteres), a expiração, o ponto da compactação) são escolhas do usuário, guardadas no servidor: `suup memory settings`, `GET`/`PATCH /v1/memory-settings`.

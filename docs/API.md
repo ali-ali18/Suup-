@@ -210,6 +210,18 @@ Erros: `404` se a execução não existe; `409` para `pause` e `interrupt` numa 
 - Uma memória nova, editada ou esquecida vale **a partir da próxima execução**, nunca no meio de uma ([MEMORIA.md](MEMORIA.md)).
 - **Busca**: em português (radicais: "provas" acha "prova") e **sem diferenciar acentos** ("avaliacao" acha "avaliação") onde o PostgreSQL tem a extensão `unaccent` (a imagem Docker tem; `suup doctor` informa). `excerpt` é o trecho em texto puro e `matches`, os trechos achados nele (`start` inclusive, `end` exclusivo, em caracteres). Quando o texto só casou por causa dos acentos, `matches` pode vir vazio. `botId` na busca de memória diz quem busca (vê as compartilhadas e as dele); sem ele, só as compartilhadas.
 
+### Supervisor (o Principal)
+
+Veja [SUPERVISOR.md](SUPERVISOR.md).
+
+| Chamada | Corpo | Resposta |
+|---|---|---|
+| `GET /v1/supervisor/settings` | | `200 SupervisorSettings`: `reviewEnabled`, `reviewTime` (`HH:MM`, padrão `03:00`), `morningTime` (`HH:MM` ou `null`, padrão `08:00`), `costCapUsd` (`null`: sem teto, o padrão), `timeZone`, `model {available, id, reason}` |
+| `PATCH /v1/supervisor/settings` | só as chaves que mudam | `200 SupervisorSettings`; `400` com a mensagem em português (`reviewTime: use o formato HH:MM`); chave desconhecida é recusada |
+| `GET /v1/supervisor/reviews?limit=` | | `200 {items: TeamReview[]}`, mais nova primeiro: `night`, `status` (`done`, `skipped`, `failed`, `running`), `botsRead`, `leftOver`, `capReached`, `costCapUsd`, `noted`, `morningText`, `morningPostedAt`, `model`, tokens, `costUsd`, `error` |
+
+O cliente: `api.supervisor.settings.get/update` e `api.supervisor.reviews`. Uma execução delegada aparece como as demais, com `origin: "delegation"` e `parentRunId` (a execução do Principal).
+
 ### Configurações da memória e consolidação
 
 O que é seu escolher sobre a memória fica no servidor (uma linha só, como o modo de aprovação), vale para o app, a CLI e a API, e muda na hora ([MEMORIA.md](MEMORIA.md)).

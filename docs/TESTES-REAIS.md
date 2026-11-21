@@ -715,6 +715,19 @@ O que o modelo fez de **errado ou estranho**:
 
 ---
 
+## Supervisor: revisão noturna, mensagem da manhã e delegação (21/11/2026)
+
+Terceira peça da fase 4 ([SUPERVISOR.md](SUPERVISOR.md)). Modelo `claude-sonnet-5-5` nos três bots (Principal, Tutor, Finanças), preços 2 / 10 US$/MTok; chave só pelo nome (`SUUP_ANTHROPIC_KEY` em `apiKeyEnv`; o valor não foi impresso nem gravado); PostgreSQL 16 descartável (porta 5488, banco novo), sandbox `local`, fuso `America/Sao_Paulo`; `maxCostUsd` 0,12 por execução; orçamento de US$ 0,50. **Gasto real: US$ 0,227** (revisão 0,0136; Principal 0,0849; execução delegada 0,128, com o teto de 0,12 que eu pus), pelo `cost_usd` do harness. Dados inventados: uma semana de diário (5 entradas) e 2 notas em 2 bots, 1 prova na sexta, 1 orçamento parado.
+
+| Conferido | Resultado |
+|---|---|
+| Revisão noturna (1 chamada, 1927 entrada / 977 saída, US$ 0,0136) | Leu Tutor (3 diário, 1 nota) e Finanças (2, 1). Anotou **3 notas só na memória do Principal**, todas rastreáveis ao que leu. Percebeu sozinho que **"sexta (28/11)" não bate** (28/11/2026 é sábado) e disse isso na nota e na mensagem. Nenhuma memória de outro bot mudou |
+| Mensagem da manhã | **Uma**, curta, só com os dois pendentes (cronograma da prova sem fazer, orçamento parado) e a data inconsistente. Postada no chat do Principal |
+| Delegação ("manda o Tutor montar um cronograma da prova de sexta") | O Principal chamou `delegate` com objetivo, critérios e contexto (de hoje até a véspera, ritmo de 2 h por noite, a nota que lera), **disse ao usuário que delegou** e que o resultado volta ali, e avisou da data inconsistente. A execução delegada apareceu no chat do Tutor (aviso do sistema); o Tutor **perguntou 3 coisas ao usuário** (data, tópicos, ritmo) e ficou `waiting_user` |
+| Continuação | Respondi no chat do Tutor; a mesma execução retomou e **estourou o teto de US$ 0,12** que eu havia posto (5 turnos, 0,128). O Principal recebeu no chat **"Tutor não conseguiu concluir a tarefa que pedi: cost limit reached…"** |
+
+O que **não** foi visto com o modelo real: o resumo de uma delegação **concluída** (só o de uma que falhou por custo; o de concluída está nos testes com o provedor roteirizado); o teto de custo da revisão (testado só com o roteirizado); mais de uma noite; o `team_recall` e uma pergunta do usuário sobre outro bot; um segredo escrito num diário (a defesa é estrutural: a revisão não lê o texto das conversas nem as ferramentas). O Tutor, como esperado, pergunta antes de agir quando a tarefa delegada tem ambiguidade; a pergunta fica no chat dele e o Principal só fica sabendo no fim.
+
 # Estabilização (19/11/2026)
 
 Objetivo: simular o uso diário do dono contra o modelo real, achar o que quebra e consertar, sem funcionalidade nova. Código a partir do commit `988606d` (branch `feat/fase-4`).
