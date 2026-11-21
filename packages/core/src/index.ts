@@ -176,6 +176,7 @@ export {
   secretForms,
   substituteSecrets,
 } from "./secrets.js";
+export * from "./supervisor/index.js";
 export {
   type ClassifyEnv,
   type DirEntry,

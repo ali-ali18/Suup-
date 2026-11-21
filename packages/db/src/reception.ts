@@ -86,7 +86,7 @@ export async function resetReception(db: Db, botId: string): Promise<boolean> {
     const [active] = await tx.sql<{ n: number }[]>`
       select count(*)::int as n from runs
       where conversation_id = ${conv.id}
-        and origin in ('user', 'reception')
+        and origin in ('user', 'reception', 'delegation')
         and status = any(${ACTIVE_RUN_STATUSES as unknown as string[]}::text[])`;
     if ((active?.n ?? 0) > 0) return false;
     await tx.sql`update conversations set reception = 'redo' where id = ${conv.id}`;
