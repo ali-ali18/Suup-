@@ -68,7 +68,13 @@ test.describe("Memória", () => {
     await openWithBot(page, world, "Lembrador");
     await openSettings(page, "Memória");
     const panel = page.getByTestId("settings-panel-memory");
-    await expect(panel.locator("h3")).toHaveText(["Consolidação", "Contexto", "Validade"]);
+    await expect(panel.locator("h3")).toHaveText([
+      "Consolidação",
+      "Contexto",
+      "Validade",
+      "Principal",
+      "Revisões da equipe",
+    ]);
     await expect(page.locator("select")).toHaveCount(0);
     // The server's defaults.
     await expect(page.getByTestId("memory-enabled")).toHaveAttribute("aria-checked", "true");
