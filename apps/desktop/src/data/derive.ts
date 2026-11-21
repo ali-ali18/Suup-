@@ -64,6 +64,8 @@ export const TOOL_LABEL: Record<string, string> = {
   list_files: "Listar arquivos",
   search_files: "Buscar nos arquivos",
   web_fetch: "Acessar página",
+  web_search: "Buscar na web",
+  web_read: "Ler página",
   remember: "Salvar na memória",
   recall: "Consultar memória",
   forget: "Esquecer",

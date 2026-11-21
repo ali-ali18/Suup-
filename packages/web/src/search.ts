@@ -43,6 +43,9 @@ export function createSearch(
     const query = request.query.trim();
     if (query === "") return { ok: false, reason: "failed", message: "The search query is empty." };
     const params = new URLSearchParams({ q: query, format: "json", safesearch: "1" });
+    // The engines are named, not left to the categories: a default query asks only the `general`
+    // ones, and the engines of papers, code and Q&A would never be asked.
+    if (options.engines.length > 0) params.set("engines", options.engines.join(","));
     if (request.language !== undefined && request.language !== "")
       params.set("language", request.language);
     if (request.timeRange !== undefined) params.set("time_range", request.timeRange);

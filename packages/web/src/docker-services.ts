@@ -42,6 +42,8 @@ export interface WebServicesOptions {
   /** Use a SearXNG you run yourself at this URL (JSON enabled) instead of starting the container. */
   searchUrl?: string;
   searchNetwork?: string;
+  /** Name of the search container. Default `suup-searxng`. */
+  searchContainer?: string;
   /** Where the engine proxy listens on the search network; default: its gateway, port 3129. */
   searchProxy?: { listenHost?: string; advertiseHost?: string; port?: number };
   searxImage?: string;
@@ -59,6 +61,8 @@ export interface WebServices {
   /** `undefined`: no search service (see `searchProblem`). */
   searchBackend: SearxBackend | undefined;
   searchProblem?: string;
+  /** The URL of the engine proxy the search container goes out through (for the doctor and the tests). */
+  searchProxyUrl?: string;
   engines: readonly string[];
   /** The reader container's client, or `undefined` when there is none (see `readerProblem`). */
   reader: StdioReaderClient | undefined;
@@ -126,6 +130,7 @@ export async function startWebServices(options: WebServicesOptions = {}): Promis
     try {
       const started = await startSearch({ ...options, dockerPath: path, engines, languages });
       result.searchBackend = started.backend;
+      result.searchProxyUrl = started.proxyUrl;
       stoppers.push(started.stop);
     } catch (error) {
       result.searchProblem = error instanceof Error ? error.message : String(error);
@@ -151,36 +156,43 @@ async function startSearch(
     engines: readonly string[];
     languages: readonly string[];
   },
-): Promise<{ backend: SearxBackend; stop(): Promise<void> }> {
+): Promise<{ backend: SearxBackend; proxyUrl: string; stop(): Promise<void> }> {
   const path = options.dockerPath;
+  const container = options.searchContainer ?? SEARCH_CONTAINER;
+  assertName(container, "search container name");
   const networkName = options.searchNetwork ?? SEARCH_NETWORK;
   assertName(networkName, "search network name");
   const image = options.searxImage ?? SEARXNG_IMAGE;
   const net = await ensureInternalNetwork(networkName, { dockerPath: path });
   const listenHost = options.searchProxy?.listenHost ?? net.gateway;
   const advertiseHost = options.searchProxy?.advertiseHost ?? listenHost;
-  const port = options.searchProxy?.port ?? 3129;
+  const configuredPort = options.searchProxy?.port ?? 3129;
   const hosts = new Set(engineHosts(options.engines, options.languages));
   const proxy = new EgressProxy({
     policy: { allowedHosts: async () => hosts },
     anonymousSubject: { kind: "harness", id: "search" },
     listenHost,
-    listenPort: port,
+    listenPort: configuredPort,
+    onEvent: (event) => {
+      if (event.decision === "refused") {
+        options.log?.(
+          `search proxy refused ${event.host}:${event.port} (${event.reason ?? "refused"})`,
+        );
+      }
+    },
     ...(options.searchProxy?.advertiseHost === undefined ? {} : { advertiseHost }),
   });
   let proxyStarted = true;
+  let port = configuredPort;
   try {
-    await proxy.start();
+    port = (await proxy.start()).port;
   } catch (error) {
     // Another Suup process on this computer already serves the engine proxy on that address.
     if ((error as { code?: string }).code !== "EADDRINUSE") throw error;
     proxyStarted = false;
   }
-  const settings = renderSearxSettings({
-    engines: options.engines,
-    proxyUrl: `http://${advertiseHost.includes(":") ? `[${advertiseHost}]` : advertiseHost}:${port}`,
-    port: SEARX_PORT,
-  });
+  const proxyUrl = `http://${advertiseHost.includes(":") ? `[${advertiseHost}]` : advertiseHost}:${port}`;
+  const settings = renderSearxSettings({ engines: options.engines, proxyUrl, port: SEARX_PORT });
   const stop = async () => {
     if (proxyStarted) await proxy.stop();
   };
@@ -189,20 +201,17 @@ async function startSearch(
     "inspect",
     "--format",
     `{{.State.Running}} {{index .Config.Labels "${SETTINGS_LABEL}"}}`,
-    SEARCH_CONTAINER,
+    container,
   ]);
   const wanted = `${image} ${hashOf(settings)}`;
   if (state.code === 0 && state.stdout.trim() === `true ${wanted}`) {
     return {
-      backend: execSearxBackend({
-        container: SEARCH_CONTAINER,
-        port: SEARX_PORT,
-        dockerPath: path,
-      }),
+      backend: execSearxBackend({ container, port: SEARX_PORT, dockerPath: path }),
+      proxyUrl,
       stop,
     };
   }
-  if (state.code === 0) await docker(path, ["rm", "--force", SEARCH_CONTAINER]);
+  if (state.code === 0) await docker(path, ["rm", "--force", container]);
   if (!(await imageExists(path, image))) {
     const pulled = await docker(path, ["pull", "--quiet", image]);
     if (pulled.code !== 0) {
@@ -219,7 +228,7 @@ async function startSearch(
     const created = await docker(path, [
       "create",
       "--name",
-      SEARCH_CONTAINER,
+      container,
       "--network",
       networkName,
       "--restart",
@@ -247,35 +256,58 @@ async function startSearch(
       "suup.managed=1",
       "--label",
       `${SETTINGS_LABEL}=${wanted}`,
+      // The image listens on `::` by default; our internal network is IPv4, and a kernel without IPv6 cannot bind it.
+      "--env",
+      "GRANIAN_HOST=0.0.0.0",
       "--env",
       `SEARXNG_SECRET=${randomBytes(32).toString("hex")}`,
       image,
     ]);
     if (created.code !== 0)
       throw new Error(`could not create the search container: ${created.stderr.trim()}`);
-    const copied = await docker(path, [
-      "cp",
-      file,
-      `${SEARCH_CONTAINER}:/etc/searxng/settings.yml`,
-    ]);
+    const copied = await docker(path, ["cp", file, `${container}:/etc/searxng/settings.yml`]);
     if (copied.code !== 0)
       throw new Error(
         `could not put the settings in the search container: ${copied.stderr.trim()}`,
       );
-    const started = await docker(path, ["start", SEARCH_CONTAINER]);
+    const started = await docker(path, ["start", container]);
     if (started.code !== 0)
       throw new Error(`could not start the search container: ${started.stderr.trim()}`);
+    await waitUntilReady(path, container);
   } catch (error) {
-    await docker(path, ["rm", "--force", SEARCH_CONTAINER]).catch(() => undefined);
+    await docker(path, ["rm", "--force", container]).catch(() => undefined);
     await stop();
     throw error;
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
   return {
-    backend: execSearxBackend({ container: SEARCH_CONTAINER, port: SEARX_PORT, dockerPath: path }),
+    backend: execSearxBackend({ container, port: SEARX_PORT, dockerPath: path }),
+    proxyUrl,
     stop,
   };
+}
+
+/** Waits for the search container to answer on its own loopback (SearXNG takes a few seconds to start). */
+async function waitUntilReady(path: string, container: string): Promise<void> {
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const probe = await docker(path, [
+      "exec",
+      container,
+      "wget",
+      "--quiet",
+      "--output-document=-",
+      "--timeout=3",
+      "--tries=1",
+      `http://127.0.0.1:${SEARX_PORT}/healthz`,
+    ]);
+    if (probe.code === 0) return;
+    await new Promise<void>((done) => setTimeout(done, 500));
+  }
+  const logs = await docker(path, ["logs", "--tail", "15", container]);
+  throw new Error(
+    `the search container did not become ready: ${(logs.stdout + logs.stderr).trim().split("\n").slice(-4).join(" | ")}`,
+  );
 }
 
 function hashOf(text: string): string {
@@ -343,12 +375,13 @@ async function startReader(
       throw new Error(`could not start the reader container: ${made.stderr.trim()}`);
   }
   const env: string[] = [];
-  if (render) env.push("--env", "SUUP_RENDER=1", "--env", "SUUP_RENDER_NO_SANDBOX=1");
+  if (render)
+    env.push("--env", "SUUP_RENDER=1", "--env", "SUUP_RENDER_NO_SANDBOX=1", "--env", "HOME=/tmp");
   if (options.repositoryUrl !== undefined)
     env.push("--env", `SUUP_REPOSITORY_URL=${options.repositoryUrl}`);
   const client = createStdioReaderClient({
     command: path,
-    args: ["exec", "-i", ...env, name, "node", "/app/packages/web/dist/serve.js"],
+    args: ["exec", "-i", ...env, name, "node", "/app/dist/serve.js"],
     env: dockerClientEnv(),
   });
   await client.start();

@@ -133,6 +133,8 @@ describe("the category and the title of a card", () => {
     expect(toolCategory("shell")).toEqual({ label: "Terminal", icon: "terminal" });
     expect(toolCategory("write_file").label).toBe("Arquivo");
     expect(toolCategory("web_fetch").label).toBe("Web");
+    expect(toolCategory("web_search").label).toBe("Web");
+    expect(toolCategory("web_read").label).toBe("Web");
     expect(toolCategory("remember").label).toBe("Memória");
     expect(toolCategory("conn_erp__criar_pedido")).toEqual({ label: "erp", icon: "connector" });
     // The name of a tool never makes it a message: only the declaration does.

@@ -131,6 +131,14 @@ export function createReader(options: ReaderOptions = {}): Reader {
       if (request.render === true && options.renderer !== undefined) {
         try {
           const rendered = await options.renderer.render(url.href, request.signal);
+          if (rendered.status >= 400) {
+            return {
+              ok: false,
+              reason: "http",
+              status: rendered.status,
+              message: `The server answered with HTTP ${rendered.status} for ${rendered.url}, so the page was not retrieved.`,
+            };
+          }
           const page = extractPage(rendered.html, rendered.url, { maxChars, rendered: true });
           if (page === undefined) {
             return {

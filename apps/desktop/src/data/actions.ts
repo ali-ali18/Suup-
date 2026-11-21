@@ -174,6 +174,24 @@ export function describeAction(
         doing: where === undefined ? "Acessando uma página" : `Acessando ${where}`,
       };
     }
+    case "web_search": {
+      const query = text("query") === undefined ? undefined : clip(text("query") as string, 50);
+      return {
+        kind: "web",
+        ...label,
+        summary: query === undefined ? "Buscar na web" : `Buscar “${query}” na web`,
+        doing: query === undefined ? "Buscando na web" : `Buscando “${query}” na web`,
+      };
+    }
+    case "web_read": {
+      const where = text("url") === undefined ? undefined : host(text("url") as string);
+      return {
+        kind: "web",
+        ...label,
+        summary: where === undefined ? "Ler uma página" : `Ler ${where}`,
+        doing: where === undefined ? "Lendo uma página" : `Lendo ${where}`,
+      };
+    }
     case NETWORK_TOOL: {
       const where = text("host") === undefined ? undefined : clip(text("host") as string, 60);
       return {

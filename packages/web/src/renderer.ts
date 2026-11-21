@@ -21,6 +21,8 @@ export interface PlaywrightRendererOptions {
   timeoutMs?: number;
   /** Cut on the rendered HTML. Default 5 MB. */
   maxHtmlBytes?: number;
+  /** Test seam: where the proxy's validated connection really goes (a local fixture server). */
+  dial?: ConstructorParameters<typeof EgressProxy>[0]["dial"];
   /** Chromium needs `--no-sandbox` when it runs as a user without the kernel features (a container). */
   noSandbox?: boolean;
 }
@@ -36,6 +38,7 @@ export async function createPlaywrightRenderer(
     openWeb: true,
     listenHost: "127.0.0.1",
     ...(options.resolver === undefined ? {} : { resolver: options.resolver }),
+    ...(options.dial === undefined ? {} : { dial: options.dial }),
   });
   const address = await proxy.start();
   const subject = { kind: "harness", id: "renderer" } as const;

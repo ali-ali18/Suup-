@@ -92,6 +92,7 @@ describe("createSearch", () => {
     const search = createSearch({ backend, engines: ["wikipedia"], maxResults: 2 });
     const out = await search({ query: " suup ", limit: 50, language: "pt", timeRange: "year" });
     expect(seen?.get("q")).toBe("suup");
+    expect(seen?.get("engines")).toBe("wikipedia");
     expect(seen?.get("format")).toBe("json");
     expect(seen?.get("language")).toBe("pt");
     expect(seen?.get("time_range")).toBe("year");
