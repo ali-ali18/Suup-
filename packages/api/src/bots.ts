@@ -156,6 +156,13 @@ export const modelInfoSchema = z.object({
 export type ModelInfo = z.infer<typeof modelInfoSchema>;
 export const modelListSchema = list(modelInfoSchema);
 
+/** `GET /v1/info`: what the server says about itself (read-only; it comes from its configuration). */
+export const serverInfoSchema = z.object({
+  /** The user's time zone (IANA name): what "now" means to the bots. */
+  timeZone: z.string(),
+});
+export type ServerInfo = z.infer<typeof serverInfoSchema>;
+
 export const toolInfoSchema = z.object({
   name: z.string(),
   /** The first sentence of what the model is told about the tool. */

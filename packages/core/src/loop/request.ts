@@ -7,6 +7,7 @@ import type { ToolSpec } from "../provider.js";
 import { CONTROL_TOOL_NAMES, controlToolSpecs } from "./control-tools.js";
 import {
   buildSystemPrompt,
+  formatClock,
   isReminderBlock,
   MEMORY_TOOL_NAMES,
   renderStateReminder,
@@ -50,6 +51,7 @@ export function fixedParts(ctx: LoopContext): {
   return {
     system: buildSystemPrompt(bot, ctx.state.context ?? undefined, {
       memoryTools,
+      returns: canScheduleReturn(ctx),
       secrets: ctx.deps.secrets !== undefined,
       approvals: ctx.deps.gate.allowsEverything !== true,
       toolIndex: catalog?.index,
@@ -81,6 +83,11 @@ export function buildRequest(ctx: LoopContext): { messages: Message[]; problems:
         objective: ctx.run.objective,
         acceptanceCriteria: ctx.run.acceptanceCriteria,
         plan: state.plan,
+        // The live time of this turn, in the time zone the run recorded at its start. It lives
+        // here, in the last user turn, so the system prompt never changes during the run.
+        ...(state.context?.now === undefined
+          ? {}
+          : { now: formatClock(ctx.deps.now(), state.context.now.timeZone) }),
       }),
     });
   }

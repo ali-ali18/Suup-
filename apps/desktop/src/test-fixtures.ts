@@ -105,6 +105,7 @@ export function makeConversation(over: Partial<Conversation> = {}): Conversation
     lastReadSeq: 0,
     unreadCount: 0,
     activeRun: null,
+    reception: "done",
     ...over,
   };
 }

@@ -9,6 +9,7 @@ import {
   addJournalMemory,
   appendMessageOnce,
   type Db,
+  finishReception,
   getRun,
   type MessageQuestion,
   type Run,
@@ -271,6 +272,10 @@ export async function finishRun(
     }
   }
   if (terminal) {
+    // The welcome is over, however it ended: it never starts by itself again (only "Refazer").
+    if (run.origin === "reception" && run.conversationId != null) {
+      await finishReception(db, run.conversationId);
+    }
     // Uma execução isolada (avaliação) nunca escreve na memória do usuário: sem diário.
     if (run.isolated !== true && !(await isPlainChat(db, run))) {
       const journal = await addJournalMemory(db, {

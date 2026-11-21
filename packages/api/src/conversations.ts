@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { botColorSchema, botSchema } from "./bots.js";
 import { boolQuery, intQuery, isoDate, list, uuid } from "./common.js";
 import { runSchema } from "./runs.js";
 
@@ -30,6 +31,26 @@ export const messageQuestionSchema = z.object({
 });
 export type MessageQuestion = z.infer<typeof messageQuestionSchema>;
 
+/** One bot proposed on a team card: the draft of the app, for the user to tick. */
+export const teamProposalItemSchema = z.object({
+  name: z.string(),
+  description: z.string(),
+  personality: z.string(),
+});
+export type TeamProposalItem = z.infer<typeof teamProposalItemSchema>;
+
+/**
+ * The team card of a bot message (the main bot's welcome): up to 3 proposed bots and what the user
+ * decided. `pending` waits for the user; `created` says which proposals became bots (`created`:
+ * their position and id); `dismissed` is "Agora não". Only the user's decision creates anything.
+ */
+export const teamProposalSchema = z.object({
+  items: z.array(teamProposalItemSchema).min(1),
+  status: z.enum(["pending", "created", "dismissed"]),
+  created: z.array(z.object({ index: z.number().int().min(0), botId: uuid })),
+});
+export type TeamProposal = z.infer<typeof teamProposalSchema>;
+
 export const messageSchema = z.object({
   id: uuid,
   conversationId: uuid,
@@ -48,6 +69,8 @@ export const messageSchema = z.object({
   createdAt: isoDate,
   /** Only on the bot message that asks the user something (an `escalate`): see `MessageQuestion`. */
   question: z.exactOptional(messageQuestionSchema),
+  /** Only on the bot message that proposes a team of bots (the card with the ticks). */
+  team: z.exactOptional(teamProposalSchema),
 });
 export type Message = z.infer<typeof messageSchema>;
 
@@ -83,6 +106,11 @@ export const conversationSchema = z.object({
   unreadCount: z.number().int(),
   /** The run that is working on the conversation now (or waiting for you), if any. */
   activeRun: runSchema.nullable(),
+  /**
+   * The welcome of the bot of this conversation (docs/RECEPCAO.md): `pending` not started,
+   * `started` its run was opened, `done` over (or never due), `redo` the user asked to do it again.
+   */
+  reception: z.enum(["pending", "started", "done", "redo"]),
 });
 export type Conversation = z.infer<typeof conversationSchema>;
 
@@ -128,3 +156,40 @@ export const markReadBodySchema = z.object({
   upToSeq: z.number().int().min(0).optional(),
 });
 export type MarkReadBody = z.input<typeof markReadBodySchema>;
+
+/** `POST /v1/bots/{id}/reception`: the open of a bot's chat asks for its welcome. */
+export const receptionResultSchema = z.object({
+  /** The direct conversation of the bot (created at the first call). */
+  conversationId: uuid,
+  /** THIS call started the welcome: its run is `runId`. False when it already ran or is not due. */
+  started: z.boolean(),
+  runId: uuid.nullable(),
+});
+export type ReceptionResult = z.infer<typeof receptionResultSchema>;
+
+/**
+ * `POST /v1/messages/{id}/team`: the user's decision on a team card: the positions they ticked (each
+ * with the mascot and colour the card showed, so the bot is born looking the same), or "Agora não".
+ */
+export const decideTeamBodySchema = z.union([
+  z.object({ dismiss: z.literal(true) }),
+  z.object({
+    create: z
+      .array(
+        z.object({
+          index: z.number().int().min(0),
+          avatar: z.string().min(1).max(200).optional(),
+          color: botColorSchema.optional(),
+        }),
+      )
+      .min(1)
+      .max(5),
+  }),
+]);
+export type DecideTeamBody = z.input<typeof decideTeamBodySchema>;
+export const decideTeamResultSchema = z.object({
+  message: messageSchema,
+  /** The bots created now (none for "Agora não"). */
+  bots: z.array(botSchema),
+});
+export type DecideTeamResult = z.infer<typeof decideTeamResultSchema>;

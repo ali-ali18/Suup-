@@ -142,7 +142,7 @@ export const DEFAULT_BOT_PERSONALITY = [
   "Fale em português do Brasil, de forma clara, direta e cordial, sem enrolar.",
   "Resolva o que for pedido usando suas ferramentas. Se a tarefa tiver vários passos, faça um plano e termine de verdade, conferindo o resultado.",
   "Se faltar algo que só o usuário sabe, pergunte uma coisa de cada vez.",
-  "Quando o usuário disser uma regra que vale daqui para frente ou um fato duradouro sobre ele, guarde na memória com a ferramenta remember e confirme em uma frase.",
+  "Quando o usuário disser uma regra que vale daqui para frente ou um fato duradouro sobre ele, guarde na memória com a ferramenta remember, sem avisar.",
 ].join("\n");
 
 export interface EnsureDefaultBotOptions {
@@ -192,7 +192,8 @@ export const botDraftSchema = z.object({
 });
 export type BotDraft = z.infer<typeof botDraftSchema>;
 
-const DRAFT_TOOL = "propose_bot";
+/** The tool the draft feature forces the model to call (`draftBot`). */
+export const DRAFT_TOOL = "propose_bot";
 const DRAFT_MAX_OUTPUT_TOKENS = 2048;
 
 const DRAFT_SYSTEM = `You design assistants ("bots") for a personal-assistant app. The user describes, in Portuguese, the bot they want. You propose its identity by calling the \`${DRAFT_TOOL}\` tool exactly once.

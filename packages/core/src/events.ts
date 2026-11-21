@@ -181,6 +181,33 @@ export type UncheckedItem = z.infer<typeof uncheckedItemSchema>;
 export const contextItemSchema = z.object({ id: z.string(), text: z.string() });
 export type ContextItem = z.infer<typeof contextItemSchema>;
 
+/** The moment the run started and the user's time zone (an IANA name), fixed for the whole run. */
+export const runClockSchema = z.object({ iso: z.string(), timeZone: z.string() });
+export type RunClock = z.infer<typeof runClockSchema>;
+
+/** Another active bot of the user, as the bots tell each other apart: name and what it is for. */
+export const teammateSchema = z.object({ name: z.string(), description: z.string() });
+export type Teammate = z.infer<typeof teammateSchema>;
+
+/** What the bot's machine is, truthfully, for this run. */
+export const machineInfoSchema = z.object({
+  /** The bot has a terminal (`shell`). */
+  terminal: z.boolean(),
+  /** The bot has file tools. */
+  files: z.boolean(),
+  /** The machine is isolated from the user's own computer (a container). */
+  isolated: z.boolean(),
+});
+export type MachineInfo = z.infer<typeof machineInfoSchema>;
+
+/**
+ * The welcome of a bot (docs/RECEPCAO.md): `general` is the one of the main bot (a few questions
+ * about the user, then a team proposal); `bot` is the one every other bot has about its own role.
+ */
+export const RECEPTION_KINDS = ["general", "bot"] as const;
+export const receptionKindSchema = z.enum(RECEPTION_KINDS);
+export type ReceptionKind = z.infer<typeof receptionKindSchema>;
+
 /** Why a pending return was dropped: the user wrote, the run was stopped, a new call replaced it, or the run finished. */
 export const WAIT_CANCEL_REASONS = ["user_message", "cancelled", "replaced", "finished"] as const;
 export type WaitCancelReason = (typeof WAIT_CANCEL_REASONS)[number];
@@ -198,8 +225,12 @@ export const runStatusSchema = z.enum([
 ]);
 export type RunStatus = z.infer<typeof runStatusSchema>;
 
-/** What opened a run (section 4.1 of the plan). */
-export const RUN_ORIGINS = ["user", "routine", "delegation", "proactive"] as const;
+/**
+ * What opened a run (section 4.1 of the plan). `reception` is the welcome of a bot, which starts on
+ * its own the first time the user opens its chat (docs/RECEPCAO.md); like `user`, it is the
+ * foreground run of its conversation.
+ */
+export const RUN_ORIGINS = ["user", "routine", "delegation", "proactive", "reception"] as const;
 export const runOriginSchema = z.enum(RUN_ORIGINS);
 export type RunOrigin = z.infer<typeof runOriginSchema>;
 
@@ -270,6 +301,19 @@ export const runEventSchema = z.discriminatedUnion("type", [
       historyNote: z.exactOptional(z.string()),
       /** The secrets the bot may use (names and what they are for; never values). */
       secrets: z.exactOptional(z.array(secretInfoSchema)),
+      /**
+       * When the run started and the user's time zone. Taken ONCE here (never from the clock again),
+       * so the system prompt is byte-identical on every request and a replay says the same.
+       */
+      now: z.exactOptional(runClockSchema),
+      /** The other active bots of the user, loaded once per run. */
+      team: z.exactOptional(z.array(teammateSchema)),
+      /** What the bot's machine is in this run. */
+      machine: z.exactOptional(machineInfoSchema),
+      /** The names of the connectors granted to the bot (the tools are in the tool index). */
+      connectors: z.exactOptional(z.array(z.string())),
+      /** Set when the run is a reception: which one. */
+      reception: z.exactOptional(receptionKindSchema),
       /**
        * The share of the context window past which this run compacts its history (the user's
        * setting at the start of the run). Recorded so that a replay compacts at the same point.

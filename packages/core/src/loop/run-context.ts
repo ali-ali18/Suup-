@@ -2,7 +2,14 @@
 // `RunLoopOptions`, `ToolInvoker`), the `LoopContext` object every loop module receives instead of
 // a long parameter list, and the `Interrupted` signal used to unwind on a hard interruption.
 import type { ToolGate } from "../approvals/gate.js";
-import type { ContextItem, SecretInfo } from "../events.js";
+import type {
+  ContextItem,
+  MachineInfo,
+  ReceptionKind,
+  RunClock,
+  SecretInfo,
+  Teammate,
+} from "../events.js";
 import type { Message } from "../messages.js";
 import type { Provider, ToolSpec } from "../provider.js";
 import type { InvokeOptions, ToolInvocation } from "../registry.js";
@@ -54,6 +61,16 @@ export interface RunContextSnapshot {
   historyNote?: string;
   /** The secrets the bot may use: names and what they are for, never values. */
   secrets?: SecretInfo[];
+  /** When the run started and the user's time zone: taken once, recorded, never recomputed. */
+  now?: RunClock;
+  /** The user's other active bots (name and description). */
+  team?: Teammate[];
+  /** What the bot's machine is in this run (truthful). */
+  machine?: MachineInfo;
+  /** Names of the connectors granted to the bot. */
+  connectors?: string[];
+  /** The run is a reception (the welcome of the bot): which one. */
+  reception?: ReceptionKind;
   /** Compact the history past this share of the context window (the user's setting; recorded). */
   compactionThreshold?: number;
   /** Rules and profile facts left out because they did not fit the size cap (recorded). */

@@ -15,7 +15,11 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("migration 0020: prompt limit in memo
     const dir = await mkdtemp(join(tmpdir(), "suup-migrations-"));
     await cp(MIGRATIONS_DIR, dir, { recursive: true });
     const held = (await readdir(MIGRATIONS_DIR)).filter((f) => f >= "0020" && f.endsWith(".sql"));
-    expect(held).toEqual(["0020_memory_prompt_limit_items.sql", "0021_stale_approvals.sql"]);
+    expect(held).toEqual([
+      "0020_memory_prompt_limit_items.sql",
+      "0021_stale_approvals.sql",
+      "0022_reception.sql",
+    ]);
     for (const file of held) await rm(join(dir, file));
     await migrate(ctx.db, dir);
     await ctx.db.sql`

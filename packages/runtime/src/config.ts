@@ -219,6 +219,27 @@ const serverSchema = z.strictObject({
   eventRetentionMinutes: z.exactOptional(positiveInt),
 });
 
+/** True for a name the runtime's time zone database knows (`Intl` is the judge, no pattern). */
+export function isTimeZone(name: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: name });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The user's time zone: `defaults.timeZone` of the configuration, else the one of the computer the
+ * server runs on, else UTC. Read at the start of each run and recorded in its `context_loaded`.
+ */
+export function resolveTimeZone(config: { defaults?: { timeZone?: string } }): string {
+  const configured = config.defaults?.timeZone;
+  if (configured !== undefined && isTimeZone(configured)) return configured;
+  const system = new Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return system !== undefined && system !== "" && isTimeZone(system) ? system : "UTC";
+}
+
 const defaultsSchema = z.strictObject({
   maxTurns: z.exactOptional(positiveInt),
   maxCostUsd: z.exactOptional(z.number().positive()),
@@ -233,6 +254,14 @@ const defaultsSchema = z.strictObject({
    * messages, newest first). Older ones are found with `search_conversations`.
    */
   historyChars: z.exactOptional(positiveInt),
+  /**
+   * The user's time zone, an IANA name (`America/Sao_Paulo`). It is what "now" means to the bots:
+   * the date and time in their prompt and in the reminder of each turn. Without it, the time zone
+   * of the computer that runs the server (see `resolveTimeZone`).
+   */
+  timeZone: z.exactOptional(
+    z.string().refine(isTimeZone, "não é um fuso horário IANA (por exemplo America/Sao_Paulo)"),
+  ),
 });
 
 const riskLevelEnum = z.enum(["read", "write_reversible", "external_irreversible"]);

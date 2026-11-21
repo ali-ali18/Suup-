@@ -20,6 +20,7 @@ import {
   planToolSearch,
   type Redactor,
   type ReviewerConfig,
+  type RunContextSnapshot,
   type RunEnd,
   ToolRegistry,
   type ToolSearchMode,
@@ -36,6 +37,8 @@ import {
   getBot,
   getMemorySettings,
   getRun,
+  listBots,
+  listConnectorsForBot,
   PgRunQueue,
   PgRunStore,
   type Run,
@@ -64,6 +67,7 @@ import {
   type ProviderEntry,
   type RuntimeConfig,
   resolveDatabaseUrl,
+  resolveTimeZone,
 } from "./config.js";
 import {
   type BotConnectorCandidate,
@@ -79,6 +83,7 @@ import {
 } from "./memory-consolidation.js";
 import { createMemoryService } from "./memory-service.js";
 import { createNetworkService, type NetworkService } from "./network/service.js";
+import { PROPOSE_TEAM_TOOL, proposeTeamTool } from "./reception.js";
 import { DEFAULT_HISTORY_CHARS, loadRunContext } from "./run-context.js";
 import { finishRun } from "./run-end.js";
 import { createScriptedProvider } from "./scripted-provider.js";
@@ -736,6 +741,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     let runTools = tools;
     let botCfg = cfg;
     let toolSearch: ToolSearchSetup | undefined;
+    let connectorNames: string[] = [];
     if (guarded) {
       const offered = await connectors.toolsForBot(bot.id);
       if (offered.tools.length > 0) {
@@ -753,12 +759,24 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
         toolSearch = toolSearchSetup(offered.candidates, bot.modelId);
       }
       botCfg = withNetworkTool(botCfg);
+      connectorNames = [
+        ...new Set((await listConnectorsForBot(handle, bot.id)).map((c) => c.name)),
+      ];
     }
+    // The welcome of the main bot may show the user a team to tick: its one extra tool.
+    const receptionKind: "general" | "bot" | undefined =
+      run.origin !== "reception" ? undefined : bot.isDefault ? "general" : "bot";
+    if (guarded && receptionKind === "general") {
+      if (runTools === tools) runTools = newRegistry();
+      runTools.register(proposeTeamTool(runtime));
+      botCfg = { ...botCfg, allowedTools: [...botCfg.allowedTools, PROPOSE_TEAM_TOOL] };
+    }
+    const executor = await runtime.executorFor(bot.id);
     return {
       store: new PgRunStore(handle, { workerId }),
       provider: getProvider(bot.modelProvider),
       tools: runTools,
-      executor: await runtime.executorFor(bot.id),
+      executor,
       bot: botCfg,
       ...(reviewer === undefined ? {} : { reviewer }),
       // Uma execução isolada (uma avaliação) roda sem ninguém para responder e numa máquina
@@ -787,10 +805,27 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
                   compactionThreshold: memorySettings.compactionThreshold,
                 },
               );
+              // What is true of THIS run, read once and recorded with the rest: when it started and
+              // the user's time zone, the other bots, what the machine is, the connectors granted.
+              const team = (await listBots(handle))
+                .filter((other) => other.id !== bot.id)
+                .map((other) => ({ name: other.name, description: other.description }));
+              const withFacts: RunContextSnapshot = {
+                ...snapshot,
+                now: { iso: new Date().toISOString(), timeZone: resolveTimeZone(config) },
+                team,
+                machine: {
+                  terminal: botCfg.allowedTools.includes("shell"),
+                  files: FILE_TOOL_NAMES.some((name) => botCfg.allowedTools.includes(name)),
+                  isolated: executor.isolated === true,
+                },
+                connectors: connectorNames,
+                ...(receptionKind === undefined ? {} : { reception: receptionKind }),
+              };
               // The model is told which secrets exist (names and purpose), never their values.
               return vault.status().ok
-                ? { ...snapshot, secrets: await vault.infoFor(bot.id) }
-                : snapshot;
+                ? { ...withFacts, secrets: await vault.infoFor(bot.id) }
+                : withFacts;
             },
             memoryFor: (record: { botId: string; id: string }) => {
               const writer = memoryModel();
@@ -1074,6 +1109,9 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
  * API key's environment variable is not set: the run that uses it records the failure (origin
  * `provider`) instead of the whole program refusing to start.
  */
+/** The tools that give a bot files on its machine (the names are declared by the tools). */
+const FILE_TOOL_NAMES = ["read_file", "write_file", "edit_file", "list_files", "search_files"];
+
 function unavailableProvider(id: string, message: string): Provider {
   return {
     id,

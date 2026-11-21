@@ -31,6 +31,34 @@ async function make(script: unknown, options: { textChunkSize?: number } = {}) {
 const run = (provider: ReturnType<typeof createScriptedProvider>, req: GenerateRequest) =>
   collect(provider.generate(req), provider.id);
 
+describe("scripted provider: the draft of a bot", () => {
+  const draftCall = (name: string) => ({
+    calls: [{ name: "propose_bot", args: { name, description: "d", personality: "p".repeat(30) } }],
+  });
+  const draftRequest = (brief: string): GenerateRequest =>
+    agentRequest([user(brief)], {
+      tools: [{ name: "propose_bot", description: "d", inputSchema: { type: "object" } }],
+      toolChoice: { name: "propose_bot" },
+    });
+
+  it("answers the drafts from the `draft` list, in order, whatever the agent list holds", async () => {
+    const { provider } = await make({
+      agent: [{ text: "agent step" }],
+      draft: [draftCall("Um"), draftCall("Dois")],
+    });
+    const one = await run(provider, draftRequest("a"));
+    const two = await run(provider, draftRequest("b"));
+    expect(one.blocks[0]).toMatchObject({ type: "tool_call", args: { name: "Um" } });
+    expect(two.blocks[0]).toMatchObject({ type: "tool_call", args: { name: "Dois" } });
+  });
+
+  it("a script without a `draft` list answers the draft from `agent`, as it always did", async () => {
+    const { provider } = await make({ agent: [draftCall("Antigo")] });
+    const answer = await run(provider, draftRequest("a"));
+    expect(answer.blocks[0]).toMatchObject({ type: "tool_call", args: { name: "Antigo" } });
+  });
+});
+
 describe("scripted provider", () => {
   it("answers an agent turn by the number of assistant messages already in the conversation", async () => {
     const { provider } = await make({

@@ -299,3 +299,76 @@ describe("replay of a run with context", () => {
     expect(eventTypes(events)).toContain("context_loaded");
   });
 });
+
+describe("the clock of a run", () => {
+  const WITH_FACTS: RunContextSnapshot = {
+    ...SNAPSHOT,
+    now: { iso: new Date(1_700_000_000_000).toISOString(), timeZone: "America/Sao_Paulo" },
+    team: [{ name: "Finanças", description: "Cuida do dinheiro." }],
+    machine: { terminal: true, files: true, isolated: true },
+    connectors: [],
+  };
+
+  it("is recorded in context_loaded, once, and the system prompt never moves while the time does", async () => {
+    const { rig } = rigWithContext(WITH_FACTS, {
+      script: [
+        use(call("c1", "echo", { text: "a" })),
+        use(call("c2", "echo", { text: "b" })),
+        say("Done."),
+      ],
+    });
+    // Each turn happens an hour later than the one before.
+    const original = rig.provider.generate.bind(rig.provider);
+    rig.provider.generate = (request) => {
+      rig.clock.advance(3_600_000);
+      return original(request);
+    };
+    expect(await rig.run()).toBe("done");
+
+    const [loaded] = eventsOfType(await rig.events(), "context_loaded");
+    expect(loaded?.payload.now).toEqual(WITH_FACTS.now);
+    expect(loaded?.payload.team).toEqual(WITH_FACTS.team);
+    expect(loaded?.payload.machine).toEqual(WITH_FACTS.machine);
+
+    const requests = rig.provider.requests;
+    expect(requests.length).toBeGreaterThanOrEqual(3);
+    const systems = new Set(requests.map((r) => r.system));
+    expect(systems.size).toBe(1); // byte-identical on every request of the run
+    expect([...systems][0]).toContain(
+      "## Now\n\nIt is Tuesday 2023-11-14, 19:13 (America/Sao_Paulo, GMT-3)",
+    );
+
+    // The live time is in the reminder of the last user turn, and it moves.
+    const reminders = requests.map((r) => {
+      const last = r.messages.at(-1);
+      return textOf(last).split("Now (the current time):\n")[1]?.split("\n")[0];
+    });
+    expect(new Set(reminders).size).toBe(requests.length);
+    expect(reminders[0]).toContain("Tuesday 2023-11-14");
+  });
+
+  it("is replayed identically: the replay says the same, whatever the real clock says", async () => {
+    const { rig } = rigWithContext(WITH_FACTS, {
+      script: [use(call("c1", "echo", { text: "x" })), say("Done.")],
+    });
+    expect(await rig.run()).toBe("done");
+    const events = await rig.events();
+    const real = Date.now;
+    Date.now = () => 0;
+    try {
+      const report = await replayRun(events, { bot: testBot() });
+      expect(report.identical).toBe(true);
+      expect(report.requestDiffs).toEqual([]);
+    } finally {
+      Date.now = real;
+    }
+  });
+
+  it("a run recorded before the clock existed has no clock block and no live time", async () => {
+    const { rig } = rigWithContext(SNAPSHOT, { script: [say("Hi.")] });
+    await rig.run();
+    const request = rig.provider.requests[0];
+    expect(request?.system).not.toContain("## Now");
+    expect(textOf(request?.messages.at(-1))).not.toContain("Now (the current time)");
+  });
+});

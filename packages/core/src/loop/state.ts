@@ -1,10 +1,8 @@
 import type {
-  ContextItem,
   EscalateQuestion,
   PlanStep,
   RunEventPayload,
   RunStatus,
-  SecretInfo,
   ToolCatalog,
 } from "../events.js";
 import type { Block, JsonValue, Message, ToolCallBlock } from "../messages.js";
@@ -13,6 +11,7 @@ import { formatDiscrepancies, isControlTool } from "./control-tools.js";
 import { historyMessages } from "./history.js";
 import {
   isReminderBlock,
+  type RunPromptContext,
   renderNotice,
   renderReturnNotice,
   renderSummaryMessage,
@@ -145,7 +144,7 @@ export interface RunState {
   /** An agent `model_request` was recorded: the tools of the run can no longer be decided. */
   sawRequest: boolean;
   /** The rules and profile of the run, for the system prompt; null without a `context_loaded`. */
-  context: { rules: ContextItem[]; profile: ContextItem[]; secrets: SecretInfo[] } | null;
+  context: RunPromptContext | null;
   lastSeq: number;
   /** Agent model responses seen. */
   responses: number;
@@ -331,6 +330,15 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
         rules: structuredClone(event.payload.rules),
         profile: structuredClone(event.payload.profile),
         secrets: structuredClone(event.payload.secrets ?? []),
+        ...(event.payload.now === undefined ? {} : { now: structuredClone(event.payload.now) }),
+        ...(event.payload.team === undefined ? {} : { team: structuredClone(event.payload.team) }),
+        ...(event.payload.machine === undefined
+          ? {}
+          : { machine: structuredClone(event.payload.machine) }),
+        ...(event.payload.connectors === undefined
+          ? {}
+          : { connectors: structuredClone(event.payload.connectors) }),
+        ...(event.payload.reception === undefined ? {} : { reception: event.payload.reception }),
       };
       state.compactionThreshold = event.payload.compactionThreshold ?? null;
       // The user's earlier messages come before the objective (the history is text only).

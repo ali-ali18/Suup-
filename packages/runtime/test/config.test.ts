@@ -7,6 +7,7 @@ import {
   loadConfig,
   parseConfig,
   resolveDatabaseUrl,
+  resolveTimeZone,
 } from "../src/index.js";
 import { rawConfig, tempDir, writeJson } from "./helpers.js";
 
@@ -344,5 +345,24 @@ describe("configuration: the database URL", () => {
 
   it("is undefined when neither is set", () => {
     expect(resolveDatabaseUrl(parseConfig(rawConfig()), {})).toBeUndefined();
+  });
+});
+
+describe("the user's time zone", () => {
+  it("is the one of the configuration when it is a real IANA name", () => {
+    const config = parseConfig(rawConfig({ defaults: { timeZone: "America/Sao_Paulo" } }));
+    expect(config.defaults?.timeZone).toBe("America/Sao_Paulo");
+    expect(resolveTimeZone(config)).toBe("America/Sao_Paulo");
+  });
+
+  it("refuses a name that is not a time zone, saying what is expected", () => {
+    const issues = issuesOf(rawConfig({ defaults: { timeZone: "Marte/Olympus" } }));
+    expect(issues.join("\n")).toContain("fuso horário IANA");
+  });
+
+  it("falls back to the time zone of the computer that runs the server, never to nothing", () => {
+    const system = new Intl.DateTimeFormat().resolvedOptions().timeZone;
+    expect(resolveTimeZone({})).toBe(system === undefined || system === "" ? "UTC" : system);
+    expect(resolveTimeZone({ defaults: {} })).toBe(resolveTimeZone({}));
   });
 });

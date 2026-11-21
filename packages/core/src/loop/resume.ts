@@ -225,6 +225,11 @@ async function ensureContext(ctx: LoopContext): Promise<void> {
       history: snapshot.history,
       ...(snapshot.historyNote === undefined ? {} : { historyNote: snapshot.historyNote }),
       ...(snapshot.secrets === undefined ? {} : { secrets: snapshot.secrets }),
+      ...(snapshot.now === undefined ? {} : { now: snapshot.now }),
+      ...(snapshot.team === undefined ? {} : { team: snapshot.team }),
+      ...(snapshot.machine === undefined ? {} : { machine: snapshot.machine }),
+      ...(snapshot.connectors === undefined ? {} : { connectors: snapshot.connectors }),
+      ...(snapshot.reception === undefined ? {} : { reception: snapshot.reception }),
       ...(snapshot.compactionThreshold === undefined
         ? {}
         : { compactionThreshold: snapshot.compactionThreshold }),

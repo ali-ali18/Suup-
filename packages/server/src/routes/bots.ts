@@ -18,7 +18,13 @@ import {
   setDefaultBot,
   updateBot,
 } from "@suup/db";
-import { draftBot, type Runtime, RuntimeError } from "@suup/runtime";
+import {
+  draftBot,
+  type Runtime,
+  RuntimeError,
+  resetBotReception,
+  startBotReception,
+} from "@suup/runtime";
 import { HttpError } from "../errors.js";
 import type { Route } from "../http.js";
 import { toBotDto, toConversationDto } from "../mappers.js";
@@ -196,6 +202,52 @@ export const botRoutes: Route[] = [
       const active =
         (await listActiveConversationRuns(db, [conversation.id])).get(conversation.id) ?? null;
       return { body: toConversationDto(conversation, active) };
+    },
+  },
+  {
+    method: "POST",
+    pattern: "/v1/bots/:id/reception",
+    async handler(ctx) {
+      const id = ctx.uuid("id");
+      try {
+        const started = await startBotReception(ctx.runtime, id);
+        return {
+          body: {
+            conversationId: started.conversationId,
+            started: started.started,
+            runId: started.run?.id ?? null,
+          },
+        };
+      } catch (error) {
+        if (error instanceof RuntimeError && error.code === "bot_not_found") {
+          throw new HttpError("not_found", "Bot não encontrado.", { cause: error });
+        }
+        if (error instanceof RuntimeError && error.code === "bot_archived") {
+          throw new HttpError("conflict", error.message, { cause: error });
+        }
+        if (error instanceof RuntimeError) {
+          throw new HttpError("conflict", error.message, { cause: error });
+        }
+        throw error;
+      }
+    },
+  },
+  {
+    method: "POST",
+    pattern: "/v1/bots/:id/reception/reset",
+    async handler(ctx) {
+      try {
+        await resetBotReception(ctx.runtime, ctx.uuid("id"));
+      } catch (error) {
+        if (error instanceof RuntimeError && error.code === "bot_not_found") {
+          throw new HttpError("not_found", "Bot não encontrado.", { cause: error });
+        }
+        if (error instanceof RuntimeError && error.code === "conflict") {
+          throw new HttpError("conflict", error.message, { cause: error });
+        }
+        throw error;
+      }
+      return { body: { reset: true } };
     },
   },
 ];
