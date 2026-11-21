@@ -86,6 +86,14 @@ export const CONTROL_TOOLS: ReadonlySet<string> = new Set([
   "propose_team",
 ]);
 
+/**
+ * The tools whose calls the chat never shows as a row or an indicator (docs/DESIGN.md, owner's rule:
+ * "Eu não quero ter que ficar gerenciando memória"): saving and forgetting a memory are the bot's
+ * own housekeeping. Reading (`recall`, `search_conversations`) stays a row, because it explains an
+ * answer. A card that WAITS for the user (an approval) is still shown: only the finished call is quiet.
+ */
+export const SILENT_TOOLS: ReadonlySet<string> = new Set(["remember", "forget"]);
+
 export const toolLabel = (name: string): string => TOOL_LABEL[name] ?? name;
 
 /** The tool that finds the definitions of deferred connector tools (tool search, `meta` and `client` modes). */
@@ -156,7 +164,7 @@ export function runningTool(events: readonly RunEvent[]): string | undefined {
     const logged = str(event.payload.name);
     if (callId === undefined || logged === undefined) continue;
     const { name } = resolveToolCall(logged, event.payload.args);
-    if (CONTROL_TOOLS.has(name)) continue;
+    if (CONTROL_TOOLS.has(name) || SILENT_TOOLS.has(name)) continue;
     if (!resolved.has(callId)) return name;
   }
   return undefined;

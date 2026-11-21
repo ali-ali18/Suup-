@@ -1,6 +1,13 @@
 import type { Approval, PlanStep, Run, RunEvent } from "@suup/api";
 import { type CategoryIcon, NETWORK_TOOL, STATUS_LABEL, toolCategory } from "./approval-text.js";
-import { CONTROL_TOOLS, currentStep, resolveToolCall, SEARCH_TOOLS, toolLabel } from "./derive.js";
+import {
+  CONTROL_TOOLS,
+  currentStep,
+  resolveToolCall,
+  SEARCH_TOOLS,
+  SILENT_TOOLS,
+  toolLabel,
+} from "./derive.js";
 
 // What the bot DID, as the chat shows it: one card per tool call of a run, built from the run's
 // events (`tool_call` + `tool_result`). A call that had an approval card is still ONE row: the
@@ -245,7 +252,7 @@ export function actionsOf(
       if (callId === undefined || logged === undefined) continue;
       // A call through `use_tool` is the REAL tool: its row is that tool's, never the wrapper's.
       const { name, args } = resolveToolCall(logged, event.payload.args);
-      if (CONTROL_TOOLS.has(name)) continue;
+      if (CONTROL_TOOLS.has(name) || SILENT_TOOLS.has(name)) continue;
       if (byCall.has(callId)) continue;
       const item: ActionItem = {
         callId,
@@ -336,6 +343,8 @@ export function mergeApprovals(
       pending.push(approval);
       continue;
     }
+    // A decided approval of a silent tool (saving or forgetting a memory) leaves no row either.
+    if (SILENT_TOOLS.has(approval.tool)) continue;
     const args = asArgs(approval.args);
     calls.push({
       callId: approval.callId,

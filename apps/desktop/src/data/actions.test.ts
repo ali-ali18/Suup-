@@ -514,3 +514,30 @@ describe("mergeApprovals: one row per tool call, the link is the call id", () =>
     ).toEqual(["fold(2)", "d", "c4", "c5", "c6"]);
   });
 });
+
+describe("memory housekeeping is not shown in the chat (owner's rule)", () => {
+  it("saving and forgetting a memory leave no row and no 'working' indicator; reading stays", () => {
+    const events = [
+      call(1, "a", "remember", { layer: "note", text: "Prova na sexta." }),
+      result(2, "a"),
+      call(3, "b", "forget", { id: "m1" }),
+      result(4, "b"),
+      call(5, "c", "recall", { query: "prova" }),
+      result(6, "c"),
+      call(7, "d", "search_conversations", { query: "prova" }),
+      result(8, "d"),
+    ];
+    expect(actionsOf("r", events).map((a) => a.name)).toEqual(["recall", "search_conversations"]);
+    // a save that has not returned yet is not "what the bot is doing" either
+    expect(runningTool([call(1, "a", "remember", { layer: "note", text: "x" })])).toBeUndefined();
+    expect(runningTool([call(1, "c", "recall", { query: "x" })])).toBe("recall");
+  });
+
+  it("a decided approval of a memory save leaves no row; a pending one still waits for the user", () => {
+    const decided = makeApproval({ id: "ap1", tool: "remember", status: "approved", callId: "z" });
+    const waiting = makeApproval({ id: "ap2", tool: "forget", status: "pending", callId: "y" });
+    const { calls, pending } = mergeApprovals([], [decided, waiting]);
+    expect(calls).toEqual([]);
+    expect(pending.map((a) => a.id)).toEqual(["ap2"]);
+  });
+});

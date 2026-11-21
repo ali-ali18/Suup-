@@ -112,6 +112,8 @@
   --spacing-avatar-sm: var(--size-avatar-sm);
   --spacing-avatar-md: var(--size-avatar-md);
   --spacing-avatar-lg: var(--size-avatar-lg);
+  --spacing-star-badge: var(--size-star-badge);
+  --spacing-star-badge-lg: var(--size-star-badge-lg);
   --spacing-rail-avatar: var(--size-rail-avatar);
   --spacing-panel-avatar: var(--size-panel-avatar);
   --spacing-settings-height: var(--height-settings);

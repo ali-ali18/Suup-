@@ -26,7 +26,23 @@ const settingsOf = (over: Partial<MemorySettings> = {}): MemorySettings => ({
 });
 
 function setup(initial: MemorySettings, update = vi.fn()) {
-  const api = { memorySettings: { get: async () => initial, update } };
+  const api = {
+    memorySettings: { get: async () => initial, update },
+    supervisor: {
+      settings: {
+        get: async () => ({
+          reviewEnabled: true,
+          reviewTime: "03:00",
+          morningTime: "08:00",
+          costCapUsd: null,
+          timeZone: "America/Sao_Paulo",
+          model: { available: true, id: "m", reason: null },
+        }),
+        update: vi.fn(),
+      },
+      reviews: async () => [],
+    },
+  };
   const store = createDataStore();
   const sync = new Sync({ api: api as unknown as SuupClient, store });
   const services = { api, sync, data: store } as unknown as Services;
@@ -59,6 +75,8 @@ describe("Configurações > Memória", () => {
       "Consolidação",
       "Contexto",
       "Validade",
+      "Principal",
+      "Revisões da equipe",
     ]);
   });
 

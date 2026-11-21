@@ -17,6 +17,7 @@ import {
   SettingsRow,
   SettingsSelect,
 } from "./parts.js";
+import { SupervisorSettings } from "./SupervisorSettings.js";
 
 /** The settings of the memory that can fail on their own: each has one line for its error. */
 type Field = "enabled" | "maxTurns" | "idleMinutes" | "compaction" | "promptLimit" | "expiry";
@@ -336,6 +337,8 @@ export function MemorySettings({ title, titleId, onClose }: SectionProps) {
                 }
               />
             </SettingsGroup>
+
+            <SupervisorSettings />
           </>
         )}
       </PaneBody>

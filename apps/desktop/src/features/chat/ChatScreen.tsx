@@ -269,6 +269,7 @@ function ChatForBot({ botId }: { botId: string }) {
               seed={bot.id}
               size="sm"
               state={display.avatar}
+              supervisor={bot.isDefault}
             />
             <span className="min-w-0 truncate">
               <BotTitle name={bot.name} description={description} />

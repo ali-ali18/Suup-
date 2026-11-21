@@ -737,6 +737,56 @@ describe("o retorno interno do bot não tem marcador próprio na interface (docs
   });
 });
 
+describe("o Principal é o supervisor: a estrela, a revisão e o silêncio sobre a memória (docs/DESIGN.md §5 e §3c)", () => {
+  const avatar = read(join(SRC, "ui", "avatar.tsx"));
+
+  it("a estrela é a única marca de um avatar além do rosto, desenhada só por ui/avatar.tsx, por tokens", () => {
+    expect(avatar).toContain("supervisor");
+    expect(avatar).toContain('data-testid="supervisor-star"');
+    expect(avatar).toContain("size-star-badge");
+    const tokens = read(join(SRC, "styles", "tokens.css"));
+    expect(tokens).toContain("--size-star-badge:");
+    expect(tokens).toContain("--size-star-badge-lg:");
+    // nenhuma outra peça desenha um ícone de estrela sobre um avatar
+    const drawers = files(SRC, /\.tsx$/)
+      .filter((f) => /\bStar\b/.test(read(f)) && /from "lucide-react"/.test(read(f)))
+      .map(rel);
+    expect(drawers).toEqual([join("ui", "avatar.tsx")]);
+  });
+
+  it("quem desenha o bot na barra lateral, no cabeçalho do chat, no painel e na paleta diz se é o principal pelo dado do bot", () => {
+    for (const file of [
+      join("features", "shell", "Sidebar.tsx"),
+      join("features", "chat", "ChatScreen.tsx"),
+      join("features", "panel", "Panel.tsx"),
+      join("features", "palette", "CommandPalette.tsx"),
+    ]) {
+      expect(read(join(SRC, file)), file).toContain("supervisor={bot.isDefault}");
+    }
+  });
+
+  it("Configurações > Memória tem o grupo Principal e o das revisões, com as peças de Geral e sem select nativo", () => {
+    const page = read(join(SRC, "features", "settings", "SupervisorSettings.tsx"));
+    expect(page).toContain('from "./parts.js"');
+    expect(page).toContain('<SettingsGroup label="Principal"');
+    expect(page).toContain('<SettingsGroup label="Revisões da equipe"');
+    expect(page).toContain("<SettingsSelect");
+    expect(page).toContain("<Toggle");
+    expect(page).not.toContain("<select");
+    expect(page).not.toContain("<input");
+    expect(read(join(SRC, "features", "settings", "MemorySettings.tsx"))).toContain(
+      "<SupervisorSettings />",
+    );
+  });
+
+  it("salvar e esquecer uma memória não aparecem no chat como linha nem como indicador (decisão do dono)", () => {
+    const derive = read(join(SRC, "data", "derive.ts"));
+    expect(derive).toContain("SILENT_TOOLS");
+    expect(derive).toMatch(/SILENT_TOOLS[^\n]*new Set\(\["remember", "forget"\]\)/);
+    expect(read(join(SRC, "data", "actions.ts"))).toContain("SILENT_TOOLS.has(name)");
+  });
+});
+
 describe("docs/DESIGN.md is the standard, and everyone is pointed to it", () => {
   const root = join(SRC, "..", "..", "..");
   it("exists and is referenced by the desktop README, FRONTEND.md and CLAUDE.md", () => {
