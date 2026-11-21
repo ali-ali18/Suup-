@@ -306,3 +306,15 @@ Todas as linhas são inferências, salvo quando a coluna "Base" aponta um fato. 
 | **Sync real, se um dia for preciso**: a escrita fica no servidor e o cliente guarda leituras (padrão Electric). Uma execução de agente tem um único dono. Aprovações e cofre só no servidor autoritativo. Zero e PowerSync só depois de ler a documentação de conflitos, que não consegui ler. | Fatos 9.1 a 9.3; I10 | Inferência |
 | **Stream**: se o modo embutido usar socket, o stream precisa de leitura periódica como fallback, e isso deve ser explícito na configuração. | 8.14; `0006_change_feed.sql:14-16` | Fato para o risco; a solução é inferência |
 | **Pergunta para o dono**: a regra de "uma execução só roda num lugar" vale também para o modo local? Se o PC e a VPS estiverem ligados ao mesmo tempo com o mesmo bot, qual deles executa? | I10 | Pergunta aberta |
+
+## Verificado na implementação (19/11/2026, Linux x86_64, Node 22.23.5)
+
+Medido ao construir o app embutido (`apps/sidecar`); o que não foi medido está dito.
+
+- **`embedded-postgres` 18.7.0-beta.19** (MIT; binários do zonky, licença do PostgreSQL): o pacote de plataforma (`@embedded-postgres/<plataforma>`, `optionalDependencies`) traz **só `initdb`, `pg_ctl` e `postgres`**, nada de `pg_dump` nem `psql`. Os links simbólicos de `lib/` são recriados por um `postinstall` que o pnpm 10 **não roda**: o script de preparo os recria. A biblioteca `embedded-postgres` em si não é usada (em Windows mata o banco com `taskkill /f`; aqui o banco é iniciado e parado com `pg_ctl`).
+- **Extensões:** `unaccent` e a busca `portuguese` funcionam (`unaccent('ação')` = `acao`). **`vector` não está nos binários**, e nenhuma migração o cria (só um comentário em `0003`); as 21 migrações aplicam pelo `migrate` do projeto (não só por `exec`).
+- **initdb:** `--locale=C --locale-provider=builtin --builtin-locale=C.UTF-8` dá caixa Unicode (`lower('AÇÃO')` = `ação`) sem depender de locale do sistema operacional; `--text-search-config=portuguese` fixa o padrão.
+- **Tamanho (Linux):** Node 117,8 MB; PostgreSQL 56,5 MB; o pacote JavaScript (servidor, worker, CLI e dependências, esbuild) 2,8 MB; sem módulos nativos. No Windows, o `node.exe` costuma ser menor que o do Linux e o PostgreSQL ocupa ~112 MB descompactados (metadados do pacote); o instalador comprimido ficará **abaixo disso, na casa de 80 a 130 MB (estimativa, não medida)**.
+- **LISTEN/NOTIFY:** com o PostgreSQL de verdade o stream do servidor funciona (a conversa de teste chega pelo caminho completo).
+- **O sandbox `local` usa `/bin/sh`** (`packages/sandbox/src/local-executor.ts`): no Windows não existe. Sem Docker, os bots não têm terminal.
+- **Docker Desktop:** o cliente é a linha de comando `docker` (não há biblioteca de Docker no código), que escolhe o daemon sozinha (o *named pipe* no Windows, `DOCKER_HOST` e o contexto, se houver). O proxy de saída dos bots escuta no *gateway* da rede interna do Docker, e o app testa se consegue escutar ali; no Linux consegue (provado), **no Docker Desktop não foi provado e é provável que não consiga** (o endereço fica dentro da VM).

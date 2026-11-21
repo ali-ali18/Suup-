@@ -15,10 +15,10 @@ import {
 import { connect, Socket } from "node:net";
 import { DEFAULT_ALLOWED_PORTS, decideHost } from "@suup/core";
 import { type Resolver, resolveForConnect, systemResolver } from "./resolve.js";
+import { RefusalSessions } from "./sessions.js";
 import {
   type EgressEvent,
   type EgressPolicy,
-  type EgressRefusal,
   type EgressService,
   type EgressSession,
   type EgressSubject,
@@ -37,11 +37,49 @@ export interface EgressProxyOptions {
   resolver?: Resolver;
   /** How the validated address is connected to. Default `net.connect`; tests point it at a local server. */
   dial?(address: string, port: number): Socket;
-  /** Every decision (allowed and refused). The runtime stores the refusals. */
-  onEvent?(event: EgressEvent): void;
+  /**
+   * Every decision (allowed and refused). The runtime stores the refusals. A refusal is answered to
+   * the client only AFTER a returned promise settles, so the party that owns the policy has seen it first.
+   */
+  onEvent?(event: EgressEvent): unknown;
   connectTimeoutMs?: number;
   idleTimeoutMs?: number;
   maxConnections?: number;
+  /**
+   * The key the subject tokens derive from. Default: a random one made here. The worker and a proxy
+   * that runs in a container (`control.ts`) share one, so the worker can write the credentials the
+   * proxy will accept.
+   */
+  secret?: Buffer;
+}
+
+/** The credential of a subject: proves who is asking, nothing else. */
+export function subjectToken(secret: Buffer, subject: EgressSubject): string {
+  return createHmac("sha256", secret).update(subjectKey(subject)).digest("hex").slice(0, 32);
+}
+
+/** The environment that points a command's network tools at the proxy `url`. */
+export function proxyEnv(url: string): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const name of ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"]) {
+    env[name] = url;
+    env[name.toLowerCase()] = url;
+  }
+  // Explicitly empty: nothing is exempt from the proxy (and there is no route around it anyway).
+  env.NO_PROXY = "";
+  env.no_proxy = "";
+  return env;
+}
+
+/** The URL of a proxy for a subject (host written the way a URL needs it). */
+export function proxyUrl(
+  secret: Buffer,
+  subject: EgressSubject,
+  host: string,
+  port: number,
+): string {
+  const hostText = host.includes(":") ? `[${host}]` : host;
+  return `http://${subjectKey(subject)}:${subjectToken(secret, subject)}@${hostText}:${port}`;
 }
 
 const HOP_BY_HOP = new Set([
@@ -58,14 +96,15 @@ const HOP_BY_HOP = new Set([
 
 export class EgressProxy implements EgressService {
   readonly #options: EgressProxyOptions;
-  readonly #secret = randomBytes(32);
+  readonly #secret: Buffer;
   readonly #server: Server;
-  readonly #sessions = new Map<string, Set<Collector>>();
+  readonly #sessions = new RefusalSessions();
   readonly #sockets = new Set<Socket>();
   #port = 0;
 
   constructor(options: EgressProxyOptions) {
     this.#options = options;
+    this.#secret = options.secret ?? randomBytes(32);
     this.#server = createServer((req, res) => void this.#plain(req, res));
     this.#server.on("connect", (req, socket, head) => {
       if (socket instanceof Socket) void this.#tunnel(req, socket, head);
@@ -102,40 +141,21 @@ export class EgressProxy implements EgressService {
 
   /** The proxy URL a subject's commands use. The password only proves who is asking. */
   proxyUrlFor(subject: EgressSubject): string {
-    const host = this.#options.advertiseHost ?? this.#options.listenHost;
-    const hostText = host.includes(":") ? `[${host}]` : host;
-    return `http://${subjectKey(subject)}:${this.#tokenFor(subject)}@${hostText}:${this.#port}`;
+    return proxyUrl(
+      this.#secret,
+      subject,
+      this.#options.advertiseHost ?? this.#options.listenHost,
+      this.#port,
+    );
   }
 
   open(subject: EgressSubject): EgressSession {
-    const key = subjectKey(subject);
-    const collector: Collector = { refusals: new Map() };
-    let set = this.#sessions.get(key);
-    if (set === undefined) {
-      set = new Set();
-      this.#sessions.set(key, set);
-    }
-    set.add(collector);
-    return {
-      env: this.envFor(subject),
-      close: () => {
-        this.#sessions.get(key)?.delete(collector);
-        return [...collector.refusals.values()];
-      },
-    };
+    const window = this.#sessions.open(subject);
+    return { env: this.envFor(subject), close: () => window.close() };
   }
 
   envFor(subject: EgressSubject): Record<string, string> {
-    const url = this.proxyUrlFor(subject);
-    const env: Record<string, string> = {};
-    for (const name of ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"]) {
-      env[name] = url;
-      env[name.toLowerCase()] = url;
-    }
-    // Explicitly empty: nothing is exempt from the proxy (and there is no route around it anyway).
-    env.NO_PROXY = "";
-    env.no_proxy = "";
-    return env;
+    return proxyEnv(this.proxyUrlFor(subject));
   }
 
   #dial(address: string, port: number): Socket {
@@ -143,10 +163,7 @@ export class EgressProxy implements EgressService {
   }
 
   #tokenFor(subject: EgressSubject): string {
-    return createHmac("sha256", this.#secret)
-      .update(subjectKey(subject))
-      .digest("hex")
-      .slice(0, 32);
+    return subjectToken(this.#secret, subject);
   }
 
   /** The subject named by the credentials, or `undefined` when they do not prove one. */
@@ -183,14 +200,22 @@ export class EgressProxy implements EgressService {
     if (subject === undefined) {
       return { ok: false, status: 407, message: "proxy credentials are missing or wrong" };
     }
-    const allowed = await this.#options.policy.allowedHosts(subject);
+    let allowed: ReadonlySet<string>;
+    try {
+      allowed = await this.#options.policy.allowedHosts(subject);
+    } catch {
+      // The party that owns the list cannot be asked (the server is restarting): nothing is allowed.
+      const message = "the allowlist is not available right now; try again in a moment";
+      await this.#refuse(subject, host, port, "policy_unavailable", message);
+      return { ok: false, status: 403, message };
+    }
     const verdict = decideHost(
       { host, port },
       allowed,
       this.#options.ports ?? DEFAULT_ALLOWED_PORTS,
     );
     if (!verdict.allow) {
-      this.#refuse(subject, verdict.host, port, verdict.reason, verdict.message);
+      await this.#refuse(subject, verdict.host, port, verdict.reason, verdict.message);
       return { ok: false, status: 403, message: verdict.message };
     }
     const resolved = await resolveForConnect(
@@ -198,10 +223,10 @@ export class EgressProxy implements EgressService {
       this.#options.resolver ?? systemResolver,
     );
     if (!resolved.ok) {
-      this.#refuse(subject, verdict.host, port, resolved.reason, resolved.message);
+      await this.#refuse(subject, verdict.host, port, resolved.reason, resolved.message);
       return { ok: false, status: 403, message: resolved.message };
     }
-    this.#options.onEvent?.({
+    void this.#report({
       subject,
       host: verdict.host,
       port,
@@ -211,18 +236,15 @@ export class EgressProxy implements EgressService {
     return { ok: true, subject, name: verdict.host, address: resolved.address };
   }
 
-  #refuse(
+  async #refuse(
     subject: EgressSubject,
     host: string,
     port: number,
     reason: string,
     message: string,
-  ): void {
-    const refusal: EgressRefusal = { host, port, reason, message };
-    for (const collector of this.#sessions.get(subjectKey(subject)) ?? []) {
-      collector.refusals.set(`${host}:${port}`, refusal);
-    }
-    this.#options.onEvent?.({
+  ): Promise<void> {
+    this.#sessions.refused(subject, { host, port, reason, message });
+    await this.#report({
       subject,
       host,
       port,
@@ -231,6 +253,15 @@ export class EgressProxy implements EgressService {
       message,
       at: new Date(),
     });
+  }
+
+  /** Hands an event to the owner of the policy; a failure there never breaks the connection. */
+  async #report(event: EgressEvent): Promise<void> {
+    try {
+      await this.#options.onEvent?.(event);
+    } catch {
+      // The decision stands; only the record of it was lost.
+    }
   }
 
   async #tunnel(req: IncomingMessage, client: Socket, head: Buffer): Promise<void> {
@@ -324,10 +355,6 @@ export class EgressProxy implements EgressService {
     });
     req.pipe(upstream);
   }
-}
-
-interface Collector {
-  refusals: Map<string, EgressRefusal>;
 }
 
 function reply(client: Socket, status: number, message: string): void {

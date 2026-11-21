@@ -288,6 +288,7 @@ Uma tela separada do chat, para quando algo dá errado. A API serve os mesmos c�
 | Desktop do bot | Vídeo da tela e estado da conexão |
 | Conectores | `GET/POST /v1/connectors`, `PATCH`/`DELETE /v1/connectors/{nome}`, concessões por bot, risco por ferramenta, `POST .../test` |
 | Cofre | Segredos: `GET /v1/secrets`, `PUT`/`DELETE /v1/secrets/{nome}`, concessões por bot |
+| Primeira abertura e Servidor | **Não vêm da API do servidor**: vêm da casca do app (Tauri), que guarda a escolha (`mode`: neste computador ou VPS) e, no servidor local, conta o estado (`local_status`: etapa, motivo da falha, isolamento da máquina dos bots, se há chave). No navegador não existem: o app só conecta a um endereço. Só o que a casca informa é desenhado |
 | Dispositivos | Seus computadores e celular |
 | Inspetor | Eventos crus, `requests/{seq}`, `replay`, `resend`, `doctor` |
 | Configurações | Modelos e chaves, limites padrão, notificações; **Memória** (`GET`/`PATCH /v1/memory-settings`: consolidação, compactação, limite do prompt com o aviso por bot, validade) |

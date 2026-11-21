@@ -1,5 +1,12 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
-import type { AppNotification, Connection, Platform } from "./platform.js";
+import type {
+  AppNotification,
+  Connection,
+  LocalServer,
+  LocalStatus,
+  Platform,
+  ServerMode,
+} from "./platform.js";
 
 // The Tauri side. Everything that leaves the app goes through Rust commands, never through the
 // webview's own network: the page's CSP allows no network origin at all (see src-tauri), and the
@@ -83,6 +90,45 @@ export const tauriFetch: typeof fetch = async (input, init) => {
   });
 };
 
+/** How often the app asks the shell what the embedded server is doing (a cheap, local call). */
+const STATUS_POLL_MS = 700;
+
+/** The embedded server: the Rust side runs and supervises it; the app only asks and tells. */
+export function tauriLocal(): LocalServer {
+  const status = () => invoke<LocalStatus>("local_status");
+  return {
+    status,
+    async onStatus(handler) {
+      let last = "";
+      let stopped = false;
+      const tick = async () => {
+        try {
+          const now = await status();
+          const text = JSON.stringify(now);
+          if (!stopped && text !== last) {
+            last = text;
+            handler(now);
+          }
+        } catch {
+          // the shell is busy for a moment: the next tick tries again
+        }
+      };
+      const timer = setInterval(() => void tick(), STATUS_POLL_MS);
+      return () => {
+        stopped = true;
+        clearInterval(timer);
+      };
+    },
+    select: () => invoke("local_select"),
+    start: () => invoke("local_start"),
+    stop: () => invoke("local_stop"),
+    connection: () => invoke<Connection>("local_connection"),
+    setApiKey: (key) => invoke("local_set_api_key", { key }),
+    openLogs: () => invoke("local_open_logs"),
+    databaseUrl: () => invoke<string>("local_database_url"),
+  };
+}
+
 export function tauriPlatform(): Platform {
   return {
     kind: "tauri",
@@ -91,6 +137,12 @@ export function tauriPlatform(): Platform {
       save: (connection) =>
         invoke("connection_save", { serverUrl: connection.serverUrl, token: connection.token }),
       clear: () => invoke("connection_clear"),
+    },
+    local: tauriLocal(),
+    mode: {
+      load: () => invoke<ServerMode | null>("mode_load"),
+      save: (mode) => invoke("mode_save", { mode }),
+      clear: () => invoke("mode_clear"),
     },
     settings: {
       load: () => invoke<string | null>("settings_load"),

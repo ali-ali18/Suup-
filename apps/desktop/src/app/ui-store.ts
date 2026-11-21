@@ -68,6 +68,8 @@ export interface UiState {
   /** Opens a connector's details (or goes back to the list with `null`). */
   setSettingsConnector(name: string | null): void;
   selectBot(botId: string): void;
+  /** Leaving a server (Trocar, Desconectar): nothing the person had open belongs to the next one. */
+  leaveServer(): void;
   openPanel(tab?: PanelTab): void;
   togglePanel(): void;
   setPanelTab(tab: PanelTab): void;
@@ -177,6 +179,19 @@ export const useUi = create<UiState>((set, get) => ({
       settingsConnector: null,
     })),
   closeSettings: () => set({ settingsOpen: false, settingsConnector: null }),
+  leaveServer: () =>
+    set({
+      view: "chat",
+      settingsOpen: false,
+      settingsConnector: null,
+      selectedBotId: null,
+      inspectorRunId: null,
+      newBotOpen: false,
+      editBotId: null,
+      paletteOpen: false,
+      shortcutsOpen: false,
+      groupBotId: null,
+    }),
   setSettingsTab: (settingsTab) => set({ settingsTab, settingsConnector: null }),
   setSettingsConnector: (settingsConnector) => set({ settingsConnector }),
   selectBot: (botId) => set({ view: "chat", selectedBotId: botId }),

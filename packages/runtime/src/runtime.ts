@@ -48,11 +48,13 @@ import {
   ContainerStdioLauncher,
   DockerExecutor,
   EgressProxy,
+  type EgressService,
   ensureInternalNetwork,
   ensureMachine,
   LocalExecutor,
   type MachineNetwork,
   NetworkedExecutor,
+  startEgressContainer,
 } from "@suup/sandbox";
 import { networkTools, registerBuiltinTools, requestNetworkAccessTool } from "@suup/tools";
 import {
@@ -231,7 +233,8 @@ export interface AutoReviewStatus {
 
 export interface EgressRuntime {
   network: MachineNetwork;
-  proxy: EgressProxy;
+  /** The service the executors use, and how to end it (the proxy, or the proxy's container). */
+  proxy: EgressService & { stop(): Promise<void> };
   /** Where the machines reach the proxy (host and port). */
   address: { host: string; port: number };
 }
@@ -313,6 +316,18 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
   /** The internal network and the proxy: made once, at the first use of the docker sandbox. */
   const startEgress = (): Promise<EgressRuntime> => {
     egressStarted ??= (async () => {
+      if (networkConfig?.proxy?.mode === "container") {
+        // The proxy in its own container (docs/REDE.md): the worker keeps the policy and the events.
+        const started = await startEgressContainer({
+          internalNetwork: networkName,
+          policy: network.policy,
+          onEvent: (event) => network.record(event),
+          ...(networkConfig.proxy.image === undefined ? {} : { image: networkConfig.proxy.image }),
+          ...(networkConfig.ports === undefined ? {} : { ports: networkConfig.ports }),
+          ...(dockerPath === undefined ? {} : { dockerPath }),
+        });
+        return { network: started.network, proxy: started, address: started.address };
+      }
       const net = await ensureInternalNetwork(networkName, {
         ...(dockerPath === undefined ? {} : { dockerPath }),
       });

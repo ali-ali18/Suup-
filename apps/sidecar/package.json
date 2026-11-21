@@ -1,0 +1,26 @@
+{
+  "name": "@suup/sidecar",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "O servidor, o worker e o banco que o app de desktop carrega junto (modo \"neste computador\")",
+  "scripts": {
+    "bundle": "node scripts/prepare.mjs"
+  },
+  "dependencies": {
+    "@suup/cli": "workspace:*",
+    "@suup/db": "workspace:*",
+    "@suup/sandbox": "workspace:*"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "@suup/api": "workspace:*"
+  },
+  "optionalDependencies": {
+    "@embedded-postgres/darwin-arm64": "18.7.0-beta.19",
+    "@embedded-postgres/darwin-x64": "18.7.0-beta.19",
+    "@embedded-postgres/linux-arm64": "18.7.0-beta.19",
+    "@embedded-postgres/linux-x64": "18.7.0-beta.19",
+    "@embedded-postgres/windows-x64": "18.7.0-beta.19"
+  }
+}

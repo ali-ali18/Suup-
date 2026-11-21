@@ -136,6 +136,16 @@ const networkSchema = z.strictObject({
   ports: z.exactOptional(z.array(z.number().int().min(1).max(65535)).min(1).max(10)),
   proxy: z.exactOptional(
     z.strictObject({
+      /**
+       * Where the proxy runs. `process` (default): inside this process, listening on the host's
+       * address of the internal network (a Linux host, or the worker in a container). `container`:
+       * in its own container (`suup-egress`), joined to the internal network and to an ordinary one,
+       * with a control channel on a port published on 127.0.0.1 (the computer where Docker Desktop
+       * keeps its networks inside a virtual machine, e.g. Windows). One process owns the container.
+       */
+      mode: z.exactOptional(z.enum(["process", "container"])),
+      /** `container` mode: the image built from `docker/egress`. */
+      image: z.exactOptional(z.string().min(1)),
       /** Where the proxy listens. Default: the host's address on the internal network. */
       listenHost: z.exactOptional(z.string().min(1)),
       /** The address written into the machines' proxy settings. Default: `listenHost`. */
