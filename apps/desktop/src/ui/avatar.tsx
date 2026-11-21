@@ -36,6 +36,8 @@ export interface AvatarProps {
   avatar: string | null;
   /** A família do mascote que `avatar` nomeia (`bot.avatarStyle`); sem ela, as formas. */
   avatarStyle?: AvatarStyle | undefined;
+  /** O mascote pixel em 3D (`bot.avatarPixel3d`); só vale no estilo pixel. */
+  pixel3d?: boolean | undefined;
   color?: BotColor | null;
   seed: string;
   size?: AvatarSize;
@@ -50,6 +52,7 @@ export interface AvatarProps {
 export function Avatar({
   avatar,
   avatarStyle = "shapes",
+  pixel3d = false,
   color = null,
   seed,
   size = "md",
@@ -74,6 +77,7 @@ export function Avatar({
           size={MASCOT_OF[size]}
           seed={seed}
           still={still}
+          pixel3d={pixel3d}
         />
       ) : spec.kind === "mascot" && spec.id !== undefined ? (
         <Mascot

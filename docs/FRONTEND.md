@@ -31,6 +31,7 @@ Uma mensagem sua abre uma execução. Uma rotina e uma tarefa delegada por outro
 | `isDefault` | verdadeiro/falso | O bot principal, o que recebe a mensagem quando nenhum é escolhido |
 | `pinned`, `groupName`, `sortOrder` | booleano, texto ou vazio, inteiro ou vazio | Onde o bot aparece na lista: fixado (blocos grandes no topo), sob um grupo nomeado, ou na lista padrão "Bots" |
 | `avatarStyle` | `shapes` ou `pixel` | A família do mascote que `avatar` nomeia: as formas do motor (padrão, e o de todo bot antigo) ou os 17 mascotes pixelados (`mascot:gato`, por exemplo); o app escolhe o desenho por aqui |
+| `avatarPixel3d` | verdadeiro/falso | Só vale com `avatarStyle: pixel`: o mascote é desenhado em 3D (voxels girando, rasterizados de volta em pixels); padrão falso (2D). Escolha por bot; movimento reduzido mostra a vista de frente (= 2D) |
 | `color` | id da paleta ou vazio | A cor do mascote e do balão do usuário (`laranja`, `azul`, `verde`, `roxo`, `rosa`, `amarelo`, `cinza`, `grafite`, `branco`); o servidor só guarda o id; sem cor, o app escolhe uma pelo id do bot |
 | `createdAt`, `updatedAt` | data | |
 | `archivedAt` | data ou vazio | Bot arquivado não recebe trabalho novo |

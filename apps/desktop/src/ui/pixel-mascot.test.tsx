@@ -246,6 +246,20 @@ describe("Avatar escolhe a família", () => {
     expect(container.querySelectorAll("svg")).toHaveLength(2);
   });
 
+  it("Avatar repassa o 3D só ao mascote pixel (e as formas ignoram)", () => {
+    stubCanvas();
+    const { container } = render(
+      <MascotHostContext.Provider value={{ reducedMotion: true }}>
+        <Avatar avatar="mascot:gato" avatarStyle="pixel" pixel3d seed="b1" still />
+        <Avatar avatar="mascot:gato" avatarStyle="pixel" seed="b2" still />
+        <Avatar avatar="mascot:blob" pixel3d seed="b3" still />
+      </MascotHostContext.Provider>,
+    );
+    const pixels = [...container.querySelectorAll<HTMLElement>("[data-mascot-style='pixel']")];
+    expect(pixels.map((p) => p.dataset.pixel3d)).toEqual(["true", undefined]);
+    expect(container.querySelectorAll("svg")).toHaveLength(1);
+  });
+
   it("pixel sem personagem válido: o id do bot escolhe um, sempre o mesmo", () => {
     stubCanvas();
     const pick = (avatar: string | null) => {

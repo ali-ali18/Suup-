@@ -119,6 +119,7 @@ export function CommandPalette() {
           <Avatar
             avatar={bot.avatar}
             avatarStyle={bot.avatarStyle}
+            pixel3d={bot.avatarPixel3d}
             color={bot.color}
             seed={bot.id}
             size="md"

@@ -27,6 +27,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("migration 0025: bot avatar style"), 
       avatar: "mascot:gota",
       color: "azul",
       avatarStyle: "shapes",
+      avatarPixel3d: false,
     });
     const pixel = await createBot(ctx.db, {
       name: "pixel",
@@ -36,6 +37,18 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("migration 0025: bot avatar style"), 
       avatarStyle: "pixel",
     });
     expect(pixel.avatarStyle).toBe("pixel");
+    expect(pixel.avatarPixel3d).toBe(false);
+    const cube = await createBot(ctx.db, {
+      name: "cubo",
+      modelProvider: "p",
+      modelId: "m",
+      avatar: "mascot:robo",
+      avatarStyle: "pixel",
+      avatarPixel3d: true,
+    });
+    expect(cube.avatarPixel3d).toBe(true);
+    expect((await updateBot(ctx.db, cube.id, { avatarPixel3d: false }))?.avatarPixel3d).toBe(false);
+    expect((await updateBot(ctx.db, cube.id, { name: "cubo2" }))?.avatarPixel3d).toBe(false);
     expect((await updateBot(ctx.db, pixel.id, { avatarStyle: "shapes" }))?.avatarStyle).toBe(
       "shapes",
     );

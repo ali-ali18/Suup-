@@ -108,6 +108,7 @@ export const botRoutes: Route[] = [
         ...(body.sortOrder === undefined ? {} : { sortOrder: body.sortOrder }),
         ...(body.color === undefined ? {} : { color: body.color }),
         ...(body.avatarStyle === undefined ? {} : { avatarStyle: body.avatarStyle }),
+        ...(body.avatarPixel3d === undefined ? {} : { avatarPixel3d: body.avatarPixel3d }),
       });
       const summary = await getBotSummary(runtime.db, bot.id);
       return {
@@ -143,6 +144,7 @@ export const botRoutes: Route[] = [
       if (body.sortOrder !== undefined) patch.sortOrder = body.sortOrder;
       if (body.color !== undefined) patch.color = body.color;
       if (body.avatarStyle !== undefined) patch.avatarStyle = body.avatarStyle;
+      if (body.avatarPixel3d !== undefined) patch.avatarPixel3d = body.avatarPixel3d;
       await updateBot(runtime.db, id, patch);
       const summary = await getBotSummary(runtime.db, id);
       if (summary === null) throw new HttpError("not_found", "Bot não encontrado.");

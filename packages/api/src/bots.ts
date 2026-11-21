@@ -85,6 +85,8 @@ export const botSchema = z.object({
   color: botColorSchema.nullable().default(null),
   /** Which family of mascots `avatar` (`mascot:<id>`) names: the engine's shapes or the pixel ones. */
   avatarStyle: avatarStyleSchema.default("shapes"),
+  /** Só com `avatarStyle: "pixel"`: o mascote é desenhado em 3D (padrão: 2D). */
+  avatarPixel3d: z.boolean().default(false),
   createdAt: isoDate,
   updatedAt: isoDate,
   archivedAt: isoDate.nullable(),
@@ -125,6 +127,7 @@ export const createBotBodySchema = z.object({
   sortOrder: z.exactOptional(z.number().int().nullable()),
   color: z.exactOptional(botColorSchema.nullable()),
   avatarStyle: z.exactOptional(avatarStyleSchema),
+  avatarPixel3d: z.exactOptional(z.boolean()),
 });
 export type CreateBotBody = z.input<typeof createBotBodySchema>;
 

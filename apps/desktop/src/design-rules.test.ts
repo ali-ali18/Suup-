@@ -740,6 +740,22 @@ describe("avatares: dois estilos, desenhados só pelo motor (docs/DESIGN.md, Mas
     expect(users).toEqual(["features/new-bot/NewBotDialog.tsx", "ui/avatar.tsx"]);
   });
 
+  it("o 3D é um botão ao lado do estilo, só no pixel, fora do radiogroup, e a prévia o mostra", () => {
+    const code = read(join(SRC, "features", "new-bot", "NewBotDialog.tsx"));
+    expect(code).toContain('data-testid="newbot-pixel3d"');
+    expect(code).toContain('{style === "pixel" && (');
+    expect(code).toContain("avatarPixel3d: style === ");
+    expect(code).toContain("pixel3d={pixel3d}");
+    for (const f of [
+      "shell/Sidebar",
+      "chat/ChatScreen",
+      "panel/Panel",
+      "pending/PendingScreen",
+      "palette/CommandPalette",
+    ])
+      expect(read(join(SRC, "features", `${f}.tsx`)), f).toContain("pixel3d={bot.avatarPixel3d}");
+  });
+
   it("o pixel é desenhado em escala inteira, sem suavização, e movido pelo relógio compartilhado", () => {
     const code = read(join(SRC, "ui", "pixel-mascot.tsx"));
     expect(code).toContain("layoutPixels(");

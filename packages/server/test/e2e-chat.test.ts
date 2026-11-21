@@ -617,6 +617,25 @@ describe.skipIf(!DATABASE_URL)(
         avatarStyle: "pixel",
         avatar: "mascot:gato",
       });
+      // The 3D option of the pixel style: off by default, chosen per bot, kept by other edits.
+      expect(plain.avatarPixel3d).toBe(false);
+      expect(pixel.avatarPixel3d).toBe(false);
+      const cube = await api.bots.create({
+        name: "Cubo",
+        modelId: "model-x",
+        avatar: "mascot:robo",
+        avatarStyle: "pixel",
+        avatarPixel3d: true,
+      });
+      expect(cube.avatarPixel3d).toBe(true);
+      expect(await api.bots.update(cube.id, { color: "azul" })).toMatchObject({
+        avatarPixel3d: true,
+        color: "azul",
+      });
+      expect(await api.bots.update(cube.id, { avatarPixel3d: false })).toMatchObject({
+        avatarPixel3d: false,
+      });
+      expect((await api.bots.get(cube.id)).avatarPixel3d).toBe(false);
 
       const moved = await api.bots.update(bot.id, {
         pinned: false,

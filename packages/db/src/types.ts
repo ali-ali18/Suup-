@@ -66,6 +66,8 @@ export interface Bot {
   color?: string | null;
   /** `shapes` or `pixel`: the family of mascots `avatar` names. (Optional like `avatar`.) */
   avatarStyle?: "shapes" | "pixel";
+  /** Only for `pixel`: the mascot is drawn in 3D. (Optional like `avatarStyle`.) */
+  avatarPixel3d?: boolean;
   createdAt: Date;
   updatedAt: Date;
   archivedAt: Date | null;

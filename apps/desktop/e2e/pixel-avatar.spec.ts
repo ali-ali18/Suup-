@@ -157,6 +157,54 @@ test.describe("avatar pixel", () => {
     await expect(pixelOf(page, "Gatinho")).toHaveCount(0);
   });
 
+  test("3D toggle in the picker: saved per bot, drawn in the sidebar, off again in edit", async ({
+    page,
+  }) => {
+    await openApp(page, world);
+    await page.getByRole("button", { name: "Novo bot" }).click();
+    const dialog = page.getByRole("dialog", { name: "Criar novo Bot" });
+    // The toggle belongs to the Pixel style: absent on Formas.
+    await expect(dialog.getByTestId("newbot-pixel3d")).toHaveCount(0);
+    await dialog.getByRole("radio", { name: "Pixel" }).click();
+    const toggle = dialog.getByTestId("newbot-pixel3d");
+    await expect(toggle).toHaveAttribute("aria-pressed", "false");
+    const preview = dialog.getByTestId("newbot-preview").locator("[data-mascot-style=pixel]");
+    await expect(preview).not.toHaveAttribute("data-pixel3d", "true");
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-pressed", "true");
+    await expect(preview).toHaveAttribute("data-pixel3d", "true");
+    await dialog.getByLabel("Dê um nome ao seu bot").fill("Cubinho");
+    await dialog.getByRole("radio", { name: "Robô" }).click();
+    await page.screenshot({ path: "screenshots/desktop/pixel-04-seletor-3d.png" });
+    await dialog.getByRole("button", { name: "Criar", exact: true }).click();
+    await expect(page.getByTestId("chat")).toHaveAttribute("data-bot", "Cubinho");
+    expect((await world.api.bots.list()).find((b) => b.name === "Cubinho")).toMatchObject({
+      avatarStyle: "pixel",
+      avatarPixel3d: true,
+    });
+    await expect(pixelOf(page, "Cubinho")).toHaveAttribute("data-pixel3d", "true");
+
+    // Reload: it comes from the server.
+    await page.reload();
+    await expect(pixelOf(page, "Cubinho")).toHaveAttribute("data-pixel3d", "true");
+
+    // Off in edit.
+    await selectBot(page, "Cubinho");
+    await page.getByTestId("bot-chip").click({ button: "right" });
+    await page.getByRole("menuitem", { name: /Editar o bot/ }).click();
+    const edit = page.getByRole("dialog", { name: /Editar bot/ });
+    await expect(edit.getByTestId("newbot-pixel3d")).toHaveAttribute("aria-pressed", "true");
+    await edit.getByTestId("newbot-pixel3d").click();
+    await edit.getByRole("button", { name: "Salvar" }).click();
+    await expect
+      .poll(async () => (await world.api.bots.list()).find((b) => b.name === "Cubinho"))
+      .toMatchObject({ avatarPixel3d: false });
+    await expect(pixelOf(page, "Cubinho")).not.toHaveAttribute("data-pixel3d", "true");
+    await page.reload();
+    await expect(pixelOf(page, "Cubinho")).toBeVisible();
+    await expect(pixelOf(page, "Cubinho")).not.toHaveAttribute("data-pixel3d", "true");
+  });
+
   test("reduced motion: the pixel avatar is still", async ({ page }) => {
     await freshBot(world, "Quieto", { avatar: "mascot:folha", avatarStyle: "pixel" });
     await page.emulateMedia({ reducedMotion: "reduce" });

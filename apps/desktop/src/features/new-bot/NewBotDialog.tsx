@@ -71,6 +71,8 @@ export function NewBotDialog() {
   const [step, setStep] = useState<1 | 2>(editId === null ? 1 : startStep);
   const [name, setName] = useState(editing?.name ?? "");
   const [style, setStyle] = useState<AvatarStyle>(editing?.avatarStyle ?? "shapes");
+  // O 3D é do estilo pixel: a escolha fica guardada ao trocar de estilo e voltar.
+  const [pixel3d, setPixel3d] = useState(editing?.avatarPixel3d ?? false);
   // Cada família guarda a sua escolha: trocar de estilo e voltar não perde o mascote.
   const [mascot, setMascot] = useState<ShapeId>(() => {
     const spec = avatarOf(editing?.avatar ?? null, editing?.id ?? "new");
@@ -162,6 +164,7 @@ export function NewBotDialog() {
         allowedTools: selectedTools,
         avatar: mascotValue(chosen),
         avatarStyle: style,
+        avatarPixel3d: style === "pixel" && pixel3d,
         // A cor mostrada vale: sem escolha, o bot guarda a que a prévia mostrou (o pixel sem
         // escolha guarda nenhuma e fica na cor do desenho).
         color: original ? null : shownColor,
@@ -224,6 +227,7 @@ export function NewBotDialog() {
             <Avatar
               avatar={mascotValue(chosen)}
               avatarStyle={style}
+              pixel3d={pixel3d}
               color={original ? null : shownColor}
               seed={editing?.id ?? "new"}
               size="preview"
@@ -238,18 +242,30 @@ export function NewBotDialog() {
             autoFocus
             onEnter={() => nameOk && modelId !== "" && void save()}
           />
-          <div role="radiogroup" aria-label="Estilo" className="flex justify-center gap-2">
-            {STYLES.map((s) => (
+          <div className="flex justify-center gap-2">
+            <div role="radiogroup" aria-label="Estilo" className="flex gap-2">
+              {STYLES.map((s) => (
+                <ToggleChip
+                  key={s.id}
+                  on={style === s.id}
+                  radio
+                  data-testid={`newbot-style-${s.id}`}
+                  onClick={() => setStyle(s.id)}
+                >
+                  {s.name}
+                </ToggleChip>
+              ))}
+            </div>
+            {style === "pixel" && (
               <ToggleChip
-                key={s.id}
-                on={style === s.id}
-                radio
-                data-testid={`newbot-style-${s.id}`}
-                onClick={() => setStyle(s.id)}
+                on={pixel3d}
+                data-testid="newbot-pixel3d"
+                title="Mascote pixel em 3D"
+                onClick={() => setPixel3d(!pixel3d)}
               >
-                {s.name}
+                3D
               </ToggleChip>
-            ))}
+            )}
           </div>
           <div
             role="radiogroup"

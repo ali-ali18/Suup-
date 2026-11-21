@@ -7,3 +7,6 @@
 --     o estilo diz de qual das duas famílias é esse id. A cor continua em `color`.
 alter table bots add column avatar_style text not null default 'shapes'
   check (avatar_style in ('shapes', 'pixel'));
+--   * `avatar_pixel3d`: só vale para o estilo `pixel`: desenha o mascote em 3D (voxels girando,
+--     rasterizados de volta em pixels). Escolha por bot; o padrão é `false` (o 2D de sempre).
+alter table bots add column avatar_pixel3d boolean not null default false;
