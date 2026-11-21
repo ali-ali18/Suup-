@@ -3,6 +3,7 @@ import type { PixelCharacter } from "./character.js";
 import { PIXEL_GRID } from "./data/characters.js";
 import type { PixelFrame } from "./frame.js";
 import type { PixelPalette } from "./palette.js";
+import type { PixelImage } from "./raster3d.js";
 
 /** O pedaço de um `CanvasRenderingContext2D` que o motor usa (o núcleo não conhece o DOM). */
 export interface PixelCanvasContext {
@@ -28,11 +29,15 @@ export type PixelLayout = {
  * `floor(buffer / 19)` pixels de dispositivo e a grade é centralizada com margem inteira. Nunca há
  * meia célula, então nada borra e nenhuma célula é maior que a outra.
  */
-export function layoutPixels(cssSize: number, devicePixelRatio = 1): PixelLayout {
+export function layoutPixels(
+  cssSize: number,
+  devicePixelRatio = 1,
+  grid: number = PIXEL_GRID,
+): PixelLayout {
   const ratio = Number.isFinite(devicePixelRatio) && devicePixelRatio > 0 ? devicePixelRatio : 1;
   const buffer = Math.max(1, Math.round(cssSize * ratio));
-  const cell = Math.max(1, Math.floor(buffer / PIXEL_GRID));
-  const side = cell * PIXEL_GRID;
+  const cell = Math.max(1, Math.floor(buffer / grid));
+  const side = cell * grid;
   return { buffer, cell, offset: Math.max(0, Math.floor((buffer - side) / 2)), side };
 }
 
@@ -42,7 +47,7 @@ export function bobPixels(frame: PixelFrame, layout: PixelLayout): number {
 }
 
 /** A cor de cada letra da grade. */
-function colorOf(letter: string, palette: PixelPalette): string | null {
+export function colorOf(letter: string, palette: PixelPalette): string | null {
   switch (letter) {
     case "B":
       return palette.body;
@@ -96,6 +101,30 @@ export function drawPixelFrame(
   for (const run of pixelRuns(frame.cells, character.palette)) {
     ctx.fillStyle = run.color;
     ctx.fillRect(offset + run.x * cell, offset + bob + run.y * cell, run.width * cell, cell);
+  }
+}
+
+/** Desenha uma imagem pixel 3D (ver `raster3d.ts`): faixas de pixels da mesma cor, escala inteira. */
+export function drawPixelImage(
+  ctx: PixelCanvasContext,
+  image: PixelImage,
+  layout: PixelLayout,
+): void {
+  ctx.imageSmoothingEnabled = false;
+  ctx.clearRect(0, 0, layout.buffer, layout.buffer);
+  const { cell, offset } = layout;
+  for (let y = 0; y < image.size; y++) {
+    let x = 0;
+    while (x < image.size) {
+      const color = image.pixels[y * image.size + x] ?? null;
+      let end = x + 1;
+      while (end < image.size && (image.pixels[y * image.size + end] ?? null) === color) end++;
+      if (color !== null) {
+        ctx.fillStyle = color;
+        ctx.fillRect(offset + x * cell, offset + y * cell, (end - x) * cell, cell);
+      }
+      x = end;
+    }
   }
 }
 

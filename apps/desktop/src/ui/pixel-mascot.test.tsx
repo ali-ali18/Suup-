@@ -127,6 +127,28 @@ describe("PixelMascot", () => {
     expect(canvasEl.style.imageRendering).toBe("pixelated");
   });
 
+  it("pixel3d (opção): grade de 25, só retângulos inteiros; parado é a vista de frente", () => {
+    const canvas = stubCanvas();
+    const { ui } = setup();
+    const { container } = render(ui({ still: true, pixel3d: true }));
+    expect(root(container).dataset.pixel3d).toBe("true");
+    const rects = canvas.last();
+    expect(rects.length).toBeGreaterThan(5);
+    for (const r of rects)
+      for (const n of [r.x, r.y, r.w, r.h]) expect(Number.isInteger(n)).toBe(true);
+    expect(rects.some((r) => r.style === "#2fb36b")).toBe(true);
+    const canvasEl = container.querySelector("canvas") as HTMLCanvasElement;
+    expect(rects.every((r) => r.h === 1)).toBe(true); // 38 px a 1x: 1 px por voxel (grade de 25)
+    expect(canvasEl.width).toBe(38);
+  });
+
+  it("sem a opção, não há 3D", () => {
+    stubCanvas();
+    const { ui } = setup();
+    const { container } = render(ui({ still: true }));
+    expect(root(container).dataset.pixel3d).toBeUndefined();
+  });
+
   it("a cor do bot pinta o corpo", () => {
     const canvas = stubCanvas();
     const { ui } = setup();

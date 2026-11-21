@@ -4,12 +4,14 @@ import {
   createPixelCharacter,
   createPixelPlayer,
   drawPixelFrame,
+  drawPixelImage,
   layoutPixels,
   type PixelCharacterId,
   type PixelClockHandle,
   type PixelLayout,
   type PixelOnlyState,
   type PixelPlayer,
+  RASTER_SIZE,
 } from "@suup/avatar";
 import { getPixelClock } from "@suup/avatar/browser";
 import { useContext, useLayoutEffect, useMemo, useRef } from "react";
@@ -30,6 +32,8 @@ export interface PixelMascotProps extends Pick<MascotProps, "state" | "size" | "
   seed?: string;
   /** Um dos dois estados que só o pixel tem (ver `PixelOnlyState`); ganha do `state`. */
   pose?: PixelOnlyState;
+  /** Opção: o desenho como sólido 3D que balança (em pixels). Desligada por padrão. */
+  pixel3d?: boolean;
 }
 
 export function PixelMascot({
@@ -41,6 +45,7 @@ export function PixelMascot({
   still = false,
   picked = false,
   pose,
+  pixel3d = false,
 }: PixelMascotProps) {
   const host = useContext(MascotHostContext);
   const systemReduced = useReducedMotion();
@@ -74,6 +79,7 @@ export function PixelMascot({
     const player = createPixelPlayer(pixel, {
       state: latest.current ?? "idle",
       reducedMotion: !animated,
+      pixel3d,
     });
     let layout: PixelLayout = layoutPixels(0);
     let ratio = 1;
@@ -81,7 +87,11 @@ export function PixelMascot({
     const measure = () => {
       const rect = box.getBoundingClientRect();
       ratio = window.devicePixelRatio || 1;
-      layout = layoutPixels(Math.min(rect.width, rect.height), ratio);
+      layout = layoutPixels(
+        Math.min(rect.width, rect.height),
+        ratio,
+        pixel3d ? RASTER_SIZE : undefined,
+      );
       el.width = layout.buffer;
       el.height = layout.buffer;
       // O estilo mede o buffer em pixels CSS: a tela não reescala (e não borra) o desenho.
@@ -90,6 +100,13 @@ export function PixelMascot({
       lastKey = "";
     };
     const paint = (now: number) => {
+      if (pixel3d) {
+        // 3D: o quadro muda a cada instante (giro); o movimento reduzido é a vista de frente.
+        const ctx3 = el.getContext("2d");
+        if (ctx3 === null) return;
+        drawPixelImage(ctx3, player.frame3dAt(now), layout);
+        return;
+      }
       const quadro = player.frameAt(now);
       const key = `${quadro.key}|${bobPixels(quadro, layout)}|${layout.buffer}|${pixel.color}`;
       if (key === lastKey) return;
@@ -119,7 +136,7 @@ export function PixelMascot({
       window.removeEventListener("resize", resize);
       live.current = null;
     };
-  }, [animated, pixel, clockOverride]);
+  }, [animated, pixel, clockOverride, pixel3d]);
 
   const current = pose ?? shown;
   useLayoutEffect(() => {
@@ -138,6 +155,7 @@ export function PixelMascot({
       )}
       data-mascot={character}
       data-mascot-style="pixel"
+      data-pixel3d={pixel3d ? "true" : undefined}
       data-color={color ?? "original"}
       data-state={current}
       data-mode={animated ? "animated" : "still"}

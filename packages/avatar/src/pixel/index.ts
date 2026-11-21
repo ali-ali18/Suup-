@@ -20,6 +20,7 @@ export { PIXEL_GRID, PIXEL_UNIT } from "./data/characters.js";
 export {
   bobPixels,
   drawPixelFrame,
+  drawPixelImage,
   layoutPixels,
   type PixelCanvasContext,
   type PixelLayout,
@@ -29,8 +30,29 @@ export {
   pixelStillSvg,
 } from "./draw.js";
 export { type PixelFrame, pixelFrameAt, pixelStill } from "./frame.js";
+export {
+  pixelFrame3dAt,
+  pixelStill3d,
+  SWAY_PERIOD_MS,
+  SWAY_PITCH_DEG,
+  SWAY_PITCH_PERIOD_MS,
+  SWAY_PITCH_WOBBLE_DEG,
+  SWAY_YAW_DEG,
+  swayView,
+  turnView,
+} from "./frame3d.js";
 export { PIXEL_INK, type PixelPalette, paletteFor, parseHexColor } from "./palette.js";
 export { createPixelPlayer, type PixelPlayer, type PixelPlayerOptions } from "./player.js";
+export {
+  type PixelImage,
+  type PixelView,
+  paletteShadeSet,
+  RASTER_MARGIN,
+  RASTER_SIZE,
+  rasterVoxel,
+  type Shades,
+  shadesOf,
+} from "./raster3d.js";
 export {
   isPixelOnlyState,
   PIXEL_ONLY_STATES,
@@ -43,3 +65,4 @@ export {
   poseOf,
 } from "./states.js";
 export { cycleMs, sampleTimeline, type TimelineSample } from "./timeline.js";
+export { buildVoxelModel, type VoxelModel, voxelCount } from "./voxel.js";
