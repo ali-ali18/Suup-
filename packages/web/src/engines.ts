@@ -12,6 +12,19 @@ export interface EngineSpec {
   access: "api" | "scrape";
   /** On when the configuration says nothing. */
   defaultOn: boolean;
+  /** A general web search engine (the open web), as opposed to an encyclopedia, papers, code or Q&A. */
+  general: boolean;
+  /**
+   * The most searches Suup sends to this engine in a minute (the tool's own politeness, before the
+   * search service is asked; `web.search.limits.perEngine` overrides it). General engines read a
+   * result page and block an address that asks too much, so theirs is low.
+   */
+  perMinute: number;
+  /**
+   * The engine module reads its own `User-Agent` from this attribute (set from the settings file),
+   * so Suup can give it the honest one. Absent: SearXNG decides (docs/BUSCA.md, "O nome que o Suup usa").
+   */
+  userAgentAttribute?: string;
   /** The exact host names it connects to; `{lang}` is replaced by each language of `web.search.languages`. */
   hosts: readonly string[];
   /** One line for the docs and for `suup doctor`. */
@@ -23,6 +36,8 @@ export const ENGINES: readonly EngineSpec[] = [
     id: "wikipedia",
     access: "api",
     defaultOn: true,
+    general: false,
+    perMinute: 30,
     hosts: ["{lang}.wikipedia.org"],
     note: "Wikipedia REST API (summaries), one host per language.",
   },
@@ -30,6 +45,8 @@ export const ENGINES: readonly EngineSpec[] = [
     id: "arxiv",
     access: "api",
     defaultOn: true,
+    general: false,
+    perMinute: 15,
     hosts: ["export.arxiv.org"],
     note: "arXiv API, scientific papers.",
   },
@@ -37,6 +54,8 @@ export const ENGINES: readonly EngineSpec[] = [
     id: "stackoverflow",
     access: "api",
     defaultOn: true,
+    general: false,
+    perMinute: 10,
     hosts: ["api.stackexchange.com"],
     note: "Stack Exchange API (Stack Overflow questions).",
   },
@@ -44,20 +63,31 @@ export const ENGINES: readonly EngineSpec[] = [
     id: "github",
     access: "api",
     defaultOn: true,
+    general: false,
+    perMinute: 6,
     hosts: ["api.github.com"],
     note: "GitHub search API (repositories).",
   },
   {
     id: "duckduckgo",
     access: "scrape",
-    defaultOn: false,
-    hosts: ["html.duckduckgo.com", "duckduckgo.com"],
-    note: "General web search by reading the HTML result page. Terms of use not verified: off until the owner turns it on.",
+    defaultOn: true,
+    general: true,
+    perMinute: 6,
+    userAgentAttribute: "_HTTP_User_Agent",
+    // The engine module of the pinned image (searx/engines/duckduckgo.py) posts only to
+    // `ddg_url = "https://html.duckduckgo.com/html/"`; `duckduckgo.com` appears there only in
+    // `fetch_traits` (an offline maintenance function, never run by a search) and in other engines
+    // (images, news), which are not turned on.
+    hosts: ["html.duckduckgo.com"],
+    note: "General web search by reading the HTML result page. On by the owner's decision, with a low rate (6 a minute) and Suup's honest user agent; it may answer with a captcha, and then the tool stops asking it for an hour.",
   },
   {
     id: "brave",
     access: "scrape",
     defaultOn: false,
+    general: false,
+    perMinute: 6,
     hosts: ["search.brave.com"],
     note: "General web search by reading the HTML result page. Terms of use not verified: off until the owner turns it on.",
   },
@@ -65,6 +95,8 @@ export const ENGINES: readonly EngineSpec[] = [
     id: "startpage",
     access: "scrape",
     defaultOn: false,
+    general: false,
+    perMinute: 6,
     hosts: ["www.startpage.com"],
     note: "General web search by reading the HTML result page. Terms of use not verified: off until the owner turns it on.",
   },

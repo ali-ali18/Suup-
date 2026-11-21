@@ -50,6 +50,22 @@ export {
   SEARCH_MAX_RESULTS,
   type SearxBackend,
 } from "./search.js";
+export {
+  DEFAULT_CACHE_TTL_MS,
+  memorySearchCache,
+  normalizeQuery,
+  type SearchCache,
+  type SearchCacheEntry,
+  searchCacheKey,
+} from "./search-cache.js";
+export {
+  DEFAULT_SEARCH_LIMITS,
+  type Grant,
+  parseReason,
+  SearchGovernor,
+  type SearchLimits,
+  SUSPENSION_SECONDS,
+} from "./search-governor.js";
 export { execSearxBackend } from "./searx-exec.js";
 export { renderSearxSettings, type SearxSettingsInput } from "./searx-settings.js";
 export {

@@ -6,6 +6,7 @@
 // The text is written as YAML by hand for this fixed shape; strings go through JSON quoting, which
 // is valid YAML.
 import { engineById } from "./engines.js";
+import { userAgent as honestUserAgent } from "./user-agent.js";
 
 export interface SearxSettingsInput {
   engines: readonly string[];
@@ -15,6 +16,12 @@ export interface SearxSettingsInput {
   requestTimeout?: number;
   bindAddress?: string;
   port?: number;
+  /**
+   * The honest user agent (`SuupBot/<version> (+<repository>)`). It goes to the engines whose module
+   * reads its own `User-Agent` from a setting (`EngineSpec.userAgentAttribute`), so that no browser
+   * is imitated for them. Default: the project's own.
+   */
+  userAgent?: string;
 }
 
 const q = (value: string): string => JSON.stringify(value);
@@ -61,7 +68,13 @@ export function renderSearxSettings(input: SearxSettingsInput): string {
   const enabled = input.engines.filter((id) => engineById(id) !== undefined);
   if (enabled.length > 0) {
     lines.push("engines:");
-    for (const id of enabled) lines.push(`  - name: ${q(id)}`, "    disabled: false");
+    for (const id of enabled) {
+      lines.push(`  - name: ${q(id)}`, "    disabled: false");
+      const attribute = engineById(id)?.userAgentAttribute;
+      if (attribute !== undefined) {
+        lines.push(`    ${attribute}: ${q(input.userAgent ?? honestUserAgent())}`);
+      }
+    }
   }
   return `${lines.join("\n")}\n`;
 }

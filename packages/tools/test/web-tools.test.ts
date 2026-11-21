@@ -144,6 +144,53 @@ describe("web_search", () => {
     expect(out.content).toContain("Bad answer.");
   });
 
+  it("says which engines were suspended and until when, and that general search is unavailable, pointing to schedule_return", () => {
+    const text = formatSearch({
+      ok: true,
+      query: "q",
+      hits: [],
+      engines: [],
+      suspended: [{ engine: "duckduckgo", reason: "Suspended: CAPTCHA", retryInSeconds: 3000 }],
+      generalUnavailable: { retryInSeconds: 3000 },
+    }).content;
+    expect(text).toContain("duckduckgo (Suspended: CAPTCHA; back in about 50 min)");
+    expect(text).toContain(
+      "General web search is unavailable right now: it should be back in about 50 min",
+    );
+    expect(text).toContain("schedule_return");
+    expect(text).toContain("do not retry now");
+  });
+
+  it("says when a cached answer was made, and which engines Suup left out for its own limit", () => {
+    const out = formatSearch({
+      ok: true,
+      query: "q",
+      hits: [{ title: "T", url: "https://a.example/1", snippet: "", engine: "wikipedia" }],
+      engines: ["wikipedia"],
+      suspended: [],
+      throttled: [{ engine: "duckduckgo", retryInSeconds: 45 }],
+      cached: { at: "2026-11-21T10:00:00.000Z", ageSeconds: 7200 },
+    });
+    expect(out.content).toContain(
+      "Cached: these results are from an identical search made at 2026-11-21T10:00:00.000Z (about 120 min ago)",
+    );
+    expect(out.content).toContain("duckduckgo (free in about 45 s)");
+    // A search from the cache still lets the bot read its results without a card.
+    expect(out.webUrls).toEqual(["https://a.example/1"]);
+  });
+
+  it("a search refused by Suup's own limit says when to try again and not to repeat it now", () => {
+    const out = formatSearch({
+      ok: false,
+      reason: "rate_limited",
+      message: "Too many searches in the last minute. Try again in about 40 s.",
+      retryInSeconds: 40,
+    });
+    expect(out.isError).toBe(true);
+    expect(out.content).toContain("about 40 s");
+    expect(out.content).toContain("Do not repeat the search now");
+  });
+
   it("refuses a query that is too short", async () => {
     expect((await run("web_search", { query: "a" }, web())).outcome).not.toBe("ok");
   });

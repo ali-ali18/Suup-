@@ -10,16 +10,9 @@ import { HostLimiter } from "./rate-limit.js";
 import { RobotsCache } from "./robots.js";
 import { checkWebUrl, parseWebUrl, type SafeFetchOptions, safeGet } from "./safe-fetch.js";
 
-export const WEB_VERSION = "0.1";
-export const REPOSITORY_URL = "https://github.com/ali-ali18/suup-";
+import { REPOSITORY_URL, userAgent, WEB_VERSION } from "./user-agent.js";
 
-/** The honest user agent: product, version and where to read about it. */
-export function userAgent(
-  version: string = WEB_VERSION,
-  repository: string = REPOSITORY_URL,
-): string {
-  return `SuupBot/${version} (+${repository})`;
-}
+export { REPOSITORY_URL, userAgent, WEB_VERSION };
 
 /** What turns a URL into rendered HTML (a browser). The reader asks it only when `render` is true. */
 export interface PageRenderer {

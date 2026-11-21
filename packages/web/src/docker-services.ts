@@ -26,6 +26,7 @@ import { httpSearxBackend, type SearxBackend } from "./search.js";
 import { execSearxBackend } from "./searx-exec.js";
 import { renderSearxSettings } from "./searx-settings.js";
 import { createStdioReaderClient, type StdioReaderClient } from "./stdio-client.js";
+import { REPOSITORY_URL, userAgent, WEB_VERSION } from "./user-agent.js";
 
 export const SEARCH_CONTAINER = "suup-searxng";
 export const READER_CONTAINER = "suup-reader";
@@ -192,7 +193,12 @@ async function startSearch(
     proxyStarted = false;
   }
   const proxyUrl = `http://${advertiseHost.includes(":") ? `[${advertiseHost}]` : advertiseHost}:${port}`;
-  const settings = renderSearxSettings({ engines: options.engines, proxyUrl, port: SEARX_PORT });
+  const settings = renderSearxSettings({
+    engines: options.engines,
+    proxyUrl,
+    port: SEARX_PORT,
+    userAgent: userAgent(WEB_VERSION, options.repositoryUrl ?? REPOSITORY_URL),
+  });
   const stop = async () => {
     if (proxyStarted) await proxy.stop();
   };

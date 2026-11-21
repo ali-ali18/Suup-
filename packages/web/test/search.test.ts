@@ -125,9 +125,35 @@ describe("clip", () => {
 });
 
 describe("engines", () => {
-  it("the default list is only engines with a documented public API", () => {
-    expect(DEFAULT_ENGINES).toEqual(["wikipedia", "arxiv", "stackoverflow", "github"]);
-    for (const id of DEFAULT_ENGINES) expect(ENGINES.find((e) => e.id === id)?.access).toBe("api");
+  it("the default list is the four public APIs and DuckDuckGo, the one general engine the owner turned on", () => {
+    expect(DEFAULT_ENGINES).toEqual([
+      "wikipedia",
+      "arxiv",
+      "stackoverflow",
+      "github",
+      "duckduckgo",
+    ]);
+    for (const id of DEFAULT_ENGINES.filter((e) => e !== "duckduckgo")) {
+      expect(ENGINES.find((e) => e.id === id)?.access).toBe("api");
+    }
+    // The other general engines stay off, and so do Google and Bing (not in the list at all).
+    expect(ENGINES.filter((e) => e.general && e.defaultOn).map((e) => e.id)).toEqual([
+      "duckduckgo",
+    ]);
+  });
+
+  it("DuckDuckGo's egress hosts are exactly the one its engine module posts to, and its rate is low", () => {
+    // From searx/engines/duckduckgo.py of the pinned image: `ddg_url = "https://html.duckduckgo.com/html/"`.
+    expect(engineHosts(["duckduckgo"], ["en"])).toEqual(["html.duckduckgo.com"]);
+    expect(engineHosts(DEFAULT_ENGINES, ["en", "pt"])).toEqual([
+      "api.github.com",
+      "api.stackexchange.com",
+      "en.wikipedia.org",
+      "export.arxiv.org",
+      "html.duckduckgo.com",
+      "pt.wikipedia.org",
+    ]);
+    expect(ENGINES.find((e) => e.id === "duckduckgo")?.perMinute).toBeLessThanOrEqual(6);
   });
 
   it("Google is not in the list at all", () => {
@@ -161,6 +187,19 @@ describe("renderSearxSettings", () => {
   it("holds no secret", () => {
     expect(text.split("\n").some((line) => line.trim().startsWith("secret_key:"))).toBe(false);
     expect(text).toContain("SEARXNG_SECRET");
+  });
+  it("gives DuckDuckGo the honest user agent, as a setting of its engine, and no other engine", () => {
+    const withDdg = renderSearxSettings({
+      engines: ["wikipedia", "duckduckgo"],
+      userAgent: "SuupBot/0.1 (+https://example.org/suup)",
+    });
+    expect(withDdg).toContain(
+      '  - name: "duckduckgo"\n    disabled: false\n    _HTTP_User_Agent: "SuupBot/0.1 (+https://example.org/suup)"\n',
+    );
+    expect(withDdg.split("_HTTP_User_Agent").length - 1).toBe(1);
+    expect(renderSearxSettings({ engines: ["duckduckgo"] })).toContain(
+      '_HTTP_User_Agent: "SuupBot/',
+    );
   });
   it("without a proxy there is no proxies block", () => {
     expect(renderSearxSettings({ engines: ["wikipedia"] })).not.toContain("proxies");

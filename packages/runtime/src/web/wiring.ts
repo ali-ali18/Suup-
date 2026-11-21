@@ -3,7 +3,7 @@
 // browser driver) is loaded only when something first needs it, so a program that never touches the
 // web does not pay for it.
 import type { WebAccess, WebPage, WebReadOutcome, WebSearchOutcome } from "@suup/core";
-import type { StartedServices, WebAccessWithStatus, WebStatus } from "@suup/web";
+import type { SearchCache, StartedServices, WebAccessWithStatus, WebStatus } from "@suup/web";
 
 export interface WebSettings {
   search?: {
@@ -12,6 +12,8 @@ export interface WebSettings {
     languages?: string[];
     url?: string;
     maxResults?: number;
+    limits?: { perMinute?: number; perEngine?: Record<string, number>; maxWaitSeconds?: number };
+    cache?: { enabled?: boolean; ttlMinutes?: number };
     image?: string;
     network?: string;
     proxy?: { listenHost?: string; advertiseHost?: string; port?: number };
@@ -36,7 +38,12 @@ export interface WebWiring {
 
 export function createWebWiring(
   settings: WebSettings | undefined,
-  options: { dockerPath?: string; log?: (message: string) => void } = {},
+  options: {
+    dockerPath?: string;
+    log?: (message: string) => void;
+    /** Where cached searches live (the database in the runtime). Default: the memory of the process. */
+    searchCache?: SearchCache;
+  } = {},
 ): WebWiring {
   const searchEnabled = settings?.search?.enabled !== false;
   const readerEnabled = settings?.reader?.enabled !== false;
@@ -53,6 +60,28 @@ export function createWebWiring(
         ...(settings?.search?.maxResults === undefined
           ? {}
           : { maxResults: settings.search.maxResults }),
+        ...(settings?.search?.limits === undefined
+          ? {}
+          : {
+              limits: {
+                ...(settings.search.limits.perMinute === undefined
+                  ? {}
+                  : { perMinute: settings.search.limits.perMinute }),
+                ...(settings.search.limits.perEngine === undefined
+                  ? {}
+                  : { perEngine: settings.search.limits.perEngine }),
+                ...(settings.search.limits.maxWaitSeconds === undefined
+                  ? {}
+                  : { maxWaitMs: settings.search.limits.maxWaitSeconds * 1000 }),
+              },
+            }),
+        ...(settings?.search?.cache?.enabled === undefined
+          ? {}
+          : { cacheEnabled: settings.search.cache.enabled }),
+        ...(settings?.search?.cache?.ttlMinutes === undefined
+          ? {}
+          : { cacheTtlMs: settings.search.cache.ttlMinutes * 60_000 }),
+        ...(options.searchCache === undefined ? {} : { cache: options.searchCache }),
         services: () => {
           started ??= lib
             .startWebServices({

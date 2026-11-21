@@ -29,12 +29,38 @@ export type WebSearchOutcome =
       ok: true;
       query: string;
       hits: WebSearchHit[];
-      /** Engines that did not answer (captcha, rate limit, timeout...) and the reason each gave. */
-      suspended: { engine: string; reason: string }[];
+      /**
+       * Engines that did not answer (captcha, rate limit, timeout...) and the reason each gave.
+       * `retryInSeconds` is when the engine may answer again, when that is known: the search service
+       * suspends an engine for a fixed time after a captcha (one hour) or a "too many requests"
+       * (three minutes), and Suup stops asking it for as long.
+       */
+      suspended: { engine: string; reason: string; retryInSeconds?: number }[];
       /** Engines that were asked. */
       engines: string[];
+      /** Engines left out of THIS search because Suup's own rate limit for them was used up. */
+      throttled?: { engine: string; retryInSeconds: number }[];
+      /**
+       * Every general web engine that is turned on is unavailable right now (suspended or over its
+       * rate limit): the hits, if any, come from encyclopedia, papers, code and Q&A only.
+       * `retryInSeconds`: when the first of them may answer again, when known.
+       */
+      generalUnavailable?: { retryInSeconds?: number };
+      /** The answer comes from the cache of an identical search made at `at` (ISO time); nothing was searched now. */
+      cached?: { at: string; ageSeconds: number };
+      /** The search waited this long in the queue of Suup's rate limit before it ran. */
+      waitedSeconds?: number;
     }
-  | { ok: false; reason: "unavailable" | "failed"; message: string };
+  | {
+      ok: false;
+      /**
+       * `rate_limited`: Suup's own limit on searches (overall or for the engines asked) is used up and
+       * the wait would be too long; `retryInSeconds` says when it will not be.
+       */
+      reason: "unavailable" | "failed" | "rate_limited";
+      message: string;
+      retryInSeconds?: number;
+    };
 
 export interface WebReadRequest {
   url: string;

@@ -358,8 +358,10 @@ const webSchema = z.strictObject({
       enabled: z.exactOptional(z.boolean()),
       /**
        * The engines SearXNG asks, by id (docs/BUSCA.md lists them). Default: the ones with a documented
-       * public API (`wikipedia`, `arxiv`, `stackoverflow`, `github`). General web engines
-       * (`duckduckgo`, `brave`, `startpage`) read result pages and are OFF until you turn them on.
+       * public API (`wikipedia`, `arxiv`, `stackoverflow`, `github`) plus `duckduckgo`, the one general
+       * web engine turned on by decision of the project owner (low rate, honest user agent; it reads a
+       * result page and may answer with a captcha). `brave` and `startpage` also read result pages and
+       * are OFF until you turn them on; Google and Bing do not exist here.
        */
       engines: z.exactOptional(z.array(z.string().min(1)).min(1).max(20)),
       /** Languages whose Wikipedia host the search container may reach. Default `["en", "pt"]`. */
@@ -375,6 +377,29 @@ const webSchema = z.strictObject({
       url: z.exactOptional(httpUrl),
       /** Most results one search returns (1 to 20). Default 10. */
       maxResults: z.exactOptional(z.number().int().min(1).max(20)),
+      /**
+       * Suup's own politeness toward the engines (docs/BUSCA.md, "Busca educada"). Searches over the
+       * limit wait a little in a queue, or the tool answers when to try again.
+       */
+      limits: z.exactOptional(
+        z.strictObject({
+          /** Searches in any minute, overall. Default 20. */
+          perMinute: z.exactOptional(z.number().int().min(1).max(600)),
+          /** Searches in any minute to one engine, by id. The default of each engine is in the engine list (DuckDuckGo: 6). */
+          perEngine: z.exactOptional(z.record(z.string().min(1), z.number().int().min(1).max(600))),
+          /** The most a search waits in the queue, in seconds, before it is refused with the time to try again. Default 20. */
+          maxWaitSeconds: z.exactOptional(z.number().int().min(0).max(120)),
+        }),
+      ),
+      /** The cache of searches: an identical search is answered from it, and the answer says so. */
+      cache: z.exactOptional(
+        z.strictObject({
+          /** `false` turns the cache off. Default `true`. */
+          enabled: z.exactOptional(z.boolean()),
+          /** How long a cached search lives, in minutes (1 to 10080). Default 180 (3 hours). */
+          ttlMinutes: z.exactOptional(z.number().int().min(1).max(10_080)),
+        }),
+      ),
       /** The SearXNG image. Default: the version pinned in the code. */
       image: z.exactOptional(z.string().min(1)),
       /** The internal network of the search container. Default `suup-search-net`. */
@@ -506,6 +531,14 @@ export const configSchema = z
         code: "custom",
         path: ["web", "search", "engines"],
         message: `motor desconhecido: ${wrongEngines.join(", ")} (use os ids de docs/BUSCA.md)`,
+      });
+    }
+    const wrongLimits = unknownEngines(Object.keys(config.web?.search?.limits?.perEngine ?? {}));
+    if (wrongLimits.length > 0) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["web", "search", "limits", "perEngine"],
+        message: `motor desconhecido: ${wrongLimits.join(", ")} (use os ids de docs/BUSCA.md)`,
       });
     }
     const renew = config.worker?.leaseRenewMs ?? DEFAULT_WORKER.leaseRenewMs;

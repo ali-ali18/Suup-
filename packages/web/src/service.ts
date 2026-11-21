@@ -6,6 +6,8 @@
 import type { WebAccess, WebReadOutcome, WebSearchOutcome } from "@suup/core";
 import { createReader, type Reader } from "./reader.js";
 import { createSearch, type SearxBackend } from "./search.js";
+import { memorySearchCache, type SearchCache } from "./search-cache.js";
+import { SearchGovernor, type SearchLimits } from "./search-governor.js";
 import type { StdioReaderClient } from "./stdio-client.js";
 
 /** What starting the services produced (a subset of `WebServices`). */
@@ -25,6 +27,16 @@ export interface WebAccessOptions {
   /** Starts the services (called once, at the first use; the caller memoizes it). */
   services(): Promise<StartedServices>;
   maxResults?: number;
+  /** Suup's own limits on searches (docs/BUSCA.md, "Busca educada"). */
+  limits?: Partial<SearchLimits>;
+  /** Where cached searches live. Default: the memory of this process. */
+  cache?: SearchCache;
+  /** `false`: no cache at all. Default `true`. */
+  cacheEnabled?: boolean;
+  /** How long a cached search lives. Default 3 hours. */
+  cacheTtlMs?: number;
+  now?: () => number;
+  sleep?: (ms: number) => Promise<void>;
   /** The in-process reader used when there is no reader container. */
   local?: Reader;
 }
@@ -43,6 +55,14 @@ export interface WebAccessWithStatus extends WebAccess {
 }
 
 export function createWebAccess(options: WebAccessOptions): WebAccessWithStatus {
+  // One governor and one cache for the life of the process: the limits only mean something if every
+  // search goes through the same ones.
+  const governor = new SearchGovernor({
+    ...(options.limits === undefined ? {} : { limits: options.limits }),
+    ...(options.now === undefined ? {} : { now: options.now }),
+    ...(options.sleep === undefined ? {} : { sleep: options.sleep }),
+  });
+  const cache = options.cacheEnabled === false ? undefined : (options.cache ?? memorySearchCache());
   let local: Reader | undefined = options.local;
   const localReader = (): Reader => {
     local ??= createReader();
@@ -74,6 +94,10 @@ export function createWebAccess(options: WebAccessOptions): WebAccessWithStatus 
       return await createSearch({
         backend: started.searchBackend,
         engines: started.engines,
+        governor,
+        ...(cache === undefined ? {} : { cache }),
+        ...(options.cacheTtlMs === undefined ? {} : { cacheTtlMs: options.cacheTtlMs }),
+        ...(options.now === undefined ? {} : { now: options.now }),
         ...(options.maxResults === undefined ? {} : { maxResults: options.maxResults }),
       })(request);
     },

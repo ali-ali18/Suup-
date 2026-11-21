@@ -405,6 +405,35 @@ describe("configuration: web", () => {
     );
   });
 
+  it("takes the search limits and the cache, and refuses a limit for an engine that does not exist", () => {
+    const config = parseConfig(
+      rawConfig({
+        web: {
+          search: {
+            limits: { perMinute: 10, perEngine: { duckduckgo: 3 }, maxWaitSeconds: 5 },
+            cache: { enabled: true, ttlMinutes: 60 },
+          },
+        },
+      }),
+      "suup.config.json",
+    );
+    expect(config.web?.search?.limits).toEqual({
+      perMinute: 10,
+      perEngine: { duckduckgo: 3 },
+      maxWaitSeconds: 5,
+    });
+    expect(config.web?.search?.cache).toEqual({ enabled: true, ttlMinutes: 60 });
+    expect(
+      issuesOf(rawConfig({ web: { search: { limits: { perEngine: { google: 3 } } } } })).join("\n"),
+    ).toContain("motor desconhecido: google");
+    expect(
+      issuesOf(rawConfig({ web: { search: { limits: { perMinute: 0 } } } })).length,
+    ).toBeGreaterThan(0);
+    expect(
+      issuesOf(rawConfig({ web: { search: { cache: { ttlMinutes: 0 } } } })).length,
+    ).toBeGreaterThan(0);
+  });
+
   it("refuses a key it does not know", () => {
     expect(issuesOf(rawConfig({ web: { search: { apiKey: "x" } } })).length).toBeGreaterThan(0);
   });
