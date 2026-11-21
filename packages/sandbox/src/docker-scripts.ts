@@ -63,7 +63,11 @@ cpid=$!
 wpid=$!
 { wait "$cpid"; } 2>/dev/null
 rc=$?
-kill "$wpid" 2>/dev/null
+# Stop the watchdog without a race: a TERM that lands before its trap is set would kill the
+# subshell and leave its sleep running. Freeze it (no more forks), kill its children, then it.
+kill -s STOP "$wpid" 2>/dev/null
+for c in $(pgrep -P "$wpid" 2>/dev/null); do kill -s KILL "$c" 2>/dev/null; done
+kill -s KILL "$wpid" 2>/dev/null
 wait "$wpid" 2>/dev/null
 rm -f "$pidfile"
 if [ -e "$flag" ]; then
