@@ -505,6 +505,8 @@ export async function startWorld(
     autoReviewModel?: string;
     /** How often the worker looks for runs whose scheduled return is due (default: its own, 5 s). */
     wakeEveryMs?: number;
+    /** How often the worker looks at the clock for the nightly review and the morning message (default: 60 s). */
+    supervisorEveryMs?: number;
     /**
      * Whether a new conversation is born waiting for its bot's welcome (docs/RECEPCAO.md), as in
      * production. Default `false`: the other specs open chats of bots whose scripts know nothing of
@@ -625,6 +627,9 @@ export async function startWorld(
     concurrency: 4,
     idleBackoff: { minMs: 15, maxMs: 80 },
     ...(options.wakeEveryMs === undefined ? {} : { wakeEveryMs: options.wakeEveryMs }),
+    ...(options.supervisorEveryMs === undefined
+      ? {}
+      : { supervisorEveryMs: options.supervisorEveryMs }),
     onError: (error, context) => console.error(`worker: ${context}:`, error),
   });
   worker.start();

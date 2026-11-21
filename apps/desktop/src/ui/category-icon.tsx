@@ -7,6 +7,7 @@ import {
   Plug,
   ShieldQuestion,
   Terminal,
+  Users,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import type { CategoryIcon } from "../data/approval-text.js";
@@ -19,6 +20,7 @@ const GLYPH: Record<CategoryIcon, typeof Terminal> = {
   mail: Mail,
   connector: Plug,
   network: Network,
+  team: Users,
   generic: ShieldQuestion,
 };
 

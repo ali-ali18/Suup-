@@ -190,6 +190,7 @@ export type CategoryIcon =
   | "mail"
   | "connector"
   | "network"
+  | "team"
   | "generic";
 
 export interface ToolCategory {
@@ -233,6 +234,9 @@ export function toolCategory(
     case "forget":
     case "search_conversations":
       return { label: "Memória", icon: "memory" };
+    case "delegate":
+    case "team_recall":
+      return { label: "Equipe", icon: "team" };
     default:
       return { label: "Ferramenta", icon: "generic" };
   }

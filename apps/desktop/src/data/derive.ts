@@ -70,6 +70,8 @@ export const TOOL_LABEL: Record<string, string> = {
   search_conversations: "Buscar nas conversas",
   request_network_access: "Acesso à rede",
   search_tools: "Procurar ferramentas",
+  delegate: "Delegar",
+  team_recall: "Consultar a equipe",
 };
 
 /**

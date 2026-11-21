@@ -208,6 +208,24 @@ export function describeAction(
       return memory("Esquecer uma memória", "Esquecendo uma memória");
     case "search_conversations":
       return memory("Buscar nas conversas", "Buscando nas conversas");
+    case "delegate": {
+      const to = text("bot") === undefined ? undefined : clip(text("bot") as string, 40);
+      return {
+        kind: "other",
+        ...label,
+        summary: to === undefined ? "Delegar uma tarefa" : `Delegar uma tarefa para ${to}`,
+        doing: to === undefined ? "Delegando uma tarefa" : `Delegando uma tarefa para ${to}`,
+      };
+    }
+    case "team_recall": {
+      const of = text("bot") === undefined ? undefined : clip(text("bot") as string, 40);
+      return {
+        kind: "other",
+        ...label,
+        summary: of === undefined ? "Consultar a equipe" : `Consultar a memória de ${of}`,
+        doing: of === undefined ? "Consultando a equipe" : `Consultando a memória de ${of}`,
+      };
+    }
     default:
       return {
         kind: "other",
