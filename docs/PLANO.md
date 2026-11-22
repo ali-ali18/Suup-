@@ -134,7 +134,7 @@ Cada ferramenta declara: nome, descrição, esquema de entrada (zod), nível de 
 | Web | `web_search`, `web_read`, `web_fetch` | 1; busca e leitura próprias na fase 4 ([BUSCA.md](BUSCA.md); pesquisa [fase-4-busca-na-web.md](pesquisas/fase-4-busca-na-web.md)) |
 | Memória | `remember`, `recall`, `forget`, `search_conversations` | 2 |
 | Bots | `delegate`, `message_bot` | 4 |
-| Rotinas | `create_routine`, `update_routine`, `list_routines` | 4 |
+| Rotinas | `create_routine`, `update_routine`, `delete_routine`, `list_routines`; na execução da rotina, `update_routine_state` ([ROTINAS.md](ROTINAS.md)) | 4 (feito: horário) |
 | Navegador | `browser_*` (abrir, clicar, digitar, ler, capturar tela) | 5 |
 | Dispositivos | `device_shell`, `device_read_file`, `device_copy` | 6 |
 | Conectores | ferramentas MCP, descobertas em tempo de execução | 3 |
@@ -209,6 +209,8 @@ Cada ação passa por três filtros, em ordem:
 Cada rotina tem: bot dono, gatilho (horário, intervalo, data única ou evento por webhook), instrução, estado próprio entre execuções, condição de aviso, data de fim opcional e resumo final opcional.
 
 O resultado de cada disparo é `notify` ou `silent`. Silêncio vai só para o diário.
+
+**Estado (fase 4, horário feito):** rotinas por horário criadas conversando (`create_routine`, permissão permanente: revisor no Auto-review, cartão em "Perguntar tudo"), horário em campos estruturados (uma vez, todo dia, dias da semana, dia do mês, intervalo de 5 minutos para cima; fim opcional) no fuso do **usuário**, com a regra de horário de verão da pesquisa; job do worker com `FOR UPDATE SKIP LOCKED`, uma recuperação para os horários perdidos, pulo por sobreposição, teto de custo por rotina, estado próprio, execução nova de origem `routine` com o resultado no chat do bot, e o painel Rotinas no app. O disparo não aprova nada. **Não feito:** condição de aviso (`notify`/`silent`), resumo final, monitor, webhook (4.10) e a notificação do desktop. Desenho: [ROTINAS.md](ROTINAS.md); pesquisa: [pesquisas/fase-4-rotinas-webhooks-notificacoes.md](pesquisas/fase-4-rotinas-webhooks-notificacoes.md).
 
 ### 4.10 Webhooks
 

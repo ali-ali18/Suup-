@@ -108,7 +108,7 @@ Limites usados quando o bot não define os próprios (`suup bot create --max-tur
 | `maxCostUsd` | sem limite | Custo máximo por execução, em dólares |
 | `maxDurationMs` | sem limite | Duração máxima por execução, em milissegundos |
 | `maxReturns` | 6 | Quantos retornos seguidos o bot pode marcar para si na mesma execução (`schedule_return`); `0` desliga ([RETORNO.md](RETORNO.md)). Também pode ser definido por bot em `limits.maxReturns` |
-| `timeZone` | o do servidor | O fuso do usuário (nome IANA, ex. `America/Sao_Paulo`): a data e a hora que os bots leem no prompt e no lembrete de cada turno. Lido uma vez por execução; `GET /v1/info` o mostra |
+| `timeZone` | nenhum | O fuso do usuário (nome IANA, ex. `America/Sao_Paulo`) **quando o app ainda não disse um**: o que o usuário escolhe em Configurações > Geral e o que o app manda do computador ao conectar (guardados no banco) vêm antes. **Nunca** se usa o fuso do processo do servidor ([ROTINAS.md](ROTINAS.md)). É a data e a hora do prompt, das rotinas e da revisão noturna; `GET /v1/info` o mostra |
 | `historyChars` | 12000 | Quanto da conversa anterior (em caracteres, só mensagens inteiras, das mais novas para as mais antigas) uma execução recebe como histórico. As mais antigas ficam de fora e o bot é avisado de que pode buscá-las com `search_conversations` |
 
 Passar de um limite termina a execução como `failed` com origem `limit`.
@@ -139,7 +139,11 @@ Com a máquina `local` (sem isolamento) o `shell` pergunta a cada comando; para 
 
 ### O Principal como supervisor
 
-Nada no arquivo de configuração, além do fuso (`defaults.timeZone`, em que ficam a hora da revisão e a da mensagem da manhã) e do modelo do próprio bot principal (a revisão usa esse modelo e precisa da chave dele). O resto é escolha do usuário, guardada no servidor: revisão ligada ou não, hora (padrão 03:00), mensagem da manhã (padrão 08:00, ou desligada), teto de custo por noite (padrão: sem teto): `GET`/`PATCH /v1/supervisor/settings`, Configurações > Memória. O worker roda o job a cada 60 s (`supervisorEveryMs` ao criar o worker). Veja [SUPERVISOR.md](SUPERVISOR.md).
+Nada no arquivo de configuração, além do modelo do próprio bot principal (a revisão usa esse modelo e precisa da chave dele). O resto é escolha do usuário, guardada no servidor: revisão ligada ou não, hora (padrão 03:00), mensagem da manhã (padrão 08:00, ou desligada), teto de custo por noite (padrão: sem teto): `GET`/`PATCH /v1/supervisor/settings`, Configurações > Memória. As horas são do fuso do usuário (Configurações > Geral; sem ele, `defaults.timeZone`; sem nenhum, a revisão espera). O worker roda o job a cada 60 s (`supervisorEveryMs` ao criar o worker). Veja [SUPERVISOR.md](SUPERVISOR.md).
+
+### Rotinas
+
+Nada no arquivo de configuração: as rotinas nascem da conversa com o bot (ou de `POST /v1/routines`) e ficam no banco, no fuso do usuário. O worker procura as vencidas a cada 15 s (`routinesEveryMs` ao criar o worker); o intervalo mínimo de uma rotina é de 5 minutos e cada bot tem até 30. O teto de custo por execução de uma rotina é dela (`costCapUsd`, padrão nenhum); vale o menor entre ele e o `maxCostUsd` do bot. Veja [ROTINAS.md](ROTINAS.md).
 
 ### `memory` (opcional)
 

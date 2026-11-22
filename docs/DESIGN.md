@@ -147,6 +147,19 @@ Configurações **não é uma tela**: é um diálogo modal (`features/settings/S
 - [ ] **A estrela do Principal** (decisão do dono, 21/11/2026; a única exceção à regra de que o avatar é só o rosto): o bot principal (`bot.isDefault`, o supervisor da equipe) leva uma **estrela pequena e calma** no canto inferior direito do avatar, na barra lateral (linha, trilho e quadro), no cabeçalho do chat, no painel do bot e na paleta. É um chip redondo (`--size-star-badge`, 14 px; `--size-star-badge-lg`, 18 px no avatar grande e na prévia) com o fundo `--color-raised`, a borda de 2 px na cor da página e a estrela cheia na cor do texto; fica no canto de baixo para não encostar na contagem de não lidas (canto de cima). Sem estrela no avatar de 16 px (não cabe) nem em qualquer outro bot. Vale para os dois estilos de rosto (formas e pixel), porque a estrela é desenhada **em volta** do rosto, em `ui/avatar.tsx` (a prop `supervisor`), nunca dentro do motor `@suup/avatar` nem dos mascotes. Nenhuma outra peça desenha estrela sobre um avatar (teste em `design-rules.test.ts`).
 - [ ] Avatares (token / caixa): linha 36 px, trilho 56 px, painel 72 px, pequeno 28 px. O dono falou em corpo visível ~42 / ~64 / ~74 / ~27 px; a caixa do código é a que vale até haver medida do corpo. O avatar nunca é recortado por um círculo.
 
+## 5b. Painel do bot: Rotinas
+
+Decisão do dono (22/11/2026; [ROTINAS.md](ROTINAS.md)): as rotinas nascem **conversando** com o bot; o painel é para ver e ajustar.
+
+- [ ] Aba **Atividade**, cartão **"Rotinas"** (no lugar do "Em breve"): uma linha por rotina, com o separador **de ponta a ponta** do cartão (como em Configurações), ícone de calendário (`Pause` se pausada), o nome em negrito e linhas apagadas: o horário em palavras (`describeSchedule`, a mesma função do servidor e do bot: a tela não escreve as palavras), "Próxima: amanhã, 08:00" (no fuso da rotina) ou "Pausada"/"Encerrada", e o último resultado ("Última: hoje, 08:00 · Concluída · Recuperação · 3 perdidas"). Vazio: "Nenhuma rotina" e a frase de como pedir no chat.
+- [ ] As ações ficam **num menu** por linha (botão redondo "…", `MenuButton`): Editar, Pausar/Retomar, Rodar agora, Histórico, Apagar (perigo, e **pede confirmação** numa janela pequena). Nada de fila de pílulas numa linha estreita.
+- [ ] **Editar** é uma janela (`Dialog`) com **campos estruturados, nunca texto de horário**: "Quando" (`Dropdown`: Todo dia, Toda semana, Todo mês, A cada…, Uma vez), hora e minuto em dois `Dropdown` (minutos de 5 em 5, mais o atual), dias da semana em `ToggleChip`, dia do mês e intervalo em `NumberField` (unidade em `Dropdown`), data e fim opcional como `AAAA-MM-DD`, fuso em `Dropdown` com filtro. Embaixo, o horário em palavras e uma linha sobre o horário de verão; o erro diz em palavras o que falta. Rodapé "Cancelar" / "Salvar".
+- [ ] **Histórico** é uma janela com um item por disparo: a hora (negrito), a situação ("Concluída", "Falhou", "Pulada: a anterior ainda rodava", "Recuperação · N perdidas", "Rodar agora"), o resultado em até 3 linhas apagadas e "Ver a execução" (abre o inspetor).
+- [ ] Nas ferramentas, a categoria é **"Rotina"** (ícone de calendário) em cartão, aprovação decidida e linha de ação.
+- [ ] Configurações > Geral > "Fuso horário": `Dropdown` com filtro (os fusos IANA) e a linha apagada da origem ("Do seu computador.", "Escolhido por você.", "Da configuração do servidor.", "Ainda não conhecido: escolha o seu."). O fuso é do usuário, nunca do servidor.
+
+`design-rules.test.ts` confere os campos estruturados, o separador de ponta a ponta e o menu.
+
 ## 6. Mascotes
 
 - [ ] Só pelo motor `@suup/avatar` e pelas formas dele. Nenhuma forma ou rosto desenhado à mão. Única marca além do rosto: a estrela do Principal (§5), em volta do rosto.

@@ -796,3 +796,33 @@ describe("docs/DESIGN.md is the standard, and everyone is pointed to it", () => 
     }
   });
 });
+
+describe("routines: structured fields, rows edge to edge, actions in one menu", () => {
+  const panel = read(join(SRC, "features", "panel", "ActivityTab.tsx"));
+  const form = read(join(SRC, "features", "panel", "RoutineDialogs.tsx"));
+
+  it("the schedule is edited with dropdowns, chips and number fields: never a free text for WHEN", () => {
+    for (const id of [
+      "routine-kind",
+      "routine-hour",
+      "routine-minute",
+      "routine-zone",
+      "routine-unit",
+    ]) {
+      expect(form, id).toContain(`testId="${id}"`);
+    }
+    expect(form).toContain("<NumberField");
+    expect(form).toContain("<ToggleChip");
+    expect(form.toLowerCase()).not.toContain("cron");
+    // the words come from the shared function, never written by the screen
+    expect(panel).toContain("describeSchedule(routine.schedule)");
+  });
+
+  it("the routine rows run edge to edge and each one has its actions in one menu", () => {
+    expect(panel).toContain("[&>*+*]:border-t");
+    expect(panel).toContain("<MenuButton");
+    for (const label of ["Editar", "Pausar", "Retomar", "Rodar agora", "Histórico", "Apagar"]) {
+      expect(panel, label).toContain(`label: "${label}"`);
+    }
+  });
+});

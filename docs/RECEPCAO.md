@@ -25,7 +25,7 @@ O Principal tem a ferramenta `propose_team` (só na recepção geral): 2 a 3 res
 
 ## Agora, equipe e o que o bot tem
 
-O prompt do sistema também diz a hora, a equipe e as capacidades (docs/MEMORIA.md). O "agora" é lido **uma vez** no início da execução e gravado em `context_loaded` (`now`, `team`, `machine`, `connectors`), então o prompt é idêntico em todas as requisições e o replay diz o mesmo; a hora viva de cada turno fica no STATE REMINDER. O fuso é `defaults.timeZone` (padrão: o do servidor), lido em `GET /v1/info`.
+O prompt do sistema também diz a hora, a equipe e as capacidades (docs/MEMORIA.md). O "agora" é lido **uma vez** no início da execução e gravado em `context_loaded` (`now`, `team`, `machine`, `connectors`), então o prompt é idêntico em todas as requisições e o replay diz o mesmo; a hora viva de cada turno fica no STATE REMINDER. O fuso é o do usuário (Configurações > Geral, ou o que o app mandou do computador; sem eles, `defaults.timeZone`; nunca o do servidor), lido em `GET /v1/info`. Sem nenhum, o bloco "Now" diz que o fuso é desconhecido ([ROTINAS.md](ROTINAS.md)).
 
 ## O que não está feito
 

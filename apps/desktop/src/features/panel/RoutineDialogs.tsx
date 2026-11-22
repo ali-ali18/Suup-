@@ -32,7 +32,7 @@ import {
   TextField,
 } from "../../ui/primitives.js";
 
-/** The two dropdowns of a time of day (hour and minute): never a free text, never cron. */
+/** The two dropdowns of a time of day (hour and minute): never a free text. */
 function TimeFields({ value, onChange }: { value: string; onChange(value: string): void }) {
   const [hour = "08", minute = "00"] = value.split(":");
   return (

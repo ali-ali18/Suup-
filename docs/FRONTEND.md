@@ -244,7 +244,8 @@ O backend de aprovações e do cofre **existe** (API.md, [APROVACOES.md](APROVAC
 
 ### Fase 4: rotinas, iniciativa e delegação
 
-- **Rotina:** bot dono, gatilho (horário, intervalo, data única ou evento), instrução, condição de aviso, data de fim, último e próximo disparo, e histórico de disparos com resultado "avisou" ou "ficou em silêncio".
+- **Rotina (feita, só horário; [ROTINAS.md](ROTINAS.md)):** `GET /v1/routines?botId=` dá nome, instrução, horário estruturado (`schedule`: desenhe com `describeSchedule` de `@suup/api`, nunca texto de cron), fuso, `status` (`active`, `paused`, `ended`), `nextRunAt`, a nota da rotina e `lastFire`; `GET /v1/routines/{id}/fires` dá o histórico (hora marcada, `kind` `scheduled`/`catch_up`/`manual`, `status` com `skipped` por sobreposição, `missedCount`, `resultText`, `runId`). Ações: `PATCH` (horário, nome, instrução, fuso, `paused`), `POST .../run` ("Rodar agora", `409` se a anterior ainda roda) e `DELETE`. Criar é conversando com o bot (o cartão "Criar uma rotina: … — …" quando o revisor ou o modo pedem). O resultado chega no chat do bot como mensagem com `routineId`. Condição de aviso, "avisou"/"silêncio", evento e monitor **ainda não existem**: não desenhe.
+- **Fuso do usuário:** `GET /v1/info` e `GET/PATCH /v1/user-settings` (`timeZone`, `timeZoneSource`: `user`, `device`, `config` ou `null`). O app manda o fuso do computador ao conectar (`source: "device"`), e Configurações > Geral deixa escolher outro (`source: "user"`).
 - **Iniciativa:** o que o bot notou, a evidência, o que já preparou, a ação proposta, e os botões aceitar, "agora não" e "não". Estados: aberta, aceita, adiada, recusada.
 - **Nível de autonomia** por bot: desligado, só sugerir, preparar e pedir, fazer e avisar.
 - **Delegação:** uma execução de um bot abre outra em outro bot; mostrar o vínculo nas duas pontas.

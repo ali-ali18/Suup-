@@ -114,7 +114,7 @@ As ferramentas que se pode liberar a um bot. `200 { "items": [ToolInfo], "contro
 | `POST /v1/bots/{id}/reception` | | `200 { conversationId, started, runId }`: começa a recepção do bot se ela é devida (conversa vazia e ainda não feita, ou "refazer"); idempotente, no máximo uma vez; `404`; `409` se arquivado |
 | `POST /v1/bots/{id}/reception/reset` | | `200 { reset: true }`: a próxima abertura recomeça a recepção; `409` com execução ativa |
 | `POST /v1/messages/{id}/team` | `{ create: [{ index, avatar?, color? }] }` ou `{ dismiss: true }` | `200 { message, bots }`: decide o cartão de equipe (cria só os marcados, pelo mesmo caminho do `POST /v1/bots`); `409` se já decidido; `400` para escolha vazia ou repetida |
-| `GET /v1/info` | | `200 { timeZone }`: o fuso dos bots (`defaults.timeZone`, padrão o do servidor) |
+| `GET /v1/info` | | `200 { timeZone, timeZoneSource }`: o fuso **do usuário** (o escolhido em Configurações, `user`; o que o app mandou do computador, `device`; ou `defaults.timeZone`, `config`). `null` enquanto ninguém disse: **nunca** o fuso do processo do servidor ([ROTINAS.md](ROTINAS.md)) |
 | `POST /v1/bots/draft` | `{ description, modelId? }` | `200 { name, description, personality }`: uma proposta a partir de texto livre; **não cria nada**; `502` se o modelo falhar |
 
 `draft` faz uma chamada ao modelo (`modelId`, ou o do bot principal). Para criar com a proposta, chame `POST /v1/bots` com ela.
@@ -220,6 +220,8 @@ Veja [SUPERVISOR.md](SUPERVISOR.md).
 | `PATCH /v1/supervisor/settings` | só as chaves que mudam | `200 SupervisorSettings`; `400` com a mensagem em português (`reviewTime: use o formato HH:MM`); chave desconhecida é recusada |
 | `GET /v1/supervisor/reviews?limit=` | | `200 {items: TeamReview[]}`, mais nova primeiro: `night`, `status` (`done`, `skipped`, `failed`, `running`), `botsRead`, `leftOver`, `capReached`, `costCapUsd`, `noted`, `morningText`, `morningPostedAt`, `model`, tokens, `costUsd`, `error` |
 
+`timeZone` vem `null` enquanto o fuso do usuário não é conhecido (a revisão espera).
+
 O cliente: `api.supervisor.settings.get/update` e `api.supervisor.reviews`. Uma execução delegada aparece como as demais, com `origin: "delegation"` e `parentRunId` (a execução do Principal).
 
 ### Configurações da memória e consolidação
@@ -259,6 +261,24 @@ O que é seu escolher sobre a memória fica no servidor (uma linha só, como o m
 `MemoryConsolidation` (uma tentativa da consolidação): `id`, `conversationId`, `botId`, `reason` (`idle`, `max_turns`, `pre_compaction`), `status` (`queued`, `running`, `done`, `skipped`, `failed`), `fromSeq`, `toSeq`, `userTurns`, `model`, `promptVersion`, `inputTokens`, `outputTokens`, `costUsd`, `latencyMs`, `proposed` (o que o modelo disse), `kept` (o que foi gravado: ação, id da memória), `dropped` (o que o código descartou e por quê), `error`, `createdAt`, `finishedAt`.
 
 ---
+
+## Rotinas e o fuso do usuário
+
+Veja [ROTINAS.md](ROTINAS.md). O horário é **estruturado** (`Schedule`: `once {date, time}`, `daily {time}`, `weekly {days, time}`, `monthly {day, time}`, `interval {every, unit}`, mais `until` opcional): não há texto de cron. `@suup/api` exporta o esquema, `describeSchedule` (o horário em palavras) e `nextFireAfter`.
+
+| Chamada | Corpo | Resposta |
+|---|---|---|
+| `GET /v1/user-settings` | | `200 { timeZone, timeZoneSource }` (`null`s enquanto ninguém disse) |
+| `PATCH /v1/user-settings` | `{ timeZone, source: "device" \| "user" }` | `200 UserSettings`. `device` (o app, ao conectar) só preenche o vazio ou acompanha o computador: nunca troca o que o usuário escolheu (`user`). `400` para um nome que não é fuso IANA |
+| `GET /v1/routines?botId=` | | `200 { items: Routine[] }`, mais antigas primeiro: `id`, `botId`, `name`, `instruction`, `triggerKind` (`schedule`), `schedule`, `timeZone`, `status` (`active`, `paused`, `ended`), `nextRunAt` (`null` se pausada ou encerrada), `state` (a nota da rotina), `costCapUsd` (texto decimal ou `null`), `createdBy` (`bot` ou `user`), `createdAt`, `updatedAt`, `endedAt`, `lastFire` |
+| `POST /v1/routines` | `{ botId, name, instruction, schedule, timeZone?, costCapUsd? }` | `201 Routine` (`createdBy: "user"`; sem `timeZone`, o do usuário). `400` para horário inválido, que já passou ou sem fuso conhecido; `409` com 30 rotinas no bot ou bot arquivado |
+| `GET /v1/routines/{id}` | | `200 Routine`; `404` |
+| `PATCH /v1/routines/{id}` | só o que muda: `name`, `instruction`, `schedule`, `timeZone`, `paused`, `costCapUsd` (`null` tira o teto) | `200 Routine`. Novo horário ou fuso recalcula o próximo disparo a partir de agora (e reativa uma encerrada); `paused: false` recalcula a partir de agora |
+| `DELETE /v1/routines/{id}` | | `200 { deleted: true }` (o histórico vai junto; as execuções ficam); `404` |
+| `POST /v1/routines/{id}/run` | | `202 { fire }`: "Rodar agora", um disparo `manual` fora do horário (não muda o próximo); `409` enquanto a execução anterior não terminou |
+| `GET /v1/routines/{id}/fires?limit=` | | `200 { items: RoutineFire[] }`, mais novo primeiro: `scheduledFor`, `kind` (`scheduled`, `catch_up`, `manual`), `status` (`running`, `done`, `failed`, `cancelled`, `skipped`), `skipReason` (`overlap`), `missedCount`, `runId`, `resultText` e `messageId` (o resultado, que também está no chat do bot), `createdAt`, `finishedAt` |
+
+A execução de uma rotina é como as demais, com `origin: "routine"` e `conversationId: null`; a mensagem com o resultado, no chat do bot, traz `routineId`. O cliente: `api.routines.list/get/create/update/delete/run/fires` e `api.userSettings.get/update`.
 
 ## Aprovações e regras
 
