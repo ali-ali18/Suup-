@@ -1,4 +1,5 @@
 export * from "./answers.js";
+export * from "./schedule.js";
 export * from "./approvals/index.js";
 export {
   APPROVAL_DECISIONS,

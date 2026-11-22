@@ -12,6 +12,10 @@
       "types": "./dist/answers.d.ts",
       "default": "./dist/answers.js"
     },
+    "./schedule": {
+      "types": "./dist/schedule.d.ts",
+      "default": "./dist/schedule.js"
+    },
     "./testing": {
       "types": "./dist/testing/index.d.ts",
       "default": "./dist/testing/index.js"
