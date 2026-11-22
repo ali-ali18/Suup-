@@ -33,7 +33,7 @@
   },
   "web": {
     "search": {
-      "engines": ["wikipedia", "arxiv", "stackoverflow", "github"],
+      "engines": ["wikipedia", "arxiv", "stackoverflow", "duckduckgo"],
       "network": "suup-search-net",
       "proxy": { "listenHost": "172.29.78.2", "advertiseHost": "172.29.78.2", "port": 3129 }
     },

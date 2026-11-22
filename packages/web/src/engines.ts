@@ -1,13 +1,19 @@
-// Owns the list of search engines the SearXNG container may use, and what each one needs to reach.
-// Declared data, one entry per engine: the name SearXNG knows it by, the exact host names it talks
-// to (read from the engine's source in the pinned image), and why it is on or off by default.
+// Owns the list of search engines Suup can ask, and what each one needs to reach. Declared data,
+// one entry per engine: how Suup reaches it (`direct`: Suup itself, through the official API and
+// with its honest user agent, direct-engines.ts; `searxng`: through the SearXNG container, by the
+// name SearXNG knows it by), the exact host names it talks to, and why it is on or off by default.
 // docs/BUSCA.md explains the choices; the user changes the list in the configuration (`web.search.engines`).
 
 export const SEARXNG_IMAGE = "docker.io/searxng/searxng:2026.3.25-541c6c3cb";
 
 export interface EngineSpec {
-  /** Our id, equal to the engine's name in SearXNG. */
+  /** Our id; for a `searxng` engine it is also the engine's name in SearXNG. */
   id: string;
+  /**
+   * Who asks the engine. `direct`: Suup, with the official API and its honest user agent.
+   * `searxng`: the SearXNG container (docs/BUSCA.md, "O nome que o Suup usa").
+   */
+  via: "direct" | "searxng";
   /** What kind of access it is. `api`: a documented public API made for programs. `scrape`: it reads the engine's result page (HTML). */
   access: "api" | "scrape";
   /** On when the configuration says nothing. */
@@ -21,8 +27,8 @@ export interface EngineSpec {
    */
   perMinute: number;
   /**
-   * The engine module reads its own `User-Agent` from this attribute (set from the settings file),
-   * so Suup can give it the honest one. Absent: SearXNG decides (docs/BUSCA.md, "O nome que o Suup usa").
+   * A `searxng` engine whose module reads its own `User-Agent` from this attribute (set from the
+   * settings file), so Suup can give it the honest one. Absent: SearXNG decides (docs/BUSCA.md, "O nome que o Suup usa").
    */
   userAgentAttribute?: string;
   /** The exact host names it connects to; `{lang}` is replaced by each language of `web.search.languages`. */
@@ -34,42 +40,37 @@ export interface EngineSpec {
 export const ENGINES: readonly EngineSpec[] = [
   {
     id: "wikipedia",
+    via: "direct",
     access: "api",
     defaultOn: true,
     general: false,
     perMinute: 30,
     hosts: ["{lang}.wikipedia.org"],
-    note: "Wikipedia REST API (summaries), one host per language.",
+    note: "Wikipedia, searched with the MediaWiki Action API (list=search), one host per language, with the honest user agent.",
   },
   {
     id: "arxiv",
+    via: "direct",
     access: "api",
     defaultOn: true,
     general: false,
     perMinute: 15,
     hosts: ["export.arxiv.org"],
-    note: "arXiv API, scientific papers.",
+    note: "arXiv API (Atom), scientific papers, at most one request every three seconds (arXiv terms of use), with the honest user agent.",
   },
   {
     id: "stackoverflow",
+    via: "direct",
     access: "api",
     defaultOn: true,
     general: false,
     perMinute: 10,
     hosts: ["api.stackexchange.com"],
-    note: "Stack Exchange API (Stack Overflow questions).",
-  },
-  {
-    id: "github",
-    access: "api",
-    defaultOn: true,
-    general: false,
-    perMinute: 6,
-    hosts: ["api.github.com"],
-    note: "GitHub search API (repositories).",
+    note: "Stack Exchange API 2.3 (Stack Overflow questions), honouring `backoff` and the quota, with the honest user agent.",
   },
   {
     id: "duckduckgo",
+    via: "searxng",
     access: "scrape",
     defaultOn: true,
     general: true,
@@ -84,6 +85,7 @@ export const ENGINES: readonly EngineSpec[] = [
   },
   {
     id: "brave",
+    via: "searxng",
     access: "scrape",
     defaultOn: false,
     general: false,
@@ -93,6 +95,7 @@ export const ENGINES: readonly EngineSpec[] = [
   },
   {
     id: "startpage",
+    via: "searxng",
     access: "scrape",
     defaultOn: false,
     general: false,
@@ -131,4 +134,14 @@ export function engineHosts(ids: readonly string[], languages: readonly string[]
     }
   }
   return [...hosts].sort();
+}
+
+/** The ids Suup asks itself (`via: "direct"`). */
+export function directEngineIds(ids: readonly string[]): string[] {
+  return ids.filter((id) => engineById(id)?.via === "direct");
+}
+
+/** The ids the SearXNG container asks (`via: "searxng"`); unknown ids are left out. */
+export function searxEngineIds(ids: readonly string[]): string[] {
+  return ids.filter((id) => engineById(id)?.via === "searxng");
 }

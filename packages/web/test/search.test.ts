@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_ENGINES, ENGINES, engineHosts, unknownEngines } from "../src/engines.js";
+import {
+  DEFAULT_ENGINES,
+  directEngineIds,
+  ENGINES,
+  engineHosts,
+  searxEngineIds,
+  unknownEngines,
+} from "../src/engines.js";
 import { clip, createSearch, parseSearxAnswer, type SearxBackend } from "../src/search.js";
 import { renderSearxSettings } from "../src/searx-settings.js";
 
@@ -13,8 +20,8 @@ const ANSWER = JSON.stringify({
       engine: "wikipedia",
     },
     { url: "https://en.wikipedia.org/wiki/Suup", title: "dup", content: "", engine: "arxiv" },
-    { url: "javascript:alert(1)", title: "bad", content: "x", engine: "github" },
-    { url: "https://github.com/x/suup", title: "", content: "repo", engines: ["github"] },
+    { url: "javascript:alert(1)", title: "bad", content: "x", engine: "duckduckgo" },
+    { url: "https://example.org/x/suup", title: "", content: "repo", engines: ["duckduckgo"] },
     { url: "https://example.com/3", title: "three", content: "c", engine: "arxiv" },
   ],
   unresponsive_engines: [
@@ -25,7 +32,7 @@ const ANSWER = JSON.stringify({
 
 describe("parseSearxAnswer", () => {
   it("returns title, url, snippet and engine, one line each, http(s) only, no duplicates", () => {
-    const out = parseSearxAnswer(ANSWER, "suup", 10, ["wikipedia", "github"]);
+    const out = parseSearxAnswer(ANSWER, "suup", 10, ["wikipedia", "duckduckgo"]);
     expect(out.ok).toBe(true);
     if (!out.ok) return;
     expect(out.hits).toEqual([
@@ -36,10 +43,10 @@ describe("parseSearxAnswer", () => {
         engine: "wikipedia",
       },
       {
-        title: "https://github.com/x/suup",
-        url: "https://github.com/x/suup",
+        title: "https://example.org/x/suup",
+        url: "https://example.org/x/suup",
         snippet: "repo",
-        engine: "github",
+        engine: "duckduckgo",
       },
       { title: "three", url: "https://example.com/3", snippet: "c", engine: "arxiv" },
     ]);
@@ -125,16 +132,11 @@ describe("clip", () => {
 });
 
 describe("engines", () => {
-  it("the default list is the four public APIs and DuckDuckGo, the one general engine the owner turned on", () => {
-    expect(DEFAULT_ENGINES).toEqual([
-      "wikipedia",
-      "arxiv",
-      "stackoverflow",
-      "github",
-      "duckduckgo",
-    ]);
+  it("the default list is the three public APIs Suup asks itself and DuckDuckGo, the one general engine the owner turned on", () => {
+    expect(DEFAULT_ENGINES).toEqual(["wikipedia", "arxiv", "stackoverflow", "duckduckgo"]);
     for (const id of DEFAULT_ENGINES.filter((e) => e !== "duckduckgo")) {
       expect(ENGINES.find((e) => e.id === id)?.access).toBe("api");
+      expect(ENGINES.find((e) => e.id === id)?.via).toBe("direct");
     }
     // The other general engines stay off, and so do Google and Bing (not in the list at all).
     expect(ENGINES.filter((e) => e.general && e.defaultOn).map((e) => e.id)).toEqual([
@@ -142,11 +144,24 @@ describe("engines", () => {
     ]);
   });
 
+  it("only DuckDuckGo is left to SearXNG by default; the APIs are asked directly", () => {
+    expect(searxEngineIds(DEFAULT_ENGINES)).toEqual(["duckduckgo"]);
+    expect(directEngineIds(DEFAULT_ENGINES)).toEqual(["wikipedia", "arxiv", "stackoverflow"]);
+    expect(searxEngineIds(["nope"])).toEqual([]);
+  });
+
+  it("GitHub is not a web search engine (GitHub search is the GitHub MCP connector's)", () => {
+    expect(ENGINES.map((e) => e.id)).not.toContain("github");
+    expect(unknownEngines(["github"])).toEqual(["github"]);
+    expect(engineHosts(["github", ...DEFAULT_ENGINES], ["en", "pt"])).not.toContain(
+      "api.github.com",
+    );
+  });
+
   it("DuckDuckGo's egress hosts are exactly the one its engine module posts to, and its rate is low", () => {
     // From searx/engines/duckduckgo.py of the pinned image: `ddg_url = "https://html.duckduckgo.com/html/"`.
     expect(engineHosts(["duckduckgo"], ["en"])).toEqual(["html.duckduckgo.com"]);
     expect(engineHosts(DEFAULT_ENGINES, ["en", "pt"])).toEqual([
-      "api.github.com",
       "api.stackexchange.com",
       "en.wikipedia.org",
       "export.arxiv.org",
@@ -156,15 +171,24 @@ describe("engines", () => {
     expect(ENGINES.find((e) => e.id === "duckduckgo")?.perMinute).toBeLessThanOrEqual(6);
   });
 
+  it("the hosts of the engines Suup asks itself are exactly the API hosts of the research", () => {
+    expect(engineHosts(directEngineIds(DEFAULT_ENGINES), ["en", "pt"])).toEqual([
+      "api.stackexchange.com",
+      "en.wikipedia.org",
+      "export.arxiv.org",
+      "pt.wikipedia.org",
+    ]);
+  });
+
   it("Google is not in the list at all", () => {
     expect(ENGINES.map((e) => e.id)).not.toContain("google");
     expect(ENGINES.map((e) => e.id)).not.toContain("bing");
   });
 
   it("lists exact host names, per language", () => {
-    expect(engineHosts(["wikipedia", "github"], ["en", "pt"])).toEqual([
-      "api.github.com",
+    expect(engineHosts(["wikipedia", "arxiv"], ["en", "pt"])).toEqual([
       "en.wikipedia.org",
+      "export.arxiv.org",
       "pt.wikipedia.org",
     ]);
     expect(engineHosts(["nope"], ["en"])).toEqual([]);

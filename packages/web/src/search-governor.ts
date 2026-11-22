@@ -115,19 +115,23 @@ export class SearchGovernor {
 
   /**
    * What an answer told us: `unresponsive` are the engines that did not answer, with SearXNG's
-   * reason; the others of `asked` did, and are forgotten as suspended. Returns each unresponsive
+   * reason (or, for an engine Suup asks itself, its own reason and `windowSeconds`); the others of `asked` did, and are forgotten as suspended. Returns each unresponsive
    * engine's seconds to retry, when a window is known.
    */
   learn(
     asked: readonly string[],
-    unresponsive: readonly { engine: string; reason: string }[],
+    unresponsive: readonly { engine: string; reason: string; windowSeconds?: number }[],
   ): Map<string, number> {
     const now = this.#now();
     const retry = new Map<string, number>();
     const failed = new Set(unresponsive.map((u) => u.engine));
     for (const engine of asked) if (!failed.has(engine)) this.#until.delete(engine);
-    for (const { engine, reason } of unresponsive) {
-      const parsed = parseReason(reason);
+    for (const { engine, reason, windowSeconds } of unresponsive) {
+      // An engine Suup asks itself says how long (`windowSeconds`); for SearXNG only the text is known.
+      const parsed =
+        windowSeconds === undefined
+          ? parseReason(reason)
+          : { suspendedBefore: false, kind: reason, windowSeconds };
       if (parsed.windowSeconds === undefined) continue;
       const known = this.#until.get(engine);
       // A report that SearXNG had it suspended already is not a new refusal: the window runs from

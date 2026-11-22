@@ -198,7 +198,7 @@ describe("the cache", () => {
     const cache = memorySearchCache();
     const search = createSearch({
       backend,
-      engines: ["wikipedia", "github"],
+      engines: ["wikipedia", "duckduckgo"],
       cache,
       cacheTtlMs: ttlMs,
       now: () => clock.now,

@@ -1,4 +1,25 @@
 export {
+  ARXIV_INTERVAL_MS,
+  arxivEngine,
+  arxivSearchQuery,
+  DIRECT_SUSPENSION_SECONDS,
+  type DirectEngine,
+  type DirectSearchInput,
+  type DirectSearchResult,
+  Pacer,
+  parseArxivAnswer,
+  stackOverflowEngine,
+  wikipediaEngine,
+} from "./direct-engines.js";
+export {
+  createDirectGet,
+  DIRECT_MAX_BYTES,
+  DIRECT_TIMEOUT_MS,
+  type DirectGet,
+  type DirectGetSettings,
+  type DirectResponse,
+} from "./direct-http.js";
+export {
   READER_CONTAINER,
   READER_IMAGE,
   SEARCH_CONTAINER,
@@ -10,11 +31,13 @@ export {
 export {
   DEFAULT_ENGINES,
   DEFAULT_LANGUAGES,
+  directEngineIds,
   ENGINES,
   type EngineSpec,
   engineById,
   engineHosts,
   SEARXNG_IMAGE,
+  searxEngineIds,
   unknownEngines,
 } from "./engines.js";
 export { extractPage, READ_MAX_CHARS, safeLink, tidy } from "./extract.js";
