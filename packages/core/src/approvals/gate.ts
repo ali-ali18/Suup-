@@ -62,6 +62,8 @@ export interface GateCall {
   trigger?: ReviewTrigger | undefined;
   /** The URLs the run has seen and where each came from (the loop derives them from the log). */
   webSeen?: ReadonlyMap<string, WebUrlSource> | undefined;
+  /** The routines the user's messages are about: id to name (see `ClassifyEnv.routineNames`). */
+  routineNames?: ReadonlyMap<string, string> | undefined;
   /** The refusals the model reviewer already gave in this run (read from the log). */
   reviewBlocks?: { total: number; consecutive: number } | undefined;
   /** A review of THIS call already in the log (a resumed run): it is used, the model is not asked again. */
@@ -199,6 +201,7 @@ export function createToolGate(options: ToolGateOptions): ToolGate {
       const assessed = options.tools.assess(call.name, call.args, {
         executor: call.executor,
         ...(call.webSeen === undefined ? {} : { webSeen: call.webSeen }),
+        ...(call.routineNames === undefined ? {} : { routineNames: call.routineNames }),
         ...(call.allowed === undefined ? {} : { allowed: call.allowed }),
       });
       if (assessed === undefined) return null;

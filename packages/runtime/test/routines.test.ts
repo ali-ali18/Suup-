@@ -54,6 +54,20 @@ describe("routine tools: what they declare", () => {
     expect(
       update.describe?.({ routine: "Manhã", schedule: { kind: "daily", time: "09:00" } }, env),
     ).toBe('Mudar a rotina "Manhã": todo dia às 09:00');
+    // the routine the user's message is about ("Editar"): the card names it, never by its id
+    const named = {
+      executor: { exec: async () => ({ exitCode: 0, stdout: "", stderr: "" }) },
+      routineNames: new Map([["rot-1", "Calendário da manhã"]]),
+    } as never;
+    expect(
+      update.describe?.({ routine: "rot-1", schedule: { kind: "daily", time: "07:00" } }, named),
+    ).toBe('Mudar a rotina "Calendário da manhã": todo dia às 07:00');
+    expect(update.describe?.({ routine: "rot-1", paused: true }, named)).toBe(
+      'Pausar a rotina "Calendário da manhã"',
+    );
+    expect(deleteRoutineTool(db).describe?.({ routine: "rot-1" }, named)).toBe(
+      'Apagar a rotina "Calendário da manhã"',
+    );
     expect(deleteRoutineTool(db).risk).toBe("read");
     expect(listRoutinesTool(db).risk).toBe("read");
     expect(updateRoutineStateTool(db).risk).toBe("read");

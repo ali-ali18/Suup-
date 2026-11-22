@@ -106,6 +106,8 @@ export function describeAction(
   name: string,
   args: Record<string, unknown>,
   connectors: ConnectorRefs = [],
+  /** The routines the user's messages are about (id to name, from the log): named, never by id. */
+  routineNames: ReadonlyMap<string, string> = new Map(),
 ): Pick<ActionItem, "kind" | "kindLabel" | "icon" | "summary" | "doing"> {
   const category = toolCategory(name, connectors);
   const label = { kindLabel: category.label, icon: category.icon };
@@ -249,8 +251,13 @@ export function describeAction(
     case "delete_routine":
     case "list_routines":
     case "update_routine_state": {
-      // The routine by its name (what the bot wrote), never read from free text.
-      const which = clip(text("name") ?? text("routine") ?? "", 50);
+      // The routine by its name (what the bot wrote, or the name the user's message carried for
+      // the id the bot passed: the id is never shown), never read from free text.
+      const ref = text("routine");
+      const which = clip(
+        text("name") ?? (ref === undefined ? "" : (routineNames.get(ref) ?? ref)),
+        50,
+      );
       const named = which === "" ? "" : ` “${which}”`;
       const words: Record<string, [string, string]> = {
         create_routine: [`Criar a rotina${named}`, `Criando a rotina${named}`],
@@ -276,6 +283,25 @@ export const isFileTool = (name: string): boolean => FILE_TOOLS.has(name);
 export const isMemoryTool = (name: string): boolean => MEMORY_TOOLS.has(name);
 
 /** One card per tool call of a run, in the order they were made; the result fills in when it arrives. */
+/**
+ * The routines the user's messages of a run are about (the "Editar" of a routine), id to name: the
+ * structured `routineRefs` of `context_loaded` and `routineRef` of `user_message`.
+ */
+export function routineNamesOf(events: readonly RunEvent[]): Map<string, string> {
+  const names = new Map<string, string>();
+  const add = (ref: unknown) => {
+    if (typeof ref !== "object" || ref === null) return;
+    const { id, name } = ref as { id?: unknown; name?: unknown };
+    if (typeof id === "string" && typeof name === "string") names.set(id, name);
+  };
+  for (const event of events) {
+    if (event.type === "context_loaded" && Array.isArray(event.payload.routineRefs)) {
+      for (const ref of event.payload.routineRefs) add(ref);
+    } else if (event.type === "user_message") add(event.payload.routineRef);
+  }
+  return names;
+}
+
 export function actionsOf(
   runId: string,
   events: readonly RunEvent[],
@@ -299,6 +325,7 @@ export function actionsOf(
       });
     }
   }
+  const routineNames = routineNamesOf(events);
   for (const event of events) {
     if (event.type === "tool_call") {
       const callId = str(event.payload.callId);
@@ -312,7 +339,7 @@ export function actionsOf(
         callId,
         runId,
         name,
-        ...describeAction(name, args, connectors),
+        ...describeAction(name, args, connectors, routineNames),
         state: "running",
         args,
         truncated: false,

@@ -7,6 +7,7 @@
 // (it sees the user's messages: the user asked, it runs; the bot made it up, a card), in "ask all"
 // always a card. Pausing and deleting reduce what the bot can do, so they are free (`read`).
 import {
+  type ClassifyEnv,
   defineTool,
   describeSchedule,
   formatClock,
@@ -252,8 +253,12 @@ const onlyPauses = (args: UpdateArgs): boolean =>
   args.timeZone === undefined &&
   args.costCapUsd === undefined;
 
-function updateCardLine(args: UpdateArgs): string {
-  if (onlyPauses(args)) return `Pausar a rotina ${JSON.stringify(args.routine)}`;
+/** The routine as the card names it: by its name when the user's message carries it (never the id). */
+const shown = (routine: string, env: ClassifyEnv | undefined): string =>
+  JSON.stringify(env?.routineNames?.get(routine) ?? routine);
+
+function updateCardLine(args: UpdateArgs, env?: ClassifyEnv): string {
+  if (onlyPauses(args)) return `Pausar a rotina ${shown(args.routine, env)}`;
   const parts: string[] = [];
   if (args.schedule !== undefined) {
     const read = readSchedule(args.schedule);
@@ -266,7 +271,7 @@ function updateCardLine(args: UpdateArgs): string {
   if (args.costCapUsd !== undefined) {
     parts.push(args.costCapUsd === null ? "sem teto de custo" : `teto US$ ${args.costCapUsd}`);
   }
-  return `Mudar a rotina ${JSON.stringify(args.routine)}: ${parts.join("; ") || "sem mudança"}`;
+  return `Mudar a rotina ${shown(args.routine, env)}: ${parts.join("; ") || "sem mudança"}`;
 }
 
 /** `update_routine`: change, pause or resume one of the bot's routines. */
@@ -279,7 +284,7 @@ export function updateRoutineTool(db: Db) {
     risk: "write_reversible",
     classify: (args) => (onlyPauses(args) ? "read" : "write_reversible"),
     ownOutput: true,
-    describe: (args) => updateCardLine(args),
+    describe: (args, env) => updateCardLine(args, env),
     async execute(args, ctx) {
       const found = await routineOf(db, ctx.botId, args.routine);
       if ("error" in found) return { isError: true, content: found.error };
@@ -318,7 +323,7 @@ export function deleteRoutineTool(db: Db) {
     }),
     risk: "read",
     ownOutput: true,
-    describe: ({ routine }) => `Apagar a rotina ${JSON.stringify(routine)}`,
+    describe: ({ routine }, env) => `Apagar a rotina ${shown(routine, env)}`,
     async execute({ routine }, ctx) {
       const found = await routineOf(db, ctx.botId, routine);
       if ("error" in found) return { isError: true, content: found.error };

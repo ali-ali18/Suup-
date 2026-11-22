@@ -247,6 +247,11 @@ export interface RunState {
    * `webUrls` of `tool_result` events. The user's own URLs are in `userSaid` (see `webUrlsSeen`).
    */
   webSeen: Map<string, WebUrlSource>;
+  /**
+   * The routines the user's messages are about (the app's "Editar"), id to name: from
+   * `context_loaded.routineRefs` and `user_message.routineRef`. A card names them by name.
+   */
+  routineNames: Map<string, string>;
   /** The share of the context window past which the run compacts (recorded in `context_loaded`). */
   compactionThreshold: number | null;
 }
@@ -266,6 +271,7 @@ export function createRunState(): RunState {
     context: null,
     toolsUsed: [],
     webSeen: new Map(),
+    routineNames: new Map(),
     compactionThreshold: null,
     lastSeq: 0,
     responses: 0,
@@ -374,6 +380,7 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
       // The routines the opening messages are about: a note in the objective's turn (the last
       // message so far), never in the text of the user.
       for (const ref of event.payload.routineRefs ?? []) {
+        state.routineNames.set(ref.id, ref.name);
         const objective = state.messages[state.messages.length - 1];
         const block = { type: "text" as const, text: renderRoutineRef(ref) };
         if (objective?.role === "user") objective.blocks.push(block);
@@ -609,6 +616,7 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
         event.seq,
       );
       if (event.payload.routineRef !== undefined) {
+        state.routineNames.set(event.payload.routineRef.id, event.payload.routineRef.name);
         appendUserBlock(
           state,
           { type: "text", text: renderRoutineRef(event.payload.routineRef) },

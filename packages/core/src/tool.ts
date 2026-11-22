@@ -271,6 +271,11 @@ export interface ClassifyEnv {
   executor: Executor;
   /** The URLs the run has seen (normalized) and where each came from; see `ToolContext.webSeen`. */
   webSeen?: ReadonlyMap<string, WebUrlSource>;
+  /**
+   * The routines the user's messages of this run are about (the app's "Editar"; from the log): id
+   * to name. A card names such a routine by its name, never by the id the user never sees.
+   */
+  routineNames?: ReadonlyMap<string, string>;
 }
 
 /**

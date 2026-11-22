@@ -135,6 +135,7 @@ export async function askGate(
       ? {}
       : { trigger: { kind: "routine" as const, instruction: ctx.state.routineInstruction } }),
     webSeen: webUrlsSeen(ctx.state),
+    routineNames: ctx.state.routineNames,
     reviewBlocks: ctx.state.reviewBlocks,
     ...(ctx.state.reviews.has(call.id) ? { recordedReview: ctx.state.reviews.get(call.id) } : {}),
     signal: ctx.signal,
