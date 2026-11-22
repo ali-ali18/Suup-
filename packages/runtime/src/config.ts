@@ -361,8 +361,8 @@ const webSchema = z.strictObject({
        * that Suup asks itself, with its honest user agent (`wikipedia`, `arxiv`, `stackoverflow`), plus
        * `duckduckgo`, the one general web engine turned on by decision of the project owner (asked by
        * the SearXNG container; low rate, honest user agent; it reads a result page and may answer with
-       * a captcha). `brave` and `startpage` also read result pages (through SearXNG) and are OFF until
-       * you turn them on; Google and Bing do not exist here. GitHub is not a web search engine: its
+       * a captcha). Google and Bing do not exist here, and neither do Brave and Startpage (SearXNG would
+       * send its own random browser user agent to them). GitHub is not a web search engine: its
        * search is the GitHub MCP connector's.
        */
       engines: z.exactOptional(z.array(z.string().min(1)).min(1).max(20)),

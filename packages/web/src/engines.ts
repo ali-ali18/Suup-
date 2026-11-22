@@ -83,26 +83,6 @@ export const ENGINES: readonly EngineSpec[] = [
     hosts: ["html.duckduckgo.com"],
     note: "General web search by reading the HTML result page. On by the owner's decision, with a low rate (6 a minute) and Suup's honest user agent; it may answer with a captcha, and then the tool stops asking it for an hour.",
   },
-  {
-    id: "brave",
-    via: "searxng",
-    access: "scrape",
-    defaultOn: false,
-    general: false,
-    perMinute: 6,
-    hosts: ["search.brave.com"],
-    note: "General web search by reading the HTML result page. Terms of use not verified: off until the owner turns it on.",
-  },
-  {
-    id: "startpage",
-    via: "searxng",
-    access: "scrape",
-    defaultOn: false,
-    general: false,
-    perMinute: 6,
-    hosts: ["www.startpage.com"],
-    note: "General web search by reading the HTML result page. Terms of use not verified: off until the owner turns it on.",
-  },
 ];
 
 export const DEFAULT_ENGINES: readonly string[] = ENGINES.filter((e) => e.defaultOn).map(
