@@ -24,7 +24,7 @@ Ver e mexer: `suup network list <bot>`, `suup network allow <bot> <host>`, `suup
 
 ## Host novo: recusa, aviso e cartão
 
-1. O bot roda `curl https://api.novo.com`. O proxy recusa (`403`) e **registra** a recusa (tabela `network_events`, visível em `suup network list <bot>` e na API).
+1. O bot roda `curl https://api.novo.com`. O proxy recusa (`403`) e **registra** a recusa (tabela `network_events`, visível em `suup network list <bot>` e na API). Toda resposta `403` do proxy (ao `CONNECT` e ao `GET http://`) leva o código da recusa no cabeçalho `X-Suup-Egress-Reason` (`not_allowed`, `ip_literal`, `bad_host`, `bad_port`, `dns_failed`, `forbidden_address`, `policy_unavailable`: `EGRESS_REFUSAL_REASONS` em `packages/sandbox/src/egress/types.ts`) e o texto em `X-Suup-Egress`; quem usa o proxy compara o código, nunca o texto (os motores diretos da busca dizem o motivo por ele: um nome que não resolve não vira "fora da lista").
 2. O resultado da ferramenta mostra, no fim do `stderr`: `suup: network: host api.novo.com is not allowed for this bot. If the user agrees, ask for it with the request_network_access tool (host api.novo.com).`
 3. O bot chama `request_network_access { host, reason }`. É uma chamada comum de ferramenta, de nível `external_irreversible`: **sempre vira cartão** (a execução fica em `waiting_approval`), com o host exato e o motivo. O usuário aprova ou recusa como em qualquer cartão.
 4. Aprovado: o host fica liberado **para esta execução** (linha em `network_hosts` com `run_id`, que só vale enquanto a execução não terminou). O bot repete o comando.

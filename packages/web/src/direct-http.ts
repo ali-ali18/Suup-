@@ -7,6 +7,7 @@ import { Agent, request as httpRequest, type IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import { connect as tlsConnect } from "node:tls";
 import { createBrotliDecompress, createGunzip, createInflate } from "node:zlib";
+import { EGRESS_REASON_HEADER, type EgressRefusalReason, egressRefusalReason } from "@suup/sandbox";
 
 export interface DirectResponse {
   status: number;
@@ -137,16 +138,36 @@ async function openConnection(
         resolve(socket);
       } else {
         socket.destroy();
-        reject(
-          new Error(
-            `the egress proxy refused ${target} (HTTP ${response.statusCode ?? "?"}); the host is not on the engines' list`,
-          ),
-        );
+        reject(new Error(proxyRefusal(target, response)));
       }
     });
     request.on("error", (error) => reject(error));
     request.end();
   });
+}
+
+/** What each refusal code of the proxy means here, said to the person reading the tool result. */
+const REFUSAL_EXPLAINED: Readonly<Record<EgressRefusalReason, string>> = {
+  not_allowed: "the host is not on the engines' list",
+  ip_literal: "the target is an IP address, not a host name",
+  bad_host: "the target is not a valid host name",
+  bad_port: "the port is not allowed",
+  dns_failed: "the host name could not be resolved (no DNS answer on this computer)",
+  forbidden_address:
+    "the host name resolves to an address that is never reachable (private, loopback, link-local or metadata)",
+  policy_unavailable: "the list of allowed hosts is not available right now; try again in a moment",
+};
+
+/**
+ * The message for a CONNECT the proxy did not open. The reason comes from the proxy's own code in
+ * `EGRESS_REASON_HEADER`, compared exactly with the known codes; without a known code only the
+ * status is reported, with no guess at why.
+ */
+function proxyRefusal(target: string, response: IncomingMessage): string {
+  const header = response.headers[EGRESS_REASON_HEADER];
+  const reason = egressRefusalReason(Array.isArray(header) ? undefined : header);
+  const status = `the egress proxy refused ${target} (HTTP ${response.statusCode ?? "?"})`;
+  return reason === undefined ? status : `${status}; ${REFUSAL_EXPLAINED[reason]}`;
 }
 
 function lowerHeaders(response: IncomingMessage): Record<string, string | undefined> {

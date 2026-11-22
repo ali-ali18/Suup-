@@ -1,6 +1,32 @@
 // Owns the vocabulary of the network egress of the bots' machines: who is asking (a subject), what
 // the policy answers, what is reported. The proxy and its users depend on these interfaces only.
 
+/**
+ * Every code the proxy refuses with (403). The proxy sends it in `EGRESS_REASON_HEADER`, so a
+ * client can say WHY without reading the text: `not_allowed`, `ip_literal`, `bad_host` and
+ * `bad_port` come from `decideHost`; `dns_failed` and `forbidden_address` from resolving the name;
+ * `policy_unavailable` when the allowlist cannot be asked.
+ */
+export const EGRESS_REFUSAL_REASONS = [
+  "not_allowed",
+  "ip_literal",
+  "bad_host",
+  "bad_port",
+  "dns_failed",
+  "forbidden_address",
+  "policy_unavailable",
+] as const;
+
+export type EgressRefusalReason = (typeof EGRESS_REFUSAL_REASONS)[number];
+
+/** The response header (lower case) that carries the refusal code of a 403 from the proxy. */
+export const EGRESS_REASON_HEADER = "x-suup-egress-reason";
+
+/** The code itself when `text` is exactly one of `EGRESS_REFUSAL_REASONS`; otherwise `undefined`. */
+export function egressRefusalReason(text: string | undefined): EgressRefusalReason | undefined {
+  return EGRESS_REFUSAL_REASONS.find((reason) => reason === text);
+}
+
 /** Who a connection belongs to: a bot's machine, a connector's container, or the harness itself (doctor). */
 export interface EgressSubject {
   kind: "bot" | "connector" | "harness";
@@ -18,7 +44,7 @@ export interface EgressEvent {
   host: string;
   port: number;
   decision: "allowed" | "refused";
-  /** For a refusal: the reason code (`not_allowed`, `ip_literal`, `bad_host`, `bad_port`, `forbidden_address`, `dns_failed`). */
+  /** For a refusal: the reason code (one of `EGRESS_REFUSAL_REASONS`). */
   reason?: string;
   message?: string;
   at: Date;
