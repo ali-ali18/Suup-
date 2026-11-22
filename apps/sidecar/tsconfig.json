@@ -10,6 +10,7 @@
   "references": [
     { "path": "../../packages/db" },
     { "path": "../../packages/sandbox" },
+    { "path": "../../packages/web" },
     { "path": "../cli" }
   ]
 }

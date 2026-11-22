@@ -54,6 +54,60 @@ export async function buildImage(
   }
 }
 
+/** Pulls an image from its registry; the failure carries the end of the output. */
+export async function pullImage(
+  docker: string,
+  image: string,
+  log: (text: string) => void,
+): Promise<void> {
+  log(`docker pull ${image}`);
+  const done = await run(docker, ["pull", "--quiet", image], 30 * 60_000);
+  log(done.output);
+  if (done.code !== 0) {
+    const tail = done.output.trimEnd().split("\n").slice(-6).join("\n");
+    throw new Error(`docker pull de ${image} falhou (código ${done.code}):\n${tail}`);
+  }
+}
+
+/**
+ * The images of the web (docs/BUSCA.md): the page reader, built from the folder the app carries, and
+ * the pinned SearXNG, pulled. Neither is needed for the bots' machine, so a failure here only leaves
+ * that part of the web off (the tools say it): `web_read` then reads in this process, without
+ * `render`, and `web_search` keeps the engines with a public API. Returns what failed, for the log.
+ */
+export async function prepareWebImages(options: {
+  docker: string;
+  reader: { image: string; context: string };
+  searxng: string;
+  onBuild(): void;
+  log(text: string): void;
+}): Promise<string[]> {
+  const { docker, log } = options;
+  const failed: string[] = [];
+  let announced = false;
+  const announce = () => {
+    if (!announced) options.onBuild();
+    announced = true;
+  };
+  try {
+    if (!(await imageExists(docker, options.reader.image))) {
+      announce();
+      await buildImage(docker, options.reader.image, options.reader.context, log);
+    }
+  } catch (error) {
+    failed.push(`leitor de páginas: ${String(error)}`);
+  }
+  try {
+    if (!(await imageExists(docker, options.searxng))) {
+      announce();
+      await pullImage(docker, options.searxng, log);
+    }
+  } catch (error) {
+    failed.push(`busca (SearXNG): ${String(error)}`);
+  }
+  return failed;
+}
+
 /**
  * Whether this computer can serve the bots' internal network. The harness runs the bots' only way out
  * (a proxy with a list of hosts) on THIS computer, listening on the gateway address of that network.
@@ -116,6 +170,11 @@ export interface MachineImages {
   sandbox: string;
   connectors: string;
   egress: string;
+}
+
+/** The bots' images and the web's own (the page reader). */
+export interface AppImages extends MachineImages {
+  reader: string;
 }
 
 /** Where the bots' proxy runs: in its own container (works everywhere Docker does), or in this process. */

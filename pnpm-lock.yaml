@@ -130,6 +130,9 @@ importers:
       '@suup/sandbox':
         specifier: workspace:*
         version: link:../../packages/sandbox
+      '@suup/web':
+        specifier: workspace:*
+        version: link:../../packages/web
     devDependencies:
       '@suup/api':
         specifier: workspace:*

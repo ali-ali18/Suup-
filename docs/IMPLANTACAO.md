@@ -137,6 +137,8 @@ Contêineres criados antes desta versão (na rede padrão, com saída direta) s�
 - Construir a imagem do leitor atrás de um proxy que reassina o TLS: os mesmos argumentos da seção seguinte, com `-f docker/reader/Dockerfile`.
 - Sem o leitor ou sem a busca: `"web": { "reader": { "enabled": false } }` e/ou `"search": { "enabled": false }`.
 - Desenvolvimento: `docker compose --profile web up -d searxng` (com `SEARXNG_SECRET`) sobe só o SearXNG na porta `127.0.0.1:8080`, **com a saída do host** (sem a lista): só para desenvolvimento.
+- **Produção (VPS) não muda:** o proxy de motores fica no worker (`web.search.proxy.mode` omitido = `process`). O modo `container` (`suup-egress-search`, a imagem de `docker/egress`) é o do app de desktop no Windows, onde o worker é um processo do computador e não escuta numa rede do Docker ([BUSCA.md](BUSCA.md), "O app embutido").
+- **A imagem do leitor como o app a constrói** (sem o repositório): `pnpm exec tsc -b && node apps/sidecar/scripts/reader-image.mjs /tmp/reader && docker build -t suup-reader:app-dev /tmp/reader` (receita `docker/reader/app.Dockerfile`; o CI a constrói e confere que o navegador sobe). Atrás de um proxy que reassina o TLS, os mesmos argumentos da seção seguinte (`--network host`, `--build-arg HTTPS_PROXY`, `--secret id=build_ca,...`).
 
 ## Construir atrás de um proxy que reassina o TLS
 

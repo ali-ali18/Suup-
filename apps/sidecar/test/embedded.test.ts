@@ -122,6 +122,15 @@ describe.skipIf(!CAN_RUN)(
         join(resources, "script.json"),
         JSON.stringify({
           cases: [
+            // First: its conversation also holds the earlier turn (and its answer, step 0).
+            {
+              whenObjectiveContains: "BUSCA-EMBUTIDA",
+              agent: [
+                { text: "Olá, de dentro do app." },
+                { calls: [{ name: "web_search", args: { query: "suup" } }] },
+                { text: "Busquei." },
+              ],
+            },
             { whenObjectiveContains: "OI-EMBUTIDO", agent: [{ text: "Olá, de dentro do app." }] },
           ],
         }),
@@ -137,6 +146,9 @@ describe.skipIf(!CAN_RUN)(
           ],
           reviewer: { model: "model-x" },
           memory: { consolidation: { model: "model-x" } },
+          // Only an engine Suup asks itself (no Docker, no container started by this test); the
+          // network of a test machine may not reach it, which the search reports, not crashes on.
+          web: { search: { engines: ["wikipedia"] }, reader: { enabled: false } },
         }),
       );
       give(root);
@@ -215,6 +227,30 @@ describe.skipIf(!CAN_RUN)(
         if (Date.now() > deadline) throw new Error("o worker embutido não respondeu");
         await new Promise((r) => setTimeout(r, 50));
       }
+
+      // The web from inside the bundle (docs/BUSCA.md): @suup/web and jsdom load there, and the
+      // engines with a public API run with no Docker. The tool's answer is the search's own.
+      await api.conversations.send(conversation.id, "BUSCA-EMBUTIDA");
+      const searched = Date.now() + 90_000;
+      for (;;) {
+        const { items } = await api.conversations.messages(conversation.id);
+        if (items.at(-1)?.text === "Busquei.") break;
+        if (Date.now() > searched) {
+          const { items: all } = await api.runs.list({ botId: main?.id as string });
+          throw new Error(`a busca embutida não terminou: ${JSON.stringify(all).slice(0, 2000)}`);
+        }
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      const { items: runs } = await api.runs.list({ botId: main?.id as string });
+      const results: { content?: unknown; isError?: unknown }[] = [];
+      for (const run of runs) {
+        const { items } = await api.runs.events(run.id, { types: ["tool_result"] });
+        results.push(...items.map((e) => e.payload));
+      }
+      expect(results.length).toBe(1);
+      expect(results[0]?.isError, JSON.stringify(results)).toBe(false);
+      expect(String(results[0]?.content)).toContain('Search: "suup"');
+      expect(String(results[0]?.content)).toContain("Engines asked: wikipedia");
 
       // The database is the one in the app-data folder, and only the loopback can reach it.
       expect(readdirSync(join(appData, "postgres"))).toContain("PG_VERSION");
@@ -311,6 +347,12 @@ describe.skipIf(!CAN_RUN || process.env.SUUP_DOCKER_TESTS !== "1")(
       const connectorImage = process.env.SUUP_CONNECTOR_IMAGE ?? "suup-connector-runner:dev";
       execFileSync("docker", ["tag", sandboxImage, "suup-sandbox:app-dockertest"]);
       execFileSync("docker", ["tag", connectorImage, "suup-connector-runner:app-dockertest"]);
+      // The page reader's image too (its recipe is checked by the web's own Docker tests): built
+      // here, it would download a browser of several GB.
+      const readerImage = process.env.SUUP_READER_IMAGE ?? "suup-reader:dev";
+      execFileSync("docker", ["tag", readerImage, "suup-reader:app-dockertest"]);
+      for (const name of ["suup-egress-search", "suup-searxng", "suup-reader"])
+        execFileSync("docker", ["rm", "--force", name], { stdio: "ignore" });
       // The egress proxy image is NOT tagged here: the sidecar builds it from the Dockerfile and the
       // bundle the app carries, as it does on a first run.
       execFileSync("docker", ["rm", "--force", "suup-egress"], { stdio: "ignore" });
@@ -327,6 +369,17 @@ describe.skipIf(!CAN_RUN || process.env.SUUP_DOCKER_TESTS !== "1")(
         join(resources, "script.json"),
         JSON.stringify({
           cases: [
+            // First: its conversation also holds the turn below. The step is the count of the bot's
+            // messages so far, so every early step is the search (one or two searches, then the end).
+            {
+              whenObjectiveContains: "BUSCA-DOCKER",
+              agent: [
+                { calls: [{ name: "web_search", args: { query: "linux kernel" } }] },
+                { calls: [{ name: "web_search", args: { query: "linux kernel" } }] },
+                { calls: [{ name: "web_search", args: { query: "linux kernel" } }] },
+                { text: "Busquei com o Docker." },
+              ],
+            },
             {
               whenObjectiveContains: "ROTEIRO-DOCKER",
               agent: [
@@ -437,6 +490,28 @@ describe.skipIf(!CAN_RUN || process.env.SUUP_DOCKER_TESTS !== "1")(
           sandbox: { network: { proxy: { mode: string } } };
         };
         expect(written.sandbox.network.proxy.mode).toBe("container");
+
+        // The web, the Windows way: SearXNG's engine proxy in its own container too, controlled by
+        // this host process through a port published on 127.0.0.1.
+        await api.conversations.send(conversation.id, "BUSCA-DOCKER");
+        const searched = Date.now() + 240_000;
+        for (;;) {
+          const { items } = await api.conversations.messages(conversation.id);
+          if (items.some((m) => m.text === "Busquei com o Docker.")) break;
+          if (Date.now() > searched) throw new Error("a busca com o Docker não terminou");
+          await new Promise((r) => setTimeout(r, 200));
+        }
+        const running = (name: string) =>
+          execFileSync("docker", ["inspect", "--format", "{{.State.Running}}", name], {
+            encoding: "utf8",
+          }).trim();
+        expect(running("suup-egress-search")).toBe("true");
+        expect(running("suup-searxng")).toBe("true");
+        const searchWeb = JSON.parse(readFileSync(join(appData, "suup.config.json"), "utf8")) as {
+          web: { search: { proxy: { mode: string } }; reader: { image: string } };
+        };
+        expect(searchWeb.web.search.proxy.mode).toBe("container");
+        expect(searchWeb.web.reader.image).toBe("suup-reader:app-dockertest");
       } finally {
         proc.stdin?.write("stop\n");
         await new Promise<void>((resolve) => {
@@ -450,9 +525,21 @@ describe.skipIf(!CAN_RUN || process.env.SUUP_DOCKER_TESTS !== "1")(
             encoding: "utf8",
           },
         );
-        execFileSync("docker", ["rm", "--force", "suup-machine"], { stdio: "ignore" });
-        execFileSync("docker", ["rm", "--force", "suup-egress"], { stdio: "ignore" });
+        const leftSearch = execFileSync(
+          "docker",
+          ["ps", "--all", "--quiet", "--filter", "name=^suup-egress-search$"],
+          { encoding: "utf8" },
+        );
+        for (const name of [
+          "suup-machine",
+          "suup-egress",
+          "suup-egress-search",
+          "suup-searxng",
+          "suup-reader",
+        ])
+          execFileSync("docker", ["rm", "--force", name], { stdio: "ignore" });
         expect(left.trim(), "o contêiner do proxy deve sumir quando o app para").toBe("");
+        expect(leftSearch.trim(), "o proxy da busca também").toBe("");
       }
     });
   },

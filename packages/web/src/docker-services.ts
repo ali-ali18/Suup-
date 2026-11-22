@@ -4,9 +4,11 @@
 // tools say it to the model.
 //
 // Network design (docs/BUSCA.md, docs/REDE.md):
-//  - SearXNG lives alone on its own INTERNAL network (no route out). Its only way out is an egress
-//    proxy of ours on that network, which lets through ONLY the exact host names of the engines
-//    that are turned on. It holds no secret except a random `secret_key` made for this install.
+//  - SearXNG lives on its own INTERNAL network (no route out). Its only way out is an egress proxy
+//    of ours on that network, which lets through ONLY the exact host names of the engines that are
+//    turned on: in this process (Linux), or in its own container (Docker Desktop, the embedded app on
+//    Windows). It holds no secret except a random `secret_key` made for this install and, with the
+//    proxy in a container, the proxy credentials of this start (they open only the engines' hosts).
 //  - The reader is a container with a public route but no inbound port and no secret; the worker
 //    talks to it with `docker exec`. It refuses private addresses itself (safe-fetch.ts), and its
 //    browser goes through a proxy that does the same (renderer.ts).
@@ -16,10 +18,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   assertName,
+  DEFAULT_EGRESS_IMAGE,
   dockerClientEnv,
+  type EgressEvent,
   EgressProxy,
+  type EgressSubject,
   ensureInternalNetwork,
   runProcess,
+  startEgressContainer,
+  subjectKey,
 } from "@suup/sandbox";
 import {
   arxivEngine,
@@ -45,6 +52,10 @@ import { REPOSITORY_URL, userAgent, WEB_VERSION } from "./user-agent.js";
 export const SEARCH_CONTAINER = "suup-searxng";
 export const READER_CONTAINER = "suup-reader";
 export const SEARCH_NETWORK = "suup-search-net";
+/** The engine proxy's own container, in the `container` mode of `searchProxy`. */
+export const SEARCH_EGRESS_CONTAINER = "suup-egress-search";
+/** Who the search container is, to the engine proxy. */
+const SEARCH_SUBJECT: EgressSubject = { kind: "harness", id: "search" };
 export const READER_IMAGE = "suup-reader:dev";
 const SETTINGS_LABEL = "suup.web.settings";
 const SEARX_PORT = 8080;
@@ -59,8 +70,23 @@ export interface WebServicesOptions {
   searchNetwork?: string;
   /** Name of the search container. Default `suup-searxng`. */
   searchContainer?: string;
-  /** Where the engine proxy listens on the search network; default: its gateway, port 3129. */
-  searchProxy?: { listenHost?: string; advertiseHost?: string; port?: number };
+  /**
+   * Where the engine proxy runs. `process` (default): in this process, listening on the search
+   * network (default: its gateway, port 3129). `container`: in its own container (the `docker/egress`
+   * image, named `suup-egress-search`), joined to the search network and to an ordinary one, with its
+   * control port published on 127.0.0.1 only: the topology of Docker Desktop (Windows), where this
+   * process cannot listen on a Docker network (docs/REDE.md, "`container`: o proxy no contêiner `suup-egress`").
+   */
+  searchProxy?: {
+    mode?: "process" | "container";
+    /** `container` mode: the egress image. Default `suup-egress:dev`. */
+    image?: string;
+    /** `container` mode: the container's name. Default `suup-egress-search`. */
+    name?: string;
+    listenHost?: string;
+    advertiseHost?: string;
+    port?: number;
+  };
   searxImage?: string;
   readerEnabled?: boolean;
   readerImage?: string;
@@ -236,6 +262,82 @@ async function startDirect(
   return { engines, proxy: proxyAddress, stop };
 }
 
+/**
+ * The engine proxy in this process, listening on the search network (a Linux host, or a worker in a
+ * container with a fixed address). The search container is the only member of that network, so the
+ * proxy asks it for no credentials.
+ */
+async function startProcessProxy(
+  path: string,
+  networkName: string,
+  hosts: ReadonlySet<string>,
+  onEvent: (event: EgressEvent) => void,
+  options: WebServicesOptions,
+): Promise<{ proxyUrl: string; stop(): Promise<void> }> {
+  const net = await ensureInternalNetwork(networkName, { dockerPath: path });
+  const listenHost = options.searchProxy?.listenHost ?? net.gateway;
+  const advertiseHost = options.searchProxy?.advertiseHost ?? listenHost;
+  const configuredPort = options.searchProxy?.port ?? 3129;
+  const proxy = new EgressProxy({
+    policy: { allowedHosts: async () => hosts },
+    anonymousSubject: SEARCH_SUBJECT,
+    listenHost,
+    listenPort: configuredPort,
+    onEvent,
+    ...(options.searchProxy?.advertiseHost === undefined ? {} : { advertiseHost }),
+  });
+  let proxyStarted = true;
+  let port = configuredPort;
+  try {
+    port = (await proxy.start()).port;
+  } catch (error) {
+    // Another Suup process on this computer already serves the engine proxy on that address.
+    if ((error as { code?: string }).code !== "EADDRINUSE") throw error;
+    proxyStarted = false;
+  }
+  return {
+    proxyUrl: `http://${advertiseHost.includes(":") ? `[${advertiseHost}]` : advertiseHost}:${port}`,
+    stop: async () => {
+      if (proxyStarted) await proxy.stop();
+    },
+  };
+}
+
+/**
+ * The engine proxy in its own container (the same image and code as the bots' proxy container). It
+ * has no list of its own: it asks this process, through the control channel, and the answer is the
+ * engines' exact hosts for the search container and nothing for anyone else. The search container
+ * proves who it is with the credentials in the proxy URL (made for this start; they open only that
+ * list).
+ */
+async function startContainerProxy(
+  path: string,
+  networkName: string,
+  hosts: ReadonlySet<string>,
+  onEvent: (event: EgressEvent) => void,
+  options: WebServicesOptions,
+): Promise<{ proxyUrl: string; stop(): Promise<void> }> {
+  const searchKey = subjectKey(SEARCH_SUBJECT);
+  const none: ReadonlySet<string> = new Set();
+  const egress = await startEgressContainer({
+    dockerPath: path,
+    image: options.searchProxy?.image ?? DEFAULT_EGRESS_IMAGE,
+    name: options.searchProxy?.name ?? SEARCH_EGRESS_CONTAINER,
+    internalNetwork: networkName,
+    policy: {
+      allowedHosts: async (subject) => (subjectKey(subject) === searchKey ? hosts : none),
+    },
+    onEvent,
+    ...(options.log === undefined ? {} : { log: options.log }),
+  });
+  const proxyUrl = egress.envFor(SEARCH_SUBJECT).HTTP_PROXY;
+  if (proxyUrl === undefined) {
+    await egress.stop();
+    throw new Error("the engine proxy container gave no proxy address");
+  }
+  return { proxyUrl, stop: () => egress.stop() };
+}
+
 async function startSearch(
   options: WebServicesOptions & {
     dockerPath: string;
@@ -249,44 +351,24 @@ async function startSearch(
   const networkName = options.searchNetwork ?? SEARCH_NETWORK;
   assertName(networkName, "search network name");
   const image = options.searxImage ?? SEARXNG_IMAGE;
-  const net = await ensureInternalNetwork(networkName, { dockerPath: path });
-  const listenHost = options.searchProxy?.listenHost ?? net.gateway;
-  const advertiseHost = options.searchProxy?.advertiseHost ?? listenHost;
-  const configuredPort = options.searchProxy?.port ?? 3129;
   const hosts = new Set(engineHosts(options.engines, options.languages));
-  const proxy = new EgressProxy({
-    policy: { allowedHosts: async () => hosts },
-    anonymousSubject: { kind: "harness", id: "search" },
-    listenHost,
-    listenPort: configuredPort,
-    onEvent: (event) => {
-      if (event.decision === "refused") {
-        options.log?.(
-          `search proxy refused ${event.host}:${event.port} (${event.reason ?? "refused"})`,
-        );
-      }
-    },
-    ...(options.searchProxy?.advertiseHost === undefined ? {} : { advertiseHost }),
-  });
-  let proxyStarted = true;
-  let port = configuredPort;
-  try {
-    port = (await proxy.start()).port;
-  } catch (error) {
-    // Another Suup process on this computer already serves the engine proxy on that address.
-    if ((error as { code?: string }).code !== "EADDRINUSE") throw error;
-    proxyStarted = false;
-  }
-  const proxyUrl = `http://${advertiseHost.includes(":") ? `[${advertiseHost}]` : advertiseHost}:${port}`;
+  const onEvent = (event: EgressEvent) => {
+    if (event.decision === "refused") {
+      options.log?.(
+        `search proxy refused ${event.host}:${event.port} (${event.reason ?? "refused"})`,
+      );
+    }
+  };
+  const { proxyUrl, stop } =
+    options.searchProxy?.mode === "container"
+      ? await startContainerProxy(path, networkName, hosts, onEvent, options)
+      : await startProcessProxy(path, networkName, hosts, onEvent, options);
   const settings = renderSearxSettings({
     engines: options.engines,
     proxyUrl,
     port: SEARX_PORT,
     userAgent: userAgent(WEB_VERSION, options.repositoryUrl ?? REPOSITORY_URL),
   });
-  const stop = async () => {
-    if (proxyStarted) await proxy.stop();
-  };
 
   const state = await docker(path, [
     "inspect",

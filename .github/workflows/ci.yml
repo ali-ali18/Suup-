@@ -41,6 +41,13 @@ jobs:
         run: docker build --tag suup-connector-runner:ci docker/connector-runner
       - name: Build the page reader image (web_read, with Chromium for render)
         run: docker build --file docker/reader/Dockerfile --tag suup-reader:ci .
+      # The desktop app builds the reader from its own recipe (docker/reader/app.Dockerfile and the bundled
+      # program), with no repository; the browser must start in it.
+      - name: Build the page reader image the way the desktop app does
+        run: |
+          node apps/sidecar/scripts/reader-image.mjs "$RUNNER_TEMP/reader-app"
+          docker build --tag suup-reader-app:ci "$RUNNER_TEMP/reader-app"
+          echo "" | docker run -i --rm -e SUUP_RENDER=1 -e SUUP_RENDER_NO_SANDBOX=1 -e HOME=/tmp suup-reader-app:ci node /app/dist/serve.js | grep -F '"renderAvailable":true'
       - name: Build the egress proxy image (the proxy in its own container; the program is bundled first)
         run: |
           node apps/sidecar/scripts/egress-image.mjs docker/egress

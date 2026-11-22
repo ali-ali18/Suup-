@@ -1,7 +1,9 @@
 // Owns the `settings.yml` of the SearXNG container. SearXNG is used UNMODIFIED (it is AGPL v3: the
 // duty to offer source arises when the program is modified, docs/BUSCA.md); everything we change is
-// in this settings file, on top of the image's own defaults. The file holds no secret: the
-// `secret_key` comes from the environment (`SEARXNG_SECRET`), generated for each install.
+// in this settings file, on top of the image's own defaults. The file holds no secret of the user:
+// the `secret_key` comes from the environment (`SEARXNG_SECRET`), generated for each install; with
+// the engine proxy in its own container, the proxy URL carries the credentials of that start, which
+// open only the engines' exact hosts.
 //
 // The text is written as YAML by hand for this fixed shape; strings go through JSON quoting, which
 // is valid YAML.
@@ -10,7 +12,7 @@ import { userAgent as honestUserAgent } from "./user-agent.js";
 
 export interface SearxSettingsInput {
   engines: readonly string[];
-  /** The egress proxy URL SearXNG sends every outgoing request through, or none (dev compose). */
+  /** The egress proxy URL SearXNG sends every outgoing request through (with credentials when the proxy is a container), or none (dev compose). */
   proxyUrl?: string;
   /** Seconds before a slow engine is given up. */
   requestTimeout?: number;
@@ -30,7 +32,7 @@ export function renderSearxSettings(input: SearxSettingsInput): string {
   const lines: string[] = [
     "# Generated from packages/web/src/searx-settings.ts. Do not edit by hand: change the engine list in",
     "# suup.config.json (web.search.engines) or in the code. See docs/BUSCA.md.",
-    "# No secret here: secret_key comes from the environment variable SEARXNG_SECRET.",
+    "# secret_key comes from the environment variable SEARXNG_SECRET (never written here).",
     "use_default_settings:",
     "  engines:",
     "    keep_only:",

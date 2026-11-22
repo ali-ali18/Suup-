@@ -1,6 +1,6 @@
 # Generated from packages/web/src/searx-settings.ts. Do not edit by hand: change the engine list in
 # suup.config.json (web.search.engines) or in the code. See docs/BUSCA.md.
-# No secret here: secret_key comes from the environment variable SEARXNG_SECRET.
+# secret_key comes from the environment variable SEARXNG_SECRET (never written here).
 use_default_settings:
   engines:
     keep_only:

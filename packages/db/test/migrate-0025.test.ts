@@ -61,6 +61,11 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("migration 0025: bot avatar style"), 
     ).rejects.toThrow();
     expect(await migrate(ctx.db)).toEqual([]);
   });
+});
+
+// A database that had the routines (0026, 0027) before the avatar style: 0025 applies by itself.
+describe.skipIf(!DATABASE_URL)(dbSuiteName("migration 0025 after 0026 and 0027"), () => {
+  const ctx = useIsolatedDb({ migrate: false });
 
   it("applies alone on a database that already has the later ones (the routines came first)", async () => {
     const dir = await mkdtemp(join(tmpdir(), "suup-migrations-"));

@@ -419,9 +419,18 @@ const webSchema = z.strictObject({
       image: z.exactOptional(z.string().min(1)),
       /** The internal network of the search container. Default `suup-search-net`. */
       network: z.exactOptional(z.string().min(1)),
-      /** Where the engine proxy listens on that network (needed when the worker runs in a container). */
+      /** Where the engine proxy runs and listens on that network (needed when the worker runs in a container). */
       proxy: z.exactOptional(
         z.strictObject({
+          /**
+           * `process` (default): in this process, on the search network's gateway (a Linux host).
+           * `container`: in its own container (`suup-egress-search`, the image of `docker/egress`),
+           * with its control port published on 127.0.0.1: Docker Desktop (Windows), where this process
+           * cannot listen on a Docker network. The embedded app uses it when the bots' proxy does.
+           */
+          mode: z.exactOptional(z.enum(["process", "container"])),
+          /** `container` mode: the image built from `docker/egress`. */
+          image: z.exactOptional(z.string().min(1)),
           listenHost: z.exactOptional(z.string().min(1)),
           advertiseHost: z.exactOptional(z.string().min(1)),
           port: z.exactOptional(z.number().int().min(1).max(65535)),

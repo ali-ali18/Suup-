@@ -10,7 +10,8 @@
   "dependencies": {
     "@suup/cli": "workspace:*",
     "@suup/db": "workspace:*",
-    "@suup/sandbox": "workspace:*"
+    "@suup/sandbox": "workspace:*",
+    "@suup/web": "workspace:*"
   },
   "devDependencies": {
     "esbuild": "0.28.2",

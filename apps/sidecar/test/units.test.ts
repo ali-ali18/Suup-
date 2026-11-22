@@ -69,7 +69,7 @@ describe("protocol", () => {
 describe("config", () => {
   const base = {
     workspace: "/w",
-    images: { sandbox: "s:1", connectors: "c:1", egress: "e:1" },
+    images: { sandbox: "s:1", connectors: "c:1", egress: "e:1", reader: "r:1" },
     egress: "container" as const,
     networkName: "net",
     allowedOrigins: [],
@@ -91,6 +91,29 @@ describe("config", () => {
       isolation: { mode: "local", reason: "docker_missing", detail: null },
     }) as { sandbox: { kind: string; root: string } };
     expect(config.sandbox).toEqual({ kind: "local", root: "/w" });
+  });
+  it("gives the web the server's services: the search proxy in a container when the bots' is one", () => {
+    const docker = { mode: "docker", reason: null, detail: null } as const;
+    const web = (config: Record<string, unknown>) => config.web;
+    // Windows: the bots' proxy is a container, so the search container's is one too.
+    expect(web(buildConfig({ ...base, isolation: docker }))).toEqual({
+      search: { proxy: { mode: "container", image: "e:1" } },
+      reader: { image: "r:1" },
+    });
+    // A Linux host: the proxy in this process, as on the server.
+    expect(web(buildConfig({ ...base, egress: "process", isolation: docker }))).toEqual({
+      reader: { image: "r:1" },
+    });
+    // No Docker: the engines with a public API, and pages read in this process.
+    expect(
+      web(
+        buildConfig({
+          ...base,
+          egress: null,
+          isolation: { mode: "local", reason: "docker_missing", detail: null },
+        }),
+      ),
+    ).toEqual({ reader: { image: "r:1" } });
   });
 });
 

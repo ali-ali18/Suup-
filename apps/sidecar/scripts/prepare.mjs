@@ -1,9 +1,11 @@
 // Prepares what the desktop app carries for "neste computador" (docs/pesquisas/fase-4-backend-embutido-e-vps.md):
 //   src-tauri/binaries/node-<triple>[.exe]   the Node runtime (Tauri's externalBin: the sidecar)
 //   src-tauri/resources/sidecar/sidecar.mjs  the server + worker + CLI, bundled into one file
+//   src-tauri/resources/sidecar/xhr-sync-worker.js  a file jsdom looks up next to the bundle when it loads
 //   src-tauri/resources/postgres/            the PostgreSQL binaries of this platform
 //   src-tauri/resources/migrations/          the SQL migrations
-//   src-tauri/resources/docker/              the Dockerfiles of the bots' machine, the connector runner and the egress proxy
+//   src-tauri/resources/docker/              the Dockerfiles of the bots' machine, the connector runner, the egress proxy
+//                                            and the page reader (with the bundled programs the last two carry)
 // Run it on the platform being built (`pnpm --filter @suup/sidecar run bundle`); CI does.
 import { execFileSync } from "node:child_process";
 import {
@@ -21,6 +23,7 @@ import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { bundleEgress } from "./egress-image.mjs";
+import { bundleReader, jsdomWorker } from "./reader-image.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const sidecar = join(here, "..");
@@ -89,6 +92,8 @@ await build({
   },
   logLevel: "warning",
 });
+// The web's page reading (jsdom) is inside the bundle; jsdom needs this file beside it to load.
+cpSync(jsdomWorker(), join(resources, "sidecar", "xhr-sync-worker.js"));
 
 // 2. Migrations and Dockerfiles.
 cpSync(join(root, "packages", "db", "migrations"), join(resources, "migrations"), {
@@ -105,6 +110,8 @@ cpSync(
   join(resources, "docker", "egress", "Dockerfile"),
 );
 await bundleEgress(join(resources, "docker", "egress"));
+// The page reader's image (docs/BUSCA.md): its recipe and the bundled program, no repository needed.
+await bundleReader(join(resources, "docker", "reader"));
 
 // 3. PostgreSQL for this platform (symlinks become real files: the installer does not keep them).
 const key = `${process.platform}-${process.arch}`;

@@ -40,6 +40,15 @@ Como o app cuida disso:
 - Na primeira vez **constrói as imagens** (`suup-sandbox` e `suup-connector-runner`) a partir dos Dockerfiles que vêm dentro do app. A tela mostra "Preparando a máquina dos bots…". Precisa de **internet** e leva alguns minutos; se o build falhar, o app diz o motivo (nos registros) e segue **sem isolamento**, dizendo isso. (Escolhi construir em vez de baixar porque ainda não publicamos as imagens em nenhum registro; construir não exige conta nem segredo.)
 - **A saída dos bots passa por um proxy num contêiner próprio.** No Docker Desktop as redes do Docker ficam dentro da máquina virtual dele e o app, que roda no Windows, não escuta lá; por isso o proxy (`suup-egress`, uma imagem pequena que o app também constrói na primeira vez) roda dentro do Docker, e o app fala com ele por uma porta publicada **só em `127.0.0.1`**, com um token novo a cada início. A lista de sites e as suas aprovações continuam no app. Detalhes e desenho em [REDE.md](REDE.md). O app **prova esse caminho ao abrir** (sobe um contêiner descartável e fala com ele); se não der, ele tenta o modo em que o proxy roda no próprio app e, só se também não der, segue **sem isolamento**, dizendo o motivo. **Provado num Linux com Docker real, com o servidor como processo do computador (a mesma topologia do Windows); ainda não verificado no Windows com Docker Desktop em si.** Se o proxy não subir, os registros trazem o motivo.
 
+## 4b. Busca e leitura de páginas
+
+Os bots buscam na web e leem páginas com as mesmas ferramentas do servidor (`web_search` e `web_read`; [BUSCA.md](BUSCA.md)):
+
+- **Sempre, mesmo sem Docker:** a busca na **Wikipédia, no arXiv e no Stack Overflow** (o Suup pergunta direto às APIs oficiais, saindo só para esses endereços) e a **leitura de páginas públicas** dentro do próprio app (sem rodar o JavaScript da página).
+- **Com o Docker Desktop:** também a **busca geral (DuckDuckGo)**, pelo SearXNG num contêiner sem saída própria, e a leitura **com navegador** (para páginas que só aparecem com JavaScript), num contêiner próprio. A saída do SearXNG passa por um segundo proxy em contêiner (`suup-egress-search`), do mesmo jeito que a dos bots: só para os endereços dos motores, controlado pelo app por uma porta publicada só em `127.0.0.1`.
+- **Sem o Docker,** o bot recebe o motivo quando a busca geral ou a leitura com navegador não estão disponíveis ("precisa do Docker"), e pode dizer isso a você.
+- **Na primeira abertura com o Docker,** junto com as imagens dos bots, o app **constrói a imagem do leitor** (parte da imagem do Playwright, com o navegador: **alguns GB** de download) e **baixa a do SearXNG**. Se uma delas falhar, os bots continuam isolados normalmente; só aquela parte da web fica de fora (o motivo vai para os registros).
+
 ## 5. Onde ficam os dados e os registros
 
 | O quê | Onde (Windows) |
@@ -53,7 +62,7 @@ Os registros **não** contêm chaves nem o token. **Avançado:** para trocar os 
 
 ## 6. Desinstalar e fazer backup
 
-- **Desinstalar:** Configurações do Windows > Aplicativos > Suup > Desinstalar. Isso **não apaga** os dados nem as credenciais: apague à mão a pasta `%LOCALAPPDATA%\app.suup.desktop` e as entradas `app.suup.desktop` do Gerenciador de Credenciais se quiser tudo zerado. Se tinha Docker: `docker rm -f suup-machine` e `docker volume rm suup-workspace`.
+- **Desinstalar:** Configurações do Windows > Aplicativos > Suup > Desinstalar. Isso **não apaga** os dados nem as credenciais: apague à mão a pasta `%LOCALAPPDATA%\app.suup.desktop` e as entradas `app.suup.desktop` do Gerenciador de Credenciais se quiser tudo zerado. Se tinha Docker: `docker rm -f suup-machine suup-searxng suup-reader` e `docker volume rm suup-workspace`.
 - **Backup:** feche o app (o banco para com calma ao fechar) e copie a pasta `%LOCALAPPDATA%\app.suup.desktop\local\`. **Guarde também as credenciais:** sem a chave do cofre e a senha do banco, uma cópia restaurada em outro computador não abre. Para um backup que abre em qualquer lugar, use o dump do banco ([IMPLANTACAO.md](IMPLANTACAO.md), "Passar do computador para a VPS").
 
 ## 7. Passar para a VPS
@@ -62,7 +71,8 @@ Em **Configurações > Geral > Servidor > Trocar** o app volta à primeira tela 
 
 ## O que foi e o que não foi verificado
 
-- **Provado num Linux (esta entrega):** o banco PostgreSQL embutido sobe e aplica as 21 migrações; o servidor e o worker respondem uma conversa; a parada deixa nenhum processo; um comando de bot roda dentro da máquina Docker, e a saída dele sai pelo proxy em contêiner, com o servidor como processo do computador falando com ele só pela porta publicada em `127.0.0.1` (a topologia do Docker Desktop); o app (no navegador, com o Tauri simulado) faz a primeira abertura, a troca e o aviso de isolamento. O Rust compila (`cargo check`).
-- **Só no CI (primeira execução):** o instalador do Windows e o teste do servidor embutido no Windows.
-- **Não verificado em nenhum lugar:** a instalação num Windows real, o aviso do SmartScreen, o Docker Desktop em si (a porta publicada em `127.0.0.1`, o firewall e o proxy em contêiner; o desenho foi provado num Linux, não no Windows), o Credential Manager do Windows, o PostgreSQL rodando como administrador no Windows, o desempenho e o antivírus.
+- **Provado num Linux (esta entrega):** o banco PostgreSQL embutido sobe e aplica as migrações (27 nesta versão); o servidor e o worker respondem uma conversa; a parada deixa nenhum processo; um comando de bot roda dentro da máquina Docker, e a saída dele sai pelo proxy em contêiner, com o servidor como processo do computador falando com ele só pela porta publicada em `127.0.0.1` (a topologia do Docker Desktop); o app (no navegador, com o Tauri simulado) faz a primeira abertura, a troca e o aviso de isolamento. O Rust compila (`cargo check`).
+- **Provado num Linux (app completo):** com Docker, uma busca do bot sobe o SearXNG e o proxy de motores em contêiner (`suup-egress-search`), com o servidor como processo do computador; o proxy aceita a credencial do SearXNG e só abre os endereços dos motores; o leitor construído pela receita do app (variante sem navegador, por falta de disco) lê e recusa endereços privados. Sem Docker, a busca pelas APIs diretas roda dentro do pacote do app.
+- **Só no CI (primeira execução):** o instalador do Windows e o teste do servidor embutido no Windows (que inclui uma busca pelas APIs diretas, sem Docker); a imagem do leitor **com** navegador, construída pela receita do app (`ci.yml`).
+- **Não verificado em nenhum lugar:** a instalação num Windows real, o aviso do SmartScreen, o Docker Desktop em si (a porta publicada em `127.0.0.1`, o firewall e os dois proxies em contêiner, o dos bots e o da busca; o desenho foi provado num Linux, não no Windows), o Credential Manager do Windows, o PostgreSQL rodando como administrador no Windows, o desempenho e o antivírus.
 - **Linux:** o CI gera só o pacote `.deb`. O AppImage falhou no `linuxdeploy` do CI e fica como trabalho futuro.

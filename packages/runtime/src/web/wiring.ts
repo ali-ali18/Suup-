@@ -16,7 +16,13 @@ export interface WebSettings {
     cache?: { enabled?: boolean; ttlMinutes?: number };
     image?: string;
     network?: string;
-    proxy?: { listenHost?: string; advertiseHost?: string; port?: number };
+    proxy?: {
+      mode?: "process" | "container";
+      image?: string;
+      listenHost?: string;
+      advertiseHost?: string;
+      port?: number;
+    };
   };
   reader?: { enabled?: boolean; render?: boolean; image?: string; repositoryUrl?: string };
 }

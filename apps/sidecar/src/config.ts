@@ -34,7 +34,7 @@ export interface ConfigInput {
   isolation: Isolation;
   /** The folder the bots work in when they are not isolated. */
   workspace: string;
-  images: { sandbox: string; connectors: string; egress: string };
+  images: { sandbox: string; connectors: string; egress: string; reader: string };
   /** Where the bots' proxy runs (`chooseIsolation` decided it). */
   egress: "container" | "process" | null;
   networkName: string;
@@ -72,6 +72,7 @@ export function buildConfig(input: ConfigInput): Record<string, unknown> {
     reviewer: { model: "claude-haiku-5-5" },
     memory: { consolidation: { model: "claude-haiku-5-5" } },
     sandbox,
+    web: webConfig(input),
     worker: { concurrency: 4 },
     defaults: { maxTurns: 50, maxCostUsd: 2, maxDurationMs: 1_800_000 },
     vault: { keyEnv: "SUUP_VAULT_KEY" },
@@ -80,5 +81,22 @@ export function buildConfig(input: ConfigInput): Record<string, unknown> {
       allowedOrigins: [...input.allowedOrigins],
       tokenEnv: "SUUP_SERVER_TOKEN",
     },
+  };
+}
+
+/**
+ * Web search and page reading (docs/BUSCA.md), the way the server has them: the engines with a public
+ * API (Wikipedia, arXiv, Stack Overflow) always, in this process, with no Docker; DuckDuckGo through
+ * the SearXNG container and `web_read` through the reader container when Docker is there. The
+ * search container's only way out is an engine proxy: in its own container when the bots' proxy is
+ * one (Windows: this process cannot listen on a Docker network), in this process otherwise. Without
+ * Docker, `web_read` reads in this process (no `render`), and the tools say why the rest is missing.
+ */
+function webConfig(input: ConfigInput): Record<string, unknown> {
+  return {
+    ...(input.isolation.mode === "docker" && input.egress === "container"
+      ? { search: { proxy: { mode: "container", image: input.images.egress } } }
+      : {}),
+    reader: { image: input.images.reader },
   };
 }

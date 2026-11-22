@@ -3,8 +3,9 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import { type CliIo, main as cli } from "@suup/cli";
 import { createDb, migrate } from "@suup/db";
+import { SEARXNG_IMAGE } from "@suup/web/engines";
 import { buildConfig } from "./config.js";
-import { chooseIsolation } from "./docker.js";
+import { type AppImages, chooseIsolation, prepareWebImages } from "./docker.js";
 import { createLogger, rotateIfBig, scrubber } from "./log.js";
 import { choosePorts } from "./ports.js";
 import { EmbeddedPostgres } from "./postgres.js";
@@ -137,10 +138,11 @@ export function startSidecar(env: SidecarEnv, emit: (event: SidecarEvent) => voi
 
     if (stopRequested) return 0;
     stage("machine");
-    const images = {
+    const images: AppImages = {
       sandbox: `suup-sandbox:app-${env.version}`,
       connectors: `suup-connector-runner:app-${env.version}`,
       egress: `suup-egress:app-${env.version}`,
+      reader: `suup-reader:app-${env.version}`,
     };
     const networkName = "suup-sandbox-net";
     const { isolation, egress } =
@@ -169,6 +171,18 @@ export function startSidecar(env: SidecarEnv, emit: (event: SidecarEvent) => voi
     logger.line(
       `máquina dos bots: ${isolation.mode}${isolation.reason === null ? "" : ` (${isolation.reason}: ${isolation.detail ?? ""})`}`,
     );
+    if (isolation.mode === "docker" && !stopRequested) {
+      // The web's images (docs/BUSCA.md), the same way: built or pulled once, on the first start.
+      const failed = await prepareWebImages({
+        docker: env.dockerPath,
+        reader: { image: images.reader, context: join(env.resources, "docker", "reader") },
+        searxng: SEARXNG_IMAGE,
+        onBuild: () =>
+          logger.line("preparando as imagens da busca e da leitura (só na primeira vez)"),
+        log: (text) => logger.line(text),
+      });
+      for (const line of failed) logger.line(`web sem parte do Docker: ${line}`);
+    }
 
     if (stopRequested) return 0;
     stage("server");
