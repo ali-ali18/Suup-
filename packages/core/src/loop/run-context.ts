@@ -6,6 +6,7 @@ import type {
   ContextItem,
   MachineInfo,
   ReceptionKind,
+  RoutineRef,
   RoutineRunFacts,
   RunClock,
   SecretInfo,
@@ -78,6 +79,8 @@ export interface RunContextSnapshot {
   supervisor?: SupervisorRole;
   /** A routine opened this run: what fired it (docs/ROTINAS.md). */
   routine?: RoutineRunFacts;
+  /** The routines the messages that opened the run are about (the app's "Editar"; recorded). */
+  routineRefs?: RoutineRef[];
   /** Compact the history past this share of the context window (the user's setting; recorded). */
   compactionThreshold?: number;
   /** Rules and profile facts left out because they did not fit the size cap (recorded). */

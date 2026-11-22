@@ -80,7 +80,11 @@ export const conversationRoutes: Route[] = [
     async handler(ctx) {
       const id = ctx.uuid("id");
       const body = ctx.body(sendMessageBodySchema);
-      const sent = await sendMessage(ctx.runtime, { conversationId: id, text: body.text });
+      const sent = await sendMessage(ctx.runtime, {
+        conversationId: id,
+        text: body.text,
+        ...(body.routineRef === undefined ? {} : { routineRef: body.routineRef.id }),
+      });
       return {
         status: 201,
         body: {

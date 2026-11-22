@@ -73,6 +73,11 @@ export const messageSchema = z.object({
   team: z.exactOptional(teamProposalSchema),
   /** Only on the message that reports a routine's run: the routine (docs/ROTINAS.md). */
   routineId: z.exactOptional(uuid),
+  /**
+   * Only on a message of yours that is about a routine (the app's "Editar"): which one. It is data
+   * of the message, never part of `text`; the bot is told which routine it is.
+   */
+  routineRef: z.exactOptional(z.object({ id: uuid })),
 });
 export type Message = z.infer<typeof messageSchema>;
 
@@ -142,6 +147,12 @@ export const sendMessageBodySchema = z.object({
     .string()
     .refine((t) => t.trim().length > 0, "a mensagem está vazia")
     .pipe(z.string().max(100_000)),
+  /**
+   * The routine the message is about (the app's "Editar" binds it to the draft): a routine of the
+   * conversation's bot. Stored with the message, never added to its text; the bot reads which
+   * routine it is in a note of the harness and changes that one.
+   */
+  routineRef: z.exactOptional(z.object({ id: uuid })),
 });
 export type SendMessageBody = z.input<typeof sendMessageBodySchema>;
 export const sendMessageResultSchema = z.object({

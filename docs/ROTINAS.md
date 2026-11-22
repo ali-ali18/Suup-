@@ -9,7 +9,13 @@ Esta etapa tem só o gatilho de **horário**. Monitor (consulta periódica com c
 Decisão do dono: como no Grok, a rotina nasce da conversa, não de um formulário.
 
 - O usuário diz "vê meu calendário todo dia". O bot chama `create_routine` escolhendo **ele mesmo** um horário razoável e diz na própria mensagem o que escolheu: "Combinado, vejo seu calendário todo dia às 8h. Quer outro horário?". O prompt (`ROUTINES_HOW`, `packages/core/src/loop/prompts.ts`) manda escolher, dizer em palavras e perguntar; e manda **não** criar rotina que o usuário não pediu.
-- Para mudar, o usuário fala ("muda para 7h") e o bot chama `update_routine`; ou usa o painel do bot (abaixo).
+- Para mudar, o usuário fala ("muda para 7h") e o bot chama `update_routine`. **Não há formulário de horário no app** (decisão do dono, 22/11/2026, como as tarefas do Grok): o "Editar" do painel leva ao chat do bot com o rascunho preenchido ("Editar a rotina “Calendário da manhã” (todo dia às 08:00): ") e uma **referência escondida** à rotina (abaixo).
+
+### A referência à rotina na mensagem
+
+O id da rotina **nunca aparece no chat**. O "Editar" prende ao rascunho do compositor uma referência estruturada (`routineRef: { id }`); apagar o rascunho, ou trocar de bot, a tira. Ela vai com a mensagem (`POST /v1/conversations/{id}/messages`, `{ text, routineRef }`), o servidor confere que é uma rotina do bot da conversa e a guarda **na mensagem** (`messages.routine_ref`, migração 0027; `null` quando a rotina é apagada), nunca no texto.
+
+O modelo recebe a referência como dado, numa nota do harness no mesmo turno da mensagem (`renderRoutineRef`, `packages/core/src/loop/prompts.ts`): "The user's message is about your routine "Calendário da manhã" (todo dia às 08:00), id …. … To change or delete this routine, pass routine: "…"", com o aviso de não mostrar o id ao usuário. Fica no log, então retomar e reproduzir dão o mesmo: a mensagem que abriu a execução vai em `context_loaded.routineRefs`; a que chegou com a execução andando, em `user_message.routineRef` (a caixa de entrada lê a referência da mensagem). Uma mensagem assim que já está no histórico de uma execução seguinte leva a mesma nota ao lado do texto. O texto que o usuário digitou continua sendo o objetivo e o que o revisor do Auto-review lê como pedido dele. Lacuna: a resposta a uma pergunta do bot (`escalate`) é o resultado da chamada e não leva a nota.
 - `schedule_return` ([RETORNO.md](RETORNO.md)) continua sendo só para voltar **uma vez**, dentro da tarefa atual (um deploy que termina em 20 minutos). O que se repete, ou é para outro dia, é rotina. O prompt diz isso aos dois lados.
 
 Ferramentas (só em execução de conversa do usuário, `origin: user`):

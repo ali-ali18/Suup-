@@ -232,6 +232,9 @@ async function ensureContext(ctx: LoopContext): Promise<void> {
       ...(snapshot.reception === undefined ? {} : { reception: snapshot.reception }),
       ...(snapshot.supervisor === undefined ? {} : { supervisor: snapshot.supervisor }),
       ...(snapshot.routine === undefined ? {} : { routine: snapshot.routine }),
+      ...(snapshot.routineRefs === undefined || snapshot.routineRefs.length === 0
+        ? {}
+        : { routineRefs: snapshot.routineRefs }),
       ...(snapshot.compactionThreshold === undefined
         ? {}
         : { compactionThreshold: snapshot.compactionThreshold }),

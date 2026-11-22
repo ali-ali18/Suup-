@@ -22,6 +22,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("migration 0020: prompt limit in memo
       "0023_supervisor.sql",
       "0024_web_search_cache.sql",
       "0026_routines.sql",
+      "0027_message_routine_ref.sql",
     ]);
     for (const file of held) await rm(join(dir, file));
     await migrate(ctx.db, dir);

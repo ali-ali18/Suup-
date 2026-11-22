@@ -233,7 +233,12 @@ export interface SuupClient {
       id: string,
       query?: ListMessagesQuery,
     ): Promise<{ items: Message[]; hasMore: boolean }>;
-    send(id: string, text: string): Promise<SendMessageResult>;
+    /** `options.routineRef`: the routine the message is about (never part of the text). */
+    send(
+      id: string,
+      text: string,
+      options?: { routineRef?: { id: string } },
+    ): Promise<SendMessageResult>;
     markRead(id: string, body?: MarkReadBody): Promise<Conversation>;
     /** The user's decision on a team card (the message that carries it): create the ticked ones, or "Agora não". */
     decideTeam(messageId: string, body: DecideTeamBody): Promise<DecideTeamResult>;
@@ -514,9 +519,12 @@ export function createClient(options: ClientOptions): SuupClient {
         call("GET", `/v1/conversations/${id(conversationId)}/messages`, messagePageSchema, {
           query: query as Query | undefined,
         }),
-      send: (conversationId, text) =>
+      send: (conversationId, text, options = {}) =>
         call("POST", `/v1/conversations/${id(conversationId)}/messages`, sendMessageResultSchema, {
-          body: { text },
+          body:
+            options.routineRef === undefined
+              ? { text }
+              : { text, routineRef: { id: options.routineRef.id } },
         }),
       decideTeam: (messageId, body) =>
         call("POST", `/v1/messages/${id(messageId)}/team`, decideTeamResultSchema, {

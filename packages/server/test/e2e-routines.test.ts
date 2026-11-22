@@ -61,6 +61,12 @@ const SCRIPTS = {
         agent: [s({ text: "Recuperei a rotina perdida." })],
       },
       {
+        // The reviewer of the edit asked in the chat (the agent is the other provider).
+        whenObjectiveContains: "MUDA-7H",
+        agent: [],
+        autoReview: [verdict("run", "Você pediu para mudar esta rotina.")],
+      },
+      {
         whenObjectiveContains: "ROTINA-FONTE",
         agent: [
           s({ calls: [{ name: "ler_pagina_teste", args: {} }] }),
@@ -356,6 +362,83 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("routines through the API"), { timeou
     ]);
     // the list of routines does not carry them (only the history)
     expect((await api.routines.get(routine.id)).lastFire?.sources).toBeUndefined();
+  });
+
+  it("Editar: the message carries the routine as data, the bot reads its id and updates it", async () => {
+    const { api } = w.started;
+    const bot = await api.bots.create({ name: "Editora", modelId: "model-y" });
+    const conversation = await api.bots.openConversation(bot.id);
+    const routine = await api.routines.create({
+      botId: bot.id,
+      name: "Calendário da manhã",
+      instruction: "Veja meu calendário de hoje.",
+      schedule: daily8,
+    });
+    // The scripted model answers by what it READS: only a conversation that has the routine's id
+    // (which only the harness's note can carry) gets the update; anything else gets a question.
+    await w.script("outro", {
+      cases: [
+        {
+          whenObjectiveContains: routine.id,
+          agent: [
+            s({
+              calls: [
+                {
+                  name: "update_routine",
+                  args: { routine: routine.id, schedule: { kind: "daily", time: "07:00" } },
+                },
+              ],
+            }),
+            s({ text: "Pronto: agora é todo dia às 07:00." }),
+          ],
+        },
+        { whenObjectiveContains: "MUDA-7H", agent: [s({ text: "Qual rotina?" })] },
+      ],
+    });
+    const typed = "Editar a rotina “Calendário da manhã” (todo dia às 08:00): MUDA-7H muda pra 7h";
+    const sent = await api.conversations.send(conversation.id, typed, {
+      routineRef: { id: routine.id },
+    });
+    // stored with the message, never in its text
+    expect(sent.message.text).toBe(typed);
+    expect(sent.message.text).not.toContain(routine.id);
+    expect(sent.message.routineRef).toEqual({ id: routine.id });
+    expect((await finished(sent.run.id)).status).toBe("done");
+    expect((await api.routines.get(routine.id)).schedule).toEqual({ kind: "daily", time: "07:00" });
+    const events = (await api.runs.events(sent.run.id, { limit: 500 })).items;
+    expect(events.find((e) => e.type === "context_loaded")?.payload).toMatchObject({
+      routineRefs: [{ id: routine.id, name: "Calendário da manhã", schedule: "todo dia às 08:00" }],
+    });
+    expect(events.find((e) => e.type === "run_started")?.payload).toMatchObject({
+      objective: typed,
+    });
+    const said = await until(async () => {
+      const items = (await api.conversations.messages(conversation.id)).items;
+      return items.length >= 2 ? items : undefined;
+    }, "the bot's answer");
+    expect(said.map((m) => m.text)).toEqual([typed, "Pronto: agora é todo dia às 07:00."]);
+    expect(said.every((m) => !m.text.includes(routine.id))).toBe(true);
+    expect(said[0]?.routineRef).toEqual({ id: routine.id });
+
+    // a routine of ANOTHER bot is refused, and nothing is sent
+    const other = await api.bots.create({ name: "Outra", modelId: "model-y" });
+    const theirs = await api.routines.create({
+      botId: other.id,
+      name: "Delas",
+      instruction: "x",
+      schedule: daily8,
+    });
+    expect(
+      await code(
+        api.conversations.send(conversation.id, "muda", { routineRef: { id: theirs.id } }),
+      ),
+    ).toBe("invalid_request");
+    expect((await api.conversations.messages(conversation.id)).items).toHaveLength(2);
+    // deleting the routine keeps the message and drops the reference
+    await api.routines.delete(routine.id);
+    const [first] = (await api.conversations.messages(conversation.id)).items;
+    expect(first?.text).toBe(typed);
+    expect(first?.routineRef).toBeUndefined();
   });
 
   it("CRUD: refuses cron text and a past date, pauses, resumes, deletes", async () => {

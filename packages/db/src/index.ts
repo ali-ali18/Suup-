@@ -321,6 +321,7 @@ export {
   type RoutineFireStatus,
   type RoutineStatus,
   type RoutineTriggerKind,
+  routineRefsOf,
   runRoutineNow,
   setRoutineState,
   type UpdateRoutineInput,

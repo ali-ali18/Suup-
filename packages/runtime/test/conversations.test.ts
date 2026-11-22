@@ -5,6 +5,7 @@ import {
   type Bot,
   claimRun,
   createBot,
+  createRoutine,
   getActiveConversationRun,
   getMessage,
   getRun,
@@ -125,6 +126,67 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("conversation engine"), () => {
         RuntimeError,
       );
       await expect(sendMessage(runtime, { text: "oi" })).rejects.toThrow(TypeError);
+      await runtime.close();
+    });
+  });
+
+  describe("a message about a routine (the app's Editar)", () => {
+    it("queued while a run waits, it reaches the model with its note; later runs keep it in the history", async () => {
+      const runtime = await open({
+        agent: [{ text: "Ok." }, { text: "Mudei." }, { text: "Sim." }],
+      });
+      const bot = await newBot(runtime);
+      const routine = await createRoutine(runtime.db, {
+        botId: bot.id,
+        name: "Manhã",
+        instruction: "Veja o calendário.",
+        schedule: { kind: "daily", time: "08:00" },
+        timeZone: "America/Sao_Paulo",
+        createdBy: "bot",
+      });
+      const first = await sendMessage(runtime, { botId: bot.id, text: "Oi" });
+      // the run has not started: this one goes to its inbox, with the reference
+      const second = await sendMessage(runtime, {
+        botId: bot.id,
+        text: "Editar a rotina “Manhã”: muda pra 7h",
+        routineRef: routine.id,
+      });
+      expect(second.queuedForRun).toBe(true);
+      expect(second.message.routineRef).toBe(routine.id);
+      expect(second.message.text).not.toContain(routine.id);
+      await work(runtime, first.run.id);
+      const events = await listRunEvents(runtime.db, first.run.id);
+      const loaded = events.find((e) => e.type === "context_loaded")?.payload as {
+        routineRefs?: unknown;
+      };
+      expect(loaded.routineRefs).toBeUndefined();
+      expect(events.find((e) => e.type === "user_message")?.payload).toMatchObject({
+        text: "Editar a rotina “Manhã”: muda pra 7h",
+        routineRef: { id: routine.id, name: "Manhã", schedule: "todo dia às 08:00" },
+      });
+      // the next run reads it in the history, with the note next to the text
+      const third = await sendMessage(runtime, { botId: bot.id, text: "E agora?" });
+      await work(runtime, third.run.id);
+      const later = (await listRunEvents(runtime.db, third.run.id)).find(
+        (e) => e.type === "context_loaded",
+      )?.payload as { history: { role: string; blocks: { text?: string }[] }[] };
+      const history = later.history
+        .map((m) => m.blocks.map((b) => b.text ?? "").join(""))
+        .join("\n");
+      expect(history).toContain(`id ${routine.id}`);
+      // a routine of another bot is refused
+      const other = await newBot(runtime);
+      const theirs = await createRoutine(runtime.db, {
+        botId: other.id,
+        name: "Delas",
+        instruction: "x",
+        schedule: { kind: "daily", time: "08:00" },
+        timeZone: "America/Sao_Paulo",
+        createdBy: "bot",
+      });
+      await expect(
+        sendMessage(runtime, { botId: bot.id, text: "muda", routineRef: theirs.id }),
+      ).rejects.toMatchObject({ code: "invalid_input" });
       await runtime.close();
     });
   });

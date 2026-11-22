@@ -245,6 +245,21 @@ export const routineRunFactsSchema = z.object({
 });
 export type RoutineRunFacts = z.infer<typeof routineRunFactsSchema>;
 
+/**
+ * The routine a message of the user is about (the app's "Editar" binds it to the draft;
+ * docs/ROTINAS.md). It is data of the message, never part of its text: the harness tells the model
+ * which routine it is (`renderRoutineRef`), so the bot changes the right one. Recorded with the
+ * message (`user_message.routineRef`) or, for the messages that opened the run,
+ * `context_loaded.routineRefs`: a resumed run and a replay read the same.
+ */
+export const routineRefSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  /** The schedule in words (pt-BR), as the user reads it. */
+  schedule: z.string(),
+});
+export type RoutineRef = z.infer<typeof routineRefSchema>;
+
 /** Why a pending return was dropped: the user wrote, the run was stopped, a new call replaced it, or the run finished. */
 export const WAIT_CANCEL_REASONS = ["user_message", "cancelled", "replaced", "finished"] as const;
 export type WaitCancelReason = (typeof WAIT_CANCEL_REASONS)[number];
@@ -355,6 +370,8 @@ export const runEventSchema = z.discriminatedUnion("type", [
       supervisor: z.exactOptional(supervisorRoleSchema),
       /** Set when a routine opened the run: what fired it (docs/ROTINAS.md). */
       routine: z.exactOptional(routineRunFactsSchema),
+      /** The routines the messages that opened the run are about (the app's "Editar"). */
+      routineRefs: z.exactOptional(z.array(routineRefSchema)),
       /**
        * The share of the context window past which this run compacts its history (the user's
        * setting at the start of the run). Recorded so that a replay compacts at the same point.
@@ -588,6 +605,8 @@ export const runEventSchema = z.discriminatedUnion("type", [
        * The model reads the message as being about that denied action.
        */
       linkedApprovalId: z.exactOptional(z.string()),
+      /** The routine the message is about (the app's "Editar"); never in `text`. */
+      routineRef: z.exactOptional(routineRefSchema),
     }),
   }),
   z.object({

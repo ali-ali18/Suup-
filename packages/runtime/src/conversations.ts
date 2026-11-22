@@ -10,6 +10,7 @@ import {
   createDirectConversation,
   getBot,
   getConversation,
+  getRoutine,
   listBots,
   type Message,
   type Run,
@@ -26,6 +27,12 @@ export interface SendMessageInput {
   /** The bot to talk to: its direct conversation is found or created. */
   botId?: string;
   text: string;
+  /**
+   * The routine the message is about (the app's "Editar"): stored on the message as data, never in
+   * its text, and told to the model so the bot changes the right one. It must be a routine of the
+   * conversation's bot.
+   */
+  routineRef?: string;
 }
 
 export interface SendMessageResult {
@@ -94,8 +101,22 @@ export async function sendMessage(
     runtime.botConfig(bot);
   }
 
+  if (input.routineRef !== undefined) {
+    const routine = await getRoutine(db, input.routineRef);
+    if (routine === null || routine.botId !== bot.id) {
+      throw new RuntimeError(
+        "invalid_input",
+        "routineRef: essa rotina não existe ou não é do bot desta conversa.",
+      );
+    }
+  }
+
   try {
-    const sent = await sendConversationMessage(db, { conversationId: conversation.id, text });
+    const sent = await sendConversationMessage(db, {
+      conversationId: conversation.id,
+      text,
+      ...(input.routineRef === undefined ? {} : { routineRef: input.routineRef }),
+    });
     return {
       message: sent.message,
       run: sent.run,

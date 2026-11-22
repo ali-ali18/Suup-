@@ -136,7 +136,7 @@ A mensagem do bot que **é uma pergunta** (o `escalate` do bot, ou o desempate d
 | `GET /v1/conversations?includeArchived=&limit=` | | `200 { items: [Conversation] }`, pela atividade mais recente |
 | `GET /v1/conversations/{id}` | | `200 Conversation`; `404` |
 | `GET /v1/conversations/{id}/messages?before=&after=&limit=` | | `200 { items: [Message], hasMore }` |
-| `POST /v1/conversations/{id}/messages` | `{ text }` | `201 { message, run, queuedForRun }`; `400` (vazia); `404`; `409` (bot arquivado, grupo, modelo fora da configuração) |
+| `POST /v1/conversations/{id}/messages` | `{ text, routineRef? }` | `201 { message, run, queuedForRun }`; `400` (vazia, ou `routineRef` que não é rotina do bot da conversa); `404`; `409` (bot arquivado, grupo, modelo fora da configuração). `routineRef: { id }` é a rotina de que a mensagem fala (o "Editar" do app): fica **na mensagem** (`message.routineRef`), nunca no `text`, e o harness diz ao modelo qual é a rotina, com o id, numa nota própria ([ROTINAS.md](ROTINAS.md)) |
 | `POST /v1/conversations/{id}/read` | `{ upToSeq? }` | `200 Conversation`; `404` |
 
 - **Paginação** (`limit` de 1 a 200, padrão 50): sem cursor, as mensagens **mais novas**; `before=<seq>`, as imediatamente anteriores (rolar para cima); `after=<seq>`, as seguintes (pôr a conversa em dia). Sempre em `seq` crescente. `hasMore` diz se há mais na direção pedida.
@@ -278,7 +278,7 @@ Veja [ROTINAS.md](ROTINAS.md). O horário é **estruturado** (`Schedule`: `once 
 | `POST /v1/routines/{id}/run` | | `202 { fire }`: "Rodar agora", um disparo `manual` fora do horário (não muda o próximo); `409` enquanto a execução anterior não terminou |
 | `GET /v1/routines/{id}/fires?limit=` | | `200 { items: RoutineFire[] }`, mais novo primeiro: `scheduledFor`, `kind` (`scheduled`, `catch_up`, `manual`), `status` (`running`, `done`, `failed`, `cancelled`, `skipped`), `skipReason` (`overlap`), `missedCount`, `runId`, `resultText` e `messageId` (o resultado, que também está no chat do bot), `createdAt`, `finishedAt` e `sources` (só aqui, não em `lastFire`): o que a execução usou, na ordem, cada um uma vez, até 8: `{ kind: "web", url, title }` para cada página que uma ferramenta **declarou** ter lido (`tool_result.source`, que o `web_read` grava) e `{ kind: "connector", connector }` para cada conector cuja ferramenta respondeu sem erro (pelo nome registrado **exato** que o conector lista). Nunca tirado do texto |
 
-A execução de uma rotina é como as demais, com `origin: "routine"` e `conversationId: null`; a mensagem com o resultado, no chat do bot, traz `routineId`. O cliente: `api.routines.list/get/create/update/delete/run/fires` e `api.userSettings.get/update`.
+A execução de uma rotina é como as demais, com `origin: "routine"` e `conversationId: null`; a mensagem com o resultado, no chat do bot, traz `routineId`. Uma mensagem **sua** sobre uma rotina traz `routineRef: { id }` (some se a rotina for apagada). O cliente: `api.routines.list/get/create/update/delete/run/fires` e `api.userSettings.get/update`.
 
 ## Aprovações e regras
 

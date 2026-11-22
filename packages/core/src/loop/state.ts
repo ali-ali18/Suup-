@@ -15,6 +15,7 @@ import {
   type RunPromptContext,
   renderNotice,
   renderReturnNotice,
+  renderRoutineRef,
   renderSummaryMessage,
   renderUserMessage,
 } from "./prompts.js";
@@ -370,6 +371,14 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
             : [],
         ),
       );
+      // The routines the opening messages are about: a note in the objective's turn (the last
+      // message so far), never in the text of the user.
+      for (const ref of event.payload.routineRefs ?? []) {
+        const objective = state.messages[state.messages.length - 1];
+        const block = { type: "text" as const, text: renderRoutineRef(ref) };
+        if (objective?.role === "user") objective.blocks.push(block);
+        state.charsSince += blockChars(block);
+      }
       const history = historyMessages(event.payload.history, event.payload.historyNote);
       if (history.length === 0) break;
       const seqs = history.map(() => state.startSeq);
@@ -599,6 +608,13 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
         },
         event.seq,
       );
+      if (event.payload.routineRef !== undefined) {
+        appendUserBlock(
+          state,
+          { type: "text", text: renderRoutineRef(event.payload.routineRef) },
+          event.seq,
+        );
+      }
       // New information from the user: the model deserves a fresh start on its counters.
       state.noProgressStreak = 0;
       state.repeat = { signature: null, name: "", count: 0, nudged: false };

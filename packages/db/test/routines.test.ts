@@ -326,7 +326,7 @@ describe.skipIf(!DATABASE_URL)(
       const dir = await mkdtemp(join(tmpdir(), "suup-migrations-"));
       await cp(MIGRATIONS_DIR, dir, { recursive: true });
       const held = (await readdir(MIGRATIONS_DIR)).filter((f) => f >= "0025" && f.endsWith(".sql"));
-      expect(held).toEqual(["0026_routines.sql"]);
+      expect(held).toEqual(["0026_routines.sql", "0027_message_routine_ref.sql"]);
       for (const file of held) await rm(join(dir, file));
       await migrate(ctx.db, dir);
       const [bot] = await ctx.db.sql<{ id: string }[]>`
@@ -345,6 +345,67 @@ describe.skipIf(!DATABASE_URL)(
       insert into routines (bot_id, name, instruction, schedule, time_zone, status, next_run_at, created_by, ended_at)
       values (${bot?.id as string}, 'n', 'i', '"0 8 * * *"'::jsonb, 'UTC', 'paused', now(), 'user', null)`).rejects.toThrow();
       expect(await migrate(ctx.db)).toEqual([]);
+    });
+  },
+);
+
+describe.skipIf(!DATABASE_URL)(
+  dbSuiteName("migration 0027: the routine a user message is about"),
+  () => {
+    const ctx = useIsolatedDb({ migrate: false });
+
+    it("applies on a database at 0026, keeps the messages, and holds a reference only on a user message", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "suup-migrations-"));
+      await cp(MIGRATIONS_DIR, dir, { recursive: true });
+      const held = (await readdir(MIGRATIONS_DIR)).filter((f) => f >= "0027" && f.endsWith(".sql"));
+      expect(held).toEqual(["0027_message_routine_ref.sql"]);
+      for (const file of held) await rm(join(dir, file));
+      await migrate(ctx.db, dir);
+      const [bot] = await ctx.db.sql<{ id: string }[]>`
+      insert into bots (name, model_provider, model_id) values ('b', 'p', 'm') returning id`;
+      const conversation = await createDirectConversation(ctx.db, bot?.id as string);
+      await ctx.db.sql`
+      insert into messages (conversation_id, seq, author_kind, text) values
+      (${conversation.id}, 1, 'user', 'oi')`;
+      expect(await migrate(ctx.db)).toEqual(held);
+      const [old] = await ctx.db.sql<
+        { routine_ref: string | null }[]
+      >`select routine_ref from messages`;
+      expect(old?.routine_ref).toBeNull();
+      const routine = await createRoutine(ctx.db, {
+        botId: bot?.id as string,
+        name: "Manhã",
+        instruction: "Veja.",
+        schedule: daily8,
+        timeZone: SP,
+        createdBy: "bot",
+        now: NOW,
+      });
+      const mine = await appendMessage(ctx.db, {
+        conversationId: conversation.id,
+        authorKind: "user",
+        text: "Editar a rotina “Manhã”: muda pra 7h",
+        routineRef: routine.id,
+      });
+      expect(mine.routineRef).toBe(routine.id);
+      expect(mine.text).not.toContain(routine.id);
+      // only on a message of the user
+      await expect(
+        appendMessage(ctx.db, {
+          conversationId: conversation.id,
+          authorKind: "system",
+          text: "x",
+          routineRef: routine.id,
+        }),
+      ).rejects.toThrow();
+      await expect(ctx.db.sql`
+      insert into messages (conversation_id, seq, author_kind, text, routine_ref) values
+      (${conversation.id}, 9, 'system', 'x', ${routine.id})`).rejects.toThrow();
+      // the routine goes, the message stays, without the reference
+      await deleteRoutine(ctx.db, routine.id);
+      const [after] = await ctx.db.sql<{ text: string; routine_ref: string | null }[]>`
+      select text, routine_ref from messages where id = ${mine.id}`;
+      expect(after).toEqual({ text: "Editar a rotina “Manhã”: muda pra 7h", routine_ref: null });
     });
   },
 );

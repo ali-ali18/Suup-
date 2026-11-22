@@ -41,6 +41,7 @@ export {
   CREATE_ROUTINE_TOOL_NAME,
   formatClock,
   MEMORY_TOOL_NAMES,
+  renderRoutineRef,
   renderStateReminder,
   WEB_READ_TOOL_NAME,
   WEB_SEARCH_TOOL_NAME,

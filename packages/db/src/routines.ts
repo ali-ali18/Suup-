@@ -5,6 +5,7 @@
 // the fire, opens the run (origin `routine`) and moves `next_run_at`: any number of workers, and a
 // crash at any point, give each scheduled time at most one fire (unique routine + time).
 import {
+  describeSchedule,
   fireTimesBetween,
   isKnownTimeZone,
   nextFireAfter,
@@ -390,6 +391,29 @@ export async function setRoutineState(db: Db, id: string, state: string): Promis
     update routines set state = ${text}, state_updated_at = now() where id = ${id} returning id`;
   if (rows.length === 0) throw new RoutineError("not_found", "A rotina não existe.");
   return requireRoutine(db, id);
+}
+
+/**
+ * The routines messages are about (`messages.routine_ref`), as the model is told: the id, the name
+ * and the schedule in words. Routines that no longer exist are absent.
+ */
+export async function routineRefsOf(
+  db: Db,
+  ids: readonly string[],
+): Promise<Map<string, { id: string; name: string; schedule: string }>> {
+  const out = new Map<string, { id: string; name: string; schedule: string }>();
+  if (ids.length === 0) return out;
+  const rows = await db.sql<{ id: string; name: string; schedule: unknown }[]>`
+    select id, name, schedule from routines where id = any(${[...new Set(ids)]}::uuid[])`;
+  for (const row of rows) {
+    const parsed = scheduleSchema.safeParse(row.schedule);
+    out.set(row.id, {
+      id: row.id,
+      name: row.name,
+      schedule: parsed.success ? describeSchedule(parsed.data) : "",
+    });
+  }
+  return out;
 }
 
 /** The fires of a routine, newest first. */

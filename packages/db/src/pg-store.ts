@@ -20,6 +20,7 @@ import { type Db, withTransaction } from "./client.js";
 import { appendRunEvent, listRunEvents, RunNotFoundError } from "./events.js";
 import { ackInboxEntries, hasPendingInbox, type InboxEntry, peekInboxEntries } from "./inbox.js";
 import { heartbeatRun } from "./queue.js";
+import { routineRefsOf } from "./routines.js";
 import {
   addRunUsage,
   getRun,
@@ -151,7 +152,19 @@ export class PgRunStore implements RunStore {
   }
 
   async peekInbox(runId: string): Promise<InboxItem[]> {
-    return (await peekInboxEntries(this.#db, runId)).map(toItem);
+    const entries = await peekInboxEntries(this.#db, runId);
+    // The routine a message is about, as the model is told (docs/ROTINAS.md).
+    const refs = await routineRefsOf(
+      this.#db,
+      entries.flatMap((e) => (e.routineRef === undefined ? [] : [e.routineRef])),
+    );
+    return entries.map((entry) => {
+      const item = toItem(entry);
+      const ref = entry.routineRef === undefined ? undefined : refs.get(entry.routineRef);
+      return item.kind === "user_message" && ref !== undefined
+        ? { ...item, routineRef: ref }
+        : item;
+    });
   }
 
   async ackInbox(runId: string, ids: readonly string[]): Promise<void> {

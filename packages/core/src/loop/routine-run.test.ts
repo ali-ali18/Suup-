@@ -179,3 +179,53 @@ describe("the prompt about routines", () => {
     expect(unknown).not.toContain("in the user's time zone. That is when");
   });
 });
+
+describe("a message of the user that is about a routine (the app's Editar)", () => {
+  const REF = { id: "rot-123", name: "Calendário da manhã", schedule: "todo dia às 08:00" };
+  const texts = (rig: ReturnType<typeof createRig>, n = 0) =>
+    (rig.provider.requests[n]?.messages ?? [])
+      .flatMap((m) => m.blocks.flatMap((b) => (b.type === "text" ? [b.text] : [])))
+      .join("\n");
+
+  it("the opening message: the model reads which routine (with its id) in a note, recorded once", async () => {
+    const rig = createRig({
+      script: [say("Pronto.")],
+      objective: "Editar a rotina “Calendário da manhã” (todo dia às 08:00): muda pra 7h",
+    });
+    await runLoop(
+      rig.deps({ loadRunContext: async () => context({ routineRefs: [REF] }, false) }),
+      rig.runId,
+    );
+    const said = texts(rig);
+    expect(said).toContain("muda pra 7h");
+    expect(said).toContain('your routine "Calendário da manhã" (todo dia às 08:00), id rot-123');
+    expect(said).toContain('pass routine: "rot-123"');
+    const [loaded] = eventsOfType(await rig.events(), "context_loaded");
+    expect(loaded?.payload.routineRefs).toEqual([REF]);
+    // the run's objective (what the user typed) stays without the id
+    expect(eventsOfType(await rig.events(), "run_started")[0]?.payload.objective).not.toContain(
+      "rot-123",
+    );
+  });
+
+  it("a message posted while the bot works carries its own note, recorded with it", async () => {
+    const rig = createRig({ script: [say("Pronto.")], objective: "Oi" });
+    rig.store.postInbox(rig.runId, {
+      kind: "user_message",
+      text: "Editar a rotina “Calendário da manhã”: muda pra 7h",
+      routineRef: REF,
+    });
+    await runLoop(rig.deps(), rig.runId);
+    const [message] = eventsOfType(await rig.events(), "user_message");
+    expect(message?.payload).toMatchObject({
+      text: "Editar a rotina “Calendário da manhã”: muda pra 7h",
+      routineRef: REF,
+    });
+    expect(texts(rig)).toContain("id rot-123");
+    // without a reference there is no note
+    const plain = createRig({ script: [say("ok")], objective: "Oi" });
+    plain.store.postInbox(plain.runId, { kind: "user_message", text: "muda pra 7h" });
+    await runLoop(plain.deps(), plain.runId);
+    expect(texts(plain)).not.toContain("your routine");
+  });
+});

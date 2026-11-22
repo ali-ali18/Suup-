@@ -416,6 +416,15 @@ export function renderUserMessage(text: string, deniedTool?: string): string {
   return `${USER_PREFIX}\n${text}`;
 }
 
+/**
+ * The note that goes with a message of the user that is about a routine (the app's "Editar" binds
+ * the routine to the draft; the id is never in what the user typed). It names the routine by its
+ * id, so the bot changes the right one.
+ */
+export function renderRoutineRef(ref: { id: string; name: string; schedule: string }): string {
+  return `${NOTICE_PREFIX} The user's message is about your routine ${JSON.stringify(ref.name)} (${ref.schedule}), id ${ref.id}. The app attached this reference; the user did not type the id and does not see it, so never show it to them. To change or delete this routine, pass routine: "${ref.id}".`;
+}
+
 /** The harness note that opens the conversation history (e.g. that older messages were left out). */
 export function renderHistoryNote(text: string): string {
   return `${NOTICE_PREFIX} ${text}`;
