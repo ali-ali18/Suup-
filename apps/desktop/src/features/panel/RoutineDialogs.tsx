@@ -32,6 +32,84 @@ import {
   TextField,
 } from "../../ui/primitives.js";
 
+const MONTHS = [
+  "janeiro",
+  "fevereiro",
+  "março",
+  "abril",
+  "maio",
+  "junho",
+  "julho",
+  "agosto",
+  "setembro",
+  "outubro",
+  "novembro",
+  "dezembro",
+];
+const pad2 = (n: number) => String(n).padStart(2, "0");
+const daysIn = (year: number, month: number) => new Date(Date.UTC(year, month, 0)).getUTCDate();
+const todayIso = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+};
+
+/** A date as three dropdowns (day, month, year): never a typed `AAAA-MM-DD`. */
+function DateFields({
+  legend,
+  value,
+  onChange,
+  testId,
+}: {
+  legend: string;
+  value: string;
+  onChange(value: string): void;
+  testId: string;
+}) {
+  const [y = "", m = "", d = ""] = (value === "" ? todayIso() : value).split("-");
+  const year = Number(y);
+  const month = Number(m);
+  const day = Number(d);
+  const thisYear = new Date().getFullYear();
+  const years = Array.from({ length: 6 }, (_, i) => thisYear + i);
+  if (!years.includes(year)) years.unshift(year);
+  const set = (ny: number, nm: number, nd: number) =>
+    onChange(`${ny}-${pad2(nm)}-${pad2(Math.min(nd, daysIn(ny, nm)))}`);
+  return (
+    <FormRow as="fieldset">
+      <FieldLabel as="legend">{legend}</FieldLabel>
+      <div className="flex items-center gap-2" data-testid={testId}>
+        <Dropdown
+          label="Dia"
+          variant="field"
+          value={String(day)}
+          options={Array.from({ length: daysIn(year, month) }, (_, i) => ({
+            value: String(i + 1),
+            label: pad2(i + 1),
+          }))}
+          onChange={(v) => set(year, month, Number(v))}
+          testId={`${testId}-day`}
+        />
+        <Dropdown
+          label="Mês"
+          variant="field"
+          value={String(month)}
+          options={MONTHS.map((name, i) => ({ value: String(i + 1), label: name }))}
+          onChange={(v) => set(year, Number(v), day)}
+          testId={`${testId}-month`}
+        />
+        <Dropdown
+          label="Ano"
+          variant="field"
+          value={String(year)}
+          options={years.map((v) => ({ value: String(v), label: String(v) }))}
+          onChange={(v) => set(Number(v), month, day)}
+          testId={`${testId}-year`}
+        />
+      </div>
+    </FormRow>
+  );
+}
+
 /** The two dropdowns of a time of day (hour and minute): never a free text. */
 function TimeFields({ value, onChange }: { value: string; onChange(value: string): void }) {
   const [hour = "08", minute = "00"] = value.split(":");
@@ -210,23 +288,41 @@ export function RoutineEditDialog({
           </FormRow>
         )}
         {draft.kind === "once" && (
-          <TextField
-            label="Data"
+          <DateFields
+            legend="Data"
             value={draft.date}
-            placeholder="AAAA-MM-DD"
             onChange={(date) => set({ date })}
+            testId="routine-date"
           />
         )}
         {draft.kind !== "interval" && (
           <TimeFields value={draft.time} onChange={(time) => set({ time })} />
         )}
         {draft.kind !== "once" && (
-          <TextField
-            label="Termina em (opcional)"
-            value={draft.until}
-            placeholder="AAAA-MM-DD"
-            onChange={(until) => set({ until })}
-          />
+          <>
+            <FormRow>
+              <FieldLabel as="span">Termina</FieldLabel>
+              <Dropdown<"never" | "date">
+                label="Termina"
+                variant="field"
+                value={draft.until === "" ? "never" : "date"}
+                options={[
+                  { value: "never", label: "Nunca" },
+                  { value: "date", label: "Numa data" },
+                ]}
+                onChange={(v) => set({ until: v === "never" ? "" : todayIso() })}
+                testId="routine-ends"
+              />
+            </FormRow>
+            {draft.until !== "" && (
+              <DateFields
+                legend="Último dia"
+                value={draft.until}
+                onChange={(until) => set({ until })}
+                testId="routine-until"
+              />
+            )}
+          </>
         )}
         <FormRow>
           <FieldLabel as="span">Fuso horário</FieldLabel>

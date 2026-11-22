@@ -41,7 +41,8 @@ export function ChoiceRow({
   );
 }
 
-/** A pill that is on or off (a tool of the bot): the border and the fill say which. */
+/** A pill that is on or off (a tool of the bot, a day of the week): on is filled with the text
+ * colour, so the chosen ones stand out at a glance; off is only outlined. */
 export function ToggleChip({
   on,
   children,
@@ -55,7 +56,9 @@ export function ToggleChip({
       aria-pressed={on}
       className={cx(
         "inline-flex h-8 items-center gap-1.5 rounded-pill border px-3 text-small",
-        on ? "border-text bg-raised" : "border-border-strong bg-transparent",
+        on
+          ? "border-text bg-text text-text-inverse"
+          : "border-border-strong bg-transparent text-text",
         className,
       )}
       {...rest}

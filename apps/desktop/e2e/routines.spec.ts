@@ -154,6 +154,16 @@ test.describe("routines", () => {
     await page.getByRole("option", { name: "07", exact: true }).click();
     await dialog.getByTestId("routine-minute").click();
     await page.getByRole("option", { name: "30", exact: true }).click();
+    // The end date: chosen in dropdowns (day, month by name, year), never typed.
+    const nextYear = new Date().getFullYear() + 1;
+    await dialog.getByTestId("routine-ends").click();
+    await page.getByRole("option", { name: "Numa data" }).click();
+    await dialog.getByTestId("routine-until-year").click();
+    await page.getByRole("option", { name: String(nextYear), exact: true }).click();
+    await dialog.getByTestId("routine-until-month").click();
+    await page.getByRole("option", { name: "dezembro" }).click();
+    await dialog.getByTestId("routine-until-day").click();
+    await page.getByRole("option", { name: "31", exact: true }).click();
     await expect(dialog.getByTestId("routine-preview")).toContainText(
       "toda segunda, quarta e sexta às 07:30",
     );
@@ -163,13 +173,14 @@ test.describe("routines", () => {
     await expect(dialog).toHaveCount(0);
     const row = panel.getByTestId("routine-row");
     await expect(row.getByTestId("routine-schedule")).toHaveText(
-      "toda segunda, quarta e sexta às 07:30",
+      `toda segunda, quarta e sexta às 07:30, até 31/12/${nextYear}`,
     );
     const [routine] = await world.api.routines.list();
     expect(routine?.schedule).toEqual({
       kind: "weekly",
       days: ["mon", "wed", "fri"],
       time: "07:30",
+      until: `${nextYear}-12-31`,
     });
 
     await page.getByRole("button", { name: "Ações da rotina Calendário da manhã" }).click();
