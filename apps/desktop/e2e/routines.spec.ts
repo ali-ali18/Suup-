@@ -264,7 +264,7 @@ test.describe("routines", () => {
     const chip = page.getByTestId("draft-routine");
     await expect(chip).toContainText("Calendário da manhã");
     // the id is nowhere on screen
-    expect(await page.locator("body").innerText()).not.toContain(id);
+    expect(await page.locator("body").textContent()).not.toContain(id);
     await page.waitForTimeout(300);
     await page.screenshot({ path: shot("rotinas-editar-pelo-chat") });
 
@@ -276,7 +276,7 @@ test.describe("routines", () => {
     await expect(chip).toHaveCount(0);
     // the bubble shows only what was typed
     await expect(page.getByTestId("message-user").last()).toHaveText(`${draft}muda pra 7h`);
-    expect(await page.locator("body").innerText()).not.toContain(id);
+    expect(await page.locator("body").textContent()).not.toContain(id);
     await expect(panel.getByTestId("routine-schedule")).toHaveText("todo dia às 07:00");
     expect((await world.api.routines.get(id)).schedule).toEqual({ kind: "daily", time: "07:00" });
     const conversation = await world.api.bots.openConversation(botId);
