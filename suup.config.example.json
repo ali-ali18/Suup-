@@ -40,7 +40,7 @@
     "connectors": { "image": "suup-connector-runner:dev" }
   },
   "web": {
-    "search": { "engines": ["wikipedia", "arxiv", "stackoverflow", "github"] },
+    "search": { "engines": ["wikipedia", "arxiv", "stackoverflow"] },
     "reader": { "image": "suup-reader:dev" }
   },
   "worker": { "concurrency": 4, "leaseRenewMs": 10000, "staleAfterMs": 30000 },

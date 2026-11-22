@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { dockerClientEnv, runProcess } from "@suup/sandbox";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { startWebServices, type WebServices } from "../src/docker-services.js";
-import { DEFAULT_ENGINES } from "../src/engines.js";
+import { DEFAULT_ENGINES, searxEngineIds } from "../src/engines.js";
 import { createWebAccess } from "../src/service.js";
 
 // Real Docker (SUUP_DOCKER_TESTS=1): the real SearXNG image (pinned) on its internal network behind
@@ -60,6 +60,7 @@ describe.skipIf(!REAL)("web services, real Docker", () => {
     expect(services.searchProblem).toBeUndefined();
     expect(services.readerProblem).toBeUndefined();
     expect(services.searchBackend).toBeDefined();
+    expect(services.direct.map((e) => e.id)).toEqual(["wikipedia", "arxiv", "stackoverflow"]);
     expect(services.reader).toBeDefined();
   });
 
@@ -74,7 +75,7 @@ describe.skipIf(!REAL)("web services, real Docker", () => {
       for (const hit of out.hits) expect(hit.url.startsWith("http")).toBe(true);
     }, 90_000);
 
-    it("DuckDuckGo is loaded by the real image with Suup's honest user agent, and no engine is left that is not on the list", async () => {
+    it("DuckDuckGo is the only engine the real image loads, with Suup's honest user agent", async () => {
       const out = await docker([
         "exec",
         "--workdir",
@@ -87,7 +88,8 @@ describe.skipIf(!REAL)("web services, real Docker", () => {
       expect(out.code, out.err).toBe(0);
       expect(out.out).toContain("UA=SuupBot/");
       expect(out.out).not.toContain("Mozilla");
-      expect(out.out).toContain(`ENGINES=${[...DEFAULT_ENGINES].sort().join(",")}`);
+      // Only the engines SearXNG asks are loaded there; Wikipedia, arXiv and Stack Overflow are Suup's own.
+      expect(out.out).toContain(`ENGINES=${searxEngineIds(DEFAULT_ENGINES).sort().join(",")}`);
     }, 60_000);
 
     it("the container has no route out of its own network", async () => {

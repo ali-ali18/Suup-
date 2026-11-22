@@ -4,6 +4,7 @@
 // touches the web costs nothing. Choosing between them is a matter of what is available, never of
 // what a page or a query says.
 import type { WebAccess, WebReadOutcome, WebSearchOutcome } from "@suup/core";
+import type { DirectEngine } from "./direct-engines.js";
 import { createReader, type Reader } from "./reader.js";
 import { createSearch, type SearxBackend } from "./search.js";
 import { memorySearchCache, type SearchCache } from "./search-cache.js";
@@ -14,6 +15,8 @@ import type { StdioReaderClient } from "./stdio-client.js";
 export interface StartedServices {
   searchBackend?: SearxBackend | undefined;
   searchProblem?: string | undefined;
+  /** The engines Suup asks itself, by official API. */
+  direct?: readonly DirectEngine[] | undefined;
   engines: readonly string[];
   reader?: StdioReaderClient | undefined;
   readerProblem?: string | undefined;
@@ -84,7 +87,7 @@ export function createWebAccess(options: WebAccessOptions): WebAccessWithStatus 
         };
       }
       const started = await options.services();
-      if (started.searchBackend === undefined) {
+      if (started.searchBackend === undefined && (started.direct ?? []).length === 0) {
         return {
           ok: false,
           reason: "unavailable",
@@ -93,6 +96,7 @@ export function createWebAccess(options: WebAccessOptions): WebAccessWithStatus 
       }
       return await createSearch({
         backend: started.searchBackend,
+        direct: started.direct ?? [],
         engines: started.engines,
         governor,
         ...(cache === undefined ? {} : { cache }),
@@ -125,7 +129,7 @@ export function createWebAccess(options: WebAccessOptions): WebAccessWithStatus 
       return {
         search: !options.searchEnabled
           ? "off"
-          : started.searchBackend === undefined
+          : started.searchBackend === undefined && (started.direct ?? []).length === 0
             ? "unavailable"
             : "ready",
         ...(started.searchProblem === undefined ? {} : { searchProblem: started.searchProblem }),

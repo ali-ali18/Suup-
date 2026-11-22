@@ -52,7 +52,11 @@ describe("web wiring", () => {
 
   it("searches through the SearXNG it is pointed at", async () => {
     const searx = await stubSearx();
-    const wiring = createWebWiring({ search: { url: searx.url }, reader: { enabled: false } });
+    // Only an engine SearXNG asks: the engines Suup asks itself would go to the internet.
+    const wiring = createWebWiring({
+      search: { url: searx.url, engines: ["duckduckgo"] },
+      reader: { enabled: false },
+    });
     const out = await wiring.access.search({ query: "test", limit: 3 });
     expect(out).toMatchObject({
       ok: true,

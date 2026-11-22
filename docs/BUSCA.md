@@ -1,6 +1,6 @@
 # Busca e leitura de páginas na web
 
-Pesquisa que fundamenta este desenho: [pesquisas/fase-4-busca-na-web.md](pesquisas/fase-4-busca-na-web.md) (e o adendo "busca e leitura próprias"). Regra do dono, que manda em tudo aqui:
+Pesquisa que fundamenta este desenho: [pesquisas/fase-4-busca-na-web.md](pesquisas/fase-4-busca-na-web.md) (e o adendo "busca e leitura próprias") e, para as APIs que o Suup chama ele mesmo, [pesquisas/fase-4-busca-apis-diretas.md](pesquisas/fase-4-busca-apis-diretas.md). Regra do dono, que manda em tudo aqui:
 
 > "Não quero me prender a provedor." "Tem que ser 100% open, porque o projeto vai ser open."
 
@@ -13,13 +13,13 @@ Vale para tudo neste documento, e é checável no código:
 - **Nenhum serviço de resolver captcha**, nenhum rodízio de IP ou de proxy para escapar de bloqueio, nenhum disfarce de navegador (impressão digital, `User-Agent` de navegador, cabeçalhos copiados de um). Um site que devolve captcha, `429` ou bloqueia o IP **disse não**: o Suup espera a janela passar, diz ao bot que a busca está indisponível e quando volta, e **não tenta de novo antes disso**.
 - **O `robots.txt` é respeitado** (leitor, abaixo). O nome que o leitor usa é o honesto: `SuupBot/<versão> (+<repositório>)`.
 - A busca e a leitura são **educadas** por desenho: limites por minuto, fila, cache, suspensão por motor (próxima seção, "Busca educada").
-- Onde a regra **não** vale por inteiro hoje (o `User-Agent` que o próprio SearXNG manda aos motores de API), está dito com todas as letras em "O nome que o Suup usa".
+- O nome honesto vale para a Wikipédia, o arXiv e o Stack Overflow (que o Suup chama ele mesmo), para o DuckDuckGo e para o leitor. A única lacuna que sobra (Brave e Startpage, desligados, pelo SearXNG) está dita com todas as letras em "O nome que o Suup usa".
 
 Por isso a busca e a leitura são feitas por **peças de código aberto que o Suup mesmo roda**. Nenhuma API proprietária é exigida, nenhuma é o padrão, e a busca hospedada do provedor do modelo (a `web_search` da Anthropic, a da OpenAI) **não é usada**. O bot vê duas ferramentas embutidas, de nível `read` (sem cartão; `web_read` de um endereço que ainda não apareceu é a exceção, abaixo), concedidas por bot como as outras:
 
 | Ferramenta | Faz | Como |
 |---|---|---|
-| `web_search` | devolve os melhores resultados (título, URL, trecho, motor) | contêiner **SearXNG** próprio, API JSON |
+| `web_search` | devolve os melhores resultados (título, URL, trecho, motor) | **APIs oficiais** que o próprio Suup chama (Wikipédia, arXiv, Stack Overflow) e, para a web aberta, o contêiner **SearXNG** próprio (só o DuckDuckGo) |
 | `web_read` | lê uma página pública e devolve o conteúdo principal em **Markdown**, com título, URL final, autor e data quando a página dá. **Sem cartão só para um endereço que já apareceu** (veja "A leitura só abre o que já apareceu"); outro endereço pede cartão | **serviço leitor**: baixa, extrai com Readability, converte com Turndown; `render: true` roda a página num Chromium sem cabeça |
 | `web_fetch` (já existia) | uma chamada GET da máquina do bot, com cabeçalhos do cofre | continua para API e para URL interna; passa pela lista de hosts do bot |
 
@@ -27,7 +27,9 @@ Por isso a busca e a leitura são feitas por **peças de código aberto que o Su
 
 ```
  worker (tem o socket do Docker)
-   |-- ferramenta web_search --docker exec--> [suup-searxng]  rede suup-search-net (INTERNA)
+   |-- ferramenta web_search --HTTPS--> proxy de saída em 127.0.0.1 (só hosts exatos) --> Wikipédia, arXiv, Stack Overflow
+   |     (o Suup mesmo pergunta, com o nome honesto; não precisa de Docker)
+   |-- ferramenta web_search --docker exec--> [suup-searxng]  rede suup-search-net (INTERNA; só o DuckDuckGo)
    |                                              |  só sai por ->  proxy de motores (no worker, IP da rede)
    |                                              |                  só os hosts EXATOS dos motores ligados
    |-- ferramenta web_read --docker exec -i--> [suup-reader]  ponte comum (rota pública), sem porta, sem segredo
@@ -37,26 +39,41 @@ Por isso a busca e a leitura são feitas por **peças de código aberto que o Su
 ```
 
 - **Ninguém abre porta.** O worker fala com os dois contêineres por `docker exec` (o socket que ele já tem), sem rota de rede do worker até eles, então o caminho do pedido não depende de onde o worker roda (host ou contêiner). Já o proxy de motores (abaixo) precisa de um endereço do worker alcançável pela rede interna, como o proxy dos bots em [REDE.md](REDE.md): no Linux, o gateway da rede; em contêiner, o IP fixo; **no Docker Desktop (Windows e macOS) isso ainda não foi exercitado** (o app embutido resolve a rede dos bots com um contêiner de saída próprio, e a busca precisará do mesmo tratamento). O SearXNG é consultado por um `wget` **de dentro** dele, contra o próprio loopback; o leitor é um processo longo (`docker exec -i ... node /app/dist/serve.js`, uma linha JSON por pedido), que guarda o cache do `robots.txt` e o ritmo por host.
-- **Nada sobe até uma ferramenta pedir.** O primeiro `web_search` ou `web_read` inicia o que falta (puxa a imagem do SearXNG se não houver, cria a rede, sobe os contêineres). `suup doctor` mostra a situação sem iniciar nada.
-- **Sem Docker:** `web_search` responde que está indisponível (e por quê); `web_read` lê **no próprio processo** (o mesmo código do leitor, sem `render`). Sem a imagem do leitor construída, o mesmo.
+- **Nada sobe até uma ferramenta pedir.** O primeiro `web_search` ou `web_read` inicia o que falta (o proxy de saída das APIs diretas e, só se há motor do SearXNG ligado, puxa a imagem do SearXNG se não houver, cria a rede, sobe os contêineres). Sem nenhum motor do SearXNG ligado, **o contêiner de busca nem é criado**. `suup doctor` mostra a situação sem iniciar nada.
+- **Sem Docker:** `web_search` continua com as APIs diretas (Wikipédia, arXiv, Stack Overflow), que não usam Docker, e diz que o DuckDuckGo não respondeu (o contêiner não está no ar); se só motores do SearXNG estão ligados, responde que está indisponível (e por quê); `web_read` lê **no próprio processo** (o mesmo código do leitor, sem `render`). Sem a imagem do leitor construída, o mesmo.
 - **Com o leitor desligado** (`web.reader.enabled: false`): `web_read` baixa pela **máquina do bot** (`curl` pela lista de hosts, com os cartões de `request_network_access`) e só converte o HTML em Markdown no worker (função pura, sem rede).
 - **Custo:** nada por busca (sem provedor). Cada chamada fica no log da execução como `tool_call`/`tool_result` (nome, argumentos, duração, tamanho); a contagem por execução sai daí (`suup inspect`), não de um contador novo. O custo em tokens é o do texto que o bot lê.
 
 ## Os motores de busca
 
-O SearXNG consulta vários motores e junta os resultados. **A lista padrão são só motores com uma API pública documentada, feita para programas**:
+Há dois jeitos de o Suup perguntar a um motor, declarados em `EngineSpec.via` (`packages/web/src/engines.ts`):
 
-| Id | Motor | Acesso | Hosts (nomes exatos) | Padrão |
-|---|---|---|---|---|
-| `wikipedia` | Wikipédia (resumos) | API REST | `<idioma>.wikipedia.org` para cada idioma de `web.search.languages` (padrão `en`, `pt`) | ligado |
-| `arxiv` | arXiv (artigos) | API | `export.arxiv.org` | ligado |
-| `stackoverflow` | Stack Overflow (perguntas) | API Stack Exchange | `api.stackexchange.com` | ligado |
-| `github` | GitHub (repositórios) | API de busca | `api.github.com` | ligado |
-| `duckduckgo` | busca geral | lê a página HTML de resultados (POST) | `html.duckduckgo.com` | **ligado** (decisão do dono, 21/11/2026), no máximo **6 por minuto** |
-| `brave` | busca geral | lê a página HTML de resultados | `search.brave.com` | **desligado** |
-| `startpage` | busca geral | lê a página HTML de resultados | `www.startpage.com` | **desligado** |
+- **`direct`: o Suup mesmo**, pela **API oficial** do serviço e com o **nome honesto** (`SuupBot/<versão> (+<repositório>)`), em `packages/web/src/direct-engines.ts`. A lista padrão tem os três.
+- **`searxng`: o contêiner SearXNG**, só para quem não tem API (a web aberta, lida pela página de resultados): hoje o DuckDuckGo (ligado) e Brave e Startpage (desligados).
 
-Os hosts foram lidos **no código-fonte de cada motor, na imagem fixada** (por exemplo `export.arxiv.org/api/query`, `api.stackexchange.com/2.3/search/advanced`, `api.github.com/search/repositories`, `{wiki_netloc}/api/rest_v1/page/summary/...`). Nesta máquina de desenvolvimento os motores não são alcançáveis, e mesmo assim o proxy de motores registrou os pedidos exatos a `en.wikipedia.org`, `export.arxiv.org` e `api.stackexchange.com` (a recusa foi só a falha de DNS do ambiente), e o `api.github.com` passou pela lista.
+**A lista padrão são só motores com uma API pública documentada, feita para programas, mais o DuckDuckGo**:
+
+| Id | Motor | Quem pergunta | Acesso | Hosts (nomes exatos) | Padrão |
+|---|---|---|---|---|---|
+| `wikipedia` | Wikipédia | Suup | API de ações do MediaWiki (`list=search`, JSON) | `<idioma>.wikipedia.org` para cada idioma de `web.search.languages` (padrão `en`, `pt`) | ligado |
+| `arxiv` | arXiv (artigos) | Suup | API do arXiv (`/api/query`, Atom), **um pedido a cada 3 s, uma conexão por vez** (termos de uso do arXiv) | `export.arxiv.org` | ligado |
+| `stackoverflow` | Stack Overflow (perguntas) | Suup | API Stack Exchange 2.3 (`/search/advanced`, JSON), respeita `backoff` e a cota | `api.stackexchange.com` | ligado |
+| `duckduckgo` | busca geral | SearXNG | lê a página HTML de resultados (POST) | `html.duckduckgo.com` | **ligado** (decisão do dono, 21/11/2026), no máximo **6 por minuto** |
+| `brave` | busca geral | SearXNG | lê a página HTML de resultados | `search.brave.com` | **desligado** |
+| `startpage` | busca geral | SearXNG | lê a página HTML de resultados | `www.startpage.com` | **desligado** |
+
+**O GitHub não é motor de busca da web.** Regra do dono: *o que puder, vai para o MCP.* A busca no GitHub (repositórios, código, issues) é do **conector MCP do GitHub**, que o Suup já suporta ([CONECTORES.md](CONECTORES.md)); o mesmo vale para o Figma e para qualquer serviço que tenha conector. `github` não é um id válido em `web.search.engines` (a configuração é recusada com "motor desconhecido").
+
+**As APIs diretas, em detalhe** (fatos e lacunas em [pesquisas/fase-4-busca-apis-diretas.md](pesquisas/fase-4-busca-apis-diretas.md)):
+
+- **Como saem.** Por um **proxy de saída do worker** que escuta só em `127.0.0.1` (a mesma classe `EgressProxy`) e deixa passar **só os hosts exatos** dos motores diretos ligados; a conexão é um `CONNECT` ao host, porta 443, e o TLS vai até o serviço, conferindo o nome do certificado. Nenhum redirecionamento é seguido, sem cookie, sem credencial, tempo de 15 s e no máximo 2 MB por resposta. Não é preciso Docker.
+- **Wikipédia.** `https://<idioma>.wikipedia.org/w/api.php?action=query&list=search&srsearch=...&srprop=snippet&format=json&formatversion=2`. O trecho vem com marcação HTML de destaque, que um analisador de HTML reduz a texto. Com `language` o Suup pergunta só àquela edição (se estiver nos idiomas configurados); sem, a cada idioma configurado, um depois do outro. HTTP 429 suspende por 3 min; 403, por 1 h; o erro `ratelimited` da API, por 3 min.
+- **arXiv.** `https://export.arxiv.org/api/query?search_query=all:<termo> AND all:<termo>...`. Cada palavra da consulta vira um termo `all:`; os caracteres da sintaxe de consulta e as palavras `AND`, `OR`, `ANDNOT` escritas como termo são deixados de fora, para que uma palavra nunca mude o formato da consulta. A resposta é Atom, lida por um **analisador de XML de verdade** (o do jsdom, sem regex); o `<entry>` de erro documentado vira uma recusa com a explicação do arXiv. **Ritmo:** uma fila **só do arXiv**, um pedido por vez, com **3 s depois do fim do anterior** (os termos de uso do arXiv: "no more than one request every three seconds", uma conexão por vez), além do limite por minuto de todos os motores. Que `export.arxiv.org` responde em HTTPS não foi conferido (o manual só mostra `http://`).
+- **Stack Overflow.** `https://api.stackexchange.com/2.3/search/advanced?q=...&site=stackoverflow&sort=relevance&order=desc&pagesize=N`. O título vem com entidades HTML (decodificadas); o trecho é montado dos campos (pontuação, respostas, etiquetas), sem o corpo da pergunta. **`backoff`** da resposta: os resultados são mantidos e o Suup deixa o motor em paz por aquele tempo (até 1 dia); **cota esgotada** (`quota_remaining` zero) e `throttle_violation` suspendem por 1 h. **Nenhuma documentação do Stack Exchange foi lida** (host bloqueado): o endereço, os nomes dos campos e o comportamento acima são suposição, e o motor **falha fechado** (mensagem clara, e suspenso quando a API manda parar) com qualquer resposta que não tenha essa forma. Conferir na primeira vez numa máquina com rede.
+- **Janelas de suspensão** (3 min, 1 h) **são escolha do Suup**, não número dos serviços. **`time_range` é ignorado** pelos três.
+- **Licença e atribuição.** Os metadados do arXiv são CC0 (termos de uso do arXiv); o texto da Wikipédia e as perguntas do Stack Overflow têm licenças próprias que **não foram lidas**: a ferramenta devolve só título, link e um trecho curto, e o bot é instruído a citar a URL.
+
+Os hosts do DuckDuckGo foram lidos **no código-fonte do motor, na imagem fixada** (abaixo); os das APIs diretas são os endereços das próprias APIs (pesquisa). Nesta máquina de desenvolvimento os motores não são alcançáveis (DNS bloqueado), então **nenhum motor foi exercitado de verdade**: os testes usam um servidor de mentira para cada API e conferem o `User-Agent` exato, a consulta, a leitura da resposta, e o proxy de saída real recusando qualquer outro host.
 
 **Por que assim, e o que foi deixado de fora:**
 
@@ -70,17 +87,22 @@ Os hosts foram lidos **no código-fonte de cada motor, na imagem fixada** (por e
 
 Código: `packages/web/src/search-governor.ts` (limites e suspensões), `search-cache.ts` (cache) e `search.ts` (o fluxo). Tudo configurável em `web.search.limits` e `web.search.cache` ([CONFIGURACAO.md](CONFIGURACAO.md)).
 
-**Limites por minuto.** Janela deslizante de 60 s, no geral (padrão **20 buscas por minuto**) e por motor (padrão de cada motor, declarado em `engines.ts`: Wikipédia 30, arXiv 15, Stack Overflow 10, GitHub 6, **DuckDuckGo 6**, Brave e Startpage 6; `limits.perEngine` troca). Uma busca que passaria do limite **espera numa fila curta**, em ordem, até o primeiro instante em que cabe, **desde que a espera não passe de `limits.maxWaitSeconds`** (padrão 20 s). Passando disso o resultado é um erro claro, **"muitas buscas no último minuto... tente em cerca de X s"** (`rate_limited` com `retryInSeconds`), e o bot é instruído a **não repetir agora** e, se puder, usar `schedule_return`. Se só **um motor** está acima do seu limite e os outros estão livres, a busca vai **sem aquele motor** e diz qual ficou de fora e quando ele volta (`throttled`). A fila é de um processo só; o limite não é compartilhado entre o worker e outros processos.
+**Limites por minuto.** Janela deslizante de 60 s, no geral (padrão **20 buscas por minuto**) e por motor (padrão de cada motor, declarado em `engines.ts`: Wikipédia 30, arXiv 15, Stack Overflow 10, **DuckDuckGo 6**, Brave e Startpage 6; `limits.perEngine` troca). Uma busca que passaria do limite **espera numa fila curta**, em ordem, até o primeiro instante em que cabe, **desde que a espera não passe de `limits.maxWaitSeconds`** (padrão 20 s). Passando disso o resultado é um erro claro, **"muitas buscas no último minuto... tente em cerca de X s"** (`rate_limited` com `retryInSeconds`), e o bot é instruído a **não repetir agora** e, se puder, usar `schedule_return`. Se só **um motor** está acima do seu limite e os outros estão livres, a busca vai **sem aquele motor** e diz qual ficou de fora e quando ele volta (`throttled`). A fila é de um processo só; o limite não é compartilhado entre o worker e outros processos.
 
 **Cache.** Uma busca com a mesma **consulta em forma simples** (aparada, espaços reunidos dividindo e juntando o texto, minúscula; **sem expressão regular**), os mesmos **motores**, idioma e intervalo de tempo é respondida do cache, pelo prazo `cache.ttlMinutes` (padrão **180 min = 3 h**), **sem consultar motor nenhum**, e a resposta diz **que veio do cache e de quando foi feita**, e que motores não responderam naquela hora. Só se guarda busca que achou algo. O cache fica **no banco** (tabela `web_search_cache`, migração 0024), então sobrevive a reinício e vale para o worker e para o app; um cache que falha não derruba a busca. `cache.enabled: false` desliga. Os URLs de uma resposta do cache também contam como "já apareceram" para `web_read`.
 
 **Motores suspensos.** O JSON do SearXNG traz, por motor que não respondeu, só um texto (`CAPTCHA`, `too many requests`, `access denied`, `timeout`...; com o prefixo `Suspended: ` quando ele nem chegou a perguntar). O Suup compara esse texto **por igualdade exata** com os que o SearXNG escreve (`searx/webutils.py`), sem padrão, e para os três de recusa aplica a janela do `settings.yml` do SearXNG: **captcha 3600 s; muitas requisições 180 s; acesso negado 180 s**. Os outros textos não têm janela conhecida e só são repassados. Enquanto a janela dura o Suup **não pergunta àquele motor** (a resposta diz "volta em cerca de 50 min"). Isto vale também para o DuckDuckGo, cujo módulo usa suspensão **zero** no captcha (para "não aumentar a reputação ruim do IP"): o Suup o suspende mesmo assim, por escolha, para nunca insistir. A janela é contada a partir do primeiro captcha que o Suup viu; se o processo reiniciou, conta a partir da próxima resposta (um limite superior). Quando **todo motor geral ligado** está fora (suspenso ou acima do limite), a resposta traz **"a busca geral está indisponível agora, volta em cerca de X min"** e instrui o bot a usar `schedule_return` em vez de tentar de novo; o que vier é só de enciclopédia, artigos, código e perguntas técnicas. Se **nenhum** motor pode ser perguntado, o serviço de busca nem é chamado.
 
-## O nome que o Suup usa (e a lacuna que existe)
+Os motores que o **Suup mesmo pergunta** passam pela mesma contabilidade, com uma diferença: o motor diz o **porquê e por quanto tempo** (`windowSeconds`), em vez de o Suup ler um texto do SearXNG. HTTP 429 suspende por 180 s e 403 por 3600 s (escolhas do Suup); o `backoff` do Stack Exchange suspende pelo tempo que ele mandou (os resultados da própria resposta são mantidos); a cota esgotada e `throttle_violation`, por 3600 s. Falha sem janela (tempo esgotado, resposta fora do formato) só aparece como "não respondeu", sem suspender. O limite por minuto de cada motor e o cache valem igual. Quando os motores do SearXNG e os diretos respondem juntos, as listas são **intercaladas** (o primeiro de cada, depois o segundo de cada), sem URL repetida.
+
+## O nome que o Suup usa (e a lacuna que sobra)
+
+Decisão do dono (22/11/2026): **o Suup chama a Wikipédia, o arXiv e o Stack Overflow ele mesmo, pelas APIs oficiais, com o nome honesto**; o SearXNG fica só para o DuckDuckGo. O motivo: o SearXNG da imagem fixada escolhe um `User-Agent` de navegador sorteado a cada pedido a todo motor que não leia o nome de um atributo (`searx/search/processors/online.py`, `headers["User-Agent"] = gen_useragent()`, lido no commit `541c6c3cb`), e não há configuração que o troque (`outgoing.useragent_suffix` existe no `settings.yml`, mas nenhum código desta versão o lê). Trocar exigiria modificar o SearXNG (o dever de oferecer o código-fonte da AGPL, seção "Licenças") ou terminar o HTTPS num proxy nosso (o que o desenho recusa). Chamar as APIs direto evita as duas saídas.
 
 - O **leitor** manda `SuupBot/<versão> (+<repositório>)` e lê o `robots.txt` (abaixo).
+- A **Wikipédia, o arXiv e o Stack Overflow** recebem o mesmo nome, em todo pedido (`createDirectGet`, `packages/web/src/direct-http.ts`; o teste confere o cabeçalho **exato** de cada motor). O endereço do repositório pode ser trocado em `web.reader.repositoryUrl`.
 - O **DuckDuckGo**: o módulo do motor lê o `User-Agent` de um atributo (`_HTTP_User_Agent`) que o SearXNG preenche a partir da configuração do motor; o Suup o aponta para o nome honesto, no `settings.yml` gerado (`EngineSpec.userAgentAttribute`). Sem isso o módulo mandaria um `User-Agent` de navegador sorteado. **O DuckDuckGo pode recusar um robô honesto**: é o preço da regra, e nesse caso o motor aparece como não respondendo (captcha ou bloqueio) e fica suspenso. O módulo avisa que alguns `User-Agent` são filtrados.
-- **Lacuna que o dono precisa decidir.** Para **todos os outros motores** (as quatro APIs, Brave, Startpage), o SearXNG da imagem fixada **escolhe um `User-Agent` de navegador sorteado a cada pedido** (`searx/search/processors/online.py`, `headers["User-Agent"] = gen_useragent()`, lido no commit `541c6c3cb`) e não há configuração que o troque (`outgoing.useragent_suffix` existe no `settings.yml`, mas nenhum código desta versão o lê). Isso **vai contra a regra de cima** para esses motores. Trocar exigiria **modificar o SearXNG** (o que traz o dever de oferecer o código-fonte da AGPL, seção "Licenças") ou terminar o HTTPS num proxy nosso (o que o desenho recusa). Hoje o efeito é nas quatro **APIs públicas** (baixo volume, limites por minuto) e em Brave/Startpage (desligados). Enquanto não houver decisão do dono isto fica **documentado e não resolvido**.
+- **Lacuna que sobra: Brave e Startpage.** Se o dono os ligar, eles continuam pelo SearXNG e **com o `User-Agent` de navegador sorteado** dele, o que vai contra a regra do dono. Estão **desligados** por isso (e porque os termos de uso não foram lidos); ligar é uma escolha dita aqui, não um padrão.
 
 ### Trocar os motores
 
@@ -89,13 +111,13 @@ No `suup.config.json` (nenhuma tela por ora; um liga/desliga por motor, vindo do
 ```json
 "web": {
   "search": {
-    "engines": ["wikipedia", "arxiv", "stackoverflow", "github", "duckduckgo"],
+    "engines": ["wikipedia", "arxiv", "stackoverflow", "duckduckgo"],
     "languages": ["en", "pt"]
   }
 }
 ```
 
-Id desconhecido é recusado ao carregar a configuração. Mudar a lista (ou os idiomas) muda os hosts que o proxy de motores deixa passar e o `settings.yml` do contêiner, que é **recriado** no próximo uso. Acrescentar um motor novo ao código é uma linha em `packages/web/src/engines.ts` (id do SearXNG, hosts exatos, se é API ou raspagem) mais a leitura do código do motor para os hosts.
+Id desconhecido (`github`, por exemplo) é recusado ao carregar a configuração. Mudar a lista (ou os idiomas) muda os hosts que os proxies de saída deixam passar e o `settings.yml` do contêiner, que é **recriado** no próximo uso. Acrescentar um motor novo ao código é uma linha em `packages/web/src/engines.ts` (`via`, hosts exatos, se é API ou raspagem) mais, para um motor `direct`, um módulo em `direct-engines.ts` (com pesquisa antes, em `docs/pesquisas/`) e, para um `searxng`, a leitura do código do motor para os hosts.
 
 ## O que o contêiner de busca alcança, e por quê não guarda segredo
 
@@ -172,7 +194,7 @@ Tudo opcional. Os campos estão em [CONFIGURACAO.md](CONFIGURACAO.md#web-opciona
 "web": {
   "search": {
     "enabled": true,
-    "engines": ["wikipedia", "arxiv", "stackoverflow", "github", "duckduckgo"],
+    "engines": ["wikipedia", "arxiv", "stackoverflow", "duckduckgo"],
     "languages": ["en", "pt"],
     "maxResults": 10,
     "limits": { "perMinute": 20, "perEngine": { "duckduckgo": 6 }, "maxWaitSeconds": 20 },
@@ -194,4 +216,5 @@ O sidecar do app (`apps/sidecar`, ramo `feat/app-embutido`, ainda **não** unido
 - Unidade da leitura (`packages/core/src/web.test.ts`, `packages/tools/test/web-tools.test.ts`, `packages/tools/test/web-provenance.test.ts`, `packages/web/test/extract.test.ts`): normalização (barra final, fragmento, porta, caixa do host, codificação intacta), endereços de uma mensagem do usuário, de um resultado de busca e dos links de uma página lida, endereço novo vira cartão com a URL inteira, aprovar lê, recusar não lê, o log guarda a origem e o replay dá o mesmo log sem ler nada.
 - Unidade (rodam sempre): resultado e envelope, motores suspensos, `robots.txt` (permitir/negar, regra mais longa, 404, 5xx, sem resposta, validade do cache), recusa de endereço privado **depois do DNS** (resolvedor falso: `127.0.0.1`, `10.x`, `192.168.x`, `169.254.169.254`, `::1`, `fd00::1`, IPv4 embutido; resposta mista; redirecionamento para nome privado, IP e `file:`), Readability e Turndown sobre HTML de teste, limites de tamanho (depois de descomprimir) e de tempo, ritmo por host, `settings.yml` (igual ao arquivo versionado), o proxy nos modos `openWeb` e anônimo, a configuração, a ferramenta (nível `read`, saída como dado externo, caminho da máquina do bot) e a linha do prompt.
 - Renderizador (`packages/web/test/renderer.test.ts`): Chromium **real** do ambiente (ou do `playwright install`) lendo uma página que só existe depois do JavaScript, sem vazar um pedido a `127.0.0.1`, recusando nome privado e IP, sem cookies entre páginas. É pulado, avisando, se não há Chromium.
+- Motores diretos (`packages/web/test/direct-engines.test.ts`, sem rede): para cada API um servidor de mentira confere o `User-Agent` **exato**, o host, o caminho e a consulta codificada, a leitura da resposta (inclusive gzip), `backoff`, cota, 429/403, o erro documentado do arXiv, XML malformado e respostas de outra forma (que falham fechadas), o ritmo de 3 s do arXiv com relógio falso e uma conexão por vez, TLS de verdade contra um servidor local (certificado conferido pelo nome do host), o proxy de saída **real** recusando `api.github.com`, `evil.example` e qualquer outro host fora da lista, e o fluxo da busca com o governador e o cache. **Nenhum motor foi chamado de verdade** (ver [TESTES-REAIS.md](TESTES-REAIS.md)).
 - Docker real (`SUUP_DOCKER_TESTS=1`, imagem do leitor em `SUUP_READER_IMAGE`, padrão `suup-reader:dev`; `SUUP_WEB_NETWORK_TESTS=1` acrescenta a leitura de uma página pública): a imagem **oficial** do SearXNG sobe com o `settings.yml` gerado e responde JSON; o contêiner não tem rota nem DNS para fora; o proxy recusa host fora da lista e endereço privado; o leitor tem `cap_drop ALL`, raiz só leitura, nenhuma porta nem montagem e nenhuma variável secreta; o leitor recusa endereços privados, `localhost`, metadados, `file:` e URL com senha. Rodou nesta máquina com a imagem do leitor **sem navegador**; o teste dentro da imagem **com** Chromium (`mcr.microsoft.com/playwright`, vários GB) precisa de CI. Um teste de renderização positiva **dentro** do contêiner não existe, porque a página de teste teria de ser pública (o leitor recusa privados, que é a garantia).

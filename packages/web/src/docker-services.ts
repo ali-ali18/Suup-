@@ -21,7 +21,21 @@ import {
   ensureInternalNetwork,
   runProcess,
 } from "@suup/sandbox";
-import { DEFAULT_ENGINES, DEFAULT_LANGUAGES, engineHosts, SEARXNG_IMAGE } from "./engines.js";
+import {
+  arxivEngine,
+  type DirectEngine,
+  stackOverflowEngine,
+  wikipediaEngine,
+} from "./direct-engines.js";
+import { createDirectGet, type DirectGet } from "./direct-http.js";
+import {
+  DEFAULT_ENGINES,
+  DEFAULT_LANGUAGES,
+  directEngineIds,
+  engineHosts,
+  SEARXNG_IMAGE,
+  searxEngineIds,
+} from "./engines.js";
 import { httpSearxBackend, type SearxBackend } from "./search.js";
 import { execSearxBackend } from "./searx-exec.js";
 import { renderSearxSettings } from "./searx-settings.js";
@@ -55,6 +69,8 @@ export interface WebServicesOptions {
   render?: boolean;
   /** Where the user agent points (the project page). */
   repositoryUrl?: string;
+  /** Test seam: the GET the direct engines use (default: through a loopback egress proxy with their exact hosts). */
+  directGet?: DirectGet;
   log?: (message: string) => void;
 }
 
@@ -62,6 +78,10 @@ export interface WebServices {
   /** `undefined`: no search service (see `searchProblem`). */
   searchBackend: SearxBackend | undefined;
   searchProblem?: string;
+  /** The engines Suup asks itself through their official APIs (docs/BUSCA.md); empty when none is on. */
+  direct: DirectEngine[];
+  /** Where the loopback egress proxy of the direct engines listens (for the doctor and the tests). */
+  directProxy?: { host: string; port: number };
   /** The URL of the engine proxy the search container goes out through (for the doctor and the tests). */
   searchProxyUrl?: string;
   engines: readonly string[];
@@ -109,6 +129,7 @@ export async function startWebServices(options: WebServicesOptions = {}): Promis
   const stoppers: (() => Promise<void>)[] = [];
   const result: WebServices = {
     searchBackend: undefined,
+    direct: [],
     engines,
     reader: undefined,
     async stop() {
@@ -116,10 +137,26 @@ export async function startWebServices(options: WebServicesOptions = {}): Promis
     },
   };
 
-  if (options.searchEnabled !== false && options.searchUrl !== undefined) {
+  const searxIds = searxEngineIds(engines);
+  const directIds = directEngineIds(engines);
+  if (options.searchEnabled !== false && options.searchUrl !== undefined && searxIds.length > 0) {
     result.searchBackend = httpSearxBackend(options.searchUrl);
   }
-  const wantsContainerSearch = options.searchEnabled !== false && options.searchUrl === undefined;
+  // The engines Suup asks itself need no Docker: they go out through an egress proxy of the worker
+  // (loopback only) that lets through just their exact hosts.
+  if (options.searchEnabled !== false && directIds.length > 0) {
+    try {
+      const started = await startDirect({ ...options, languages }, directIds);
+      result.direct = started.engines;
+      if (started.proxy !== undefined) result.directProxy = started.proxy;
+      stoppers.push(started.stop);
+    } catch (error) {
+      result.searchProblem = error instanceof Error ? error.message : String(error);
+      log(`direct search engines unavailable: ${result.searchProblem}`);
+    }
+  }
+  const wantsContainerSearch =
+    options.searchEnabled !== false && options.searchUrl === undefined && searxIds.length > 0;
   if (!(await dockerAvailable(path))) {
     const why = "Docker is not available on this computer";
     if (wantsContainerSearch) result.searchProblem = why;
@@ -129,7 +166,12 @@ export async function startWebServices(options: WebServicesOptions = {}): Promis
 
   if (wantsContainerSearch) {
     try {
-      const started = await startSearch({ ...options, dockerPath: path, engines, languages });
+      const started = await startSearch({
+        ...options,
+        dockerPath: path,
+        engines: searxIds,
+        languages,
+      });
       result.searchBackend = started.backend;
       result.searchProxyUrl = started.proxyUrl;
       stoppers.push(started.stop);
@@ -149,6 +191,49 @@ export async function startWebServices(options: WebServicesOptions = {}): Promis
     }
   }
   return result;
+}
+
+/** The engines Suup asks itself, with the honest user agent, through a loopback proxy that allows only their hosts. */
+async function startDirect(
+  options: WebServicesOptions & { languages: readonly string[] },
+  ids: readonly string[],
+): Promise<{
+  engines: DirectEngine[];
+  proxy: { host: string; port: number } | undefined;
+  stop(): Promise<void>;
+}> {
+  let get = options.directGet;
+  let proxyAddress: { host: string; port: number } | undefined;
+  let stop = async () => {};
+  if (get === undefined) {
+    const hosts = new Set(engineHosts(ids, options.languages));
+    const proxy = new EgressProxy({
+      policy: { allowedHosts: async () => hosts },
+      anonymousSubject: { kind: "harness", id: "search-direct" },
+      listenHost: "127.0.0.1",
+      onEvent: (event) => {
+        if (event.decision === "refused") {
+          options.log?.(
+            `search proxy refused ${event.host}:${event.port} (${event.reason ?? "refused"})`,
+          );
+        }
+      },
+    });
+    const { port } = await proxy.start();
+    proxyAddress = { host: "127.0.0.1", port };
+    stop = () => proxy.stop();
+    get = createDirectGet({
+      userAgent: userAgent(WEB_VERSION, options.repositoryUrl ?? REPOSITORY_URL),
+      proxy: { host: "127.0.0.1", port },
+    });
+  }
+  const engines: DirectEngine[] = [];
+  for (const id of ids) {
+    if (id === "wikipedia") engines.push(wikipediaEngine({ get, languages: options.languages }));
+    else if (id === "arxiv") engines.push(arxivEngine({ get }));
+    else if (id === "stackoverflow") engines.push(stackOverflowEngine({ get }));
+  }
+  return { engines, proxy: proxyAddress, stop };
 }
 
 async function startSearch(

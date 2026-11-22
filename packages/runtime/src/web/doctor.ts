@@ -18,7 +18,7 @@ export async function checkWeb(runtime: Runtime): Promise<DoctorCheck[]> {
         detail:
           status.search === "off"
             ? 'desligada na configuração ("web.search.enabled": false)'
-            : "liga quando um bot usa web_search pela primeira vez (contêiner SearXNG, docs/BUSCA.md); este processo ainda não a usou",
+            : "liga quando um bot usa web_search pela primeira vez (APIs oficiais chamadas pelo Suup e, para o DuckDuckGo, o contêiner SearXNG; docs/BUSCA.md); este processo ainda não a usou",
       },
       {
         component: "Leitura de páginas",

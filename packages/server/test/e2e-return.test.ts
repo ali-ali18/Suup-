@@ -162,7 +162,13 @@ describe.skipIf(!DATABASE_URL)(
       const cancelled = (await api.runs.events(runId, { limit: 1000, types: ["wait_cancelled"] }))
         .items;
       expect(cancelled[0]?.payload).toEqual({ reason: "user_message" });
-      const texts = (await messagesOf(conversation.id)).map((m) => [m.authorKind, m.text]);
+      // The final message is written just after the status changes: wait for it.
+      const texts = (
+        await until(async () => {
+          const all = await messagesOf(conversation.id);
+          return all.filter((m) => m.authorKind === "bot").length >= 2 ? all : undefined;
+        }, "the bot's answer to the message")
+      ).map((m) => [m.authorKind, m.text]);
       expect(texts).toEqual([
         ["user", "CASE-MENSAGEM faça o deploy"],
         ["bot", "Disparei o deploy. Volto em 1 minuto."],
@@ -233,7 +239,11 @@ describe.skipIf(!DATABASE_URL)(
         "wait_scheduled",
         "wait_fired",
       ]);
-      expect((await messagesOf(conversation.id)).map((m) => m.text)).toEqual([
+      const all = await until(async () => {
+        const m = await messagesOf(conversation.id);
+        return m.filter((x) => x.authorKind === "bot").length >= 3 ? m : undefined;
+      }, "the bot's final answer");
+      expect(all.map((m) => m.text)).toEqual([
         "CASE-ENCADEADO faça o deploy",
         "Volto em 1 minuto.",
         "Ainda rodando; volto em 1 minuto.",

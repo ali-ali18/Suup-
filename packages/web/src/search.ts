@@ -3,14 +3,17 @@
 // container), so the parsing and the messages here do not depend on how it is reached.
 import type { WebSearchHit, WebSearchOutcome, WebSearchRequest } from "@suup/core";
 import { z } from "zod";
+import type { DirectEngine, DirectSearchResult } from "./direct-engines.js";
 import { engineById } from "./engines.js";
+import { cleanUrl, clip, interleave } from "./hit-text.js";
 import { DEFAULT_CACHE_TTL_MS, type SearchCache, searchCacheKey } from "./search-cache.js";
 import type { SearchGovernor } from "./search-governor.js";
+
+export { clip };
 
 export const SEARCH_MAX_RESULTS = 10;
 const TITLE_MAX = 300;
 const SNIPPET_MAX = 500;
-const URL_MAX = 1000;
 
 /** Sends one search to the container and returns the JSON text it answered. Throws with a readable message. */
 export interface SearxBackend {
@@ -33,7 +36,10 @@ const answerSchema = z.object({
 });
 
 export interface SearchOptions {
-  backend: SearxBackend;
+  /** The SearXNG container's backend. Absent: the engines that need it are reported as not answering. */
+  backend?: SearxBackend | undefined;
+  /** The engines Suup asks itself, by official API (direct-engines.ts). An engine with an entry here is never sent to SearXNG. */
+  direct?: readonly DirectEngine[];
   /** The engines that are turned on (what a search asks, unless the limits or a suspension leave some out). */
   engines: readonly string[];
   maxResults?: number;
@@ -129,29 +135,63 @@ export function createSearch(
       waitedMs = grant.waitedMs;
     }
 
-    // 4. The search itself.
-    const params = new URLSearchParams({ q: query, format: "json", safesearch: "1" });
-    // The engines are named, not left to the categories: a default query asks only the `general`
-    // ones, and the engines of papers, code and Q&A would never be asked.
-    if (ask.length > 0) params.set("engines", ask.join(","));
-    if (request.language !== undefined && request.language !== "")
-      params.set("language", request.language);
-    if (request.timeRange !== undefined) params.set("time_range", request.timeRange);
-    let text: string;
-    try {
-      text = await options.backend.query(params, request.signal);
-    } catch (error) {
-      return {
-        ok: false,
-        reason: "unavailable",
-        message: `The search service did not answer: ${error instanceof Error ? error.message : String(error)}`,
-      };
+    // 4. The search itself: the engines Suup asks itself, and the ones SearXNG asks.
+    const directById = new Map((options.direct ?? []).map((engine) => [engine.id, engine]));
+    const directAsk = ask.filter((engine) => directById.has(engine));
+    const searxAsk = ask.filter((engine) => !directById.has(engine));
+    const useSearx = searxAsk.length > 0 || directAsk.length === 0;
+    const [searx, directs] = await Promise.all([
+      useSearx
+        ? askSearx(options.backend, searxAsk, query, request, cap, directAsk.length === 0)
+        : Promise.resolve<SearxPart>({ ok: true, hits: [], unresponsive: [] }),
+      Promise.all(
+        directAsk.map(async (id) => ({
+          id,
+          result: await askDirect(directById.get(id), query, cap, request),
+        })),
+      ),
+    ]);
+    if (!searx.ok) return searx.outcome;
+    const unresponsive: { engine: string; reason: string; windowSeconds?: number }[] = [
+      ...searx.unresponsive,
+    ];
+    const lists: WebSearchHit[][] = [searx.hits];
+    for (const { id, result } of directs) {
+      if (result.ok) {
+        lists.push(result.hits);
+        if (result.suspend !== undefined) {
+          unresponsive.push({
+            engine: id,
+            reason: result.suspend.reason,
+            windowSeconds: result.suspend.seconds,
+          });
+        }
+      } else {
+        unresponsive.push({
+          engine: id,
+          reason: result.reason,
+          ...(result.suspendSeconds === undefined ? {} : { windowSeconds: result.suspendSeconds }),
+        });
+      }
     }
-    const parsed = parseSearxAnswer(text, query, cap, ask);
-    if (!parsed.ok) return parsed;
+    const merged: WebSearchHit[] = [];
+    const seen = new Set<string>();
+    for (const hit of interleave(lists)) {
+      if (seen.has(hit.url)) continue;
+      seen.add(hit.url);
+      merged.push(hit);
+      if (merged.length >= cap) break;
+    }
+    const parsed: SearchOk = {
+      ok: true,
+      query,
+      hits: merged,
+      suspended: unresponsive.map(({ engine, reason }) => ({ engine, reason })),
+      engines: [...ask],
+    };
 
     // 5. What the answer says about the engines, kept for the next search.
-    const retry = options.governor?.learn(ask, parsed.suspended) ?? new Map<string, number>();
+    const retry = options.governor?.learn(ask, unresponsive) ?? new Map<string, number>();
     const suspended = [
       ...parsed.suspended.map((u) => {
         const seconds = retry.get(u.engine);
@@ -183,6 +223,87 @@ export function createSearch(
     }
     return { ...outcome, hits: outcome.hits.slice(0, wanted) };
   };
+}
+
+type SearxPart =
+  | { ok: true; hits: WebSearchHit[]; unresponsive: { engine: string; reason: string }[] }
+  | { ok: false; outcome: WebSearchOutcome };
+
+/** Asks the SearXNG container for these engines. When nothing else was asked (`alone`), a failure is the search's failure. */
+async function askSearx(
+  backend: SearxBackend | undefined,
+  engines: readonly string[],
+  query: string,
+  request: WebSearchRequest,
+  cap: number,
+  alone: boolean,
+): Promise<SearxPart> {
+  const notAnswering = (reason: string): SearxPart => ({
+    ok: true,
+    hits: [],
+    unresponsive: engines.map((engine) => ({ engine, reason })),
+  });
+  if (backend === undefined) {
+    if (alone) {
+      return {
+        ok: false,
+        outcome: {
+          ok: false,
+          reason: "unavailable",
+          message: "The search service is not running.",
+        },
+      };
+    }
+    return notAnswering("the search container is not running");
+  }
+  const params = new URLSearchParams({ q: query, format: "json", safesearch: "1" });
+  // The engines are named, not left to the categories: a default query asks only the `general`
+  // ones, and the engines of papers, code and Q&A would never be asked.
+  if (engines.length > 0) params.set("engines", engines.join(","));
+  if (request.language !== undefined && request.language !== "")
+    params.set("language", request.language);
+  if (request.timeRange !== undefined) params.set("time_range", request.timeRange);
+  let text: string;
+  try {
+    text = await backend.query(params, request.signal);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (alone) {
+      return {
+        ok: false,
+        outcome: {
+          ok: false,
+          reason: "unavailable",
+          message: `The search service did not answer: ${message}`,
+        },
+      };
+    }
+    return notAnswering(`the search service did not answer: ${message}`);
+  }
+  const parsed = parseSearxAnswer(text, query, cap, engines);
+  if (!parsed.ok) {
+    return alone ? { ok: false, outcome: parsed } : notAnswering(parsed.message);
+  }
+  return { ok: true, hits: parsed.hits, unresponsive: parsed.suspended };
+}
+
+async function askDirect(
+  engine: DirectEngine | undefined,
+  query: string,
+  limit: number,
+  request: WebSearchRequest,
+): Promise<DirectSearchResult> {
+  if (engine === undefined) return { ok: false, reason: "the engine is not available" };
+  try {
+    return await engine.search({
+      query,
+      limit,
+      language: request.language,
+      signal: request.signal,
+    });
+  } catch (error) {
+    return { ok: false, reason: error instanceof Error ? error.message : String(error) };
+  }
 }
 
 /** Whether every general web engine that is turned on is out of reach for now, and until when. */
@@ -249,35 +370,6 @@ export function parseSearxAnswer(
     reason,
   }));
   return { ok: true, query, hits, suspended, engines: [...engines] };
-}
-
-function cleanUrl(raw: string | undefined): string | undefined {
-  if (raw === undefined || raw.length > URL_MAX) return undefined;
-  try {
-    const url = new URL(raw);
-    return url.protocol === "http:" || url.protocol === "https:" ? url.href : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/** One line of plain text: control characters and line breaks become spaces, and the text is cut. */
-export function clip(text: string, max: number): string {
-  let out = "";
-  let space = false;
-  for (const ch of text) {
-    const code = ch.codePointAt(0) ?? 0;
-    const blank = code < 0x20 || code === 0x7f || ch === " " || ch === " ";
-    if (blank) {
-      space = out !== "";
-      continue;
-    }
-    if (space) out += " ";
-    space = false;
-    out += ch;
-    if (out.length >= max) return `${out.slice(0, max - 1)}…`;
-  }
-  return out;
 }
 
 /** A backend that talks HTTP to a SearXNG instance (`format=json` must be enabled there). */

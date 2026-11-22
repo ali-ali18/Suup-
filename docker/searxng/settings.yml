@@ -4,10 +4,6 @@
 use_default_settings:
   engines:
     keep_only:
-      - "wikipedia"
-      - "arxiv"
-      - "stackoverflow"
-      - "github"
       - "duckduckgo"
 general:
   instance_name: "Suup search"
@@ -35,14 +31,6 @@ outgoing:
   enable_http2: false
   useragent_suffix: "Suup"
 engines:
-  - name: "wikipedia"
-    disabled: false
-  - name: "arxiv"
-    disabled: false
-  - name: "stackoverflow"
-    disabled: false
-  - name: "github"
-    disabled: false
   - name: "duckduckgo"
     disabled: false
     _HTTP_User_Agent: "SuupBot/0.1 (+https://github.com/ali-ali18/suup-)"

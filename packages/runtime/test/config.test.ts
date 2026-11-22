@@ -395,6 +395,15 @@ describe("configuration: web", () => {
     ).toContain("motor desconhecido: google");
   });
 
+  it("refuses github as an engine (GitHub search is the GitHub MCP connector's, not the web search's)", () => {
+    expect(
+      issuesOf(rawConfig({ web: { search: { engines: ["wikipedia", "github"] } } })).join("\n"),
+    ).toContain("motor desconhecido: github");
+    expect(
+      issuesOf(rawConfig({ web: { search: { limits: { perEngine: { github: 3 } } } } })).join("\n"),
+    ).toContain("github");
+  });
+
   it("refuses a language that could name another host, and a search URL that is not http(s)", () => {
     expect(
       issuesOf(rawConfig({ web: { search: { languages: ["en.evil.com"] } } })).join("\n"),

@@ -360,11 +360,13 @@ const webSchema = z.strictObject({
       /** `false` turns `web_search` off (the tool then says it is not available). Default `true`. */
       enabled: z.exactOptional(z.boolean()),
       /**
-       * The engines SearXNG asks, by id (docs/BUSCA.md lists them). Default: the ones with a documented
-       * public API (`wikipedia`, `arxiv`, `stackoverflow`, `github`) plus `duckduckgo`, the one general
-       * web engine turned on by decision of the project owner (low rate, honest user agent; it reads a
-       * result page and may answer with a captcha). `brave` and `startpage` also read result pages and
-       * are OFF until you turn them on; Google and Bing do not exist here.
+       * The engines, by id (docs/BUSCA.md lists them). Default: the ones with a documented public API
+       * that Suup asks itself, with its honest user agent (`wikipedia`, `arxiv`, `stackoverflow`), plus
+       * `duckduckgo`, the one general web engine turned on by decision of the project owner (asked by
+       * the SearXNG container; low rate, honest user agent; it reads a result page and may answer with
+       * a captcha). `brave` and `startpage` also read result pages (through SearXNG) and are OFF until
+       * you turn them on; Google and Bing do not exist here. GitHub is not a web search engine: its
+       * search is the GitHub MCP connector's.
        */
       engines: z.exactOptional(z.array(z.string().min(1)).min(1).max(20)),
       /** Languages whose Wikipedia host the search container may reach. Default `["en", "pt"]`. */
