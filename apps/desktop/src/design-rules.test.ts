@@ -863,3 +863,51 @@ describe("telas antes do app (docs/DESIGN.md 3d)", () => {
     expect(screen("LocalScreen.tsx")).toContain("<SecretInput");
   });
 });
+
+describe("avatares: dois estilos, desenhados só pelo motor (docs/DESIGN.md, Mascotes)", () => {
+  it("o mascote pixel só é montado por `ui/avatar.tsx` e pelo seletor do bot", () => {
+    const users = files(SRC, /\.tsx$/)
+      .filter((f) => !f.endsWith("pixel-mascot.tsx") && read(f).includes("<PixelMascot"))
+      .map(rel)
+      .sort();
+    expect(users).toEqual(["features/new-bot/NewBotDialog.tsx", "ui/avatar.tsx"]);
+  });
+
+  it("o 3D é um botão ao lado do estilo, só no pixel, fora do radiogroup, e a prévia o mostra", () => {
+    const code = read(join(SRC, "features", "new-bot", "NewBotDialog.tsx"));
+    expect(code).toContain('data-testid="newbot-pixel3d"');
+    expect(code).toContain('{style === "pixel" && (');
+    expect(code).toContain("avatarPixel3d: style === ");
+    expect(code).toContain("pixel3d={pixel3d}");
+    for (const f of [
+      "shell/Sidebar",
+      "chat/ChatScreen",
+      "panel/Panel",
+      "pending/PendingScreen",
+      "palette/CommandPalette",
+    ])
+      expect(read(join(SRC, "features", `${f}.tsx`)), f).toContain("pixel3d={bot.avatarPixel3d}");
+  });
+
+  it("o pixel é desenhado em escala inteira, sem suavização, e movido pelo relógio compartilhado", () => {
+    const code = read(join(SRC, "ui", "pixel-mascot.tsx"));
+    expect(code).toContain("layoutPixels(");
+    expect(code).toContain("devicePixelRatio");
+    expect(code).toContain('imageRendering: "pixelated"');
+    expect(code).toContain("getPixelClock()");
+    // nenhum laço próprio: nem rAF nem timer por avatar
+    expect(code).not.toContain("requestAnimationFrame");
+    expect(code).not.toContain("setInterval");
+  });
+
+  it("o estilo vem do bot (`avatarStyle`) em toda tela que desenha o avatar de um bot", () => {
+    for (const file of [
+      "features/shell/Sidebar.tsx",
+      "features/chat/ChatScreen.tsx",
+      "features/panel/Panel.tsx",
+      "features/palette/CommandPalette.tsx",
+      "features/pending/PendingScreen.tsx",
+    ])
+      expect(read(join(SRC, file)), file).toContain("avatarStyle={bot.avatarStyle}");
+  });
+});

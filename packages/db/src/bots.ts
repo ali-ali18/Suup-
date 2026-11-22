@@ -18,6 +18,8 @@ export interface BotRow {
   group_name: string | null;
   sort_order: number | null;
   color: string | null;
+  avatar_style: string;
+  avatar_pixel3d: boolean;
   created_at: Date;
   updated_at: Date;
   archived_at: Date | null;
@@ -39,6 +41,8 @@ export function mapBot(row: BotRow): Bot {
     groupName: row.group_name,
     sortOrder: row.sort_order,
     color: row.color,
+    avatarStyle: row.avatar_style === "pixel" ? "pixel" : "shapes",
+    avatarPixel3d: row.avatar_pixel3d === true,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     archivedAt: row.archived_at,
@@ -52,6 +56,7 @@ const groupSchema = z
   .pipe(z.string().min(1).max(60))
   .nullable();
 const colorSchema = z.string().min(1).max(40).nullable();
+const avatarStyleSchema = z.enum(["shapes", "pixel"]);
 const orderSchema = z.number().int().nullable();
 
 export interface CreateBotInput {
@@ -70,6 +75,10 @@ export interface CreateBotInput {
   sortOrder?: number | null;
   /** The id of a colour of the palette (checked by the caller, which knows the palette). */
   color?: string | null;
+  /** `shapes` (the default) or `pixel`: which family of mascots `avatar` names. */
+  avatarStyle?: "shapes" | "pixel";
+  /** Only for `pixel`: draw the mascot in 3D (default `false`). */
+  avatarPixel3d?: boolean;
 }
 
 export type UpdateBotInput = Partial<CreateBotInput>;
@@ -77,8 +86,12 @@ export type UpdateBotInput = Partial<CreateBotInput>;
 export async function createBot(db: Db, input: CreateBotInput): Promise<Bot> {
   const limits = botLimitsSchema.parse(input.limits ?? {});
   const avatar = avatarSchema.parse(input.avatar ?? null);
+  // Only named when given: databases from before migration 0025 (tests that build old schemas) have no column.
+  const style =
+    input.avatarStyle === undefined ? undefined : avatarStyleSchema.parse(input.avatarStyle);
+  const pixel3d = input.avatarPixel3d;
   const [row] = await db.sql<BotRow[]>`
-    insert into bots (name, description, personality, model_provider, model_id, allowed_tools, limits, avatar, pinned, group_name, sort_order, color)
+    insert into bots (name, description, personality, model_provider, model_id, allowed_tools, limits, avatar, pinned, group_name, sort_order, color${style === undefined ? db.sql`` : db.sql`, avatar_style`}${pixel3d === undefined ? db.sql`` : db.sql`, avatar_pixel3d`})
     values (
       ${input.name},
       ${input.description ?? ""},
@@ -91,7 +104,7 @@ export async function createBot(db: Db, input: CreateBotInput): Promise<Bot> {
       ${input.pinned ?? false},
       ${groupSchema.parse(input.groupName ?? null)},
       ${orderSchema.parse(input.sortOrder ?? null)},
-      ${colorSchema.parse(input.color ?? null)}
+      ${colorSchema.parse(input.color ?? null)}${style === undefined ? db.sql`` : db.sql`, ${style}`}${pixel3d === undefined ? db.sql`` : db.sql`, ${pixel3d}`}
     )
     returning *`;
   if (!row) throw new Error("insert into bots returned no row");
@@ -134,6 +147,9 @@ export async function updateBot(db: Db, id: string, patch: UpdateBotInput): Prom
   if (patch.sortOrder !== undefined)
     sets.push(sql`sort_order = ${orderSchema.parse(patch.sortOrder)}`);
   if (patch.color !== undefined) sets.push(sql`color = ${colorSchema.parse(patch.color)}`);
+  if (patch.avatarStyle !== undefined)
+    sets.push(sql`avatar_style = ${avatarStyleSchema.parse(patch.avatarStyle)}`);
+  if (patch.avatarPixel3d !== undefined) sets.push(sql`avatar_pixel3d = ${patch.avatarPixel3d}`);
   if (sets.length === 0) return getBot(db, id);
   const [row] = await sql<BotRow[]>`
     update bots set ${joinFragments(sql, sets)} where id = ${id} returning *`;

@@ -39,7 +39,15 @@ function PendingItem({
   return (
     <div className="flex flex-col items-start gap-2" data-testid={testId}>
       <MutedText as="p" className="flex items-center gap-2">
-        <Avatar avatar={bot.avatar} color={bot.color} seed={bot.id} size="sm" /> {bot.name}
+        <Avatar
+          avatar={bot.avatar}
+          avatarStyle={bot.avatarStyle}
+          pixel3d={bot.avatarPixel3d}
+          color={bot.color}
+          seed={bot.id}
+          size="sm"
+        />{" "}
+        {bot.name}
       </MutedText>
       {children}
       <Pill tone="ghost" onClick={onOpen}>

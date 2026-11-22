@@ -1,7 +1,16 @@
 import { BOT_COLORS } from "@suup/api";
 import { SHAPE_IDS } from "@suup/avatar";
 import { describe, expect, it } from "vitest";
-import { avatarOf, colorVars, effectiveColor, mascotValue, SHAPES } from "./mascots.js";
+import {
+  avatarOf,
+  colorVars,
+  effectiveColor,
+  mascotValue,
+  PIXEL_THEME_COLOR,
+  PIXELS,
+  SHAPES,
+  themeColor,
+} from "./mascots.js";
 
 describe("shapes", () => {
   it("lists every shape of the engine, each with a name", () => {
@@ -71,5 +80,39 @@ describe("colorVars", () => {
       "--bot-on-bubble": "#f5f5f5",
     });
     expect(colorVars("azul")["--bot-bubble"]).toBe(colorVars("azul")["--bot-fill"]);
+  });
+});
+
+describe("mascotes pixel", () => {
+  it("o estilo pixel lê `mascot:<personagem>`; o que não existe cai no personagem do id", () => {
+    expect(avatarOf("mascot:gato", "s", "pixel")).toEqual({
+      kind: "mascot",
+      style: "pixel",
+      pixel: "gato",
+    });
+    const fallback = avatarOf(null, "bot-7", "pixel");
+    expect(fallback.pixel).toBeDefined();
+    expect(avatarOf("mascot:blob", "bot-7", "pixel").pixel).toBe(fallback.pixel);
+    expect(avatarOf("🙂", "s", "pixel")).toEqual({ kind: "emoji", text: "🙂" });
+    // sem estilo, o de sempre: `mascot:gato` não é uma forma e cai na forma do id
+    expect(avatarOf("mascot:gato", "s").pixel).toBeUndefined();
+  });
+
+  it("os 17 personagens estão na lista do seletor, com nome", () => {
+    expect(PIXELS).toHaveLength(17);
+    expect(PIXELS[0]).toEqual({ id: "folha", name: "Folha" });
+    expect(Object.keys(PIXEL_THEME_COLOR).sort()).toEqual(PIXELS.map((p) => p.id).sort());
+  });
+
+  it("a cor do tema: a do bot; sem ela, a do desenho (pixel) ou a do id (formas)", () => {
+    expect(themeColor({ color: "rosa", avatar: "mascot:folha", avatarStyle: "pixel" }, "x")).toBe(
+      "rosa",
+    );
+    expect(themeColor({ color: null, avatar: "mascot:folha", avatarStyle: "pixel" }, "x")).toBe(
+      "verde",
+    );
+    expect(themeColor({ color: null, avatar: "mascot:blob", avatarStyle: "shapes" }, "x")).toBe(
+      effectiveColor(null, "x"),
+    );
   });
 });

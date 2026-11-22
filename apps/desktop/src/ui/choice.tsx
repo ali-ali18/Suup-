@@ -41,19 +41,27 @@ export function ChoiceRow({
   );
 }
 
-/** A pill that is on or off (a tool of the bot, a day of the week): on is filled with the text
- * colour, so the chosen ones stand out at a glance; off is only outlined. */
+/**
+ * A pill that is on or off (a tool of the bot, a day of the week): on is filled with the text
+ * colour, so the chosen ones stand out at a glance; off is only outlined. With `radio` it is one
+ * option of a `role="radiogroup"` (the style of the avatar) and says it with `aria-checked`.
+ */
 export function ToggleChip({
   on,
+  radio = false,
   children,
   className,
   type,
   ...rest
-}: { on: boolean; children: ReactNode } & ButtonHTMLAttributes<HTMLButtonElement>) {
+}: {
+  on: boolean;
+  radio?: boolean;
+  children: ReactNode;
+} & ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
       type={type ?? "button"}
-      aria-pressed={on}
+      {...(radio ? { role: "radio", "aria-checked": on } : { "aria-pressed": on })}
       className={cx(
         "inline-flex h-8 items-center gap-1.5 rounded-pill border px-3 text-small",
         on

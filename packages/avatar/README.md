@@ -81,6 +81,67 @@ O host escolhe um destes; o mapa para os estados internos fica em `src/states.ts
 
 A ligacao entre eventos do Suup (execucoes, aprovacoes, erros) e estes estados e responsabilidade do app.
 
+## Estilo pixel (os 17 mascotes do dono)
+
+Um segundo estilo, ao lado das formas: os mascotes pixelados desenhados pelo dono no Figma (`c1FraH70ehfVHADeOXKspp`, paginas "Mascotes" e "Animacao - folha"). Mesma ideia (dado puro, sem DOM, o relogio e de quem hospeda), outro desenho: grade de 19 x 19 celulas (a celula mede 12 no Figma, margem 4, quadro 236). Pesquisa: `docs/pesquisas/avatar-pixel.md`.
+
+```ts
+import { createPixelCharacter, createPixelPlayer, drawPixelFrame, layoutPixels, pixelStillSvg, pixelStill } from "@suup/avatar";
+import { getPixelClock } from "@suup/avatar/browser";
+
+const bot = createPixelCharacter({ id: "bot-42", character: "gato", color: "#1084ff" }); // color: opcional
+const player = createPixelPlayer(bot, { state: "thinking", reducedMotion: false });
+const layout = layoutPixels(cssSize, devicePixelRatio);       // celula INTEIRA em pixels do aparelho
+canvas.width = canvas.height = layout.buffer;
+getPixelClock().register({ element: canvas, paint: (now) => drawPixelFrame(ctx, bot, player.frameAt(now), layout) });
+const svg = pixelStillSvg(bot, pixelStill(bot, "done"), { size: 40 }); // imagem parada (bordas nitidas)
+```
+
+| Funcao | O que faz |
+|---|---|
+| `createPixelCharacter({ id, character?, color? })` | Escolhe 1 dos 17 (`PIXEL_CHARACTER_IDS`: folha, xicara, gota, nuvem, brasa, gato, broto, estrela, cogumelo, polvo, robo, urso, coruja, lua, fantasma, raposa, cacto). Sem `character`, o `id` decide. `color` (`#rrggbb`) pinta o corpo; sem ela vale a cor do desenho. |
+| `createPixelPlayer(character, opts)` | Estado e "desde quando" de um avatar; `frameAt(ms)` devolve o quadro. `reducedMotion` = sempre a pose parada do Figma. |
+| `layoutPixels(cssSize, dpr)` / `drawPixelFrame` | Escala inteira (`floor(buffer / 19)` por celula), sem suavizacao, centralizado; so retangulos de coordenadas inteiras. |
+| `pixelStill` / `pixelStillSvg` | A pose parada (a variante do Figma) e o SVG dela (`shape-rendering="crispEdges"`). |
+| `createPixelClock(env)` / `getPixelClock()` | UM laco de rAF para todos os avatares pixel (~30 quadros/s), pausa com a aba oculta e fora da tela, dorme sem nenhum animado. |
+
+### Estados: mapa do app para as 10 poses do Figma
+
+| Estado publico | Pose (Figma `Estado=`) | Observacao |
+|---|---|---|
+| `idle` | Parado | balanca, pisca |
+| `thinking` | Pensando | os pontos acendem |
+| `working` | Trabalhando | cursor do terminal |
+| `asking` | Com duvida | "?" |
+| `waiting` | Pedindo permissao | "!" |
+| `done` | Concluiu | visto |
+| `failed` | Falhou | X |
+| `paused` | Pausado | olhos fechados e "||" |
+| `sleeping` | Parado | **sem arte no Figma**: nao se inventou |
+| `celebrating` | Concluiu | **sem arte propria** |
+| `scolded` (so pixel) | Levou bronca | sem estado publico no motor de formas |
+| `idea` (so pixel) | Teve uma ideia | sem estado publico no motor de formas |
+
+### Animacao
+
+Os tempos vem do prototipo do Figma (espera + transicao de cada quadro, curvas ease in-out e ease out); o dono animou **so a folha**. Para os outros 16 vale a mesma regra aplicada ao desenho estatico de cada um: o balanco (sprite sobe 4 unidades = 1/3 de celula, arredondado para pixels inteiros), o simbolo do estado (identico nos 17) e o piscar (a linha de cima de cada olho vira corpo). Nada de arte nova. Movimento reduzido: a pose parada do Figma.
+
+### Dados
+
+`scripts/figma-pixel.json` guarda o que a API do Figma devolveu (`scripts/figma-extract.figma.txt` e o codigo que roda no Figma); `node packages/avatar/scripts/gen-pixel-data.mjs` gera `src/pixel/data/*.ts` e confere os hashes FNV calculados dentro do Figma. Depois rode `pnpm biome check --write packages/avatar`.
+
+### Pixel 3D (opcao, desligada por padrao)
+
+Os mesmos mascotes como solidos que giram, ainda em pixel: `createPixelPlayer(bot, { pixel3d: true })` e `player.frame3dAt(ms)` (desenho com `drawPixelImage` e `layoutPixels(css, dpr, RASTER_SIZE)`); no app, `<PixelMascot pixel3d />`. Nao substitui o 2D.
+
+- **Voxels** (`src/pixel/voxel.ts`): cada quadro 19 x 19 vira um corpo extrudado: 6 voxels de fundo no miolo e 2 na borda da silhueta (chanfro de um degrau so, para nao dar ruido ao girar). Olhos sao a cor da face da frente; o simbolo do estado e uma plaqueta de 2 voxels que flutua.
+- **Raster** (`src/pixel/raster3d.ts`): camera ortografica; um raio por pixel atravessa a grade de voxels (3D DDA) e o primeiro voxel da a cor. Imagem de 25 x 25 (a grade 19 + margem 3), 1 voxel = 1 pixel, sem suavizacao.
+- **Sombreado**: 4 degraus por cor da paleta, em aritmetica inteira: frente = a cor do dono; topo +22% rumo ao branco; laterais 76% e 58%. Nada de gradiente.
+- **Movimento**: balanco de ate 28 graus para cada lado (4,8 s) com inclinacao de 6 +- 3 graus (`swayView`); `turnView` faz uma volta de 360 graus. Os olhos somem naturalmente quando a frente fica de lado.
+- **Movimento reduzido**: vista de frente, identica ao desenho 2D (testado pixel a pixel).
+- **Previa em video**: `pnpm exec tsc -b packages/avatar && node packages/avatar/scripts/pixel3d-preview.mjs` gera `apps/desktop/screenshots/pixel3d-previa.mp4` e `pixel3d-lado-a-lado.mp4` (quadros reais do motor; precisa do `ffmpeg`).
+
+
 ## Como dirigir
 
 - **Estatico (listas, miniaturas):** `renderStill`. Barato e sem laco.
