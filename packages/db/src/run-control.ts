@@ -4,7 +4,7 @@ import { type Db, withTransaction } from "./client.js";
 import { appendRunEvent } from "./events.js";
 import { postInbox } from "./inbox.js";
 import type { RunStatusHook } from "./pg-store.js";
-import { mapRun, type RunRow, setRunStatus } from "./runs.js";
+import { lockConversationOfRun, mapRun, type RunRow, setRunStatus } from "./runs.js";
 import type { Run } from "./types.js";
 
 export type RunControlErrorCode = "not_found" | "finished" | "not_pausable" | "not_paused";
@@ -117,6 +117,8 @@ export async function cancelRun(
   options: { onStatusSet?: RunStatusHook } = {},
 ): Promise<Run> {
   return withTransaction(db, async (tx) => {
+    // The hook writes to the conversation: lock it before the run (`lockConversationOfRun`).
+    if (options.onStatusSet !== undefined) await lockConversationOfRun(tx, runId);
     const run = await lockRun(tx, runId);
     if (TERMINAL.has(run.status)) {
       throw new RunControlError("finished", "A execução já terminou e não pode ser cancelada.");

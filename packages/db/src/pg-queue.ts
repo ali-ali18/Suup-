@@ -4,7 +4,7 @@ import { type Db, withTransaction } from "./client.js";
 import { appendRunEvent } from "./events.js";
 import type { RunStatusHook } from "./pg-store.js";
 import { releaseLeasedRun, requeueStaleRuns } from "./queue.js";
-import { claimNextRun, claimRun, setRunStatus } from "./runs.js";
+import { claimNextRun, claimRun, lockConversationOfRun, setRunStatus } from "./runs.js";
 
 /** Claims remembered per queue object; older ones are forgotten (their runs are long finished). */
 const MAX_REMEMBERED = 10_000;
@@ -81,6 +81,8 @@ export class PgRunQueue implements RunQueue {
     const detail = this.#redact === undefined ? failure.detail : await this.#redact(failure.detail);
     failure = { origin: failure.origin, detail };
     await withTransaction(this.#db, async (tx) => {
+      // The hook writes to the conversation: lock it before the run (`lockConversationOfRun`).
+      if (this.#onStatusSet !== undefined) await lockConversationOfRun(tx, runId);
       const [row] = await tx.sql<{ status: string; locked_by: string | null }[]>`
         select status, locked_by from runs where id = ${runId} for no key update`;
       if (row === undefined || row.locked_by !== workerId) return;
