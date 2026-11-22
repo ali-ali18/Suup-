@@ -1,14 +1,13 @@
 import type { Routine } from "@suup/api";
-import { CalendarClock, MonitorSmartphone, MoreHorizontal, Pause } from "lucide-react";
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
-import { useData, useServices } from "../../app/context.js";
+import { CalendarClock, ChevronRight, MonitorSmartphone, Pause } from "lucide-react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { useServices } from "../../app/context.js";
 import { useUi } from "../../app/ui-store.js";
 import { messageOf } from "../../data/sync.js";
 import { cx } from "../../lib/cx.js";
 import { describeSchedule, lastText, nextText } from "../../lib/routines.js";
-import { MenuButton, type MenuItem } from "../../ui/menu.js";
-import { MutedText, RoundButton } from "../../ui/primitives.js";
-import { RoutineDeleteDialog, RoutineEditDialog, RoutineHistoryDialog } from "./RoutineDialogs.js";
+import { MutedText } from "../../ui/primitives.js";
+import { useBotRunMark } from "./run-mark.js";
 
 /** A titled box of the panel: a muted title, then its rows in a card. `flush`: rows edge to edge. */
 function PanelSection({
@@ -74,46 +73,19 @@ function PanelRow({
   );
 }
 
-type Opened = { kind: "edit" | "history" | "delete"; routine: Routine } | null;
-
-/** One routine: its name, when in words, the next run, the last result, and its actions in a menu. */
-function RoutineRow({
-  routine,
-  busy,
-  onAction,
-}: {
-  routine: Routine;
-  busy: boolean;
-  onAction(action: "edit" | "history" | "delete" | "pause" | "resume" | "run"): void;
-}) {
+/** One routine: its name, when in words, the next run, the last result. The row opens its detail. */
+function RoutineRow({ routine, onOpen }: { routine: Routine; onOpen(): void }) {
   const paused = routine.status === "paused";
   const last = lastText(routine);
-  const items: MenuItem[] = [
-    { id: "edit", label: "Editar", onSelect: () => onAction("edit") },
-    paused
-      ? { id: "resume", label: "Retomar", onSelect: () => onAction("resume") }
-      : {
-          id: "pause",
-          label: "Pausar",
-          disabled: routine.status === "ended",
-          onSelect: () => onAction("pause"),
-        },
-    {
-      id: "run",
-      label: "Rodar agora",
-      description: "Uma vez, fora do horário.",
-      disabled: busy,
-      onSelect: () => onAction("run"),
-    },
-    { id: "history", label: "Histórico", onSelect: () => onAction("history") },
-    { id: "delete", label: "Apagar", danger: true, onSelect: () => onAction("delete") },
-  ];
   return (
-    <div
-      className="flex min-w-0 items-start gap-3 px-4 py-3"
+    <button
+      type="button"
+      className="group/row flex w-full min-w-0 items-start gap-3 border-0 bg-transparent px-4 py-3 text-left text-text hover:bg-hover"
       data-testid="routine-row"
       data-routine={routine.name}
       data-status={routine.status}
+      aria-label={`Abrir a rotina ${routine.name}`}
+      onClick={onOpen}
     >
       <span className="inline-flex pt-0.5 text-text-muted" aria-hidden="true">
         {paused ? <Pause size={16} /> : <CalendarClock size={16} />}
@@ -124,43 +96,28 @@ function RoutineRow({
         <MutedText data-testid="routine-next">{nextText(routine)}</MutedText>
         {last !== null && <MutedText data-testid="routine-last">{last}</MutedText>}
       </span>
-      <MenuButton
-        label={`Ações da rotina ${routine.name}`}
-        items={items}
-        trigger={(props) => (
-          <RoundButton label={`Ações da rotina ${routine.name}`} tone="ghost" size="sm" {...props}>
-            <MoreHorizontal size={16} aria-hidden="true" />
-          </RoundButton>
-        )}
-      />
-    </div>
+      <span
+        className="inline-flex self-center text-text-muted opacity-0 group-hover/row:opacity-100 group-focus-visible/row:opacity-100"
+        aria-hidden="true"
+      >
+        <ChevronRight size={16} />
+      </span>
+    </button>
   );
 }
 
 /**
- * The routines of a bot (docs/ROTINAS.md), in the Atividade tab. They are created by talking to the
- * bot; here the user sees each one in words, pauses or resumes it, runs it now, edits WHEN with the
- * structured fields, reads its history and deletes it. Read from `/v1/routines`, and again whenever a
- * run of this bot changes status (the stream brings the runs).
+ * The routines of a bot (docs/ROTINAS.md), in the Atividade tab. They are created and changed by
+ * talking to the bot; here the user sees each one in words, and a row opens its detail (results,
+ * pause, run now, Editar in the chat, Remover). Read from `/v1/routines`, and again whenever a run
+ * of this bot changes status (the stream brings the runs).
  */
 function RoutinesSection({ botId }: { botId: string }) {
   const { api } = useServices();
-  const toast = useUi((s) => s.toast);
+  const openPanelRoutine = useUi((s) => s.openPanelRoutine);
   const [routines, setRoutines] = useState<Routine[] | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
-  const [opened, setOpened] = useState<Opened>(null);
-  // A mark that moves whenever a run of this bot changes status (a routine's run, or a chat run that
-  // created or changed one): the list is read again.
-  const runs = useData((s) => s.runs);
-  const mark = useMemo(
-    () =>
-      Object.values(runs)
-        .filter((r) => r.botId === botId)
-        .map((r) => `${r.id}:${r.status}`)
-        .sort()
-        .join(","),
-    [runs, botId],
-  );
+  const mark = useBotRunMark(botId);
   const load = useCallback(() => {
     api.routines.list({ botId }).then(
       (items) => {
@@ -183,32 +140,6 @@ function RoutinesSection({ botId }: { botId: string }) {
     return () => clearInterval(timer);
   }, [anyRunning, load]);
 
-  const replace = (saved: Routine) =>
-    setRoutines((list) => list?.map((r) => (r.id === saved.id ? saved : r)));
-  const act = (
-    routine: Routine,
-    action: "edit" | "history" | "delete" | "pause" | "resume" | "run",
-  ) => {
-    if (action === "edit" || action === "history" || action === "delete") {
-      setOpened({ kind: action, routine });
-      return;
-    }
-    if (action === "run") {
-      api.routines.run(routine.id).then(
-        () => {
-          toast(`“${routine.name}” começou a rodar. O resultado chega no chat.`, "info");
-          load();
-        },
-        (e: unknown) => toast(messageOf(e), "error"),
-      );
-      return;
-    }
-    api.routines
-      .update(routine.id, { paused: action === "pause" })
-      .then(replace, (e: unknown) => toast(messageOf(e), "error"));
-  };
-
-  const running = (routine: Routine) => routine.lastFire?.status === "running";
   return (
     <PanelSection title="Rotinas" label="Rotinas" testId="section-routines" flush>
       {error !== undefined && (
@@ -226,36 +157,8 @@ function RoutinesSection({ botId }: { botId: string }) {
         />
       )}
       {routines?.map((r) => (
-        <RoutineRow
-          key={r.id}
-          routine={r}
-          busy={running(r)}
-          onAction={(action) => act(r, action)}
-        />
+        <RoutineRow key={r.id} routine={r} onOpen={() => openPanelRoutine(r.id)} />
       ))}
-      {opened?.kind === "edit" && (
-        <RoutineEditDialog
-          routine={opened.routine}
-          onClose={() => setOpened(null)}
-          onSaved={(saved) => {
-            replace(saved);
-            setOpened(null);
-          }}
-        />
-      )}
-      {opened?.kind === "history" && (
-        <RoutineHistoryDialog routine={opened.routine} onClose={() => setOpened(null)} />
-      )}
-      {opened?.kind === "delete" && (
-        <RoutineDeleteDialog
-          routine={opened.routine}
-          onClose={() => setOpened(null)}
-          onDeleted={() => {
-            setRoutines((list) => list?.filter((r) => r.id !== opened.routine.id));
-            setOpened(null);
-          }}
-        />
-      )}
     </PanelSection>
   );
 }

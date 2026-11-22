@@ -492,16 +492,22 @@ export class Sync {
    * Sends a message: it appears at once and is confirmed (or taken back) when the server answers.
    * Returns the text to give back to the composer when the server refused.
    */
+  /** `options.routineRef`: the routine the message is about (the "Editar" of a routine): data, never text. */
   async send(
     conversationId: string,
     text: string,
+    options: { routineRef?: { id: string } } = {},
   ): Promise<{ ok: true; run: Run; message: Message } | { ok: false; text: string }> {
     const tempId = crypto.randomUUID();
     update(this.store, (s) =>
       addOptimisticMessage(s, { tempId, conversationId, text, now: new Date().toISOString() }),
     );
     try {
-      const result = await this.deps.api.conversations.send(conversationId, text);
+      const result = await this.deps.api.conversations.send(
+        conversationId,
+        text,
+        options.routineRef === undefined ? {} : { routineRef: options.routineRef },
+      );
       update(this.store, (s) =>
         mergeRun(resolveOptimisticMessage(s, tempId, result.message), result.run),
       );

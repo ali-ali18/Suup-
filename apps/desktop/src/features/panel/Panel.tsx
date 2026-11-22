@@ -8,6 +8,7 @@ import { LibraryList } from "../../ui/library-list.js";
 import { RoundButton, Tabs } from "../../ui/primitives.js";
 import { ResizeHandle } from "../../ui/resize-handle.js";
 import { ActivityTab } from "./ActivityTab.js";
+import { RoutineDetail } from "./RoutineDetail.js";
 
 const TABS = [
   { id: "activity", label: "Atividade" },
@@ -22,14 +23,33 @@ export function Panel({ botId }: { botId: string }) {
   const togglePanel = useUi((s) => s.togglePanel);
   const panelWidth = useUi((s) => s.panelWidth);
   const setPanelLayout = useUi((s) => s.setPanelLayout);
+  const routineId = useUi((s) => s.panelRoutineId);
   const [now] = useState(() => new Date());
   if (bot === undefined) return null;
+  const resize = (
+    <ResizeHandle
+      spec={PANEL_SPEC}
+      edge="start"
+      layout={{ collapsed: false, width: panelWidth }}
+      cssVar="--panel-w"
+      label="Redimensionar o painel"
+      liveCollapse={false}
+      onCommit={setPanelLayout}
+    />
+  );
+  const frame =
+    "relative flex min-h-0 min-w-0 flex-[0_1_var(--panel-w,var(--width-panel))] flex-col border-l border-border data-[closing=true]:opacity-50";
+  // A routine opened from the list: its detail takes the whole panel (docs/DESIGN.md §5b).
+  if (routineId !== null) {
+    return (
+      <aside className={frame} aria-label={`Painel de ${bot.name}`} data-testid="panel">
+        <RoutineDetail key={routineId} botId={bot.id} routineId={routineId} />
+        {resize}
+      </aside>
+    );
+  }
   return (
-    <aside
-      className="relative flex min-h-0 min-w-0 flex-[0_1_var(--panel-w,var(--width-panel))] flex-col border-l border-border data-[closing=true]:opacity-50"
-      aria-label={`Painel de ${bot.name}`}
-      data-testid="panel"
-    >
+    <aside className={frame} aria-label={`Painel de ${bot.name}`} data-testid="panel">
       <div className="relative flex flex-none flex-col items-center gap-4 px-5 pt-14 pb-5">
         <RoundButton
           label="Fechar o painel"
@@ -63,15 +83,7 @@ export function Panel({ botId }: { botId: string }) {
       >
         {tab === "activity" ? <ActivityTab botId={botId} /> : <LibraryList items={[]} now={now} />}
       </div>
-      <ResizeHandle
-        spec={PANEL_SPEC}
-        edge="start"
-        layout={{ collapsed: false, width: panelWidth }}
-        cssVar="--panel-w"
-        label="Redimensionar o painel"
-        liveCollapse={false}
-        onCommit={setPanelLayout}
-      />
+      {resize}
     </aside>
   );
 }

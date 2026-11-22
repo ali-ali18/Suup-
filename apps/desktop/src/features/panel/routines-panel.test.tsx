@@ -1,52 +1,83 @@
-import type { Routine, SuupClient } from "@suup/api";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import type { Routine, RoutineFire, SuupClient } from "@suup/api";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type Services, ServicesProvider } from "../../app/context.js";
-import { createDataStore } from "../../data/store.js";
+import { useSettings } from "../../app/settings-store.js";
+import { useUi } from "../../app/ui-store.js";
+import { mergeBot } from "../../data/reducers.js";
+import { createDataStore, update } from "../../data/store.js";
 import { Sync } from "../../data/sync.js";
-import { routineOf } from "../../test-fixtures.js";
-import { ActivityTab } from "./ActivityTab.js";
+import { makeBot, routineOf } from "../../test-fixtures.js";
+import { Panel } from "./Panel.js";
+import { FIRES_PAGE } from "./RoutineDetail.js";
 
 afterEach(cleanup);
+beforeEach(() => {
+  useUi.setState({ panelRoutineId: null, chatPrefill: null, panelTab: "activity" });
+  useSettings.getState().update({ favicons: "off" });
+});
 
 const BOT = "00000000-0000-4000-8000-0000000000b1";
 
-function setup(routines: Routine[], extra: Record<string, unknown> = {}) {
-  const update = vi.fn(async (id: string, body: Record<string, unknown>) => {
-    const current = routines.find((r) => r.id === id) as Routine;
-    return {
-      ...current,
-      ...body,
-      status: body.paused === true ? "paused" : body.paused === false ? "active" : current.status,
-      nextRunAt: body.paused === true ? null : current.nextRunAt,
-    } as Routine;
-  });
-  const run = vi.fn(async () => ({ kind: "manual", status: "running" }));
+const fireOf = (over: Partial<RoutineFire> = {}): RoutineFire => ({
+  id: "00000000-0000-4000-8000-0000000000f1",
+  routineId: routineOf().id,
+  scheduledFor: "2026-11-22T11:00:00.000Z",
+  kind: "scheduled",
+  status: "done",
+  skipReason: null,
+  missedCount: 0,
+  runId: "00000000-0000-4000-8000-0000000000e1",
+  resultText: "## Hoje\n\n- **15h** dentista\n- 18h relatório",
+  messageId: null,
+  createdAt: "2026-11-22T11:00:01.000Z",
+  finishedAt: "2026-11-22T11:00:09.000Z",
+  sources: [
+    { kind: "web", url: "https://agenda.exemplo.com.br/hoje", title: "Agenda de hoje" },
+    { kind: "connector", connector: "calendario" },
+  ],
+  ...over,
+});
+
+function setup(routines: Routine[], fires: RoutineFire[] = [fireOf()]) {
   const api = {
     routines: {
       list: vi.fn(async () => routines),
-      update,
-      run,
+      get: vi.fn(async (id: string) => routines.find((r) => r.id === id) as Routine),
+      fires: vi.fn(async (_id: string, query: { limit?: number } = {}) =>
+        fires.slice(0, query.limit ?? 30),
+      ),
+      update: vi.fn(async (id: string, body: Record<string, unknown>) => {
+        const current = routines.find((r) => r.id === id) as Routine;
+        return {
+          ...current,
+          status: body.paused === true ? "paused" : "active",
+          nextRunAt: body.paused === true ? null : current.nextRunAt,
+        } as Routine;
+      }),
+      run: vi.fn(async () => ({ kind: "manual", status: "running" })),
       delete: vi.fn(async () => undefined),
-      fires: vi.fn(async () => []),
-      ...extra,
     },
   };
   const store = createDataStore();
+  update(store, (s) => mergeBot(s, makeBot({ id: BOT, name: "Agenda" })));
   const sync = new Sync({ api: api as unknown as SuupClient, store });
-  const services = { api, sync, data: store } as unknown as Services;
+  const openUrl = vi.fn();
+  const services = { api, sync, data: store, platform: { openUrl } } as unknown as Services;
   render(
     <ServicesProvider services={services}>
-      <ActivityTab botId={BOT} />
+      <Panel botId={BOT} />
     </ServicesProvider>,
   );
-  return api.routines;
+  return { api: api.routines, openUrl };
 }
 
-const openMenu = (name: string) =>
-  fireEvent.click(screen.getByRole("button", { name: `Ações da rotina ${name}` }));
+const openDetail = async (name = "Calendário da manhã") => {
+  fireEvent.click(await screen.findByRole("button", { name: `Abrir a rotina ${name}` }));
+  return screen.findByTestId("routine-detail");
+};
 
-describe("the Rotinas panel", () => {
+describe("the Rotinas list", () => {
   it("is honest when there is none: it says how to make one by talking", async () => {
     setup([]);
     expect(await screen.findByText("Nenhuma rotina")).toBeTruthy();
@@ -55,8 +86,8 @@ describe("the Rotinas panel", () => {
     );
   });
 
-  it("shows each routine in words, with the next run and the last result", async () => {
-    const api = setup([
+  it("shows each routine in words; there is no menu and no schedule form", async () => {
+    const { api } = setup([
       routineOf(),
       routineOf({
         id: "00000000-0000-4000-8000-000000000009",
@@ -75,76 +106,129 @@ describe("the Rotinas panel", () => {
     expect(within(rows[0] as HTMLElement).getByTestId("routine-schedule").textContent).toBe(
       "todo dia às 08:00",
     );
-    expect(within(rows[0] as HTMLElement).getByTestId("routine-next").textContent).toContain(
-      "Próxima:",
-    );
-    expect(within(rows[1] as HTMLElement).getByTestId("routine-schedule").textContent).toBe(
-      "toda segunda e sexta às 18:00",
-    );
     expect(within(rows[1] as HTMLElement).getByTestId("routine-next").textContent).toBe("Pausada");
+    expect(screen.queryByRole("button", { name: /Ações da rotina/ })).toBeNull();
+    expect(screen.queryByTestId("routine-form")).toBeNull();
+  });
+});
+
+describe("the detail of a routine, in the panel", () => {
+  it("replaces the list: back on the left, the routine in words, its results", async () => {
+    setup([routineOf()]);
+    const detail = await openDetail();
+    expect(screen.queryByTestId("section-routines")).toBeNull();
+    expect(
+      await within(detail).findByRole("heading", { name: "Calendário da manhã" }),
+    ).toBeTruthy();
+    expect(within(detail).getByTestId("routine-schedule").textContent).toBe("todo dia às 08:00");
+    expect(within(detail).getByTestId("routine-next").textContent).toContain("Próxima:");
+    fireEvent.click(within(detail).getByRole("button", { name: "Voltar às rotinas" }));
+    expect(await screen.findByTestId("section-routines")).toBeTruthy();
+    expect(screen.queryByTestId("routine-detail")).toBeNull();
   });
 
-  it("pauses, resumes and runs now from the row's menu", async () => {
-    const api = setup([routineOf()]);
-    await screen.findByTestId("routine-row");
-    openMenu("Calendário da manhã");
-    fireEvent.click(screen.getByRole("menuitem", { name: "Pausar" }));
+  it("what the bot wrote is Markdown, with the same renderer as the chat", async () => {
+    setup([routineOf()]);
+    const detail = await openDetail();
+    const result = await within(detail).findByTestId("routine-result");
+    expect(within(result).getByText("Hoje").className).toContain("font-title");
+    expect(within(result).getByText("15h").tagName).toBe("STRONG");
+    expect(result.querySelectorAll("li")).toHaveLength(2);
+    expect(result.textContent).not.toContain("**");
+  });
+
+  it("the sources: the generic icon while the icons of sites are off, the site's own when on", async () => {
+    const { openUrl } = setup([routineOf()]);
+    const detail = await openDetail();
+    const [web, connector] = await within(detail).findAllByTestId("routine-source");
+    expect(web?.textContent).toBe("agenda.exemplo.com.br");
+    expect(web?.getAttribute("href")).toBe("https://agenda.exemplo.com.br/hoje");
+    expect(web?.querySelector("img")).toBeNull();
+    expect(web?.querySelector(".lucide-globe")).not.toBeNull();
+    expect(connector?.textContent).toBe("calendario");
+    expect(connector?.querySelector(".lucide-plug")).not.toBeNull();
+    fireEvent.click(web as HTMLElement);
+    expect(openUrl).toHaveBeenCalledWith("https://agenda.exemplo.com.br/hoje");
+    act(() => useSettings.getState().update({ favicons: "on" }));
+    const img = within(detail).getAllByTestId("routine-source")[0]?.querySelector("img");
+    // the host ONLY, never the page's path
+    expect(img?.getAttribute("src")).toBe("https://agenda.exemplo.com.br/favicon.ico");
+  });
+
+  it("a skipped fire is one quiet line; a failure shows the reason as plain text", async () => {
+    setup(
+      [routineOf()],
+      [
+        fireOf({ id: "00000000-0000-4000-8000-0000000000f3", status: "skipped", runId: null }),
+        fireOf({
+          id: "00000000-0000-4000-8000-0000000000f2",
+          status: "failed",
+          resultText: "A execução falhou: **sem** acesso.",
+          sources: [],
+        }),
+      ],
+    );
+    const detail = await openDetail();
+    const [skipped, failed] = await within(detail).findAllByTestId("routine-fire");
+    expect(skipped?.textContent).toContain("Pulada: a anterior ainda rodava");
+    expect(within(skipped as HTMLElement).queryByTestId("routine-result")).toBeNull();
+    expect(within(failed as HTMLElement).getByTestId("routine-result").textContent).toBe(
+      "A execução falhou: **sem** acesso.",
+    );
+  });
+
+  it("shows more on request", async () => {
+    const many = Array.from({ length: FIRES_PAGE + 3 }, (_, i) =>
+      fireOf({ id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}` }),
+    );
+    const { api } = setup([routineOf()], many);
+    const detail = await openDetail();
+    await waitFor(() =>
+      expect(within(detail).getAllByTestId("routine-fire")).toHaveLength(FIRES_PAGE),
+    );
+    fireEvent.click(within(detail).getByTestId("routine-more"));
+    await waitFor(() =>
+      expect(within(detail).getAllByTestId("routine-fire")).toHaveLength(FIRES_PAGE + 3),
+    );
+    expect(api.fires).toHaveBeenLastCalledWith(routineOf().id, { limit: FIRES_PAGE * 2 });
+    expect(within(detail).queryByTestId("routine-more")).toBeNull();
+  });
+
+  it("pauses, resumes and runs now from the icons on top", async () => {
+    const { api } = setup([routineOf()]);
+    const detail = await openDetail();
+    fireEvent.click(await within(detail).findByRole("button", { name: "Pausar a rotina" }));
     await waitFor(() => expect(api.update).toHaveBeenCalledWith(routineOf().id, { paused: true }));
-    await waitFor(() => expect(screen.getByTestId("routine-next").textContent).toBe("Pausada"));
-    openMenu("Calendário da manhã");
-    fireEvent.click(screen.getByRole("menuitem", { name: /Rodar agora/ }));
+    expect(await within(detail).findByRole("button", { name: "Retomar a rotina" })).toBeTruthy();
+    expect(within(detail).getByTestId("routine-next").textContent).toBe("Pausada");
+    fireEvent.click(within(detail).getByRole("button", { name: /Rodar agora/ }));
     await waitFor(() => expect(api.run).toHaveBeenCalledWith(routineOf().id));
   });
 
-  it("edits WHEN with structured fields and sends the schedule, never text", async () => {
-    const api = setup([routineOf()]);
-    await screen.findByTestId("routine-row");
-    openMenu("Calendário da manhã");
-    fireEvent.click(screen.getByRole("menuitem", { name: "Editar" }));
-    const dialog = await screen.findByRole("dialog");
-    // kind: weekly
-    fireEvent.click(within(dialog).getByTestId("routine-kind"));
-    fireEvent.click(screen.getByRole("option", { name: "Toda semana" }));
-    fireEvent.click(within(dialog).getByRole("button", { name: "quarta" }));
-    // hour 07, minute 30
-    fireEvent.click(within(dialog).getByTestId("routine-hour"));
-    fireEvent.click(screen.getByRole("option", { name: "07" }));
-    fireEvent.click(within(dialog).getByTestId("routine-minute"));
-    fireEvent.click(screen.getByRole("option", { name: "30" }));
-    expect(within(dialog).getByTestId("routine-preview").textContent).toContain(
-      "toda segunda e quarta às 07:30",
-    );
-    fireEvent.click(within(dialog).getByTestId("routine-save"));
-    await waitFor(() =>
-      expect(api.update).toHaveBeenCalledWith(routineOf().id, {
-        name: "Calendário da manhã",
-        instruction: "Veja meu calendário de hoje.",
-        schedule: { kind: "weekly", days: ["mon", "wed"], time: "07:30" },
-        timeZone: "America/Sao_Paulo",
-      }),
-    );
+  it("Editar goes to the chat with the draft and the routine bound to it (never its id in the text)", async () => {
+    setup([routineOf()]);
+    const detail = await openDetail();
+    fireEvent.click(await within(detail).findByTestId("routine-edit"));
+    const prefill = useUi.getState().chatPrefill;
+    expect(prefill).toMatchObject({
+      botId: BOT,
+      text: "Editar a rotina “Calendário da manhã” (todo dia às 08:00): ",
+      routine: { id: routineOf().id, name: "Calendário da manhã" },
+    });
+    expect(prefill?.text).not.toContain(routineOf().id);
+    expect(useUi.getState()).toMatchObject({ view: "chat", selectedBotId: BOT });
   });
 
-  it("an empty set of days cannot be saved, and the form says why", async () => {
-    setup([routineOf({ schedule: { kind: "weekly", days: ["mon"], time: "09:00" } })]);
-    await screen.findByTestId("routine-row");
-    openMenu("Calendário da manhã");
-    fireEvent.click(screen.getByRole("menuitem", { name: "Editar" }));
+  it("Remover asks once, deletes, and goes back to the list", async () => {
+    const { api } = setup([routineOf()]);
+    const detail = await openDetail();
+    fireEvent.click(await within(detail).findByTestId("routine-remove"));
     const dialog = await screen.findByRole("dialog");
-    fireEvent.click(within(dialog).getByRole("button", { name: "segunda" }));
-    expect(within(dialog).getByTestId("routine-form-error").textContent).toBe(
-      "Escolha pelo menos um dia.",
-    );
-    expect(within(dialog).getByTestId("routine-save").hasAttribute("disabled")).toBe(true);
-  });
-
-  it("deletes after asking once", async () => {
-    const api = setup([routineOf()]);
-    await screen.findByTestId("routine-row");
-    openMenu("Calendário da manhã");
-    fireEvent.click(screen.getByRole("menuitem", { name: "Apagar" }));
-    fireEvent.click(await screen.findByTestId("routine-delete-confirm"));
+    expect(dialog.textContent).toContain("Remover a rotina?");
+    expect(api.delete).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByTestId("routine-remove-confirm"));
     await waitFor(() => expect(api.delete).toHaveBeenCalledWith(routineOf().id));
-    await waitFor(() => expect(screen.queryByTestId("routine-row")).toBeNull());
+    await waitFor(() => expect(screen.queryByTestId("routine-detail")).toBeNull());
+    expect(useUi.getState().panelRoutineId).toBeNull();
   });
 });

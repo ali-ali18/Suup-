@@ -105,7 +105,9 @@ O que a execução recebe (gravado uma vez em `context_loaded.routine`, então o
 
 ## No app
 
-Painel do bot, aba **Atividade**, cartão **Rotinas** (era o "Em breve"; [DESIGN.md](DESIGN.md)): uma linha por rotina, de borda a borda, com ícone, nome, o horário em palavras, a próxima vez ("Próxima: amanhã, 08:00"), ou "Pausada"/"Encerrada", e o último resultado ("Última: hoje, 08:00 · Concluída · Recuperação · 3 perdidas"). Um menu por linha: **Editar** (os mesmos campos estruturados: tipo, hora e minuto em dropdown, dias em chips, dia do mês e intervalo em campo numérico, data de fim, fuso com filtro), **Pausar/Retomar**, **Rodar agora**, **Histórico** (cada disparo: hora, situação, pulado ou perdidas, o resultado e "Ver a execução") e **Apagar** (pede confirmação). Vazio: "Nenhuma rotina", com a frase de como pedir no chat. A lista é lida de novo quando uma execução do bot muda de estado.
+Painel do bot, aba **Atividade**, cartão **Rotinas** ([DESIGN.md](DESIGN.md) §5b): uma linha por rotina, de borda a borda, com ícone, nome, o horário em palavras, a próxima vez ("Próxima: amanhã, 08:00"), ou "Pausada"/"Encerrada", e o último resultado. **Sem formulário**: criar e mudar é pedindo ao bot (decisão do dono, 22/11/2026). Clicar numa linha abre o **detalhe na própria coluna do painel**: voltar, pausar/retomar e "Rodar agora" em ícones no topo; o nome, o horário e a próxima vez; e **o que o bot escreveu** em cada disparo (do mais novo ao mais velho, em Markdown como no chat, com a hora e a situação; pulada e rodando numa linha quieta), com **as fontes** da execução: o ícone do site de cada página lida (que segue a configuração "Ícone dos sites nos links"; desligada, o ícone genérico) e o do conector usado. No fim, **Editar** (leva ao chat do bot com o rascunho "Editar a rotina “…” (…): " e a referência escondida, acima) e **Remover** (pede confirmação). Vazio: "Nenhuma rotina", com a frase de como pedir no chat. A lista e o detalhe são lidos de novo quando uma execução do bot muda de estado.
+
+As fontes vêm do backend, nunca do texto: cada ferramenta **declara** a página que leu (`ToolOutput.source`; o `web_read` grava o endereço final e o título em `tool_result.source`), e `GET /v1/routines/{id}/fires` devolve, em `sources`, essas páginas e os conectores cujas ferramentas responderam (pelo nome registrado exato que o conector lista), na ordem, cada um uma vez, até 8.
 
 ## API
 
@@ -115,5 +117,6 @@ Painel do bot, aba **Atividade**, cartão **Rotinas** (era o "Em breve"; [DESIGN
 
 - Monitor (consulta periódica com condição antes do modelo) e webhook ([PLANO.md](PLANO.md) 4.10); notificação do desktop (Tauri) com o resultado; resumo final ao terminar pela data de fim.
 - Um rótulo "Rotina" no balão do chat (a mensagem já traz `routineId`).
+- A busca (`web_search`) não vira fonte: só a página lida. Os resultados de uma busca são muitos e o bot nem sempre os usa.
 - Tetos por conta e por hora (a pesquisa cita os do Claude); hoje há só 30 rotinas por bot e o intervalo mínimo de 5 minutos.
 - Medir: disparos por dia, pulados por sobreposição, recuperações depois de um dia desligado.

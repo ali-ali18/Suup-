@@ -1,17 +1,9 @@
-import {
-  describeSchedule,
-  type Routine,
-  type RoutineFire,
-  type Schedule,
-  type ScheduleKind,
-  scheduleSchema,
-  type Weekday,
-  wallClockAt,
-} from "@suup/api";
+import { describeSchedule, type Routine, type RoutineFire, wallClockAt } from "@suup/api";
 
 // What the Rotinas panel SAYS (docs/ROTINAS.md, docs/DESIGN.md): the schedule in words (the shared
-// function the server and the bot use too), when it runs next, and each fire of the history. And the
-// form of the schedule: structured fields only, never cron text. Pure functions, table-tested.
+// function the server and the bot use too), when it runs next, each fire of the history, and the
+// draft "Editar" leaves in the chat (the app has no schedule form: routines change by asking the
+// bot). Pure functions, table-tested.
 
 const pad = (n: number): string => String(n).padStart(2, "0");
 
@@ -75,106 +67,13 @@ export function lastText(routine: Routine, now: Date = new Date()): string | nul
 
 export { describeSchedule };
 
-// ---------------------------------------------------------------------------------------------
-// The form of a schedule
-
-export const KIND_LABEL: Record<ScheduleKind, string> = {
-  daily: "Todo dia",
-  weekly: "Toda semana",
-  monthly: "Todo mês",
-  interval: "A cada…",
-  once: "Uma vez",
-};
-export const KIND_ORDER: readonly ScheduleKind[] = [
-  "daily",
-  "weekly",
-  "monthly",
-  "interval",
-  "once",
-];
-
-/** Everything the form can hold; `toSchedule` reads only the fields of the chosen kind. */
-export interface ScheduleDraft {
-  kind: ScheduleKind;
-  /** `HH:MM`. */
-  time: string;
-  /** `AAAA-MM-DD`, for `once`. */
-  date: string;
-  days: Weekday[];
-  day: number;
-  every: number;
-  unit: "minutes" | "hours";
-  /** `AAAA-MM-DD` or empty: the routine has no end date. */
-  until: string;
-}
-
-export function draftOf(schedule: Schedule): ScheduleDraft {
-  const base: ScheduleDraft = {
-    kind: schedule.kind,
-    time: "08:00",
-    date: "",
-    days: ["mon"],
-    day: 1,
-    every: 30,
-    unit: "minutes",
-    until: "",
-  };
-  switch (schedule.kind) {
-    case "once":
-      return { ...base, date: schedule.date, time: schedule.time };
-    case "daily":
-      return { ...base, time: schedule.time, until: schedule.until ?? "" };
-    case "weekly":
-      return {
-        ...base,
-        days: [...schedule.days],
-        time: schedule.time,
-        until: schedule.until ?? "",
-      };
-    case "monthly":
-      return { ...base, day: schedule.day, time: schedule.time, until: schedule.until ?? "" };
-    case "interval":
-      return {
-        ...base,
-        every: schedule.every,
-        unit: schedule.unit,
-        until: schedule.until ?? "",
-      };
-  }
-}
-
-/** The schedule the form says, or the first problem, in words (the server checks it again). */
-export function toSchedule(draft: ScheduleDraft): { schedule: Schedule } | { error: string } {
-  const until = draft.until.trim() === "" ? {} : { until: draft.until.trim() };
-  const raw =
-    draft.kind === "once"
-      ? { kind: "once", date: draft.date, time: draft.time }
-      : draft.kind === "daily"
-        ? { kind: "daily", time: draft.time, ...until }
-        : draft.kind === "weekly"
-          ? { kind: "weekly", days: draft.days, time: draft.time, ...until }
-          : draft.kind === "monthly"
-            ? { kind: "monthly", day: draft.day, time: draft.time, ...until }
-            : { kind: "interval", every: draft.every, unit: draft.unit, ...until };
-  const parsed = scheduleSchema.safeParse(raw);
-  if (parsed.success) return { schedule: parsed.data };
-  const [first] = parsed.error.issues;
-  const field = String(first?.path[0] ?? "");
-  const what: Record<string, string> = {
-    days: "Escolha pelo menos um dia.",
-    date: "Escolha a data.",
-    until: "A data de fim não é válida.",
-    time: "Escolha o horário.",
-    day: "O dia do mês vai de 1 a 31.",
-  };
-  return { error: what[field] ?? first?.message ?? "Horário inválido." };
-}
-
-/** Hours and minutes for the two dropdowns of a time (every 5 minutes, plus the current one). */
-export const HOURS: readonly string[] = Array.from({ length: 24 }, (_, i) => pad(i));
-export function minutesWith(current: string): string[] {
-  const list = Array.from({ length: 12 }, (_, i) => pad(i * 5));
-  return list.includes(current) ? list : [...list, current].sort();
+/**
+ * The draft "Editar" puts in the composer of the bot's chat (docs/ROTINAS.md): which routine, and
+ * when it runs in words, for the person to finish with what to change. The routine itself goes
+ * with the message as data (`routineRef`), never its id in the text.
+ */
+export function editDraft(routine: Pick<Routine, "name" | "schedule">): string {
+  return `Editar a rotina “${routine.name}” (${describeSchedule(routine.schedule)}): `;
 }
 
 /** The IANA zones this runtime knows, with `current` first in the list if it is not among them. */

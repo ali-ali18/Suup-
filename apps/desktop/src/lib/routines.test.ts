@@ -1,13 +1,12 @@
-import type { RoutineFire, Schedule } from "@suup/api";
+import type { RoutineFire } from "@suup/api";
 import { describe, expect, it } from "vitest";
 import { routineOf } from "../test-fixtures.js";
 import {
-  draftOf,
+  editDraft,
   fireKindText,
   fireStatusText,
   lastText,
   nextText,
-  toSchedule,
   whenText,
 } from "./routines.js";
 
@@ -70,31 +69,20 @@ describe("the routine in words", () => {
   });
 });
 
-describe("the form of a schedule (structured fields, no cron)", () => {
-  it("goes from a schedule to the form and back", () => {
-    const schedules: Schedule[] = [
-      { kind: "daily", time: "08:00" },
-      { kind: "weekly", days: ["mon", "wed"], time: "09:30", until: "2026-12-31" },
-      { kind: "monthly", day: 31, time: "07:00" },
-      { kind: "interval", every: 2, unit: "hours" },
-      { kind: "once", date: "2026-12-01", time: "08:00" },
-    ];
-    for (const schedule of schedules) {
-      expect(toSchedule(draftOf(schedule))).toEqual({ schedule });
-    }
-  });
-
-  it("says what is missing, in words", () => {
-    const weekly = draftOf({ kind: "weekly", days: ["mon"], time: "09:30" });
-    expect(toSchedule({ ...weekly, days: [] })).toEqual({ error: "Escolha pelo menos um dia." });
-    const once = draftOf({ kind: "once", date: "2026-12-01", time: "08:00" });
-    expect(toSchedule({ ...once, date: "01/12/2026" })).toEqual({ error: "Escolha a data." });
-    const every = draftOf({ kind: "interval", every: 30, unit: "minutes" });
-    expect(toSchedule({ ...every, every: 2 })).toEqual({
-      error: "o intervalo mínimo é de 5 minutos",
-    });
-    expect(toSchedule({ ...draftOf({ kind: "daily", time: "08:00" }), until: "amanhã" })).toEqual({
-      error: "A data de fim não é válida.",
-    });
+describe("Editar: the draft for the chat (no schedule form in the app)", () => {
+  it("names the routine and when it runs, in words, and ends ready for the change", () => {
+    expect(editDraft(routineOf())).toBe(
+      "Editar a rotina “Calendário da manhã” (todo dia às 08:00): ",
+    );
+    expect(
+      editDraft(
+        routineOf({
+          name: "Resumo",
+          schedule: { kind: "weekly", days: ["mon", "fri"], time: "18:00" },
+        }),
+      ),
+    ).toBe("Editar a rotina “Resumo” (toda segunda e sexta às 18:00): ");
+    // never the id
+    expect(editDraft(routineOf())).not.toContain(routineOf().id);
   });
 });
