@@ -446,6 +446,11 @@ export interface World {
   api: SuupClient;
   db: Db;
   schema: string;
+  /**
+   * Writes a script of the scripted provider. A provider reads its file once, at its first call:
+   * write it before anything uses that provider (a model no bot has used yet).
+   */
+  script(name: string, content: unknown): Promise<void>;
   /** Stops the server (the worker keeps working), then starts it again on the same address. */
   restartServer(options?: { downMs?: number }): Promise<void>;
   stopServer(): Promise<void>;
@@ -509,6 +514,8 @@ export async function startWorld(
     supervisorEveryMs?: number;
     /** How often the worker looks for routines that came due (default: its own, 15 s). */
     routinesEveryMs?: number;
+    /** Tools of the test, registered in both runtimes (the server lists them, the worker runs them). */
+    extraTools?: readonly Tool<unknown>[];
     /**
      * Whether a new conversation is born waiting for its bot's welcome (docs/RECEPCAO.md), as in
      * production. Default `false`: the other specs open chats of bots whose scripts know nothing of
@@ -585,6 +592,7 @@ export async function startWorld(
   });
   const runtimeOptions = { env, baseDir: dir };
   const withNetworkTool = async (runtime: Runtime): Promise<Runtime> => {
+    for (const tool of options.extraTools ?? []) runtime.tools.register(tool);
     if (options.networkTool !== true) return runtime;
     // From the sources of the package (the desktop app does not depend on it).
     const path = fileURLToPath(new URL("../../../packages/tools/dist/index.js", import.meta.url));
@@ -645,6 +653,8 @@ export async function startWorld(
     api: createClient({ baseUrl: serverUrl, token }),
     db,
     schema,
+    script: (name, content) =>
+      writeFile(join(dir, `${name}.json`), JSON.stringify(content, null, 2)),
     stopServer,
     startServer: async () => void (await startServer(false)),
     async restartServer({ downMs = 0 } = {}) {

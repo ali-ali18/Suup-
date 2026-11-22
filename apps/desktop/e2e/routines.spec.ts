@@ -1,19 +1,51 @@
 import { expect, test } from "@playwright/test";
+import type { Tool } from "@suup/core";
+import { testTools } from "@suup/core/testing";
 import { DATABASE_URL, SKIP_REASON, startWorld, type World } from "./harness.js";
 import { openApp, openSettings, selectBot, send } from "./helpers.js";
 
 // Routines in the browser (docs/ROTINAS.md), against the real server and the scripted provider: the
 // user asks in the chat, the bot creates the routine (the Auto-review reviewer lets it, because the
 // user asked) and says when; the Rotinas panel shows it in words; the time is forced due, the
-// worker fires it and the answer lands in the chat; the history, the edit with structured fields,
-// pause and the user's time zone in Configurações. The screenshots are for the design review.
+// worker fires it, the answer lands in the chat, and the routine's detail in the panel shows what
+// the bot wrote (Markdown) with the icon of the site it read. Editar goes to the chat with a draft
+// and the routine bound to it (never its id in the text): the bot changes THAT routine. Remover
+// asks first. The screenshots are for the design review.
 
 const usage = { inputTokens: 900, outputTokens: 90 };
 const s = <T extends object>(step: T) => ({ ...step, usage });
+const run = (decision: string, reason: string) =>
+  s({ calls: [{ name: "review_call", args: { decision, ruleId: null, reason } }] });
+
+const SITE = "https://agenda.exemplo.com.br/hoje";
+const RESULT = [
+  "## Seu dia",
+  "",
+  "- **15h**: dentista",
+  "- **18h**: entrega do relatório",
+  "",
+  "Nada mais na agenda.",
+].join("\n");
+
+/** A tool that declares the page it read, as `web_read` does (the test has no internet). */
+const readPage: Tool<unknown> = (() => {
+  const base = testTools().find((t) => t.name === "fixed") as Tool<unknown>;
+  return {
+    ...base,
+    name: "ler_pagina_teste",
+    description: "Lê a página da agenda (teste).",
+    execute: async () => ({
+      content: "Agenda de hoje: dentista às 15h, relatório às 18h.",
+      source: { url: SITE, title: "Agenda de hoje" },
+    }),
+  };
+})();
 
 const SCRIPTS = {
   roteiro: {
     cases: [
+      // The reviewer of the edit asked in the chat (the bot answers on the other provider).
+      { whenObjectiveContains: "muda pra 7h", agent: [], autoReview: [run("run", "Você pediu.")] },
       {
         whenObjectiveContains: "vê meu calendário",
         agent: [
@@ -32,24 +64,16 @@ const SCRIPTS = {
           }),
           s({ text: "Combinado, vejo seu calendário todo dia às 8h. Quer outro horário?" }),
         ],
-        autoReview: [
-          s({
-            calls: [
-              {
-                name: "review_call",
-                args: { decision: "run", ruleId: null, reason: "Você pediu esta rotina." },
-              },
-            ],
-          }),
-        ],
+        autoReview: [run("run", "Você pediu esta rotina.")],
       },
       {
         whenObjectiveContains: "ROTINA-CALENDARIO",
         agent: [
+          s({ calls: [{ name: "ler_pagina_teste", args: {} }] }),
           s({
             calls: [{ name: "update_routine_state", args: { state: "Avisei do dentista." } }],
           }),
-          s({ text: "Bom dia! Hoje você tem dentista às 15h e a entrega do relatório às 18h." }),
+          s({ text: RESULT }),
         ],
       },
     ],
@@ -64,21 +88,24 @@ test.describe("routines", () => {
   // The user's computer is in Sao Paulo; the server's process is whatever it is.
   test.use({ timezoneId: "America/Sao_Paulo" });
   let world: World;
+  let botId: string;
   test.beforeAll(async () => {
     world = await startWorld({
       scripts: SCRIPTS,
       autoReviewModel: "model-x",
       routinesEveryMs: 150,
+      extraTools: [readPage],
     });
-    await world.api.bots.create({
+    const bot = await world.api.bots.create({
       name: "Agenda",
       description: "Cuida da agenda e dos compromissos.",
       personality: "Seja breve e organizado.",
       modelId: "model-x",
-      allowedTools: [],
+      allowedTools: ["ler_pagina_teste"],
       avatar: "mascot:clover",
       color: "azul",
     });
+    botId = bot.id;
   });
   test.afterAll(async () => {
     await world?.stop();
@@ -100,6 +127,8 @@ test.describe("routines", () => {
     await expect(row.getByTestId("routine-schedule")).toHaveText("todo dia às 08:00");
     await expect(row.getByTestId("routine-next")).toContainText("Próxima:");
     await expect(row.getByTestId("routine-next")).toContainText("08:00");
+    // no menu and no schedule form on the row
+    await expect(panel.getByRole("button", { name: /Ações da rotina/ })).toHaveCount(0);
     // the app sent this computer's zone when it connected: the routine is in it
     const [routine] = await world.api.routines.list();
     expect(routine?.timeZone).toBe("America/Sao_Paulo");
@@ -108,30 +137,76 @@ test.describe("routines", () => {
     await page.screenshot({ path: shot("rotinas-painel-criada") });
   });
 
-  test("when it comes due it fires once, the answer lands in the chat, and the history says so", async ({
+  test("it fires once; the detail shows what the bot wrote, in Markdown, with the site it read", async ({
     page,
   }) => {
+    // Every image the page adds, as it is added (the browser of the test has no internet, so the
+    // site's icon is asked for and then falls back to the generic one).
+    await page.addInitScript(() => {
+      const seen: string[] = [];
+      (window as unknown as { __imgs: string[] }).__imgs = seen;
+      const note = (node: Node) => {
+        for (const img of node instanceof Element ? [node, ...node.querySelectorAll("img")] : []) {
+          if (img instanceof HTMLImageElement) {
+            seen.push(`${img.getAttribute("src")}|${img.getAttribute("referrerpolicy")}`);
+          }
+        }
+      };
+      new MutationObserver((records) => {
+        for (const r of records) for (const n of r.addedNodes) note(n);
+      }).observe(document, { childList: true, subtree: true });
+    });
     await openApp(page, world);
     await selectBot(page, "Agenda");
     await world.db.sql`update routines set next_run_at = now() - interval '1 second'`;
-    await expect(page.getByTestId("chat-log")).toContainText(
-      "Hoje você tem dentista às 15h e a entrega do relatório às 18h.",
-    );
-    const row = page.getByTestId("panel").getByTestId("routine-row");
+    await expect(page.getByTestId("chat-log")).toContainText("Nada mais na agenda.");
+    const panel = page.getByTestId("panel");
+    const row = panel.getByTestId("routine-row");
     await expect(row.getByTestId("routine-last")).toContainText("Concluída");
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(300);
     await page.screenshot({ path: shot("rotinas-resultado-no-chat") });
 
-    await page.getByRole("button", { name: "Ações da rotina Calendário da manhã" }).click();
-    await page.getByRole("menuitem", { name: "Histórico" }).click();
-    const dialog = page.getByRole("dialog");
-    await expect(dialog.getByTestId("routine-fire")).toHaveCount(1);
-    await expect(dialog.getByTestId("routine-fire")).toHaveAttribute("data-status", "done");
-    await expect(dialog).toContainText("Bom dia! Hoje você tem dentista às 15h");
-    await page.waitForTimeout(300);
-    await page.screenshot({ path: shot("rotinas-historico") });
+    await row.click();
+    const detail = panel.getByTestId("routine-detail");
+    await expect(detail.getByRole("heading", { name: "Calendário da manhã" })).toBeVisible();
+    await expect(panel.getByTestId("section-routines")).toHaveCount(0);
+    await expect(detail.getByTestId("routine-fire")).toHaveCount(1);
+    await expect(detail.getByTestId("routine-fire")).toHaveAttribute("data-status", "done");
+    const result = detail.getByTestId("routine-result");
+    // Markdown, as in the chat: a heading, bold, a list; no asterisks left
+    await expect(result.getByText("Seu dia")).toBeVisible();
+    await expect(result.locator("strong").first()).toHaveText("15h");
+    await expect(result.locator("li")).toHaveCount(2);
+    await expect(result).not.toContainText("**");
+    // the site it read, from the backend; icons of sites are off: the generic one
+    const source = detail.getByTestId("routine-source");
+    await expect(source).toHaveText("agenda.exemplo.com.br");
+    await expect(source).toHaveAttribute("href", SITE);
+    await expect(source.locator("img")).toHaveCount(0);
+    await expect(source.locator(".lucide-globe")).toHaveCount(1);
+    // turned on in Configurações > Geral > Aparência: the site's own icon (the host only)
+    await openSettings(page, "Geral");
+    await page.getByTestId("setting-favicons").click();
+    await expect(page.getByTestId("setting-favicons")).toHaveAttribute("aria-checked", "true");
     await page.keyboard.press("Escape");
-    await expect(dialog).toHaveCount(0);
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as { __imgs: string[] }).__imgs))
+      .toContain("https://agenda.exemplo.com.br/favicon.ico|no-referrer");
+    // the host only, never the page's path; and still exactly one icon in the chip
+    await expect(source.locator("img, svg")).toHaveCount(1);
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: shot("rotinas-detalhe") });
+
+    // pause and resume from the icons on top
+    await detail.getByRole("button", { name: "Pausar a rotina" }).click();
+    await expect(detail.getByTestId("routine-next")).toHaveText("Pausada");
+    await page.waitForTimeout(200);
+    await page.screenshot({ path: shot("rotinas-painel-pausada") });
+    await detail.getByRole("button", { name: "Retomar a rotina" }).click();
+    await expect(detail.getByTestId("routine-next")).toContainText("Próxima:");
+    // back to the list
+    await detail.getByRole("button", { name: "Voltar às rotinas" }).click();
+    await expect(panel.getByTestId("routine-row")).toHaveCount(1);
 
     const [routine] = await world.api.routines.list();
     expect(routine?.state).toBe("Avisei do dentista.");
@@ -139,59 +214,95 @@ test.describe("routines", () => {
     expect(runs.map((r) => r.origin).sort()).toEqual(["routine", "user"]);
   });
 
-  test("edit WHEN with the structured fields, then pause and resume", async ({ page }) => {
+  test("Editar goes to the chat with the draft; the bot changes THAT routine by its id", async ({
+    page,
+  }) => {
+    const [routine] = await world.api.routines.list();
+    const id = routine?.id as string;
+    // The bot answers on a provider no one has used yet, whose script knows the id: the scripted
+    // model updates the routine only if its id is in what it READS (only the harness's note has it).
+    await world.script("outro", {
+      cases: [
+        {
+          whenObjectiveContains: id,
+          // A scripted answer is picked by how many assistant turns the conversation already has:
+          // the history of this chat holds one (the bot's two messages, merged), so the first
+          // answer of this run is the second step.
+          agent: [
+            s({ text: "(não usado: o histórico já tem uma resposta do bot)" }),
+            s({
+              calls: [
+                {
+                  name: "update_routine",
+                  args: { routine: id, schedule: { kind: "daily", time: "07:00" } },
+                },
+              ],
+            }),
+            s({ text: "Pronto: agora vejo seu calendário todo dia às 7h." }),
+          ],
+        },
+        {
+          whenObjectiveContains: "muda pra 7h",
+          agent: [s({ text: "(não usado)" }), s({ text: "Qual rotina?" })],
+        },
+      ],
+    });
+    await world.api.bots.update(botId, { modelId: "model-y" });
+
     await openApp(page, world);
     await selectBot(page, "Agenda");
     const panel = page.getByTestId("panel");
-    await page.getByRole("button", { name: "Ações da rotina Calendário da manhã" }).click();
-    await page.getByRole("menuitem", { name: "Editar" }).click();
-    const dialog = page.getByRole("dialog");
-    await dialog.getByTestId("routine-kind").click();
-    await page.getByRole("option", { name: "Toda semana" }).click();
-    await dialog.getByRole("button", { name: "quarta" }).click();
-    await dialog.getByRole("button", { name: "sexta" }).click();
-    await dialog.getByTestId("routine-hour").click();
-    await page.getByRole("option", { name: "07", exact: true }).click();
-    await dialog.getByTestId("routine-minute").click();
-    await page.getByRole("option", { name: "30", exact: true }).click();
-    // The end date: chosen in dropdowns (day, month by name, year), never typed.
-    const nextYear = new Date().getFullYear() + 1;
-    await dialog.getByTestId("routine-ends").click();
-    await page.getByRole("option", { name: "Numa data" }).click();
-    await dialog.getByTestId("routine-until-year").click();
-    await page.getByRole("option", { name: String(nextYear), exact: true }).click();
-    await dialog.getByTestId("routine-until-month").click();
-    await page.getByRole("option", { name: "dezembro" }).click();
-    await dialog.getByTestId("routine-until-day").click();
-    await page.getByRole("option", { name: "31", exact: true }).click();
-    await expect(dialog.getByTestId("routine-preview")).toContainText(
-      "toda segunda, quarta e sexta às 07:30",
+    await panel.getByTestId("routine-row").click();
+    await panel.getByTestId("routine-edit").click();
+    const box = page.getByLabel("Mensagem", { exact: true });
+    const draft = "Editar a rotina “Calendário da manhã” (todo dia às 08:00): ";
+    await expect(box).toHaveValue(draft);
+    await expect(box).toBeFocused();
+    expect(await box.evaluate((el) => (el as HTMLTextAreaElement).selectionStart)).toBe(
+      draft.length,
     );
+    const chip = page.getByTestId("draft-routine");
+    await expect(chip).toContainText("Calendário da manhã");
+    // the id is nowhere on screen
+    expect(await page.locator("body").innerText()).not.toContain(id);
     await page.waitForTimeout(300);
-    await page.screenshot({ path: shot("rotinas-editar") });
-    await dialog.getByTestId("routine-save").click();
-    await expect(dialog).toHaveCount(0);
-    const row = panel.getByTestId("routine-row");
-    await expect(row.getByTestId("routine-schedule")).toHaveText(
-      `toda segunda, quarta e sexta às 07:30, até 31/12/${nextYear}`,
-    );
-    const [routine] = await world.api.routines.list();
-    expect(routine?.schedule).toEqual({
-      kind: "weekly",
-      days: ["mon", "wed", "fri"],
-      time: "07:30",
-      until: `${nextYear}-12-31`,
-    });
+    await page.screenshot({ path: shot("rotinas-editar-pelo-chat") });
 
-    await page.getByRole("button", { name: "Ações da rotina Calendário da manhã" }).click();
-    await page.getByRole("menuitem", { name: "Pausar" }).click();
-    await expect(row.getByTestId("routine-next")).toHaveText("Pausada");
-    await expect(row).toHaveAttribute("data-status", "paused");
+    await box.pressSequentially("muda pra 7h");
+    await box.press("Enter");
+    await expect(page.getByTestId("chat-log")).toContainText(
+      "Pronto: agora vejo seu calendário todo dia às 7h.",
+    );
+    await expect(chip).toHaveCount(0);
+    // the bubble shows only what was typed
+    await expect(page.getByTestId("message-user").last()).toHaveText(`${draft}muda pra 7h`);
+    expect(await page.locator("body").innerText()).not.toContain(id);
+    await expect(panel.getByTestId("routine-schedule")).toHaveText("todo dia às 07:00");
+    expect((await world.api.routines.get(id)).schedule).toEqual({ kind: "daily", time: "07:00" });
+    const conversation = await world.api.bots.openConversation(botId);
+    const mine = (await world.api.conversations.messages(conversation.id)).items
+      .filter((m) => m.authorKind === "user")
+      .at(-1);
+    expect(mine?.routineRef).toEqual({ id });
+    expect(mine?.text).not.toContain(id);
+  });
+
+  test("Remover asks first, then the routine is gone", async ({ page }) => {
+    await openApp(page, world);
+    await selectBot(page, "Agenda");
+    const panel = page.getByTestId("panel");
+    await panel.getByTestId("routine-row").click();
+    await panel.getByTestId("routine-remove").click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toContainText("Remover a rotina?");
     await page.waitForTimeout(300);
-    await page.screenshot({ path: shot("rotinas-painel-pausada") });
-    await page.getByRole("button", { name: "Ações da rotina Calendário da manhã" }).click();
-    await page.getByRole("menuitem", { name: "Retomar" }).click();
-    await expect(row.getByTestId("routine-next")).toContainText("Próxima:");
+    await page.screenshot({ path: shot("rotinas-remover") });
+    await dialog.getByTestId("routine-remove-confirm").click();
+    await expect(dialog).toHaveCount(0);
+    await expect(panel.getByTestId("section-routines")).toContainText("Nenhuma rotina");
+    expect(await world.api.routines.list()).toEqual([]);
+    // what it already said stays in the chat
+    await expect(page.getByTestId("chat-log")).toContainText("Nada mais na agenda.");
   });
 
   test("Configurações > Geral: the user's time zone, from this computer, can be changed", async ({
