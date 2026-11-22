@@ -228,6 +228,13 @@ export interface RunState {
    */
   userSaid: string[];
   /**
+   * The instruction of the routine that opened this run (its objective), or `null` for a run the
+   * user opened. A routine's fire is NOT live input from the user and never approval (the research,
+   * Claude Code routines: the fired prompt "can't act as approval or consent"): its text is kept
+   * out of `userSaid` and the reviewer is told the run was started by a routine.
+   */
+  routineInstruction: string | null;
+  /**
    * The names of the tools whose calls ran and got a result in this run (denied or malformed calls
    * did not run). The memory checks use it: a run that used a tool that may bring in content from
    * outside cannot write rules or facts about the user without a review.
@@ -297,6 +304,7 @@ export function createRunState(): RunState {
     reviews: new Map(),
     reviewBlocks: { total: 0, consecutive: 0 },
     userSaid: [],
+    routineInstruction: null,
   };
 }
 
@@ -327,7 +335,8 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
       state.started = true;
       state.startSeq = event.seq;
       appendUserBlock(state, { type: "text", text: event.payload.objective }, event.seq);
-      state.userSaid.push(event.payload.objective);
+      if (event.payload.origin === "routine") state.routineInstruction = event.payload.objective;
+      else state.userSaid.push(event.payload.objective);
       break;
 
     case "context_loaded": {
@@ -348,6 +357,9 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
           : { connectors: structuredClone(event.payload.connectors) }),
         ...(event.payload.reception === undefined ? {} : { reception: event.payload.reception }),
         ...(event.payload.supervisor === undefined ? {} : { supervisor: event.payload.supervisor }),
+        ...(event.payload.routine === undefined
+          ? {}
+          : { routine: structuredClone(event.payload.routine) }),
       };
       state.compactionThreshold = event.payload.compactionThreshold ?? null;
       // The user's earlier messages come before the objective (the history is text only).

@@ -181,8 +181,17 @@ export type UncheckedItem = z.infer<typeof uncheckedItemSchema>;
 export const contextItemSchema = z.object({ id: z.string(), text: z.string() });
 export type ContextItem = z.infer<typeof contextItemSchema>;
 
-/** The moment the run started and the user's time zone (an IANA name), fixed for the whole run. */
-export const runClockSchema = z.object({ iso: z.string(), timeZone: z.string() });
+/**
+ * The moment the run started and the user's time zone (an IANA name), fixed for the whole run.
+ * `timeZoneKnown: false` when nobody told the server the user's zone yet (the app sends the zone of
+ * the user's computer when it connects): the zone is then UTC and the prompt says so, instead of
+ * using the server's own zone in silence (docs/ROTINAS.md).
+ */
+export const runClockSchema = z.object({
+  iso: z.string(),
+  timeZone: z.string(),
+  timeZoneKnown: z.exactOptional(z.boolean()),
+});
 export type RunClock = z.infer<typeof runClockSchema>;
 
 /** Another active bot of the user, as the bots tell each other apart: name and what it is for. */
@@ -216,6 +225,25 @@ export type ReceptionKind = z.infer<typeof receptionKindSchema>;
 export const SUPERVISOR_ROLES = ["principal", "member"] as const;
 export const supervisorRoleSchema = z.enum(SUPERVISOR_ROLES);
 export type SupervisorRole = z.infer<typeof supervisorRoleSchema>;
+
+/**
+ * What a run opened by a routine is told about the fire (docs/ROTINAS.md), recorded once in
+ * `context_loaded`: which routine, the time it was scheduled for (and its kind: on time, a catch-up
+ * after missed times, or "run now"), how many older times were missed, and the routine's own note
+ * as it was at the fire. The instruction itself is the run's objective.
+ */
+export const routineRunFactsSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  /** The schedule in words, for the model (pt-BR, as the user reads it). */
+  schedule: z.string(),
+  timeZone: z.string(),
+  scheduledFor: z.string(),
+  kind: z.enum(["scheduled", "catch_up", "manual"]),
+  missedCount: z.number().int().nonnegative(),
+  state: z.string(),
+});
+export type RoutineRunFacts = z.infer<typeof routineRunFactsSchema>;
 
 /** Why a pending return was dropped: the user wrote, the run was stopped, a new call replaced it, or the run finished. */
 export const WAIT_CANCEL_REASONS = ["user_message", "cancelled", "replaced", "finished"] as const;
@@ -325,6 +353,8 @@ export const runEventSchema = z.discriminatedUnion("type", [
       reception: z.exactOptional(receptionKindSchema),
       /** The place of the bot in the team (docs/SUPERVISOR.md). */
       supervisor: z.exactOptional(supervisorRoleSchema),
+      /** Set when a routine opened the run: what fired it (docs/ROTINAS.md). */
+      routine: z.exactOptional(routineRunFactsSchema),
       /**
        * The share of the context window past which this run compacts its history (the user's
        * setting at the start of the run). Recorded so that a replay compacts at the same point.

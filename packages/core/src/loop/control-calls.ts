@@ -17,6 +17,14 @@ import { canScheduleReturn } from "./request.js";
 import type { LoopContext } from "./run-context.js";
 import { canonicalJson } from "./state.js";
 
+/**
+ * Nobody answers a routine's run live (docs/ROTINAS.md): a question would leave the run waiting
+ * forever and every next fire of the routine skipped. The bot says what it needs in its final
+ * answer, which goes to its chat with the user.
+ */
+export const ROUTINE_NO_QUESTIONS =
+  "Nobody is watching this routine run live, so you cannot ask the user now. Do what you can, then end with your answer and say in it exactly what you need from the user (it is posted in your chat with them).";
+
 const NOT_ALONE_ESCALATE =
   "escalate must be the only tool call of its turn. Call it alone, after you have seen the results of the other tools.";
 
@@ -66,6 +74,14 @@ export async function handleEscalate(
       outcome: "invalid_args",
       isError: true,
       content: renderArgIssues("escalate", parsed.error),
+    });
+    return;
+  }
+  if (ctx.run.origin === "routine") {
+    await recordResult(ctx, call.id, {
+      outcome: "tool_error",
+      isError: true,
+      content: ROUTINE_NO_QUESTIONS,
     });
     return;
   }

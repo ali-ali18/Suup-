@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { allowAllGate } from "../approvals/gate.js";
-import type { RunEventData, RunEventType } from "../events.js";
+import type { RunEventData, RunEventType, RunOrigin } from "../events.js";
 import {
   type BotConfig,
   type LoopDeps,
@@ -175,6 +175,8 @@ export interface RigOptions {
   /** Passed to the reviewer model config (undefined = default). */
   reviewerForcedToolChoice?: boolean;
   tools?: Tool[];
+  /** Who opened the run (default `user`). */
+  origin?: RunOrigin;
 }
 
 /** Everything a loop test needs, wired together with deterministic parts. */
@@ -216,6 +218,7 @@ export function createRig(options: RigOptions): Rig {
     objective: options.objective ?? "Do the task.",
     acceptanceCriteria: options.criteria ?? [],
     ...(options.status === undefined ? {} : { status: options.status }),
+    ...(options.origin === undefined ? {} : { origin: options.origin }),
   });
   const reviewer: ReviewerConfig | undefined =
     reviewerProvider === undefined

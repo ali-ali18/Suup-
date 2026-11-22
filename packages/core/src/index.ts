@@ -1,5 +1,4 @@
 export * from "./answers.js";
-export * from "./schedule.js";
 export * from "./approvals/index.js";
 export {
   APPROVAL_DECISIONS,
@@ -28,6 +27,7 @@ export {
   REVIEW_DECISIONS,
   REVIEW_SKIPS,
   type ReviewDecision,
+  type RoutineRunFacts,
   RUN_EVENT_TYPES,
   RUN_ORIGINS,
   type RunEventData,
@@ -37,6 +37,7 @@ export {
   type RunResult,
   type RunStatus,
   riskLevelSchema,
+  routineRunFactsSchema,
   runEventSchema,
   runOriginSchema,
   runResultSchema,
@@ -161,6 +162,7 @@ export {
   RISK_LEVELS,
   type RiskLevel,
 } from "./risk.js";
+export * from "./schedule.js";
 export {
   createRedactor,
   findPlaceholders,

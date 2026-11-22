@@ -6,6 +6,7 @@ import type {
   ContextItem,
   MachineInfo,
   ReceptionKind,
+  RoutineRunFacts,
   RunClock,
   SecretInfo,
   SupervisorRole,
@@ -75,6 +76,8 @@ export interface RunContextSnapshot {
   reception?: ReceptionKind;
   /** The place of the bot in the team (docs/SUPERVISOR.md). */
   supervisor?: SupervisorRole;
+  /** A routine opened this run: what fired it (docs/ROTINAS.md). */
+  routine?: RoutineRunFacts;
   /** Compact the history past this share of the context window (the user's setting; recorded). */
   compactionThreshold?: number;
   /** Rules and profile facts left out because they did not fit the size cap (recorded). */

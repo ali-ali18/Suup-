@@ -41,6 +41,7 @@ export {
   type ModelReviewContext,
   REVIEW_VERDICTS,
   type ReviewCall,
+  type ReviewTrigger,
   type ReviewVerdict,
   type ReviewVerdictName,
   stricter,
