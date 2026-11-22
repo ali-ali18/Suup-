@@ -57,7 +57,8 @@ Sem `SUUP_DOCKER_TESTS=1`, esses testes são pulados. O CI faz o build da imagem
 
 ```sh
 docker build --tag suup-connector-runner:dev docker/connector-runner
-SUUP_DOCKER_TESTS=1 SUUP_SANDBOX_IMAGE=suup-sandbox:dev SUUP_CONNECTOR_IMAGE=suup-connector-runner:dev pnpm test
+node apps/sidecar/scripts/egress-image.mjs docker/egress && docker build --tag suup-egress:dev docker/egress   # o proxy em contêiner (precisa de pnpm exec tsc -b antes)
+SUUP_DOCKER_TESTS=1 SUUP_SANDBOX_IMAGE=suup-sandbox:dev SUUP_CONNECTOR_IMAGE=suup-connector-runner:dev SUUP_EGRESS_IMAGE=suup-egress:dev pnpm test
 ```
 
 Atrás de um proxy que reassina o TLS (corporativo): veja "Construir atrás de um proxy que reassina o TLS" em [docs/IMPLANTACAO.md](docs/IMPLANTACAO.md).

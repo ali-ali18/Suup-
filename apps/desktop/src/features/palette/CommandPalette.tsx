@@ -41,7 +41,7 @@ const DEBOUNCE_MS = 250;
 
 /** Ctrl/Cmd+K: jump to a bot, to a message found by search, or run an action, all by keyboard. */
 export function CommandPalette() {
-  const { api, sync, disconnect } = useServices();
+  const { api, sync, disconnect, mode } = useServices();
   const bots = useData((s) => s.bots);
   const conversations = useData((s) => s.conversations);
   const runs = useData((s) => s.runs);
@@ -218,7 +218,7 @@ export function CommandPalette() {
       },
       {
         id: "disconnect",
-        label: "Desconectar",
+        label: mode === "local" ? "Trocar de servidor" : "Desconectar",
         icon: <LogOut size={18} />,
         run: () => void disconnect(),
       },
@@ -237,7 +237,19 @@ export function CommandPalette() {
       }
     }
     return out;
-  }, [ordered, query, hits, conversations, bots, runs, selected, collapsed, sync, disconnect]);
+  }, [
+    ordered,
+    query,
+    hits,
+    conversations,
+    bots,
+    runs,
+    selected,
+    collapsed,
+    sync,
+    disconnect,
+    mode,
+  ]);
 
   useEffect(() => {
     setActive((i) => Math.min(i, Math.max(0, entries.length - 1)));

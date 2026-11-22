@@ -1,7 +1,7 @@
 import { ApiError, createClient } from "@suup/api";
 import { createDataStore } from "../data/store.js";
 import { Sync } from "../data/sync.js";
-import type { Connection, Platform } from "../lib/platform.js";
+import type { Connection, Platform, ServerMode } from "../lib/platform.js";
 import type { Services } from "./context.js";
 import { useSettings } from "./settings-store.js";
 import { useUi } from "./ui-store.js";
@@ -42,8 +42,9 @@ export function describeConnectError(error: unknown): string {
 export async function connect(
   connection: Connection,
   platform: Platform,
-  onDisconnect: () => Promise<void>,
+  hooks: { mode: ServerMode; disconnect: () => Promise<void>; switchServer: () => Promise<void> },
 ): Promise<Services> {
+  const onDisconnect = hooks.disconnect;
   const api = createClient({
     baseUrl: connection.serverUrl,
     token: connection.token,
@@ -84,5 +85,14 @@ export async function connect(
     sync.stop();
     throw new ApiError("unauthorized", "O servidor recusou a conexão em tempo real.");
   }
-  return { api, sync, data, platform, connection, disconnect: onDisconnect };
+  return {
+    api,
+    sync,
+    data,
+    platform,
+    connection,
+    mode: hooks.mode,
+    disconnect: onDisconnect,
+    switchServer: hooks.switchServer,
+  };
 }

@@ -180,7 +180,7 @@ function BotEntry({
  * (pinned tiles, groups, the default list, a bottom bar) and the narrow rail of avatars.
  */
 export function Sidebar() {
-  const { api, sync, disconnect } = useServices();
+  const { api, sync, disconnect, mode } = useServices();
   const bots = useData((s) => s.bots);
   const runs = useData((s) => s.runs);
   const conversations = useData((s) => s.conversations);
@@ -284,7 +284,12 @@ export function Sidebar() {
     },
     { id: "settings", label: "Configurações", onSelect: () => ui().openSettings() },
     { id: "shortcuts", label: "Atalhos de teclado", onSelect: () => ui().setShortcuts(true) },
-    { id: "disconnect", label: "Desconectar", danger: true, onSelect: () => void disconnect() },
+    {
+      id: "disconnect",
+      label: mode === "local" ? "Trocar de servidor" : "Desconectar",
+      danger: true,
+      onSelect: () => void disconnect(),
+    },
   ];
   const ownerButton = (variant: "bar" | "rail") => (
     <button

@@ -10,10 +10,49 @@ export {
   type DockerExecutorOptions,
   dockerClientEnv,
 } from "./docker-executor.js";
-export { containerNetworks, ensureInternalNetwork, type MachineNetwork } from "./egress/network.js";
+export {
+  DEFAULT_EGRESS_IMAGE,
+  DEFAULT_EGRESS_NAME,
+  EGRESS_LABEL,
+  type EgressContainer,
+  type EgressContainerOptions,
+  startEgressContainer,
+} from "./egress/container.js";
+export {
+  chooseAddresses,
+  EGRESS_CONTROL_PORT,
+  EGRESS_ENV,
+  EGRESS_PROXY_PORT,
+  type EgressServiceOptions,
+  inSubnet,
+  type RunningEgressService,
+  runEgressContainer,
+  startEgressService,
+} from "./egress/container-service.js";
+export {
+  ControlClient,
+  type ControlClientOptions,
+  ControlServer,
+  type ControlServerOptions,
+} from "./egress/control.js";
+export {
+  containerNetworks,
+  type EnsureNetworkOptions,
+  ensureInternalNetwork,
+  ensureOutNetwork,
+  type MachineNetwork,
+} from "./egress/network.js";
 export { NetworkedExecutor } from "./egress/networked-executor.js";
-export { EgressProxy, type EgressProxyOptions, parseAuthority } from "./egress/proxy.js";
+export {
+  EgressProxy,
+  type EgressProxyOptions,
+  parseAuthority,
+  proxyEnv,
+  proxyUrl,
+  subjectToken,
+} from "./egress/proxy.js";
 export { type Resolver, resolveForConnect, systemResolver } from "./egress/resolve.js";
+export { RefusalSessions } from "./egress/sessions.js";
 export type {
   EgressEvent,
   EgressPolicy,

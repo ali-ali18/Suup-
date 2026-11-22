@@ -33,6 +33,7 @@ const PROJECTS = [
   "evals",
   "apps/cli",
   "apps/desktop",
+  "apps/sidecar",
 ];
 
 function isTestFile(path: string): boolean {

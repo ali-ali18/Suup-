@@ -247,6 +247,17 @@ Requisito de infraestrutura: o servidor na VPS precisa de domínio e HTTPS públ
 - O agente local é um processo Node à parte, empacotado junto com o app, que o inicia e supervisiona: abre conexão de saída com o servidor e executa comandos aprovados no PC. Assim ele reaproveita os pacotes do projeto e pode continuar rodando com a janela fechada.
 - Comunicação em tempo real por **Server-Sent Events** (decisão da fase 2, no lugar do WebSocket do plano original: o fluxo é só do servidor para o app, passa por qualquer proxy HTTP e se retoma pelo `Last-Event-ID`; as ações do app são requisições HTTP comuns), alimentado por `LISTEN/NOTIFY` do Postgres. Veja [API.md](API.md).
 
+### 4.12a App embutido ("neste computador")
+
+Decisão do dono (19/11/2026): "pode ser embutido no app, segue". O app de desktop tem de ser **instalar e usar**: ele carrega o servidor, o worker e o banco, e o dono (um PC com Windows) o instala por um instalador construído pelo CI. Uma **VPS** continua possível como escolha. Base: [pesquisas/fase-4-app-windows-e-modo-local.md](pesquisas/fase-4-app-windows-e-modo-local.md) e [pesquisas/fase-4-backend-embutido-e-vps.md](pesquisas/fase-4-backend-embutido-e-vps.md) (com o que mudou na implementação, no fim da segunda).
+
+- **Um cérebro por vez, sem sincronização.** Primeira abertura: "Usar neste computador" ou "Conectar à minha VPS"; trocar depois em Configurações > Geral > Servidor. Passar de um para o outro é um dump e uma restauração ([IMPLANTACAO.md](IMPLANTACAO.md)), nunca réplica.
+- **Banco: PostgreSQL de verdade** (`embedded-postgres`, binários do zonky, PG 18.7), não PGlite: o `LISTEN/NOTIFY` do stream não chegou pelo socket do PGlite e ele tem uma conexão só. Fica em `127.0.0.1`, porta livre e fixa por instalação, senha aleatória no chaveiro. Sem pgvector (nenhuma migração o cria hoje).
+- **Servidor e worker:** o `suup server --with-worker` da CLI, num processo Node que o app empacota (o Node como `externalBin` do Tauri, o JavaScript num arquivo só) e supervisiona. Não usei o Node SEA (estado "Active development", não carrega `.node` do VFS).
+- **Segredos no chaveiro** do sistema, passados ao filho só por variável de ambiente. A chave da Anthropic é digitada uma vez no app.
+- **Máquina dos bots:** Docker, se houver (`docker info`); as imagens são construídas dos Dockerfiles do app na primeira vez; sem Docker (ou sem alcançar a rede interna dele), sem isolamento, **dito na tela**. No Windows o sandbox `local` não tem shell (usa `/bin/sh`): sem Docker, os bots não têm terminal. Em aberto: provar o proxy de saída com o Docker Desktop (o endereço da rede interna fica dentro da VM do Docker) ou levá-lo para um contêiner.
+- **Instalador:** `.github/workflows/desktop-installer.yml` (NSIS no Windows, sem assinatura). Guia do dono: [USAR-NO-WINDOWS.md](USAR-NO-WINDOWS.md).
+
 ### 4.13 Diagnóstico: de quem é o problema
 
 Um problema pode estar em cinco lugares: modelo, harness, ferramenta, servidor ou app. O desenho precisa permitir separar os cinco sem adivinhar.
