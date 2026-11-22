@@ -278,7 +278,7 @@ export {
   removeBotHost,
 } from "./network.js";
 export { PgRunQueue } from "./pg-queue.js";
-export { PgRunStore, type PgRunStoreOptions } from "./pg-store.js";
+export { PgRunStore, type PgRunStoreOptions, type RunStatusHook } from "./pg-store.js";
 export {
   heartbeatRun,
   type RequeueStaleOptions,

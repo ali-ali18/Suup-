@@ -1,6 +1,6 @@
 import { listRunsQuerySchema, runEventsQuerySchema } from "@suup/api";
 import { cancelRun, getRun, listRunEvents, listRuns, pauseRun, resumeRun } from "@suup/db";
-import { finishRun } from "@suup/runtime";
+import { finishRun, writeOutcomeMessage } from "@suup/runtime";
 import { HttpError } from "../errors.js";
 import type { Route } from "../http.js";
 import { toRunDto, toRunEventDto } from "../mappers.js";
@@ -78,7 +78,11 @@ export const runRoutes: Route[] = [
     pattern: "/v1/runs/:id/cancel",
     async handler(ctx) {
       const { db } = ctx.runtime;
-      const run = await cancelRun(db, ctx.uuid("id"));
+      const run = await cancelRun(db, ctx.uuid("id"), {
+        onStatusSet: async (tx, done) => {
+          await writeOutcomeMessage(tx, done);
+        },
+      });
       // A run nobody holds (waiting for an approval) is cancelled right here: the conversation
       // gets its notice now. Any other is cancelled by the worker, which writes the notice itself.
       if (run.status === "cancelled")

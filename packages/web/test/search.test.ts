@@ -26,7 +26,7 @@ const ANSWER = JSON.stringify({
   ],
   unresponsive_engines: [
     ["duckduckgo", "CAPTCHA"],
-    ["brave", "Suspended: too many requests"],
+    ["stackoverflow", "Suspended: too many requests"],
   ],
 });
 
@@ -57,7 +57,7 @@ describe("parseSearxAnswer", () => {
     expect(out.ok && out.hits).toHaveLength(1);
     expect(out.ok && out.suspended).toEqual([
       { engine: "duckduckgo", reason: "CAPTCHA" },
-      { engine: "brave", reason: "Suspended: too many requests" },
+      { engine: "stackoverflow", reason: "Suspended: too many requests" },
     ]);
   });
 
@@ -138,7 +138,9 @@ describe("engines", () => {
       expect(ENGINES.find((e) => e.id === id)?.access).toBe("api");
       expect(ENGINES.find((e) => e.id === id)?.via).toBe("direct");
     }
-    // The other general engines stay off, and so do Google and Bing (not in the list at all).
+    // DuckDuckGo is the only general engine; Google, Bing, Brave and Startpage are not in the list.
+    expect(ENGINES.filter((e) => e.general).map((e) => e.id)).toEqual(["duckduckgo"]);
+    expect(unknownEngines(["brave", "startpage"])).toEqual(["brave", "startpage"]);
     expect(ENGINES.filter((e) => e.general && e.defaultOn).map((e) => e.id)).toEqual([
       "duckduckgo",
     ]);

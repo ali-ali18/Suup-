@@ -101,7 +101,7 @@ import {
   updateRoutineTool,
 } from "./routines.js";
 import { DEFAULT_HISTORY_CHARS, loadRunContext } from "./run-context.js";
-import { finishRun } from "./run-end.js";
+import { finishRun, writeOutcomeMessage } from "./run-end.js";
 import { createScriptedProvider } from "./scripted-provider.js";
 import {
   delegateTool,
@@ -907,7 +907,13 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     }
     const executor = await runtime.executorFor(bot.id);
     return {
-      store: new PgRunStore(handle, { workerId }),
+      // The bot's message goes in the same transaction as the status that parks or ends the run.
+      store: new PgRunStore(handle, {
+        workerId,
+        onStatusSet: async (tx, run) => {
+          await writeOutcomeMessage(tx, run);
+        },
+      }),
       provider: getProvider(bot.modelProvider),
       tools: runTools,
       executor,
@@ -1216,6 +1222,9 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
           ...(opts.onlyRunId === undefined ? {} : { onlyRunId: opts.onlyRunId }),
           // What crashed the harness may have had a secret in its message: scrub it first.
           redact: (text) => runtime.redactJson(text),
+          onStatusSet: async (tx, run) => {
+            await writeOutcomeMessage(tx, run);
+          },
         }),
         buildDeps: (runId) => buildDeps(runId, workerId),
         // What must follow a run (the bot's message in the conversation, the journal) is derived

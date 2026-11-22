@@ -198,11 +198,11 @@ Busca e leitura de páginas, feitas por peças de código aberto que o Suup mesm
 | Campo | Padrão | Significado |
 |---|---|---|
 | `search.enabled` | `true` | `false` desliga `web_search` (a ferramenta diz que está desligada) |
-| `search.engines` | `["wikipedia","arxiv","stackoverflow","duckduckgo"]` | ids dos motores (BUSCA.md lista todos). `wikipedia`, `arxiv` e `stackoverflow` são chamados pelo próprio Suup pelas APIs oficiais, com o nome honesto; `duckduckgo` (SearXNG) é o único motor geral ligado por padrão (decisão do dono; taxa baixa, nome honesto, sem contornar captcha); `brave` e `startpage` leem páginas de resultados pelo SearXNG, com o `User-Agent` sorteado dele, e ficam **desligados** até você ligá-los. **`github` não existe** (busca no GitHub é o conector MCP). Sem nenhum motor do SearXNG na lista, o contêiner de busca não é criado. Id desconhecido é recusado |
+| `search.engines` | `["wikipedia","arxiv","stackoverflow","duckduckgo"]` | ids dos motores (BUSCA.md lista todos). `wikipedia`, `arxiv` e `stackoverflow` são chamados pelo próprio Suup pelas APIs oficiais, com o nome honesto; `duckduckgo` (SearXNG) é o único motor geral ligado por padrão (decisão do dono; taxa baixa, nome honesto, sem contornar captcha). `brave` e `startpage` foram removidos (o SearXNG mandaria o `User-Agent` sorteado dele) e são recusados como id desconhecido. **`github` não existe** (busca no GitHub é o conector MCP). Sem nenhum motor do SearXNG na lista, o contêiner de busca não é criado. Id desconhecido é recusado |
 | `search.languages` | `["en","pt"]` | idiomas cujo host da Wikipédia a busca alcança (o proxy de saída das APIs diretas libera só esses hosts) (`pt-br` vira `pt-br.wikipedia.org`; só letras, números e hífen) |
 | `search.maxResults` | `10` | no máximo, por busca (1 a 20) |
 | `search.limits.perMinute` | `20` | no máximo, de buscas em qualquer minuto, no geral (1 a 600). Passando disso a busca espera na fila ou o resultado diz quando tentar de novo |
-| `search.limits.perEngine` | o de cada motor (`duckduckgo` 6, `stackoverflow` 10, `arxiv` 15, `wikipedia` 30, `brave` e `startpage` 6) | `{ "<id do motor>": n }`: buscas por minuto a um motor. Id desconhecido é recusado |
+| `search.limits.perEngine` | o de cada motor (`duckduckgo` 6, `stackoverflow` 10, `arxiv` 15, `wikipedia` 30) | `{ "<id do motor>": n }`: buscas por minuto a um motor. Id desconhecido é recusado |
 | `search.limits.maxWaitSeconds` | `20` | o máximo que uma busca espera na fila (0 a 120); além disso o resultado é "tente em X s" |
 | `search.cache.enabled` | `true` | `false` desliga o cache de buscas idênticas |
 | `search.cache.ttlMinutes` | `180` | quanto vive uma busca no cache (1 a 10080). O cache fica no banco (tabela `web_search_cache`) |

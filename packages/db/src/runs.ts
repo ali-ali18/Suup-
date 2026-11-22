@@ -345,3 +345,16 @@ export async function releaseRun(db: Db, runId: string): Promise<Run | null> {
     returning *`;
   return row ? mapRun(row) : null;
 }
+
+/**
+ * Locks the conversation row of a run (if it has one), BEFORE the run's own row. Every transaction
+ * that changes a run's status and writes the bot's message (`onStatusSet`) takes the locks in this
+ * order, the same order as sending a message (conversation, then the run it posts to): opposite
+ * orders deadlock when the user answers just as the run parks.
+ */
+export async function lockConversationOfRun(tx: Db, runId: string): Promise<void> {
+  await tx.sql`
+    select c.id from conversations c
+    where c.id = (select r.conversation_id from runs r where r.id = ${runId})
+    for no key update`;
+}

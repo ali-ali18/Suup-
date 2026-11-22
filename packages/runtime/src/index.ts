@@ -129,6 +129,7 @@ export {
   type RunEffects,
   type RunEndOptions,
   reconcileRunEffects,
+  writeOutcomeMessage,
 } from "./run-end.js";
 export {
   type AutoReviewStatus,

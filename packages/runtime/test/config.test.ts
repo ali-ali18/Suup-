@@ -404,6 +404,17 @@ describe("configuration: web", () => {
     ).toContain("github");
   });
 
+  it("refuses brave and startpage as engines (removed: SearXNG would send its random browser user agent)", () => {
+    for (const id of ["brave", "startpage"]) {
+      expect(
+        issuesOf(rawConfig({ web: { search: { engines: ["wikipedia", id] } } })).join("\n"),
+      ).toContain(`motor desconhecido: ${id}`);
+      expect(
+        issuesOf(rawConfig({ web: { search: { limits: { perEngine: { [id]: 3 } } } } })).join("\n"),
+      ).toContain(id);
+    }
+  });
+
   it("refuses a language that could name another host, and a search URL that is not http(s)", () => {
     expect(
       issuesOf(rawConfig({ web: { search: { languages: ["en.evil.com"] } } })).join("\n"),
