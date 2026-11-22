@@ -518,7 +518,10 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("the evaluation runner, end to end"),
     const p = await project({ alpha: stuck });
     const impatient = {
       ...task("simple-question"),
-      limits: { maxTurns: 4, maxCostUsd: 0.05, maxDurationMs: 100 },
+      // Long enough that starting the run never reaches the run's own limit first (a slow machine
+      // took more than 100 ms and the run stopped itself with origin "limit"); far shorter than
+      // the 30 s model call, so the evaluator's deadline is what ends it.
+      limits: { maxTurns: 4, maxCostUsd: 0.05, maxDurationMs: 2_000 },
     };
     const started = Date.now();
     const report = await evaluate(p, {
