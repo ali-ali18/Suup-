@@ -61,7 +61,7 @@ export function Panel({ botId }: { botId: string }) {
         id={`panel-panel-${tab}`}
         aria-labelledby={`panel-${tab}`}
       >
-        {tab === "activity" ? <ActivityTab /> : <LibraryList items={[]} now={now} />}
+        {tab === "activity" ? <ActivityTab botId={botId} /> : <LibraryList items={[]} now={now} />}
       </div>
       <ResizeHandle
         spec={PANEL_SPEC}

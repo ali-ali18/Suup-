@@ -7,6 +7,7 @@ import type {
   Conversation,
   Memory,
   Message,
+  Routine,
   Run,
   RunEvent,
   Secret,
@@ -264,3 +265,24 @@ export function makeMessageApproval(over: Partial<Approval> = {}): Approval {
     ...over,
   });
 }
+
+/** A routine of the Rotinas panel (docs/ROTINAS.md): daily at 08:00 in Sao Paulo. */
+export const routineOf = (over: Partial<Routine> = {}): Routine => ({
+  id: "00000000-0000-4000-8000-000000000002",
+  botId: "00000000-0000-4000-8000-0000000000b1",
+  name: "Calendário da manhã",
+  instruction: "Veja meu calendário de hoje.",
+  triggerKind: "schedule",
+  schedule: { kind: "daily", time: "08:00" },
+  timeZone: "America/Sao_Paulo",
+  status: "active",
+  nextRunAt: "2026-11-23T11:00:00.000Z",
+  state: "",
+  costCapUsd: null,
+  createdBy: "bot",
+  createdAt: "2026-11-21T10:00:00.000Z",
+  updatedAt: "2026-11-21T10:00:00.000Z",
+  endedAt: null,
+  lastFire: null,
+  ...over,
+});

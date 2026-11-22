@@ -507,6 +507,8 @@ export async function startWorld(
     wakeEveryMs?: number;
     /** How often the worker looks at the clock for the nightly review and the morning message (default: 60 s). */
     supervisorEveryMs?: number;
+    /** How often the worker looks for routines that came due (default: its own, 15 s). */
+    routinesEveryMs?: number;
     /**
      * Whether a new conversation is born waiting for its bot's welcome (docs/RECEPCAO.md), as in
      * production. Default `false`: the other specs open chats of bots whose scripts know nothing of
@@ -630,6 +632,7 @@ export async function startWorld(
     ...(options.supervisorEveryMs === undefined
       ? {}
       : { supervisorEveryMs: options.supervisorEveryMs }),
+    ...(options.routinesEveryMs === undefined ? {} : { routinesEveryMs: options.routinesEveryMs }),
     onError: (error, context) => console.error(`worker: ${context}:`, error),
   });
   worker.start();

@@ -184,6 +184,7 @@ export class Sync {
       if (!this.opened) {
         this.opened = true;
         void this.reload();
+        void this.shareDeviceTimeZone();
       }
       return;
     }
@@ -226,6 +227,21 @@ export class Sync {
           text: run.status === "done" ? (run.result?.summary ?? run.objective) : run.objective,
         });
       }
+    }
+  }
+
+  /**
+   * Tells the server the time zone of THIS computer (docs/ROTINAS.md): the user's routines and "now"
+   * are in the user's zone, never the server's, which may run on a VPS in UTC. It only fills the
+   * blank (or follows the computer): a zone the user chose in Configurações is never replaced.
+   */
+  async shareDeviceTimeZone(): Promise<void> {
+    try {
+      const timeZone = new Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (typeof timeZone !== "string" || timeZone === "") return;
+      await this.deps.api.userSettings.update({ timeZone, source: "device" });
+    } catch {
+      // an older server, or a zone it does not know: Configurações > Geral lets the user choose
     }
   }
 

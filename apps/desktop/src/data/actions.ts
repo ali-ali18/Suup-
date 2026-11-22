@@ -244,6 +244,24 @@ export function describeAction(
         doing: of === undefined ? "Consultando a equipe" : `Consultando a memória de ${of}`,
       };
     }
+    case "create_routine":
+    case "update_routine":
+    case "delete_routine":
+    case "list_routines":
+    case "update_routine_state": {
+      // The routine by its name (what the bot wrote), never read from free text.
+      const which = clip(text("name") ?? text("routine") ?? "", 50);
+      const named = which === "" ? "" : ` “${which}”`;
+      const words: Record<string, [string, string]> = {
+        create_routine: [`Criar a rotina${named}`, `Criando a rotina${named}`],
+        update_routine: [`Mudar a rotina${named}`, `Mudando a rotina${named}`],
+        delete_routine: [`Apagar a rotina${named}`, `Apagando a rotina${named}`],
+        list_routines: ["Ver as rotinas", "Vendo as rotinas"],
+        update_routine_state: ["Guardar a nota da rotina", "Guardando a nota da rotina"],
+      };
+      const [summary, doing] = words[name] as [string, string];
+      return { kind: "other", ...label, summary, doing };
+    }
     default:
       return {
         kind: "other",
