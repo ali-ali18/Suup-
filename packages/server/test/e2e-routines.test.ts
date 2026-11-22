@@ -1,5 +1,7 @@
 import type { Routine } from "@suup/api";
+import { defineTool } from "@suup/core";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { DATABASE_URL, dbSuiteName, until, useWorld } from "./world.js";
 
 // Routines through the API, with a scripted model (docs/ROTINAS.md): the user asks in the chat, the
@@ -57,6 +59,13 @@ const SCRIPTS = {
       {
         whenObjectiveContains: "ROTINA-PERDIDA",
         agent: [s({ text: "Recuperei a rotina perdida." })],
+      },
+      {
+        whenObjectiveContains: "ROTINA-FONTE",
+        agent: [
+          s({ calls: [{ name: "ler_pagina_teste", args: {} }] }),
+          s({ text: "## Agenda\n\n- **15h** dentista" }),
+        ],
       },
       {
         whenObjectiveContains: "ROTINA-CARTAO",
@@ -306,6 +315,47 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("routines through the API"), { timeou
       return fires[0]?.status === "done" ? fires : undefined;
     }, "the fire to record its end");
     expect(after).toMatchObject({ status: "done", resultText: "Rodei o comando da rotina." });
+  });
+
+  it("the history says what the run used: the page a tool declared it read, never text", async () => {
+    const { api } = w.started;
+    // A tool that declares the page it read, as web_read does (no network in a test).
+    const tool = defineTool({
+      name: "ler_pagina_teste",
+      description: "Lê a página de teste.",
+      input: z.object({}),
+      risk: "read",
+      execute: async () => ({
+        content: "Agenda: dentista às 15h. Veja também https://so-texto.example/",
+        source: { url: "https://agenda.exemplo.com.br/hoje", title: "Agenda de hoje" },
+      }),
+    });
+    for (const runtime of [w.serverRuntime, w.workerRuntime]) {
+      if (runtime.tools.get(tool.name) === undefined) runtime.tools.register(tool);
+    }
+    const bot = await api.bots.create({
+      name: "Fontes",
+      modelId: "model-x",
+      allowedTools: ["ler_pagina_teste"],
+    });
+    const routine = await api.routines.create({
+      botId: bot.id,
+      name: "Agenda",
+      instruction: "ROTINA-FONTE leia a agenda",
+      schedule: daily8,
+    });
+    await forceDue(routine.id);
+    const [fire] = await until(async () => {
+      const fires = await firesOf(routine.id);
+      return fires[0]?.status === "done" ? fires : undefined;
+    }, "the fire to end");
+    expect(fire?.resultText).toBe("## Agenda\n\n- **15h** dentista");
+    // only the declared page: the URL in the text is not a source
+    expect(fire?.sources).toEqual([
+      { kind: "web", url: "https://agenda.exemplo.com.br/hoje", title: "Agenda de hoje" },
+    ]);
+    // the list of routines does not carry them (only the history)
+    expect((await api.routines.get(routine.id)).lastFire?.sources).toBeUndefined();
   });
 
   it("CRUD: refuses cron text and a past date, pauses, resumes, deletes", async () => {

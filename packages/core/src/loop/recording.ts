@@ -155,6 +155,7 @@ export async function recordResult(
     toolReferences?: string[];
     webUrls?: string[];
     urlProvenance?: "user_message" | "search_result" | "page_link" | "approved";
+    source?: { url: string; title?: string };
   },
 ): Promise<void> {
   await record(ctx, {
@@ -169,6 +170,7 @@ export async function recordResult(
       ...(r.toolReferences === undefined ? {} : { toolReferences: r.toolReferences }),
       ...(r.webUrls === undefined ? {} : { webUrls: r.webUrls }),
       ...(r.urlProvenance === undefined ? {} : { urlProvenance: r.urlProvenance }),
+      ...(r.source === undefined ? {} : { source: r.source }),
     },
   });
 }

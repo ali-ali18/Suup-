@@ -252,6 +252,18 @@ export interface ToolOutput {
   webUrls?: string[];
   /** `web_read` only: how the address of this read was cleared (`approved`: the user said yes on a card). */
   urlProvenance?: WebUrlSource | "approved";
+  /**
+   * The web page this result IS (`web_read`: the page read, after redirects, and its title). The
+   * loop records it in the log, and the app shows it as a source of the run (the history of a
+   * routine shows the icon of the site). A tool declares it; nobody looks for URLs in the text.
+   */
+  source?: ToolSource;
+}
+
+/** A page a tool read, as the tool declares it (`ToolOutput.source`). */
+export interface ToolSource {
+  url: string;
+  title?: string;
 }
 
 /** What `classify` may look at besides the arguments: the machine the call would run on, and the URLs the run has seen. */

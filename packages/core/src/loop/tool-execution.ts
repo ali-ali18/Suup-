@@ -198,6 +198,7 @@ async function handleTool(
     ...(invocation.output.urlProvenance === undefined
       ? {}
       : { urlProvenance: invocation.output.urlProvenance }),
+    ...(invocation.output.source === undefined ? {} : { source: invocation.output.source }),
   });
   return false;
 }

@@ -461,6 +461,8 @@ export const runEventSchema = z.discriminatedUnion("type", [
       urlProvenance: z.exactOptional(
         z.enum(["user_message", "search_result", "page_link", "approved"]),
       ),
+      /** The page this result is, as the tool declared it (`web_read`): a source of the run. */
+      source: z.exactOptional(z.object({ url: z.string(), title: z.exactOptional(z.string()) })),
     }),
   }),
   z.object({

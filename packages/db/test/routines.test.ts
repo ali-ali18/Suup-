@@ -4,9 +4,11 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   appendMessage,
+  appendRunEvent,
   createBot,
   createDirectConversation,
   createRoutine,
+  createRun,
   deleteRoutine,
   finishRoutineFire,
   fireDueRoutines,
@@ -15,6 +17,7 @@ import {
   getUserSettings,
   listRoutineFires,
   listRoutines,
+  listRunSources,
   MIGRATIONS_DIR,
   migrate,
   RoutineError,
@@ -277,6 +280,40 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("routines (migration 0026)"), () => {
     await expect(
       setUserTimeZone(ctx.db, { timeZone: "Nowhere/City", source: "user" }),
     ).rejects.toMatchObject({ code: "invalid_time_zone" });
+  });
+
+  it("the sources of a run: the pages its tools declared and the tools that answered, each once", async () => {
+    const bot = await newBot("Fontes");
+    const run = await createRun(ctx.db, { botId: bot.id, origin: "routine", objective: "x" });
+    const other = await createRun(ctx.db, { botId: bot.id, origin: "routine", objective: "y" });
+    const result = (callId: string, extra: Record<string, unknown> = {}) => ({
+      callId,
+      outcome: "ok",
+      content: "https://not-a-source.example/ is only text",
+      isError: false,
+      truncated: false,
+      durationMs: 1,
+      ...extra,
+    });
+    const page = { url: "https://g1.globo.com/agenda", title: "Agenda" };
+    await appendRunEvent(ctx.db, run.id, "tool_call", { callId: "a", name: "web_read", args: {} });
+    await appendRunEvent(ctx.db, run.id, "tool_result", result("a", { source: page }));
+    await appendRunEvent(ctx.db, run.id, "tool_call", { callId: "b", name: "web_read", args: {} });
+    await appendRunEvent(ctx.db, run.id, "tool_result", result("b", { source: page }));
+    await appendRunEvent(ctx.db, run.id, "tool_call", { callId: "c", name: "conn_x__y", args: {} });
+    await appendRunEvent(ctx.db, run.id, "tool_result", result("c"));
+    // a call that failed is not a source
+    await appendRunEvent(ctx.db, run.id, "tool_call", { callId: "d", name: "web_read", args: {} });
+    await appendRunEvent(
+      ctx.db,
+      run.id,
+      "tool_result",
+      result("d", { isError: true, outcome: "tool_error", source: { url: "https://falhou.dev/" } }),
+    );
+    const sources = await listRunSources(ctx.db, [run.id, other.id]);
+    expect(sources.get(run.id)).toEqual({ pages: [page], tools: ["web_read", "conn_x__y"] });
+    expect(sources.has(other.id)).toBe(false);
+    expect((await listRunSources(ctx.db, [])).size).toBe(0);
   });
 });
 

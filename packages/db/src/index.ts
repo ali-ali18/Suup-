@@ -134,7 +134,9 @@ export {
   appendRunEvent,
   type ListRunEventsOptions,
   listRunEvents,
+  listRunSources,
   RunNotFoundError,
+  type RunSources,
 } from "./events.js";
 export {
   ackInboxEntries,

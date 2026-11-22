@@ -9,6 +9,16 @@ export const ROUTINE_STATUSES = ["active", "paused", "ended"] as const;
 export const ROUTINE_FIRE_KINDS = ["scheduled", "catch_up", "manual"] as const;
 export const ROUTINE_FIRE_STATUSES = ["running", "done", "failed", "cancelled", "skipped"] as const;
 
+/**
+ * What a fire's run used, from its recorded tool calls (structured fields of the log, never its
+ * text): a page a tool declared it read (`web_read`), or a connector whose tool answered.
+ */
+export const routineSourceSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("web"), url: z.string(), title: z.string().nullable() }),
+  z.object({ kind: z.literal("connector"), connector: z.string() }),
+]);
+export type RoutineSource = z.infer<typeof routineSourceSchema>;
+
 /** One fire of a routine, for the history. */
 export const routineFireSchema = z.object({
   id: uuid,
@@ -30,6 +40,11 @@ export const routineFireSchema = z.object({
   messageId: uuid.nullable(),
   createdAt: isoDate,
   finishedAt: isoDate.nullable(),
+  /**
+   * Only in `GET /v1/routines/{id}/fires`: the pages and connectors the run used, in the order it
+   * used them, each once (empty: none, or the run did not use tools).
+   */
+  sources: z.exactOptional(z.array(routineSourceSchema)),
 });
 export type RoutineFire = z.infer<typeof routineFireSchema>;
 export const routineFireListSchema = list(routineFireSchema);

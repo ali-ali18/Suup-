@@ -203,6 +203,7 @@ export {
   type ToolContext,
   type ToolOutput,
   type ToolRisk,
+  type ToolSource,
   WorkspaceEscapeError,
 } from "./tool.js";
 export { EXTERNAL_CLOSE, EXTERNAL_OPEN, wrapUntrusted } from "./untrusted.js";

@@ -7,6 +7,7 @@ import {
   listRoutinesQuerySchema,
   type Routine as RoutineDto,
   type RoutineFire as RoutineFireDto,
+  type RoutineSource,
   updateRoutineBodySchema,
   updateUserSettingsBodySchema,
 } from "@suup/api";
@@ -17,9 +18,11 @@ import {
   getRoutine,
   listRoutineFires,
   listRoutines,
+  listRunSources,
   type Routine,
   RoutineError,
   type RoutineFire,
+  type RunSources,
   runRoutineNow,
   setUserTimeZone,
   UserSettingsError,
@@ -66,6 +69,33 @@ export function toRoutineDto(routine: Routine): RoutineDto {
     endedAt: iso(routine.endedAt),
     lastFire: routine.lastFire === null ? null : toRoutineFireDto(routine.lastFire),
   };
+}
+
+/** The most sources one fire shows (pages and connectors together). */
+export const FIRE_SOURCES_MAX = 8;
+
+/**
+ * The sources of a fire's run: each page a tool declared it read, then each connector whose tool
+ * answered. A tool is a connector's by the EXACT registered name the connector lists for it
+ * (`connectorOfTool`), never by how the name looks.
+ */
+export function fireSources(
+  used: RunSources | undefined,
+  connectorOfTool: ReadonlyMap<string, string>,
+): RoutineSource[] {
+  if (used === undefined) return [];
+  const out: RoutineSource[] = used.pages.map((p) => ({
+    kind: "web" as const,
+    url: p.url,
+    title: p.title ?? null,
+  }));
+  for (const tool of used.tools) {
+    const connector = connectorOfTool.get(tool);
+    if (connector === undefined) continue;
+    if (out.some((s) => s.kind === "connector" && s.connector === connector)) continue;
+    out.push({ kind: "connector", connector });
+  }
+  return out.slice(0, FIRE_SOURCES_MAX);
 }
 
 function routineHttpError(error: unknown): unknown {
@@ -217,7 +247,23 @@ export const routineRoutes: Route[] = [
         id,
         query.limit === undefined ? {} : { limit: query.limit },
       );
-      return { body: { items: fires.map(toRoutineFireDto) } };
+      const runIds = fires.flatMap((f) => (f.runId === null ? [] : [f.runId]));
+      const used = await listRunSources(ctx.runtime.db, runIds);
+      // Which connector each registered tool name belongs to, as the connectors list them.
+      const connectorOfTool = new Map<string, string>();
+      if (used.size > 0) {
+        for (const connector of await ctx.runtime.connectors.list()) {
+          for (const tool of connector.tools ?? []) connectorOfTool.set(tool.name, connector.name);
+        }
+      }
+      return {
+        body: {
+          items: fires.map((f) => ({
+            ...toRoutineFireDto(f),
+            sources: fireSources(f.runId === null ? undefined : used.get(f.runId), connectorOfTool),
+          })),
+        },
+      };
     },
   },
 ];

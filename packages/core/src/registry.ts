@@ -11,7 +11,7 @@ import {
   SecretUnavailableError,
   substituteSecrets,
 } from "./secrets.js";
-import type { ClassifyEnv, Executor, Tool, ToolContext, ToolOutput } from "./tool.js";
+import type { ClassifyEnv, Executor, Tool, ToolContext, ToolOutput, ToolSource } from "./tool.js";
 import { wrapUntrusted } from "./untrusted.js";
 import { WEB_URLS_PER_RESULT_MAX, type WebUrlSource } from "./web.js";
 
@@ -328,6 +328,8 @@ export class ToolRegistry {
         .slice(0, WEB_URLS_PER_RESULT_MAX);
     }
     if (raw.urlProvenance !== undefined) output.urlProvenance = raw.urlProvenance;
+    const source = sourceOf(raw.source);
+    if (source !== undefined) output.source = source;
     return finish(raw.isError === true ? "tool_error" : "ok", content, {
       output,
       truncated: clipped.truncated,
@@ -469,6 +471,19 @@ function describeCall(
 function sanitizePathPart(value: string): string {
   return value.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 100);
 }
+
+/** The page a tool declared (`ToolOutput.source`), bounded; anything malformed is dropped. */
+function sourceOf(raw: unknown): ToolSource | undefined {
+  if (typeof raw !== "object" || raw === null) return undefined;
+  const { url, title } = raw as { url?: unknown; title?: unknown };
+  if (typeof url !== "string" || url === "" || url.length > SOURCE_URL_MAX) return undefined;
+  return typeof title === "string" && title.trim() !== ""
+    ? { url, title: title.trim().slice(0, SOURCE_TITLE_MAX) }
+    : { url };
+}
+
+const SOURCE_URL_MAX = 2048;
+const SOURCE_TITLE_MAX = 200;
 
 function abortedMessage(name: string): string {
   return `Tool "${name}" was interrupted before it finished. The result is unknown: check the current state before repeating it.`;
