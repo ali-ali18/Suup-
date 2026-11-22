@@ -35,7 +35,17 @@ export interface PgRunStoreOptions {
    * it. Every write is fenced by it (see `PgRunStore`).
    */
   workerId: string;
+  /**
+   * Runs inside the same transaction that changes the run's status, right after the change, with
+   * the updated run. What a reader must find together with the new status (the bot's message in the
+   * conversation) is written here: whoever sees the status sees it too. It must be idempotent
+   * (the loop repeats the status change after a crash) and a throw rolls the status back.
+   */
+  onStatusSet?: RunStatusHook;
 }
+
+/** See `PgRunStoreOptions.onStatusSet`. */
+export type RunStatusHook = (tx: Db, run: Run) => Promise<void>;
 
 const EVENT_PAGE = 1000;
 
@@ -59,9 +69,11 @@ const EVENT_PAGE = 1000;
 export class PgRunStore implements RunStore {
   readonly workerId: string;
   readonly #db: Db;
+  readonly #onStatusSet: RunStatusHook | undefined;
 
   constructor(db: Db, options: PgRunStoreOptions) {
     this.#db = db;
+    this.#onStatusSet = options.onStatusSet;
     this.workerId = options.workerId;
   }
 
@@ -116,6 +128,7 @@ export class PgRunStore implements RunStore {
       }
       const updated = await setRunStatus(tx, runId, input);
       if (updated === null) return false;
+      await this.#onStatusSet?.(tx, updated);
       if (
         change.requeueIfInbox === true &&
         (change.to === "waiting_user" || change.to === "waiting_timer") &&

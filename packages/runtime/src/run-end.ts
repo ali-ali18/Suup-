@@ -8,6 +8,8 @@ import {
 import {
   addJournalMemory,
   appendMessageOnce,
+  ConversationNotFoundError,
+  ConversationRuleError,
   type Db,
   finishReception,
   getRun,
@@ -222,6 +224,37 @@ async function scrubbedForJournal(run: Run, options: RunEndOptions): Promise<Run
   return { ...run, ...safe };
 }
 
+/**
+ * Writes the message the user sees for the end (or pause) of a conversation run, with the
+ * transaction that changes the run's status (the hook of `PgRunStore`, `PgRunQueue.fail` and
+ * `cancelRun`): a reader that sees the new status sees the message. Idempotent (same key as
+ * `finishRun`, which writes it too if this never ran). Returns whether it was written now.
+ */
+export async function writeOutcomeMessage(db: Db, run: Run): Promise<boolean> {
+  if (run.conversationId === null || run.conversationId === undefined) return false;
+  const message = await outcomeMessage(db, run);
+  if (message === null) return false;
+  try {
+    const { created } = await appendMessageOnce(db, {
+      conversationId: run.conversationId,
+      authorKind: message.authorKind,
+      ...(message.authorKind === "bot" ? { authorBotId: run.botId } : {}),
+      text: message.text,
+      runId: run.id,
+      dedupeKey: message.key,
+      ...(message.question === undefined ? {} : { question: message.question }),
+    });
+    return created;
+  } catch (error) {
+    // An archived (or removed) conversation takes no more messages. That must never keep the run
+    // from ending: this runs in the transaction that sets its status.
+    if (error instanceof ConversationRuleError || error instanceof ConversationNotFoundError) {
+      return false;
+    }
+    throw error;
+  }
+}
+
 export interface RunEffects {
   /** A bot or system message was written to the conversation now (not already there). */
   messageWritten: boolean;
@@ -257,21 +290,7 @@ export async function finishRun(
   if (run === null) return effects;
   const terminal = run.status === "done" || run.status === "failed" || run.status === "cancelled";
 
-  if (run.conversationId !== null && run.conversationId !== undefined) {
-    const message = await outcomeMessage(db, run);
-    if (message !== null) {
-      const { created } = await appendMessageOnce(db, {
-        conversationId: run.conversationId,
-        authorKind: message.authorKind,
-        ...(message.authorKind === "bot" ? { authorBotId: run.botId } : {}),
-        text: message.text,
-        runId: run.id,
-        dedupeKey: message.key,
-        ...(message.question === undefined ? {} : { question: message.question }),
-      });
-      effects.messageWritten = created;
-    }
-  }
+  effects.messageWritten = await writeOutcomeMessage(db, run);
   if (terminal) {
     // The welcome is over, however it ended: it never starts by itself again (only "Refazer").
     if (run.origin === "reception" && run.conversationId != null) {

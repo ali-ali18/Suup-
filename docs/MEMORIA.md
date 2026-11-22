@@ -199,7 +199,7 @@ Por isso, **notas e conversas usam busca textual** (PostgreSQL, português, sem 
 
 ## A conversa
 
-Cada bot tem a sua conversa. Uma mensagem sua abre uma execução; no máximo **uma execução em primeiro plano por conversa** (garantido pelo banco). Mensagem enviada com o bot trabalhando entra na caixa da execução e é lida no próximo ponto seguro; se o bot tinha feito uma pergunta, a mensagem é a resposta. Ao fim, a conversa recebe a mensagem do bot: a resposta final, ou a pergunta, ou, se falhou ou foi cancelada, um aviso do sistema em português.
+Cada bot tem a sua conversa. Uma mensagem sua abre uma execução; no máximo **uma execução em primeiro plano por conversa** (garantido pelo banco). Mensagem enviada com o bot trabalhando entra na caixa da execução e é lida no próximo ponto seguro; se o bot tinha feito uma pergunta, a mensagem é a resposta. Ao fim, a conversa recebe a mensagem do bot: a resposta final, ou a pergunta, ou, se falhou ou foi cancelada, um aviso do sistema em português. **Garantia:** a mensagem entra na mesma transação que muda o estado da execução (`done`, `failed`, `cancelled`, `waiting_user`, `waiting_timer`); quem lê o estado terminal ou de espera já encontra a mensagem (`PgRunStore`, `PgRunQueue.fail` e `cancelRun` chamam `writeOutcomeMessage`; `finishRun` só repete, pela mesma chave, e escreve o diário). Teste: `packages/server/test/e2e-atomic-end.test.ts`.
 
 ## Ver e corrigir
 

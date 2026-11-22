@@ -181,6 +181,8 @@ O servidor **não roda o loop**: quem trabalha é um worker, que pode ser outro 
 | `resume` | Tira a pausa; um worker pega a execução e ela continua de onde o log parou | pausada | volta a `queued`/`running` |
 | `cancel` | Posta o pedido de parada, tira a pausa (para um worker poder aplicar) e, se a execução trabalha agora, também interrompe; ela termina `cancelled` e a conversa recebe o aviso | `queued`, `running`, `waiting_user` (o pedido a recoloca na fila), `waiting_approval`, `waiting_timer` (cancelada na hora, sem worker) | `cancelled` |
 
+**Garantia de leitura:** a mensagem do bot de um fim ou de uma pausa (`done`, `failed`, `cancelled`, `waiting_user`, `waiting_timer`) é gravada na mesma transação que muda o estado da `Run`: quem vê o estado já encontra a mensagem em `GET /v1/conversations/{id}/messages`, sem esperar.
+
 Uma execução em `waiting_timer` (o bot marcou um retorno para si, [RETORNO.md](RETORNO.md)) tem `wakeAt` (a hora) e `wakeNote` (o que conferir) na `Run`, e as duas são `null` em qualquer outro estado. Nenhum worker a segura: `cancel` a cancela na hora (o log guarda `wait_cancelled`, motivo `cancelled`), uma mensagem em `POST /v1/conversations/{id}/messages` cancela o retorno (`user_message`) e a execução segue com ela, e `pause`/`interrupt` dão `409`.
 
 Erros: `404` se a execução não existe; `409` para `pause` e `interrupt` numa execução que terminou ou espera você, uma aprovação ou a hora de um retorno (`pause` numa já pausada é idempotente, e `interrupt` a endurece); para `resume`, numa execução que não está pausada ou que terminou; para `cancel`, numa que já terminou. **`cancel` e a retomada precisam de um worker vivo** para serem aplicados.

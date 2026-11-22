@@ -3,6 +3,7 @@ import { cancelPendingApprovals } from "./approvals.js";
 import { type Db, withTransaction } from "./client.js";
 import { appendRunEvent } from "./events.js";
 import { postInbox } from "./inbox.js";
+import type { RunStatusHook } from "./pg-store.js";
 import { mapRun, type RunRow, setRunStatus } from "./runs.js";
 import type { Run } from "./types.js";
 
@@ -110,7 +111,11 @@ export async function resumeRun(db: Db, runId: string): Promise<Run> {
  *
  * Applying it otherwise needs a worker alive. Throws `RunControlError`: `not_found`, `finished`.
  */
-export async function cancelRun(db: Db, runId: string): Promise<Run> {
+export async function cancelRun(
+  db: Db,
+  runId: string,
+  options: { onStatusSet?: RunStatusHook } = {},
+): Promise<Run> {
   return withTransaction(db, async (tx) => {
     const run = await lockRun(tx, runId);
     if (TERMINAL.has(run.status)) {
@@ -130,7 +135,10 @@ export async function cancelRun(db: Db, runId: string): Promise<Run> {
         to: "cancelled",
       });
       const done = await setRunStatus(tx, run.id, { from: "waiting_approval", to: "cancelled" });
-      if (done !== null) return done;
+      if (done !== null) {
+        await options.onStatusSet?.(tx, done);
+        return done;
+      }
     }
     if (run.status === "waiting_timer") {
       // Parked for a return of its own: nobody holds it, so it ends right here. The return does not
@@ -141,7 +149,10 @@ export async function cancelRun(db: Db, runId: string): Promise<Run> {
         to: "cancelled",
       });
       const done = await setRunStatus(tx, run.id, { from: "waiting_timer", to: "cancelled" });
-      if (done !== null) return done;
+      if (done !== null) {
+        await options.onStatusSet?.(tx, done);
+        return done;
+      }
     }
     if (run.status === "queued") {
       const [{ n } = { n: 0 }] = await tx.sql<{ n: number }[]>`
@@ -149,7 +160,10 @@ export async function cancelRun(db: Db, runId: string): Promise<Run> {
       if (n === 0) {
         await appendRunEvent(tx, run.id, "status_changed", { from: "queued", to: "cancelled" });
         const done = await setRunStatus(tx, run.id, { from: "queued", to: "cancelled" });
-        if (done !== null) return done;
+        if (done !== null) {
+          await options.onStatusSet?.(tx, done);
+          return done;
+        }
       }
     }
     // A card of this run may already exist while the run is still `running` (the loop logs the
