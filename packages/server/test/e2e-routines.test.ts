@@ -133,7 +133,11 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("routines through the API"), { timeou
     // 08:00 in Sao Paulo is 11:00 UTC, whatever the server's zone
     expect(routine?.nextRunAt?.endsWith("T11:00:00.000Z")).toBe(true);
     expect(await api.approvals.list({ runId: sent.run.id })).toEqual([]);
-    const said = (await api.conversations.messages(conversation.id)).items.map((m) => m.text);
+    // The final message is written just after the run's status changes: wait for it.
+    const said = await until(async () => {
+      const texts = (await api.conversations.messages(conversation.id)).items.map((m) => m.text);
+      return texts.length >= 2 ? texts : undefined;
+    }, "the bot's answer");
     expect(said).toContain("Combinado, vejo seu calendário todo dia às 8h. Quer outro horário?");
 
     const id = (routine as Routine).id;
@@ -160,8 +164,12 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("routines through the API"), { timeou
     });
     expect(loaded.now?.timeZone).toBe("America/Sao_Paulo");
     // the answer is in the bot's chat, marked with the routine, once
-    const messages = (await api.conversations.messages(conversation.id)).items;
-    const result = messages.filter((m) => m.routineId === id);
+    const result = await until(async () => {
+      const found = (await api.conversations.messages(conversation.id)).items.filter(
+        (m) => m.routineId === id,
+      );
+      return found.length > 0 ? found : undefined;
+    }, "the routine's answer in the chat");
     expect(result.map((m) => [m.text, m.id])).toEqual([[fire?.resultText, fire?.messageId]]);
     // the note it kept, and the next time moved on
     const after = await api.routines.get(id);
