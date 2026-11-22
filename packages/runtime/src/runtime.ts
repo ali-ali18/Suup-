@@ -353,6 +353,16 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     return registry;
   };
   const tools = newRegistry();
+  /**
+   * A registry for one run that starts with EVERYTHING the shared one has, including tools a host
+   * registered on it after creation (the e2e harness adds the network tool there), so adding the
+   * run's own tools (routines, supervisor, welcome) never drops one.
+   */
+  const copyOfBase = (): ToolRegistry => {
+    const copy = new ToolRegistry(registryOptions);
+    for (const tool of tools.list()) copy.register(tool);
+    return copy;
+  };
   const vaultSettings =
     config.vault === undefined
       ? undefined
@@ -828,7 +838,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     if (guarded) {
       const offered = await connectors.toolsForBot(bot.id);
       if (offered.tools.length > 0) {
-        runTools = newRegistry();
+        runTools = copyOfBase();
         const names: string[] = [];
         for (const tool of offered.tools) {
           try {
@@ -850,7 +860,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     const receptionKind: "general" | "bot" | undefined =
       run.origin !== "reception" ? undefined : bot.isDefault ? "general" : "bot";
     if (guarded && receptionKind === "general") {
-      if (runTools === tools) runTools = newRegistry();
+      if (runTools === tools) runTools = copyOfBase();
       runTools.register(proposeTeamTool(runtime));
       botCfg = { ...botCfg, allowedTools: [...botCfg.allowedTools, PROPOSE_TEAM_TOOL] };
     }
@@ -865,7 +875,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
             ? undefined
             : "principal";
     if (supervisor === "principal") {
-      if (runTools === tools) runTools = newRegistry();
+      if (runTools === tools) runTools = copyOfBase();
       runTools.register(teamRecallTool(handle));
       runTools.register(delegateTool(handle));
       botCfg = { ...botCfg, allowedTools: [...botCfg.allowedTools, ...SUPERVISOR_TOOL_NAMES] };
@@ -873,11 +883,11 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     // Routines (docs/ROTINAS.md): a bot in the user's conversation sets them up by talking; a
     // routine's own run reads them, keeps its note and may stop one, never creates or widens one.
     if (guarded && run.origin === "user") {
-      if (runTools === tools) runTools = newRegistry();
+      if (runTools === tools) runTools = copyOfBase();
       routineToolsFor(handle)(runTools);
       botCfg = { ...botCfg, allowedTools: [...botCfg.allowedTools, ...ROUTINE_TOOL_NAMES] };
     } else if (guarded && run.origin === "routine") {
-      if (runTools === tools) runTools = newRegistry();
+      if (runTools === tools) runTools = copyOfBase();
       runTools.register(listRoutinesTool(handle));
       runTools.register(updateRoutineStateTool(handle));
       runTools.register(deleteRoutineTool(handle));
