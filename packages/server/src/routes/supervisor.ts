@@ -6,7 +6,6 @@ import {
   type SupervisorSettingsPatch,
   updateSupervisorSettings,
 } from "@suup/db";
-import { resolveTimeZone } from "@suup/runtime";
 import type { Route } from "../http.js";
 
 /** The supervisor settings as the API says them (docs/SUPERVISOR.md). */
@@ -39,7 +38,7 @@ async function settingsBody(ctx: Parameters<Route["handler"]>[0]) {
     reviewTime: settings.reviewTime,
     morningTime: settings.morningTime,
     costCapUsd: settings.costCapUsd,
-    timeZone: resolveTimeZone(runtime.config),
+    timeZone: (await runtime.userTimeZone()).timeZone,
     model,
   };
 }

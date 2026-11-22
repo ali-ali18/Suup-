@@ -71,6 +71,8 @@ export const messageSchema = z.object({
   question: z.exactOptional(messageQuestionSchema),
   /** Only on the bot message that proposes a team of bots (the card with the ticks). */
   team: z.exactOptional(teamProposalSchema),
+  /** Only on the message that reports a routine's run: the routine (docs/ROTINAS.md). */
+  routineId: z.exactOptional(uuid),
 });
 export type Message = z.infer<typeof messageSchema>;
 

@@ -15,6 +15,7 @@ import {
   type Run,
   rolloverUnreadMessages,
 } from "@suup/db";
+import { completeRoutineFire } from "./routines.js";
 import { returnDelegatedResult } from "./supervisor.js";
 
 /** What a failure origin means, in plain Portuguese, for the message the user reads. */
@@ -291,6 +292,16 @@ export async function finishRun(
     effects.rolledOver = await rolloverUnreadMessages(db, run.id);
     // A task another bot delegated to this one: its short result goes back to that bot's chat.
     if (run.origin === "delegation") await returnDelegatedResult(db, run);
+    // A routine's run: its result goes to the bot's chat, and the fire records it (docs/ROTINAS.md).
+    if (run.origin === "routine") {
+      const parsed = runResultSchema.safeParse(run.result);
+      const summary = parsed.success ? parsed.data.summary.trim() : "";
+      const origin = (run.failureOrigin ?? "harness") as FailureOrigin;
+      await completeRoutineFire(db, run, {
+        done: summary === "" ? "Rotina concluída." : summary,
+        failed: `${ORIGIN_TEXT_PT[origin] ?? "houve uma falha"} (origem: ${origin}).${run.failureDetail === null ? "" : ` Detalhe: ${clip(run.failureDetail, 300)}`}`,
+      });
+    }
   }
   return effects;
 }
@@ -339,6 +350,9 @@ export async function reconcileRunEffects(
         )
         or exists (
           select 1 from delegations d where d.to_run_id = r.id and d.returned_at is null
+        )
+        or exists (
+          select 1 from routine_fires f where f.run_id = r.id and f.finished_at is null
         )
         or exists (
           select 1 from run_inbox i

@@ -20,12 +20,15 @@ const ROUTINE = {
   state: "Já avisei do dentista.",
 };
 
-const context = (extra: Partial<RunContextSnapshot> = {}): RunContextSnapshot => ({
+const context = (
+  extra: Partial<RunContextSnapshot> = {},
+  withRoutine = true,
+): RunContextSnapshot => ({
   rules: [],
   profile: [],
   history: [],
   now: { iso: "2026-11-23T11:00:05.000Z", timeZone: "America/Sao_Paulo" },
-  routine: ROUTINE,
+  ...(withRoutine ? { routine: ROUTINE } : {}),
   ...extra,
 });
 
@@ -163,17 +166,14 @@ describe("the prompt about routines", () => {
   });
 
   it("says when the user's time zone is not known, instead of using the server's", () => {
-    const known = buildSystemPrompt(
-      { name: "B", personality: "" },
-      context({ routine: undefined }),
-    );
+    const known = buildSystemPrompt({ name: "B", personality: "" }, context({}, false));
     expect(known).toContain("in the user's time zone");
     const unknown = buildSystemPrompt(
       { name: "B", personality: "" },
-      context({
-        routine: undefined,
-        now: { iso: "2026-11-23T11:00:05.000Z", timeZone: "UTC", timeZoneKnown: false },
-      }),
+      context(
+        { now: { iso: "2026-11-23T11:00:05.000Z", timeZone: "UTC", timeZoneKnown: false } },
+        false,
+      ),
     );
     expect(unknown).toContain("The user's time zone is NOT known yet");
     expect(unknown).not.toContain("in the user's time zone. That is when");

@@ -18,12 +18,22 @@ import {
   replayRun,
   runEventSchema,
   type StopReason,
+  ToolRegistry,
 } from "@suup/core";
 import { type Db, getBot, getRun, listRunEvents, migrationStatus } from "@suup/db";
 import { checkConnectors } from "./connectors/doctor.js";
 import { RuntimeError } from "./errors.js";
 import { checkMemory } from "./memory-doctor.js";
 import { checkNetwork } from "./network/doctor.js";
+import {
+  createRoutineTool,
+  deleteRoutineTool,
+  listRoutinesTool,
+  ROUTINE_RUN_TOOL_NAMES,
+  ROUTINE_TOOL_NAMES,
+  updateRoutineStateTool,
+  updateRoutineTool,
+} from "./routines.js";
 import type { Runtime } from "./runtime.js";
 import { loadScript } from "./scripted-provider.js";
 import { checkVaultAndApprovals } from "./vault/doctor.js";
@@ -219,9 +229,34 @@ export async function replayRecordedRun(runtime: Runtime, runId: string): Promis
   if (events.length === 0) {
     throw new RuntimeError("no_events", "Esta execução não tem eventos gravados.");
   }
+  // The tools the run was offered besides the built-in ones, as `buildDeps` gives them: the routine
+  // tools of a conversation run of the user, and those of a routine's own run (docs/ROTINAS.md).
+  let tools: ToolRegistry = runtime.tools;
+  let botCfg = runtime.botConfig(bot);
+  if (run.isolated !== true && (run.origin === "user" || run.origin === "routine")) {
+    tools = new ToolRegistry();
+    for (const tool of runtime.tools.list()) tools.register(tool);
+    const routineTools =
+      run.origin === "user"
+        ? [
+            createRoutineTool(db, async () => null),
+            updateRoutineTool(db),
+            deleteRoutineTool(db),
+            listRoutinesTool(db),
+          ]
+        : [listRoutinesTool(db), updateRoutineStateTool(db), deleteRoutineTool(db)];
+    for (const tool of routineTools) tools.register(tool as never);
+    botCfg = {
+      ...botCfg,
+      allowedTools: [
+        ...botCfg.allowedTools,
+        ...(run.origin === "user" ? ROUTINE_TOOL_NAMES : ROUTINE_RUN_TOOL_NAMES),
+      ],
+    };
+  }
   let report: ReplayReport;
   try {
-    report = await replayRun(events, { bot: runtime.botConfig(bot), tools: runtime.tools });
+    report = await replayRun(events, { bot: botCfg, tools });
   } catch (error) {
     throw new RuntimeError(
       "replay_failed",

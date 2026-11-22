@@ -160,10 +160,9 @@ describe.skipIf(!DATABASE_URL)(
       types: ("model_request" | "context_loaded" | "run_started")[],
     ) => (await w.started.api.runs.events(runId, { limit: 1000, types })).items;
 
-    it("tells the app the time zone the bots use (read-only, from the configuration)", async () => {
+    it("tells the app the user's time zone is not known yet: never the server's own", async () => {
       const info = await w.started.api.info();
-      const system = new Intl.DateTimeFormat().resolvedOptions().timeZone;
-      expect(info.timeZone).toBe(system === undefined || system === "" ? "UTC" : system);
+      expect(info).toEqual({ timeZone: null, timeZoneSource: null });
     });
 
     it("the main bot welcomes once, in one conversation, with its questions one at a time", async () => {

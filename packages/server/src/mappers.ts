@@ -116,6 +116,7 @@ export function toMessageDto(message: MessageRow): Message {
     createdAt: iso(message.createdAt),
     ...(message.question === undefined ? {} : { question: message.question }),
     ...(message.team === undefined ? {} : { team: message.team }),
+    ...(message.routineId === null ? {} : { routineId: message.routineId }),
   };
 }
 

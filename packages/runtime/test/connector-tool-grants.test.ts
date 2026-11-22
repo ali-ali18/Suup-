@@ -227,15 +227,16 @@ describe.skipIf(!DATABASE_URL)(
 
       // 17 tools of the fake server + 60 generated: 77 connector tools.
       expect(loaded.catalog.connectorTools).toBe(77);
-      // (`schedule_return` is one more control tool than before: 82 became 83.)
-      expect(loaded.request.toolStats.definitions).toBe(83);
-      expect(searched.request.toolStats.definitions).toBe(8);
+      // (`schedule_return` is one more control tool than before: 82 became 83; the four routine
+      // tools of a conversation run, docs/ROTINAS.md, make it 87.)
+      expect(loaded.request.toolStats.definitions).toBe(87);
+      expect(searched.request.toolStats.definitions).toBe(12);
       // The bounds follow the estimate of 2.65 characters per token (it was 4: about 10 400 and
-      // 2 600 then, 1.5 times more now).
-      expect(loaded.request.toolStats.estimatedTokens).toBeGreaterThan(14_000);
-      expect(loaded.request.toolStats.estimatedTokens).toBeLessThan(17_500);
-      expect(searched.request.toolStats.estimatedTokens).toBeGreaterThan(3_000);
-      expect(searched.request.toolStats.estimatedTokens).toBeLessThan(5_000);
+      // 2 600 then, 1.5 times more now). The four routine tools add about 1 700 to both.
+      expect(loaded.request.toolStats.estimatedTokens).toBeGreaterThan(15_700);
+      expect(loaded.request.toolStats.estimatedTokens).toBeLessThan(19_200);
+      expect(searched.request.toolStats.estimatedTokens).toBeGreaterThan(4_700);
+      expect(searched.request.toolStats.estimatedTokens).toBeLessThan(6_700);
       expect(loaded.catalog.mode).toBe("direct");
       expect(searched.catalog.mode).toBe("meta");
       expect(searched.catalog.connectorTools).toBeGreaterThanOrEqual(60);

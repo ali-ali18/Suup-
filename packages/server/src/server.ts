@@ -33,6 +33,7 @@ import { diagnosticsRoutes } from "./routes/diagnostics.js";
 import { memoryRoutes } from "./routes/memories.js";
 import { metaRoutes } from "./routes/meta.js";
 import { networkRoutes } from "./routes/network.js";
+import { routineRoutes } from "./routes/routines.js";
 import { runRoutes } from "./routes/runs.js";
 import { supervisorRoutes } from "./routes/supervisor.js";
 import { vaultRoutes } from "./routes/vault.js";
@@ -145,6 +146,7 @@ export function createServer(runtime: Runtime, options: ServerOptions): SuupServ
     ...diagnosticsRoutes,
     ...memoryRoutes,
     ...supervisorRoutes,
+    ...routineRoutes,
     ...approvalRoutes,
     ...networkRoutes,
     ...vaultRoutes,

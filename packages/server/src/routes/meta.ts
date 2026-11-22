@@ -1,6 +1,6 @@
 import { doctorQuerySchema, type ModelInfo, type ToolInfo } from "@suup/api";
 import { MEMORY_TOOL_NAMES } from "@suup/core";
-import { resolveTimeZone, runDoctorChecks } from "@suup/runtime";
+import { runDoctorChecks } from "@suup/runtime";
 import type { Route } from "../http.js";
 
 const CONTROL_TOOLS = ["plan", "finish", "escalate"];
@@ -40,7 +40,8 @@ export const metaRoutes: Route[] = [
     method: "GET",
     pattern: "/v1/info",
     async handler(ctx) {
-      return { body: { timeZone: resolveTimeZone(ctx.runtime.config) } };
+      const zone = await ctx.runtime.userTimeZone();
+      return { body: { timeZone: zone.timeZone, timeZoneSource: zone.source } };
     },
   },
   {
