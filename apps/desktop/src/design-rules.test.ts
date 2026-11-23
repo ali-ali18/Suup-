@@ -816,7 +816,6 @@ describe("routines: no schedule form, rows edge to edge, the detail in the panel
     }
     // the words come from the shared function, never written by the screen
     expect(panel).toContain("describeSchedule(routine.schedule)");
-    expect(detail).toContain("describeSchedule(routine.schedule)");
   });
 
   it("the cards of the panel have NO rule between their rows (owner, 22/11/2026); the rows open the detail, which replaces the list in the panel", () => {
@@ -825,13 +824,24 @@ describe("routines: no schedule form, rows edge to edge, the detail in the panel
     expect(panel).not.toContain("<MenuButton");
     expect(panel).toContain("openPanelRoutine(r.id)");
     expect(detail).toContain('label="Voltar às rotinas"');
-    expect(detail).toContain("[&>*+*]:border-t");
+    expect(detail).not.toContain("[&>*+*]:border-t");
   });
 
-  it("what the bot wrote is the chat's Markdown; the sources follow the icons-of-sites setting", () => {
+  it("the detail is only a header, the instruction in Markdown and the two buttons at the foot, half of the width each (owner, 23/11/2026, as in the Grok Bot)", () => {
     expect(detail).toContain("<Markdown");
+    expect(detail).toContain("routine.instruction");
     expect(detail).toContain('settings.favicons === "on"');
-    expect(detail).toContain("<SourceChip");
+    expect(detail).toContain('className="flex-1"');
+    for (const gone of [
+      "<SourceChip",
+      "routines.fires",
+      "routines.run",
+      "Pausar a rotina",
+      "describeSchedule",
+      "nextText",
+    ]) {
+      expect(detail, gone).not.toContain(gone);
+    }
     expect(chip).toContain("faviconUrl(safe)");
     expect(chip).toContain("categoryGlyph(fallback");
   });

@@ -171,40 +171,22 @@ test.describe("routines", () => {
     const detail = panel.getByTestId("routine-detail");
     await expect(detail.getByRole("heading", { name: "Calendário da manhã" })).toBeVisible();
     await expect(panel.getByTestId("section-routines")).toHaveCount(0);
-    await expect(detail.getByTestId("routine-fire")).toHaveCount(1);
-    await expect(detail.getByTestId("routine-fire")).toHaveAttribute("data-status", "done");
-    const result = detail.getByTestId("routine-result");
-    // Markdown, as in the chat: a heading, bold, a list; no asterisks left
-    await expect(result.getByText("Seu dia")).toBeVisible();
-    await expect(result.locator("strong").first()).toHaveText("15h");
-    await expect(result.locator("li")).toHaveCount(2);
-    await expect(result).not.toContainText("**");
-    // the site it read, from the backend; icons of sites are off: the generic one
-    const source = detail.getByTestId("routine-source");
-    await expect(source).toHaveText("agenda.exemplo.com.br");
-    await expect(source).toHaveAttribute("href", SITE);
-    await expect(source.locator("img")).toHaveCount(0);
-    await expect(source.locator(".lucide-globe")).toHaveCount(1);
-    // turned on in Configurações > Geral > Aparência: the site's own icon (the host only)
-    await openSettings(page, "Geral");
-    await page.getByTestId("setting-favicons").click();
-    await expect(page.getByTestId("setting-favicons")).toHaveAttribute("aria-checked", "true");
-    await page.keyboard.press("Escape");
-    await expect
-      .poll(() => page.evaluate(() => (window as unknown as { __imgs: string[] }).__imgs))
-      .toContain("https://agenda.exemplo.com.br/favicon.ico|no-referrer");
-    // the host only, never the page's path; and still exactly one icon in the chip
-    await expect(source.locator("img, svg")).toHaveCount(1);
+    // only the header, the content (the instruction, in Markdown) and the two buttons at the foot
+    await expect(detail.getByTestId("routine-instruction")).toContainText("ROTINA-CALENDARIO");
+    await expect(detail.getByTestId("routine-fire")).toHaveCount(0);
+    await expect(detail.getByRole("button", { name: "Pausar a rotina" })).toHaveCount(0);
+    const [edit, remove] = await Promise.all(
+      ["routine-edit", "routine-remove"].map((id) => detail.getByTestId(id).boundingBox()),
+    );
+    const box = await detail.boundingBox();
+    expect(edit?.width).toBeGreaterThan((box?.width ?? 0) / 2 - 24);
+    expect(remove?.width).toBeGreaterThan((box?.width ?? 0) / 2 - 24);
+    expect((edit?.y ?? 0) + (edit?.height ?? 0)).toBeGreaterThan(
+      (box?.y ?? 0) + (box?.height ?? 0) - 24,
+    );
     await page.waitForTimeout(400);
     await page.screenshot({ path: shot("rotinas-detalhe") });
 
-    // pause and resume from the icons on top
-    await detail.getByRole("button", { name: "Pausar a rotina" }).click();
-    await expect(detail.getByTestId("routine-next")).toHaveText("Pausada");
-    await page.waitForTimeout(200);
-    await page.screenshot({ path: shot("rotinas-painel-pausada") });
-    await detail.getByRole("button", { name: "Retomar a rotina" }).click();
-    await expect(detail.getByTestId("routine-next")).toContainText("Próxima:");
     // back to the list
     await detail.getByRole("button", { name: "Voltar às rotinas" }).click();
     await expect(panel.getByTestId("routine-row")).toHaveCount(1);
@@ -278,6 +260,8 @@ test.describe("routines", () => {
     // the bubble shows only what was typed
     await expect(page.getByTestId("message-user").last()).toHaveText(`${draft}muda pra 7h`);
     expect(await page.locator("body").textContent()).not.toContain(id);
+    // the detail has no schedule line: the list does
+    await panel.getByRole("button", { name: "Voltar às rotinas" }).click();
     await expect(panel.getByTestId("routine-schedule")).toHaveText("todo dia às 07:00");
     expect((await world.api.routines.get(id)).schedule).toEqual({ kind: "daily", time: "07:00" });
     const conversation = await world.api.bots.openConversation(botId);
