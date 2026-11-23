@@ -24,7 +24,21 @@ export function solver(version: string, overrides: { bissextile?: string } = {})
     cases: [
       {
         whenObjectiveContains: "ano bissexto",
-        agent: [s({ text: overrides.bissextile ?? "Um ano bissexto tem 366 dias." })],
+        // The task has acceptance criteria: the careful model answers with finish and evidence.
+        agent: [
+          s({
+            calls: [
+              {
+                name: "finish",
+                args: {
+                  summary: overrides.bissextile ?? "Um ano bissexto tem 366 dias.",
+                  evidence: [{ criterion: "1", evidence: "a resposta dá o número de dias" }],
+                },
+              },
+            ],
+          }),
+        ],
+        review: [approve],
       },
       {
         whenObjectiveContains: "Crie o arquivo saudacao.txt",
@@ -141,7 +155,11 @@ export function quitter(version: string) {
   const s = (step: Step): Step => ({ ...step, usage: USAGE, modelVersion: version });
   return {
     cases: [
-      { whenObjectiveContains: "ano bissexto", agent: [s({ text: "Tem 365 dias." })] },
+      {
+        // Asked once for finish, it answers in plain text again: that ends the run.
+        whenObjectiveContains: "ano bissexto",
+        agent: [s({ text: "Tem 365 dias." }), s({ text: "Tem 365 dias." })],
+      },
       {
         whenObjectiveContains: "Crie o arquivo saudacao.txt",
         agent: [

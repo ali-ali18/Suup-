@@ -2,7 +2,12 @@
 // question, nudges for truncation, empty output or stopping with open steps, and the no-progress
 // guard), and handing tool calls over to execution.
 
-import { EMPTY_RESPONSE_NUDGE, stoppedWithOpenStepsNudge, TRUNCATED_NUDGE } from "./prompts.js";
+import {
+  EMPTY_RESPONSE_NUDGE,
+  FINISH_REQUIRED_NUDGE,
+  stoppedWithOpenStepsNudge,
+  TRUNCATED_NUDGE,
+} from "./prompts.js";
 import { end, fail, nudge, transition } from "./recording.js";
 import type { LoopContext } from "./run-context.js";
 import { MAX_NO_PROGRESS_TURNS } from "./safe-point.js";
@@ -42,8 +47,13 @@ async function handleTextOnly(
   } else if (state.wait !== null && !state.wait.parked) {
     // The bot scheduled a return and this is its message to the user: the run is parked for it.
     return parkForReturn(ctx, text);
+  } else if (!state.hasPlan && ctx.run.acceptanceCriteria.length > 0 && !state.finishRequested) {
+    // The run has acceptance criteria: a plain-text reply would skip the evidence and the review.
+    // It is sent back ONCE asking for finish; a second plain reply ends the run as before.
+    reason = "finish_required";
+    nudgeText = FINISH_REQUIRED_NUDGE;
   } else if (!state.hasPlan) {
-    // A simple question: the text is the answer.
+    // A simple question (or criteria already asked for once): the text is the answer.
     return end(ctx, "done", { result: { summary: text } });
   } else {
     reason = "stopped_without_finish";

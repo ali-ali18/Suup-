@@ -165,6 +165,8 @@ export interface RunState {
   parkedAt: Date | null;
   /** A `finish` was accepted but the run has not been closed yet. */
   acceptedFinish: { summary: string; evidence: { criterion: string; evidence: string }[] } | null;
+  /** The harness already sent a plain-text end back asking for `finish` (criteria, no plan). */
+  finishRequested: boolean;
   /** A `finish` ended the run as not concluded (`finish_attempt.endsRun`), not closed yet. */
   failedFinish: { origin: FailureOrigin; detail: string } | null;
   finishAttempts: Map<string, FinishAttemptRecord>;
@@ -289,6 +291,7 @@ export function createRunState(): RunState {
     parkedAt: null,
     acceptedFinish: null,
     failedFinish: null,
+    finishRequested: false,
     finishAttempts: new Map(),
     currentReview: null,
     reviewRounds: [],
@@ -638,6 +641,7 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
     case "nudge":
       appendUserBlock(state, { type: "text", text: renderNotice(event.payload.text) }, event.seq);
       if (event.payload.reason === "repetition") state.repeat.nudged = true;
+      if (event.payload.reason === "finish_required") state.finishRequested = true;
       if (state.pending !== null && state.pending.toolCalls.length === 0) {
         // The turn had no tool call: the nudge is how the harness answered it.
         state.noProgressStreak += 1;

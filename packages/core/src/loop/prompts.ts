@@ -467,6 +467,9 @@ export function stoppedWithOpenStepsNudge(plan: readonly PlanStep[]): string {
 export const TRUNCATED_NUDGE =
   "Your last response was cut off because it reached the output limit. Do not repeat it. Continue in smaller steps: make one tool call at a time, and keep any file or text you write short, splitting it across several calls if needed.";
 
+export const FINISH_REQUIRED_NUDGE =
+  "This run has acceptance criteria, so a plain-text reply does not end it. If the work is complete and verified, call finish with a summary and the evidence for each acceptance criterion (it is checked by an independent reviewer). If something remains, continue the work, or escalate with one precise question.";
+
 export const EMPTY_RESPONSE_NUDGE =
   "Your last response was empty. Continue the work: call a tool, or call finish with evidence if the work is complete, or escalate with one precise question if you are blocked.";
 

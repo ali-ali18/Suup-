@@ -92,13 +92,23 @@ const SCRIPT = {
   cases: [
     {
       whenObjectiveContains: "ano bissexto",
+      // The task has acceptance criteria: the answer comes with finish and evidence.
       agent: [
         {
-          text: "Um ano bissexto tem 366 dias.",
+          calls: [
+            {
+              name: "finish",
+              args: {
+                summary: "Um ano bissexto tem 366 dias.",
+                evidence: [{ criterion: "1", evidence: "a resposta dá o número de dias" }],
+              },
+            },
+          ],
           usage: { inputTokens: 1000, outputTokens: 100 },
           modelVersion: "roteiro-v1",
         },
       ],
+      review: [{ calls: [{ name: "verdict", args: { verdict: "approve", notes: "ok" } }] }],
     },
   ],
 };
@@ -111,7 +121,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup eval, end to end"), { timeout: 
     expect((await p.suup(["db", "migrate"])).code).toBe(0);
     await p.script("roteiro.json", SCRIPT);
     await p.script("outro.json", {
-      cases: [{ whenObjectiveContains: "ano bissexto", agent: [{ text: "365" }] }],
+      cases: [{ whenObjectiveContains: "ano bissexto", agent: [{ text: "365" }, { text: "365" }] }],
     });
   });
 
@@ -171,7 +181,10 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup eval, end to end"), { timeout: 
       cases: [
         {
           whenObjectiveContains: "ano bissexto",
-          agent: [{ text: "Tem 365 dias.", modelVersion: "roteiro-v2" }],
+          agent: [
+            { text: "Tem 365 dias.", modelVersion: "roteiro-v2" },
+            { text: "Tem 365 dias.", modelVersion: "roteiro-v2" },
+          ],
         },
       ],
     });
