@@ -132,7 +132,7 @@ test.describe("overflow and scrollbars", () => {
     const chip = page.getByTestId("bot-chip");
     await expect(chip).toHaveText("Largo");
     await expect(chip).not.toContainText("descrição");
-    const chevron = chip.locator("svg.lucide-chevron-down");
+    const chevron = chip.locator("svg.lucide-chevron-right");
     await page.mouse.move(900, 500);
     await expect(chevron).toBeHidden();
     await chip.hover();

@@ -324,9 +324,10 @@ describe("chat cards share one chrome and one collapsed row", () => {
     expect(message).toContain("rounded-bubble");
   });
 
-  it("dynamic bubbles: the outer radius is the card's, the linking one is a smaller token, and only bubbles carry the position", () => {
+  it("dynamic bubbles: the outer radius is the bubble's own 24 px (apart from the card's), the linking one is a smaller token, and only bubbles carry the position", () => {
     const tokens = read(join(SRC, "styles", "tokens.css"));
-    expect(tokens).toContain("--radius-bubble: var(--radius-card);");
+    expect(tokens).toContain("--radius-bubble: 24px;");
+    expect(tokens).toContain("--radius-card: 18px;");
     expect(tokens).toContain("--radius-bubble-link:");
     expect(tokens).toContain("--bubble-gap-group:");
     // The position is set by the two text bubbles and by nothing else: cards keep their chrome.

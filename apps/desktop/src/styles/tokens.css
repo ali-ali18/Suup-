@@ -52,7 +52,7 @@
   --radius-card: 18px; /* was 24 px: a little less round (owner's decision, 22/11/2026) */
   --radius-row: 12px;
   --radius-inner: 10px;
-  --radius-bubble: var(--radius-card); /* a bubble's outer corners */
+  --radius-bubble: 24px; /* a bubble's outer corners: back to 24 px, apart from the card's 18 px (owner, 22/11/2026) */
   --radius-bubble-link: 6px; /* a bubble corner that touches the next bubble of the same sender (~1/4 of the outer one, measured on the owner's reference) */
   --radius-chip: 8px; /* the small rounded square behind a card's icon */
   --radius-composer: 24px; /* the message composer (half of its minimum height, 48 px) */

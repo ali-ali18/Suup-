@@ -35,7 +35,7 @@ Decisão do dono: o app usa Tailwind (`docs/pesquisas/tailwind-migracao.md`), **
 
 - [ ] Nenhuma cor literal fora de `tokens.css` (teste). Raio e tamanho de fonte também vêm de token (o teste só deixa o número de exceções antigas cair).
 - [ ] Token novo entra em `tokens.css`, com comentário. Exemplos recentes: `--radius-chip` (8 px), `--size-icon-box` (24 px).
-- [ ] Raios: cartão e balão `--radius-card` (18 px), linha `--radius-row` (12 px), interno `--radius-inner` (10 px), pílula `--radius-pill`.
+- [ ] Raios: cartão `--radius-card` (18 px), balão `--radius-bubble` (24 px, o de antes: só o balão voltou, por decisão do dono em 22/11/2026), linha `--radius-row` (12 px), interno `--radius-inner` (10 px), pílula `--radius-pill`.
 - [ ] Largura de leitura `--width-reading` (700 px): cartões e balões do bot nunca passam disto.
 
 ## 3. Cartões no chat
@@ -144,7 +144,7 @@ As telas que aparecem antes do app abrir (`features/connect/`) são **um cartão
 - [ ] Balão do bot: borda de 1 px, fundo de superfície. Balão do usuário: a cor do bot; se o bot é branco, cinza neutro.
 ### Balões: grupos, cantos, espaçamento, "cartões não contam"
 
-- [ ] **Grupo**: balões de **texto** seguidos do mesmo remetente. Num grupo, os cantos que tocam um vizinho do mesmo grupo usam o raio pequeno `--radius-bubble-link` (6 px, cerca de um quarto do raio cheio, medido na referência do dono); os demais cantos ficam com o raio cheio `--radius-bubble` (= `--radius-card`, 24 px). O balão sozinho é todo arredondado.
+- [ ] **Grupo**: balões de **texto** seguidos do mesmo remetente. Num grupo, os cantos que tocam um vizinho do mesmo grupo usam o raio pequeno `--radius-bubble-link` (6 px, cerca de um quarto do raio cheio, medido na referência do dono); os demais cantos ficam com o raio cheio `--radius-bubble` (24 px). O balão sozinho é todo arredondado.
 - [ ] **Lado da ligação**: o do remetente. Bot, à esquerda: o primeiro tem o canto inferior esquerdo pequeno; o do meio, os dois cantos da esquerda; o último, o superior esquerdo. O lado de fora e as pontas do grupo ficam cheios. O usuário é o espelho, à direita.
 - [ ] **Espaçamento**: dentro do grupo `--bubble-gap-group` (4 px); entre grupos e entre balão e cartão, o espaço normal do chat (`--chat-gap`, que continua valendo no modo compacto).
 - [ ] **Quebram o grupo**: outro remetente, qualquer cartão ou linha (ação, aprovação, segredo, pergunta com opções, fim de execução, aviso, indicador de trabalho), separador de dia ou de pausa longa (30 min, o mesmo limiar dos separadores). O balão antes do cartão termina o grupo; o depois começa outro. Pergunta aberta (sem opções) é balão.
@@ -155,7 +155,7 @@ As telas que aparecem antes do app abrir (`features/connect/`) são **um cartão
 
 ## 5. Barra lateral
 
-- [ ] **Cor e destaque** (decisão do dono, 22/11/2026, a partir do estilo do Grok Bot): a barra lateral e o trilho usam `--color-sidebar` (um degrau mais escuro que a página: a hierarquia vem da luminosidade, não de borda nova). O bot selecionado ganha só um preenchimento calmo (`--color-sidebar-active`), sem borda e sem cor de destaque; o cartão do bot no hover usa o raio do cartão. A borda continua a nossa (1 px); os raios foram reduzidos um pouco na mesma decisão: cartão e balão 24 para 18 px, linha 16 para 12 px, interno 14 para 10 px (o composer, a pílula e o balão ligado ficam como eram).
+- [ ] **Cor e destaque** (decisão do dono, 22/11/2026, a partir do estilo do Grok Bot): a barra lateral e o trilho usam `--color-sidebar` (um degrau mais escuro que a página: a hierarquia vem da luminosidade, não de borda nova). O bot selecionado ganha só um preenchimento calmo (`--color-sidebar-active`), sem borda e sem cor de destaque; o cartão do bot no hover usa o raio do cartão. A borda continua a nossa (1 px); os raios foram reduzidos um pouco na mesma decisão: cartão 24 para 18 px, linha 16 para 12 px, interno 14 para 10 px (o balão, o composer, a pílula e o balão ligado ficam como eram).
 - [ ] Colunas 1 e 3 arrastáveis (`lib/pane-size.ts`): barra lateral 240–420 px (padrão 316; abaixo de 200 vira trilho de 110, `--width-rail`; no trilho cada bot é um quadro de 60 px, `--size-rail-tile`, com o rosto de 36 px dentro e 2 px entre quadros, como na referência), painel do bot 340–640 px (padrão 450; abaixo de 280 fecha).
 - [ ] **A barra lateral não tem botão de abrir e fechar** (decisão do dono, 22/11/2026): ela se regula pelo arrasto da alça (abaixo de 200 px vira trilho), pelas teclas da alça (Home recolhe, End alarga), por Ctrl/Cmd+B e pela paleta ("Recolher a barra lateral").
 - [ ] **A estrela do Principal** (decisão do dono, 21/11/2026; a única exceção à regra de que o avatar é só o rosto): o bot principal (`bot.isDefault`, o supervisor da equipe) leva uma **estrela pequena e calma** no canto inferior direito do avatar, na barra lateral (linha, trilho e quadro), no cabeçalho do chat, no painel do bot e na paleta. É um chip redondo (`--size-star-badge`, 14 px; `--size-star-badge-lg`, 18 px no avatar grande e na prévia) com o fundo `--color-raised`, a borda de 2 px na cor da página e a estrela cheia na cor do texto; fica no canto de baixo para não encostar na contagem de não lidas (canto de cima). Sem estrela no avatar de 16 px (não cabe) nem em qualquer outro bot. Vale para os dois estilos de rosto (formas e pixel), porque a estrela é desenhada **em volta** do rosto, em `ui/avatar.tsx` (a prop `supervisor`), nunca dentro do motor `@suup/avatar` nem dos mascotes. Nenhuma outra peça desenha estrela sobre um avatar (teste em `design-rules.test.ts`).
@@ -163,7 +163,7 @@ As telas que aparecem antes do app abrir (`features/connect/`) são **um cartão
 
 ## 4a. Pílula do bot e rolagem
 
-- [ ] **A pílula do bot acima do chat mostra só o nome** (decisão do dono, 22/11/2026): sem a descrição (ela fica na barra lateral e no painel). Ao passar o mouse ou focar, aparece o chevron (`ChevronDown`; gira quando o painel está aberto). `e2e/overflow.spec.ts` e `design-rules.test.ts` conferem.
+- [ ] **A pílula do bot acima do chat mostra só o nome** (decisão do dono, 22/11/2026): sem a descrição (ela fica na barra lateral e no painel). Ao passar o mouse ou focar, aparece o chevron **para a direita** (`ChevronRight`, sempre o mesmo: indica a abertura da terceira coluna, o painel). `e2e/overflow.spec.ts` e `design-rules.test.ts` conferem.
 - [ ] **O texto nunca rola para o lado**: palavra sem quebra, endereço comprido, código em linha, item de lista e bloco de código **quebram** (`wrap-anywhere`; o bloco de código é `whitespace-pre-wrap` e só rola na vertical, com `max-h-80`). Vale para a mensagem do bot e para a do usuário, em qualquer largura de janela.
 - [ ] **Nenhuma barra de rolagem é desenhada** (decisão do dono, 22/11/2026: "visível fica estranho"): `base.css` zera `scrollbar-width` e esconde `::-webkit-scrollbar` em tudo. A roda, o toque e o teclado continuam rolando. `e2e/overflow.spec.ts` confere que nenhuma área de rolagem da tela reserva largura para uma barra.
 

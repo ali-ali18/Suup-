@@ -1,5 +1,5 @@
 import type { Run } from "@suup/api";
-import { ChevronDown } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { useSettings } from "../../app/settings-store.js";
@@ -13,7 +13,6 @@ import {
   orderedMessages,
 } from "../../data/reducers.js";
 import { secretRequestsOf } from "../../data/secret-requests.js";
-import { cx } from "../../lib/cx.js";
 import { colorVars, themeColor } from "../../lib/mascots.js";
 import { Avatar } from "../../ui/avatar.js";
 import { EventLineButton } from "../../ui/chat-lines.js";
@@ -299,13 +298,10 @@ function ChatForBot({ botId }: { botId: string }) {
               supervisor={bot.isDefault}
             />
             <span className="min-w-0 truncate font-label">{bot.name}</span>
-            <ChevronDown
+            <ChevronRight
               size={16}
               aria-hidden="true"
-              className={cx(
-                "hidden flex-none transition-transform duration-(--duration-base) group-hover/chip:block group-focus-visible/chip:block",
-                panelOpen && "rotate-180",
-              )}
+              className="hidden flex-none group-hover/chip:block group-focus-visible/chip:block"
             />
           </button>
         </header>
