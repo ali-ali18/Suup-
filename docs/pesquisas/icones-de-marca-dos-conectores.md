@@ -62,3 +62,23 @@ Fatos (do que os resumos dizem):
 Não verificado: as medidas exatas dos diretórios do Claude e da OpenAI (nenhum resumo as dá); o layout real da página do Cursor.
 
 Inferência e decisão do dono (23/11/2026: "os ícones estão sem cores, sem espaçamento"): na galeria de plug-ins o logo vai **colorido, na cor oficial do pacote, num quadrado claro** (o mesmo nos dois temas, para o logo preto do GitHub e do Notion aparecer no escuro), em **cartões com respiro**. Nas linhas de Conectores o logo continua em uma cor só (ver acima).
+
+## Segundo adendo (23/11/2026): os logos dos plug-ins vêm do thesvg
+
+O dono indicou o thesvg (https://thesvg.org) e pediu "os mais recentes". Fontes lidas em 23/11/2026:
+
+- Página inicial do thesvg e o repositório https://github.com/glincker/thesvg (MIT; última atividade em 23/11/2026; commit usado: `551229c188b4ab6e2d8b5763b9633ec91206d04c`, de 21/11/2026).
+- Política de marcas do projeto: https://raw.githubusercontent.com/glincker/thesvg/main/TRADEMARK.md.
+- Os dados dos ícones, `src/data/icons.json` desse commit, e os arquivos `public/icons/<slug>/*.svg` (lidos pelo jsDelivr e pelo raw do GitHub).
+
+Fatos verificados:
+
+- A biblioteca tem 5651 pastas de ícones; existem **GitHub, Notion, Figma, Gmail, Google Drive, Google Agenda, Google Docs, Google Planilhas, Stack Overflow e Composio**. **Higgsfield não existe** (nenhuma pasta nem entrada nos dados com esse nome).
+- O repositório é MIT; nos dados, cada um dos nove serviços do Simple Icons vem como CC0-1.0 e o Composio como Unlicense. O `TRADEMARK.md` diz que as marcas são dos donos e que os ícones são para **identificação e desenvolvimento** (uso nominativo), com remoção a pedido do dono da marca.
+- Os cinco apps do Google têm **duas versões** no thesvg: a antiga (de 07/03/2026) e a do **redesenho de 2026** (`gmail-2026`, `google-calendar-2026`, `google-docs-2026`, `google-drive-2026`, `google-sheets-2026`, de 22/05/2026, com os apelidos "new logo" e "refresh"). O dono avisou que houve rebrand dos apps, então o app usa as **`-2026`**. Figma, GitHub, Notion e Stack Overflow só têm a versão de março; existem variantes "badge" (setembro) de Figma, GitHub e Notion, que **não** foram usadas.
+- Os SVGs são os logos **coloridos** (o Gmail em quatro cores, o Drive em três, o Figma em cinco formas); o GitHub tem a variante `dark.svg` (branca) e o Composio é branco; no tema claro o app os inverte, sobre o quadrado cinza do projeto.
+- O jsDelivr recusou o `figma/default.svg` (limite de tamanho do pacote); ele veio do raw do GitHub, no mesmo commit.
+
+Não verificado: as diretrizes de marca de cada serviço (o Figma publica uma em https://www.figma.com/using-the-figma-brand/, **não lida**); se o thesvg atualiza os logos quando as marcas mudam. Para atualizar, trocar o commit e copiar de novo (`apps/desktop/src/assets/brand/README.md`).
+
+Implicação: os logos da galeria de plug-ins são arquivos copiados (nada é buscado em tempo de execução, o app funciona sem internet), **sem edição**, num quadrado cinza do projeto. O Simple Icons continua só nas linhas de Conectores, em uma cor.

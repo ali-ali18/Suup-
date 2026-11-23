@@ -203,7 +203,7 @@ export function CommandPalette() {
       },
       {
         id: "plugins",
-        label: "Plug-ins",
+        label: "Conectores",
         icon: <Blocks size={18} />,
         run: () => ui().setPlugins(true),
       },

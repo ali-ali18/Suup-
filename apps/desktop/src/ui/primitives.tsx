@@ -890,6 +890,7 @@ export function Dialog({
   footer,
   wide,
   gallery,
+  headerExtra,
 }: {
   title: string;
   onClose(): void;
@@ -898,6 +899,8 @@ export function Dialog({
   wide?: boolean;
   /** The widest one (820 px): a grid of items, as the plug-ins gallery. */
   gallery?: boolean;
+  /** Beside the close button, in the title row (e.g. "Meus plug-ins"). */
+  headerExtra?: ReactNode;
 }) {
   const { ref, onKeyDown } = useModalFocus(onClose);
   const titleId = useId();
@@ -921,9 +924,12 @@ export function Dialog({
           <h2 id={titleId} className="text-title font-title">
             {title}
           </h2>
-          <IconButton label="Fechar janela" onClick={onClose}>
-            <X size={18} aria-hidden="true" />
-          </IconButton>
+          <div className="flex items-center gap-2">
+            {headerExtra}
+            <IconButton label="Fechar janela" onClick={onClose}>
+              <X size={18} aria-hidden="true" />
+            </IconButton>
+          </div>
         </div>
         {/* A tall form scrolls inside the dialog; the title and the buttons stay where they are. */}
         <div className="-m-0.5 min-h-0 flex-auto overflow-y-auto p-0.5">{children}</div>

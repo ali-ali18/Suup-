@@ -14,32 +14,21 @@ import {
 /** What a leading slot of a row draws: a Lucide icon or a brand glyph (both take a size). */
 export type Glyph = ComponentType<{ size?: number }>;
 
-/** A brand glyph can also be drawn in the service's own colour (`colored`), as in the plug-ins dialog. */
-export type BrandGlyph = ComponentType<{ size?: number; colored?: boolean }>;
-
-type SimpleIcon = { readonly slug: string; readonly hex: string; readonly path: string };
+type SimpleIcon = { readonly slug: string; readonly path: string };
 
 /**
  * One brand glyph from Simple Icons (npm `simple-icons` 16.38.1, CC0): the service's mark in ONE
  * colour, `currentColor`, so it takes the muted text colour of the row like every other icon and
- * the light theme needs nothing (docs/DESIGN.md §5c). Only the plug-ins dialog asks for `colored`:
- * the service's own colour (the `hex` of the package), on a light square (§5d).
+ * the light theme needs nothing (docs/DESIGN.md §5c). The coloured logos of the plug-ins dialog
+ * are another thing (docs/DESIGN.md §5d): SVGs of thesvg in `assets/brand/`.
  */
-function BrandMark({
-  icon,
-  size = 16,
-  colored = false,
-}: {
-  icon: SimpleIcon;
-  size?: number | undefined;
-  colored?: boolean | undefined;
-}) {
+function BrandMark({ icon, size = 16 }: { icon: SimpleIcon; size?: number | undefined }) {
   return (
     <svg
       viewBox="0 0 24 24"
       width={size}
       height={size}
-      fill={colored ? `#${icon.hex}` : "currentColor"}
+      fill="currentColor"
       aria-hidden="true"
       data-brand={icon.slug}
     >
@@ -48,33 +37,15 @@ function BrandMark({
   );
 }
 
-const GitHub: BrandGlyph = ({ size, colored }) => (
-  <BrandMark colored={colored} icon={siGithub} size={size} />
-);
-const Notion: BrandGlyph = ({ size, colored }) => (
-  <BrandMark colored={colored} icon={siNotion} size={size} />
-);
-const Figma: BrandGlyph = ({ size, colored }) => (
-  <BrandMark colored={colored} icon={siFigma} size={size} />
-);
-const Gmail: BrandGlyph = ({ size, colored }) => (
-  <BrandMark colored={colored} icon={siGmail} size={size} />
-);
-const GoogleDrive: BrandGlyph = ({ size, colored }) => (
-  <BrandMark colored={colored} icon={siGoogledrive} size={size} />
-);
-const GoogleCalendar: BrandGlyph = ({ size, colored }) => (
-  <BrandMark colored={colored} icon={siGooglecalendar} size={size} />
-);
-const GoogleDocs: BrandGlyph = ({ size, colored }) => (
-  <BrandMark colored={colored} icon={siGoogledocs} size={size} />
-);
-const GoogleSheets: BrandGlyph = ({ size, colored }) => (
-  <BrandMark colored={colored} icon={siGooglesheets} size={size} />
-);
-const StackOverflow: BrandGlyph = ({ size, colored }) => (
-  <BrandMark colored={colored} icon={siStackoverflow} size={size} />
-);
+const GitHub: Glyph = ({ size }) => <BrandMark icon={siGithub} size={size} />;
+const Notion: Glyph = ({ size }) => <BrandMark icon={siNotion} size={size} />;
+const Figma: Glyph = ({ size }) => <BrandMark icon={siFigma} size={size} />;
+const Gmail: Glyph = ({ size }) => <BrandMark icon={siGmail} size={size} />;
+const GoogleDrive: Glyph = ({ size }) => <BrandMark icon={siGoogledrive} size={size} />;
+const GoogleCalendar: Glyph = ({ size }) => <BrandMark icon={siGooglecalendar} size={size} />;
+const GoogleDocs: Glyph = ({ size }) => <BrandMark icon={siGoogledocs} size={size} />;
+const GoogleSheets: Glyph = ({ size }) => <BrandMark icon={siGooglesheets} size={size} />;
+const StackOverflow: Glyph = ({ size }) => <BrandMark icon={siStackoverflow} size={size} />;
 
 /**
  * The connectors whose NAME is exactly that of a service Simple Icons has, in the form the
@@ -84,7 +55,7 @@ const StackOverflow: BrandGlyph = ({ size, colored }) => (
  * Icons, so they take the generic plug too (owner, 23/11/2026) until the owner picks their official
  * kit.
  */
-const BY_NAME: ReadonlyMap<string, BrandGlyph> = new Map<string, BrandGlyph>([
+const BY_NAME: ReadonlyMap<string, Glyph> = new Map<string, Glyph>([
   ["github", GitHub],
   ["notion", Notion],
   ["figma", Figma],
@@ -102,6 +73,6 @@ const BY_NAME: ReadonlyMap<string, BrandGlyph> = new Map<string, BrandGlyph>([
 ]);
 
 /** The brand glyph of a connector by its exact name, or `undefined` (the caller draws the plug). */
-export function brandGlyphFor(connectorName: string): BrandGlyph | undefined {
+export function brandGlyphFor(connectorName: string): Glyph | undefined {
   return BY_NAME.get(connectorName);
 }

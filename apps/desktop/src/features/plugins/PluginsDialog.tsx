@@ -1,31 +1,81 @@
 import { Plug } from "lucide-react";
 import { useState } from "react";
 import { useUi } from "../../app/ui-store.js";
-import { brandGlyphFor } from "../../ui/brand-icons.js";
+import { cx } from "../../lib/cx.js";
 import { Dialog, MutedText, Pill } from "../../ui/primitives.js";
 import { CATALOG, type CatalogEntry } from "./catalog.js";
 
+/** The square (the project's dark grey, `bg-raised`, the same in both themes) and the logo inside it. */
+const TILE = {
+  sm: { box: "size-avatar-sm rounded-chip ring-2 ring-surface", logo: "size-4" },
+  md: { box: "size-avatar-md rounded-inner", logo: "size-5" },
+  lg: { box: "size-avatar-lg rounded-row", logo: "size-7" },
+} as const;
+
 /**
- * The service's logo in ITS colours on a light rounded square (docs/DESIGN.md §5d), the same in both
- * themes so a black logo (GitHub, Notion) shows on the dark one. Composio and Higgsfield are not in
- * Simple Icons: the generic plug, in the text colour on the same square.
+ * The service's logo in its own colours (an `<img>` of an SVG copied from thesvg, `assets/brand/`)
+ * on a rounded square in the project's dark grey (owner, 23/11/2026: "um fundo no tom de cinza do
+ * nosso projeto"; "no tema branco ele é o oposto do cinza": so the square does NOT change with the
+ * theme, and the white logos (GitHub, Composio) need no inversion). Higgsfield has none: the plug.
  */
-function EntryIcon({ entry, size }: { entry: CatalogEntry; size: "md" | "lg" }) {
-  const Brand = entry.glyph === undefined ? undefined : brandGlyphFor(entry.glyph);
+function EntryIcon({ entry, size }: { entry: CatalogEntry; size: "sm" | "md" | "lg" }) {
+  const tile = TILE[size];
   return (
     <span
-      className={
-        size === "lg"
-          ? "inline-flex size-avatar-lg flex-none items-center justify-center rounded-row border border-border bg-brand-tile"
-          : "inline-flex size-avatar-md flex-none items-center justify-center rounded-inner border border-border bg-brand-tile"
-      }
+      className={cx("inline-flex flex-none items-center justify-center bg-raised", tile.box)}
       aria-hidden="true"
     >
-      {Brand === undefined ? (
-        <Plug size={size === "lg" ? 26 : 20} className="text-on-brand-tile" />
+      {entry.logo === undefined ? (
+        <Plug className={cx("text-text-muted", tile.logo)} strokeWidth={1.5} />
       ) : (
-        <Brand size={size === "lg" ? 26 : 20} colored />
+        <img
+          src={entry.logo}
+          alt=""
+          draggable={false}
+          data-logo={entry.id}
+          className={cx(
+            "flex-none object-contain",
+            tile.logo,
+            entry.whiteOnDark === true && "light:invert",
+          )}
+        />
       )}
+    </span>
+  );
+}
+
+/**
+ * The logos "Meus plug-ins" stacks, in the order they stack (the first at the right).
+ */
+const MINE_STACK = ["github", "figma", "gmail", "google-drive"];
+
+/**
+ * "Meus plug-ins", beside the close button: a label and the logos of the user's plug-ins side by side
+ * and stacked, the first at the right and each next one a little to its left, over it, only the
+ * logos in their colours with no square behind them (owner, 23/11/2026). The backend has no
+ * plug-ins, so it is an ornament (docs/DESIGN.md, Princípios, "Enfeite"): dimmed, out of the reading
+ * order and of the Tab order, and it opens nothing.
+ */
+function MyPlugins() {
+  return (
+    <span
+      className="inline-flex items-center gap-3 rounded-pill border border-border py-1.5 pr-3 pl-3 text-label opacity-60"
+      aria-hidden="true"
+      data-testid="plugins-mine"
+    >
+      Meus conectores
+      <span className="flex flex-row-reverse items-center">
+        {MINE_STACK.flatMap((id) => CATALOG.filter((e) => e.id === id)).map((entry, i) => (
+          <span
+            key={entry.id}
+            className={i === 0 ? "inline-flex" : "-mr-1.5 inline-flex"}
+            data-testid="plugins-mine-icon"
+            data-plugin={entry.id}
+          >
+            <EntryIcon entry={entry} size="sm" />
+          </span>
+        ))}
+      </span>
     </span>
   );
 }
@@ -48,7 +98,7 @@ function PluginDetail({ entry, onClose }: { entry: CatalogEntry; onClose(): void
           <p className="m-0 text-body">{entry.about}</p>
         </div>
         <MutedText as="p">
-          Os plug-ins ainda não funcionam no Suup. Para ligar um serviço a um bot hoje, use
+          Este conector ainda não funciona aqui. Para ligar um serviço a um bot hoje, use
           Configurações &gt; Conectores.
         </MutedText>
       </div>
@@ -69,8 +119,9 @@ export function PluginsDialog() {
   return (
     <>
       <Dialog
-        title="Plug-ins"
+        title="Conectores"
         gallery
+        headerExtra={<MyPlugins />}
         onClose={close}
         footer={
           <Pill tone="primary" onClick={close}>
@@ -79,12 +130,12 @@ export function PluginsDialog() {
         }
       >
         <MutedText as="p" className="mb-4" data-testid="plugins-soon">
-          Em breve: os plug-ins ainda não funcionam. Hoje, um serviço se liga a um bot em
+          Em breve: esta vitrine ainda não liga nada. Hoje, um serviço se liga a um bot em
           Configurações &gt; Conectores.
         </MutedText>
         <ul
           className="m-0 grid list-none grid-cols-2 gap-x-2 gap-y-1 p-0 narrow:grid-cols-1"
-          aria-label="Plug-ins"
+          aria-label="Conectores"
           data-testid="plugins-grid"
         >
           {CATALOG.map((entry) => (
