@@ -15,6 +15,7 @@ import {
   parseConfig,
   type Runtime,
   type RuntimeConfig,
+  type RuntimeOptions,
 } from "@suup/runtime";
 import { createServer, generateToken, type SuupServer } from "@suup/server";
 
@@ -523,6 +524,11 @@ export async function startWorld(
      * turns it on.
      */
     reception?: boolean;
+    /**
+     * The entries of the connector gallery in place of the owner's (the gallery spec adds one that
+     * points at the in-repo fake OAuth server). Default: the owner's list.
+     */
+    connectorCatalog?: RuntimeOptions["connectorCatalog"];
   } = {},
 ): Promise<World> {
   if (DATABASE_URL === undefined) throw new Error(SKIP_REASON);
@@ -590,7 +596,13 @@ export async function startWorld(
     worker: { concurrency: 4, leaseRenewMs: 1000, staleAfterMs: 8000, controlPollMs: 100 },
     defaults: { maxTurns: 30 },
   });
-  const runtimeOptions = { env, baseDir: dir };
+  const runtimeOptions: RuntimeOptions = {
+    env,
+    baseDir: dir,
+    ...(options.connectorCatalog === undefined
+      ? {}
+      : { connectorCatalog: options.connectorCatalog }),
+  };
   const withNetworkTool = async (runtime: Runtime): Promise<Runtime> => {
     for (const tool of options.extraTools ?? []) runtime.tools.register(tool);
     if (options.networkTool !== true) return runtime;
