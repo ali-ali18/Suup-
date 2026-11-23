@@ -2,9 +2,12 @@ import { createServer, request, type Server } from "node:http";
 import { connect, type Socket } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
+  EGRESS_REASON_HEADER,
+  EGRESS_REFUSAL_REASONS,
   type EgressEvent,
   EgressProxy,
   type EgressSubject,
+  egressRefusalReason,
   NetworkedExecutor,
   parseAuthority,
 } from "../src/index.js";
@@ -41,6 +44,8 @@ beforeAll(async () => {
               "rebind.example.com",
               "mixed.example.com",
               "loop.example.com",
+              // On the list, but the resolver has no answer for it (a computer without DNS).
+              "nodns.example.com",
             ])
           : new Set<string>();
       },
@@ -69,7 +74,11 @@ function viaProxy(
   subject: EgressSubject,
   url: string,
   credentials = true,
-): Promise<{ status: number; body: string }> {
+): Promise<{
+  status: number;
+  body: string;
+  headers: Record<string, string | string[] | undefined>;
+}> {
   const target = new URL(url);
   const auth = new URL(proxy.proxyUrlFor(subject));
   return new Promise((resolve, reject) => {
@@ -92,7 +101,7 @@ function viaProxy(
       res.on("data", (c) => {
         body += c;
       });
-      res.on("end", () => resolve({ status: res.statusCode ?? 0, body }));
+      res.on("end", () => resolve({ status: res.statusCode ?? 0, body, headers: res.headers }));
     });
     req.on("error", reject);
     req.end();
@@ -114,6 +123,42 @@ function connectVia(
       `CONNECT ${target} HTTP/1.1\r\nHost: ${target}\r\nProxy-Authorization: Basic ${Buffer.from(`${auth.username}:${auth.password}`).toString("base64")}\r\n\r\n`,
     );
   });
+}
+
+/** The whole answer to a CONNECT the proxy closes: status line and headers (names in lower case). */
+function connectAnswer(
+  port: number,
+  target: string,
+  authorization: string | undefined,
+): Promise<{ statusLine: string; headers: Map<string, string> }> {
+  return new Promise((resolve, reject) => {
+    const socket = connect({ host: "127.0.0.1", port });
+    let text = "";
+    socket.on("data", (chunk) => {
+      text += chunk.toString();
+    });
+    socket.once("error", reject);
+    socket.once("close", () => {
+      const head = text.slice(0, text.indexOf("\r\n\r\n"));
+      const [statusLine = "", ...lines] = head.split("\r\n");
+      const headers = new Map<string, string>();
+      for (const line of lines) {
+        const colon = line.indexOf(":");
+        headers.set(line.slice(0, colon).toLowerCase(), line.slice(colon + 1).trim());
+      }
+      resolve({ statusLine, headers });
+    });
+    socket.write(
+      `CONNECT ${target} HTTP/1.1\r\nHost: ${target}\r\n` +
+        (authorization === undefined ? "" : `Proxy-Authorization: ${authorization}\r\n`) +
+        "\r\n",
+    );
+  });
+}
+
+function basicFor(subject: EgressSubject): string {
+  const auth = new URL(proxy.proxyUrlFor(subject));
+  return `Basic ${Buffer.from(`${auth.username}:${auth.password}`).toString("base64")}`;
 }
 
 describe("EgressProxy", () => {
@@ -177,6 +222,87 @@ describe("EgressProxy", () => {
   it("asks for credentials, and an unknown or other subject gets nothing", async () => {
     expect((await viaProxy(BOT, "http://allowed.example.com/", false)).status).toBe(407);
     expect((await viaProxy(OTHER, "http://allowed.example.com/")).status).toBe(403);
+  });
+
+  it("says the reason code of every refusal in a header, on CONNECT and on GET", async () => {
+    const cases: [target: string, reason: string][] = [
+      ["sibling.example.com:443", "not_allowed"],
+      ["169.254.169.254:80", "ip_literal"],
+      ["localhost:443", "bad_host"],
+      ["allowed.example.com:22", "bad_port"],
+      ["nodns.example.com:443", "dns_failed"],
+      ["rebind.example.com:443", "forbidden_address"],
+    ];
+    for (const [target, reason] of cases) {
+      const answer = await connectAnswer(proxy.port, target, basicFor(BOT));
+      expect(answer.statusLine, target).toBe("HTTP/1.1 403 Forbidden");
+      expect(answer.headers.get(EGRESS_REASON_HEADER), target).toBe(reason);
+      const [host = "", port = ""] = target.split(":");
+      const url = port === "443" ? `http://${host}/` : `http://${host}:${port}/`;
+      const plain = await viaProxy(BOT, url);
+      expect(plain.status, url).toBe(403);
+      expect(plain.headers[EGRESS_REASON_HEADER], url).toBe(reason);
+    }
+  });
+
+  it("a name on the list that does not resolve is dns_failed, never not_allowed", async () => {
+    events.length = 0;
+    dialed.length = 0;
+    const session = proxy.open(BOT);
+    expect((await viaProxy(BOT, "http://nodns.example.com/")).status).toBe(403);
+    expect(session.close()).toEqual([
+      {
+        host: "nodns.example.com",
+        port: 80,
+        reason: "dns_failed",
+        message: "host nodns.example.com could not be resolved",
+      },
+    ]);
+    expect(dialed).toEqual([]);
+  });
+
+  it("a policy that cannot be asked is policy_unavailable, in the header too", async () => {
+    const down = new EgressProxy({
+      listenHost: "127.0.0.1",
+      anonymousSubject: { kind: "harness", id: "down" },
+      policy: {
+        async allowedHosts() {
+          throw new Error("the server is restarting");
+        },
+      },
+    });
+    await down.start();
+    try {
+      const answer = await connectAnswer(down.port, "allowed.example.com:443", undefined);
+      expect(answer.statusLine).toBe("HTTP/1.1 403 Forbidden");
+      expect(answer.headers.get(EGRESS_REASON_HEADER)).toBe("policy_unavailable");
+    } finally {
+      await down.stop();
+    }
+  });
+
+  it("a request without credentials (407) carries no refusal code", async () => {
+    const answer = await connectAnswer(proxy.port, "allowed.example.com:443", undefined);
+    expect(answer.statusLine).toBe("HTTP/1.1 407 Proxy Authentication Required");
+    expect(answer.headers.has(EGRESS_REASON_HEADER)).toBe(false);
+    const plain = await viaProxy(BOT, "http://allowed.example.com/", false);
+    expect(plain.status).toBe(407);
+    expect(plain.headers[EGRESS_REASON_HEADER]).toBeUndefined();
+  });
+
+  it("reads a refusal code only by exact equality with the known codes", () => {
+    for (const reason of EGRESS_REFUSAL_REASONS) expect(egressRefusalReason(reason)).toBe(reason);
+    for (const text of [
+      undefined,
+      "",
+      "DNS_FAILED",
+      " dns_failed",
+      "dns_failed ",
+      "dns",
+      "refused",
+    ]) {
+      expect(egressRefusalReason(text), String(text)).toBeUndefined();
+    }
   });
 
   it("records refusals as events and hands them to the session of the command", async () => {

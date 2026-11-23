@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { Search, X } from "lucide-react";
 import {
   type ButtonHTMLAttributes,
   type HTMLAttributes,
@@ -87,13 +87,13 @@ const ROUND_TONE = {
   ghost: "border-transparent bg-transparent text-text enabled:hover:bg-hover",
 } as const;
 
-const ROUND_SIZE = { md: "size-control", sm: "size-8" } as const;
+const ROUND_SIZE = { md: "size-control", circle: "size-icon-circle", sm: "size-8" } as const;
 
 export interface RoundButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   tone?: keyof typeof ROUND_TONE;
   /** Buttons without text need a name for screen readers. */
   label: string;
-  size?: "md" | "sm";
+  size?: "md" | "circle" | "sm";
   ref?: Ref<HTMLButtonElement>;
 }
 
@@ -228,7 +228,7 @@ export function Counter({ value, label }: { value: number; label?: string }) {
  * bordered variant and the rows of the settings: a screen never writes these classes again.
  */
 const FIELD_CONTROL =
-  "w-full min-w-0 border bg-bg text-text placeholder:text-text-muted focus-visible:border-border-strong focus-visible:outline-2 focus-visible:outline-focus focus-visible:outline-offset-0";
+  "w-full min-w-0 border text-text placeholder:text-text-muted focus-visible:border-border-strong focus-visible:outline-2 focus-visible:outline-focus focus-visible:outline-offset-0";
 
 /** The control of a field: a line (a pill, one control high) or a text area (a rounded box). */
 export function fieldControlClass(
@@ -240,16 +240,25 @@ export function fieldControlClass(
     size?: "sm";
     /** Room at the end for a button inside the field (the eye), in monospace (a secret). */
     secret?: boolean;
+    /** Room at the start for the magnifier inside the field (`SearchField`). */
+    search?: boolean;
+    /** The colour of the chat input (`bg-raised`) instead of the page's (owner, 23/11/2026). */
+    raised?: boolean;
   } = {},
 ): string {
   return cx(
     FIELD_CONTROL,
+    options.raised === true ? "bg-raised" : "bg-bg",
     options.multiline === true
       ? "resize-y rounded-row px-4 py-2.5"
       : cx(
           "rounded-pill py-0",
           options.size === "sm" ? "h-8" : "h-control",
-          options.secret === true ? "pr-11 pl-4 font-mono" : "px-4",
+          options.secret === true
+            ? "pr-11 pl-4 font-mono"
+            : options.search === true
+              ? "pr-4 pl-11"
+              : "px-4",
         ),
     options.size === "sm" ? "text-small" : "text-body",
     options.error === true ? "border-danger-text" : "border-border",
@@ -488,18 +497,66 @@ export function TextField({
   );
 }
 
+/**
+ * The search field as an input group (owner, 23/11/2026: "um input group onde tem a lupa dentro
+ * dele"), in the colour of the chat input: the magnifier is INSIDE the field, at the start, and the
+ * text begins after it. The label is
+ * only for the screen reader. Its width is the caller's (`max-w-search`, the token of a screen's
+ * search).
+ */
+export function SearchField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  className,
+  testId,
+}: {
+  label: string;
+  value: string;
+  onChange(value: string): void;
+  placeholder?: string;
+  className?: string;
+  testId?: string;
+}) {
+  const id = useId();
+  return (
+    <div className={cx("relative", className)} data-testid={testId}>
+      <label htmlFor={id} className="sr-only">
+        {label}
+      </label>
+      <Search
+        size={16}
+        className="pointer-events-none absolute top-1/2 left-4 -translate-y-1/2 text-text-muted"
+        aria-hidden="true"
+      />
+      <input
+        id={id}
+        type="search"
+        value={value}
+        placeholder={placeholder}
+        className={fieldControlClass({ search: true, raised: true })}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </div>
+  );
+}
+
 export function Toggle({
   checked,
   onChange,
   label,
   disabled,
   testId,
+  accent,
 }: {
   checked: boolean;
   onChange(next: boolean): void;
   label: string;
   disabled?: boolean;
   testId?: string;
+  /** The blue switch (the routines of the panel; owner's decision, 22/11/2026): on is blue, off is light. */
+  accent?: boolean;
 }) {
   return (
     <button
@@ -510,15 +567,24 @@ export function Toggle({
       disabled={disabled}
       data-testid={testId}
       className={cx(
-        "relative h-6 w-10 flex-none rounded-pill border border-border-strong p-0",
-        checked ? "bg-bg-inverse" : "bg-raised",
+        "relative h-6 w-10 flex-none rounded-pill border p-0 disabled:opacity-40",
+        accent === true
+          ? cx("border-transparent", checked ? "bg-switch-on" : "bg-switch-off")
+          : cx("border-border-strong", checked ? "bg-bg-inverse" : "bg-raised"),
       )}
       onClick={() => onChange(!checked)}
     >
       <span
         className={cx(
           "absolute top-0.5 left-0.5 size-4.5 rounded-pill transition-transform",
-          checked ? "translate-x-4 bg-text-inverse" : "bg-text-muted",
+          checked && "translate-x-4",
+          accent === true
+            ? checked
+              ? "bg-switch-knob-on"
+              : "bg-switch-knob-off"
+            : checked
+              ? "bg-text-inverse"
+              : "bg-text-muted",
         )}
       />
     </button>

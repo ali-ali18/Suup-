@@ -2,6 +2,7 @@ import { X } from "lucide-react";
 import { useState } from "react";
 import { useData } from "../../app/context.js";
 import { useUi } from "../../app/ui-store.js";
+import { cx } from "../../lib/cx.js";
 import { PANEL_SPEC } from "../../lib/pane-size.js";
 import { Avatar } from "../../ui/avatar.js";
 import { LibraryList } from "../../ui/library-list.js";
@@ -24,6 +25,7 @@ export function Panel({ botId }: { botId: string }) {
   const panelWidth = useUi((s) => s.panelWidth);
   const setPanelLayout = useUi((s) => s.setPanelLayout);
   const routineId = useUi((s) => s.panelRoutineId);
+  const customFrame = useUi((s) => s.customFrame);
   const [now] = useState(() => new Date());
   if (bot === undefined) return null;
   const resize = (
@@ -50,11 +52,14 @@ export function Panel({ botId }: { botId: string }) {
   }
   return (
     <aside className={frame} aria-label={`Painel de ${bot.name}`} data-testid="panel">
-      <div className="relative flex flex-none flex-col items-center gap-4 px-5 pt-14 pb-5">
+      <div
+        className="relative flex flex-none flex-col items-center gap-4 px-5 pt-14 pb-5"
+        data-tauri-drag-region
+      >
         <RoundButton
           label="Fechar o painel"
           tone="ghost"
-          className="absolute top-3 right-3"
+          className={cx("absolute top-3", customFrame ? "right-37.5" : "right-3")}
           onClick={togglePanel}
         >
           <X size={18} aria-hidden="true" />
@@ -78,7 +83,7 @@ export function Panel({ botId }: { botId: string }) {
         />
       </div>
       <div
-        className="min-h-0 flex-1 overflow-y-auto px-4 pt-2 pb-5"
+        className="min-h-0 flex-1 overflow-y-auto px-4 pt-3.5 pb-5"
         role="tabpanel"
         id={`panel-panel-${tab}`}
         aria-labelledby={`panel-${tab}`}

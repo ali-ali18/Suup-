@@ -8,6 +8,7 @@ import { MemoryScreen } from "../memory/MemoryScreen.js";
 import { NewBotDialog } from "../new-bot/NewBotDialog.js";
 import { CommandPalette, ShortcutsDialog } from "../palette/CommandPalette.js";
 import { PendingScreen } from "../pending/PendingScreen.js";
+import { ConnectorsScreen } from "../plugins/ConnectorsScreen.js";
 import { SettingsDialog } from "../settings/SettingsDialog.js";
 import { ApprovalAnnouncer } from "./ApprovalAnnouncer.js";
 import { GroupDialog } from "./GroupDialog.js";
@@ -77,6 +78,7 @@ export function Shell() {
         {view === "pending" && <PendingScreen />}
         {view === "memory" && <MemoryScreen />}
         {view === "inspector" && <InspectorScreen />}
+        {view === "connectors" && <ConnectorsScreen />}
       </div>
       <ApprovalAnnouncer />
       <IsolationNotice />
