@@ -178,21 +178,6 @@ describe("the page of a connector, in the same screen", () => {
     expect(examples.className).toContain("bg-linear-to-br");
     expect(examples.className).toContain("from-banner-indigo-from");
     expect(examples.className).toContain("to-banner-indigo-to");
-    // with a glitter over it: two STILL layers of points, out of the reading order, that never take a click
-    const glitter = within(examples).getAllByTestId("connector-glitter");
-    expect(glitter).toHaveLength(2);
-    for (const layer of glitter) {
-      expect(layer.getAttribute("aria-hidden")).toBe("true");
-      expect(layer.className).toContain("pointer-events-none");
-      expect(layer.className).toContain("absolute");
-      expect(layer.className).not.toContain("animate-");
-    }
-    expect(glitter[0]?.className).toContain("glitter-near");
-    expect(glitter[1]?.className).toContain("glitter-far");
-    // the examples are above the glitter
-    for (const row of examples.querySelectorAll("div.rounded-row")) {
-      expect(row.className).toContain("relative");
-    }
     expect(examples.textContent).toContain("Resuma o documento de requisitos.");
     expect(within(examples).getAllByText("Google Docs")).toHaveLength(3);
     // the blocks: filled with the colour of the chat input, no border

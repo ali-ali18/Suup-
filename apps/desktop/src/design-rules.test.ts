@@ -1065,19 +1065,6 @@ describe("conectores: a tela da vitrine (docs/DESIGN.md 5d)", () => {
       expect(screen, name).toContain(`from-banner-${name}-from to-banner-${name}-to`);
     }
     expect(screen).toContain("BANNER_BG[entry.banner]");
-    // the glitter over the gradient (owner: "tem como colocar meio que uma glitter?", "não precisa ser animado, só o brilho"):
-    // two STILL layers, defined as tokens and utilities, that never take a click
-    expect(screen).toContain("glitter-near");
-    expect(screen).toContain("glitter-far");
-    expect(screen).toContain("pointer-events-none");
-    expect(screen).not.toContain("animate-twinkle");
-    const theme = read(join(SRC, "styles", "theme.css"));
-    const tokens = read(join(SRC, "styles", "tokens.css"));
-    expect(theme).toContain("@utility glitter-near");
-    expect(theme).toContain("@utility glitter-far");
-    expect(theme).not.toContain("twinkle");
-    expect(tokens).toContain("--glitter-near:");
-    expect(tokens).toContain("--glitter-far:");
     // neutral backgrounds only (owner, 23/11/2026): the project's grey, or the black or the white a brand's own icon has
     expect(screen).toContain("bg-raised");
     expect(screen).toContain("bg-tile-black");

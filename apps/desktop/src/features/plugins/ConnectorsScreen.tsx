@@ -189,7 +189,7 @@ function Block({ title, children }: { title: string; children: ReactNode }) {
 /**
  * The page of one service, in the same screen in place of the list (owner, 23/11/2026), laid out as
  * the reference he gave: the way back ("Conectores > name"), the head (logo, name, state "Não
- * conectado", the line and "Conectar"), a band, with the gradient FIXED for this connector and a still glitter over it, with examples of what to ask, then "Conexão" and
+ * conectado", the line and "Conectar"), a band, with the gradient FIXED for this connector, with examples of what to ask, then "Conexão" and
  * "Informações". Nothing is connected: the button is off (ornament) and the examples are
  * illustrations. What works today is in Configurações > Conectores, and the page says so.
  */
@@ -236,28 +236,17 @@ function ConnectorPage({ entry, onBack }: { entry: CatalogEntry; onBack(): void 
       <ScreenBody>
         <section
           className={cx(
-            "relative flex flex-col gap-2 overflow-hidden rounded-card bg-linear-to-br p-4",
+            "flex flex-col gap-2 rounded-card bg-linear-to-br p-4",
             BANNER_BG[entry.banner],
           )}
           data-banner={entry.banner}
           aria-label="Exemplos do que você poderá pedir"
           data-testid="connector-examples"
         >
-          {/* the glitter: two still layers of points, over the gradient and under the examples (which are a little translucent, so it shows through) */}
-          <span
-            className="pointer-events-none absolute inset-0 mix-blend-screen glitter-near"
-            aria-hidden="true"
-            data-testid="connector-glitter"
-          />
-          <span
-            className="pointer-events-none absolute inset-0 mix-blend-screen glitter-far"
-            aria-hidden="true"
-            data-testid="connector-glitter"
-          />
           {entry.examples.map((text) => (
             <div
               key={text}
-              className="relative flex items-center gap-3 rounded-row bg-surface/75 px-3 py-2.5 text-body"
+              className="flex items-center gap-3 rounded-row bg-surface px-3 py-2.5 text-body"
             >
               <span className="inline-flex flex-none items-center gap-1.5 rounded-chip bg-raised px-2 py-0.5 text-small">
                 {entry.name}

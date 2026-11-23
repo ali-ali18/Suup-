@@ -206,14 +206,3 @@
     }
   }
 }
-
-/* The two layers of glitter (tokens.css): a utility each, so a class names them. */
-@utility glitter-near {
-  background-image: var(--glitter-near);
-  background-size: var(--glitter-near-size);
-}
-
-@utility glitter-far {
-  background-image: var(--glitter-far);
-  background-size: var(--glitter-far-size);
-}
