@@ -87,13 +87,13 @@ const ROUND_TONE = {
   ghost: "border-transparent bg-transparent text-text enabled:hover:bg-hover",
 } as const;
 
-const ROUND_SIZE = { md: "size-control", sm: "size-8" } as const;
+const ROUND_SIZE = { md: "size-control", circle: "size-icon-circle", sm: "size-8" } as const;
 
 export interface RoundButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   tone?: keyof typeof ROUND_TONE;
   /** Buttons without text need a name for screen readers. */
   label: string;
-  size?: "md" | "sm";
+  size?: "md" | "circle" | "sm";
   ref?: Ref<HTMLButtonElement>;
 }
 

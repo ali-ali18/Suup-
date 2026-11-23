@@ -398,7 +398,12 @@ export function Sidebar() {
     >
       {collapsed ? (
         <>
-          <RoundButton label="Expandir a barra lateral" tone="ghost" onClick={ui().toggleSidebar}>
+          <RoundButton
+            label="Expandir a barra lateral"
+            tone="ghost"
+            size="circle"
+            onClick={ui().toggleSidebar}
+          >
             <PanelLeftOpen size={20} aria-hidden="true" />
           </RoundButton>
           <div
@@ -413,10 +418,15 @@ export function Sidebar() {
             {flat.filter((b) => !b.pinned).map((bot) => entry(bot, "rail"))}
           </div>
           <div className="relative flex w-full flex-none flex-col items-center gap-1 pt-2">
-            <RoundButton label="Novo bot" tone="ghost" onClick={ui().openNewBot}>
+            <RoundButton label="Novo bot" tone="ghost" size="circle" onClick={ui().openNewBot}>
               <Plus size={20} aria-hidden="true" />
             </RoundButton>
-            <RoundButton label="Buscar e ações" tone="raised" onClick={() => ui().setPalette(true)}>
+            <RoundButton
+              label="Buscar e ações"
+              tone="raised"
+              size="circle"
+              onClick={() => ui().setPalette(true)}
+            >
               <LayoutGrid size={18} aria-hidden="true" />
             </RoundButton>
             {ownerButton("rail")}

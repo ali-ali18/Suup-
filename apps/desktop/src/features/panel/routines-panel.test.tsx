@@ -86,6 +86,22 @@ describe("the Rotinas list", () => {
     );
   });
 
+  it("has a switch on each row that pauses and resumes the routine, like the detail's button", async () => {
+    const { api } = setup([routineOf()]);
+    const toggle = await screen.findByTestId("routine-toggle");
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(toggle);
+    await waitFor(() => expect(api.update).toHaveBeenCalledWith(routineOf().id, { paused: true }));
+    await waitFor(() =>
+      expect(screen.getByTestId("routine-toggle").getAttribute("aria-checked")).toBe("false"),
+    );
+    expect(screen.getByTestId("routine-row").getAttribute("data-status")).toBe("paused");
+    fireEvent.click(screen.getByTestId("routine-toggle"));
+    await waitFor(() =>
+      expect(api.update).toHaveBeenLastCalledWith(routineOf().id, { paused: false }),
+    );
+  });
+
   it("shows each routine in words; there is no menu and no schedule form", async () => {
     const { api } = setup([
       routineOf(),

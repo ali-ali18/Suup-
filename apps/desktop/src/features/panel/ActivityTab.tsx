@@ -1,12 +1,12 @@
 import type { Routine } from "@suup/api";
-import { CalendarClock, ChevronDown, ChevronRight, MonitorSmartphone, Pause } from "lucide-react";
+import { CalendarClock, ChevronDown, MonitorSmartphone, Pause } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { useServices } from "../../app/context.js";
 import { useUi } from "../../app/ui-store.js";
 import { messageOf } from "../../data/sync.js";
 import { cx } from "../../lib/cx.js";
 import { describeSchedule, lastText, nextText } from "../../lib/routines.js";
-import { MutedText } from "../../ui/primitives.js";
+import { MutedText, Toggle } from "../../ui/primitives.js";
 import { useBotRunMark } from "./run-mark.js";
 
 /** A titled box of the panel: a muted title, then its rows in a card. `flush`: rows edge to edge. */
@@ -74,35 +74,47 @@ function PanelRow({
 }
 
 /** One routine: its name, when in words, the next run, the last result. The row opens its detail. */
-function RoutineRow({ routine, onOpen }: { routine: Routine; onOpen(): void }) {
+function RoutineRow({
+  routine,
+  onOpen,
+  onToggle,
+}: {
+  routine: Routine;
+  onOpen(): void;
+  onToggle(paused: boolean): void;
+}) {
   const paused = routine.status === "paused";
   const last = lastText(routine);
   return (
-    <button
-      type="button"
-      className="group/row flex w-full min-w-0 items-start gap-3 border-0 bg-transparent px-3 py-2.5 text-left text-text hover:bg-hover"
-      data-testid="routine-row"
-      data-routine={routine.name}
-      data-status={routine.status}
-      aria-label={`Abrir a rotina ${routine.name}`}
-      onClick={onOpen}
-    >
-      <span className="inline-flex pt-0.5 text-text-muted" aria-hidden="true">
-        {paused ? <Pause size={16} /> : <CalendarClock size={16} />}
-      </span>
-      <span className="flex min-w-0 flex-1 flex-col">
-        <span className="text-label font-label wrap-anywhere">{routine.name}</span>
-        <MutedText data-testid="routine-schedule">{describeSchedule(routine.schedule)}</MutedText>
-        <MutedText data-testid="routine-next">{nextText(routine)}</MutedText>
-        {last !== null && <MutedText data-testid="routine-last">{last}</MutedText>}
-      </span>
-      <span
-        className="inline-flex self-center text-text-muted opacity-0 group-hover/row:opacity-100 group-focus-visible/row:opacity-100"
-        aria-hidden="true"
+    <div className="flex w-full min-w-0 items-center gap-3 pr-3 hover:bg-hover">
+      <button
+        type="button"
+        className="flex min-w-0 flex-1 items-start gap-3 border-0 bg-transparent py-2.5 pl-3 text-left text-text"
+        data-testid="routine-row"
+        data-routine={routine.name}
+        data-status={routine.status}
+        aria-label={`Abrir a rotina ${routine.name}`}
+        onClick={onOpen}
       >
-        <ChevronRight size={16} />
-      </span>
-    </button>
+        <span className="inline-flex pt-0.5 text-text-muted" aria-hidden="true">
+          {paused ? <Pause size={16} /> : <CalendarClock size={16} />}
+        </span>
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="text-label font-label wrap-anywhere">{routine.name}</span>
+          <MutedText data-testid="routine-schedule">{describeSchedule(routine.schedule)}</MutedText>
+          <MutedText data-testid="routine-next">{nextText(routine)}</MutedText>
+          {last !== null && <MutedText data-testid="routine-last">{last}</MutedText>}
+        </span>
+      </button>
+      {/* The switch is the same pause and resume of the detail: on = the routine runs. */}
+      <Toggle
+        checked={!paused}
+        disabled={routine.status === "ended"}
+        label={`Rotina ativa: ${routine.name}`}
+        testId="routine-toggle"
+        onChange={(next) => onToggle(!next)}
+      />
+    </div>
   );
 }
 
@@ -139,6 +151,15 @@ function RoutinesSection({ botId }: { botId: string }) {
     const timer = setInterval(load, 2000);
     return () => clearInterval(timer);
   }, [anyRunning, load]);
+  const toast = useUi((s) => s.toast);
+  // The switch of a row: the same call as the pause button of the detail; the server answers with
+  // the routine, which replaces the row (nothing is optimistic).
+  const togglePause = (routine: Routine, paused: boolean) => {
+    api.routines.update(routine.id, { paused }).then(
+      (updated) => setRoutines((list) => list?.map((r) => (r.id === updated.id ? updated : r))),
+      (e: unknown) => toast(messageOf(e), "error"),
+    );
+  };
 
   return (
     <PanelSection title="Rotinas" label="Rotinas" testId="section-routines" flush>
@@ -157,7 +178,12 @@ function RoutinesSection({ botId }: { botId: string }) {
         />
       )}
       {routines?.map((r) => (
-        <RoutineRow key={r.id} routine={r} onOpen={() => openPanelRoutine(r.id)} />
+        <RoutineRow
+          key={r.id}
+          routine={r}
+          onOpen={() => openPanelRoutine(r.id)}
+          onToggle={(paused) => togglePause(r, paused)}
+        />
       ))}
     </PanelSection>
   );
