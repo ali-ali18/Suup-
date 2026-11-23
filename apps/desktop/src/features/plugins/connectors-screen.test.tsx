@@ -78,7 +78,8 @@ describe("the connectors screen", () => {
       expect(mark, id).not.toBeNull();
       expect(mark?.getAttribute("fill"), id).toBe("currentColor");
       expect(mark?.getAttribute("class"), id).toContain("text-tile-white");
-      expect((mark?.parentElement as HTMLElement).style.backgroundColor, id).toBe(colour);
+      const tile = mark?.parentElement ?? undefined;
+      expect(tile?.style.backgroundColor, id).toBe(colour);
       expect(item.querySelector("img"), id).toBeNull();
     }
     // every connector but Higgsfield has a logo or a mark: no letter, no plug

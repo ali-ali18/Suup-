@@ -55,6 +55,7 @@ function EntryIcon({ entry, size }: { entry: CatalogEntry; size: keyof typeof TI
           className={cx("text-tile-white", tile.logo)}
           data-brand={entry.id}
         >
+          <title>{entry.name}</title>
           <path d={solid.path} />
         </svg>
       </span>
