@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildSystemPrompt,
+  buildSystemPromptParts,
   formatClock,
   MEMORY_TOOL_NAMES,
   type RunPromptContext,
@@ -79,7 +80,7 @@ const base: RunPromptContext = { rules: [], profile: [] };
 const NOW = { iso: "2026-11-21T17:32:00.000Z", timeZone: "America/Sao_Paulo" };
 
 describe("system prompt: the order of the blocks", () => {
-  it("reads who you are, now, team, what you have, rules, profile, how you work, in that order", () => {
+  it("reads how you work, the harness, tools and data, then who you are, now, team, what you have, rules, profile, in that order", () => {
     const prompt = buildSystemPrompt(
       { name: "Ada", personality: "Dry." },
       {
@@ -93,21 +94,68 @@ describe("system prompt: the order of the blocks", () => {
       { returns: true },
     );
     const heads = [
+      "## How you work",
+      "## Messages from the harness",
+      "## Tools and data",
       "## Who you are",
       "## Now",
       "## Your team",
       "## What you have",
       "## Standing rules from the user",
       "## What you know about the user",
-      "## How you work",
-      "## Messages from the harness",
-      "## Tools and data",
     ];
     const at = heads.map((h) => prompt.indexOf(h));
     expect(at.every((i) => i >= 0)).toBe(true);
     expect([...at].sort((a, b) => a - b)).toEqual(at);
-    expect(prompt.indexOf("Dry.")).toBeGreaterThan(at[0] as number);
-    expect(prompt.indexOf("Dry.")).toBeLessThan(at[1] as number);
+    expect(prompt.startsWith("## How you work")).toBe(true);
+    expect(prompt.indexOf("Dry.")).toBeGreaterThan(at[3] as number);
+    expect(prompt.indexOf("Dry.")).toBeLessThan(at[4] as number);
+  });
+
+  it("starts with a long part that is byte-identical across bots and runs (the prompt cache prefix)", () => {
+    const options = { returns: true, approvals: true, secrets: true, routines: true };
+    const ada = buildSystemPromptParts(
+      { name: "Ada", personality: "Dry." },
+      {
+        rules: [{ text: "Always short." }],
+        profile: [{ text: "Lives in Recife." }],
+        now: NOW,
+        team: [{ name: "Finanças", description: "Cuida do dinheiro." }],
+        secrets: [{ name: "GITHUB_TOKEN", description: "" }],
+      },
+      options,
+    );
+    const bia = buildSystemPromptParts(
+      { name: "Bia", personality: "Warm and chatty." },
+      {
+        rules: [],
+        profile: [{ text: "Has a cat." }],
+        now: { ...NOW, iso: "2027-03-02T08:15:00.000Z" },
+      },
+      options,
+    );
+    expect(ada.stableLength).toBe(bia.stableLength);
+    expect(ada.stableLength).toBeGreaterThan(2500);
+    const prefix = ada.text.slice(0, ada.stableLength);
+    expect(bia.text.slice(0, bia.stableLength)).toBe(prefix);
+    // Nothing of the bot or the run is in it; all of that comes after.
+    for (const own of [
+      "Ada",
+      "Dry.",
+      "Always short.",
+      "Recife",
+      "Finanças",
+      "GITHUB_TOKEN",
+      "2026",
+    ]) {
+      expect(prefix, own).not.toContain(own);
+      expect(ada.text.slice(ada.stableLength), own).toContain(own);
+    }
+    expect(ada.text.slice(ada.stableLength).startsWith("## Who you are")).toBe(true);
+    // The same text as before, only in another order.
+    expect(buildSystemPrompt({ name: "Ada", personality: "Dry." }, base, options)).toBe(
+      buildSystemPromptParts({ name: "Ada", personality: "Dry." }, base, options).text,
+    );
   });
 });
 

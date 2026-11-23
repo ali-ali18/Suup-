@@ -6,7 +6,7 @@ import { validateConversation } from "../messages.js";
 import type { ToolSpec } from "../provider.js";
 import { CONTROL_TOOL_NAMES, controlToolSpecs } from "./control-tools.js";
 import {
-  buildSystemPrompt,
+  buildSystemPromptParts,
   CREATE_ROUTINE_TOOL_NAME,
   formatClock,
   isReminderBlock,
@@ -24,6 +24,8 @@ export function canScheduleReturn(ctx: LoopContext): boolean {
 
 export function fixedParts(ctx: LoopContext): {
   system: string;
+  /** Where the part of `system` shared across bots and runs ends (a cache breakpoint). */
+  systemCacheBreak: number;
   tools: ToolSpec[];
   hostedToolSearch?: "bm25" | "regex";
 } {
@@ -51,19 +53,21 @@ export function fixedParts(ctx: LoopContext): {
   const memoryTools = offered.some((spec) =>
     (MEMORY_TOOL_NAMES as readonly string[]).includes(spec.name),
   );
+  const system = buildSystemPromptParts(bot, ctx.state.context ?? undefined, {
+    memoryTools,
+    web: {
+      search: offered.some((spec) => spec.name === WEB_SEARCH_TOOL_NAME),
+      read: offered.some((spec) => spec.name === WEB_READ_TOOL_NAME),
+    },
+    returns: canScheduleReturn(ctx),
+    routines: offered.some((spec) => spec.name === CREATE_ROUTINE_TOOL_NAME),
+    secrets: ctx.deps.secrets !== undefined,
+    approvals: ctx.deps.gate.allowsEverything !== true,
+    toolIndex: catalog?.index,
+  });
   return {
-    system: buildSystemPrompt(bot, ctx.state.context ?? undefined, {
-      memoryTools,
-      web: {
-        search: offered.some((spec) => spec.name === WEB_SEARCH_TOOL_NAME),
-        read: offered.some((spec) => spec.name === WEB_READ_TOOL_NAME),
-      },
-      returns: canScheduleReturn(ctx),
-      routines: offered.some((spec) => spec.name === CREATE_ROUTINE_TOOL_NAME),
-      secrets: ctx.deps.secrets !== undefined,
-      approvals: ctx.deps.gate.allowsEverything !== true,
-      toolIndex: catalog?.index,
-    }),
+    system: system.text,
+    systemCacheBreak: system.stableLength,
     tools: offered,
     ...(catalog?.mode === "hosted" && catalog.variant !== undefined
       ? { hostedToolSearch: catalog.variant }

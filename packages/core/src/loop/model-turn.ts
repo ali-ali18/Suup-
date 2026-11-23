@@ -12,7 +12,7 @@ export async function modelTurn(ctx: LoopContext): Promise<RunStatus | undefined
   const { bot, provider } = ctx.deps;
   let overflowRetried = false;
   for (;;) {
-    const { system, tools, hostedToolSearch } = fixedParts(ctx);
+    const { system, systemCacheBreak, tools, hostedToolSearch } = fixedParts(ctx);
     const { messages, problems } = buildRequest(ctx);
     if (problems.length > 0) {
       return fail(
@@ -26,6 +26,7 @@ export async function modelTurn(ctx: LoopContext): Promise<RunStatus | undefined
       provider,
       model: bot.model,
       system,
+      systemCacheBreak,
       messages,
       tools,
       ...(hostedToolSearch === undefined ? {} : { hostedToolSearch }),

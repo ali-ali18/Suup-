@@ -76,7 +76,10 @@ describe("run context snapshot", () => {
     const profile = system.indexOf("## What you know about the user");
     expect(system.indexOf("## Who you are")).toBeLessThan(rules);
     expect(rules).toBeLessThan(profile);
-    expect(profile).toBeLessThan(system.indexOf("## How you work"));
+    // The shared rules come first (a stable prefix for the prompt cache), the user's after.
+    expect(system.indexOf("## How you work")).toBeLessThan(system.indexOf("## Who you are"));
+    // The request says where that shared part ends, for the provider's cache breakpoint.
+    expect(rig.provider.requests[0]?.systemCacheBreak).toBe(system.indexOf("## Who you are"));
     // In the given order, binding wording, one bullet each.
     expect(system).toContain("binding");
     expect(system).toContain("outrank your own preferences");

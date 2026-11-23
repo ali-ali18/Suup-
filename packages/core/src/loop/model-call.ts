@@ -31,6 +31,8 @@ export interface CallSpec {
   provider: Provider;
   model: { id: string; maxOutputTokens: number; pricing?: ModelPricing };
   system: string;
+  /** See `GenerateRequest.systemCacheBreak`. */
+  systemCacheBreak?: number;
   messages: Message[];
   tools: ToolSpec[];
   /** The search the provider runs over the deferred specs (see `GenerateRequest`). */
@@ -89,6 +91,7 @@ export async function callModel(ctx: LoopContext, spec: CallSpec): Promise<CallO
       result = await generateAndCollect(spec.provider, {
         model: spec.model.id,
         system: spec.system,
+        ...(spec.systemCacheBreak === undefined ? {} : { systemCacheBreak: spec.systemCacheBreak }),
         messages: spec.messages,
         tools: spec.tools,
         ...hostedField,
