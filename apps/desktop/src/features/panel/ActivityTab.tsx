@@ -1,5 +1,5 @@
 import type { Routine } from "@suup/api";
-import { CalendarClock, ChevronRight, MonitorSmartphone, Pause } from "lucide-react";
+import { CalendarClock, ChevronDown, ChevronRight, MonitorSmartphone, Pause } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { useServices } from "../../app/context.js";
 import { useUi } from "../../app/ui-store.js";
@@ -25,7 +25,7 @@ function PanelSection({
 }) {
   return (
     <section aria-label={label} data-testid={testId}>
-      <h3 className="px-2 pb-2 text-label font-normal text-text-muted">{title}</h3>
+      <h3 className="px-1 pb-2 text-small font-normal text-text-muted">{title}</h3>
       <div
         className={cx(
           "rounded-card border border-border bg-surface",
@@ -63,7 +63,7 @@ function PanelRow({
       </span>
       {thumb !== undefined && (
         <span
-          className="inline-flex h-12 w-20 items-center justify-center rounded-inner bg-raised text-text-muted"
+          className="inline-flex h-10 w-17.5 items-center justify-center rounded-inner bg-raised text-text-muted"
           aria-hidden="true"
         >
           {thumb}
@@ -80,7 +80,7 @@ function RoutineRow({ routine, onOpen }: { routine: Routine; onOpen(): void }) {
   return (
     <button
       type="button"
-      className="group/row flex w-full min-w-0 items-start gap-3 border-0 bg-transparent px-4 py-3 text-left text-text hover:bg-hover"
+      className="group/row flex w-full min-w-0 items-start gap-3 border-0 bg-transparent px-3 py-2.5 text-left text-text hover:bg-hover"
       data-testid="routine-row"
       data-routine={routine.name}
       data-status={routine.status}
@@ -163,18 +163,39 @@ function RoutinesSection({ botId }: { botId: string }) {
   );
 }
 
-/** The Atividade tab: the bot's routines, and its computer (which waits for its phase). */
+/** A row of the voice ornament: a name and a muted value with a chevron. It does nothing. */
+function OrnamentRow({ title, value }: { title: string; value: string }) {
+  return (
+    <div className="flex min-w-0 items-center gap-3 px-3 py-2.5">
+      <span className="min-w-0 flex-1 text-label">{title}</span>
+      <MutedText>{value}</MutedText>
+      <ChevronDown size={14} className="text-text-muted" aria-hidden="true" />
+    </div>
+  );
+}
+
+/**
+ * The Atividade tab: the bot's routines, its computer (which waits for its phase), and the voice
+ * chat, which the backend does not have yet: it is an ornament (owner's decision, 22/11/2026),
+ * hidden from assistive technology, dimmed, "Em breve", and with nothing to click.
+ */
 export function ActivityTab({ botId }: { botId: string }) {
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-8">
       <RoutinesSection botId={botId} />
-      <PanelSection title="Computador" label="Computador" testId="section-computer">
+      <PanelSection title="Computador" label="Computador" testId="section-computer" flush>
         <PanelRow
           title="Computador do bot"
           text="Ainda não disponível"
           thumb={<MonitorSmartphone size={22} />}
         />
       </PanelSection>
+      <div aria-hidden="true" className="opacity-60" data-testid="ornament-voice">
+        <PanelSection title="Chat de voz" label="Chat de voz" testId="section-voice" flush>
+          <OrnamentRow title="Voz" value="Em breve" />
+          <OrnamentRow title="Idioma" value="Em breve" />
+        </PanelSection>
+      </div>
     </div>
   );
 }

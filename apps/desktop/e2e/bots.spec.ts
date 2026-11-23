@@ -391,9 +391,14 @@ test.describe("bots, sidebar, palette, memory", () => {
     await expect(panel).toHaveCount(0);
     await page.getByTestId("bot-chip").click();
     await expect(panel).toBeVisible();
-    // Nothing the product does not have is on screen.
-    for (const text of ["Compartilhar", "Chat de voz", "Criar chat em grupo"])
+    // What the product does not have is on screen only as an ornament (owner's decision, 22/11/2026):
+    // the voice chat is hidden from assistive technology, dimmed, "Em breve", with nothing to click.
+    for (const text of ["Compartilhar", "Criar chat em grupo"])
       await expect(page.getByText(text)).toHaveCount(0);
+    const voice = page.getByTestId("ornament-voice");
+    await expect(voice).toHaveAttribute("aria-hidden", "true");
+    await expect(voice).toContainText("Em breve");
+    await expect(voice.getByRole("button")).toHaveCount(0);
     await expect(page.getByRole("button", { name: /microfone|voz/i })).toHaveCount(0);
   });
 
