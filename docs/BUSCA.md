@@ -25,6 +25,8 @@ Por isso a busca e a leitura são feitas por **peças de código aberto que o Su
 
 `web_fetch` recusa respostas acima de **5 MB depois de descomprimir**: o `--max-filesize` do curl só para o tamanho declarado (e o curl antigo, 7.81, nem o corpo em fluxo), então o arquivo que o curl escreve tem teto próprio (`ulimit -f` num subshell) e o tamanho é conferido depois do download; acima do limite, a mesma mensagem "larger than the 5 MB limit".
 
+Com **cabeçalhos próprios** (que podem levar um segredo, `{{secret:NOME}}`), o `web_fetch` não deixa o curl seguir redirecionamentos: segue ele mesmo, um salto por vez, e só dentro da **mesma origem** (esquema, host e porta, comparados com a API `URL`). Um redirecionamento para outro site para e devolve o endereço novo ("a página redirecionou para outro site; abra o novo endereço sem os cabeçalhos"), sem que o outro site receba nada. Sem cabeçalhos, segue até 5 redirecionamentos como antes.
+
 ## Arquitetura
 
 ```

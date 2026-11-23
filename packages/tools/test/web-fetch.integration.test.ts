@@ -24,6 +24,11 @@ const GZIP_SMALL = gzipSync(Buffer.from("small compressed text"));
 
 let server: Server;
 let base = "";
+// A second server: another port is another ORIGIN (scheme, host and port).
+let other: Server;
+let otherBase = "";
+let otherAuth: (string | undefined)[] = [];
+let lastAuth: string | undefined;
 let userAgent = "";
 let hits: string[] = [];
 
@@ -31,6 +36,7 @@ function route(req: IncomingMessage, res: ServerResponse): unknown {
   const url = req.url ?? "/";
   hits.push(url);
   userAgent = String(req.headers["user-agent"] ?? "");
+  lastAuth = req.headers.authorization;
   const send = (status: number, type: string | undefined, body: string | Buffer) => {
     res.writeHead(status, type === undefined ? {} : { "content-type": type });
     res.end(body);
@@ -101,6 +107,21 @@ function route(req: IncomingMessage, res: ServerResponse): unknown {
       return void res.end(GZIP_SMALL);
     case "/exactly-limit":
       return send(200, "text/plain", "e".repeat(5_000_000));
+    case "/echo-auth":
+      return send(200, "text/plain", `auth: ${req.headers.authorization ?? "(none)"}`);
+    case "/redirect-same":
+      res.writeHead(302, { location: "/echo-auth" });
+      return void res.end();
+    case "/redirect-same-twice":
+      res.writeHead(301, { location: `${base}/redirect-same` });
+      return void res.end();
+    case "/redirect-other":
+      res.writeHead(302, { location: `${otherBase}/echo-auth` });
+      return void res.end();
+    case "/redirect-other-host":
+      // Same port, other host name: also another origin.
+      res.writeHead(302, { location: `${base.replace("127.0.0.1", "localhost")}/echo-auth` });
+      return void res.end();
     case "/long-text":
       return send(200, "text/plain", "z".repeat(150_000));
     default:
@@ -112,8 +133,17 @@ beforeAll(async () => {
   server = createServer(route);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  other = createServer((req, res) => {
+    otherAuth.push(req.headers.authorization);
+    res.writeHead(200, { "content-type": "text/plain" });
+    res.end(`other: ${req.headers.authorization ?? "(none)"}`);
+  });
+  await new Promise<void>((resolve) => other.listen(0, "127.0.0.1", resolve));
+  otherBase = `http://127.0.0.1:${(other.address() as AddressInfo).port}`;
 });
 afterAll(async () => {
+  other.closeAllConnections();
+  await new Promise<void>((resolve) => other.close(() => resolve()));
   server.closeAllConnections();
   await new Promise<void>((resolve) => server.close(() => resolve()));
 });
@@ -163,6 +193,50 @@ describe("web_fetch (LocalExecutor + local HTTP server)", () => {
       `Requested URL: ${base}/redirect-chain-1 (2 redirects followed)`,
     );
     expect(r.output.content).toContain("# Welcome");
+  });
+
+  it("with custom headers (they may carry a secret), follows a redirect only on the same origin", async () => {
+    const ex = await localWorkspace();
+    const headers = { Authorization: "Bearer t0ken-for-this-site" };
+    for (const path of ["/redirect-same", "/redirect-same-twice"]) {
+      const same = await call(ex, "web_fetch", { url: `${base}${path}`, headers });
+      expect(same.outcome, path).toBe("ok");
+      expect(same.output.content).toContain(`URL: ${base}/echo-auth`);
+      expect(same.output.content).toContain("auth: Bearer t0ken-for-this-site");
+      expect(same.output.content).toContain(`Requested URL: ${base}${path}`);
+    }
+    for (const [path, target] of [
+      ["/redirect-other", `${otherBase}/echo-auth`],
+      ["/redirect-other-host", `${base.replace("127.0.0.1", "localhost")}/echo-auth`],
+    ]) {
+      otherAuth = [];
+      lastAuth = "unset";
+      const away = await call(ex, "web_fetch", { url: `${base}${path}`, headers });
+      expect(away.outcome, path).toBe("tool_error");
+      expect(away.output.content).toContain(
+        "a página redirecionou para outro site; abra o novo endereço sem os cabeçalhos",
+      );
+      expect(away.output.content).toContain(target);
+      // The other site was never asked, with or without the header.
+      expect(otherAuth).toEqual([]);
+      expect(lastAuth).toBe("Bearer t0ken-for-this-site"); // only the first site saw it
+    }
+    // A loop with headers still stops at the redirect limit.
+    const loop = await call(ex, "web_fetch", { url: `${base}/loop`, headers });
+    expect(loop.outcome).toBe("tool_error");
+    expect(loop.output.content).toContain("Too many redirects");
+    // And a redirect to another protocol is refused.
+    const file = await call(ex, "web_fetch", { url: `${base}/to-file`, headers });
+    expect(file.outcome).toBe("tool_error");
+    expect(file.output.content).not.toContain("root:");
+  });
+
+  it("without custom headers, a redirect to another site is followed as before", async () => {
+    otherAuth = [];
+    const r = await call(await localWorkspace(), "web_fetch", { url: `${base}/redirect-other` });
+    expect(r.outcome).toBe("ok");
+    expect(r.output.content).toContain(`URL: ${otherBase}/echo-auth`);
+    expect(otherAuth).toEqual([undefined]);
   });
 
   it("gives up on a redirect loop with a clear error", async () => {
