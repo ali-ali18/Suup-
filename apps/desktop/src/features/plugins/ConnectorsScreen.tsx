@@ -210,7 +210,7 @@ function ConnectorPage({ entry, onBack }: { entry: CatalogEntry; onBack(): void 
           <ConnectButton entry={entry} primary />
         </div>
       </header>
-      <ScreenBody limit="wide">
+      <ScreenBody>
         <section
           className="flex flex-col gap-2 rounded-card bg-raised p-4"
           aria-label="Exemplos do que você poderá pedir"
@@ -348,7 +348,7 @@ export function ConnectorsScreen() {
           </div>
         }
       />
-      <ScreenBody limit="wide">
+      <ScreenBody>
         <TextField
           label="Buscar conectores"
           hideLabel

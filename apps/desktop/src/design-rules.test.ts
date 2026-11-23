@@ -1060,6 +1060,8 @@ describe("conectores: a tela da vitrine (docs/DESIGN.md 5d)", () => {
     expect(screen).toContain("backgroundColor:");
     expect(screen).toContain("solid.hex");
     expect(screen).toContain("text-tile-white");
+    // the body takes the whole width, like the head with its buttons at the right edge: no empty strip
+    expect(screen).not.toContain("limit=");
     // no box around a line (owner: "cada um ser um card pesa muito")
     expect(screen).not.toContain("rounded-card border border-border bg-transparent");
   });
