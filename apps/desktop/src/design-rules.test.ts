@@ -1021,7 +1021,9 @@ describe("conectores: a tela da vitrine (docs/DESIGN.md 5d)", () => {
 
   it("é uma tela no lugar do chat e do painel, não um diálogo (dono, 23/11/2026), e o detalhe é uma página da mesma tela", () => {
     expect(existsSync(join(SRC, "features", "plugins", "PluginsDialog.tsx"))).toBe(false);
-    expect(screen).not.toContain("<Dialog");
+    // the only dialog of the screen is the confirmation of Desconectar (and the secure form)
+    expect(screen.split("<Dialog").length - 1).toBe(1);
+    expect(screen).toContain("Os bots deixam de usá-lo até você entrar de novo.");
     expect(screen).toContain("<Screen");
     expect(screen).toContain("<ScreenHead");
     expect(shell).toContain("<ConnectorsScreen />");
@@ -1046,7 +1048,7 @@ describe("conectores: a tela da vitrine (docs/DESIGN.md 5d)", () => {
     expect(screen).toContain("text-small text-text-muted");
     // the logo: thesvg, as an <img>, on the project's grey, white ones inverted in the light theme
     expect(screen).toContain("<img");
-    expect(screen).toContain("data-logo={entry.id}");
+    expect(screen).toContain("data-logo={id}");
     // the band of a page: one of twelve gradients, a class for each (owner: "cadê o bg do gradiente que falamos?")
     for (const name of [
       "ink",
@@ -1064,7 +1066,7 @@ describe("conectores: a tela da vitrine (docs/DESIGN.md 5d)", () => {
     ]) {
       expect(screen, name).toContain(`from-banner-${name}-from to-banner-${name}-to`);
     }
-    expect(screen).toContain("BANNER_BG[entry.banner]");
+    expect(screen).toContain("BANNER_BG[look.banner]");
     // neutral backgrounds only (owner, 23/11/2026): the project's grey, or the black or the white a brand's own icon has
     expect(screen).toContain("bg-raised");
     expect(screen).toContain("bg-tile-black");
@@ -1076,7 +1078,7 @@ describe("conectores: a tela da vitrine (docs/DESIGN.md 5d)", () => {
     expect(screen).not.toContain("bg-brand-tile");
     expect(screen).not.toContain("bg-logo-tile");
     // a one-colour brand: its OWN colour (from the package) as the tile, the mark in white over it
-    expect(screen).toContain("solidMarkFor(entry.id)");
+    expect(screen).toContain("solidMarkFor(id)");
     expect(screen).toContain("backgroundColor:");
     expect(screen).toContain("solid.hex");
     expect(screen).toContain("text-tile-white");
@@ -1086,28 +1088,60 @@ describe("conectores: a tela da vitrine (docs/DESIGN.md 5d)", () => {
     expect(screen).not.toContain("rounded-card border border-border bg-transparent");
   });
 
-  it("a página: o caminho, o estado, o Conectar desligado (enfeite), os exemplos, Conexão e Informações", () => {
+  it("a página: o caminho, o estado, a ação de verdade, os exemplos, Conexão e Informações", () => {
     for (const word of [
-      "Não conectado",
-      "disabled",
+      'aria-label="Caminho"',
+      "<StateTag state={state} />",
+      "<MainAction",
       "Exemplos do que você poderá pedir",
       "Conexão",
       "Informações",
-      "Desenvolvedor",
       "Categoria",
       "Disponibilidade",
-      "Site",
+      "Fonte",
+      "Licença",
     ]) {
       expect(screen, word).toContain(word);
     }
+    // "Meus conectores" is real now: a button with the logos of what is connected, stacked
     expect(screen).toContain("flex-row-reverse");
-    expect(screen).toContain("opacity-60");
+    expect(screen).toContain('e.item.status === "connected"');
+    expect(screen).not.toContain("opacity-60");
+    expect(screen).not.toContain('title="Em breve"');
   });
 
-  it("o app não finge: a vitrine é declarada num lugar só, não chama a API, e leva ao que é real", () => {
-    expect(read(join(SRC, "features", "plugins", "catalog.ts"))).toContain("CATALOG");
-    expect(screen).not.toContain("api.");
-    expect(screen).toContain('openSettings("connectors")');
+  it('liga ao servidor (dono, 23/11/2026: "Liga"): a lista é a do servidor, a aparência é só por id', () => {
+    // which connectors exist, in the server's order
+    expect(screen).toContain("api.connectorCatalog.list()");
+    expect(existsSync(join(SRC, "features", "plugins", "catalog.ts"))).toBe(false);
+    const look = read(join(SRC, "features", "plugins", "appearance.ts"));
+    // the look is found by the EXACT id, never by a search in the text (docs/REGRAS.md §1)
+    expect(look).toContain("BY_ID.get(id) ?? NEUTRAL");
+    for (const searching of [".includes(", ".startsWith(", ".match(", ".test(", "RegExp"]) {
+      expect(look, searching).not.toContain(searching);
+    }
+    // the look does not repeat what the server says (name, line, how it logs in)
+    for (const field of ["  name:", "  about:", "  developer:", "  site:"]) {
+      expect(look, field).not.toContain(field);
+    }
+    expect(screen).toContain("appearanceOf(item.entry.id)");
+    const flow = read(join(SRC, "features", "plugins", "use-connect.ts"));
+    // the flows: install and follow next; OAuth in the system browser with polling; the paste of a VPS
+    for (const call of [
+      "api.connectorCatalog.install(",
+      "api.connectors.oauthStart(",
+      "platform.openUrl(start.authorizationUrl)",
+      "api.connectors.oauthStatus(",
+      "api.connectors.oauthComplete(",
+      "api.connectors.oauthDisconnect(",
+    ]) {
+      expect(flow, call).toContain(call);
+    }
+    expect(screen).toContain('remote={mode === "vps"}');
+    // the token goes through the secure form of the vault, never a plain field of the screen
+    expect(screen).toContain("<SecretDialog");
+    expect(screen).not.toContain("<SecretInput");
+    expect(screen).not.toContain('type="password"');
   });
 
   it("abre pela paleta de ações e pelo menu do dono", () => {
