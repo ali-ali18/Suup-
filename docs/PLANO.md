@@ -245,6 +245,17 @@ Requisito de infraestrutura: o servidor na VPS precisa de domínio e HTTPS públ
 - O agente local é um processo Node à parte, empacotado junto com o app, que o inicia e supervisiona: abre conexão de saída com o servidor e executa comandos aprovados no PC. Assim ele reaproveita os pacotes do projeto e pode continuar rodando com a janela fechada.
 - Comunicação em tempo real por **Server-Sent Events** (decisão da fase 2, no lugar do WebSocket do plano original: o fluxo é só do servidor para o app, passa por qualquer proxy HTTP e se retoma pelo `Last-Event-ID`; as ações do app são requisições HTTP comuns), alimentado por `LISTEN/NOTIFY` do Postgres. Veja [API.md](API.md).
 
+### 4.12b Chamada de voz
+
+Decisão do dono (23/11/2026): um modo **chamada de voz**, como o do Grok Bot. A pessoa conversa por voz, como numa ligação, e o bot **continua agindo** durante a conversa: cria rotinas, consulta a memória, busca, usa conectores. Tudo pelas mesmas ferramentas, com as mesmas regras e cartões.
+
+- **No chat**, a chamada vira um bloco próprio na conversa, uma "subconversa": "Chat de voz · 00:02" com a duração. Dentro dele ficam a **transcrição**, das duas falas, e as **ações** do bot como as linhas de sempre (por exemplo, "Rotina criada"). Ao terminar, o app mostra que a transcrição está sendo salva e ela entra no histórico como mensagens comuns. Assim a memória, a busca nas conversas e o supervisor a enxergam.
+- **Na tela:** botão de chamada no compositor, ao lado do microfone de ditado. Durante a chamada há a tela da ligação (o rosto do bot falando, mudo e desligar). Um cartão que precisar de você aparece na tela e pode ser respondido por voz ("pode", "não") ou tocando.
+- **Aprovações por voz:** um "sim" falado só vale para o cartão que está na tela, nunca para algo que o bot apenas descreveu. A frase dita fica na transcrição. Regras e pisos não mudam.
+- **Aberto e sem prender a provedor** (regra do dono): fala para texto e texto para fala escolhíveis, com opção local e aberta (a pesquisa decide quais: modelos abertos de transcrição e de voz rodando no PC), além de serviços de voz em tempo real dos provedores como opção. A conversa usa o mesmo loop: cada fala é uma mensagem do usuário, e a resposta é falada enquanto é gerada.
+- **Ditado** (o microfone, sem chamada) é a parte simples e pode vir antes: fala vira texto no compositor.
+- **Antes de implementar:** pesquisa em `docs/pesquisas/` sobre transcrição e voz abertas (qualidade em pt-BR, latência, CPU/GPU no PC do dono), detecção de fim de fala e interrupção (falar por cima do bot), eco e microfone no Tauri/WebView2, serviços em tempo real dos provedores e custo por minuto.
+
 ### 4.13 Diagnóstico: de quem é o problema
 
 Um problema pode estar em cinco lugares: modelo, harness, ferramenta, servidor ou app. O desenho precisa permitir separar os cinco sem adivinhar.
@@ -473,7 +484,7 @@ docs/
 | 4 | Rotinas (horário e webhook), iniciativa, notificações, diário, delegação, sala de grupo | Monitor que avisa só quando a condição é atendida; bot nota um prazo na agenda, prepara o material e deixa um cartão pronto para aceitar; evento assinado dispara a rotina uma única vez, mesmo reenviado; bot principal encaminha e recebe de volta |
 | 5 | Navegador com tela por bot, ao vivo, passagem de controle | Bot navega num site com login, pausa para o usuário entrar e retoma |
 | 6 | Agente local nos PCs | Instala uma ferramenta no PC, com aprovação, e confere que funciona |
-| 7 | Páginas salvas, documentos, imagem, vídeo, voz, agentes de código externos | Gera um documento e uma página compartilhável; abre um PR por agente externo |
+| 7 | Páginas salvas, documentos, imagem, vídeo, voz (ditado e **chamada de voz**, 4.12b), agentes de código externos | Gera um documento e uma página compartilhável; abre um PR por agente externo |
 | 8 | Celular, reuniões, telefone, outros canais | Definido quando a fase 7 terminar |
 
 ## 9. Fase 1 em detalhe
