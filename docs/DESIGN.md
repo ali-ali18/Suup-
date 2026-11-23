@@ -207,6 +207,13 @@ Decisões do dono (22/11/2026; [ROTINAS.md](ROTINAS.md)), como as tarefas do Gro
 - [ ] **Composio e Higgsfield não estão no Simple Icons**: ficam com o plug genérico até o dono escolher o kit de marca oficial de cada um e as regras de uso dele.
 - [ ] Só `ui/brand-icons.tsx` importa `simple-icons` (por nome, só os ícones usados). `design-rules.test.ts` confere.
 
+## 5d. Plug-ins: o diálogo
+
+- [ ] **Os plug-ins têm o seu diálogo, separado dos Conectores** (dono, 23/11/2026; layout lido no código do Grok Bot com o REA, `chunk-plugins-rows`): uma **grade de duas colunas** (uma só quando a janela é estreita), cada célula uma linha com o **ícone à esquerda** (quadrado arredondado de 36 px, o logo do serviço em uma cor só, ou o plug) e, ao lado, o **nome** (`text-label`) com **uma só linha apagada embaixo** (`text-small`, cortada com reticências). Passar o mouse põe o fundo `hover` na linha inteira. Abre pela paleta de ações ("Plug-ins") e pelo menu do dono.
+- [ ] **Escolher um plug-in abre OUTRO diálogo** (o detalhe: o ícone, a frase e o aviso), por cima, que ao fechar devolve o foco à grade.
+- [ ] **O app não finge**: o backend ainda não tem plug-ins (tem conectores, que são outra tela). A vitrine é declarada num lugar só (`features/plugins/catalog.ts`) e o diálogo diz **uma vez**, acima da grade, "Em breve: os plug-ins ainda não funcionam" (nada de etiqueta em cada linha, que corta o texto). Quando o servidor tiver a lista, ela substitui o catálogo sem mudar o diálogo.
+- [ ] Os ícones vêm do mesmo módulo da 5c (`ui/brand-icons.tsx`, Simple Icons). Composio e Higgsfield ficam com o plug até o dono escolher o kit de marca oficial.
+
 ## 6. Mascotes
 
 - [ ] Só pelo motor `@suup/avatar` e pelas formas dele. Nenhuma forma ou rosto desenhado à mão. Única marca além do rosto: a estrela do Principal (§5), em volta do rosto.

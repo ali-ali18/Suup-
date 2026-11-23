@@ -1,6 +1,7 @@
 import type { Bot } from "@suup/api";
 import {
   Ban,
+  Blocks,
   Brain,
   Inbox,
   Keyboard,
@@ -199,6 +200,12 @@ export function CommandPalette() {
         label: "Pendências",
         icon: <Inbox size={18} />,
         run: () => ui().go("pending"),
+      },
+      {
+        id: "plugins",
+        label: "Plug-ins",
+        icon: <Blocks size={18} />,
+        run: () => ui().setPlugins(true),
       },
       {
         id: "settings",

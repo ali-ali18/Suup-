@@ -1014,3 +1014,30 @@ describe("conectores: o ícone do serviço (docs/DESIGN.md 5c, plug-ins)", () =>
     expect(read(join(root, "docs", "DESIGN.md"))).toContain("## 5c. Conectores");
   });
 });
+
+describe("plug-ins: o diálogo em grade (docs/DESIGN.md 5d)", () => {
+  const dialog = read(join(SRC, "features", "plugins", "PluginsDialog.tsx"));
+  const palette = read(join(SRC, "features", "palette", "CommandPalette.tsx"));
+  const shell = read(join(SRC, "features", "shell", "Shell.tsx"));
+
+  it("duas colunas (uma só na janela estreita), ícone ao lado do nome com uma linha apagada embaixo, e o detalhe em outro diálogo", () => {
+    expect(dialog).toContain("grid-cols-2");
+    expect(dialog).toContain("narrow:grid-cols-1");
+    expect(dialog).toContain("text-small text-text-muted");
+    expect(dialog).toContain("<Dialog");
+    expect(dialog).toContain("PluginDetail");
+    expect(dialog).toContain("brandGlyphFor");
+  });
+
+  it("o app não finge: a vitrine é declarada num lugar só e o diálogo avisa que ainda não funciona", () => {
+    expect(dialog).toContain("Em breve");
+    expect(read(join(SRC, "features", "plugins", "catalog.ts"))).toContain("CATALOG");
+    expect(dialog).not.toContain("api.");
+  });
+
+  it("abre pela paleta de ações e pelo menu do dono, e o Shell o monta", () => {
+    expect(palette).toContain("setPlugins(true)");
+    expect(read(join(SRC, "features", "shell", "Sidebar.tsx"))).toContain("setPlugins(true)");
+    expect(shell).toContain("<PluginsDialog />");
+  });
+});

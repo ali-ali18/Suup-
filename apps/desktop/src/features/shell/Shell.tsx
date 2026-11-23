@@ -8,6 +8,7 @@ import { MemoryScreen } from "../memory/MemoryScreen.js";
 import { NewBotDialog } from "../new-bot/NewBotDialog.js";
 import { CommandPalette, ShortcutsDialog } from "../palette/CommandPalette.js";
 import { PendingScreen } from "../pending/PendingScreen.js";
+import { PluginsDialog } from "../plugins/PluginsDialog.js";
 import { SettingsDialog } from "../settings/SettingsDialog.js";
 import { ApprovalAnnouncer } from "./ApprovalAnnouncer.js";
 import { GroupDialog } from "./GroupDialog.js";
@@ -24,6 +25,7 @@ export function Shell() {
   const newBotOpen = useUi((s) => s.newBotOpen);
   const paletteOpen = useUi((s) => s.paletteOpen);
   const shortcutsOpen = useUi((s) => s.shortcutsOpen);
+  const pluginsOpen = useUi((s) => s.pluginsOpen);
   const groupBotId = useUi((s) => s.groupBotId);
   const settingsOpen = useUi((s) => s.settingsOpen);
   const list = useMemo(() => sortedBots(bots), [bots]);
@@ -85,6 +87,7 @@ export function Shell() {
       {groupBotId !== null && <GroupDialog />}
       {paletteOpen && <CommandPalette />}
       {shortcutsOpen && <ShortcutsDialog />}
+      {pluginsOpen && <PluginsDialog />}
     </div>
   );
 }
