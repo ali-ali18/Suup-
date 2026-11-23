@@ -42,7 +42,7 @@ function FireItem({ fire, routine }: { fire: RoutineFire; routine: Routine }) {
   const head = `${whenText(fire.scheduledFor, routine.timeZone)} · ${fireStatusText(fire)}${kind === null ? "" : ` · ${kind}`}`;
   if (quiet(fire)) {
     return (
-      <li className="px-4 py-3" data-testid="routine-fire" data-status={fire.status}>
+      <li className="px-2" data-testid="routine-fire" data-status={fire.status}>
         <MutedText>{head}</MutedText>
       </li>
     );
@@ -51,7 +51,7 @@ function FireItem({ fire, routine }: { fire: RoutineFire; routine: Routine }) {
   const text = fire.resultText ?? "";
   return (
     <li
-      className="flex min-w-0 flex-col gap-2 px-4 py-3"
+      className="flex min-w-0 flex-col gap-2 px-2"
       data-testid="routine-fire"
       data-status={fire.status}
     >
@@ -143,12 +143,13 @@ function RemoveDialog({
 
 /**
  * The detail of a routine, in the bot's panel in place of the list (docs/DESIGN.md §5b): the way
- * back and the small actions on top, then the routine in words and what the bot wrote on each fire,
- * newest first, and at the end Editar (in the chat, by asking the bot) and Remover. Everything comes
+ * back and the small actions on top, then the routine in words, its instruction in Markdown (as in
+ * the Grok Bot) and what the bot wrote on each fire, newest first, flowing with no card or rule, and at the end Editar (in the chat, by asking the bot) and Remover. Everything comes
  * from `/v1/routines/{id}` and its `fires`; read again when a run of the bot changes.
  */
 export function RoutineDetail({ botId, routineId }: { botId: string; routineId: string }) {
-  const { api } = useServices();
+  const { api, platform } = useServices();
+  const favicons = useSettings((s) => s.settings.favicons === "on");
   const toast = useUi((s) => s.toast);
   const customFrame = useUi((s) => s.customFrame);
   const openPanelRoutine = useUi((s) => s.openPanelRoutine);
@@ -243,13 +244,16 @@ export function RoutineDetail({ botId, routineId }: { botId: string; routineId: 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-5">
         {error !== undefined && <FieldError>{error}</FieldError>}
         {routine !== undefined && (
-          <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-8">
             <div className="flex flex-col gap-1 px-2">
               <h2 className="text-title font-title wrap-anywhere">{routine.name}</h2>
               <MutedText data-testid="routine-schedule">
                 {describeSchedule(routine.schedule)}
               </MutedText>
               <MutedText data-testid="routine-next">{nextText(routine)}</MutedText>
+            </div>
+            <div className="px-2" data-testid="routine-instruction">
+              <Markdown text={routine.instruction} openUrl={platform.openUrl} favicons={favicons} />
             </div>
             <section aria-label="O que o bot escreveu" className="flex flex-col gap-2">
               <h3 className="px-2 text-label font-normal text-text-muted">Resultados</h3>
@@ -259,10 +263,7 @@ export function RoutineDetail({ botId, routineId }: { botId: string; routineId: 
                 </MutedText>
               )}
               {fires !== undefined && fires.length > 0 && (
-                <ul
-                  className="flex flex-col overflow-hidden rounded-card border border-border bg-surface [&>*+*]:border-t [&>*+*]:border-border"
-                  data-testid="routine-fires"
-                >
+                <ul className="flex flex-col gap-6" data-testid="routine-fires">
                   {fires.map((f) => (
                     <FireItem key={f.id} fire={f} routine={routine} />
                   ))}
@@ -280,7 +281,7 @@ export function RoutineDetail({ botId, routineId }: { botId: string; routineId: 
                 </Pill>
               )}
             </section>
-            <div className="flex justify-end gap-2" data-testid="routine-actions">
+            <div className="flex gap-2 px-2" data-testid="routine-actions">
               <Pill
                 size="sm"
                 onClick={() =>
