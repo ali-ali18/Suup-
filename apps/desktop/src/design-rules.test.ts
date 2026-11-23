@@ -837,14 +837,13 @@ describe("routines: no schedule form, rows edge to edge, the detail in the panel
       "Quando executar",
       "Pausar",
       "Retomar",
-      "Testar",
       "Editar",
       "Excluir rotina",
       "describeSchedule",
     ]) {
       expect(detail, word).toContain(word);
     }
-    for (const gone of ["<SourceChip", "routines.fires", "nextText"]) {
+    for (const gone of ["<SourceChip", "routines.fires", "routines.run", "Testar", "nextText"]) {
       expect(detail, gone).not.toContain(gone);
     }
     expect(chip).toContain("faviconUrl(safe)");

@@ -176,9 +176,7 @@ test.describe("routines", () => {
     await expect(detail.getByTestId("routine-schedule")).toHaveText("todo dia às 08:00");
     await expect(detail.getByTestId("routine-fire")).toHaveCount(0);
     const boxes = await Promise.all(
-      ["routine-pause", "routine-run", "routine-edit"].map((id) =>
-        detail.getByTestId(id).boundingBox(),
-      ),
+      ["routine-pause", "routine-edit"].map((id) => detail.getByTestId(id).boundingBox()),
     );
     const widths = boxes.map((x) => Math.round(x?.width ?? 0));
     expect(Math.max(...widths) - Math.min(...widths)).toBeLessThanOrEqual(2);

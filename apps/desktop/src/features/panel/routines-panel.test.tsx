@@ -179,12 +179,12 @@ describe("the detail of a routine, in the panel", () => {
     expect(screen.queryByTestId("routine-detail")).toBeNull();
   });
 
-  it("the actions are one row at the foot of the column: three equal buttons and the trash circle", async () => {
+  it("the actions are one row at the foot of the column: two equal buttons and the trash circle", async () => {
     setup([routineOf()]);
     const detail = await openDetail();
     const actions = await within(detail).findByTestId("routine-actions");
     expect(detail.lastElementChild).toBe(actions);
-    for (const id of ["routine-pause", "routine-run", "routine-edit"]) {
+    for (const id of ["routine-pause", "routine-edit"]) {
       expect(within(actions).getByTestId(id).className).toContain("flex-1");
     }
     expect(within(actions).getByTestId("routine-remove").getAttribute("aria-label")).toBe(
@@ -192,14 +192,13 @@ describe("the detail of a routine, in the panel", () => {
     );
   });
 
-  it("Pausar and Retomar change the routine, Testar runs it once now", async () => {
+  it("Pausar and Retomar change the routine", async () => {
     const { api } = setup([routineOf()]);
     const detail = await openDetail();
     fireEvent.click(await within(detail).findByRole("button", { name: "Pausar" }));
     await waitFor(() => expect(api.update).toHaveBeenCalledWith(routineOf().id, { paused: true }));
     expect(await within(detail).findByRole("button", { name: "Retomar" })).toBeTruthy();
-    fireEvent.click(within(detail).getByRole("button", { name: "Testar" }));
-    await waitFor(() => expect(api.run).toHaveBeenCalledWith(routineOf().id));
+    expect(within(detail).queryByRole("button", { name: "Testar" })).toBeNull();
   });
 
   it("Editar goes to the chat with the draft and the routine bound to it (never its id in the text)", async () => {

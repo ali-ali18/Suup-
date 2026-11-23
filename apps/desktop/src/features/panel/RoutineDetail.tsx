@@ -71,7 +71,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
  * the Grok Bot's (read in its code with the REA, 23/11/2026): a header (the way back and the name),
  * the content in two sections, "Instrução" (what the routine asks the bot, in Markdown) and "Quando
  * executar" (a row with the clock and the schedule in words), and at the foot of the column the
- * actions in one row: Pausar or Retomar, Testar (run once now), Editar (to the chat, by asking the
+ * actions in one row: Pausar or Retomar and Editar (to the chat, by asking the
  * bot), each one an equal share of the width, and the trash circle (Remover, a dialog). When it
  * runs, the bot's answer arrives in the chat. Read from `/v1/routines/{id}`, again when a run of
  * the bot changes.
@@ -86,7 +86,6 @@ export function RoutineDetail({ botId, routineId }: { botId: string; routineId: 
   const [routine, setRoutine] = useState<Routine | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
   const [removing, setRemoving] = useState(false);
-  const [running, setRunning] = useState(false);
   const mark = useBotRunMark(botId);
 
   const load = useCallback(() => {
@@ -109,20 +108,6 @@ export function RoutineDetail({ botId, routineId }: { botId: string; routineId: 
     api.routines
       .update(routine.id, { paused: !paused })
       .then(setRoutine, (e: unknown) => toast(messageOf(e), "error"));
-  };
-  const runNow = () => {
-    if (routine === undefined) return;
-    setRunning(true);
-    api.routines.run(routine.id).then(
-      () => {
-        setRunning(false);
-        toast(`“${routine.name}” começou a rodar. O resultado chega no chat.`, "info");
-      },
-      (e: unknown) => {
-        setRunning(false);
-        toast(messageOf(e), "error");
-      },
-    );
   };
 
   return (
@@ -174,9 +159,6 @@ export function RoutineDetail({ botId, routineId }: { botId: string; routineId: 
             data-testid="routine-pause"
           >
             {paused ? "Retomar" : "Pausar"}
-          </Pill>
-          <Pill className="flex-1" disabled={running} onClick={runNow} data-testid="routine-run">
-            {running ? "Em execução…" : "Testar"}
           </Pill>
           <Pill
             className="flex-1"
