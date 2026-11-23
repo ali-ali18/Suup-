@@ -23,6 +23,8 @@ Por isso a busca e a leitura são feitas por **peças de código aberto que o Su
 | `web_read` | lê uma página pública e devolve o conteúdo principal em **Markdown**, com título, URL final, autor e data quando a página dá. **Sem cartão só para um endereço que já apareceu** (veja "A leitura só abre o que já apareceu"); outro endereço pede cartão | **serviço leitor**: baixa, extrai com Readability, converte com Turndown; `render: true` roda a página num Chromium sem cabeça |
 | `web_fetch` (já existia) | uma chamada GET da máquina do bot, com cabeçalhos do cofre | continua para API e para URL interna; passa pela lista de hosts do bot |
 
+`web_fetch` recusa respostas acima de **5 MB depois de descomprimir**: o `--max-filesize` do curl só para o tamanho declarado (e o curl antigo, 7.81, nem o corpo em fluxo), então o arquivo que o curl escreve tem teto próprio (`ulimit -f` num subshell) e o tamanho é conferido depois do download; acima do limite, a mesma mensagem "larger than the 5 MB limit".
+
 ## Arquitetura
 
 ```

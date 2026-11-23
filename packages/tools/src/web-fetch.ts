@@ -184,9 +184,15 @@ export function buildCurlCommand(url: string, headers: Record<string, string> = 
   const extra = Object.entries(headers).map(
     ([name, value]) => `--header ${shellQuote(`${name}: ${value}`)}`,
   );
+  // `--max-filesize` only stops what the server DECLARES (and old curl, 7.81, not even a streamed
+  // body); with `--compressed` the file is the decompressed text, which can be far larger. So the
+  // file curl writes is capped in its own subshell (`ulimit -f`, in 512-byte blocks in dash; with
+  // XFSZ ignored the write fails and curl ends with code 23 and still prints its meta), and its
+  // size is checked afterwards: over the limit is reported as curl's code 63.
+  const blocks = Math.ceil((limit + 1) / 512);
   return [
     "tmp=$(mktemp) || exit 70; trap 'rm -f \"$tmp\"' EXIT;",
-    "meta=$(curl --silent --show-error --location",
+    `meta=$(ulimit -f ${blocks} 2>/dev/null; trap '' XFSZ; curl --silent --show-error --location`,
     `--max-redirs ${WEB_FETCH_MAX_REDIRECTS}`,
     "--proto '=http,https' --proto-redir '=http,https'",
     `--connect-timeout ${CONNECT_TIMEOUT_SECONDS} --max-time ${CURL_TIME_LIMIT_SECONDS}`,
@@ -197,7 +203,8 @@ export function buildCurlCommand(url: string, headers: Record<string, string> = 
     '--compressed --output "$tmp"',
     "--write-out '%{http_code}\\t%{url_effective}\\t%{num_redirects}\\t%{content_type}'",
     `--url ${shellQuote(url)});`,
-    'rc=$?; printf "%s\\t%s\\n" "$rc" "$meta";',
+    `rc=$?; size=$(wc -c < "$tmp"); [ "$size" -gt ${limit} ] && rc=63;`,
+    'printf "%s\\t%s\\n" "$rc" "$meta";',
     `head -c ${limit + 1} "$tmp"`,
   ].join(" ");
 }
