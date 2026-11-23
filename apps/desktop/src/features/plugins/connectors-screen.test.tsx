@@ -32,7 +32,18 @@ describe("the connectors screen", () => {
     expect(screenEl.textContent).toContain(
       "Conecte as ferramentas e os serviços com que seus bots trabalham.",
     );
-    expect(within(screenEl).getByRole("searchbox", { name: "Buscar conectores" })).toBeTruthy();
+    const search = within(screenEl).getByRole("searchbox", { name: "Buscar conectores" });
+    // an input group: the magnifier is INSIDE the group, before the field, which leaves room for it;
+    // and the group has its own limit of width (the token of a screen's search), it does not stretch
+    const group = within(screenEl).getByTestId("connectors-search");
+    expect(group.contains(search)).toBe(true);
+    expect(group.querySelector("svg.lucide-search")).not.toBeNull();
+    expect(group.querySelector("svg.lucide-search")?.getAttribute("aria-hidden")).toBe("true");
+    expect(search.className).toContain("pl-11");
+    // in the colour of the chat input
+    expect(search.className).toContain("bg-raised");
+    expect(search.className).not.toContain("bg-bg ");
+    expect(group.className).toContain("max-w-search");
     const sections = within(screenEl).getAllByTestId("connectors-section");
     expect(sections.map((s) => s.getAttribute("data-category"))).toEqual([...CATEGORIES]);
     for (const section of sections) {
@@ -134,7 +145,7 @@ describe("the connectors screen", () => {
     expect(greys).toHaveLength(2);
   });
 
-  it('"Adicionar personalizado" is real: it opens Configurações > Conectores', () => {
+  it('"Conector personalizado" is real: it opens Configurações > Conectores', () => {
     setup();
     fireEvent.click(screen.getByTestId("connectors-add-custom"));
     expect(useUi.getState()).toMatchObject({ settingsOpen: true, settingsTab: "connectors" });
@@ -166,7 +177,12 @@ describe("the page of a connector, in the same screen", () => {
     expect(examples.className).not.toContain("bg-linear");
     expect(examples.textContent).toContain("Resuma o documento de requisitos.");
     expect(within(examples).getAllByText("Google Docs")).toHaveLength(3);
-    // the blocks
+    // the blocks: filled with the colour of the chat input, no border
+    for (const title of ["Conexão", "Informações"]) {
+      const card = within(page).getByRole("heading", { name: title }).nextElementSibling;
+      expect(card?.className, title).toContain("bg-raised");
+      expect(card?.className, title).not.toContain("border");
+    }
     expect(within(page).getByRole("heading", { name: "Conexão" })).toBeTruthy();
     expect(within(page).getByRole("heading", { name: "Informações" })).toBeTruthy();
     const info = within(page).getByTestId("connector-info").textContent ?? "";

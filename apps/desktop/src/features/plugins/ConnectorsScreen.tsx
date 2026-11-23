@@ -5,7 +5,7 @@ import { useUi } from "../../app/ui-store.js";
 import { fold } from "../../data/botlist.js";
 import { cx } from "../../lib/cx.js";
 import { solidMarkFor } from "../../ui/brand-icons.js";
-import { EmptyState, MutedText, Pill, TextField } from "../../ui/primitives.js";
+import { EmptyState, MutedText, Pill, SearchField } from "../../ui/primitives.js";
 import { Screen, ScreenBody, ScreenHead } from "../../ui/screen.js";
 import { CATALOG, CATEGORIES, type CatalogEntry, type Tone, toneOf } from "./catalog.js";
 
@@ -230,7 +230,7 @@ function ConnectorPage({ entry, onBack }: { entry: CatalogEntry; onBack(): void 
           ))}
         </section>
         <Block title="Conexão">
-          <div className="flex items-center gap-3 rounded-card border border-border bg-surface p-3">
+          <div className="flex items-center gap-3 rounded-card bg-raised p-3">
             <EntryIcon entry={entry} size="lg" />
             <div className="flex min-w-0 flex-col gap-0.5">
               <span className="text-label font-label">{entry.name}</span>
@@ -239,7 +239,7 @@ function ConnectorPage({ entry, onBack }: { entry: CatalogEntry; onBack(): void 
           </div>
         </Block>
         <Block title="Informações">
-          <div className="flex flex-col gap-3 rounded-card border border-border bg-surface p-4">
+          <div className="flex flex-col gap-3 rounded-card bg-raised p-4">
             <p className="m-0 text-body">{entry.about}.</p>
             <dl className="m-0 flex flex-col" data-testid="connector-info">
               <div className="flex items-center gap-4 py-1.5">
@@ -292,7 +292,7 @@ function ConnectorPage({ entry, onBack }: { entry: CatalogEntry; onBack(): void 
 /**
  * The connectors, in a screen of its own in place of the chat and the bot's panel (docs/DESIGN.md
  * §5d; owner, 23/11/2026, with the reference he gave): the title and its line, "Meus conectores" and
- * "Adicionar personalizado" (which is real: it opens Configurações > Conectores, where a connector
+ * "Conector personalizado" (which is real: it opens Configurações > Conectores, where a connector
  * is made), a search field, and the services by section, two columns, each line with "+ Conectar".
  * Choosing one shows its page in this same screen. The gallery is a shop window: the backend cannot
  * connect the account of a service yet, so "Conectar" is off ("Em breve").
@@ -343,19 +343,19 @@ export function ConnectorsScreen() {
               onClick={() => openSettings("connectors")}
               data-testid="connectors-add-custom"
             >
-              Adicionar personalizado
+              Conector personalizado
             </Pill>
           </div>
         }
       />
       <ScreenBody>
-        <TextField
+        <SearchField
           label="Buscar conectores"
-          hideLabel
-          type="search"
           value={query}
           onChange={setQuery}
           placeholder="Buscar"
+          className="max-w-search"
+          testId="connectors-search"
         />
         {sections.length === 0 && (
           <EmptyState

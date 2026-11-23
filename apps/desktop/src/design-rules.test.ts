@@ -1031,10 +1031,18 @@ describe("conectores: a tela da vitrine (docs/DESIGN.md 5d)", () => {
   });
 
   it("título, busca, seções com contagem, duas colunas, o logo ao lado do nome com a linha apagada embaixo, + Conectar em cada linha", () => {
-    expect(screen).toContain('type="search"');
+    // the search is an input group with the magnifier INSIDE it, and its width is limited (owner: "limita o tamanho do input")
+    expect(screen).toContain("<SearchField");
+    // the search and the blocks of the page take the colour of the chat input (bg-raised), not a bordered surface
+    expect(read(join(SRC, "ui", "primitives.tsx"))).toContain(
+      "fieldControlClass({ search: true, raised: true })",
+    );
+    expect(screen).not.toContain("border border-border bg-surface");
+    expect(screen).toContain('className="max-w-search"');
+    expect(read(join(SRC, "ui", "primitives.tsx"))).toContain("export function SearchField");
     expect(screen).toContain("grid-cols-2");
     expect(screen).toContain("narrow:grid-cols-1");
-    expect(screen).toContain("Adicionar personalizado");
+    expect(screen).toContain("Conector personalizado");
     expect(screen).toContain("text-small text-text-muted");
     // the logo: thesvg, as an <img>, on the project's grey, white ones inverted in the light theme
     expect(screen).toContain("<img");
