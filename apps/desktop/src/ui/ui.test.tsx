@@ -22,15 +22,25 @@ describe("Composer", () => {
     expect((screen.getByLabelText("Mensagem") as HTMLTextAreaElement).value).toBe("");
   });
 
-  it("never sends blank text, and the button is disabled for it", () => {
+  it("never sends blank text: with no text there is no send button (the call ornament is in its place)", () => {
     const onSend = vi.fn();
     render(<Composer placeholder="x" onSend={onSend} />);
     type("   ");
     fireEvent.keyDown(screen.getByLabelText("Mensagem"), { key: "Enter" });
     expect(onSend).not.toHaveBeenCalled();
-    expect(
-      (screen.getByRole("button", { name: "Enviar mensagem" }) as HTMLButtonElement).disabled,
-    ).toBe(true);
+    expect(screen.queryByRole("button", { name: "Enviar mensagem" })).toBeNull();
+    expect(screen.getByTestId("ornament-call").getAttribute("aria-hidden")).toBe("true");
+  });
+
+  it("the send button takes the call's place when there is text, and the call comes back when it is cleared", () => {
+    const onSend = vi.fn();
+    render(<Composer placeholder="x" onSend={onSend} />);
+    expect(screen.getByTestId("ornament-call")).toBeTruthy();
+    type("oi");
+    expect(screen.queryByTestId("ornament-call")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Enviar mensagem" }));
+    expect(onSend).toHaveBeenCalledWith("oi");
+    expect(screen.getByTestId("ornament-call")).toBeTruthy();
   });
 
   it("disabled: cannot type or send, and says why", () => {
@@ -40,9 +50,11 @@ describe("Composer", () => {
     expect(input.placeholder).toBe("Bot arquivado");
   });
 
-  it("has no microphone", () => {
+  it("the dictation and the call are ornaments, never buttons that pretend to work", () => {
     render(<Composer placeholder="x" onSend={vi.fn()} />);
-    expect(screen.queryByRole("button", { name: /microfone|áudio/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /microfone|áudio|ditar|ligar|call/i })).toBeNull();
+    for (const id of ["ornament-dictation", "ornament-call"])
+      expect(screen.getByTestId(id).getAttribute("aria-hidden")).toBe("true");
   });
 
   it("restores a draft after a failed send, but never over what is being typed", () => {

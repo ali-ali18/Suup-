@@ -161,6 +161,11 @@ As telas que aparecem antes do app abrir (`features/connect/`) são **um cartão
 - [ ] **A estrela do Principal** (decisão do dono, 21/11/2026; a única exceção à regra de que o avatar é só o rosto): o bot principal (`bot.isDefault`, o supervisor da equipe) leva uma **estrela pequena e calma** no canto inferior direito do avatar, na barra lateral (linha, trilho e quadro), no cabeçalho do chat, no painel do bot e na paleta. É um chip redondo (`--size-star-badge`, 14 px; `--size-star-badge-lg`, 18 px no avatar grande e na prévia) com o fundo `--color-raised`, a borda de 2 px na cor da página e a estrela cheia na cor do texto; fica no canto de baixo para não encostar na contagem de não lidas (canto de cima). Sem estrela no avatar de 16 px (não cabe) nem em qualquer outro bot. Vale para os dois estilos de rosto (formas e pixel), porque a estrela é desenhada **em volta** do rosto, em `ui/avatar.tsx` (a prop `supervisor`), nunca dentro do motor `@suup/avatar` nem dos mascotes. Nenhuma outra peça desenha estrela sobre um avatar (teste em `design-rules.test.ts`).
 - [ ] Avatares (token / caixa): linha 36 px, trilho 36 px (dentro do quadro de 60), painel 72 px, pequeno 28 px. O dono falou em corpo visível ~42 / ~64 / ~74 / ~27 px; a caixa do código é a que vale até haver medida do corpo. O avatar nunca é recortado por um círculo.
 
+## 4b. Compositor
+
+- [ ] **Mais fino, como o do Grok Bot** (decisão do dono, 22/11/2026): altura mínima de 48 px (`min-h-12`), raio `--radius-composer` de 24 px (metade da altura), preenchimento de 8 px; o "+" (Anexar, ainda desligado), o campo e, à direita, os botões de 32 px (`size="sm"`).
+- [ ] **Ditar e call são enfeite** (o backend não tem nenhum dos dois; ver Princípios): sem texto, à direita aparecem o microfone (`data-testid="ornament-dictation"`) e o botão de call, na cor do bot (`data-testid="ornament-call"`), os dois `aria-hidden`, esmaecidos e sem clique. **Com texto, o call vira o botão Enviar** (o de verdade, "Enviar mensagem", na cor do bot); apagando o texto, o call volta. Não existe botão Enviar desligado.
+
 ## 5b. Painel do bot: Rotinas
 
 Decisões do dono (22/11/2026; [ROTINAS.md](ROTINAS.md)), como as tarefas do Grok: as rotinas nascem **e mudam conversando** com o bot; o painel é para ver o que elas fizeram, pausar, rodar e remover.

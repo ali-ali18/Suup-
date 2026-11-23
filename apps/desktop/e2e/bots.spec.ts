@@ -365,11 +365,13 @@ test.describe("bots, sidebar, palette, memory", () => {
     }
     // The white bot's bubble is a neutral grey, and its send button is the plain white round one;
     // the others' send button follows the bot's colour.
+    // (the send button exists only while there is text: with none, the call ornament is there)
     const sendButton = () => page.getByRole("button", { name: "Enviar mensagem" });
-    await sendButton().evaluate((el) => el.removeAttribute("disabled"));
+    await page.getByLabel("Mensagem", { exact: true }).fill("x");
     await expect(sendButton()).toHaveCSS("background-color", "rgb(255, 255, 255)");
+    await page.getByLabel("Mensagem", { exact: true }).fill("");
     await selectBot(page, "Azulado");
-    await sendButton().evaluate((el) => el.removeAttribute("disabled"));
+    await page.getByLabel("Mensagem", { exact: true }).fill("x");
     await expect(sendButton()).toHaveCSS("background-color", "rgb(16, 132, 254)");
   });
 
