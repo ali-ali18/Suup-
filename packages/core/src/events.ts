@@ -626,6 +626,12 @@ export const runEventSchema = z.discriminatedUnion("type", [
       rejectionReasons: z.array(z.string()),
       /** Not accepted, and the decision was handed to the user (the review kept rejecting). */
       handedToUser: z.exactOptional(z.boolean()),
+      /**
+       * Not accepted, and the run ends failed with this (a routine's run, which nobody answers
+       * live, whose review could not verify the work or failed): the loop closes it at the next
+       * safe point, so a resumed or replayed run ends the same way.
+       */
+      endsRun: z.exactOptional(z.object({ origin: failureOriginSchema, detail: z.string() })),
     }),
   }),
   z.object({
@@ -639,8 +645,8 @@ export const runEventSchema = z.discriminatedUnion("type", [
       verdict: z.enum(["approve", "reject", "unverified"]),
       notes: z.string(),
       /**
-       * Set when the review did not really happen (reviewer unreachable, answer malformed): the
-       * verdict is then an approval by default and this says why.
+       * Logs written before 23/11/2026 only: the review did not really happen and the verdict was an
+       * approval by default. Today such a review is `unverified` with `failed`.
        */
       warning: z.exactOptional(z.string()),
       /** `reject`: the concrete discrepancies the reviewer named (at least one; else not a reject). */
@@ -652,6 +658,12 @@ export const runEventSchema = z.discriminatedUnion("type", [
        * the harness had not already sent in full (or nothing at all): the owner is told so.
        */
       namedNothing: z.exactOptional(z.boolean()),
+      /**
+       * `unverified` because the review did not happen ("a revisão falhou"): the reviewer could not
+       * be reached even after one more try (`provider`), or answered without a usable verdict
+       * (`model`). Never an approval: a user's run asks the owner, a routine's run ends failed.
+       */
+      failed: z.exactOptional(z.enum(["provider", "model"])),
     }),
   }),
   z.object({

@@ -4,7 +4,7 @@
 // not see), the tie-break that escalates to the user
 // (the reviewer kept rejecting, or could not verify), and recording the finish attempt.
 
-import type { Discrepancy, UncheckedItem } from "../events.js";
+import type { Discrepancy, FailureOrigin, UncheckedItem } from "../events.js";
 import type { Message } from "../messages.js";
 import {
   finishInputSchema,
@@ -89,7 +89,11 @@ async function decideFinish(
 ): Promise<{ accepted: boolean; reasons: string[]; handedToUser: boolean }> {
   const { reviewer } = ctx.deps;
   const state = ctx.state;
-  const reject = async (reasons: string[], handedToUser = false) => {
+  const reject = async (
+    reasons: string[],
+    handedToUser = false,
+    endsRun?: { origin: FailureOrigin; detail: string },
+  ) => {
     await record(ctx, {
       type: "finish_attempt",
       payload: {
@@ -99,6 +103,7 @@ async function decideFinish(
         accepted: false,
         rejectionReasons: reasons,
         ...(handedToUser ? { handedToUser: true } : {}),
+        ...(endsRun === undefined ? {} : { endsRun }),
       },
     });
     return { accepted: false, reasons, handedToUser };
@@ -123,6 +128,17 @@ async function decideFinish(
         return outcome;
       }
       review = await requestReview(ctx, call, args);
+    }
+    if (review.verdict === "unverified" && ctx.run.origin === "routine") {
+      // Nobody answers a routine's run live (docs/ROTINAS.md): handing the decision to the owner
+      // would park the run forever and skip every next fire. It ends not concluded, saying why.
+      return reject(
+        [
+          `An independent reviewer could not verify this work (${describeUnverified(review)}). In a routine run nobody can decide now, so the run ends as not concluded.`,
+        ],
+        false,
+        routineUnverified(review),
+      );
     }
     if (review.verdict === "unverified") {
       const outcome = await reject(
@@ -156,6 +172,21 @@ async function decideFinish(
   return { accepted: true, reasons: [], handedToUser: false };
 }
 
+/** How a routine's run ends when its finish could not be verified (in Portuguese, for the chat). */
+function routineUnverified(review: ReviewOutcome): { origin: FailureOrigin; detail: string } {
+  if (review.failed !== undefined) {
+    return {
+      origin: review.failed,
+      detail:
+        "a revisão falhou (o revisor não respondeu), então o resultado não foi confirmado. A rotina roda de novo no próximo horário.",
+    };
+  }
+  return {
+    origin: "model",
+    detail: `o revisor não conseguiu confirmar o resultado, e numa rotina ninguém decide na hora. O que faltou: ${review.notes}`,
+  };
+}
+
 async function recordTieBreak(ctx: LoopContext, summary: string): Promise<void> {
   const review = ctx.state.currentReview;
   const question =
@@ -179,6 +210,8 @@ interface ReviewOutcome {
   discrepancies?: Discrepancy[];
   unchecked?: UncheckedItem[];
   namedNothing?: boolean;
+  /** The review did not happen (the reviewer failed): who failed. */
+  failed?: "provider" | "model";
 }
 
 const KIND_TEXT = {
@@ -269,7 +302,12 @@ async function reviewMessages(ctx: LoopContext, first: string): Promise<Message[
   return messages;
 }
 
-/** Asks the reviewer. Never fails the run: a broken review is an approval with a warning. */
+/**
+ * Asks the reviewer. A review that could not happen is never an approval (fail closed): a provider
+ * error is retried once, and if the reviewer still fails, or answers without a usable verdict, the
+ * outcome is `unverified` with `failed` set ("a revisão falhou"). A user's run hands that to the
+ * owner like any unverified; a routine's run, which nobody answers live, ends not concluded.
+ */
 async function requestReview(
   ctx: LoopContext,
   call: ControlCall,
@@ -314,13 +352,19 @@ async function requestReview(
       retries: 0,
       countsAsTurn: steps > 0,
     };
-    let outcome = await callModel(ctx, reviewSpec);
-    if (forced && outcome.kind === "error" && outcome.error.kind === "invalid_request") {
-      // The model may refuse a forced tool choice without the configuration saying so. Ask once
-      // more by instruction only instead of failing the review (the failure stays in the log).
-      const { toolChoice: _forced, ...unforced } = reviewSpec;
-      outcome = await callModel(ctx, unforced);
-    }
+    const ask = async () => {
+      const answer = await callModel(ctx, reviewSpec);
+      if (forced && answer.kind === "error" && answer.error.kind === "invalid_request") {
+        // The model may refuse a forced tool choice without the configuration saying so. Ask once
+        // more by instruction only instead of failing the review (the failure stays in the log).
+        const { toolChoice: _forced, ...unforced } = reviewSpec;
+        return callModel(ctx, unforced);
+      }
+      return answer;
+    };
+    let outcome = await ask();
+    // A provider error may be passing: the reviewer is asked once more before the review fails.
+    if (outcome.kind === "error") outcome = await ask();
 
     if (outcome.kind === "aborted") {
       await recordResult(ctx, call.id, {
@@ -332,12 +376,20 @@ async function requestReview(
     }
     if (outcome.kind === "error") {
       return recordReview(ctx, {
-        verdict: "approve",
-        notes: "",
-        warning: `the review was skipped because the reviewer failed (${outcome.error.kind}: ${outcome.error.message})`,
+        verdict: "unverified",
+        notes: `a revisão falhou: the reviewer could not be reached twice (${outcome.error.kind}: ${outcome.error.message})`,
+        failed: "provider",
       });
     }
     const parsed = parseVerdict(outcome.result.blocks);
+    if (parsed.warning !== undefined) {
+      // No verdict tool call, or one whose arguments do not parse: no review happened.
+      return recordReview(ctx, {
+        verdict: "unverified",
+        notes: `a revisão falhou: ${parsed.warning}`,
+        failed: "model",
+      });
+    }
     if (parsed.verdict === "need_evidence" && !final && parsed.callId !== undefined) {
       const payload = await gatherEvidence(
         ctx,
@@ -418,7 +470,6 @@ async function requestReview(
       verdict: parsed.verdict,
       notes: parsed.notes,
       ...(parsed.verdict === "reject" ? { discrepancies: parsed.discrepancies } : {}),
-      ...(parsed.warning === undefined ? {} : { warning: parsed.warning }),
     });
   }
 }
@@ -433,6 +484,7 @@ async function recordReview(ctx: LoopContext, outcome: ReviewOutcome): Promise<R
       ...(outcome.discrepancies === undefined ? {} : { discrepancies: outcome.discrepancies }),
       ...(outcome.unchecked === undefined ? {} : { unchecked: outcome.unchecked }),
       ...(outcome.namedNothing === true ? { namedNothing: true } : {}),
+      ...(outcome.failed === undefined ? {} : { failed: outcome.failed }),
     },
   });
   return outcome;

@@ -45,6 +45,7 @@ A pesquisa (Claude Code, rotinas): o texto disparado "can't act as approval or c
 - Dentro da execução da rotina, **toda** ferramenta passa pelo portão normal: regras, revisor, pisos, cartões. Os cartões aparecem em **Pendências** como quaisquer outros (a execução fica `waiting_approval`).
 - O revisor do Auto-review recebe, num bloco próprio, que a execução foi **iniciada por uma rotina**, que o usuário não está vendo ao vivo e que o disparo não é aprovação; a instrução aparece como "pedida quando o usuário configurou a rotina", **fora** das mensagens do usuário (`ReviewTrigger`, versão `auto-review-v3`).
 - Ninguém responde ao vivo: `escalate` e `request_secret` são **recusados** numa rotina (o bot diz na resposta final o que precisa). Senão a execução ficaria esperando para sempre e todos os próximos disparos seriam pulados.
+- Pelo mesmo motivo, quando o revisor de conclusão não consegue verificar o `finish` (ou a revisão falha, mesmo depois de tentar de novo), a execução da rotina **termina não concluída** (`failed`, motivo em português no chat: "a revisão falhou..." ou "o revisor não conseguiu confirmar...") em vez de passar a decisão ao dono. O próximo disparo roda normalmente.
 - `schedule_return` não é oferecido a rotinas (só a conversa do usuário volta sozinha), então o teto de 6 retornos seguidos continua valendo sem mudança.
 
 ## Horário: campos, nunca cron

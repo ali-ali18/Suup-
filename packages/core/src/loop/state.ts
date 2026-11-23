@@ -165,6 +165,8 @@ export interface RunState {
   parkedAt: Date | null;
   /** A `finish` was accepted but the run has not been closed yet. */
   acceptedFinish: { summary: string; evidence: { criterion: string; evidence: string }[] } | null;
+  /** A `finish` ended the run as not concluded (`finish_attempt.endsRun`), not closed yet. */
+  failedFinish: { origin: FailureOrigin; detail: string } | null;
   finishAttempts: Map<string, FinishAttemptRecord>;
   /** The review recorded since the latest `finish` call started, if any. */
   currentReview: RunEventPayload<"review"> | null;
@@ -286,6 +288,7 @@ export function createRunState(): RunState {
     waitedMs: 0,
     parkedAt: null,
     acceptedFinish: null,
+    failedFinish: null,
     finishAttempts: new Map(),
     currentReview: null,
     reviewRounds: [],
@@ -643,7 +646,8 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
       break;
 
     case "finish_attempt": {
-      const { callId, accepted, rejectionReasons, summary, evidence, handedToUser } = event.payload;
+      const { callId, accepted, rejectionReasons, summary, evidence, handedToUser, endsRun } =
+        event.payload;
       if (callId !== undefined) {
         state.finishAttempts.set(callId, {
           accepted,
@@ -652,6 +656,7 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
         });
       }
       if (accepted) state.acceptedFinish = { summary, evidence: structuredClone(evidence) };
+      if (endsRun !== undefined) state.failedFinish = { ...endsRun };
       break;
     }
 
@@ -744,6 +749,7 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
       };
       if (event.payload.to === "done" || event.payload.to === "failed") {
         state.acceptedFinish = null;
+        state.failedFinish = null;
       }
       if (state.pending !== null && state.pending.toolCalls.length === 0) state.pending = null;
       break;
