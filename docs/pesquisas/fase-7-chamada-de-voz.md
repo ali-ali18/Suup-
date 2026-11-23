@@ -1,0 +1,247 @@
+# Pesquisa: chamada de voz e ditado (fala para texto, texto para fala, fim de fala, voz em tempo real)
+
+Data da pesquisa: 23/11/2026. Valida a entrega da fase 7 (ver [pesquisas/README.md](README.md) e [PLANO.md](../PLANO.md) seção 4.12b "Chamada de voz").
+
+## Pergunta
+
+Como fazer, no Suup (loop próprio em TypeScript, app Tauri 2 + React no Windows com WebView2, servidor embutido como sidecar Node ou numa VPS, pt-BR, 100% código aberto, sem prender a um provedor), um modo **chamada de voz** como o do Grok (conversa por voz enquanto o bot continua agindo, mostrada no chat como bloco "Chat de voz · 00:02" com a transcrição e as ações) e um **ditado** simples (microfone para texto no compositor)? Em concreto:
+
+1. Que fala para texto (STT) aberto e local serve para pt-BR, e como chega ao Node/TypeScript?
+2. Que texto para fala (TTS) aberto e local tem voz em pt-BR, e qual a licença das vozes (não só do código)?
+3. Como se faz fim de fala, interrupção, eco e permissão de microfone no Tauri 2 / WebView2?
+4. Que frameworks abertos de agente de voz existem e há caminho em TypeScript?
+5. O que os provedores oferecem em voz em tempo real (OpenAI, Gemini, xAI, ElevenLabs), com ferramentas durante a chamada, pt-BR e preço por minuto? A Anthropic oferece fala na API?
+6. Como pares (Hermes, Grok, ChatGPT) fazem?
+7. Há orientação primária sobre confirmar ações por voz?
+
+## Fontes
+
+Lidas diretamente em 23/11/2026, salvo quando indicado. Hosts que o ambiente bloqueia (CONNECT 403) são listados em "O que não foi verificado". Repositórios públicos foram lidos via `raw.githubusercontent.com` ou clonados (`git clone --depth 1`); páginas de pacote via `registry.npmjs.org` e `pypi.org`.
+
+Fala para texto:
+
+- OpenAI Whisper, README e LICENSE (MIT): https://raw.githubusercontent.com/openai/whisper/main/README.md
+- Whisper, artigo "Robust Speech Recognition via Large-Scale Weak Supervision", arXiv:2212.04356, tabelas 10, 11 e 13 (PDF lido em 23/11/2026): https://arxiv.org/abs/2212.04356
+- whisper.cpp, README e LICENSE: https://raw.githubusercontent.com/ggml-org/whisper.cpp/master/README.md
+- faster-whisper (SYSTRAN), README e LICENSE: https://raw.githubusercontent.com/SYSTRAN/faster-whisper/master/README.md
+- Distil-Whisper, arXiv:2311.00430 (só o resumo): https://arxiv.org/abs/2311.00430
+- NVIDIA, "Canary-1B-v2 & Parakeet-TDT-0.6B-v3", arXiv:2509.14128 (submetido em 17/09/2025; PDF lido, tabelas 11 e 12 do apêndice B): https://arxiv.org/abs/2509.14128
+- NVIDIA NeMo, README (Apache-2.0): https://raw.githubusercontent.com/NVIDIA-NeMo/NeMo/main/README.md
+- Moonshine, README e LICENSE: https://raw.githubusercontent.com/moonshine-ai/moonshine/main/README.md
+- Vosk, README: https://raw.githubusercontent.com/alphacep/vosk-api/master/README.md
+- sherpa-onnx (k2-fsa), README e LICENSE: https://raw.githubusercontent.com/k2-fsa/sherpa-onnx/master/README.md
+- Transformers.js (Hugging Face), README e LICENSE: https://raw.githubusercontent.com/huggingface/transformers.js/main/README.md
+- Registros: `registry.npmjs.org/<pacote>/latest` (whisper-node, nodejs-whisper, smart-whisper, @fugood/whisper.node, @huggingface/transformers, @xenova/transformers, vosk, vosk-browser, sherpa-onnx-node, @moonshine-ai/moonshine-js, @ricky0123/vad-web, onnxruntime-node) e `pypi.org/pypi/<pacote>/json` (openai-whisper, faster-whisper, ctranslate2, pywhispercpp, vosk, moonshine-voice).
+
+Texto para fala:
+
+- Piper, repositório antigo (aviso de mudança): https://raw.githubusercontent.com/rhasspy/piper/master/README.md
+- Piper atual, OHF-Voice/piper1-gpl: README, `docs/LICENSING.md`, `docs/COMMERCIAL_USE.md`, `docs/VOICES.md`, LICENSE (GPL-3.0): https://raw.githubusercontent.com/OHF-Voice/piper1-gpl/main/docs/LICENSING.md
+- PyPI `piper-tts`: https://pypi.org/pypi/piper-tts/json
+- Kokoro (hexgrad): README, LICENSE, `kokoro/pipeline.py`, `kokoro.js/src/voices.js`, `kokoro.js/src/kokoro.js`: https://raw.githubusercontent.com/hexgrad/kokoro/main/README.md
+- Coqui TTS (fork da Idiap): clonado; `TTS/.models.json`, `docs/source/models/xtts.md`: https://github.com/idiap/coqui-ai-TTS
+- F5-TTS, README e LICENSE: https://raw.githubusercontent.com/SWivid/F5-TTS/main/README.md
+- Chatterbox (Resemble AI), README e LICENSE: https://raw.githubusercontent.com/resemble-ai/chatterbox/master/README.md
+
+Fim de fala, eco, microfone:
+
+- Silero VAD, README e LICENSE: https://raw.githubusercontent.com/snakers4/silero-vad/master/README.md
+- Pipecat Smart Turn, README e LICENSE: https://raw.githubusercontent.com/pipecat-ai/smart-turn/main/README.md
+- LiveKit, plugin `livekit-plugins-turn-detector`, README: https://raw.githubusercontent.com/livekit/agents/main/livekit-plugins/livekit-plugins-turn-detector/README.md
+- MDN, `MediaTrackConstraints.echoCancellation` (lido no repositório de conteúdo, pois developer.mozilla.org é bloqueado): https://raw.githubusercontent.com/mdn/content/main/files/en-us/web/api/mediatrackconstraints/echocancellation/index.md
+- Tauri: clones de `tauri-apps/tauri` (crates/tauri 2.12.7), `tauri-apps/wry` (0.57.3) e `tauri-apps/tauri-docs` (último commit em 23/11/2026).
+
+Frameworks de agente de voz:
+
+- Pipecat, README e LICENSE (BSD-2-Clause): https://raw.githubusercontent.com/pipecat-ai/pipecat/main/README.md
+- LiveKit Agents (Python), README e LICENSE (Apache-2.0): https://raw.githubusercontent.com/livekit/agents/main/README.md
+- LiveKit Agents para Node.js, README: https://raw.githubusercontent.com/livekit/agents-js/main/README.md
+- Vocode, README: https://raw.githubusercontent.com/vocodedev/vocode-core/main/README.md
+
+Provedores:
+
+- OpenAI, documentação em Markdown (`.md` no fim da URL): https://developers.openai.com/api/docs/guides/audio.md, `.../guides/live.md`, `.../guides/live-delegation.md`, `.../guides/live-conversations.md`, `.../guides/voice-agents.md`, `.../guides/realtime-mcp.md`, `.../guides/realtime-vad.md`, `.../guides/realtime-models-prompting.md`, `.../pricing.md`
+- Google, `googleapis/js-genai` README e `google-gemini/cookbook` (README e caderno `quickstarts/Get_started_LiveAPI.ipynb`): https://raw.githubusercontent.com/googleapis/js-genai/main/README.md
+- xAI, repositório oficial `xai-org/xai-cookbook` (clonado; último commit em 26/10/2026): https://github.com/xai-org/xai-cookbook
+- ElevenLabs, `elevenlabs/packages` (README do `@elevenlabs/client`) e `elevenlabs/elevenlabs-examples` (clonados): https://github.com/elevenlabs/packages
+- Anthropic, `platform.claude.com/llms.txt` (índice da documentação) e "Models overview": https://platform.claude.com/docs/en/models/overview.md
+
+Pares:
+
+- Hermes Agent, clone local somente leitura em `/home/user/nousresearch/hermes-agent` (`tools/voice_mode.py`, `tools/voice_live.py`, `tools/voice_mode_transcript.py`, `tools/transcription_tools.py`, `tools/transcription_common.py`, `tools/tts_tool.py`, `tools/tts_streaming.py`).
+
+## Fatos verificados
+
+### 1. Fala para texto, aberta e local
+
+**Whisper (OpenAI).** Licença MIT ("MIT License ... Copyright (c) 2022 OpenAI"). Tamanhos do README: tiny 39 M de parâmetros (~1 GB de VRAM), base 74 M (~1 GB), small 244 M (~2 GB), medium 769 M (~5 GB), large 1550 M (~10 GB), turbo 809 M (~6 GB). Sobre o turbo: "the `turbo` model is an optimized version of `large-v3` that offers faster transcription speed with a minimal degradation in accuracy." As velocidades relativas do README foram medidas "transcribing English speech on a A100".
+
+WER do português no artigo do Whisper (arXiv:2212.04356; modelos da época, large-v2 no topo; não é large-v3 nem turbo, e não separa pt-BR de pt-PT). Lido das tabelas do PDF:
+
+| Modelo | MLS (Tab. 10) | CommonVoice9 (Tab. 11) | Fleurs (Tab. 13) |
+|---|---|---|---|
+| tiny | 31,3 | 35,2 | 20,1 |
+| base | 21,9 | 23,7 | 13,0 |
+| small | 13,0 | 12,5 | 7,3 |
+| medium | 9,0 | 8,1 | 5,0 |
+| large | 9,2 | 7,1 | 4,8 |
+| large-v2 | 6,8 | 6,3 | 4,3 |
+
+**Whisper large-v3, Parakeet-TDT-0.6B-v3 e Canary-1B-v2 em português** (arXiv:2509.14128, apêndice B, WER %, tabelas 11 e 12; as legendas ficam abaixo das tabelas):
+
+| Modelo | FLEURS pt | MLS pt |
+|---|---|---|
+| whisper-large-v3 | 3,65 | 5,96 |
+| Parakeet-TDT-0.6B-v3 | 4,76 | 7,50 |
+| Canary-1B-v2 | 4,39 | 8,14 |
+
+O resumo do artigo diz que o Canary-1B-v2 "supports 25 languages primarily European" e que o Parakeet-TDT-0.6B-v3 oferece "multilingual ASR across the same 25 languages with just 600M parameters". O README do NeMo confirma o lançamento (agosto de 2025) "with speech recognition and translation support for 25 European languages" e tem licença Apache-2.0 (código). A licença dos pesos no Hugging Face não foi lida (host bloqueado).
+
+**whisper.cpp.** Licença MIT ("Copyright (c) 2023-2026 The ggml authors"). README: "Plain C/C++ implementation without dependencies"; "Support for CPU-only inference"; "Efficient GPU support for NVIDIA"; "Vulkan support"; Windows listado ("Windows ([MSVC] ... and [MinGW] ...)"). Tem quantização inteira. Tamanhos de disco do README: tiny 75 MiB, base 142 MiB, small 466 MiB, medium 1,5 GiB, large 2,9 GiB. Fluxo: "The [stream] tool samples the audio every half a second and runs the transcription continuously." Há também o exemplo `command`: "You can also easily make your own offline voice assistant application".
+
+**faster-whisper / CTranslate2.** Licença MIT. "This implementation is up to 4 times faster than openai/whisper for the same accuracy while using less memory." Único número de CPU do README: modelo small, 13 minutos de áudio, 8 threads, Intel Core i7-12700K, beam 5: openai/whisper fp32 6m58s; whisper.cpp fp32 2m05s; faster-whisper fp32 2m37s; faster-whisper int8 1m42s (RAM 1477 MB). É transcrição de arquivo, não fluxo. Aceita checkpoints Distil-Whisper (`distil-large-v3`). PyPI: faster-whisper 1.2.1, ctranslate2 4.9.1 (MIT, Python).
+
+**Distil-Whisper** (arXiv:2311.00430): "The distilled model is 5.8 times faster with 51% fewer parameters, while performing to within 1% WER on out-of-distribution test data". O resumo lido não diz em que idiomas há checkpoint; WER em português não verificado.
+
+**Moonshine.** Código e modelos MIT por padrão ("Moonshine models are released under the MIT License by default, in every language and at every size"), com exceções não comerciais para modelos antigos de outros idiomas (lista no LICENSE, sem português). README: "Optimized for live streaming, with low latency by doing work while the user is still talking." Fala para texto em "English, Spanish, German, Mandarin, Japanese, Korean, Vietnamese, Tagalog, Ukrainian, and Arabic": **português não consta no STT**; consta só no texto para fala. Suporta Windows. Pacote `@moonshine-ai/moonshine-js` 0.1.29 (MIT, para a web).
+
+**Vosk.** README: "speech recognition for 20+ languages" com Portuguese na lista; "Vosk models are small (50 Mb) but provide continuous large vocabulary transcription, zero-latency response with streaming API". Binding Node: npm `vosk` 0.3.39 (Apache-2.0); `vosk-browser` 0.0.8 (Apache-2.0). WER para português: não verificado.
+
+**sherpa-onnx (k2-fsa).** Licença Apache-2.0. README: "This repository supports running the following functions **locally**": ASR "both streaming and non-streaming", TTS, VAD (silero-vad) e outros; plataformas incluem Windows, "NodeJS" e WebAssembly. Pacote npm `sherpa-onnx-node` 2.0.3 (Apache-2.0) com dependência opcional `sherpa-onnx-win-x64`. O README cita um aplicativo que usa "Parakeet TDT 0.6B v3 (`OfflineRecognizer`)" e a lista de modelos inclui Whisper e Parakeet.
+
+**Ligações Node/TypeScript** (registro npm em 23/11/2026): `@huggingface/transformers` 4.3.2 (Apache-2.0; README: "to run the model on your GPU (via WebGPU), you can do this by setting `device: 'webgpu'`" e "The WebGPU API is still experimental in many browsers"); `@xenova/transformers` 2.17.2 (Apache-2.0, nome antigo); `whisper-node` 1.1.1 (MIT, "Runs local on CPU"); `nodejs-whisper` 0.4.1 (MIT); `smart-whisper` 0.8.1 (MIT, "Whisper.cpp Node.js binding with auto model offloading strategy"); `@fugood/whisper.node` 1.2.0-rc.2 (MIT); `onnxruntime-node` 1.31.1 (MIT).
+
+### 2. Texto para fala, aberta e local, com pt-BR
+
+**Piper.** O repositório `rhasspy/piper` diz: "Development has moved: https://github.com/OHF-Voice/piper1-gpl". O motor atual é **GPL**: PyPI `piper-tts` 1.8.0 (enviado em 04/09/2026), licença "GPL-3.0-or-later"; `docs/LICENSING.md`: "The Piper **engine** is GPL-3.0-or-later." O README descreve "A fast and local neural text-to-speech engine that embeds [espeak-ng]", com API Python e C/C++ e servidor HTTP. `docs/VOICES.md` lista "Português, Brazil (Portuguese, pt_BR)". Licença das vozes, do mesmo arquivo: "The Piper project makes **no license grant of its own over voice models**" e "Whether a trained model is a derivative work of its training corpus is an unsettled legal question. **Piper takes no position on it.**" A linha `License` do `MODEL_CARD` "names the license of **that voice's own dataset only** — not the datasets of any voice it was fine-tuned from." A voz base `en_US-lessac-medium` usa um corpus cuja licença "limits use to 'research and exploration of speech technologies' and excludes commercial use", e "A large share of the voices in `piper-voices` are fine-tuned from it". `COMMERCIAL_USE.md` lista vozes cuja cadeia inteira é permissiva, e entre elas há três de pt_BR: `pt_BR-cadu-medium` (CC0), `pt_BR-jeff-medium` (CC0) e `pt_BR-faber-medium` (CC0, no grupo ajustado a partir de `hifi_tts_92`, que "carries an attribution requirement" CC BY 4.0). Vários desses ajustes foram refeitos "in late 2026": uma cópia baixada antes pode ser a versão antiga, e é preciso conferir o `MODEL_CARD`. Os arquivos de voz ficam no Hugging Face (bloqueado aqui).
+
+**Kokoro.** Licença Apache-2.0 do código; README: "With Apache-licensed weights". Modelo de 82 milhões de parâmetros. Na biblioteca Python (`kokoro` 0.9.4, Apache-2.0), `pipeline.py` mapeia `'pt-br': 'p'` e `p='pt-br'` (via espeak-ng). Em `kokoro.js/src/voices.js` as vozes `pf_dora`, `pm_alex` e `pm_santa` existem **comentadas** (`// language: "pt-br"`, `// overallGrade: "D"`), e `kokoro.js/src/kokoro.js` só aceita idioma `"a"|"b"` (inglês). Ou seja, a biblioteca JS `kokoro-js` 1.2.1 (Apache-2.0) hoje só fala inglês; português exige a biblioteca Python (ou outro runtime ONNX) e as vozes pt-br têm nota de qualidade "D" no arquivo de vozes do próprio projeto. Streaming: `kokoro-js` expõe `tts.stream(splitter)` por frases.
+
+**Coqui TTS / XTTS-v2.** O fork da Idiap (`coqui-tts` 0.28.0 no PyPI) tem código MPL-2.0. `docs/source/models/xtts.md`: "This model is licensed under [Coqui Public Model License]"; `TTS/.models.json` marca `"license": "CPML"` e `TTS/utils/manage.py` imprime "the non-commercial CPML". O XTTS lista Portuguese (pt) entre as línguas. README: "XTTS can stream with <200ms latency." Conclusão: pesos do XTTS-v2 não comerciais (CPML).
+
+**F5-TTS.** "Our code is released under MIT License. The pre-trained models are licensed under the CC-BY-NC license due to the training data Emilia". Pesos não comerciais. Português: não verificado.
+
+**Chatterbox.** Código MIT. O README avisa: "As of August 2026, Chatterbox is retired research and is no longer maintained." Há versão multilíngue (lista inclui Portuguese) e um ajuste específico "Brazilian Portuguese" (`ResembleAI/Chatterbox-Multilingual-pt-br`, no Hugging Face, não lido). O modelo pequeno "Chatterbox-Nano" (110 M) é inglês e "running **3x faster than realtime on 8 CPU cores**". Licença dos pesos pt-br: não verificada.
+
+**Moonshine (texto para fala).** O README lista Portuguese entre as línguas de TTS. O LICENSE diz que os modelos de TTS e de fonemas "are licensed under the terms listed in their own readmes", fora do padrão MIT: licença dos pesos de TTS em português não verificada.
+
+### 3. Fim de fala, interrupção, eco, microfone
+
+**Silero VAD.** Licença MIT (arquivo LICENSE e README: "Published under permissive license (MIT) Silero VAD has zero strings attached - no telemetry, no keys, no registration, no built-in expiration, no keys or vendor lock."). O texto alternativo do selo de licença no topo do README diz "CC BY-NC 4.0" mas o selo e o LICENSE dizem MIT; vale o arquivo LICENSE. "One audio chunk (30+ ms) takes less than **1ms** to be processed on a single CPU thread"; treinado "on huge corpora that include over **6000** languages"; taxas de 8000 e 16000 Hz; PyTorch e ONNX. PyPI `silero-vad` 6.3 (classificador MIT). Uso no navegador: `@ricky0123/vad-web` 0.0.31 (ISC, "Powerful, user-friendly voice activity detector (VAD) for the browser").
+
+**Detecção de fim de turno.** Pipecat Smart Turn v3.2 (BSD-2-Clause, "truly open model"): "Support for 23 languages" incluindo Portuguese; "Runs in as little as 10ms on some CPUs, and under 100ms on most cloud instances"; "Available in CPU (8MB quantized) and GPU (32MB unquantized) versions"; "Audio native: The model works directly with PCM audio samples, rather than text transcriptions"; "Works in conjunction with a lightweight VAD model like Silero, meaning Smart Turn only needs to run during periods of silence". Premissa do README: "VAD can't take into account the actual linguistic or acoustic content of the speech." LiveKit: o plugin `livekit-plugins-turn-detector` está marcado "Deprecated" em favor de `livekit.agents.inference.TurnDetector`, "a unified audio end-of-turn detector"; se esse substituto roda local ou em nuvem: não verificado. OpenAI, no modo de voz em tempo real: `server_vad` "Automatically chunks the audio based on periods of silence" e `semantic_vad` "Chunks the audio when the model believes based on the words said by the user that they have completed their utterance"; `interrupt_response` existe só em modo de conversa.
+
+**Interrupção (barge-in), exemplo oficial da xAI.** Em `examples/voice-agent-phone/xai/src/index.ts` (cookbook da xAI), ao receber o evento `input_audio_buffer.speech_started` o código executa o comentário "Clear Twilio's audio buffer (interrupt bot if speaking)", isto é, descarta o áudio já enfileirado para tocar.
+
+**Eco.** MDN, `echoCancellation`: valor booleano ou texto; `true` = "The browser decides what audio will be removed from the signals recorded by the microphone. It must attempt to cancel at least as much as `remote-only` and should attempt to cancel as much as `all`."; `false` = "No audio is removed; no echo cancellation will take place."; se não der para cumprir, "will not fail if this can't be done", salvo `exact`. Os valores `"all"` e `"remote-only"` estão marcados experimentais. Se o WebView2 aplica de fato o cancelamento de eco quando a saída é áudio tocado pela própria página (não uma conexão WebRTC): não verificado. O Hermes registra o risco oposto: "the full-duplex listener has no echo cancellation, so speaker bleed can be transcribed near-verbatim (TTS -> STT -> TTS loop)" (`tools/voice_mode_transcript.py:67-70`).
+
+**Microfone no Tauri 2 / WebView2.** O `wry` 0.57.3 tem `PermissionKind::Microphone` e, em `src/webview2/mod.rs` (linhas ~558-616), liga o evento `PermissionRequested` do WebView2: `COREWEBVIEW2_PERMISSION_KIND_MICROPHONE => PermissionKind::Microphone`; com a resposta `Default`, o código comenta "Do nothing, let WebView2 show default prompt" (o WebView2 mostra o próprio pedido). O CHANGELOG do wry: "Add an expanded permission handling API for WebView2, WKWebView, WebKitGTK, and Android" e, no Windows, "Full coverage of all 12 `COREWEBVIEW2_PERMISSION_KIND` values". No Tauri 2.12.7 há `WebviewWindowBuilder::on_permission_request` (`crates/tauri/src/webview/webview_window.rs`) e `Builder::on_permission_request` (`app.rs`); a documentação diz "**Windows**: Fully supported via WebView2's PermissionRequested event." e "This handler only triggers for new permission requests. If the user has already allowed or denied a permission persistently within the webview, the browser will use the saved preference instead of calling this handler." O exemplo do próprio repositório do Tauri usa `navigator.mediaDevices.getUserMedia(constraints)` (`examples/api/src/views/WebRTC.svelte`). O `tauri-docs` não tem página sobre microfone no Windows; só a página de pacote macOS manda declarar `NSMicrophoneUsageDescription` ("Request microphone access for WebRTC").
+
+### 4. Frameworks abertos de agente de voz
+
+- **Pipecat**: "an open-source Python framework for building real-time voice and multimodal conversational agents". Licença BSD-2-Clause; PyPI `pipecat-ai` 1.17.0 (Python >= 3.11). Serviços de STT, LLM (inclui Anthropic), TTS, "Speech-to-Speech" e transportes "Daily (WebRTC), FastAPI Websocket, LiveKit (WebRTC)"; "Silero VAD" em "Audio Processing". Os clientes são SDKs (`@pipecat-ai/client-js` 1.17.0, BSD-2-Clause); o servidor é Python. Exemplo `LLMWithBackend`: "pairs a fast voice model with a slower backend model that runs the tools, and the voice keeps talking while the backend works."
+- **LiveKit Agents**: Apache-2.0; "Fully open-source, allowing you to run the entire stack on your own servers, including LiveKit server". Python `livekit-agents` 1.8.13; existe versão Node.js: repositório `livekit/agents-js` e npm `@livekit/agents` 1.10.1 (Apache-2.0), com "Semantic turn detection" e "MCP support" listados no README. Precisa de servidor LiveKit (WebRTC/SFU) para o transporte padrão.
+- **Vocode**: PyPI `vocode` 0.1.113 (MIT, Python); o README diz "We're actively looking for community maintainers".
+
+### 5. Voz em tempo real dos provedores
+
+**Anthropic.** O índice `llms.txt` da documentação (lido em 23/11/2026) não tem página de fala, áudio, voz ou transcrição (a única ocorrência de "transcripts" é "Session transcripts", de conformidade). A visão geral de modelos diz: "All current models support text and image input, text output, multilingual capabilities, vision, and tool use." Ou seja, nenhuma entrada ou saída de áudio documentada; fala para texto e texto para fala não vêm da Anthropic.
+
+**OpenAI** (documentação lida em 23/11/2026, páginas `.md`):
+
+- Há três arquiteturas: "GPT-Live | Full-duplex conversations with a separate backend", "Realtime API | Speech, reasoning, and tool use in one session" e "Chained voice pipeline | Control over each speech and text stage".
+- GPT-Live (`gpt-live-1.1`): "It can listen while speaking (**full duplex**)." Com delegação de cliente ("client delegation"), o backend pode ser "any model, agent harness, or service your application runs"; "Your application checks permissions, obtains required confirmations, runs functions that access your systems, and saves task progress." Conexão por WebRTC (recomendado) ou WebSocket; chave da API só no servidor.
+- Preço (página de preços): `gpt-live-1.1` e `gpt-live-1` "$0.05 / minute" ativo e "$0.02 / minute" em espera, cobrados por segundo, e "charges separately for backend model and tool usage". Transcrição: `gpt-4o-transcribe` $0,006 / minuto; `gpt-4o-mini-transcribe` $0,003 / minuto; `Whisper` $0,006 / minuto; `gpt-live-transcribe` e `gpt-realtime-whisper` $0,017 / minuto. Voz em tempo real por tokens: `gpt-realtime-2.1` áudio $32,00 de entrada e $64,00 de saída por 1 milhão de tokens; `gpt-realtime-2.1-mini` $10,00 e $20,00. TTS: `tts-1` $15,00 por milhão de caracteres; `gpt-4o-mini-tts` áudio de saída $12,00 por milhão de tokens.
+- Português do Brasil: o GPT-Live lista as vozes `bossa` (feminina) e `tempo` (masculina), idioma "Portuguese", sotaque "Brazilian".
+- Ferramentas na chamada: Realtime com "`function` | Your application owns the business logic, approval checks, or private system access" e `mcp`, em que o servidor da OpenAI executa a ferramenta; com MCP aprovável, "the Realtime API inserts an `mcp_approval_request` item into the conversation" e o cliente responde com `mcp_approval_response`.
+
+**Google Gemini Live.** `googleapis/js-genai` (pacote `@google/genai` 3.6.1, Apache-2.0): `ai.live` "Start a `live` session for real time interaction, allows text + audio + video input, and text or audio output." Caderno do cookbook: "Gemini 3.8 Live and Gemini 3.8 Live Extended Thinking are generally available"; "low-latency bidirectional voice and video interactions"; o caderno aponta para "Get started with Live API tools" e o cookbook cita "non-blocking background tools". Preço, pt-BR e detalhes de ferramentas: não verificado (host bloqueado).
+
+**xAI (Grok).** O cookbook oficial traz "complete voice agent apps for the browser, phone calls, iOS, and Android". No exemplo de telefone: `API_URL = "wss://api.x.ai/v1/realtime"`, `session.update` com `voice: 'ara'`, `turn_detection: { type: 'server_vad' }` e `tools`; ao receber item `function_call`, o código executa a ferramenta, envia `function_call_output` e manda `response.create`. Ou seja, há chamada de ferramenta durante a chamada de voz. Preço por minuto, idiomas (pt-BR) e a documentação de docs.x.ai: não verificado.
+
+**ElevenLabs.** `@elevenlabs/elevenlabs-js` 2.79.0 (MIT) no npm. Repositório `elevenlabs/packages`: "Real-time Communication: WebRTC-based audio streaming", "Client Tools: Support for custom client-side tools and functions" e, para ferramentas MCP que exigem aprovação, "the server sends an `mcp_tool_call` event in the `awaiting_approval` state and waits for a decision" (o exemplo usa `window.confirm`). O exemplo `speech-engine` do repositório de exemplos: "Add real-time voice to your own LLM-backed agent: a Speech Engine WebSocket server streams OpenAI responses to ElevenLabs". Preço e pt-BR: não verificado (host bloqueado).
+
+### 6. Como os pares fazem
+
+**Hermes Agent** (clone local, somente leitura). Tem voz, de duas formas:
+
+- Cadeia própria, por apertar para falar: `tools/voice_mode.py:1-5`: "Voice Mode -- push-to-talk recording and playback for the CLI. Capture via sounddevice ... STT via tools.transcription_tools". Fim de fala por silêncio simples: `tools/voice_mode.py:36-37`: `SILENCE_RMS_THRESHOLD = 200` e `SILENCE_DURATION_SECONDS = 3.0 # continuous silence before auto-stop`.
+- STT: `tools/transcription_tools.py:4`: "Built-in providers: local (faster-whisper, default/free), local_command, groq, openai ..., mistral, xai, elevenlabs, deepinfra"; `tools/transcription_common.py:15-16`: `DEFAULT_PROVIDER = "local"` e `DEFAULT_LOCAL_MODEL = "base"`. Alucinação do Whisper no silêncio tratada: `tools/voice_mode_transcript.py:36-37`: "Check if a transcript is a known Whisper hallucination on silence."
+- TTS: `tools/tts_tool.py:112`: `DEFAULT_PROVIDER = "edge"`; locais "NeuTTS / KittenTTS / Piper" (`tools/tts_tool.py:5`); TTS por frases em streaming (`tools/tts_streaming.py:1-10`: "sentence text → int16 mono PCM chunk iterator ... so playback starts on sentence one").
+- Parar por voz com igualdade exata: `tools/voice_mode_transcript.py:59-64`: a frase inteira tem de ser igual a uma "stop phrase" configurada, para que "stop doing that and try again" ainda chegue ao agente.
+- Modo full-duplex por provedor: `tools/voice_live.py:1-20`: "`voice.voice_chat_mode: gpt-live` replaces the chained STT → turn → TTS loop with ONE full-duplex voice model (OpenAI `gpt-live-1`) ... and delegates every real request to Hermes as its *client-delegation* backend. Hermes stays the agent"; cada delegação vira um `prompt.submit` normal (superfície `voice-live`) e a resposta volta por `session.commentary.append`; "Billing is $0.05/min of session time on the OpenAI key, separate from the Hermes turn."
+- Nenhum arquivo de voz do Hermes que li trata de confirmar aprovações por voz (`grep` por "approv|confirm" em `voice_mode.py`, `voice_live.py` e `voice_mode_transcript.py`: só "confirm speech" no sentido de detecção de fala).
+
+**Grok (app) e ChatGPT Advanced Voice.** Documentação ou ajuda oficial legível: não encontrada (ver "O que não foi verificado"). O cookbook da xAI mostra a API de voz em tempo real, não o comportamento do aplicativo "Chat de voz".
+
+**OpenClaw / OpenMausBot:** não consultados (sem clone local; não tentei fonte remota).
+
+### 7. Aprovações por voz
+
+Orientação primária encontrada, da OpenAI (guia de prompts de modelos Realtime):
+
+| Tipo de ferramenta | Comportamento padrão (tabela da fonte) |
+|---|---|
+| Consulta de leitura de baixo risco | "Call when intent and required fields are clear." |
+| Comunicação visível ao usuário | "Draft or summarize before sending." |
+| Mudanças de conta | "Confirm before calling." |
+| Compras, cancelamentos, pagamentos | "Confirm amount, target, and consequence before calling." |
+| Ações irreversíveis ou de alto impacto | "Confirm explicitly and offer escalation when appropriate." |
+
+Para ações de escrita: "Summarize the intended action before calling the tool", "Include the key consequence", "Ask for confirmation" e "Do not call the tool until the user clearly confirms." Sobre identificadores ditos: "Treat order IDs, tracking numbers, account numbers, confirmation codes, phone numbers, and email addresses as high precision" e "confirm the final value". Sobre quem decide: na documentação do GPT-Live, "enforce permissions and required confirmations in application code", e o texto do GPT-Live diz que "your application owns permissions, confirmations, business records, and task state". Isso é orientação de prompt e de arquitetura do fornecedor, não uma garantia de segurança medida.
+
+## Inferências
+
+Rotuladas como inferência: conclusões minhas a partir das fontes, não afirmações delas. Nada foi testado no Suup nem num PC Windows real.
+
+1. **O padrão dos que documentam é dividir "voz" de "cérebro".** OpenAI (GPT-Live com delegação de cliente), Pipecat (`LLMWithBackend`), ElevenLabs (Speech Engine "with your own LLM") e o próprio Hermes (`voice_live.py`) mantêm o agente no backend do dono e deixam o motor de voz só conversar. Isso casa com a regra do Suup: o loop, as ferramentas, os cartões e as regras continuam nossos; voz é uma camada de entrada e saída.
+2. **Para pt-BR, o gargalo local é o TTS, não o STT.** Há vários STT abertos com português medido (Whisper, Parakeet v3, Canary v2), todos na faixa de 3,7 a 8,1 de WER nos conjuntos acima. No TTS, as opções com licença limpa e português são poucas: Piper (motor GPL, voz CC0 `pt_BR-cadu/jeff/faber`), Kokoro (Apache, mas voz pt-br com nota "D" e fora da biblioteca JS). XTTS-v2 e F5-TTS têm pesos não comerciais; Chatterbox está encerrado.
+3. **O WER publicado não responde "como fica no PC do dono".** Os números são de FLEURS, MLS e CommonVoice (fala lida ou de audiolivro), sem separar pt-BR de pt-PT e sem sotaque, ruído de ambiente nem microfone de notebook. Só uma bateria própria com áudio do dono responde.
+4. **Tempo real em CPU só tem um número de fonte**, e é de transcrição de arquivo: pelo README do faster-whisper, 13 minutos de áudio em 1m42s com o modelo small int8 numa CPU de mesa i7-12700K, ou seja, cerca de 7,6 vezes mais rápido que o tempo real (conta minha: 780 s / 102 s). Um notebook comum será mais lento e o fluxo por trechos tem outro custo. Para fala curta de pergunta, isso sugere margem no small; para turbo/large no CPU, não há número na fonte.
+5. **Um motor sem cancelamento de eco gera auto-transcrição.** O Hermes documenta o laço TTS para STT quando o microfone fica aberto durante a fala do bot. Para o Suup, isso vale ainda mais porque um "pode" escutado de volta poderia aprovar um cartão.
+6. **O Whisper alucina em silêncio** (o Hermes tem filtro próprio para isso). Qualquer decisão do app que dependa de um trecho transcrito precisa de VAD antes do STT.
+7. **A licença do Piper pesa.** O motor atual é GPL-3.0-or-later e as vozes têm regras próprias por cadeia de dados; para um projeto "100% código aberto" isso pode ser aceitável, mas a compatibilidade com a licença do Suup e a forma de uso (processo separado, em vez de biblioteca ligada) precisam de decisão do dono e, em caso de dúvida, de advogado. Não li a licença do Suup.
+8. **O Anthropic não fornece fala**; logo a voz no Suup é sempre STT + nosso loop + TTS (cadeia) ou um provedor de voz com o nosso loop como backend. O modelo Claude continua só texto.
+
+## O que não foi verificado
+
+- **Hugging Face** (`huggingface.co`) bloqueado pelo proxy: não li cartões de modelo de `whisper-large-v3-turbo`, `distil-large-v3`, `parakeet-tdt-0.6b-v3`, `canary-1b-v2`, `Kokoro-82M`, `xtts_v2`, `piper-voices` (arquivos e `MODEL_CARD` de pt_BR), `smart-turn-v3` nem `Chatterbox-Multilingual-pt-br`. Em particular, a **licença dos pesos** de Parakeet/Canary, do Smart Turn e do Chatterbox pt-br: não verificada; a de Kokoro vem só da frase do README ("Apache-licensed weights"); a do XTTS vem do `docs/source/models/xtts.md` do fork.
+- **WER de português** do whisper-large-v3-turbo, do Distil-Whisper, do Vosk, do Moonshine (não tem STT em português) e do Piper/Kokoro (TTS não tem WER; qualidade subjetiva não medida). Os números do Whisper large-v3 e de Parakeet/Canary vêm do artigo da NVIDIA, com a metodologia de lá.
+- **Tempo real em PC Windows típico** para qualquer modelo, além da tabela do faster-whisper (i7-12700K, arquivo). Latência de streaming do STT e do TTS local: sem número de fonte.
+- **WebRTC VAD**: não consultado como fonte.
+- **MDN e W3C**: developer.mozilla.org e w3c.github.io bloqueados; li o arquivo do MDN no repositório `mdn/content`. A especificação do W3C (Media Capture and Streams) não foi lida. Não verifiquei se o WebView2 aplica cancelamento de eco, nem se `echoCancellation` ajuda com áudio tocado fora de uma conexão WebRTC.
+- **Tauri**: li o código e o CHANGELOG de `wry` 0.57.3 e `tauri` 2.12.7, e o `tauri-docs`; **não** li issues do GitHub sobre microfone no WebView2, nem testei um pedido real (comportamento da persistência da permissão no perfil do WebView2 empacotado).
+- **Gemini Live** (ai.google.dev bloqueado): preço, idiomas (pt-BR), limites de sessão, detalhes de ferramentas assíncronas. Só li o README do SDK e um caderno do cookbook.
+- **xAI** (x.ai e docs.x.ai bloqueados): preço, idiomas, documentação da API de voz, e como funciona o "Grok Voice" do aplicativo. Só li o cookbook oficial.
+- **ElevenLabs** (elevenlabs.io bloqueado): preço, idiomas, documentação de Agents e Speech Engine. Só li os repositórios de SDK e exemplos.
+- **OpenAI**: li a documentação de API e preços, mas não a ajuda do ChatGPT Advanced Voice (help.openai.com bloqueado); latência medida do GPT-Live e suporte de idiomas além da lista de vozes: não lidos. A suposição de que o Brasil é coberto pelo reconhecimento de fala de entrada do GPT-Live não foi verificada; só existem vozes brasileiras de saída.
+- **LiveKit**: se o `TurnDetector` novo roda local ou depende do LiveKit Inference (nuvem): não verificado. Licença dos pesos do modelo antigo: não verificada.
+- **Pipecat/LiveKit**: documentação de sites (`docs.pipecat.ai`, `docs.livekit.io`) não lida; só README e registros.
+- **sherpa-onnx**: não verifiquei na prática que a API Node cobre Piper pt_BR, Kokoro pt-br, Whisper turbo e Silero VAD no Windows; li só o README e o registro npm.
+- **OpenClaw/OpenMausBot** e **Grok/ChatGPT (aplicativos)**: sem fonte primária legível.
+
+## Implicação para o Suup
+
+Todas as propostas são **inferências**, derivadas das fontes acima. Nenhuma foi testada.
+
+| Decisão | Base | Tipo |
+|---|---|---|
+| **Ordem: 1) ditado, 2) leitura em voz alta, 3) chamada por cadeia local, 4) chamada com interrupção, 5) aprovações por voz, 6) provedores em tempo real.** O ditado é só STT, sem VAD de turno, sem TTS e sem aprovação; o plano 4.12b já o coloca à frente | PLANO 4.12b; fatos 1 e 3 | Inferência |
+| **A: pipeline local no sidecar** (microfone na WebView2 com `getUserMedia`, VAD, STT, nosso loop com resposta em streaming, TTS por frases). Para o STT, candidatos em pt-BR: Whisper (small, medium ou turbo, por whisper.cpp ou sherpa-onnx) e Parakeet v3; o critério de escolha é a bateria própria, não o artigo. Para o TTS: Piper `pt_BR-cadu/jeff/faber-medium` (CC0), com o motor GPL num processo separado; Kokoro pt-br só se a qualidade "D" for aceitável | Fatos 1, 2 e 4; inferências 2, 3 e 7 | Inferência |
+| **Onde o áudio é processado: sempre no PC do dono** (captura, VAD, STT e TTS no app ou no sidecar local), e só **texto** vai ao servidor, mesmo numa VPS. Assim o servidor continua só texto, não vira nó de áudio, a latência de rede não entra no tempo de fala, e o áudio não sai do PC. Chamada sem o PC do dono (só pela VPS) fica fora desta fase | Fatos 1 a 3 (nada local exige servidor); regra de privacidade do dono | Inferência |
+| **Caminho em Node**: `sherpa-onnx-node` 2.0.3 (Apache-2.0, binário `win-x64`; STT, TTS e Silero VAD no mesmo pacote) como primeira tentativa; alternativas: `whisper.cpp` por `@fugood/whisper.node` ou `smart-whisper` (MIT), e `@huggingface/transformers` 4.3.2 (WebGPU "experimental") dentro da WebView2. Python (Pipecat, faster-whisper, Kokoro) só se um processo Python separado for aceito | Fatos 1 e 4 | Inferência |
+| **Fim de fala em duas camadas**: Silero VAD para falar/calar (<1 ms por trecho de 30 ms) e um modelo de fim de turno (Smart Turn v3.2, BSD-2, português incluído, 10 a 100 ms) só durante o silêncio. Primeiro uma versão simples (silêncio de ~1 s); o modelo de turno entra depois de medir quantas vezes cortou o usuário | Fato 3 (Silero, Smart Turn); fato 6 (Hermes usa só silêncio de 3 s) | Inferência |
+| **Interrupção (barge-in) e eco**: começar em meia-duplex (microfone fechado, ou ignorado, enquanto o bot fala; interromper tocando no botão). Só depois abrir a escuta durante a fala do bot, com `echoCancellation: true` e filtro de auto-captura como o do Hermes, e medir o laço TTS para STT no WebView2 antes de ligar | Fato 3 (MDN, Hermes); inferência 5 | Inferência |
+| **Microfone no Tauri**: usar `getUserMedia` na WebView2 e o `on_permission_request` do Tauri para permitir só `Microphone` na janela do app (resposta `Allow` apenas para esse tipo, `Default` para o resto), com botão de silenciar sempre visível e indicador de microfone aberto. Testar o primeiro pedido e a persistência num Windows limpo | Fato 3 (wry, tauri 2.12.7) | Inferência |
+| **Latência (orçamento a medir, não prometido)**: fim de fala detectado (VAD + turno, dezenas a centenas de ms) + STT do trecho + primeiro token do modelo + primeira frase pronta para o TTS + primeiro áudio. Meta de partida a validar: primeira palavra falada em cerca de 1 a 2 s após o fim da fala. O número vem do conjunto de metas do próprio Suup, não de fonte | Fatos 1 a 3; inferência 4 | Inferência (meta sem fonte) |
+| **Como a chamada entra no chat**: um evento de início e um de fim da sessão de voz (com a duração mostrada em "Chat de voz · 00:02"); cada fala final do dono vira uma mensagem de usuário e cada resposta do bot, uma mensagem do bot, ambas marcadas com a superfície `voz` (como o Hermes marca `voice-live`); as ações do bot são as linhas e os cartões de sempre dentro do bloco. Trechos parciais só na tela, nunca gravados. Ao desligar, gravar tudo como mensagens comuns (memória, busca e supervisor veem). O app só desenha o que o backend envia | PLANO 4.12b; fato 6 (Hermes, `voice_live.py`) | Inferência |
+| **Regra de aprovação por voz**: o cartão na tela é a única autoridade. Uma fala de "sim" ou "não" só vale se houver **um** cartão aberto, é interpretada pelo modelo com saída estruturada (aprovar, recusar, incerto) e **incerto vira pedido de toque**; nunca por regex ou lista de palavras (regra do repositório). Ações de piso e de alto risco (envio a terceiros, apagar, dinheiro, trocar permissão) só se aprovam por toque; por voz, o bot lê o resumo do cartão antes. Fala captada durante a fala do bot, ou com pouca confiança do VAD, não aprova nada. A frase dita fica na transcrição e no registro do cartão | Fato 7 (confirmar antes de agir e deixar a decisão ao código do aplicativo); inferências 5 e 6; REGRAS.md (sem regex) | Inferência |
+| **B: tempo real dos provedores como opção** (desenhada como adaptador): OpenAI GPT-Live com delegação de cliente, em que o nosso loop é o "backend" (US$ 0,05 por minuto ativo e US$ 0,02 em espera, mais o nosso modelo; vozes `bossa` e `tempo` em pt-BR), igual ao que o Hermes faz; Gemini Live, xAI e ElevenLabs Speech Engine só depois de ler as documentações bloqueadas aqui. O adaptador não pode furar cartões nem regras: a chamada de ferramenta cai no mesmo registro | Fatos 5 e 6; documentação lida só da OpenAI | Fato para a OpenAI; resto inferência |
+| **O que medir antes de decidir os modelos**: (a) WER em pt-BR com 50 a 100 frases do dono (nomes, números, e-mails ditos, termos em inglês) para small, medium, turbo e Parakeet v3, com e sem ruído; (b) uso de CPU e RAM e tempo por trecho no PC do dono (fala de 3 s e de 15 s) e, se houver GPU, com Vulkan ou CUDA; (c) tempo até o primeiro áudio do TTS e naturalidade das vozes pt-BR (escuta do dono); (d) taxa de corte indevido do usuário (fim de turno) e de eco aceito como fala; (e) tempo total do fim da fala ao primeiro áudio, p50 e p95, separando STT, modelo e TTS; (f) custo por minuto nos provedores | Fato 5 (a própria OpenAI pede medir p50 e p95 e separar o tempo do backend); inferência 3 | Inferência |
+| **Licenças a registrar na decisão**: Piper (motor GPL-3.0-or-later; cada voz tem corpus próprio e cadeia de ajuste), XTTS-v2 e F5-TTS (pesos não comerciais, evitar), Kokoro e Whisper (permissivas), Parakeet/Canary (código Apache, pesos a verificar), Smart Turn (BSD-2) | Fatos 1 a 3; inferência 7 | Inferência |
+
+## Adendo (conferência, 23/11/2026)
+
+- Conferido: `sherpa-onnx-node` 2.0.3 no npm, licença Apache-2.0; `piper-tts` 1.8.0 no PyPI, licença GPL-3.0-or-later. O Suup é MIT (`LICENSE`).
+- Fato: o README do `k2-fsa/sherpa-onnx` (lido em 23/11/2026) lista "Speech synthesis (Piper, English)" e "(Piper, German)" entre as demonstrações, isto é, o sherpa-onnx roda **vozes** do Piper com o motor dele.
+- Inferência: dá para usar as vozes pt_BR do Piper com cadeia permissiva (cadu, jeff, faber) pelo sherpa-onnx (Apache-2.0), **sem** o motor GPL do Piper. Falta confirmar que essas vozes pt_BR existem no formato do sherpa-onnx (lista de modelos dele não lida).
