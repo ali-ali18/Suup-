@@ -1039,24 +1039,18 @@ describe("conectores: a tela da vitrine (docs/DESIGN.md 5d)", () => {
     // the logo: thesvg, as an <img>, on the project's grey, white ones inverted in the light theme
     expect(screen).toContain("<img");
     expect(screen).toContain("data-logo={entry.id}");
-    // twelve backgrounds (owner, 23/11/2026, with the reference), one FIXED per connector: a class per tone
-    const tones = [
-      "ink",
-      "slate",
-      "navy",
-      "plum",
-      "paper",
-      "sky",
-      "mint",
-      "sun",
-      "coral",
-      "amber",
-      "indigo",
-      "lilac",
-    ];
-    for (const tone of tones) {
-      expect(screen, tone).toContain(`bg-tile-${tone}`);
-      expect(screen, tone).toContain(`from-banner-${tone}-from`);
+    // neutral backgrounds only (owner, 23/11/2026): the project's grey, or the black or the white a brand's own icon has
+    expect(screen).toContain("bg-raised");
+    expect(screen).toContain("bg-tile-black");
+    expect(screen).toContain("bg-tile-white");
+    for (const colour of [
+      "bg-tile-sky",
+      "bg-tile-mint",
+      "bg-tile-sun",
+      "from-banner-",
+      "bg-linear",
+    ]) {
+      expect(screen, colour).not.toContain(colour);
     }
     expect(screen).not.toContain("invert");
     expect(screen).not.toContain("bg-brand-tile");

@@ -21,44 +21,21 @@ import stackOverflow from "../../assets/brand/stack-overflow.svg";
  * (an ornament too: illustrations, not a promise).
  */
 /**
- * The twelve backgrounds a logo can have (like an app icon) and the family of the banner of its page.
- * Four dark (`ink`, `slate`, `navy`, `plum`, for a white logo or a plug) and eight light. Owner,
- * 23/11/2026, with the reference he gave: the logos come with colour behind them, in many
- * variations, and each connector has ITS OWN, always the same.
+ * The background of a logo (owner, 23/11/2026: "deixa o fundo dos quadrados neutros, sem as cores
+ * primárias deles, ou a gente puxa da marca os que têm fundo neutro"). `neutral`: the project's grey,
+ * which follows the theme. `black` and `white`: the neutral background the brand's own icon has
+ * (GitHub, Figma and Composio are black; Notion is white), the same in both themes. FIXED for each
+ * connector: declared here, never picked at random.
  */
-export const TONES = [
-  "ink",
-  "slate",
-  "navy",
-  "plum",
-  "paper",
-  "sky",
-  "mint",
-  "sun",
-  "coral",
-  "amber",
-  "indigo",
-  "lilac",
-] as const;
+export const TONES = ["neutral", "black", "white"] as const;
 export type Tone = (typeof TONES)[number];
 
-/**
- * The tone of a connector that has none declared (one the user made): picked by its id, always the
- * same one for the same id (the sum of its characters, modulo the number of tones), so it never
- * changes between openings, themes or machines. No text is read for its meaning: only summed.
- */
-export function toneFor(id: string): Tone {
-  let sum = 0;
-  for (const char of id) sum += char.codePointAt(0) ?? 0;
-  return TONES[sum % TONES.length] as Tone;
-}
-
-/** The tone of an entry: its declared one, else the stable one of its id. */
-export const toneOf = (entry: { id: string; tone?: Tone }): Tone => entry.tone ?? toneFor(entry.id);
+/** The tone of an entry: its declared one, else the neutral grey (also for a connector the user made). */
+export const toneOf = (entry: { tone?: Tone }): Tone => entry.tone ?? "neutral";
 
 export interface CatalogEntry {
   id: string;
-  /** FIXED for this connector (see `TONES`). */
+  /** FIXED for this connector (see `Tone`). */
   tone?: Tone;
   name: string;
   /** One line: what the service is. */
@@ -83,7 +60,7 @@ export const CATEGORIES = [
 export const CATALOG: readonly CatalogEntry[] = [
   {
     id: "gmail",
-    tone: "coral",
+    tone: "neutral",
     name: "Gmail",
     about: "Ler, buscar e rascunhar e-mails",
     category: "Produtividade",
@@ -98,7 +75,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   },
   {
     id: "google-calendar",
-    tone: "sky",
+    tone: "neutral",
     name: "Google Agenda",
     about: "Compromissos e horários livres",
     category: "Produtividade",
@@ -113,7 +90,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   },
   {
     id: "notion",
-    tone: "paper",
+    tone: "white",
     name: "Notion",
     about: "Páginas, bancos de dados e notas",
     category: "Produtividade",
@@ -128,7 +105,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   },
   {
     id: "google-docs",
-    tone: "indigo",
+    tone: "neutral",
     name: "Google Docs",
     about: "Documentos de texto compartilhados",
     category: "Documentos",
@@ -143,7 +120,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   },
   {
     id: "google-sheets",
-    tone: "mint",
+    tone: "neutral",
     name: "Google Planilhas",
     about: "Planilhas e tabelas de dados",
     category: "Documentos",
@@ -158,7 +135,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   },
   {
     id: "google-drive",
-    tone: "amber",
+    tone: "neutral",
     name: "Google Drive",
     about: "Arquivos e pastas na nuvem",
     category: "Documentos",
@@ -173,7 +150,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   },
   {
     id: "github",
-    tone: "slate",
+    tone: "black",
     name: "GitHub",
     about: "Repositórios, issues e pull requests",
     category: "Desenvolvimento",
@@ -188,7 +165,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   },
   {
     id: "stack-overflow",
-    tone: "sun",
+    tone: "neutral",
     name: "Stack Overflow",
     about: "Perguntas e respostas de programação",
     category: "Desenvolvimento",
@@ -203,7 +180,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   },
   {
     id: "figma",
-    tone: "ink",
+    tone: "black",
     name: "Figma",
     about: "Arquivos de design e componentes",
     category: "Desenvolvimento",
@@ -218,7 +195,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   },
   {
     id: "composio",
-    tone: "plum",
+    tone: "black",
     name: "Composio",
     about: "Centenas de apps por um só conector",
     category: "Automação e mídia",
@@ -233,7 +210,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   },
   {
     id: "higgsfield",
-    tone: "navy",
+    tone: "neutral",
     name: "Higgsfield",
     about: "Imagens e vídeos gerados por IA",
     category: "Automação e mídia",

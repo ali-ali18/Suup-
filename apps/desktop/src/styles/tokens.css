@@ -17,45 +17,11 @@
   --color-bg: #141414; /* v2-bg */
   --color-surface: #1e1e1e; /* v2-surface */
   --color-raised: #2a2a2a; /* v2-raised */
-  /* The twelve backgrounds of a service's logo in the connectors screen (docs/DESIGN.md §5d), like
-     an app icon: the same in both themes, one FIXED for each connector. The banner of its page is
-     a gradient of the same family. */
-  --color-tile-ink: #0a0a0a;
-  --color-tile-slate: #1f2937;
-  --color-tile-navy: #0f2a5c;
-  --color-tile-plum: #2a1033;
-  --color-tile-paper: #ffffff;
-  --color-tile-sky: #dbe7ff;
-  --color-tile-mint: #d6f1df;
-  --color-tile-sun: #ffe3cc;
-  --color-tile-coral: #ffdad6;
-  --color-tile-amber: #fff0c2;
-  --color-tile-indigo: #dfe3ff;
-  --color-tile-lilac: #ead9ff;
-  --color-banner-ink-from: #4c3fb1;
-  --color-banner-ink-to: #0c1230;
-  --color-banner-slate-from: #475569;
-  --color-banner-slate-to: #111827;
-  --color-banner-navy-from: #1d4ed8;
-  --color-banner-navy-to: #0a1a4d;
-  --color-banner-plum-from: #be185d;
-  --color-banner-plum-to: #3b0a2a;
-  --color-banner-paper-from: #5b6577;
-  --color-banner-paper-to: #1a202c;
-  --color-banner-sky-from: #0284c7;
-  --color-banner-sky-to: #0c2f4a;
-  --color-banner-mint-from: #1f9d63;
-  --color-banner-mint-to: #0a3d2c;
-  --color-banner-sun-from: #f07d2d;
-  --color-banner-sun-to: #5a2410;
-  --color-banner-coral-from: #e11d48;
-  --color-banner-coral-to: #4c0519;
-  --color-banner-amber-from: #d97706;
-  --color-banner-amber-to: #4a2a05;
-  --color-banner-indigo-from: #4f46e5;
-  --color-banner-indigo-to: #1e1b4b;
-  --color-banner-lilac-from: #9333ea;
-  --color-banner-lilac-to: #3b0764;
+  /* The two neutral backgrounds a brand's own icon can have, for the logos of the connectors screen
+     (docs/DESIGN.md §5d): black (GitHub, Figma, Composio) and white (Notion). The same in both
+     themes. Every other logo sits on the project's grey (`--color-raised`). */
+  --color-tile-black: #0a0a0a;
+  --color-tile-white: #ffffff;
   --color-hover: #202024; /* bg-hover */
   --color-switch-on: #116dd2; /* the blue switch of the routines (owner's decision, 22/11/2026, as in the Grok Bot) */
   --color-switch-off: #3a3a3a; /* its track when off: a dark grey, never white (owner, 22/11/2026) */

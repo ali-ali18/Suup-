@@ -8,52 +8,18 @@ import { EmptyState, MutedText, Pill, TextField } from "../../ui/primitives.js";
 import { Screen, ScreenBody, ScreenHead } from "../../ui/screen.js";
 import { CATALOG, CATEGORIES, type CatalogEntry, type Tone, toneOf } from "./catalog.js";
 
-/** The twelve backgrounds of a logo (the full class names, so Tailwind finds them). */
+/** The three backgrounds of a logo (the full class names, so Tailwind finds them). */
 const TILE_BG: Record<Tone, string> = {
-  ink: "bg-tile-ink",
-  slate: "bg-tile-slate",
-  navy: "bg-tile-navy",
-  plum: "bg-tile-plum",
-  paper: "bg-tile-paper",
-  sky: "bg-tile-sky",
-  mint: "bg-tile-mint",
-  sun: "bg-tile-sun",
-  coral: "bg-tile-coral",
-  amber: "bg-tile-amber",
-  indigo: "bg-tile-indigo",
-  lilac: "bg-tile-lilac",
+  neutral: "bg-raised",
+  black: "bg-tile-black",
+  white: "bg-tile-white",
 };
 
-/** The gradient of the banner of a page: the same twelve families. */
-const BANNER_BG: Record<Tone, string> = {
-  ink: "from-banner-ink-from to-banner-ink-to",
-  slate: "from-banner-slate-from to-banner-slate-to",
-  navy: "from-banner-navy-from to-banner-navy-to",
-  plum: "from-banner-plum-from to-banner-plum-to",
-  paper: "from-banner-paper-from to-banner-paper-to",
-  sky: "from-banner-sky-from to-banner-sky-to",
-  mint: "from-banner-mint-from to-banner-mint-to",
-  sun: "from-banner-sun-from to-banner-sun-to",
-  coral: "from-banner-coral-from to-banner-coral-to",
-  amber: "from-banner-amber-from to-banner-amber-to",
-  indigo: "from-banner-indigo-from to-banner-indigo-to",
-  lilac: "from-banner-lilac-from to-banner-lilac-to",
-};
-
-/** What is drawn without a logo (the plug): white on a dark tile, black on a light one. */
+/** What is drawn without a logo (the plug): the faded text on the grey, white on black, black on white. */
 const PLUG_FG: Record<Tone, string> = {
-  ink: "text-tile-paper",
-  slate: "text-tile-paper",
-  navy: "text-tile-paper",
-  plum: "text-tile-paper",
-  paper: "text-tile-ink",
-  sky: "text-tile-ink",
-  mint: "text-tile-ink",
-  sun: "text-tile-ink",
-  coral: "text-tile-ink",
-  amber: "text-tile-ink",
-  indigo: "text-tile-ink",
-  lilac: "text-tile-ink",
+  neutral: "text-text-muted",
+  black: "text-tile-white",
+  white: "text-tile-black",
 };
 
 /** The rounded square and the logo inside it, per size. */
@@ -64,9 +30,9 @@ const TILE = {
 
 /**
  * The service's logo in its own colours (an `<img>` of an SVG copied from thesvg, `assets/brand/`)
- * on a rounded square with its own background, one of twelve (`tone`, FIXED for each connector, like an
- * app icon, the same in both themes; owner, 23/11/2026, with the reference he gave). A connector
- * with no logo (Higgsfield) gets the plug.
+ * on a rounded square with a NEUTRAL background (`tone`, FIXED for each connector): the project's grey,
+ * or the black or white the brand's own icon has (owner, 23/11/2026). A connector with no logo
+ * (Higgsfield) gets the plug.
  */
 function EntryIcon({ entry, size }: { entry: CatalogEntry; size: keyof typeof TILE }) {
   const tile = TILE[size];
@@ -182,7 +148,7 @@ function Block({ title, children }: { title: string; children: ReactNode }) {
 /**
  * The page of one service, in the same screen in place of the list (owner, 23/11/2026), laid out as
  * the reference he gave: the way back ("Conectores > name"), the head (logo, name, state "Não
- * conectado", the line and "Conectar"), a band, with a gradient of the service's family, with examples of what to ask, then "Conexão" and
+ * conectado", the line and "Conectar"), a band with examples of what to ask, then "Conexão" and
  * "Informações". Nothing is connected: the button is off (ornament) and the examples are
  * illustrations. What works today is in Configurações > Conectores, and the page says so.
  */
@@ -228,10 +194,7 @@ function ConnectorPage({ entry, onBack }: { entry: CatalogEntry; onBack(): void 
       </header>
       <ScreenBody limit="wide">
         <section
-          className={cx(
-            "flex flex-col gap-2 rounded-card bg-linear-to-br p-4",
-            BANNER_BG[toneOf(entry)],
-          )}
+          className="flex flex-col gap-2 rounded-card bg-raised p-4"
           aria-label="Exemplos do que você poderá pedir"
           data-testid="connector-examples"
         >
