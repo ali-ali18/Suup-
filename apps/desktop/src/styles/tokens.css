@@ -48,6 +48,352 @@
   --color-banner-indigo-to: #1e1b4b;
   --color-banner-lilac-from: #9333ea;
   --color-banner-lilac-to: #3b0764;
+  /* The glitter over the banner of a connector's page (docs/DESIGN.md §5d): two layers of tiny white
+     points and stars, of different sizes so the pattern does not repeat in the eye. STILL: it does not
+     move (owner, 23/11/2026: "não precisa ser animado, só o brilho"). The same in both themes. */
+  --glitter-near-size: 560px 330px;
+  --glitter-far-size: 880px 500px;
+  --glitter-near:
+    radial-gradient(
+      circle at 1% 6%,
+      rgb(255 255 255 / 0.94) 0,
+      rgb(255 255 255 / 0.94) 1.5px,
+      transparent 2.2px
+    ),
+    radial-gradient(
+      circle at 52% 41%,
+      rgb(255 255 255 / 0.74) 0,
+      rgb(255 255 255 / 0.74) 1.2px,
+      transparent 1.9px
+    ),
+    radial-gradient(
+      circle at 55% 73%,
+      rgb(255 255 255 / 0.65) 0,
+      rgb(255 255 255 / 0.65) 1.1px,
+      transparent 1.8px
+    ),
+    radial-gradient(
+      circle at 76% 52%,
+      rgb(255 255 255 / 0.63) 0,
+      rgb(255 255 255 / 0.63) 1.3px,
+      transparent 2px
+    ),
+    radial-gradient(
+      circle at 29% 53%,
+      rgb(255 255 255 / 0.67) 0,
+      rgb(255 255 255 / 0.67) 1.7px,
+      transparent 2.4px
+    ),
+    radial-gradient(
+      circle at 25% 88%,
+      rgb(255 255 255 / 0.63) 0,
+      rgb(255 255 255 / 0.63) 1.1px,
+      transparent 1.8px
+    ),
+    radial-gradient(
+      circle at 15% 29%,
+      rgb(255 255 255 / 0.77) 0,
+      rgb(255 255 255 / 0.77) 1.5px,
+      transparent 2.2px
+    ),
+    radial-gradient(
+      circle at 7% 91%,
+      rgb(255 255 255 / 0.77) 0,
+      rgb(255 255 255 / 0.77) 1.4px,
+      transparent 2.1px
+    ),
+    radial-gradient(
+      circle at 68% 97%,
+      rgb(255 255 255 / 0.8) 0,
+      rgb(255 255 255 / 0.8) 1.6px,
+      transparent 2.3px
+    ),
+    radial-gradient(
+      circle at 83% 4%,
+      rgb(255 255 255 / 0.62) 0,
+      rgb(255 255 255 / 0.62) 1.2px,
+      transparent 1.9px
+    ),
+    radial-gradient(
+      circle at 43% 2%,
+      rgb(255 255 255 / 0.59) 0,
+      rgb(255 255 255 / 0.59) 1.5px,
+      transparent 2.2px
+    ),
+    radial-gradient(
+      circle at 37% 43%,
+      rgb(255 255 255 / 0.74) 0,
+      rgb(255 255 255 / 0.74) 1.7px,
+      transparent 2.4px
+    ),
+    radial-gradient(
+      circle at 70% 69%,
+      rgb(255 255 255 / 0.68) 0,
+      rgb(255 255 255 / 0.68) 1.2px,
+      transparent 1.9px
+    ),
+    radial-gradient(
+      circle at 14% 13%,
+      rgb(255 255 255 / 0.92) 0,
+      rgb(255 255 255 / 0.92) 1.2px,
+      transparent 1.9px
+    ),
+    radial-gradient(
+      circle at 19% 63%,
+      rgb(255 255 255 / 0.68) 0,
+      rgb(255 255 255 / 0.68) 1px,
+      transparent 1.7px
+    ),
+    radial-gradient(
+      circle at 68% 92%,
+      rgb(255 255 255 / 0.77) 0,
+      rgb(255 255 255 / 0.77) 1.6px,
+      transparent 2.3px
+    ),
+    radial-gradient(
+      circle at 66% 92%,
+      rgb(255 255 255 / 0.6) 0,
+      rgb(255 255 255 / 0.6) 1.4px,
+      transparent 2.1px
+    ),
+    radial-gradient(
+      circle at 65% 89%,
+      rgb(255 255 255 / 0.93) 0,
+      rgb(255 255 255 / 0.93) 1.6px,
+      transparent 2.3px
+    ),
+    radial-gradient(
+      circle at 59% 96%,
+      rgb(255 255 255 / 0.94) 0,
+      rgb(255 255 255 / 0.94) 1.4px,
+      transparent 2.1px
+    ),
+    radial-gradient(
+      circle at 82% 1%,
+      rgb(255 255 255 / 0.76) 0,
+      rgb(255 255 255 / 0.76) 1.2px,
+      transparent 1.9px
+    ),
+    radial-gradient(
+      circle at 72% 55%,
+      rgb(255 255 255 / 0.85) 0,
+      rgb(255 255 255 / 0.85) 1.7px,
+      transparent 2.4px
+    ),
+    radial-gradient(
+      circle at 56% 82%,
+      rgb(255 255 255 / 0.72) 0,
+      rgb(255 255 255 / 0.72) 1.4px,
+      transparent 2.1px
+    ),
+    radial-gradient(
+      circle at 74% 55%,
+      rgb(255 255 255 / 0.67) 0,
+      rgb(255 255 255 / 0.67) 1.2px,
+      transparent 1.9px
+    ),
+    radial-gradient(
+      circle at 1% 2%,
+      rgb(255 255 255 / 0.93) 0,
+      rgb(255 255 255 / 0.93) 1.6px,
+      transparent 2.3px
+    ),
+    radial-gradient(
+      circle at 63% 1%,
+      rgb(255 255 255 / 0.8) 0,
+      rgb(255 255 255 / 0.8) 1.4px,
+      transparent 2.1px
+    ),
+    radial-gradient(
+      circle at 72% 99%,
+      rgb(255 255 255 / 0.66) 0,
+      rgb(255 255 255 / 0.66) 1.7px,
+      transparent 2.4px
+    ),
+    radial-gradient(
+      circle at 65% 80%,
+      rgb(255 255 255 / 0.95) 0,
+      rgb(255 255 255 / 0.95) 1.5px,
+      rgb(255 255 255 / 0.35) 3px,
+      transparent 8px
+    ),
+    radial-gradient(
+      circle at 62% 83%,
+      rgb(255 255 255 / 0.95) 0,
+      rgb(255 255 255 / 0.95) 1.5px,
+      rgb(255 255 255 / 0.35) 3px,
+      transparent 8px
+    ),
+    radial-gradient(
+      circle at 14% 99%,
+      rgb(255 255 255 / 0.95) 0,
+      rgb(255 255 255 / 0.95) 1.5px,
+      rgb(255 255 255 / 0.35) 3px,
+      transparent 8px
+    ),
+    radial-gradient(
+      circle at 51% 57%,
+      rgb(255 255 255 / 0.95) 0,
+      rgb(255 255 255 / 0.95) 1.5px,
+      rgb(255 255 255 / 0.35) 3px,
+      transparent 8px
+    ),
+    radial-gradient(
+      circle at 16% 40%,
+      rgb(255 255 255 / 0.95) 0,
+      rgb(255 255 255 / 0.95) 1.5px,
+      rgb(255 255 255 / 0.35) 3px,
+      transparent 8px
+    );
+  --glitter-far:
+    radial-gradient(
+      circle at 9% 7%,
+      rgb(255 255 255 / 0.8) 0,
+      rgb(255 255 255 / 0.8) 1.2px,
+      transparent 1.9px
+    ),
+    radial-gradient(
+      circle at 32% 21%,
+      rgb(255 255 255 / 0.75) 0,
+      rgb(255 255 255 / 0.75) 1.7px,
+      transparent 2.4px
+    ),
+    radial-gradient(
+      circle at 83% 1%,
+      rgb(255 255 255 / 0.83) 0,
+      rgb(255 255 255 / 0.83) 1.1px,
+      transparent 1.8px
+    ),
+    radial-gradient(
+      circle at 9% 99%,
+      rgb(255 255 255 / 0.89) 0,
+      rgb(255 255 255 / 0.89) 1.3px,
+      transparent 2px
+    ),
+    radial-gradient(
+      circle at 74% 6%,
+      rgb(255 255 255 / 0.73) 0,
+      rgb(255 255 255 / 0.73) 1.5px,
+      transparent 2.2px
+    ),
+    radial-gradient(
+      circle at 99% 21%,
+      rgb(255 255 255 / 0.89) 0,
+      rgb(255 255 255 / 0.89) 1.2px,
+      transparent 1.9px
+    ),
+    radial-gradient(
+      circle at 19% 78%,
+      rgb(255 255 255 / 0.61) 0,
+      rgb(255 255 255 / 0.61) 1.5px,
+      transparent 2.2px
+    ),
+    radial-gradient(
+      circle at 37% 51%,
+      rgb(255 255 255 / 0.93) 0,
+      rgb(255 255 255 / 0.93) 1.5px,
+      transparent 2.2px
+    ),
+    radial-gradient(
+      circle at 89% 91%,
+      rgb(255 255 255 / 0.81) 0,
+      rgb(255 255 255 / 0.81) 1.6px,
+      transparent 2.3px
+    ),
+    radial-gradient(
+      circle at 71% 22%,
+      rgb(255 255 255 / 0.67) 0,
+      rgb(255 255 255 / 0.67) 1.4px,
+      transparent 2.1px
+    ),
+    radial-gradient(
+      circle at 90% 95%,
+      rgb(255 255 255 / 0.87) 0,
+      rgb(255 255 255 / 0.87) 1.5px,
+      transparent 2.2px
+    ),
+    radial-gradient(
+      circle at 32% 91%,
+      rgb(255 255 255 / 0.63) 0,
+      rgb(255 255 255 / 0.63) 1.3px,
+      transparent 2px
+    ),
+    radial-gradient(
+      circle at 80% 16%,
+      rgb(255 255 255 / 0.82) 0,
+      rgb(255 255 255 / 0.82) 1.6px,
+      transparent 2.3px
+    ),
+    radial-gradient(
+      circle at 78% 0%,
+      rgb(255 255 255 / 0.78) 0,
+      rgb(255 255 255 / 0.78) 1.4px,
+      transparent 2.1px
+    ),
+    radial-gradient(
+      circle at 75% 36%,
+      rgb(255 255 255 / 0.67) 0,
+      rgb(255 255 255 / 0.67) 1px,
+      transparent 1.7px
+    ),
+    radial-gradient(
+      circle at 1% 20%,
+      rgb(255 255 255 / 0.81) 0,
+      rgb(255 255 255 / 0.81) 1.1px,
+      transparent 1.8px
+    ),
+    radial-gradient(
+      circle at 58% 94%,
+      rgb(255 255 255 / 0.83) 0,
+      rgb(255 255 255 / 0.83) 1.1px,
+      transparent 1.8px
+    ),
+    radial-gradient(
+      circle at 17% 73%,
+      rgb(255 255 255 / 0.77) 0,
+      rgb(255 255 255 / 0.77) 1.2px,
+      transparent 1.9px
+    ),
+    radial-gradient(
+      circle at 7% 83%,
+      rgb(255 255 255 / 0.84) 0,
+      rgb(255 255 255 / 0.84) 1.6px,
+      transparent 2.3px
+    ),
+    radial-gradient(
+      circle at 71% 2%,
+      rgb(255 255 255 / 0.62) 0,
+      rgb(255 255 255 / 0.62) 1.5px,
+      transparent 2.2px
+    ),
+    radial-gradient(
+      circle at 63% 22%,
+      rgb(255 255 255 / 0.95) 0,
+      rgb(255 255 255 / 0.95) 1.5px,
+      rgb(255 255 255 / 0.35) 3px,
+      transparent 8px
+    ),
+    radial-gradient(
+      circle at 41% 24%,
+      rgb(255 255 255 / 0.95) 0,
+      rgb(255 255 255 / 0.95) 1.5px,
+      rgb(255 255 255 / 0.35) 3px,
+      transparent 8px
+    ),
+    radial-gradient(
+      circle at 24% 56%,
+      rgb(255 255 255 / 0.95) 0,
+      rgb(255 255 255 / 0.95) 1.5px,
+      rgb(255 255 255 / 0.35) 3px,
+      transparent 8px
+    ),
+    radial-gradient(
+      circle at 99% 2%,
+      rgb(255 255 255 / 0.95) 0,
+      rgb(255 255 255 / 0.95) 1.5px,
+      rgb(255 255 255 / 0.35) 3px,
+      transparent 8px
+    );
   --color-hover: #202024; /* bg-hover */
   --color-switch-on: #116dd2; /* the blue switch of the routines (owner's decision, 22/11/2026, as in the Grok Bot) */
   --color-switch-off: #3a3a3a; /* its track when off: a dark grey, never white (owner, 22/11/2026) */
