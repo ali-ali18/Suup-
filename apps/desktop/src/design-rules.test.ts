@@ -912,3 +912,24 @@ describe("avatares: dois estilos, desenhados só pelo motor (docs/DESIGN.md, Mas
       expect(read(join(SRC, file)), file).toContain("avatarStyle={bot.avatarStyle}");
   });
 });
+
+describe("o texto não rola para o lado e nenhuma barra de rolagem aparece (docs/DESIGN.md, Rolagem)", () => {
+  it("o base.css esconde as barras de rolagem de tudo (a roda, o toque e o teclado continuam rolando)", () => {
+    const base = read(join(SRC, "styles", "base.css"));
+    expect(base).toContain("scrollbar-width: none;");
+    expect(base).toContain("::-webkit-scrollbar");
+  });
+
+  it("o Markdown quebra o texto e o bloco de código, e não rola para o lado", () => {
+    const markdown = read(join(SRC, "lib", "markdown.tsx"));
+    expect(markdown).toContain("wrap-anywhere");
+    expect(markdown).not.toContain("overflow-auto");
+    expect(markdown).toContain("overflow-x-hidden");
+  });
+
+  it("a pílula do bot mostra só o nome (a descrição fica na barra lateral e no painel)", () => {
+    const chat = read(join(SRC, "features", "chat", "ChatScreen.tsx"));
+    expect(chat).toContain("{bot.name}</span>");
+    expect(chat).not.toContain("<BotTitle");
+  });
+});

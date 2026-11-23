@@ -16,7 +16,6 @@ import { secretRequestsOf } from "../../data/secret-requests.js";
 import { cx } from "../../lib/cx.js";
 import { colorVars, themeColor } from "../../lib/mascots.js";
 import { Avatar } from "../../ui/avatar.js";
-import { BotTitle } from "../../ui/bot-title.js";
 import { EventLineButton } from "../../ui/chat-lines.js";
 import { Composer } from "../../ui/composer.js";
 import { DraftReference } from "../../ui/draft-reference.js";
@@ -236,7 +235,6 @@ function ChatForBot({ botId }: { botId: string }) {
   ]
     .filter(Boolean)
     .join(". ");
-  const description = bot.description.trim();
 
   const menuItems: MenuItem[] = [
     ...runMenuItems(active, {
@@ -300,9 +298,7 @@ function ChatForBot({ botId }: { botId: string }) {
               state={display.avatar}
               supervisor={bot.isDefault}
             />
-            <span className="min-w-0 truncate">
-              <BotTitle name={bot.name} description={description} />
-            </span>
+            <span className="min-w-0 truncate font-label">{bot.name}</span>
             <ChevronDown
               size={16}
               aria-hidden="true"
