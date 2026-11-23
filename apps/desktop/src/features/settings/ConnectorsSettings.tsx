@@ -482,9 +482,7 @@ function ToolRow({ connector, tool }: { connector: Connector; tool: ConnectorToo
       />
       {open && (
         <SettingsFold>
-          <SettingsHint>
-            Nome registrado: <code>{tool.name}</code>
-          </SettingsHint>
+          {/* The registered name (`conn_<connector>__<tool>`) is internal: the Inspector has it. */}
           {tool.description !== "" && (
             <blockquote
               className="m-0 flex flex-col items-start gap-1 border-l-2 border-border-strong pl-3 text-small text-text-muted"

@@ -127,11 +127,11 @@ test.describe("per-tool grants and the review of a definition", () => {
     await selectBot(page, "Seletivo");
     await send(page, "CASE-GRANTS use as ferramentas");
     await expect(botMessage(page, "Terminei: usei uma e não consegui a outra.")).toBeVisible();
-    const echo = page.getByTestId("action-card").filter({ hasText: "conn_fake__echo" });
+    const echo = page.getByTestId("action-card").filter({ hasText: "Usar “echo”" });
     await expect(echo).toHaveAttribute("data-state", "done");
     await echo.getByRole("button").click();
     await expect(echo.getByTestId("action-output")).toContainText("echo: oi do bot");
-    const hidden = page.getByTestId("action-card").filter({ hasText: "conn_fake__lying_read" });
+    const hidden = page.getByTestId("action-card").filter({ hasText: "Usar “lying read”" });
     await expect(hidden).toHaveAttribute("data-state", "failed");
     const runs = await world.api.runs.list({ botId: await botId(world, "Seletivo") });
     const events = await world.api.runs.events(runs.items[0]?.id as string, { limit: 500 });
@@ -259,7 +259,7 @@ test.describe("per-tool grants and the review of a definition", () => {
     await send(page, "CASE-GRANTS antes da revisão");
     await expect(botMessage(page, "Terminei: usei uma e não consegui a outra.")).toBeVisible();
     await expect(
-      page.getByTestId("action-card").filter({ hasText: "conn_fake__echo" }),
+      page.getByTestId("action-card").filter({ hasText: "Usar “echo”" }),
     ).toHaveAttribute("data-state", "failed");
 
     // The version on screen is now the current one: approving it works.
@@ -294,7 +294,7 @@ test.describe("per-tool grants and the review of a definition", () => {
     await send(page, "CASE-GRANTS depois da revisão");
     await expect(botMessage(page, "Terminei: usei uma e não consegui a outra.")).toBeVisible();
     await expect(
-      page.getByTestId("action-card").filter({ hasText: "conn_fake__echo" }),
+      page.getByTestId("action-card").filter({ hasText: "Usar “echo”" }),
     ).toHaveAttribute("data-state", "done");
 
     // The last one is approved from the notice again, and the notice goes away.
@@ -522,7 +522,9 @@ test.describe("tool search: the measure of the definitions, and the real tool in
     await expect(rows).toHaveCount(2);
     await expect(rows.nth(0)).toContainText("Procurar ferramentas");
     await expect(rows.nth(0)).toContainText("no conector fake");
-    await expect(rows.nth(1)).toContainText("conn_fake__gen_3");
+    // the tool in words, never the internal `conn_<connector>__<tool>` name
+    await expect(rows.nth(1)).toContainText("Usar “gen 3”");
+    await expect(page.getByTestId("chat")).not.toContainText("conn_fake__");
     await expect(rows.nth(1).locator('[data-testid="action-kind"]')).toHaveText("fake");
     await expect(page.getByTestId("chat")).not.toContainText("use_tool");
 

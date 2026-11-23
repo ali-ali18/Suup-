@@ -307,7 +307,8 @@ test.describe("connectors", () => {
     // A tool is one row; its details open on its own button.
     await expect(echo.getByTestId("tool-basis")).toHaveCount(0);
     await echo.getByTestId("connector-tool-toggle").click();
-    await expect(echo).toContainText("conn_fake__echo");
+    // the internal registered name stays out of sight
+    await expect(echo).not.toContainText("conn_fake__echo");
     await expect(echo).toContainText("Externa ou irreversível");
     await expect(echo.getByTestId("tool-basis")).toContainText("Padrão: pergunta antes de rodar.");
     await expect(echo.getByTestId("tool-basis")).toContainText("só lê");
