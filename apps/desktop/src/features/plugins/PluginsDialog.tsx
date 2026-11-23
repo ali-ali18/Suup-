@@ -1,5 +1,5 @@
 import { Plug } from "lucide-react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { useUi } from "../../app/ui-store.js";
 import { cx } from "../../lib/cx.js";
 import { Dialog, MutedText, Pill } from "../../ui/primitives.js";
@@ -80,7 +80,24 @@ function MyPlugins() {
   );
 }
 
-/** What opens when a plug-in is chosen: who it is and, honestly, that it does not work yet. */
+/** A titled block of the detail: a faded label of 30 px and what it holds (as the routine's). */
+function Block({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="flex flex-col" aria-label={title}>
+      <h3 className="flex h-7.5 items-center text-label font-normal text-text-muted">{title}</h3>
+      {children}
+    </section>
+  );
+}
+
+/**
+ * What opens when a service of the gallery is chosen (docs/DESIGN.md §5d), laid out as the Grok Bot's
+ * (read in its code with the REA, 23/11/2026): the logo with the name's line and the state, the
+ * button to connect, then "Informações" and "Ferramentas". Nothing is connected: the backend does not
+ * connect an account of a service, so the state says "Não conectado", the button is off (the
+ * ornament: "Em breve"), the information is what the gallery declares and the tools appear only
+ * after a connection. What works today is in Configurações > Conectores, and the text says so.
+ */
 function PluginDetail({ entry, onClose }: { entry: CatalogEntry; onClose(): void }) {
   return (
     <Dialog
@@ -95,8 +112,31 @@ function PluginDetail({ entry, onClose }: { entry: CatalogEntry; onClose(): void
       <div className="flex flex-col gap-5" data-testid="plugin-detail" data-plugin={entry.id}>
         <div className="flex items-center gap-4">
           <EntryIcon entry={entry} size="lg" />
-          <p className="m-0 text-body">{entry.about}</p>
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <p className="m-0 text-body">{entry.about}</p>
+            <MutedText data-testid="plugin-state">Não conectado</MutedText>
+          </div>
         </div>
+        <Pill tone="primary" disabled title="Em breve" data-testid="plugin-connect">
+          Conectar {entry.name}
+        </Pill>
+        <Block title="Informações">
+          <dl className="m-0 flex flex-col" data-testid="plugin-info">
+            <div className="flex items-center justify-between gap-4 py-1.5">
+              <dt className="text-text-muted">Categoria</dt>
+              <dd className="m-0">{entry.category}</dd>
+            </div>
+            <div className="flex items-center justify-between gap-4 py-1.5">
+              <dt className="text-text-muted">Disponibilidade</dt>
+              <dd className="m-0">Em breve</dd>
+            </div>
+          </dl>
+        </Block>
+        <Block title="Ferramentas">
+          <MutedText as="p" data-testid="plugin-tools">
+            Aparecem aqui depois de conectar.
+          </MutedText>
+        </Block>
         <MutedText as="p">
           Este conector ainda não funciona aqui. Para ligar um serviço a um bot hoje, use
           Configurações &gt; Conectores.

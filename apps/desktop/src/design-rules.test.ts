@@ -1034,6 +1034,16 @@ describe("plug-ins: o diálogo em grade (docs/DESIGN.md 5d)", () => {
     expect(dialog).toContain("text-small text-text-muted");
     expect(dialog).toContain("<Dialog");
     expect(dialog).toContain("PluginDetail");
+    // the detail is the menu of a connector as the Grok Bot's: connect (off), Informações, Ferramentas
+    for (const word of [
+      "Conectar {entry.name}",
+      "Informações",
+      "Ferramentas",
+      "Não conectado",
+      "disabled",
+    ]) {
+      expect(dialog, word).toContain(word);
+    }
     expect(dialog).toContain("headerExtra={<MyPlugins />}");
     expect(dialog).toContain("flex-row-reverse");
   });

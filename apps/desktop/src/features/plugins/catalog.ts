@@ -23,6 +23,8 @@ export interface CatalogEntry {
   id: string;
   name: string;
   about: string;
+  /** One or two words: what the service is for (the "Categoria" of the detail). */
+  category: string;
   logo?: string;
   whiteOnDark?: boolean;
 }
@@ -30,50 +32,80 @@ export interface CatalogEntry {
 export const CATALOG: readonly CatalogEntry[] = [
   {
     id: "github",
+    category: "Código",
     name: "GitHub",
     about: "Repositórios, issues e pull requests",
     logo: github,
     whiteOnDark: true,
   },
-  { id: "notion", name: "Notion", about: "Páginas, bancos de dados e notas", logo: notion },
-  { id: "figma", name: "Figma", about: "Arquivos de design e componentes", logo: figma },
-  { id: "gmail", name: "Gmail", about: "Ler, buscar e rascunhar e-mails", logo: gmail },
+  {
+    id: "notion",
+    category: "Anotações",
+    name: "Notion",
+    about: "Páginas, bancos de dados e notas",
+    logo: notion,
+  },
+  {
+    id: "figma",
+    category: "Design",
+    name: "Figma",
+    about: "Arquivos de design e componentes",
+    logo: figma,
+  },
+  {
+    id: "gmail",
+    category: "E-mail",
+    name: "Gmail",
+    about: "Ler, buscar e rascunhar e-mails",
+    logo: gmail,
+  },
   {
     id: "google-drive",
+    category: "Arquivos",
     name: "Google Drive",
     about: "Arquivos e pastas na nuvem",
     logo: googleDrive,
   },
   {
     id: "google-calendar",
+    category: "Agenda",
     name: "Google Agenda",
     about: "Compromissos e horários livres",
     logo: googleCalendar,
   },
   {
     id: "google-docs",
+    category: "Documentos",
     name: "Google Docs",
     about: "Documentos de texto compartilhados",
     logo: googleDocs,
   },
   {
     id: "google-sheets",
+    category: "Planilhas",
     name: "Google Planilhas",
     about: "Planilhas e tabelas de dados",
     logo: googleSheets,
   },
   {
     id: "stack-overflow",
+    category: "Perguntas e respostas",
     name: "Stack Overflow",
     about: "Perguntas e respostas de programação",
     logo: stackOverflow,
   },
   {
     id: "composio",
+    category: "Automação",
     name: "Composio",
     about: "Centenas de apps por um só conector",
     logo: composio,
     whiteOnDark: true,
   },
-  { id: "higgsfield", name: "Higgsfield", about: "Imagens e vídeos gerados por IA" },
+  {
+    id: "higgsfield",
+    category: "Mídia",
+    name: "Higgsfield",
+    about: "Imagens e vídeos gerados por IA",
+  },
 ];

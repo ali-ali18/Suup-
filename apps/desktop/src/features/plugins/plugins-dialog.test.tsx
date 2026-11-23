@@ -72,6 +72,18 @@ describe("the connectors gallery dialog", () => {
       "google-drive",
     );
     expect(detail.textContent).toContain("ainda não funciona");
+    // the menu, as the Grok Bot's: state, the button to connect (off: ornament), information, tools
+    expect(within(detail).getByTestId("plugin-state").textContent).toBe("Não conectado");
+    const connect = within(detail).getByTestId("plugin-connect") as HTMLButtonElement;
+    expect(connect.textContent).toBe("Conectar Google Drive");
+    expect(connect.disabled).toBe(true);
+    expect(within(detail).getByRole("heading", { name: "Informações" })).toBeTruthy();
+    expect(within(detail).getByTestId("plugin-info").textContent).toContain("CategoriaArquivos");
+    expect(within(detail).getByTestId("plugin-info").textContent).toContain(
+      "DisponibilidadeEm breve",
+    );
+    expect(within(detail).getByRole("heading", { name: "Ferramentas" })).toBeTruthy();
+    expect(within(detail).getByTestId("plugin-tools").textContent).toContain("depois de conectar");
     fireEvent.click(within(detail).getByRole("button", { name: "Fechar" }));
     expect(screen.queryByRole("dialog", { name: "Google Drive" })).toBeNull();
     expect(screen.getByRole("dialog", { name: "Conectores" })).toBeTruthy();
