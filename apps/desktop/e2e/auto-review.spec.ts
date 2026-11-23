@@ -279,7 +279,10 @@ test.describe("Auto-review: the mode, the rules you write, and what the chat sho
     await expect(page.getByTestId("approval-stale")).toHaveText("90 min");
     await pick(page, page.getByTestId("approval-stale"), "1 h");
     await expect(page.getByTestId("approval-stale")).toHaveText("1 h");
-    expect((await world.api.approvalSettings.get()).staleAfterMinutes).toBe(60);
+    // Written after the screen changes (as above): wait for the server to hold it.
+    await expect
+      .poll(async () => (await world.api.approvalSettings.get()).staleAfterMinutes)
+      .toBe(60);
     await closeSettings(page);
   });
 

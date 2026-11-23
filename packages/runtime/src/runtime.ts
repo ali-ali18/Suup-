@@ -101,7 +101,7 @@ import {
   updateRoutineTool,
 } from "./routines.js";
 import { DEFAULT_HISTORY_CHARS, loadRunContext } from "./run-context.js";
-import { finishRun, writeOutcomeMessage } from "./run-end.js";
+import { applyStatusEffects, finishRun } from "./run-end.js";
 import { createScriptedProvider } from "./scripted-provider.js";
 import {
   delegateTool,
@@ -911,7 +911,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
       store: new PgRunStore(handle, {
         workerId,
         onStatusSet: async (tx, run) => {
-          await writeOutcomeMessage(tx, run);
+          await applyStatusEffects(tx, run);
         },
       }),
       provider: getProvider(bot.modelProvider),
@@ -1223,7 +1223,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
           // What crashed the harness may have had a secret in its message: scrub it first.
           redact: (text) => runtime.redactJson(text),
           onStatusSet: async (tx, run) => {
-            await writeOutcomeMessage(tx, run);
+            await applyStatusEffects(tx, run);
           },
         }),
         buildDeps: (runId) => buildDeps(runId, workerId),

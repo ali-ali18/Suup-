@@ -256,6 +256,20 @@ export async function writeOutcomeMessage(db: Db, run: Run): Promise<boolean> {
   }
 }
 
+/**
+ * What must be visible together with a run's new status, written in the same transaction
+ * (`onStatusSet`): the bot's message and, when a welcome run ends, the end of the welcome. Whoever
+ * sees the status sees both. Idempotent (`finishRun` repeats it).
+ */
+export async function applyStatusEffects(db: Db, run: Run): Promise<boolean> {
+  const written = await writeOutcomeMessage(db, run);
+  const terminal = run.status === "done" || run.status === "failed" || run.status === "cancelled";
+  if (terminal && run.origin === "reception" && run.conversationId != null) {
+    await finishReception(db, run.conversationId);
+  }
+  return written;
+}
+
 export interface RunEffects {
   /** A bot or system message was written to the conversation now (not already there). */
   messageWritten: boolean;
@@ -291,12 +305,9 @@ export async function finishRun(
   if (run === null) return effects;
   const terminal = run.status === "done" || run.status === "failed" || run.status === "cancelled";
 
-  effects.messageWritten = await writeOutcomeMessage(db, run);
+  // The welcome is over, however it ended: it never starts by itself again (only "Refazer").
+  effects.messageWritten = await applyStatusEffects(db, run);
   if (terminal) {
-    // The welcome is over, however it ended: it never starts by itself again (only "Refazer").
-    if (run.origin === "reception" && run.conversationId != null) {
-      await finishReception(db, run.conversationId);
-    }
     // Uma execução isolada (avaliação) nunca escreve na memória do usuário: sem diário.
     if (run.isolated !== true && !(await isPlainChat(db, run))) {
       const journal = await addJournalMemory(db, {
