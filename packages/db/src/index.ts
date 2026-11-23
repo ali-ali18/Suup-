@@ -303,7 +303,10 @@ export {
 } from "./reception.js";
 export {
   CATCH_UP_AFTER_MS,
+  COST_CAP_DECIMALS,
+  COST_CAP_INTEGER_DIGITS,
   type CreateRoutineInput,
+  costCapText,
   createRoutine,
   deleteRoutine,
   type FiredRoutine,
@@ -311,6 +314,7 @@ export {
   fireDueRoutines,
   getRoutine,
   getRoutineFireByRun,
+  isCostCapText,
   listRoutineFires,
   listRoutines,
   MAX_ROUTINE_INSTRUCTION,

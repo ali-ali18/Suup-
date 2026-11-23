@@ -79,7 +79,12 @@ export const routineListSchema = list(routineSchema);
 export const listRoutinesQuerySchema = z.object({ botId: uuid.optional() });
 export type ListRoutinesQuery = z.input<typeof listRoutinesQuerySchema>;
 
-const costCap = z.number().min(0.01).max(100);
+/** US$ 0.01 to 100, with at most 4 decimals (what the database column keeps). */
+const costCap = z
+  .number()
+  .min(0.01)
+  .max(100)
+  .refine((n) => Number(n.toFixed(4)) === n, "no máximo 4 casas decimais");
 
 export const createRoutineBodySchema = z.strictObject({
   botId: uuid,

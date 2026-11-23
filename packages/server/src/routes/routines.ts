@@ -12,6 +12,7 @@ import {
   updateUserSettingsBodySchema,
 } from "@suup/api";
 import {
+  costCapText,
   createRoutine,
   deleteRoutine,
   getBot,
@@ -178,7 +179,7 @@ export const routineRoutes: Route[] = [
           timeZone: zone,
           ...(body.costCapUsd === undefined || body.costCapUsd === null
             ? {}
-            : { costCapUsd: String(body.costCapUsd) }),
+            : { costCapUsd: costCapText(body.costCapUsd) ?? String(body.costCapUsd) }),
           createdBy: "user",
         }),
       );
@@ -209,7 +210,12 @@ export const routineRoutes: Route[] = [
           ...(body.paused === undefined ? {} : { paused: body.paused }),
           ...(body.costCapUsd === undefined
             ? {}
-            : { costCapUsd: body.costCapUsd === null ? null : String(body.costCapUsd) }),
+            : {
+                costCapUsd:
+                  body.costCapUsd === null
+                    ? null
+                    : (costCapText(body.costCapUsd) ?? String(body.costCapUsd)),
+              }),
         }),
       );
       return { body: toRoutineDto(routine) };

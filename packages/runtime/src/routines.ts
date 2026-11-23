@@ -21,6 +21,7 @@ import {
 } from "@suup/core";
 import {
   appendMessageOnce,
+  costCapText,
   createDirectConversation,
   createRoutine,
   type Db,
@@ -216,7 +217,9 @@ export function createRoutineTool(db: Db, userZone: UserZone) {
           instruction,
           schedule: read.schedule,
           timeZone: zone,
-          ...(costCapUsd === undefined ? {} : { costCapUsd: String(costCapUsd) }),
+          ...(costCapUsd === undefined
+            ? {}
+            : { costCapUsd: costCapText(costCapUsd) ?? String(costCapUsd) }),
           createdBy: "bot",
           createdRunId: ctx.runId,
         });
@@ -299,7 +302,12 @@ export function updateRoutineTool(db: Db) {
           ...(args.paused === undefined ? {} : { paused: args.paused }),
           ...(args.costCapUsd === undefined
             ? {}
-            : { costCapUsd: args.costCapUsd === null ? null : String(args.costCapUsd) }),
+            : {
+                costCapUsd:
+                  args.costCapUsd === null
+                    ? null
+                    : (costCapText(args.costCapUsd) ?? String(args.costCapUsd)),
+              }),
         });
         return { content: `Routine updated: ${routineLine(routine)}` };
       } catch (error) {

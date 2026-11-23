@@ -212,6 +212,63 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("routines (migration 0026)"), () => {
     ).rejects.toMatchObject({ code: "never_fires" });
   });
 
+  it("the cost cap is plain decimal text only (no hex, binary, exponent, sign or spaces)", async () => {
+    const bot = await newBot();
+    const withCap = (costCapUsd: string) =>
+      createRoutine(ctx.db, {
+        botId: bot.id,
+        name: "Teto",
+        instruction: "Faça algo.",
+        schedule: daily8,
+        timeZone: SP,
+        costCapUsd,
+        createdBy: "user",
+        now: NOW,
+      });
+    for (const bad of [
+      "0x10",
+      "0b11",
+      "0o7",
+      "1e3",
+      " 1",
+      "1 ",
+      "-1",
+      "+1",
+      "0",
+      "0.0000",
+      "",
+      ".",
+      "1.",
+      ".5",
+      "1.2.3",
+      "1.12345",
+      "1.1234567",
+      "Infinity",
+      "NaN",
+      "1234567",
+    ]) {
+      await expect(withCap(bad), bad).rejects.toMatchObject({
+        name: "RoutineError",
+        code: "invalid",
+      });
+    }
+    const routine = await withCap("0.5");
+    expect(routine.costCapUsd).toBe("0.5000");
+    for (const [good, stored] of [
+      ["2", "2.0000"],
+      ["1.25", "1.2500"],
+      ["0.0001", "0.0001"],
+      ["999999.9999", "999999.9999"],
+    ] as const) {
+      const updated = await updateRoutine(ctx.db, routine.id, { costCapUsd: good, now: NOW });
+      expect(updated.costCapUsd).toBe(stored);
+    }
+    await expect(
+      updateRoutine(ctx.db, routine.id, { costCapUsd: "0x10", now: NOW }),
+    ).rejects.toMatchObject({ code: "invalid" });
+    expect((await getRoutine(ctx.db, routine.id))?.costCapUsd).toBe("999999.9999");
+  });
+
   it("run now is a manual fire that keeps the schedule; state and finish are recorded", async () => {
     const bot = await newBot();
     const routine = await routineFor(bot.id);

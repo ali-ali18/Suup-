@@ -446,6 +446,31 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("routines through the API"), { timeou
     expect(first?.routineRef).toBeUndefined();
   });
 
+  it("the cost cap: text, hex, exponents and more than 4 decimals are a 400; plain values are kept", async () => {
+    const { api } = w.started;
+    const bot = await api.bots.create({ name: "Teto", modelId: "model-x" });
+    const create = (costCapUsd: unknown) =>
+      api.routines.create({
+        botId: bot.id,
+        name: "Teto",
+        instruction: "y",
+        schedule: { kind: "daily", time: "08:00" },
+        timeZone: "America/Sao_Paulo",
+        costCapUsd: costCapUsd as never,
+      });
+    for (const bad of ["0x10", "0b11", "1e3", " 1", "-1", "0", "1", -1, 0, 1.1234567, 1.00001]) {
+      expect(await code(create(bad)), String(bad)).toBe("invalid_request");
+    }
+    const routine = await create(0.5);
+    expect(routine.costCapUsd).toBe("0.5000");
+    expect((await api.routines.update(routine.id, { costCapUsd: 2 })).costCapUsd).toBe("2.0000");
+    expect((await api.routines.update(routine.id, { costCapUsd: 1.25 })).costCapUsd).toBe("1.2500");
+    expect(await code(api.routines.update(routine.id, { costCapUsd: 1.1234567 }))).toBe(
+      "invalid_request",
+    );
+    expect((await api.routines.get(routine.id)).costCapUsd).toBe("1.2500");
+  });
+
   it("CRUD: refuses cron text and a past date, pauses, resumes, deletes", async () => {
     const { api } = w.started;
     const bot = await api.bots.create({ name: "Crud", modelId: "model-x" });

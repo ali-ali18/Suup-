@@ -192,9 +192,46 @@ function selectRoutines(db: Db) {
 
 const nameSchema = z.string().trim().min(1).max(MAX_ROUTINE_NAME);
 const instructionSchema = z.string().trim().min(1).max(MAX_ROUTINE_INSTRUCTION);
-const costSchema = z
-  .string()
-  .refine((v) => Number.isFinite(Number(v)) && Number(v) > 0 && v.trim() !== "", "valor positivo");
+/** What `cost_cap_usd numeric(10, 4)` holds: up to 6 digits before the point, 4 after. */
+export const COST_CAP_INTEGER_DIGITS = 6;
+export const COST_CAP_DECIMALS = 4;
+
+const DIGITS = "0123456789";
+
+/**
+ * Whether `text` is a plain positive decimal the column can hold: digits, at most one `.` with
+ * digits on both sides, no sign, space, exponent or `0x`/`0b` prefix (which `Number` would
+ * accept). Read character by character, no pattern (docs/REGRAS.md).
+ */
+export function isCostCapText(text: string): boolean {
+  const [whole = "", fraction, ...rest] = text.split(".");
+  if (rest.length > 0 || whole.length === 0 || whole.length > COST_CAP_INTEGER_DIGITS) return false;
+  if (fraction !== undefined && (fraction.length === 0 || fraction.length > COST_CAP_DECIMALS)) {
+    return false;
+  }
+  for (const char of whole + (fraction ?? "")) if (!DIGITS.includes(char)) return false;
+  return Number(text) > 0;
+}
+
+/**
+ * A cap given as a number (the API, the bot's tool) as the decimal text the column takes: rounded
+ * to the column's 4 decimals, never in exponent form. `null` when it does not fit.
+ */
+export function costCapText(value: number): string | null {
+  if (!Number.isFinite(value) || value <= 0) return null;
+  const text = value.toFixed(COST_CAP_DECIMALS);
+  return isCostCapText(text) ? text : null;
+}
+
+function parseCost(value: string): string {
+  if (!isCostCapText(value)) {
+    throw new RoutineError(
+      "invalid",
+      `Teto de custo inválido: use um valor positivo em dólares, só com algarismos e ponto (ex.: 0.50), com até ${COST_CAP_DECIMALS} casas decimais.`,
+    );
+  }
+  return value;
+}
 
 function checkZone(timeZone: string): string {
   const zone = timeZone.trim();
@@ -243,7 +280,7 @@ export async function createRoutine(db: Db, input: CreateRoutineInput): Promise<
   const cost =
     input.costCapUsd === undefined || input.costCapUsd === null
       ? null
-      : costSchema.parse(input.costCapUsd);
+      : parseCost(input.costCapUsd);
   return withTransaction(db, async (tx) => {
     const now = await clockOf(tx, input.now);
     const [bot] = await tx.sql<{ archived_at: Date | null }[]>`
@@ -328,7 +365,7 @@ export async function updateRoutine(
   const cost =
     input.costCapUsd === undefined || input.costCapUsd === null
       ? input.costCapUsd
-      : costSchema.parse(input.costCapUsd);
+      : parseCost(input.costCapUsd);
   return withTransaction(db, async (tx) => {
     if (!z.uuid().safeParse(id).success)
       throw new RoutineError("not_found", "A rotina não existe.");
