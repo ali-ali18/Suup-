@@ -337,7 +337,18 @@ export function createServer(runtime: Runtime, options: ServerOptions): SuupServ
       if (matcher.route.method !== method) continue;
       const params: Record<string, string> = {};
       matcher.keys.forEach((key, i) => {
-        params[key] = decodeURIComponent(match[i] ?? "");
+        try {
+          params[key] = decodeURIComponent(match[i] ?? "");
+        } catch (caught) {
+          // A broken percent escape (`%E0%A4%A`, a lone `%`) is the client's mistake, not ours.
+          throw new HttpError(
+            "invalid_request",
+            `parâmetro ${key}: codificação inválida no endereço.`,
+            {
+              cause: caught,
+            },
+          );
+        }
       });
       return { route: matcher.route, params };
     }

@@ -130,6 +130,16 @@ describe("HTTP layer", () => {
       await expectError(await fetch(`${base}/`), "not_found");
     });
 
+    it("a broken percent escape in a route parameter is a bad request, not a crash", async () => {
+      for (const path of ["/v1/bots/%E0%A4%A", "/v1/bots/%", "/v1/bots/%ZZ/archive"]) {
+        const method = path.endsWith("/archive") ? "POST" : "GET";
+        await expectError(
+          await fetch(`${base}${path}`, { method, headers: authed() }),
+          "invalid_request",
+        );
+      }
+    });
+
     it("every /v1 route is behind the token", async () => {
       for (const [method, path] of [
         ["GET", "/v1/bots"],
