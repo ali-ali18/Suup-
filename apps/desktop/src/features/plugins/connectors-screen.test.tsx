@@ -173,8 +173,11 @@ describe("the page of a connector, in the same screen", () => {
     expect((connect as HTMLButtonElement).disabled).toBe(true);
     // the band with the examples, on the project's grey
     const examples = within(page).getByTestId("connector-examples");
-    expect(examples.className).toContain("bg-raised");
-    expect(examples.className).not.toContain("bg-linear");
+    // the gradient FIXED for this connector (Google Docs: indigo)
+    expect(examples.getAttribute("data-banner")).toBe("indigo");
+    expect(examples.className).toContain("bg-linear-to-br");
+    expect(examples.className).toContain("from-banner-indigo-from");
+    expect(examples.className).toContain("to-banner-indigo-to");
     expect(examples.textContent).toContain("Resuma o documento de requisitos.");
     expect(within(examples).getAllByText("Google Docs")).toHaveLength(3);
     // the blocks: filled with the colour of the chat input, no border

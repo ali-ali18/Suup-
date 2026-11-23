@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CATALOG, TONES, toneOf } from "./catalog.js";
+import { BANNERS, CATALOG, TONES, toneOf } from "./catalog.js";
 
 describe("the backgrounds of the logos: neutral, and FIXED for each connector", () => {
   it("there are four: the project's grey, the black and the white a brand's own icon has, and the brand's own colour", () => {
@@ -38,5 +38,32 @@ describe("the backgrounds of the logos: neutral, and FIXED for each connector", 
   it("a connector with no declared tone (one the user made) is on the neutral grey, always", () => {
     expect(toneOf({})).toBe("neutral");
     expect(toneOf({ tone: "black" })).toBe("black");
+  });
+
+  it("the band of a page has one of twelve gradients, FIXED for each connector and declared (nothing is drawn by chance)", () => {
+    expect(BANNERS).toHaveLength(12);
+    expect(new Set(BANNERS).size).toBe(12);
+    for (const entry of CATALOG) expect(BANNERS, entry.id).toContain(entry.banner);
+    expect(Object.fromEntries(CATALOG.map((e) => [e.id, e.banner]))).toEqual({
+      gmail: "coral",
+      "google-calendar": "sky",
+      notion: "paper",
+      "google-docs": "indigo",
+      "google-sheets": "mint",
+      "google-drive": "amber",
+      github: "slate",
+      "stack-overflow": "sun",
+      figma: "ink",
+      composio: "plum",
+      higgsfield: "navy",
+      trello: "sky",
+      linear: "lilac",
+      todoist: "coral",
+      discord: "indigo",
+      telegram: "sky",
+      whatsapp: "mint",
+    });
+    // and all twelve are in use
+    expect(new Set(CATALOG.map((e) => e.banner)).size).toBe(12);
   });
 });

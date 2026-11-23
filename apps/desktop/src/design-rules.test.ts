@@ -1047,17 +1047,29 @@ describe("conectores: a tela da vitrine (docs/DESIGN.md 5d)", () => {
     // the logo: thesvg, as an <img>, on the project's grey, white ones inverted in the light theme
     expect(screen).toContain("<img");
     expect(screen).toContain("data-logo={entry.id}");
+    // the band of a page: one of twelve gradients, a class for each (owner: "cadê o bg do gradiente que falamos?")
+    for (const name of [
+      "ink",
+      "slate",
+      "navy",
+      "plum",
+      "paper",
+      "sky",
+      "mint",
+      "sun",
+      "coral",
+      "amber",
+      "indigo",
+      "lilac",
+    ]) {
+      expect(screen, name).toContain(`from-banner-${name}-from to-banner-${name}-to`);
+    }
+    expect(screen).toContain("BANNER_BG[entry.banner]");
     // neutral backgrounds only (owner, 23/11/2026): the project's grey, or the black or the white a brand's own icon has
     expect(screen).toContain("bg-raised");
     expect(screen).toContain("bg-tile-black");
     expect(screen).toContain("bg-tile-white");
-    for (const colour of [
-      "bg-tile-sky",
-      "bg-tile-mint",
-      "bg-tile-sun",
-      "from-banner-",
-      "bg-linear",
-    ]) {
+    for (const colour of ["bg-tile-sky", "bg-tile-mint", "bg-tile-sun"]) {
       expect(screen, colour).not.toContain(colour);
     }
     expect(screen).not.toContain("invert");

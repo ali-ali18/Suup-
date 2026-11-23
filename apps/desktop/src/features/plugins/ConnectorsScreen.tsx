@@ -7,7 +7,30 @@ import { cx } from "../../lib/cx.js";
 import { solidMarkFor } from "../../ui/brand-icons.js";
 import { EmptyState, MutedText, Pill, SearchField } from "../../ui/primitives.js";
 import { Screen, ScreenBody, ScreenHead } from "../../ui/screen.js";
-import { CATALOG, CATEGORIES, type CatalogEntry, type Tone, toneOf } from "./catalog.js";
+import {
+  type Banner,
+  CATALOG,
+  CATEGORIES,
+  type CatalogEntry,
+  type Tone,
+  toneOf,
+} from "./catalog.js";
+
+/** The twelve gradients of the banner of a page (the full class names, so Tailwind finds them). */
+const BANNER_BG: Record<Banner, string> = {
+  ink: "from-banner-ink-from to-banner-ink-to",
+  slate: "from-banner-slate-from to-banner-slate-to",
+  navy: "from-banner-navy-from to-banner-navy-to",
+  plum: "from-banner-plum-from to-banner-plum-to",
+  paper: "from-banner-paper-from to-banner-paper-to",
+  sky: "from-banner-sky-from to-banner-sky-to",
+  mint: "from-banner-mint-from to-banner-mint-to",
+  sun: "from-banner-sun-from to-banner-sun-to",
+  coral: "from-banner-coral-from to-banner-coral-to",
+  amber: "from-banner-amber-from to-banner-amber-to",
+  indigo: "from-banner-indigo-from to-banner-indigo-to",
+  lilac: "from-banner-lilac-from to-banner-lilac-to",
+};
 
 /** The three backgrounds of a logo (the full class names, so Tailwind finds them). */
 const TILE_BG: Record<Tone, string> = {
@@ -166,7 +189,7 @@ function Block({ title, children }: { title: string; children: ReactNode }) {
 /**
  * The page of one service, in the same screen in place of the list (owner, 23/11/2026), laid out as
  * the reference he gave: the way back ("Conectores > name"), the head (logo, name, state "Não
- * conectado", the line and "Conectar"), a band with examples of what to ask, then "Conexão" and
+ * conectado", the line and "Conectar"), a band, with the gradient FIXED for this connector, with examples of what to ask, then "Conexão" and
  * "Informações". Nothing is connected: the button is off (ornament) and the examples are
  * illustrations. What works today is in Configurações > Conectores, and the page says so.
  */
@@ -212,7 +235,11 @@ function ConnectorPage({ entry, onBack }: { entry: CatalogEntry; onBack(): void 
       </header>
       <ScreenBody>
         <section
-          className="flex flex-col gap-2 rounded-card bg-raised p-4"
+          className={cx(
+            "flex flex-col gap-2 rounded-card bg-linear-to-br p-4",
+            BANNER_BG[entry.banner],
+          )}
+          data-banner={entry.banner}
           aria-label="Exemplos do que você poderá pedir"
           data-testid="connector-examples"
         >

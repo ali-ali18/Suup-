@@ -34,10 +34,33 @@ export type Tone = (typeof TONES)[number];
 /** The tone of an entry: its declared one, else the neutral grey (also for a connector the user made). */
 export const toneOf = (entry: { tone?: Tone }): Tone => entry.tone ?? "neutral";
 
+/**
+ * The twelve gradients of the banner of a connector's page (owner, 23/11/2026: "cadê o bg do gradiente
+ * que falamos?"). Each connector has ITS OWN, always the same: declared in `banner` below, never
+ * picked at random.
+ */
+export const BANNERS = [
+  "ink",
+  "slate",
+  "navy",
+  "plum",
+  "paper",
+  "sky",
+  "mint",
+  "sun",
+  "coral",
+  "amber",
+  "indigo",
+  "lilac",
+] as const;
+export type Banner = (typeof BANNERS)[number];
+
 export interface CatalogEntry {
   id: string;
   /** FIXED for this connector (see `Tone`). */
   tone?: Tone;
+  /** The gradient of the band of its page, FIXED for this connector (see `BANNERS`). */
+  banner: Banner;
   name: string;
   /** One line: what the service is. */
   about: string;
@@ -63,6 +86,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   {
     id: "gmail",
     tone: "neutral",
+    banner: "coral",
     name: "Gmail",
     about: "Ler, buscar e rascunhar e-mails",
     category: "Produtividade",
@@ -78,6 +102,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   {
     id: "google-calendar",
     tone: "neutral",
+    banner: "sky",
     name: "Google Agenda",
     about: "Compromissos e horários livres",
     category: "Produtividade",
@@ -93,6 +118,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   {
     id: "notion",
     tone: "white",
+    banner: "paper",
     name: "Notion",
     about: "Páginas, bancos de dados e notas",
     category: "Produtividade",
@@ -108,6 +134,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   {
     id: "google-docs",
     tone: "neutral",
+    banner: "indigo",
     name: "Google Docs",
     about: "Documentos de texto compartilhados",
     category: "Documentos",
@@ -123,6 +150,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   {
     id: "google-sheets",
     tone: "neutral",
+    banner: "mint",
     name: "Google Planilhas",
     about: "Planilhas e tabelas de dados",
     category: "Documentos",
@@ -138,6 +166,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   {
     id: "google-drive",
     tone: "neutral",
+    banner: "amber",
     name: "Google Drive",
     about: "Arquivos e pastas na nuvem",
     category: "Documentos",
@@ -153,6 +182,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   {
     id: "github",
     tone: "black",
+    banner: "slate",
     name: "GitHub",
     about: "Repositórios, issues e pull requests",
     category: "Desenvolvimento",
@@ -168,6 +198,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   {
     id: "stack-overflow",
     tone: "solid",
+    banner: "sun",
     name: "Stack Overflow",
     about: "Perguntas e respostas de programação",
     category: "Desenvolvimento",
@@ -182,6 +213,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   {
     id: "figma",
     tone: "black",
+    banner: "ink",
     name: "Figma",
     about: "Arquivos de design e componentes",
     category: "Desenvolvimento",
@@ -197,6 +229,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   {
     id: "composio",
     tone: "black",
+    banner: "plum",
     name: "Composio",
     about: "Centenas de apps por um só conector",
     category: "Automação e mídia",
@@ -212,6 +245,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   {
     id: "higgsfield",
     tone: "neutral",
+    banner: "navy",
     name: "Higgsfield",
     about: "Imagens e vídeos gerados por IA",
     category: "Automação e mídia",
@@ -226,6 +260,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   {
     id: "trello",
     tone: "solid",
+    banner: "sky",
     name: "Trello",
     about: "Quadros, listas e cartões",
     category: "Produtividade",
@@ -240,6 +275,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   {
     id: "linear",
     tone: "solid",
+    banner: "lilac",
     name: "Linear",
     about: "Issues e triagem de projetos",
     category: "Produtividade",
@@ -254,6 +290,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   {
     id: "todoist",
     tone: "solid",
+    banner: "coral",
     name: "Todoist",
     about: "Tarefas, projetos e lembretes",
     category: "Produtividade",
@@ -268,6 +305,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   {
     id: "discord",
     tone: "solid",
+    banner: "indigo",
     name: "Discord",
     about: "Mensagens e canais de comunidades",
     category: "Comunicação",
@@ -282,6 +320,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   {
     id: "telegram",
     tone: "solid",
+    banner: "sky",
     name: "Telegram",
     about: "Grupos e conversas diretas",
     category: "Comunicação",
@@ -296,6 +335,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   {
     id: "whatsapp",
     tone: "solid",
+    banner: "mint",
     name: "WhatsApp",
     about: "Conversas e grupos",
     category: "Comunicação",

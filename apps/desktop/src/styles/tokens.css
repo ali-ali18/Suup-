@@ -22,6 +22,32 @@
      themes. Every other logo sits on the project's grey (`--color-raised`). */
   --color-tile-black: #0a0a0a;
   --color-tile-white: #ffffff;
+  /* The twelve gradients of the banner of a connector's page (docs/DESIGN.md §5d): the same in both
+     themes, one FIXED for each connector. */
+  --color-banner-ink-from: #4c3fb1;
+  --color-banner-ink-to: #0c1230;
+  --color-banner-slate-from: #475569;
+  --color-banner-slate-to: #111827;
+  --color-banner-navy-from: #1d4ed8;
+  --color-banner-navy-to: #0a1a4d;
+  --color-banner-plum-from: #be185d;
+  --color-banner-plum-to: #3b0a2a;
+  --color-banner-paper-from: #5b6577;
+  --color-banner-paper-to: #1a202c;
+  --color-banner-sky-from: #0284c7;
+  --color-banner-sky-to: #0c2f4a;
+  --color-banner-mint-from: #1f9d63;
+  --color-banner-mint-to: #0a3d2c;
+  --color-banner-sun-from: #f07d2d;
+  --color-banner-sun-to: #5a2410;
+  --color-banner-coral-from: #e11d48;
+  --color-banner-coral-to: #4c0519;
+  --color-banner-amber-from: #d97706;
+  --color-banner-amber-to: #4a2a05;
+  --color-banner-indigo-from: #4f46e5;
+  --color-banner-indigo-to: #1e1b4b;
+  --color-banner-lilac-from: #9333ea;
+  --color-banner-lilac-to: #3b0764;
   --color-hover: #202024; /* bg-hover */
   --color-switch-on: #116dd2; /* the blue switch of the routines (owner's decision, 22/11/2026, as in the Grok Bot) */
   --color-switch-off: #3a3a3a; /* its track when off: a dark grey, never white (owner, 22/11/2026) */
