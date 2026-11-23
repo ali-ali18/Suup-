@@ -200,6 +200,13 @@ Decisões do dono (22/11/2026; [ROTINAS.md](ROTINAS.md)), como as tarefas do Gro
 
 `design-rules.test.ts` confere: não há formulário de horário (nem `RoutineDialogs.tsx`, nem `RoutineEditDialog`), as palavras vêm de `describeSchedule`, o separador de ponta a ponta, a linha sem menu que abre o detalhe, o `Markdown` do chat na instrução, a fileira de ações no rodapé, a configuração dos ícones nas fontes, o rascunho sem id e a confirmação de Remover.
 
+## 5c. Conectores: o ícone do serviço (plug-ins)
+
+- [ ] **A linha de um conector mostra o logo do serviço quando o nome dele é exatamente o de um serviço conhecido** (dono, 23/11/2026): GitHub, Notion, Figma, Gmail, Google Drive, Google Agenda, Google Docs, Google Planilhas e Stack Overflow, do pacote **Simple Icons** (`simple-icons` **16.38.1**, CC0, fixo na versão). Só no espaço do ícone à esquerda da linha (16 px, cor apagada, **uma cor só**: `currentColor`, nunca as cores da marca), para dizer **qual é o serviço**, nunca como enfeite. Pesquisa: `docs/pesquisas/icones-de-marca-dos-conectores.md`.
+- [ ] **Escolha por nome exato**, numa tabela (`ui/brand-icons.tsx`): `github`, `notion`, `figma`, `gmail`, `google-drive`/`googledrive`, `google-calendar`/`googlecalendar`, `google-docs`/`googledocs`, `google-sheets`/`googlesheets`, `stack-overflow`/`stackoverflow`. Nunca por busca no texto (docs/REGRAS.md §1): um nome que só *contém* `github` não ganha o logo. Qualquer outro nome fica com o **plug** do Lucide.
+- [ ] **Composio e Higgsfield não estão no Simple Icons**: ficam com o plug genérico até o dono escolher o kit de marca oficial de cada um e as regras de uso dele.
+- [ ] Só `ui/brand-icons.tsx` importa `simple-icons` (por nome, só os ícones usados). `design-rules.test.ts` confere.
+
 ## 6. Mascotes
 
 - [ ] Só pelo motor `@suup/avatar` e pelas formas dele. Nenhuma forma ou rosto desenhado à mão. Única marca além do rosto: a estrela do Principal (§5), em volta do rosto.

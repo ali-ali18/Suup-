@@ -372,7 +372,7 @@ describe("approval buttons: normal = Aprovar / Recusar; the split button is only
     const offenders = files(SRC, /\.tsx?$/)
       .filter((f) => !f.endsWith("design-rules.test.ts"))
       .filter((f) => read(f).includes("split-button"))
-      .map(rel);
+      .map((f) => rel(f).split("\\").join("/"));
     expect(offenders).toEqual(["ui/approval-card.tsx"]);
     const messageFooter = between(card, "function MessageFooter(", "function ResolvedCard(");
     expect(messageFooter).toContain('data-testid="split-button"');
@@ -974,5 +974,43 @@ describe("a janela não tem barra do sistema: os controles são do app (docs/DES
     expect(panel).toContain('customFrame ? "right-37.5" : "right-3"');
     const controls = read(join(SRC, "ui", "window-controls.tsx"));
     for (const label of ["Minimizar", "Fechar a janela"]) expect(controls).toContain(label);
+  });
+});
+
+describe("conectores: o ícone do serviço (docs/DESIGN.md 5c, plug-ins)", () => {
+  const brand = read(join(SRC, "ui", "brand-icons.tsx"));
+
+  it("só ui/brand-icons.tsx importa o simple-icons, na versão fixa, e só ícones pelo nome", () => {
+    const users = files(SRC, /\.tsx?$/)
+      .filter((f) => !f.endsWith(".test.ts") && !f.endsWith(".test.tsx"))
+      .filter((f) => read(f).includes('from "simple-icons"'))
+      .map((f) => rel(f).split("\\").join("/"));
+    expect(users).toEqual(["ui/brand-icons.tsx"]);
+    expect(brand).not.toContain("import * as");
+    expect(brand).not.toContain("import simple");
+    const pkg = JSON.parse(read(join(SRC, "..", "package.json"))) as {
+      dependencies: Record<string, string>;
+    };
+    expect(pkg.dependencies["simple-icons"]).toBe("16.38.1");
+  });
+
+  it("o glifo é de uma cor só, a do texto apagado da linha; a escolha é por nome exato, numa tabela", () => {
+    expect(brand).toContain('fill="currentColor"');
+    expect(brand).not.toContain("hex");
+    expect(brand).toContain("new Map<string, Glyph>");
+    expect(brand).toContain("BY_NAME.get(connectorName)");
+    for (const searching of [".includes(", ".startsWith(", ".match(", ".test(", "RegExp"]) {
+      expect(brand, searching).not.toContain(searching);
+    }
+  });
+
+  it("a linha do conector usa o glifo da marca ou o plug, e a pesquisa está escrita", () => {
+    const row = read(join(SRC, "features", "settings", "ConnectorsSettings.tsx"));
+    expect(row).toContain("icon={brandGlyphFor(connector.name) ?? Plug}");
+    const root = join(SRC, "..", "..", "..");
+    expect(existsSync(join(root, "docs", "pesquisas", "icones-de-marca-dos-conectores.md"))).toBe(
+      true,
+    );
+    expect(read(join(root, "docs", "DESIGN.md"))).toContain("## 5c. Conectores");
   });
 });
