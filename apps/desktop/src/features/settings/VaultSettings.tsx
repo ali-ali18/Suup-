@@ -149,7 +149,9 @@ export function SecretDialog({
               </ol>
             )}
             {/* The name it is kept under is internal (the server declares it): never shown. */}
-            <MutedText as="p">Fica guardado com segurança; o bot nunca vê o valor.</MutedText>
+            {preset.steps.length === 0 && (
+              <MutedText as="p">Fica guardado com segurança; o bot nunca vê o valor.</MutedText>
+            )}
           </>
         ) : existing === undefined ? (
           <TextField
