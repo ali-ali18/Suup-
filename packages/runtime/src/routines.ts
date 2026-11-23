@@ -93,6 +93,13 @@ async function routineOf(
   };
 }
 
+/** When a routine runs, in words; a stored schedule this version cannot read says so. */
+function scheduleWords(r: Pick<Routine, "schedule">): string {
+  return r.schedule === null
+    ? "INVALID SCHEDULE (it does not run; ask the user for a new schedule)"
+    : describeSchedule(r.schedule);
+}
+
 /** A routine as the bot reads it: name, id, when (in words and zone), state and the next run. */
 function routineLine(r: Routine): string {
   const status =
@@ -107,7 +114,7 @@ function routineLine(r: Routine): string {
     r.lastFire === null
       ? ""
       : `; last: ${r.lastFire.status}${r.lastFire.missedCount > 0 ? ` (missed ×${r.lastFire.missedCount})` : ""}`;
-  return `- ${JSON.stringify(r.name)} (id ${r.id}): ${describeSchedule(r.schedule)} (${r.timeZone}); ${status}${last}. Instruction: ${clip(r.instruction, 300)}`;
+  return `- ${JSON.stringify(r.name)} (id ${r.id}): ${scheduleWords(r)} (${r.timeZone}); ${status}${last}. Instruction: ${clip(r.instruction, 300)}`;
 }
 
 function routineErrorText(error: RoutineError): string {
@@ -224,7 +231,7 @@ export function createRoutineTool(db: Db, userZone: UserZone) {
           createdRunId: ctx.runId,
         });
         return {
-          content: `Routine created: ${routineLine(routine)}\nNow tell the user in your message, in plain words, what you set up and when (${describeSchedule(routine.schedule)}), and ask if they want another time.`,
+          content: `Routine created: ${routineLine(routine)}\nNow tell the user in your message, in plain words, what you set up and when (${scheduleWords(routine)}), and ask if they want another time.`,
         };
       } catch (error) {
         if (error instanceof RoutineError) {
@@ -394,7 +401,7 @@ export async function routineRunFacts(db: Db, runId: string): Promise<RoutineRun
   return {
     id: routine.id,
     name: routine.name,
-    schedule: describeSchedule(routine.schedule),
+    schedule: scheduleWords(routine),
     timeZone: routine.timeZone,
     scheduledFor: fire.scheduledFor.toISOString(),
     kind: fire.kind,

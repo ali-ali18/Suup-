@@ -59,6 +59,7 @@ export function toRoutineDto(routine: Routine): RoutineDto {
     instruction: routine.instruction,
     triggerKind: routine.triggerKind,
     schedule: routine.schedule,
+    problem: routine.problem,
     timeZone: routine.timeZone,
     status: routine.status,
     nextRunAt: iso(routine.nextRunAt),

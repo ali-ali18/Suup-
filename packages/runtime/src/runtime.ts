@@ -279,7 +279,7 @@ export interface Runtime {
    */
   userTimeZone(): Promise<UserTimeZone>;
   /** One pass of the routine scheduler, as the worker does it (docs/ROTINAS.md). */
-  routinesOnce(options?: { now?: Date }): Promise<FiredRoutine[]>;
+  routinesOnce(options?: { now?: Date; log?: (message: string) => void }): Promise<FiredRoutine[]>;
   /** The web (search and reading): starts its services if needed and says what is running. */
   webStatus(): ReturnType<WebWiring["status"]>;
   close(): Promise<void>;
@@ -1208,7 +1208,10 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     },
     userTimeZone,
     async routinesOnce(opts = {}) {
-      return fireDueRoutines(runtime.db, opts.now === undefined ? {} : { now: opts.now });
+      return fireDueRoutines(runtime.db, {
+        ...(opts.now === undefined ? {} : { now: opts.now }),
+        ...(opts.log === undefined ? {} : { log: opts.log }),
+      });
     },
     async morningOnce(opts = {}) {
       const zone = (await userTimeZone()).timeZone;
@@ -1320,7 +1323,9 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
                   name: "routines",
                   everyMs: opts.routinesEveryMs ?? 15_000,
                   run: async () => {
-                    await runtime.routinesOnce();
+                    await runtime.routinesOnce({
+                      log: (message) => opts.onError?.(new Error(message), "routines"),
+                    });
                   },
                 },
                 {

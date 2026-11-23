@@ -56,7 +56,10 @@ export const routineSchema = z.object({
   instruction: z.string(),
   /** Today `schedule`; a monitor and a webhook are later kinds. */
   triggerKind: z.enum(["schedule"]),
-  schedule: scheduleSchema,
+  /** `null` when the stored schedule is not valid any more: see `problem`. */
+  schedule: scheduleSchema.nullable(),
+  /** Why the routine cannot run as it is (Portuguese, for the user); `null` when it can. */
+  problem: z.string().nullable(),
   /** The IANA zone the schedule is read in. */
   timeZone: z.string(),
   status: z.enum(ROUTINE_STATUSES),

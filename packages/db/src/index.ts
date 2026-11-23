@@ -302,6 +302,7 @@ export {
   startReception,
 } from "./reception.js";
 export {
+  BROKEN_SCHEDULE_PROBLEM,
   CATCH_UP_AFTER_MS,
   COST_CAP_DECIMALS,
   COST_CAP_INTEGER_DIGITS,

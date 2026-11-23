@@ -89,7 +89,8 @@ Políticas (da pesquisa e do dono):
 - **Sobreposição**: se a execução anterior da rotina ainda não terminou (qualquer estado não final, inclusive esperando aprovação), o disparo é registrado como `skipped` (`overlap`) e nada entra na fila. "Rodar agora" responde `409` nesse caso.
 - **Pausada**: não dispara, e o que passou durante a pausa não é recuperado (retomar calcula a partir de agora).
 - **Fim**: data única que já disparou, ou `until` passado: a rotina fica `ended` (registrado). O resumo final opcional do PLANO **não** foi feito: a rotina só para e registra.
-- **Custo**: teto por execução opcional por rotina (`costCapUsd`, padrão nenhum, como o do supervisor); com teto, vale o menor entre ele e o do bot.
+- **Custo**: teto por execução opcional por rotina (`costCapUsd`, padrão nenhum, como o do supervisor); com teto, vale o menor entre ele e o do bot. É texto decimal simples (só algarismos e um ponto, até 4 casas, conferido caractere a caractere, sem regex); na API, um número de 0.01 a 100 com até 4 casas.
+- **Horário salvo inválido** (gravado por uma versão anterior ou à mão): a rotina continua na lista com `schedule: null` e `problem` (frase para o usuário); o agendador a **pausa** uma vez (registra no log do worker) em vez de falhar a cada passada, e ela só volta a rodar com um horário novo. Uma linha ruim nunca quebra a lista inteira.
 
 ## Onde roda e onde o resultado aparece
 

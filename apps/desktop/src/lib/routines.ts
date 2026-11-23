@@ -1,4 +1,9 @@
-import { describeSchedule, type Routine, type RoutineFire, wallClockAt } from "@suup/api";
+import {
+  type Routine,
+  type RoutineFire,
+  describeSchedule as scheduleInWords,
+  wallClockAt,
+} from "@suup/api";
 
 // What the Rotinas panel SAYS (docs/ROTINAS.md, docs/DESIGN.md): the schedule in words (the shared
 // function the server and the bot use too), when it runs next, each fire of the history, and the
@@ -65,7 +70,13 @@ export function lastText(routine: Routine, now: Date = new Date()): string | nul
   return `Última: ${whenText(fire.scheduledFor, routine.timeZone, now)} · ${fireStatusText(fire)}${kind === null ? "" : ` · ${kind}`}`;
 }
 
-export { describeSchedule };
+/** What a routine whose saved schedule the server could not read shows (`schedule: null`). */
+export const BROKEN_SCHEDULE_TEXT = "Horário inválido: peça ao bot um novo horário";
+
+/** The schedule in words (the shared function); a schedule the server could not read says so. */
+export function describeSchedule(schedule: Routine["schedule"]): string {
+  return schedule === null ? BROKEN_SCHEDULE_TEXT : scheduleInWords(schedule);
+}
 
 /**
  * The draft "Editar" puts in the composer of the bot's chat (docs/ROTINAS.md): which routine, and

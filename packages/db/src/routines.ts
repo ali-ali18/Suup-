@@ -61,7 +61,13 @@ export interface Routine {
   name: string;
   instruction: string;
   triggerKind: RoutineTriggerKind;
-  schedule: Schedule;
+  /**
+   * `null` when the stored schedule is not valid any more (written by an older version, or by
+   * hand): the routine is listed with `problem` and never fires until it gets a new schedule.
+   */
+  schedule: Schedule | null;
+  /** Why the routine cannot run as it is (in Portuguese, for the user); `null` when it can. */
+  problem: string | null;
   /** The IANA zone the schedule is read in (the user's when it was set). */
   timeZone: string;
   /** Where an interval counts its periods from. */
@@ -156,14 +162,21 @@ function mapFire(row: FireRow): RoutineFire {
   };
 }
 
+/** What a routine whose stored schedule is not valid says (docs/ROTINAS.md). */
+export const BROKEN_SCHEDULE_PROBLEM =
+  "O horário salvo desta rotina não é válido nesta versão, então ela não roda. Escolha um novo horário ou apague a rotina.";
+
 function mapRoutine(row: RoutineRow): Routine {
+  // One bad row must not break every list, page and scheduler pass: it is marked, not thrown.
+  const parsed = scheduleSchema.safeParse(row.schedule);
   return {
     id: row.id,
     botId: row.bot_id,
     name: row.name,
     instruction: row.instruction,
     triggerKind: row.trigger_kind,
-    schedule: scheduleSchema.parse(row.schedule),
+    schedule: parsed.success ? parsed.data : null,
+    problem: parsed.success ? null : BROKEN_SCHEDULE_PROBLEM,
     timeZone: row.time_zone,
     anchorAt: row.anchor_at,
     status: row.status,
@@ -383,7 +396,12 @@ export async function updateRoutine(
     if (input.paused === false && status === "paused") status = "active";
     if (rescheduled && status === "ended") status = input.paused === true ? "paused" : "active";
     let next: Date | null = null;
-    if (status === "active") {
+    // A routine whose stored schedule is broken can be paused, renamed or deleted; to be active
+    // it needs a new schedule.
+    if (status === "active" && nextSchedule === null) {
+      throw new RoutineError("invalid", BROKEN_SCHEDULE_PROBLEM);
+    }
+    if (status === "active" && nextSchedule !== null) {
       const recompute = rescheduled || current.status !== "active" || current.nextRunAt === null;
       next = recompute
         ? nextFireAfter(nextSchedule, { timeZone: nextZone, anchor }, now)
@@ -402,7 +420,7 @@ export async function updateRoutine(
       update routines set
         name = ${name ?? current.name},
         instruction = ${instruction ?? current.instruction},
-        schedule = ${tx.sql.json(nextSchedule)},
+        schedule = ${tx.sql.json((nextSchedule ?? row.schedule) as never)},
         time_zone = ${nextZone},
         anchor_at = ${anchor},
         status = ${status},
@@ -570,7 +588,12 @@ async function openFire(
  */
 export async function fireDueRoutines(
   db: Db,
-  options: { now?: Date; limit?: number } = {},
+  options: {
+    now?: Date;
+    limit?: number;
+    /** Told when a due routine has a broken schedule and is paused instead of fired. */
+    log?: (message: string) => void;
+  } = {},
 ): Promise<FiredRoutine[]> {
   const limit = options.limit ?? 20;
   return withTransaction(db, async (tx) => {
@@ -586,10 +609,21 @@ export async function fireDueRoutines(
     const fired: FiredRoutine[] = [];
     for (const row of due) {
       const routine = mapRoutine(row);
+      if (routine.schedule === null) {
+        // A schedule this version cannot read: pause it (no next time) so the pass neither fails
+        // nor picks it up again; the routine shows `problem` until the user gives a new schedule.
+        await tx.sql`
+          update routines set status = 'paused', next_run_at = null where id = ${routine.id}`;
+        options.log?.(
+          `Rotina ${routine.id} (${JSON.stringify(routine.name)}) pausada: o horário salvo não é válido.`,
+        );
+        continue;
+      }
+      const schedule = routine.schedule;
       const dueAt = routine.nextRunAt as Date;
       const ctx = { timeZone: routine.timeZone, anchor: routine.anchorAt };
       // Every scheduled time from `due` (included) to now: the latest one fires, the rest are missed.
-      const window = fireTimesBetween(routine.schedule, ctx, new Date(dueAt.getTime() - 1), now);
+      const window = fireTimesBetween(schedule, ctx, new Date(dueAt.getTime() - 1), now);
       const scheduledFor = window.last ?? dueAt;
       const missedCount = Math.max(0, window.count - 1);
       const late = now.getTime() - scheduledFor.getTime() > CATCH_UP_AFTER_MS;
@@ -599,7 +633,7 @@ export async function fireDueRoutines(
         missedCount,
       });
       if (result !== null) fired.push(result);
-      const next = nextFireAfter(routine.schedule, ctx, now);
+      const next = nextFireAfter(schedule, ctx, now);
       await tx.sql`
         update routines set next_run_at = ${next},
           status = ${next === null ? "ended" : "active"},
