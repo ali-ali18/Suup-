@@ -314,6 +314,45 @@ describe("runLoop: finish validation", () => {
     expect(first?.[0]).toContain("call finish alone");
   });
 
+  it("a finish that comes after only plan updates in its turn is evaluated with the new plan", async () => {
+    const rig = createRig({
+      criteria: ["echo works"],
+      script: [
+        use(planCall("p1", [{ id: "s1", title: "Call echo", status: "in_progress" }])),
+        use(call("c1", "echo", { text: "hi" })),
+        // The last step marked done and the finish, in one turn: one turn saved.
+        use(
+          planCall("p2", [{ id: "s1", title: "Call echo", status: "done" }]),
+          finishCall("f1", "Echo works.", [{ criterion: "echo works", evidence: "echo: hi" }]),
+        ),
+      ],
+    });
+    expect(await rig.run()).toBe("done");
+    expect(rig.provider.calls).toBe(3);
+    const events = await rig.events();
+    const attempts = eventsOfType(events, "finish_attempt").map((e) => e.payload);
+    expect(attempts).toHaveLength(1);
+    expect(attempts[0]?.accepted).toBe(true);
+    // The plan was applied before the finish was judged.
+    const types = eventTypes(events);
+    expect(types.lastIndexOf("plan_updated")).toBeLessThan(types.indexOf("finish_attempt"));
+  });
+
+  it("a finish next to a plan update that comes AFTER it, or next to a real tool, is still refused", async () => {
+    const rig = createRig({
+      script: [
+        use(
+          finishCall("f1", "Done."),
+          planCall("p1", [{ id: "s1", title: "Work", status: "done" }]),
+        ),
+        use(finishCall("f2", "Done.")),
+      ],
+    });
+    expect(await rig.run()).toBe("done");
+    const [first] = await reasonsOf(rig);
+    expect(first?.[0]).toContain("call finish alone");
+  });
+
   it("fails with origin model after three rejected finishes in a row", async () => {
     const rig = createRig({
       script: [use(finishCall("c1", "")), use(finishCall("c2", " ")), use(finishCall("c3", ""))],

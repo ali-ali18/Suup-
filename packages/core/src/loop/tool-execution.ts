@@ -27,6 +27,13 @@ export async function executeCalls(
   pending: PendingResponse,
 ): Promise<RunStatus | undefined> {
   const alone = pending.toolCalls.length === 1;
+  // A `finish` after nothing but `plan` updates in its turn (marking the last step done, then
+  // finishing) is judged on its own: the plans run first, in order, and change nothing outside the
+  // run. Any other call in the turn, or a plan after the finish, still makes it "not alone".
+  const finishAlone = (id: string): boolean => {
+    const at = pending.toolCalls.findIndex((c) => c.id === id);
+    return pending.toolCalls.every((c, i) => i === at || (c.name === "plan" && i < at));
+  };
   for (const call of pending.toolCalls) {
     const open = ctx.state.pendingCalls.find((c) => c.id === call.id);
     if (open === undefined) continue; // already has a result
@@ -55,7 +62,7 @@ export async function executeCalls(
         await handlePlan(ctx, call);
         break;
       case "finish":
-        await handleFinish(ctx, call, alone);
+        await handleFinish(ctx, call, finishAlone(call.id));
         break;
       case "escalate":
         await handleEscalate(ctx, call, alone);

@@ -35,7 +35,7 @@ import { Interrupted, type LoopContext } from "./run-context.js";
 import { checkLimits } from "./safe-point.js";
 
 const NOT_ALONE_FINISH =
-  "call finish alone, after you have seen the results of the other tools; it was rejected because other tool calls were in the same turn";
+  "call finish alone, after you have seen the results of the other tools; it was rejected because other tool calls were in the same turn (only a plan update before it in the same turn is allowed)";
 
 interface FinishArgs {
   summary: string;
