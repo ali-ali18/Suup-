@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { CATALOG, TONES, toneOf } from "./catalog.js";
 
 describe("the backgrounds of the logos: neutral, and FIXED for each connector", () => {
-  it("there are three: the project's grey, and the black and the white a brand's own icon has", () => {
-    expect([...TONES]).toEqual(["neutral", "black", "white"]);
+  it("there are four: the project's grey, the black and the white a brand's own icon has, and the brand's own colour", () => {
+    expect([...TONES]).toEqual(["neutral", "black", "white", "solid"]);
   });
 
   it("every connector of the gallery declares its own tone (nothing is drawn by chance)", () => {
@@ -13,7 +13,7 @@ describe("the backgrounds of the logos: neutral, and FIXED for each connector", 
     }
   });
 
-  it("only the brands whose own icon has a neutral background take it; every other logo sits on the grey", () => {
+  it("a one-colour brand takes its own colour (solid), the black or white brands their own neutral, the multi-colour logos the grey", () => {
     expect(Object.fromEntries(CATALOG.map((e) => [e.id, e.tone]))).toEqual({
       gmail: "neutral",
       "google-calendar": "neutral",
@@ -22,10 +22,16 @@ describe("the backgrounds of the logos: neutral, and FIXED for each connector", 
       "google-sheets": "neutral",
       "google-drive": "neutral",
       github: "black",
-      "stack-overflow": "neutral",
+      "stack-overflow": "solid",
       figma: "black",
       composio: "black",
       higgsfield: "neutral",
+      trello: "solid",
+      linear: "solid",
+      todoist: "solid",
+      discord: "solid",
+      telegram: "solid",
+      whatsapp: "solid",
     });
   });
 

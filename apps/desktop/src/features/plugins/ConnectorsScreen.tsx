@@ -4,6 +4,7 @@ import { useServices } from "../../app/context.js";
 import { useUi } from "../../app/ui-store.js";
 import { fold } from "../../data/botlist.js";
 import { cx } from "../../lib/cx.js";
+import { solidMarkFor } from "../../ui/brand-icons.js";
 import { EmptyState, MutedText, Pill, TextField } from "../../ui/primitives.js";
 import { Screen, ScreenBody, ScreenHead } from "../../ui/screen.js";
 import { CATALOG, CATEGORIES, type CatalogEntry, type Tone, toneOf } from "./catalog.js";
@@ -13,6 +14,7 @@ const TILE_BG: Record<Tone, string> = {
   neutral: "bg-raised",
   black: "bg-tile-black",
   white: "bg-tile-white",
+  solid: "bg-raised",
 };
 
 /** What is drawn without a logo (the plug): the faded text on the grey, white on black, black on white. */
@@ -20,6 +22,7 @@ const PLUG_FG: Record<Tone, string> = {
   neutral: "text-text-muted",
   black: "text-tile-white",
   white: "text-tile-black",
+  solid: "text-text-muted",
 };
 
 /** The rounded square and the logo inside it, per size. */
@@ -29,24 +32,38 @@ const TILE = {
 } as const;
 
 /**
- * The service's logo in its own colours (an `<img>` of an SVG copied from thesvg, `assets/brand/`)
- * on a rounded square with a NEUTRAL background (`tone`, FIXED for each connector): the project's grey,
- * or the black or white the brand's own icon has (owner, 23/11/2026). A connector with no logo
- * (Higgsfield) gets the plug.
+ * The service's tile, as in the reference the owner gave (23/11/2026). A `solid` brand (its logo is
+ * one colour: Trello, Todoist, Discord): the brand's OWN primary colour as the background (the `hex`
+ * of the package) and its mark in white over it. Any other: the logo in its own colours (an `<img>`
+ * of an SVG copied from thesvg, `assets/brand/`) on a neutral background (the project's grey, or the
+ * black or white the brand's own icon has). The one without a logo yet (Higgsfield) gets the plug.
  */
 function EntryIcon({ entry, size }: { entry: CatalogEntry; size: keyof typeof TILE }) {
   const tile = TILE[size];
+  const tone = toneOf(entry);
+  const solid = tone === "solid" ? solidMarkFor(entry.id) : undefined;
+  const box = cx(
+    "inline-flex flex-none items-center justify-center border border-border",
+    tile.box,
+  );
+  if (solid !== undefined) {
+    return (
+      <span className={box} style={{ backgroundColor: `#${solid.hex}` }} aria-hidden="true">
+        <svg
+          viewBox="0 0 24 24"
+          fill="currentColor"
+          className={cx("text-tile-white", tile.logo)}
+          data-brand={entry.id}
+        >
+          <path d={solid.path} />
+        </svg>
+      </span>
+    );
+  }
   return (
-    <span
-      className={cx(
-        "inline-flex flex-none items-center justify-center border border-border",
-        TILE_BG[toneOf(entry)],
-        tile.box,
-      )}
-      aria-hidden="true"
-    >
+    <span className={cx(box, TILE_BG[tone])} aria-hidden="true">
       {entry.logo === undefined ? (
-        <Plug className={cx(PLUG_FG[toneOf(entry)], tile.logo)} strokeWidth={1.5} />
+        <Plug className={cx(PLUG_FG[tone], tile.logo)} strokeWidth={1.5} />
       ) : (
         <img
           src={entry.logo}

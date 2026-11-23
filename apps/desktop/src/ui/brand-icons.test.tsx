@@ -2,7 +2,7 @@ import { cleanup, render } from "@testing-library/react";
 import { Plug } from "lucide-react";
 import { afterEach, describe, expect, it } from "vitest";
 import { SettingsRow } from "../features/settings/parts.js";
-import { brandGlyphFor } from "./brand-icons.js";
+import { brandGlyphFor, solidMarkFor } from "./brand-icons.js";
 
 afterEach(cleanup);
 
@@ -31,6 +31,16 @@ describe("brand glyphs of the connectors (Simple Icons, docs/DESIGN.md §5c)", (
     expect(svg?.getAttribute("width")).toBe("16");
     expect(svg?.getAttribute("aria-hidden")).toBe("true");
     expect(svg?.querySelector("path")?.getAttribute("d")?.length).toBeGreaterThan(50);
+  });
+
+  it("a one-colour brand has its mark and its own colour (from the package), by the exact id", () => {
+    expect(solidMarkFor("discord")?.hex).toBe("5865F2");
+    expect(solidMarkFor("trello")?.hex).toBe("0052CC");
+    expect(solidMarkFor("stack-overflow")?.hex).toBe("F58025");
+    expect(solidMarkFor("discord")?.path.length).toBeGreaterThan(100);
+    for (const id of ["Discord", "discord-bot", "github", "", "constructor", "__proto__"]) {
+      expect(solidMarkFor(id), id).toBeUndefined();
+    }
   });
 
   it("only an EXACT name has a glyph: a name that merely contains one, a variant or an object key has none", () => {

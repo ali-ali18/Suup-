@@ -1,5 +1,6 @@
 import type { ComponentType } from "react";
 import {
+  siDiscord,
   siFigma,
   siGithub,
   siGmail,
@@ -7,8 +8,13 @@ import {
   siGoogledocs,
   siGoogledrive,
   siGooglesheets,
+  siLinear,
   siNotion,
   siStackoverflow,
+  siTelegram,
+  siTodoist,
+  siTrello,
+  siWhatsapp,
 } from "simple-icons";
 
 /** What a leading slot of a row draws: a Lucide icon or a brand glyph (both take a size). */
@@ -75,4 +81,29 @@ const BY_NAME: ReadonlyMap<string, Glyph> = new Map<string, Glyph>([
 /** The brand glyph of a connector by its exact name, or `undefined` (the caller draws the plug). */
 export function brandGlyphFor(connectorName: string): Glyph | undefined {
   return BY_NAME.get(connectorName);
+}
+
+/** A brand's mark and its own primary colour, for a SOLID tile (docs/DESIGN.md §5d). */
+export interface SolidMark {
+  readonly path: string;
+  readonly hex: string;
+}
+
+/**
+ * The services whose logo is ONE colour: the tile takes the brand's own primary colour (the `hex`
+ * of the package, never typed here) and the mark is drawn white over it, as in the app icon of
+ * Trello, Todoist or Discord. An EXACT lookup by the connector's id (docs/REGRAS.md §1).
+ */
+const SOLID: ReadonlyMap<string, SolidMark> = new Map<string, SolidMark>([
+  ["stack-overflow", siStackoverflow],
+  ["discord", siDiscord],
+  ["telegram", siTelegram],
+  ["whatsapp", siWhatsapp],
+  ["trello", siTrello],
+  ["todoist", siTodoist],
+  ["linear", siLinear],
+]);
+
+export function solidMarkFor(id: string): SolidMark | undefined {
+  return SOLID.get(id);
 }

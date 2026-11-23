@@ -12,7 +12,6 @@ SVGs copiados do **thesvg** (https://thesvg.org, repositório https://github.com
 | `google-calendar.svg` | `google-calendar-2026/default.svg` |
 | `google-docs.svg` | `google-docs-2026/default.svg` |
 | `google-sheets.svg` | `google-sheets-2026/default.svg` |
-| `stack-overflow.svg` | `stack-overflow/default.svg` |
 | `composio.svg` | `composio/default.svg` (branco; no tema claro o app inverte a cor) |
 
 Higgsfield não existe no thesvg: o app usa o plug genérico. As marcas são dos seus donos; os logos servem **só para identificar o serviço** (`TRADEMARK.md` do thesvg). Para atualizar: troque o commit acima, copie de novo e releia `docs/pesquisas/icones-de-marca-dos-conectores.md`.

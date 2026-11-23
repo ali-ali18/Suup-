@@ -63,6 +63,31 @@ describe("the connectors screen", () => {
     expect(higgsfield.querySelector("svg.lucide-plug")).not.toBeNull();
   });
 
+  it("a one-colour brand has its OWN colour as the tile and the mark in white over it; the plug stays only where there is no logo", () => {
+    setup();
+    const colours: Record<string, string> = {
+      discord: "rgb(88, 101, 242)",
+      trello: "rgb(0, 82, 204)",
+      todoist: "rgb(228, 67, 50)",
+      "stack-overflow": "rgb(245, 128, 37)",
+      whatsapp: "rgb(37, 211, 102)",
+    };
+    for (const [id, colour] of Object.entries(colours)) {
+      const item = itemOf(id);
+      const mark = item.querySelector(`svg[data-brand='${id}']`);
+      expect(mark, id).not.toBeNull();
+      expect(mark?.getAttribute("fill"), id).toBe("currentColor");
+      expect(mark?.getAttribute("class"), id).toContain("text-tile-white");
+      expect((mark?.parentElement as HTMLElement).style.backgroundColor, id).toBe(colour);
+      expect(item.querySelector("img"), id).toBeNull();
+    }
+    // every connector but Higgsfield has a logo or a mark: no letter, no plug
+    for (const entry of CATALOG) {
+      const hasPlug = itemOf(entry.id).querySelector("svg.lucide-plug") !== null;
+      expect(hasPlug, entry.id).toBe(entry.id === "higgsfield");
+    }
+  });
+
   it("search filters by name, line and section, and says so when nothing matches", () => {
     setup();
     const field = screen.getByRole("searchbox", { name: "Buscar conectores" });

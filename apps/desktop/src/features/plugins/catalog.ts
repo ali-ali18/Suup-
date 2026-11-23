@@ -7,7 +7,6 @@ import googleDocs from "../../assets/brand/google-docs.svg";
 import googleDrive from "../../assets/brand/google-drive.svg";
 import googleSheets from "../../assets/brand/google-sheets.svg";
 import notion from "../../assets/brand/notion.svg";
-import stackOverflow from "../../assets/brand/stack-overflow.svg";
 
 /**
  * The shop window of the connectors screen (docs/DESIGN.md §5d): what the screen draws while the
@@ -21,13 +20,15 @@ import stackOverflow from "../../assets/brand/stack-overflow.svg";
  * (an ornament too: illustrations, not a promise).
  */
 /**
- * The background of a logo (owner, 23/11/2026: "deixa o fundo dos quadrados neutros, sem as cores
- * primárias deles, ou a gente puxa da marca os que têm fundo neutro"). `neutral`: the project's grey,
- * which follows the theme. `black` and `white`: the neutral background the brand's own icon has
- * (GitHub, Figma and Composio are black; Notion is white), the same in both themes. FIXED for each
- * connector: declared here, never picked at random.
+ * The tile of a logo, as in the reference the owner gave (23/11/2026): `solid`, a brand whose logo
+ * is one colour: its own primary colour as the background and the mark in white over it (Trello,
+ * Todoist, Discord); `black` and `white`: the neutral background the brand's own icon has (GitHub,
+ * Figma and Composio are black; Notion is white); `neutral`: the project's grey, for a logo that
+ * already has several colours (Google). Every connector of the gallery has its logo (the reference
+ * shows a letter only where it lacked the SVG); the plug stays for the one still without it
+ * (Higgsfield). FIXED for each connector: declared here, never picked at random.
  */
-export const TONES = ["neutral", "black", "white"] as const;
+export const TONES = ["neutral", "black", "white", "solid"] as const;
 export type Tone = (typeof TONES)[number];
 
 /** The tone of an entry: its declared one, else the neutral grey (also for a connector the user made). */
@@ -52,6 +53,7 @@ export interface CatalogEntry {
 /** The sections of the screen, in order. */
 export const CATEGORIES = [
   "Produtividade",
+  "Comunicação",
   "Documentos",
   "Desenvolvimento",
   "Automação e mídia",
@@ -165,7 +167,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   },
   {
     id: "stack-overflow",
-    tone: "neutral",
+    tone: "solid",
     name: "Stack Overflow",
     about: "Perguntas e respostas de programação",
     category: "Desenvolvimento",
@@ -176,7 +178,6 @@ export const CATALOG: readonly CatalogEntry[] = [
       "Qual a forma mais aceita de ordenar uma lista de objetos?",
       "Resuma a resposta mais votada dessa pergunta.",
     ],
-    logo: stackOverflow,
   },
   {
     id: "figma",
@@ -220,6 +221,90 @@ export const CATALOG: readonly CatalogEntry[] = [
       "Gere uma imagem de um produto sobre fundo claro.",
       "Crie um vídeo curto a partir desta imagem.",
       "Quais estilos de vídeo estão disponíveis?",
+    ],
+  },
+  {
+    id: "trello",
+    tone: "solid",
+    name: "Trello",
+    about: "Quadros, listas e cartões",
+    category: "Produtividade",
+    developer: "Atlassian",
+    site: { host: "trello.com", url: "https://trello.com" },
+    examples: [
+      "Quais cartões estão atrasados no quadro do projeto?",
+      "Mova o cartão de revisão para Concluído.",
+      "Crie um cartão com a tarefa que acabei de descrever.",
+    ],
+  },
+  {
+    id: "linear",
+    tone: "solid",
+    name: "Linear",
+    about: "Issues e triagem de projetos",
+    category: "Produtividade",
+    developer: "Linear",
+    site: { host: "linear.app", url: "https://linear.app" },
+    examples: [
+      "Liste as issues abertas atribuídas a mim.",
+      "Resuma o que mudou no ciclo desta semana.",
+      "Crie uma issue com o bug que descrevi.",
+    ],
+  },
+  {
+    id: "todoist",
+    tone: "solid",
+    name: "Todoist",
+    about: "Tarefas, projetos e lembretes",
+    category: "Produtividade",
+    developer: "Doist",
+    site: { host: "todoist.com", url: "https://todoist.com" },
+    examples: [
+      "O que tenho para fazer hoje?",
+      "Adicione uma tarefa para sexta às 10h.",
+      "Quais tarefas estão atrasadas?",
+    ],
+  },
+  {
+    id: "discord",
+    tone: "solid",
+    name: "Discord",
+    about: "Mensagens e canais de comunidades",
+    category: "Comunicação",
+    developer: "Discord",
+    site: { host: "discord.com", url: "https://discord.com" },
+    examples: [
+      "Resuma as mensagens do canal de avisos.",
+      "Quem me mencionou hoje?",
+      "Rascunhe uma resposta à pergunta fixada.",
+    ],
+  },
+  {
+    id: "telegram",
+    tone: "solid",
+    name: "Telegram",
+    about: "Grupos e conversas diretas",
+    category: "Comunicação",
+    developer: "Telegram",
+    site: { host: "telegram.org", url: "https://telegram.org" },
+    examples: [
+      "Resuma a conversa do grupo da equipe.",
+      "Procure a mensagem com o endereço da reunião.",
+      "Rascunhe uma resposta ao último aviso do grupo.",
+    ],
+  },
+  {
+    id: "whatsapp",
+    tone: "solid",
+    name: "WhatsApp",
+    about: "Conversas e grupos",
+    category: "Comunicação",
+    developer: "Meta",
+    site: { host: "whatsapp.com", url: "https://www.whatsapp.com" },
+    examples: [
+      "Resuma as conversas não lidas de hoje.",
+      "Procure a mensagem com o código de rastreio.",
+      "Rascunhe uma resposta à última mensagem do cliente.",
     ],
   },
 ];

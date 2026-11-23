@@ -1055,6 +1055,10 @@ describe("conectores: a tela da vitrine (docs/DESIGN.md 5d)", () => {
     expect(screen).not.toContain("invert");
     expect(screen).not.toContain("bg-brand-tile");
     expect(screen).not.toContain("bg-logo-tile");
+    // a one-colour brand: its OWN colour (from the package) as the tile, the mark in white over it
+    expect(screen).toContain("solidMarkFor(entry.id)");
+    expect(screen).toContain("backgroundColor: `#${solid.hex}`");
+    expect(screen).toContain("text-tile-white");
     // no box around a line (owner: "cada um ser um card pesa muito")
     expect(screen).not.toContain("rounded-card border border-border bg-transparent");
   });
