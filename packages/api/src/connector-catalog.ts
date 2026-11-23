@@ -107,10 +107,3 @@ export const oauthStatusSchema = z.object({
   error: z.string().nullable(),
 });
 export type OAuthStatus = z.infer<typeof oauthStatusSchema>;
-
-/** The address the browser landed on, for a server it cannot reach (a VPS). */
-export const oauthCompleteBodySchema = z.strictObject({
-  flowId: uuid,
-  callbackUrl: z.string().min(1).max(8192),
-});
-export type OAuthCompleteBody = z.input<typeof oauthCompleteBodySchema>;

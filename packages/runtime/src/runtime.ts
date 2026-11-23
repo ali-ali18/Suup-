@@ -456,6 +456,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     db: () => runtime.db,
     vault,
     launcher: containerLauncher,
+    ...(config.server?.publicUrl === undefined ? {} : { publicUrl: config.server.publicUrl }),
     ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
     ...(options.connectorCatalog === undefined ? {} : { catalog: options.connectorCatalog }),
   });

@@ -5,6 +5,7 @@ import { useServices } from "../../app/context.js";
 import { useUi } from "../../app/ui-store.js";
 import { charsLabel } from "../../data/memory-text.js";
 import { messageOf } from "../../data/sync.js";
+import { formError } from "../../lib/friendly-error.js";
 import { NumberField } from "../../ui/number-field.js";
 import { Toggle } from "../../ui/primitives.js";
 import {
@@ -72,7 +73,7 @@ export function MemorySettings({ title, titleId, onClose }: SectionProps) {
     setSettings((s) => (s === undefined ? s : change.show(s)));
     api.memorySettings.update(change.body).then(setSettings, (error: unknown) => {
       setSettings((s) => (s === undefined ? s : revert(s)));
-      fail(field, messageOf(error));
+      fail(field, formError(error));
     });
   };
 
@@ -117,7 +118,7 @@ export function MemorySettings({ title, titleId, onClose }: SectionProps) {
                     </RowLine>
                     {!settings.reviewer.available && (
                       <RowLine data-testid="memory-reviewer-unavailable">
-                        {settings.reviewer.reason ?? "Nenhum modelo está disponível para isto."}
+                        Nenhum modelo está disponível para isto agora.
                       </RowLine>
                     )}
                     {error("enabled")}

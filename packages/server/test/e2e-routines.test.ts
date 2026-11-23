@@ -113,13 +113,18 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("routines through the API"), { timeou
 
   it("the user's time zone: unknown at first (never the server's), then the device's", async () => {
     const { api } = w.started;
-    expect(await api.info()).toEqual({ timeZone: null, timeZoneSource: null });
+    expect(await api.info()).toEqual({
+      timeZone: null,
+      timeZoneSource: null,
+      oauthCallback: "loopback",
+    });
     expect(
       await api.userSettings.update({ timeZone: "America/Sao_Paulo", source: "device" }),
     ).toEqual({ timeZone: "America/Sao_Paulo", timeZoneSource: "device" });
     expect(await api.info()).toEqual({
       timeZone: "America/Sao_Paulo",
       timeZoneSource: "device",
+      oauthCallback: "loopback",
     });
     expect(await code(api.userSettings.update({ timeZone: "Marte/Olympus", source: "user" }))).toBe(
       "invalid_request",

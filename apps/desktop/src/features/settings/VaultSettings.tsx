@@ -19,7 +19,6 @@ import {
   Toggle,
 } from "../../ui/primitives.js";
 import { SecretInput, type SecretInputHandle } from "../../ui/secret-input.js";
-import { MonoText } from "../../ui/text.js";
 import { formatWhen } from "./formatting.js";
 import {
   PaneBody,
@@ -134,7 +133,7 @@ export function SecretDialog({
       >
         {blocked && (
           <Notice role="alert">
-            O servidor não consegue guardar segredos agora: {vault.reason}
+            O cofre não está disponível agora. Tenta de novo daqui a pouco.
           </Notice>
         )}
         {preset !== undefined ? (
@@ -149,9 +148,8 @@ export function SecretDialog({
                 ))}
               </ol>
             )}
-            <MutedText as="p">
-              Fica no cofre como <MonoText>{preset.name}</MonoText>; o bot nunca vê o valor.
-            </MutedText>
+            {/* The name it is kept under is internal (the server declares it): never shown. */}
+            <MutedText as="p">Fica guardado com segurança; o bot nunca vê o valor.</MutedText>
           </>
         ) : existing === undefined ? (
           <TextField
@@ -160,7 +158,7 @@ export function SecretDialog({
             onChange={(v) => setName(v.toUpperCase())}
             placeholder="GITHUB_TOKEN"
             error={problem?.field === "name" ? problem.text : undefined}
-            hint="Letras maiúsculas, números e sublinhado. O bot escreve {{secret:NOME}} onde o valor deve entrar."
+            hint="Letras maiúsculas, números e sublinhado."
             name="secret-name"
             autoFocus
           />
@@ -175,7 +173,7 @@ export function SecretDialog({
           label="Valor"
           disabled={task.busy}
           error={problem?.field === "value" ? problem.text : task.error}
-          hint="De 8 a 16 384 caracteres. Fica cifrado no servidor e nunca volta para esta tela."
+          hint="Fica cifrado e nunca volta para esta tela."
           onEnter={() => void save()}
           autoFocus={existing !== undefined || preset !== undefined}
         />

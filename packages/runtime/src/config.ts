@@ -228,7 +228,54 @@ const serverSchema = z.strictObject({
   maxBodyBytes: z.exactOptional(positiveInt),
   /** How long the realtime change log is kept (minutes): the window `Last-Event-ID` can resume from. */
   eventRetentionMinutes: z.exactOptional(positiveInt),
+  /**
+   * The address people's browsers reach this server at (a VPS behind its HTTPS proxy), e.g.
+   * `https://suup.example.com`. With it, the OAuth login of a connector comes back to
+   * `<publicUrl>/oauth/callback`; without it, to a loopback listener (this computer only). HTTPS, or
+   * a loopback host (the MCP rule: a redirect URI is localhost or HTTPS). Stored without a trailing `/`.
+   */
+  publicUrl: z.exactOptional(
+    z
+      .string({
+        error: orMissing("esperado um endereço (texto), por exemplo https://suup.exemplo.com"),
+      })
+      .transform((text, ctx) => {
+        const checked = publicUrlOf(text);
+        if (typeof checked === "string") return checked;
+        ctx.addIssue({ code: "custom", message: checked.problem });
+        return z.NEVER;
+      }),
+  ),
 });
+
+/** The hosts a plain-HTTP public address may name (the MCP rule: localhost or HTTPS). */
+const LOOPBACK_HOSTS: ReadonlySet<string> = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+/**
+ * `server.publicUrl` in its normal form (no trailing `/`), or the problem. The URL parser judges
+ * the syntax; the scheme and the host are compared exactly.
+ */
+export function publicUrlOf(text: string): string | { problem: string } {
+  let url: URL;
+  try {
+    url = new URL(text.trim());
+  } catch {
+    return { problem: "endereço inválido: use o endereço inteiro, como https://suup.exemplo.com" };
+  }
+  const secure =
+    url.protocol === "https:" || (url.protocol === "http:" && LOOPBACK_HOSTS.has(url.hostname));
+  if (!secure) {
+    return {
+      problem:
+        "o endereço público precisa ser HTTPS (o login OAuth só volta a HTTPS ou a este computador)",
+    };
+  }
+  if (url.search !== "" || url.hash !== "" || url.username !== "" || url.password !== "") {
+    return { problem: "o endereço público não leva consulta (?), âncora (#) nem usuário" };
+  }
+  const path = url.pathname.endsWith("/") ? url.pathname.slice(0, -1) : url.pathname;
+  return `${url.origin}${path}`;
+}
 
 /** True for a name the runtime's time zone database knows (`Intl` is the judge, no pattern). */
 export function isTimeZone(name: string): boolean {

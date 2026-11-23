@@ -176,6 +176,12 @@ export const serverInfoSchema = z.object({
   timeZone: z.string().nullable(),
   /** Where it came from: chosen by the user, sent by the app from the computer, or the configuration. */
   timeZoneSource: z.enum(["user", "device", "config"]).nullable(),
+  /**
+   * Where the browser comes back from the OAuth login of a connector: `loopback` (a listener on the
+   * server's own computer: works when the browser runs there, the app on this computer) or `public`
+   * (the server's public HTTPS address, `server.publicUrl`: works from anywhere).
+   */
+  oauthCallback: z.enum(["loopback", "public"]),
 });
 export type ServerInfo = z.infer<typeof serverInfoSchema>;
 

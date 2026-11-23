@@ -60,10 +60,12 @@ describe("connector gallery", () => {
     // Not verified anywhere: left out.
     expect(catalogEntry("higgsfield")).toBeUndefined();
     // Composio says out loud that a third party keeps the logins.
-    expect(catalogEntry("composio")?.disclosure).toContain("terceiros");
+    expect(catalogEntry("composio")?.disclosure).toBe(
+      "Pelo Composio, seus logins ficam guardados na nuvem deles.",
+    );
     expect(catalogEntry("composio")?.icon).toBeNull();
-    expect(catalogEntry("figma")?.notes.join(" ")).toContain("6 chamadas por mês");
-    expect(catalogEntry("stackoverflow")?.notes.join(" ")).toContain("100 chamadas por dia");
+    expect(catalogEntry("figma")?.notes.join(" ")).toContain("6 usos por mês");
+    expect(catalogEntry("stackoverflow")?.notes.join(" ")).toContain("100 usos por dia");
   });
 
   it("default grants are exact tool names: reads run, writes ask", () => {

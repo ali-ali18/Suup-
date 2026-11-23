@@ -3,7 +3,6 @@ import {
   connectorNameSchema,
   createConnectorBodySchema,
   grantConnectorBodySchema,
-  oauthCompleteBodySchema,
   setToolOutboundBodySchema,
   setToolRiskBodySchema,
   updateConnectorBodySchema,
@@ -225,20 +224,6 @@ export const connectorRoutes: Route[] = [
     async handler(ctx) {
       const name = nameOf(ctx.params.name ?? "");
       return { body: toOAuthStatusDto(await ctx.runtime.connectors.gallery.oauthStatus(name)) };
-    },
-  },
-  {
-    method: "POST",
-    pattern: "/v1/connectors/:name/oauth/complete",
-    timeoutMs: 60_000,
-    async handler(ctx) {
-      const name = nameOf(ctx.params.name ?? "");
-      const body = ctx.body(oauthCompleteBodySchema);
-      return {
-        body: toOAuthStatusDto(
-          await ctx.runtime.connectors.gallery.oauthComplete(name, body.flowId, body.callbackUrl),
-        ),
-      };
     },
   },
   {

@@ -1023,7 +1023,7 @@ describe("conectores: a tela da vitrine (docs/DESIGN.md 5d)", () => {
     expect(existsSync(join(SRC, "features", "plugins", "PluginsDialog.tsx"))).toBe(false);
     // the only dialog of the screen is the confirmation of Desconectar (and the secure form)
     expect(screen.split("<Dialog").length - 1).toBe(1);
-    expect(screen).toContain("Os bots deixam de usá-lo até você entrar de novo.");
+    expect(screen).toContain("Seus bots deixam de usar o {name} até você entrar de novo.");
     expect(screen).toContain("<Screen");
     expect(screen).toContain("<ScreenHead");
     expect(shell).toContain("<ConnectorsScreen />");
@@ -1088,21 +1088,37 @@ describe("conectores: a tela da vitrine (docs/DESIGN.md 5d)", () => {
     expect(screen).not.toContain("rounded-card border border-border bg-transparent");
   });
 
-  it("a página: o caminho, o estado, a ação de verdade, os exemplos, Conexão e Informações", () => {
+  it("a página: o caminho, o estado, a ação de verdade, os exemplos, Conexão e Bom saber; nada técnico (dono, 23/11/2026)", () => {
     for (const word of [
       'aria-label="Caminho"',
       "<StateTag state={state} />",
       "<MainAction",
       "Exemplos do que você poderá pedir",
       "Conexão",
-      "Informações",
-      "Categoria",
-      "Disponibilidade",
-      "Fonte",
-      "Licença",
+      "Bom saber",
     ]) {
       expect(screen, word).toContain(word);
     }
+    // "Informações" with the address, the licence, the hosts, the date and the login jargon is gone
+    for (const technical of [
+      "Informações",
+      "Categoria",
+      "Disponibilidade",
+      '"Fonte"',
+      "Licença",
+      "Fala com",
+      "Conferido em",
+      "entry.source",
+      "entry.license",
+      "entry.egressHosts",
+      "entry.checkedAt",
+      "item.detail",
+      "<MonoText",
+      "A confirmar",
+    ]) {
+      expect(screen, technical).not.toContain(technical);
+    }
+    expect(screen).toContain('unverified: "Em breve"');
     // "Meus conectores" is real now: a button with the logos of what is connected, stacked
     expect(screen).toContain("flex-row-reverse");
     expect(screen).toContain('e.item.status === "connected"');
@@ -1126,18 +1142,24 @@ describe("conectores: a tela da vitrine (docs/DESIGN.md 5d)", () => {
     }
     expect(screen).toContain("appearanceOf(item.entry.id)");
     const flow = read(join(SRC, "features", "plugins", "use-connect.ts"));
-    // the flows: install and follow next; OAuth in the system browser with polling; the paste of a VPS
+    // the flows: install and follow next; OAuth in the system browser with polling
     for (const call of [
       "api.connectorCatalog.install(",
       "api.connectors.oauthStart(",
       "platform.openUrl(start.authorizationUrl)",
       "api.connectors.oauthStatus(",
-      "api.connectors.oauthComplete(",
       "api.connectors.oauthDisconnect(",
     ]) {
       expect(flow, call).toContain(call);
     }
-    expect(screen).toContain('remote={mode === "vps"}');
+    // never an address to paste (owner, 23/11/2026: "Mas por que raios eu colaria um link?"): the
+    // browser comes back to the server (its loopback, or its public address); a VPS without one
+    // does not offer the login
+    expect(flow).not.toContain("oauthComplete");
+    expect(screen).not.toContain("connector-paste");
+    expect(screen).not.toContain("<TextField");
+    expect(screen).toContain("api.info()");
+    expect(screen).toContain('mode === "local" || callback === "public"');
     // the token goes through the secure form of the vault, never a plain field of the screen
     expect(screen).toContain("<SecretDialog");
     expect(screen).not.toContain("<SecretInput");

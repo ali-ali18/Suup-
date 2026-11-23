@@ -69,7 +69,7 @@ describe("Permissões: the mode", () => {
     );
   });
 
-  it("goes back to the old mode, with the server's words, when it refuses", async () => {
+  it("goes back to the old mode, with a friendly sentence (never the server's raw text), when it fails", async () => {
     const update = vi.fn(async () => {
       throw new ApiError("internal_error", "O servidor não conseguiu gravar.", 500);
     });
@@ -77,12 +77,13 @@ describe("Permissões: the mode", () => {
     await waitFor(() => expect(modeButton().textContent).toBe("Auto-review"));
     await pick("Perguntar tudo");
     await waitFor(() =>
-      expect(screen.getByRole("note").textContent).toContain("não conseguiu gravar"),
+      expect(screen.getByRole("note").textContent).toContain("Algo deu errado. Tenta de novo?"),
     );
+    expect(screen.getByRole("note").textContent).not.toContain("não conseguiu gravar");
     expect(modeButton().textContent).toBe("Auto-review");
   });
 
-  it("says the truth when there is no reviewer: one faded line with the server's reason", async () => {
+  it("says the truth when there is no reviewer: one faded friendly line (the server's reason stays in the logs)", async () => {
     setup({
       approvalSettings: {
         get: async () =>
@@ -97,7 +98,8 @@ describe("Permissões: the mode", () => {
       },
     });
     const note = await screen.findByTestId("reviewer-unavailable");
-    expect(note.textContent).toContain("Nenhum modelo de revisão configurado.");
+    expect(note.textContent).toContain("O revisor não está disponível agora.");
+    expect(note.textContent).not.toContain("Nenhum modelo de revisão configurado.");
     expect(screen.getByTestId("rules-allow").textContent).toContain("não são lidas");
   });
 });

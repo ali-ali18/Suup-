@@ -61,9 +61,17 @@ export interface CatalogEntry {
   readTools: readonly string[];
   /** Tools that change something, by exact name: they always ask (the default, said out loud). */
   writeTools: readonly string[];
-  /** Limits and facts the person should know (pt-BR), from the research. */
+  /**
+   * What the person should know, in plain pt-BR, one short friendly sentence each (the owner,
+   * 23/11/2026: "a ideia é ser friendly"): a limit of the plan, what the bot can do. The technical
+   * facts behind them (which server, what was not verified, where it came from) are comments here
+   * and in docs/CONECTORES.md, never on the screen.
+   */
   notes: readonly string[];
-  /** A third party keeps your logins and sees your data: shown before connecting (pt-BR). */
+  /**
+   * A third party keeps your logins and sees your data: shown before connecting, in ONE friendly
+   * sentence (pt-BR).
+   */
   disclosure?: string | undefined;
   /** When this entry was last checked against its sources. */
   checkedAt: string;
@@ -125,10 +133,9 @@ export const CONNECTOR_CATALOG: readonly CatalogEntry[] = [
       "get_label",
     ],
     writeTools: [],
-    notes: [
-      "Usa o servidor remoto oficial em modo somente leitura (/readonly): ferramentas que escrevem nem aparecem.",
-      "Login por token pessoal (PAT): o servidor remoto só aceita OAuth de apps registrados por cada aplicativo.",
-    ],
+    // The official remote server in read-only mode (/readonly): write tools do not even appear.
+    // A personal token (PAT): the remote server only takes the OAuth of apps each client registered.
+    notes: ["Seus bots só leem no GitHub: nada é mudado por lá."],
     checkedAt: CHECKED,
   },
   {
@@ -144,11 +151,10 @@ export const CONNECTOR_CATALOG: readonly CatalogEntry[] = [
     egressHosts: ["mcp.notion.com"],
     readTools: [],
     writeTools: [],
-    notes: [
-      "Servidor remoto oficial; o servidor local do Notion não tem mais manutenção.",
-      "Não verificado: se o Notion aceita o registro automático de um app novo. Se recusar, a mensagem do servidor aparece aqui.",
-      "As ferramentas ainda não foram conferidas por nome: todas perguntam antes de rodar até você marcar as de leitura.",
-    ],
+    // The official remote server (the local one is no longer maintained). Not verified: whether
+    // Notion accepts the dynamic registration of a new client. The tools were not checked by name:
+    // all of them ask until the person marks the ones that only read.
+    notes: ["Antes de mudar algo no seu Notion, o bot pede a sua aprovação."],
     checkedAt: CHECKED,
   },
   {
@@ -164,10 +170,9 @@ export const CONNECTOR_CATALOG: readonly CatalogEntry[] = [
     egressHosts: ["mcp.linear.app"],
     readTools: [],
     writeTools: [],
-    notes: [
-      "Não verificado: o endereço e o OAuth vêm da observação de outro projeto (Hermes), não de uma página do Linear.",
-      "Todas as ferramentas perguntam antes de rodar até você marcar as de leitura.",
-    ],
+    // Not verified: the address and the OAuth come from another project's observation (Hermes), not
+    // from a page of Linear. Every tool asks until the person marks the ones that only read.
+    notes: ["Antes de mudar algo no seu Linear, o bot pede a sua aprovação."],
     checkedAt: CHECKED,
   },
   {
@@ -184,10 +189,10 @@ export const CONNECTOR_CATALOG: readonly CatalogEntry[] = [
     egressHosts: ["mcp.figma.com"],
     readTools: [],
     writeTools: [],
-    notes: [
-      "No plano Starter, ou com assento View ou Collab, o limite é de 6 chamadas por mês.",
-      "Pode recusar o login: segundo outro projeto, o Figma só aceita o registro de alguns aplicativos pelo nome. O Suup se apresenta com o nome dele, nunca com o de outro.",
-    ],
+    // The limit is for the Starter plan, or a View or Collab seat. The login may be refused: per
+    // another project, Figma only accepts the registration of some clients by name; Suup always
+    // introduces itself by its own name, never another's.
+    notes: ["No plano grátis do Figma são 6 usos por mês."],
     checkedAt: CHECKED,
   },
   {
@@ -199,13 +204,14 @@ export const CONNECTOR_CATALOG: readonly CatalogEntry[] = [
     icon: "stackoverflow",
     availability: "unverified",
     unverifiedReason:
-      "O endereço do servidor e o login estão numa documentação que não pôde ser lida; a busca do Suup já consulta o Stack Overflow sem login.",
+      // The address of the server and the login are in documentation that could not be read.
+      "Ainda estamos conferindo como entrar. Enquanto isso, a busca do Suup já encontra respostas do Stack Overflow.",
     transport: null,
     auth: { kind: "oauth" },
     egressHosts: [],
     readTools: [],
     writeTools: [],
-    notes: ["Em beta: 100 chamadas por dia por usuário."],
+    notes: ["Em teste no Stack Overflow: até 100 usos por dia."],
     checkedAt: CHECKED,
   },
   {
@@ -217,7 +223,10 @@ export const CONNECTOR_CATALOG: readonly CatalogEntry[] = [
     icon: "google",
     availability: "unverified",
     unverifiedReason:
-      "O servidor aberto do Google Workspace roda como extensão do Gemini CLI (clonando o repositório) e guarda o login no chaveiro do sistema: ainda não há um jeito conferido de rodá-lo no contêiner do Suup.",
+      // The open Google Workspace server runs as an extension of the Gemini CLI (cloning the
+      // repository) and keeps the login in the system keychain: no checked way to run it in Suup's
+      // container yet.
+      "Ainda estamos preparando um jeito seguro de ligar o Google aos seus bots.",
     transport: null,
     auth: {
       kind: "oauth_owner_client",
@@ -232,10 +241,9 @@ export const CONNECTOR_CATALOG: readonly CatalogEntry[] = [
     egressHosts: [],
     readTools: [],
     writeTools: [],
-    notes: [
-      "Um app em modo de teste só serve para você e os usuários de teste, com um limite de cerca de 25 escopos.",
-      "O servidor pode ler, mudar e apagar dados da sua conta Google: todas as ferramentas perguntam antes de rodar.",
-    ],
+    // An app in test mode serves only you and the test users, with a limit of about 25 scopes.
+    // The server can read, change and delete data of the account: every tool asks before running.
+    notes: ["Antes de mudar algo na sua conta Google, o bot pede a sua aprovação."],
     checkedAt: CHECKED,
   },
   {
@@ -264,12 +272,12 @@ export const CONNECTOR_CATALOG: readonly CatalogEntry[] = [
     // Its tools are generic meta-tools (discover, authorize, run any app): none is a plain read.
     readTools: [],
     writeTools: [],
-    notes: [
-      "As ferramentas são genéricas (descobrir, autorizar e executar qualquer app): todas perguntam antes de rodar.",
-      "Preço, plano gratuito e política de dados da Composio não foram verificados.",
-    ],
-    disclosure:
-      "A Composio é um serviço de terceiros. Os logins dos seus apps e os dados que passam por eles ficam na nuvem da Composio, e os apps OAuth são os dela (na tela de consentimento aparece Composio, não o Suup). O Suup só guarda a sua chave da Composio no cofre.",
+    // The tools are generic (discover, authorize and run any app): all of them ask. Price, free plan
+    // and data policy of Composio were not verified. A third party: the logins of the apps and the
+    // data through them live in Composio's cloud, and the OAuth apps are Composio's (its name is on
+    // the consent screen, not Suup's); Suup keeps only the Composio key, in the vault.
+    notes: ["Antes de usar qualquer app pelo Composio, o bot pede a sua aprovação."],
+    disclosure: "Pelo Composio, seus logins ficam guardados na nuvem deles.",
     checkedAt: CHECKED,
   },
 ];

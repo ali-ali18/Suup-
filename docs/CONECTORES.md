@@ -212,12 +212,12 @@ A galeria é uma **lista fixa no código** (`packages/connectors/src/catalog.ts`
 | `name`, `description` | o serviço e uma linha do que o bot faz com ele |
 | `source`, `license` | a página oficial do servidor e a licença conhecida |
 | `icon` | um *slug* do Simple Icons (CC0) para o app desenhar o logo, só como identificação do serviço; `null` = ícone genérico |
-| `availability` | `ready` (instalável) ou `unverified` ("a confirmar": aparece com o motivo, não instala) |
+| `availability` | `ready` (instalável) ou `unverified` ("Em breve" no app: aparece com o motivo, `unverifiedReason`, numa frase simples para a pessoa; não instala) |
 | `transport` | o transporte **fixo** (URL HTTP; nunca um comando de fora) |
 | `auth` | `oauth` (OAuth do MCP no navegador), `token` (o token do serviço no formulário seguro: o nome do segredo, o cabeçalho e o passo a passo) ou `oauth_owner_client` (um app OAuth do dono, com o passo a passo) |
 | `egressHosts` | os hosts exatos com que ele fala ([REDE.md](REDE.md)) |
 | `readTools`, `writeTools` | ferramentas por **nome exato**: as de leitura entram marcadas como `read` (rodam sem cartão); as de escrita como `external_irreversible` (sempre perguntam). Qualquer outra fica no padrão de conector: pergunta |
-| `notes`, `disclosure`, `checkedAt` | limites da pesquisa, o aviso de terceiro e a data da última conferência |
+| `notes`, `disclosure`, `checkedAt` | o que a pessoa precisa saber e o aviso de terceiro, **cada um numa frase curta e amigável** (o app os mostra; regra do dono "a ideia é ser friendly", [DESIGN.md](DESIGN.md) §1), e a data da última conferência (só para nós). O fato técnico por trás de cada nota (qual servidor, o que não foi verificado, de onde veio) fica num comentário da entrada e nesta página, nunca na tela |
 
 As entradas de hoje:
 
@@ -254,7 +254,10 @@ Segue a especificação de autorização do MCP, revisão **2026-07-28**, como r
 7. **Renovação.** Uma conexão manda o token de acesso; num 401, o SDK usa o de renovação e grava os novos no cofre. Se a renovação é recusada, o conector fica em "precisa de login" (nada é apagado por uma conexão, e nenhuma conexão registra cliente nem abre navegador).
 8. **Desconectar** (`DELETE /v1/connectors/{nome}/oauth`) revoga os tokens no servidor de autorização (RFC 7009) quando ele tem `revocation_endpoint`, apaga-os do cofre e desliga o conector. Remover o conector também apaga o login.
 
-**Onde fica o retorno: app no computador e VPS.** O ouvinte de retorno roda no **processo do servidor** (o que atende `POST .../oauth/start`). No app com o servidor embutido, o navegador e o servidor estão no mesmo computador e o retorno chega sozinho: é o caminho testado. Com o servidor numa **VPS**, o `127.0.0.1` do redirecionamento é o computador da pessoa, não a VPS: a página de retorno não abre, mas o endereço inteiro (com `code`, `state` e `iss`) fica na barra do navegador. O app o manda para `POST /v1/connectors/{nome}/oauth/complete`, que passa pelas mesmas conferências (o caminho e o `state` precisam ser os deste login; uso único). É o mesmo recurso que o Claude Code oferece ("paste the full callback URL"). Para quem não quer isso, a entrada por token continua valendo.
+**Onde fica o retorno: app no computador e VPS** (decisão do dono, 23/11/2026: "Mas por que raios eu colaria um link?"; não existe mais o passo de colar o endereço, nem `POST .../oauth/complete`). O servidor diz ao app qual é o seu caso em `GET /v1/info` (`oauthCallback`):
+- **`loopback`, o app com o servidor embutido.** O processo do servidor escuta em `http://127.0.0.1:<porta>/callback`; o navegador e o servidor estão no mesmo computador e o retorno chega sozinho.
+- **`public`, uma VPS com endereço HTTPS** (`server.publicUrl`, [CONFIGURACAO.md](CONFIGURACAO.md)). O retorno vai direto ao servidor, na rota própria `<publicUrl>/oauth/callback` (fora de `/v1`, **sem token**: o navegador não tem um; o que protege é o `state` de uso único de um login que este servidor abriu). As conferências são **as mesmas** do ouvinte local (função `callback` de `gallery.ts`): o `state` (uma vez), o endereço de chegada igual ao `redirect_uri` daquele login, o `error`, o `iss` e a troca com PKCE. O endereço precisa ser HTTPS (ou um host deste computador: a regra do MCP, "redirect URIs MUST be either localhost or use HTTPS").
+- **Uma VPS sem endereço público.** O navegador não tem como voltar a ela: o app não oferece o login e diz, numa frase, que a VPS precisa do endereço público para conectar por login; as entradas por **token** continuam funcionando.
 
 **Limites, honestamente.** Nenhum servidor real foi alcançado desta máquina: Notion, Linear e Figma foram desenhados pela pesquisa e testados contra um servidor de autorização falso local (`packages/connectors/src/testing/fake-oauth.ts`). O SDK 1.32.2 fala a revisão 2025-11-25 do transporte; servidores que só falem a 2026-07-28 podem exigir o pacote 2.x (não verificado). O ouvinte usa porta livre: um cliente pré-registrado que exija porta fixa ainda não tem onde configurá-la. O `127.0.0.1` local não impede outro programa do mesmo computador de tentar o retorno: o `state` de uso único e o PKCE são o que protege (a especificação diz o mesmo de URIs `localhost`).
 
@@ -297,6 +300,7 @@ Uma falha de um conector **nunca** derruba o harness: todo erro vira um `Connect
 - Medir com modelo real a busca e a alternativa fixa; a busca de ferramentas por embeddings.
 - A **tela** da galeria e do login no app (o backend existe; [FRONTEND.md](FRONTEND.md) diz como usá-lo).
 - Entradas a confirmar (Stack Overflow, Google Workspace) e o Higgsfield; o teste vivo de Notion, Linear e Figma (registro automático e ferramentas por nome); Client ID Metadata Document (falta uma URL HTTPS pública do documento do Suup); porta fixa do retorno para um cliente pré-registrado.
+- **Repassar o retorno pelo app** (ideia pendente): numa VPS sem endereço público, o app de desktop poderia escutar o retorno no seu próprio `127.0.0.1` e repassá-lo ao servidor. Pede um ouvinte novo na casca Rust (dependência nova e pesquisa): não feito; hoje a saída é o `server.publicUrl` ou uma entrada por token.
 - O transporte antigo por SSE (só o *streamable HTTP* e o `stdio`); recursos (*resources*), *prompts*, amostragem e `elicitation` do protocolo (o cliente não declara nenhuma capacidade, então o servidor não pode pedir nada); aviso do servidor de que a lista de ferramentas mudou (a lista é lida de novo a cada 5 minutos ou ao editar o conector).
 - Um aviso, dentro da conversa, de que um conector estava fora do ar quando a execução começou (hoje aparece no `doctor`, no estado do conector e no erro da chamada).
 - Quadro em tempo real para mudanças de conectores (o app lê de novo depois de escrever).

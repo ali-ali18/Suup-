@@ -1,14 +1,17 @@
 // Owns the gallery of connectors as the person uses it: the list of entries with where each one
 // stands (installed? logged in? waiting for a token?), installing an entry (always the transport
 // the entry declares, never a command from anyone else), and the browser login of the OAuth of the
-// MCP protocol: the loopback listener that receives the callback, the single-use `state` with a
-// short life, the code exchange and the tokens in the vault.
+// MCP protocol: where the browser comes back, the single-use `state` with a short life, the code
+// exchange and the tokens in the vault.
 //
-// The listener runs in THIS process (the server's): in the app on the person's computer, the
-// browser and the server are on the same machine, so `http://127.0.0.1:<port>/callback` reaches it.
-// When the server is a VPS, the browser cannot reach the VPS's loopback: the page that fails to
-// load still has the whole callback address in its address bar, and the app sends it here
-// (`complete`), which runs exactly the same checks. See docs/CONECTORES.md, "OAuth".
+// Where the browser comes back (docs/CONECTORES.md, "OAuth"):
+// - no public address (the app on the person's computer): a loopback listener in THIS process,
+//   `http://127.0.0.1:<port>/callback`; the browser and the server are on the same machine.
+// - `server.publicUrl` set (a VPS with its HTTPS address): the server's own route
+//   `<publicUrl>/oauth/callback` (no token: the single-use `state` is what protects it).
+// Both run exactly the same checks (`callback`). A VPS without a public address cannot receive the
+// browser: the app says so and the person uses a token entry (the owner: "por que raios eu colaria
+// um link?": there is no paste step).
 import { randomUUID } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -76,7 +79,7 @@ export interface OAuthStartResult {
   /** Open it in the person's browser. */
   authorizationUrl: string;
   flowId: string;
-  /** Where the browser comes back (the loopback listener of the server). */
+  /** Where the browser comes back (the loopback listener, or the server's public route). */
   redirectUri: string;
   expiresAt: Date;
 }
@@ -91,12 +94,29 @@ export interface ConnectorGallery {
   install(id: string, options?: { origin?: "user" | "proposal" }): Promise<InstallResult>;
   oauthStart(connector: string): Promise<OAuthStartResult>;
   oauthStatus(connector: string): Promise<OAuthStatusView>;
-  /** The app hands over the callback address the browser landed on (a server on a VPS). */
-  oauthComplete(connector: string, flowId: string, callbackUrl: string): Promise<OAuthStatusView>;
+  /**
+   * Where the browser comes back: `loopback` (this computer only) or `public` (the server's public
+   * address, `server.publicUrl`).
+   */
+  readonly redirect: "loopback" | "public";
+  /**
+   * The browser came back to the server's public route (`OAUTH_CALLBACK_PATH`) with these query
+   * parameters: the page to show it. `undefined` when the server has no public address.
+   */
+  publicCallback(params: URLSearchParams): Promise<CallbackPage | undefined>;
   /** Revokes (when the server can), forgets the tokens and turns the connector off. */
   oauthDisconnect(connector: string): Promise<ConnectorView>;
   close(): Promise<void>;
 }
+
+/** What the browser is shown when it comes back: a status and a short page in words. */
+export interface CallbackPage {
+  status: number;
+  html: string;
+}
+
+/** The server's own route the browser comes back to when `server.publicUrl` is set. */
+export const OAUTH_CALLBACK_PATH = "/oauth/callback";
 
 /** How long a login waits for the browser to come back. */
 export const OAUTH_FLOW_TTL_MS = 10 * 60_000;
@@ -131,6 +151,11 @@ export function createGallery(deps: {
   fetch?: typeof fetch | undefined;
   /** The loopback listener: host and port (0: a free port, kept for the life of the process). */
   callback?: { host?: string; port?: number } | undefined;
+  /**
+   * The server's public address (`server.publicUrl`, already checked: HTTPS, or a loopback host):
+   * the browser comes back to `<publicUrl>/oauth/callback` instead of the loopback listener.
+   */
+  publicUrl?: string | undefined;
   now?: () => number;
   ttlMs?: number;
   /**
@@ -200,18 +225,44 @@ export function createGallery(deps: {
     }
   };
 
-  /** Takes the flow of this `state` out (single use), or says why there is none. */
-  const takeByState = (state: string | null): Flow | string => {
+  /**
+   * Takes the flow of this `state` out (single use), or says why there is none. `arrivedAt`: the
+   * address the browser came back to, which must be the redirect URI of THAT login (a login started
+   * for the loopback is not finished by the public route, nor the other way round).
+   */
+  const takeByState = (state: string | null, arrivedAt: string): Flow | string => {
     sweep();
     if (state === null) return "o retorno do login não trouxe o parâmetro state";
     const id = byState.get(state);
-    byState.delete(state);
     const flow = id === undefined ? undefined : flows.get(id);
     if (flow === undefined || flow.status !== "pending") {
+      byState.delete(state);
       return "este login não vale mais (expirou ou já foi usado): volte ao Suup e clique em Conectar de novo";
     }
+    if (flow.pending.redirectUri !== arrivedAt) {
+      return "este retorno chegou a um endereço diferente do que o login pediu: volte ao Suup e clique em Conectar de novo";
+    }
+    byState.delete(state);
     return flow;
   };
+
+  const page = (status: number, title: string, text: string): CallbackPage => ({
+    status,
+    html: PAGE(title, escapeHtml(text)),
+  });
+
+  /** The same checks wherever the browser came back: the state (once), the issuer, the exchange. */
+  const callback = async (params: URLSearchParams, arrivedAt: string): Promise<CallbackPage> => {
+    const taken = takeByState(params.get("state"), arrivedAt);
+    if (typeof taken === "string") return page(400, "Login não concluído", taken);
+    await finish(taken, params);
+    return taken.status === "connected"
+      ? page(200, "Pronto", "Login feito. Pode fechar esta página e voltar ao Suup.")
+      : page(400, "Login não concluído", taken.error ?? "o login falhou");
+  };
+
+  const publicRedirect =
+    deps.publicUrl === undefined ? undefined : `${deps.publicUrl}${OAUTH_CALLBACK_PATH}`;
 
   const openListener = async (): Promise<{ server: Server; base: string }> => {
     if (listener !== undefined) return listener;
@@ -224,25 +275,15 @@ export function createGallery(deps: {
           return;
         }
         void (async () => {
-          const taken = takeByState(url.searchParams.get("state"));
-          const send = (status: number, title: string, text: string) =>
-            res
-              .writeHead(status, {
-                "content-type": "text/html; charset=utf-8",
-                "cache-control": "no-store",
-                "referrer-policy": "no-referrer",
-              })
-              .end(PAGE(title, escapeHtml(text)));
-          if (typeof taken === "string") {
-            send(400, "Login não concluído", taken);
-            return;
-          }
-          await finish(taken, url.searchParams);
-          if (taken.status === "connected") {
-            send(200, "Pronto", "Login feito. Pode fechar esta página e voltar ao Suup.");
-          } else {
-            send(400, "Login não concluído", taken.error ?? "o login falhou");
-          }
+          const { base } = listener ?? { base: "" };
+          const answer = await callback(url.searchParams, `${base}/callback`);
+          res
+            .writeHead(answer.status, {
+              "content-type": "text/html; charset=utf-8",
+              "cache-control": "no-store",
+              "referrer-policy": "no-referrer",
+            })
+            .end(answer.html);
         })();
       });
       await new Promise<void>((resolve, reject) => {
@@ -433,8 +474,7 @@ export function createGallery(deps: {
           flow.error = "substituído por um login mais novo";
         }
       }
-      const { base } = await openListener();
-      const redirectUri = `${base}/callback`;
+      const redirectUri = publicRedirect ?? `${(await openListener()).base}/callback`;
       let clientSecret: string | undefined;
       if (oauth.clientSecret !== undefined) {
         clientSecret = (await vault.resolveForConnector([oauth.clientSecret.secret]))[
@@ -482,38 +522,10 @@ export function createGallery(deps: {
       };
     },
     oauthStatus: statusOf,
-    async oauthComplete(connector, flowId, callbackUrl) {
-      let url: URL;
-      try {
-        url = new URL(callbackUrl.trim());
-      } catch {
-        throw new RuntimeError(
-          "invalid_input",
-          "Isto não é um endereço: cole o endereço inteiro da página de retorno.",
-        );
-      }
-      const flow = flows.get(flowId);
-      if (flow === undefined || flow.connector !== connector) {
-        throw new RuntimeError(
-          "invalid_input",
-          "Este login não existe mais: clique em Conectar de novo.",
-        );
-      }
-      // The pasted address must be the callback of THIS login: same redirect URI, same state.
-      if (`${url.origin}${url.pathname}` !== flow.pending.redirectUri) {
-        throw new RuntimeError("invalid_input", "Este não é o endereço de retorno deste login.");
-      }
-      if (url.searchParams.get("state") !== flow.pending.state) {
-        throw new RuntimeError(
-          "invalid_input",
-          "O endereço é de outro login: clique em Conectar de novo.",
-        );
-      }
-      const taken = takeByState(url.searchParams.get("state"));
-      if (typeof taken === "string") throw new RuntimeError("conflict", taken);
-      await finish(taken, url.searchParams);
-      const status = await statusOf(connector);
-      return taken.status === "error" ? { ...status, status: "error", error: taken.error } : status;
+    redirect: publicRedirect === undefined ? "loopback" : "public",
+    async publicCallback(params) {
+      if (publicRedirect === undefined) return undefined;
+      return callback(params, publicRedirect);
     },
     async oauthDisconnect(connector) {
       await oauthConfigOf(connector);

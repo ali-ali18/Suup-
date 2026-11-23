@@ -1,3 +1,5 @@
+import { createServer as createHttpServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { type FakeOAuthServer, startFakeOAuthMcp } from "@suup/connectors/testing";
 import { generateKeyText, oauthSecretNames } from "@suup/runtime";
 import { afterAll, describe, expect, it } from "vitest";
@@ -135,38 +137,74 @@ describe.skipIf(!DATABASE_URL)(
         oauthSecretNames("oauthfake").access,
       );
     });
+  },
+);
 
-    it("the VPS path: the app posts the address the browser landed on", async () => {
-      const { api } = w.started;
-      fake ??= await startFakeOAuthMcp();
+/** A free port of this computer, for a server whose public address must be known before it starts. */
+async function freePort(): Promise<number> {
+  const probe = createHttpServer();
+  await new Promise<void>((resolve) => probe.listen(0, "127.0.0.1", resolve));
+  const { port } = probe.address() as AddressInfo;
+  await new Promise<void>((resolve) => probe.close(() => resolve()));
+  return port;
+}
+
+const PUBLIC_PORT = await freePort();
+const PUBLIC_URL = `http://127.0.0.1:${PUBLIC_PORT}`;
+
+// A server with a public address (a VPS behind HTTPS; here the loopback, which the MCP rule also
+// allows): the browser comes back to the server's own `/oauth/callback`, with no token, and the
+// single-use state is what protects it.
+describe.skipIf(!DATABASE_URL)(
+  dbSuiteName("OAuth back to the server's public address"),
+  { timeout: 90_000 },
+  () => {
+    const w = useWorld({
+      scripts: { roteiro: { agent: [] } },
+      config: {
+        approvals: {},
+        vault: { keyEnv: "SERVER_TEST_VAULT_KEY" },
+        server: { publicUrl: `${PUBLIC_URL}/` },
+      },
+      server: { port: PUBLIC_PORT },
+      env: { SERVER_TEST_VAULT_KEY: generateKeyText() },
+    });
+    let fake: FakeOAuthServer | undefined;
+    afterAll(async () => {
+      await fake?.close();
+    });
+
+    it("start, browser, the server's own route, connected; the route is single use and needs no token", async () => {
+      const { api, url } = w.started;
+      expect(url).toBe(PUBLIC_URL);
+      expect((await api.info()).oauthCallback).toBe("public");
+      fake = await startFakeOAuthMcp();
       await api.connectors.create({
-        name: "oauthvps",
+        name: "oauthpublic",
         transport: { kind: "http", url: fake.mcpUrl, oauth: {} },
         enabled: false,
       });
-      const start = await api.connectors.oauthStart("oauthvps");
+      const start = await api.connectors.oauthStart("oauthpublic");
+      expect(start.redirectUri).toBe(`${PUBLIC_URL}/oauth/callback`);
       const back =
         (await fetch(start.authorizationUrl, { redirect: "manual" })).headers.get("location") ?? "";
-      expect(
-        await code(
-          api.connectors.oauthComplete("oauthvps", {
-            flowId: start.flowId,
-            callbackUrl: "não é url",
-          }),
-        ),
-      ).toBe("invalid_request");
-      const done = await api.connectors.oauthComplete("oauthvps", {
-        flowId: start.flowId,
-        callbackUrl: back,
+      expect(back.startsWith(`${start.redirectUri}?`)).toBe(true);
+      // The browser has no token: the route answers it anyway, as a page.
+      const page = await fetch(back);
+      expect(page.status).toBe(200);
+      expect(page.headers.get("content-type")).toContain("text/html");
+      expect(await page.text()).toContain("Login feito");
+      expect(await api.connectors.oauthStatus("oauthpublic")).toMatchObject({
+        status: "connected",
       });
-      expect(done.status).toBe("connected");
-      expect((await api.connectors.get("oauthvps")).enabled).toBe(true);
-      // Used once: the same address again is refused.
-      expect(
-        await code(
-          api.connectors.oauthComplete("oauthvps", { flowId: start.flowId, callbackUrl: back }),
-        ),
-      ).not.toBe("no error");
+      expect((await api.connectors.get("oauthpublic")).enabled).toBe(true);
+      // Used once.
+      const replay = await fetch(back);
+      expect(replay.status).toBe(400);
+      expect(await replay.text()).toContain("não vale mais");
+      // Only GET, and nothing else outside /v1 opens without the token.
+      expect((await fetch(back, { method: "POST" })).status).toBe(404);
+      expect((await fetch(`${PUBLIC_URL}/v1/connectors`)).status).toBe(401);
     });
   },
 );

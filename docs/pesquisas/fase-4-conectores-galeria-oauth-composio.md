@@ -232,3 +232,7 @@ Todas as propostas abaixo são **inferências**, derivadas das fontes acima. Nen
 | 6 | **Google com app do dono** ("Bring your own app"): passo a passo com o formulário seguro para o ID e o segredo, sem o Suup registrar nada | Evita ter de passar pela verificação do Google; só funciona para o dono | Inferência; a política do Google não foi lida |
 | 7 | Tela do app para a galeria e para escolher as ferramentas concedidas (já pendente em FRONTEND.md), com o aviso honesto de cada entrada | A interface só desenha o que o backend oferece | Inferência de alinhamento |
 | 8 | Avaliar migração para `@modelcontextprotocol/client` 2.x (revisão 2026-07-28, validação de emissor) quando servidores de interesse exigirem | Compatibilidade não verificada | Inferência |
+
+## Adendo (23/11/2026): o retorno numa VPS
+
+Decisão do dono: nada de colar o endereço de retorno ("Mas por que raios eu colaria um link?"). Com a regra citada acima ("All redirect URIs MUST be either `localhost` or use HTTPS", Security Considerations, revisão 2026-07-28 da especificação de autorização do MCP, https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization, lida em 23/11/2026), uma VPS só recebe o navegador num endereço **HTTPS** dela: `server.publicUrl`, com a rota `/oauth/callback`. As conferências do retorno (state de uso único, `iss` da RFC 9207, PKCE) não mudam com o lugar. Sem endereço público, o login por OAuth não é oferecido numa VPS; as entradas por token seguem.

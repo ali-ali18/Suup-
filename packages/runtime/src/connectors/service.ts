@@ -344,6 +344,8 @@ export function createConnectorService(options: {
   launcher?: StdioLauncher | undefined;
   /** The loopback listener of the OAuth login (tests): host and port. */
   oauthCallback?: { host?: string; port?: number } | undefined;
+  /** The server's public address (`server.publicUrl`): the browser comes back there. */
+  publicUrl?: string | undefined;
   /** How long a browser login waits for its callback (tests). */
   oauthFlowTtlMs?: number | undefined;
   /** The clock of the logins (tests). */
@@ -803,6 +805,7 @@ export function createConnectorService(options: {
     service,
     fetch: options.fetch,
     callback: options.oauthCallback,
+    publicUrl: options.publicUrl,
     ...(options.oauthFlowTtlMs === undefined ? {} : { ttlMs: options.oauthFlowTtlMs }),
     ...(options.now === undefined ? {} : { now: options.now }),
     ...(options.catalog === undefined ? {} : { catalog: options.catalog }),

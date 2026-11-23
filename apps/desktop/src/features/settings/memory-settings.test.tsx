@@ -68,7 +68,7 @@ describe("Configurações > Memória", () => {
     expect((await field("memory-prompt-limit")).value).toBe("200");
     expect(screen.getByTestId("memory-usage").textContent).toContain("12 de 200");
     expect(screen.getByTestId("memory-reviewer-unavailable").textContent).toBe(
-      "Sem modelo configurado.",
+      "Nenhum modelo está disponível para isto agora.",
     );
     expect(screen.getByTestId("memory-expiry-days").textContent).toBe("90 dias");
     expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual([

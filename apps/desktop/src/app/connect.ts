@@ -1,6 +1,7 @@
 import { ApiError, createClient } from "@suup/api";
 import { createDataStore } from "../data/store.js";
 import { Sync } from "../data/sync.js";
+import { friendlyError } from "../lib/friendly-error.js";
 import type { Connection, Platform, ServerMode } from "../lib/platform.js";
 import type { Services } from "./context.js";
 import { useSettings } from "./settings-store.js";
@@ -19,20 +20,18 @@ export function describeConnectError(error: unknown): string {
   if (error instanceof ApiError) {
     switch (error.code) {
       case "unauthorized":
-        return "O token foi recusado pelo servidor. Confira se é o mesmo de SUUP_SERVER_TOKEN.";
+        return "O servidor recusou o token. Confira se é o mesmo que você configurou nele.";
       case "origin_not_allowed":
-        return "O servidor não aceita esta origem. Acrescente a origem do app em server.allowedOrigins na configuração do servidor.";
+        return "Este servidor ainda não aceita o app: libere o app na configuração do servidor.";
       case "network":
-        return "Não foi possível falar com o servidor. Confira o endereço, se ele está no ar e se a origem do app está em server.allowedOrigins.";
+        return "Não consegui falar com o servidor. Confira o endereço e se ele está no ar.";
       case "invalid_response":
-        return "Esse endereço respondeu, mas não parece ser um servidor Suup compatível.";
-      case "too_many_streams":
-        return "O servidor já atingiu o limite de conexões em tempo real. Feche outra janela do app e tente de novo.";
+        return "Esse endereço respondeu, mas não parece ser um servidor Suup.";
       default:
-        return error.message;
+        return friendlyError(error);
     }
   }
-  return error instanceof Error ? error.message : "Não foi possível conectar.";
+  return friendlyError(error);
 }
 
 /**

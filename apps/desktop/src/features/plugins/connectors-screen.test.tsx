@@ -70,6 +70,8 @@ function setup(
   options: {
     list?: CatalogItem[] | (() => CatalogItem[]);
     mode?: ServerMode;
+    /** Where the server says the browser comes back from a login (`GET /v1/info`). */
+    oauthCallback?: "loopback" | "public";
     api?: Record<string, unknown>;
   } = {},
 ) {
@@ -78,6 +80,11 @@ function setup(
   const openUrl = vi.fn();
   const extra = options.api ?? {};
   const api = {
+    info: vi.fn(async () => ({
+      timeZone: null,
+      timeZoneSource: null,
+      oauthCallback: options.oauthCallback ?? "loopback",
+    })),
     connectorCatalog: { list, install: vi.fn(), ...(extra.connectorCatalog as object) },
     connectors: {
       list: vi.fn(async () => []),
@@ -93,7 +100,6 @@ function setup(
         expiresAt: LATER(),
         error: null,
       })),
-      oauthComplete: vi.fn(),
       oauthDisconnect: vi.fn(async (name: string) => makeConnector({ name, enabled: false })),
       update: vi.fn(async (name: string) => makeConnector({ name, enabled: true })),
       ...(extra.connectors as object),
@@ -213,62 +219,69 @@ describe("the connectors screen draws what the server offers", () => {
     );
     openPage("novo-servico");
     expect(screen.queryByTestId("connector-examples")).toBeNull();
-    expect(within(page()).getByTestId("connector-info").textContent).toContain("CategoriaOutros");
   });
 
-  it("'a confirmar': unavailable, with the server's reason, and no Conectar", async () => {
+  it("'Em breve': unavailable, with the server's one-line reason in plain words, and no Conectar", async () => {
     setup();
     await waitFor(() => expect(rows()).toHaveLength(SERVER.length));
     const so = itemOf("stackoverflow");
-    const tag = within(so).getByTestId("connector-state");
-    expect(tag.textContent).toBe("A confirmar");
-    expect(tag.getAttribute("title")).toBe(entryOf("stackoverflow").unverifiedReason);
+    expect(within(so).getByTestId("connector-state").textContent).toBe("Em breve");
     expect(within(so).queryByTestId("connector-connect")).toBeNull();
     openPage("stackoverflow");
-    expect(within(page()).getByTestId("connector-unverified").textContent).toContain(
-      entryOf("stackoverflow").unverifiedReason ?? "",
+    expect(within(page()).getByTestId("connector-connection-text").textContent).toBe(
+      entryOf("stackoverflow").unverifiedReason,
     );
     const main = within(page()).getByTestId("connector-main") as HTMLButtonElement;
     expect(main.disabled).toBe(true);
-    // the server's notes (Stack Overflow is in beta) are on the page
-    expect(within(page()).getByTestId("connector-notes").textContent).toContain("beta");
+    // the server's friendly note is on the page
+    expect(within(page()).getByTestId("connector-notes").textContent).toContain("100 usos por dia");
   });
 
-  it("Google Workspace (an OAuth app of the owner's own): its steps, as text, without a way to connect", async () => {
+  it("Google Workspace (coming soon): one plain sentence, no setup steps yet, no way to connect", async () => {
     setup();
     await waitFor(() => expect(rows()).toHaveLength(SERVER.length));
     openPage("google-workspace");
     const connection = within(page()).getByTestId("connector-connection");
-    expect(connection.textContent).toContain("Google Cloud Console");
+    expect(connection.textContent).toContain(entryOf("google-workspace").unverifiedReason);
+    expect(connection.textContent).not.toContain("Google Cloud Console");
     expect((within(page()).getByTestId("connector-main") as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("the page shows what the server declares: notes (Figma's limit), source, licence, hosts", async () => {
-    const { openUrl } = setup();
+  it("the page is friendly: the server's notes in plain words, nothing technical (no address, licence, hosts, date)", async () => {
+    setup();
     await waitFor(() => expect(rows()).toHaveLength(SERVER.length));
     openPage("figma");
-    const info = within(page()).getByTestId("connector-info").textContent ?? "";
-    expect(info).toContain("CategoriaDesenvolvimento");
-    expect(info).toContain("mcp.figma.com");
-    expect(info).toContain(entryOf("figma").license);
     expect(within(page()).getByTestId("connector-notes").textContent).toContain(
-      "6 chamadas por mês",
+      "No plano grátis do Figma são 6 usos por mês.",
     );
-    fireEvent.click(within(page()).getByTestId("connector-site"));
-    expect(openUrl).toHaveBeenCalledWith(entryOf("figma").source);
+    expect(within(page()).queryByTestId("connector-info")).toBeNull();
+    const text = page().textContent ?? "";
+    const figma = entryOf("figma");
+    for (const technical of [
+      new URL(figma.source).host,
+      figma.license,
+      ...figma.egressHosts,
+      figma.checkedAt.split("-").reverse().join("/"),
+      "Licença",
+      "Fala com",
+      "Conferido em",
+      "Fonte",
+    ]) {
+      expect(text, technical).not.toContain(technical);
+    }
   });
 
   it("Composio: the third-party notice is on its page, and the line's Conectar opens the page first", async () => {
     const { api } = setup();
     await waitFor(() => expect(rows()).toHaveLength(SERVER.length));
     fireEvent.click(within(itemOf("composio")).getByTestId("connector-connect"));
-    expect(within(page()).getByTestId("connector-disclosure").textContent).toContain(
-      "serviço de terceiros",
+    expect(within(page()).getByTestId("connector-disclosure").textContent).toBe(
+      "Pelo Composio, seus logins ficam guardados na nuvem deles.",
     );
     expect(api.connectorCatalog.install).not.toHaveBeenCalled();
   });
 
-  it("a server that cannot list says so in its words", async () => {
+  it("a server that cannot list: a friendly sentence and Tentar de novo, never its raw text", async () => {
     setup({
       api: {
         connectorCatalog: {
@@ -280,9 +293,15 @@ describe("the connectors screen draws what the server offers", () => {
     });
     await waitFor(() =>
       expect(screen.getByTestId("connectors-load-error").textContent).toContain(
-        "O banco não respondeu.",
+        "Algo deu errado. Tenta de novo?",
       ),
     );
+    expect(screen.getByTestId("connectors-load-error").textContent).not.toContain("O banco");
+    expect(
+      within(screen.getByTestId("connectors-load-error")).getByRole("button", {
+        name: "Tentar de novo",
+      }),
+    ).toBeTruthy();
   });
 });
 
@@ -364,7 +383,7 @@ describe("connecting with OAuth in the browser", () => {
     expect(t.openUrl).toHaveBeenCalledTimes(2);
   });
 
-  it("a failed login shows the server's message in its words, and the entry can try again", async () => {
+  it("a failed login says so in one friendly sentence (the server's reason is a log), and the entry can try again", async () => {
     const t = setup({
       api: {
         connectorCatalog: { install: notionInstall() },
@@ -391,9 +410,10 @@ describe("connecting with OAuth in the browser", () => {
     );
     await waitFor(() =>
       expect(screen.getByTestId("connector-error").textContent).toBe(
-        "O servidor de autorização recusou o registro do app.",
+        "O login não terminou. Tenta de novo?",
       ),
     );
+    expect(page().textContent).not.toContain("recusou o registro");
     expect(screen.queryByTestId("connector-waiting")).toBeNull();
     await waitFor(() =>
       expect(within(page()).getByTestId("connector-main").textContent).toBe("Tentar de novo"),
@@ -403,7 +423,7 @@ describe("connecting with OAuth in the browser", () => {
     await waitFor(() => expect(t.api.connectors.oauthStart).toHaveBeenCalledTimes(2));
   });
 
-  it("a refused install shows the server's message", async () => {
+  it("a refused install: the friendly sentence of its kind, never the server's text", async () => {
     setup({
       api: {
         connectorCatalog: {
@@ -419,39 +439,44 @@ describe("connecting with OAuth in the browser", () => {
     await waitFor(() => expect(rows()).toHaveLength(SERVER.length));
     fireEvent.click(within(itemOf("notion")).getByTestId("connector-connect"));
     await waitFor(() =>
-      expect(screen.getByTestId("connector-error").textContent).toContain("não veio da galeria"),
+      expect(screen.getByTestId("connector-error").textContent).toBe(
+        "Isso mudou enquanto você olhava. Atualize e tenta de novo.",
+      ),
     );
+    expect(page().textContent).not.toContain("não veio da galeria");
     expect(within(page()).getByTestId("connector-main").textContent).toBe("Conectar");
   });
 
-  it("a server on a VPS: one line says why, and the address the browser stopped at completes the login", async () => {
-    const oauthComplete = vi.fn(async () => ({
-      status: "connected",
-      flowId: null,
-      expiresAt: null,
-      error: null,
-    }));
+  it("a VPS with its public address: the same login, and never a field to paste", async () => {
     const t = setup({
       mode: "vps",
-      api: { connectorCatalog: { install: notionInstall() }, connectors: { oauthComplete } },
+      oauthCallback: "public",
+      api: { connectorCatalog: { install: notionInstall() } },
     });
     await waitFor(() => expect(rows()).toHaveLength(SERVER.length));
-    fireEvent.click(within(itemOf("notion")).getByTestId("connector-connect"));
-    const paste = await screen.findByTestId("connector-paste");
-    expect(paste.textContent).toContain("Cole aqui o endereço em que o navegador parou");
-    expect(paste.textContent).toContain("o navegador não consegue voltar a ele");
-    const done = within(paste).getByTestId("connector-complete") as HTMLButtonElement;
-    expect(done.disabled).toBe(true);
-    const address = "http://127.0.0.1:4100/callback?code=abc&state=xyz";
-    fireEvent.change(within(paste).getByRole("textbox"), { target: { value: address } });
-    t.serve(fresh().map((i) => (i.entry.id === "notion" ? item("notion", "connected") : i)));
-    fireEvent.click(done);
-    await waitFor(() =>
-      expect(oauthComplete).toHaveBeenCalledWith("notion", { flowId: FLOW, callbackUrl: address }),
+    await waitFor(() => expect(t.api.info).toHaveBeenCalled());
+    fireEvent.click(
+      await within(itemOf("notion")).findByRole("button", { name: "Conectar Notion" }),
     );
-    await waitFor(() =>
-      expect(within(page()).getByTestId("connector-state").textContent).toBe("Conectado"),
+    await waitFor(() => expect(screen.getByTestId("connector-waiting")).toBeTruthy());
+    expect(t.openUrl).toHaveBeenCalled();
+    expect(screen.queryByTestId("connector-paste")).toBeNull();
+    expect(screen.queryByRole("textbox")).toBeNull();
+  });
+
+  it("a VPS without a public address: no login offered, one friendly sentence; a token entry still connects", async () => {
+    const t = setup({ mode: "vps", oauthCallback: "loopback" });
+    await waitFor(() => expect(rows()).toHaveLength(SERVER.length));
+    await waitFor(() => expect(t.api.info).toHaveBeenCalled());
+    expect(within(itemOf("notion")).queryByTestId("connector-connect")).toBeNull();
+    expect(within(itemOf("github")).getByTestId("connector-connect")).toBeTruthy();
+    openPage("notion");
+    expect(within(page()).getByTestId("connector-connection-text").textContent).toBe(
+      "Para conectar pelo login, a sua VPS precisa ter o endereço público configurado.",
     );
+    const main = within(page()).getByTestId("connector-main") as HTMLButtonElement;
+    expect(main.disabled).toBe(true);
+    expect(t.api.connectors.oauthStart).not.toHaveBeenCalled();
   });
 
   it("Desconectar asks first; confirmed, it calls the server and the entry goes back to its state", async () => {
@@ -471,7 +496,7 @@ describe("connecting with OAuth in the browser", () => {
     fireEvent.click(screen.getByTestId("connector-disconnect"));
     await waitFor(() => expect(t.api.connectors.oauthDisconnect).toHaveBeenCalledWith("notion"));
     await waitFor(() =>
-      expect(within(page()).getByTestId("connector-state").textContent).toBe("Precisa de login"),
+      expect(within(page()).getByTestId("connector-state").textContent).toBe("Precisa entrar"),
     );
     expect(within(page()).getByTestId("connector-main").textContent).toBe("Fazer login");
   });
@@ -500,7 +525,8 @@ describe("connecting with a token (the secure form)", () => {
     const dialog = await screen.findByRole("dialog", { name: "Token do GitHub" });
     // the steps of the server, and the name it declares: nothing typed for the name
     expect(within(dialog).getByTestId("secret-steps").textContent).toContain("Fine-grained tokens");
-    expect(dialog.textContent).toContain("GITHUB_TOKEN");
+    // the name the token is kept under stays internal: never on the screen
+    expect(dialog.textContent).not.toContain("GITHUB_TOKEN");
     expect(within(dialog).queryByRole("textbox", { name: "Nome" })).toBeNull();
     // the value goes in the secure field (a password field, never a plain input of the screen)
     const field = within(dialog).getByTestId("secret-input") as HTMLInputElement;
@@ -533,12 +559,12 @@ describe("connecting with a token (the secure form)", () => {
     });
     await waitFor(() => expect(rows()).toHaveLength(SERVER.length));
     expect(within(itemOf("composio")).getByTestId("connector-state").textContent).toBe(
-      "Precisa do token",
+      "Falta o token",
     );
     openPage("composio");
-    expect(within(page()).getByTestId("connector-connection").textContent).toContain(
-      "Falta o token COMPOSIO_API_KEY no cofre.",
-    );
+    const connection = within(page()).getByTestId("connector-connection").textContent ?? "";
+    expect(connection).toContain("Falta guardar o seu token do Composio.");
+    expect(connection).not.toContain("COMPOSIO_API_KEY");
     fireEvent.click(within(page()).getByTestId("connector-main"));
     expect(await screen.findByRole("dialog", { name: "Token do Composio" })).toBeTruthy();
     expect(t.api.connectorCatalog.install).not.toHaveBeenCalled();

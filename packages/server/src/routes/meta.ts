@@ -41,7 +41,13 @@ export const metaRoutes: Route[] = [
     pattern: "/v1/info",
     async handler(ctx) {
       const zone = await ctx.runtime.userTimeZone();
-      return { body: { timeZone: zone.timeZone, timeZoneSource: zone.source } };
+      return {
+        body: {
+          timeZone: zone.timeZone,
+          timeZoneSource: zone.source,
+          oauthCallback: ctx.runtime.connectors.gallery.redirect,
+        },
+      };
     },
   },
   {

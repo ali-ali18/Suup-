@@ -20,6 +20,7 @@ import { useUi } from "../../app/ui-store.js";
 import { ruleSentence } from "../../data/approval-text.js";
 import { orderedRules, writtenRulesOf } from "../../data/reducers.js";
 import { messageOf } from "../../data/sync.js";
+import { formError } from "../../lib/friendly-error.js";
 import { Dialog, FieldError, MutedText, Pill, PlainText, Toggle } from "../../ui/primitives.js";
 import {
   PaneBody,
@@ -281,7 +282,7 @@ export function PermissionsSettings({ title, titleId, onClose }: SectionProps) {
     setSettings({ ...before, mode });
     api.approvalSettings.update({ mode }).then(setSettings, (error: unknown) => {
       setSettings(before);
-      setModeError(messageOf(error));
+      setModeError(formError(error));
     });
   };
 
@@ -293,14 +294,14 @@ export function PermissionsSettings({ title, titleId, onClose }: SectionProps) {
     setSettings({ ...before, staleAfterMinutes });
     api.approvalSettings.update({ staleAfterMinutes }).then(setSettings, (error: unknown) => {
       setSettings(before);
-      setModeError(messageOf(error));
+      setModeError(formError(error));
     });
   };
 
   const mode = MODES.find((m) => m.value === settings?.mode);
   const reviewerNote =
     settings !== undefined && !settings.reviewer.available && settings.mode === "auto_review"
-      ? (settings.reviewer.reason ?? "O modelo de revisão não está disponível.")
+      ? "O revisor não está disponível agora."
       : undefined;
 
   return (

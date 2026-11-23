@@ -53,6 +53,7 @@ describe.skipIf(!DATABASE_URL)(
     async function open(
       script: unknown = { agent: [{ text: "ok" }] },
       connectorCatalog?: readonly CatalogEntry[],
+      server?: Record<string, unknown>,
     ) {
       await ctx.db.sql`delete from connectors`;
       await ctx.db.sql`delete from secrets`;
@@ -64,6 +65,7 @@ describe.skipIf(!DATABASE_URL)(
           rawConfig({
             vault: { keyEnv: "TEST_VAULT_KEY" },
             toolSearch: { minTools: 1000, minDefinitionTokens: 1_000_000 },
+            ...(server === undefined ? {} : { server }),
           }),
         ),
         { env, baseDir: dir, ...(connectorCatalog === undefined ? {} : { connectorCatalog }) },
@@ -96,7 +98,7 @@ describe.skipIf(!DATABASE_URL)(
         ["google-workspace", "unverified"],
         ["composio", "available"],
       ]);
-      expect(items.find((i) => i.entry.id === "google-workspace")?.detail).toContain("Gemini CLI");
+      expect(items.find((i) => i.entry.id === "google-workspace")?.detail).toContain("Google");
       await expect(rt.connectors.gallery.install("stackoverflow")).rejects.toThrow(
         "ainda não pode ser instalado",
       );
@@ -242,24 +244,61 @@ describe.skipIf(!DATABASE_URL)(
       });
     });
 
-    it("a server on a VPS: the app hands over the callback address; it is checked like the real one", async () => {
-      const rt = await open();
+    it("a server with a public address: the browser comes back to its own route, with the same checks", async () => {
+      const rt = await open(undefined, undefined, { publicUrl: "https://suup.exemplo.com/" });
+      expect(rt.connectors.gallery.redirect).toBe("public");
       await oauthConnector(rt);
       const start = await rt.connectors.gallery.oauthStart("fakeauth");
-      const back = await authorize(start.authorizationUrl);
-      // An address of another login is refused.
-      const forged = new URL(back);
-      forged.searchParams.set("state", "another-state");
-      await expect(
-        rt.connectors.gallery.oauthComplete("fakeauth", start.flowId, forged.href),
-      ).rejects.toThrow("outro login");
-      const done = await rt.connectors.gallery.oauthComplete("fakeauth", start.flowId, back);
-      expect(done.status).toBe("connected");
-      // Used up: neither the listener nor a second paste take it again.
-      expect((await fetch(back)).status).toBe(400);
-      await expect(
-        rt.connectors.gallery.oauthComplete("fakeauth", start.flowId, back),
-      ).rejects.toThrow();
+      // The trailing "/" of the configuration is gone; no loopback listener is involved.
+      expect(start.redirectUri).toBe("https://suup.exemplo.com/oauth/callback");
+      expect(new URL(start.authorizationUrl).searchParams.get("redirect_uri")).toBe(
+        start.redirectUri,
+      );
+      const back = new URL(await authorize(start.authorizationUrl));
+      expect(`${back.origin}${back.pathname}`).toBe(start.redirectUri);
+      // A state of another login is refused and spends nothing.
+      const forged = new URLSearchParams(back.searchParams);
+      forged.set("state", "another-state");
+      expect(await rt.connectors.gallery.publicCallback(forged)).toMatchObject({ status: 400 });
+      const page = await rt.connectors.gallery.publicCallback(back.searchParams);
+      expect(page).toMatchObject({ status: 200 });
+      expect(page?.html).toContain("Login feito");
+      expect(await rt.connectors.gallery.oauthStatus("fakeauth")).toMatchObject({
+        status: "connected",
+      });
+      expect((await rt.connectors.get("fakeauth"))?.enabled).toBe(true);
+      // Used once: the same return again is refused.
+      const replay = await rt.connectors.gallery.publicCallback(back.searchParams);
+      expect(replay?.status).toBe(400);
+      expect(replay?.html).toContain("não vale mais");
+    });
+
+    it("a public address is checked: HTTPS or this computer, nothing else; without one there is no public route", async () => {
+      const bad = (publicUrl: string) => () => parseConfig(rawConfig({ server: { publicUrl } }));
+      expect(bad("http://suup.exemplo.com")).toThrow("HTTPS");
+      expect(bad("não é endereço")).toThrow("endereço inválido");
+      expect(bad("https://suup.exemplo.com/?x=1")).toThrow("consulta");
+      expect(
+        parseConfig(rawConfig({ server: { publicUrl: "http://127.0.0.1:8787" } })).server,
+      ).toEqual({ publicUrl: "http://127.0.0.1:8787" });
+      const rt = await open();
+      expect(rt.connectors.gallery.redirect).toBe("loopback");
+      expect(await rt.connectors.gallery.publicCallback(new URLSearchParams("state=x"))).toBe(
+        undefined,
+      );
+    });
+
+    it("a public-address login fails on another issuer exactly as on the loopback", async () => {
+      const rt = await open(undefined, undefined, { publicUrl: "https://suup.exemplo.com" });
+      await oauthConnector(rt, { issInRedirect: "https://evil.example.com" });
+      const start = await rt.connectors.gallery.oauthStart("fakeauth");
+      const back = new URL(await authorize(start.authorizationUrl));
+      const page = await rt.connectors.gallery.publicCallback(back.searchParams);
+      expect(page?.status).toBe(400);
+      expect(page?.html).toContain("outro servidor de autorização");
+      expect((await rt.vault.list()).map((s) => s.name)).not.toContain(
+        oauthSecretNames("fakeauth").access,
+      );
     });
 
     it("a callback from another issuer fails the login and stores nothing", async () => {

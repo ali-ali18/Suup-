@@ -45,7 +45,6 @@ import {
   catalogListSchema,
   type InstallResult,
   installResultSchema,
-  type OAuthCompleteBody,
   type OAuthStart,
   type OAuthStatus,
   oauthStartSchema,
@@ -362,8 +361,6 @@ export interface SuupClient {
     oauthStart(name: string): Promise<OAuthStart>;
     /** Where the login stands: poll it while `pending`. */
     oauthStatus(name: string): Promise<OAuthStatus>;
-    /** Hands over the callback address the browser landed on (a server the browser cannot reach). */
-    oauthComplete(name: string, body: OAuthCompleteBody): Promise<OAuthStatus>;
     /** Revokes (when the server can), forgets the tokens and turns the connector off. */
     oauthDisconnect(name: string): Promise<Connector>;
   };
@@ -743,8 +740,6 @@ export function createClient(options: ClientOptions): SuupClient {
         call("POST", `/v1/connectors/${id(name)}/oauth/start`, oauthStartSchema, noBody),
       oauthStatus: (name) =>
         call("GET", `/v1/connectors/${id(name)}/oauth/status`, oauthStatusSchema),
-      oauthComplete: (name, body) =>
-        call("POST", `/v1/connectors/${id(name)}/oauth/complete`, oauthStatusSchema, { body }),
       oauthDisconnect: (name) =>
         call("DELETE", `/v1/connectors/${id(name)}/oauth`, connectorSchema),
     },

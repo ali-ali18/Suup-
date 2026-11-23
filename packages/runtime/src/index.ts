@@ -25,10 +25,12 @@ export {
   type ServerConfig,
 } from "./config.js";
 export {
+  type CallbackPage,
   type CatalogItem,
   type CatalogStatus,
   type ConnectorGallery,
   type InstallResult,
+  OAUTH_CALLBACK_PATH,
   OAUTH_CLIENT_NAME,
   OAUTH_FLOW_TTL_MS,
   type OAuthLoginStatus,

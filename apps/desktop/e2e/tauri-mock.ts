@@ -12,6 +12,11 @@ export interface MockOptions {
    * Windows and Linux); `native` has one (as on macOS). Default: `native`.
    */
   frame?: "custom" | "native";
+  /**
+   * The saved choice is "minha VPS", already connected to the test's server (as a reopened app
+   * finds it): an explicit VPS mode, not the browser's default.
+   */
+  vps?: boolean;
 }
 
 /**
@@ -48,6 +53,13 @@ export async function installTauriMock(
         logsDir: "/mock/logs",
       };
       let failures = 0;
+      if (options.vps === true && store("mode") === null) {
+        put("mode", "vps");
+        put("connection", JSON.stringify({ serverUrl, token }));
+      }
+      // What the app asked the system browser to open (the test plays the browser).
+      const opened: string[] = [];
+      w.__openedUrls = opened;
       const begin = () => {
         status = {
           ...status,
@@ -133,7 +145,7 @@ export async function installTauriMock(
         },
         local_open_logs: () => undefined,
         local_database_url: () => "postgres://suup:senha-de-mentira@127.0.0.1:5999/suup",
-        open_url: () => undefined,
+        open_url: (a) => opened.push(String(a.url)),
         http_abort: () => undefined,
         http_fetch: async (a) => {
           const channel = a.onEvent as { onmessage(m: unknown): void };

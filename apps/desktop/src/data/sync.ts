@@ -15,6 +15,7 @@ import {
   type SuupClient,
   type WrittenRule,
 } from "@suup/api";
+import { formError, friendlyError } from "../lib/friendly-error.js";
 import {
   addOptimisticMessage,
   applyStreamEvent,
@@ -75,12 +76,11 @@ export interface SyncDeps {
   pageSize?: number;
 }
 
-export const messageOf = (error: unknown): string =>
-  error instanceof ApiError
-    ? error.message
-    : error instanceof Error
-      ? error.message
-      : "Algo deu errado.";
+/**
+ * What the person reads when a call fails: a friendly sentence by the KIND of the error, never the
+ * server's raw text (docs/DESIGN.md, "Amigável"; `lib/friendly-error.ts`).
+ */
+export const messageOf = friendlyError;
 
 const EVENT_PAGE = 500;
 
@@ -629,7 +629,7 @@ export class Sync {
       update(this.store, (s) => mergeRule(s, rule));
       return { ok: true };
     } catch (error) {
-      return { ok: false, message: messageOf(error) };
+      return { ok: false, message: formError(error) };
     }
   }
 
@@ -665,7 +665,7 @@ export class Sync {
       update(this.store, (s) => mergeWrittenRule(s, rule));
       return { ok: true };
     } catch (error) {
-      return { ok: false, message: messageOf(error) };
+      return { ok: false, message: formError(error) };
     }
   }
 
@@ -707,7 +707,7 @@ export class Sync {
       this.mergeSecretNow(await call());
       return { ok: true };
     } catch (error) {
-      return { ok: false, message: messageOf(error) };
+      return { ok: false, message: formError(error) };
     }
   }
 
@@ -742,7 +742,7 @@ export class Sync {
       update(this.store, (s) => mergeConnector(s, connector));
       return { ok: true, connector };
     } catch (error) {
-      return { ok: false, message: messageOf(error) };
+      return { ok: false, message: formError(error) };
     }
   }
 
@@ -777,7 +777,7 @@ export class Sync {
       update(this.store, (s) => setBotNetwork(s, botId, network));
       return { ok: true };
     } catch (error) {
-      return { ok: false, message: messageOf(error) };
+      return { ok: false, message: formError(error) };
     }
   }
 

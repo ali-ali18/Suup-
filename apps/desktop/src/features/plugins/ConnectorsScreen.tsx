@@ -1,5 +1,5 @@
 import type { CatalogItem, CatalogStatus } from "@suup/api";
-import { ArrowRight, ChevronRight, ExternalLink, LoaderCircle, Plug, Plus } from "lucide-react";
+import { ArrowRight, ChevronRight, LoaderCircle, Plug, Plus } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useServices } from "../../app/context.js";
 import { useUi } from "../../app/ui-store.js";
@@ -15,10 +15,8 @@ import {
   Notice,
   Pill,
   SearchField,
-  TextField,
 } from "../../ui/primitives.js";
 import { Screen, ScreenBody, ScreenHead } from "../../ui/screen.js";
-import { MonoText } from "../../ui/text.js";
 import { SecretDialog } from "../settings/VaultSettings.js";
 import { type Appearance, appearanceOf, type Banner, CATEGORIES, type Tone } from "./appearance.js";
 import { type Connect, POLL_MS, useConnect } from "./use-connect.js";
@@ -67,17 +65,36 @@ const TILE = {
  */
 const STATE_TEXT: Record<CatalogStatus | "waiting", string> = {
   available: "Não conectado",
-  unverified: "A confirmar",
-  needs_login: "Precisa de login",
-  needs_secret: "Precisa do token",
+  unverified: "Em breve",
+  needs_login: "Precisa entrar",
+  needs_secret: "Falta o token",
   connected: "Conectado",
   off: "Desligado",
-  error: "Erro",
+  error: "Não conectou",
   waiting: "Aguardando login…",
 };
 
+/**
+ * Whether the browser login of this entry can come back to the server: always with the server on
+ * this computer; on a VPS only when it has its public address (`GET /v1/info`, `oauthCallback`).
+ * An entry already logged in (connected, or off with its login) needs no new login.
+ */
+function loginBlocked(item: CatalogItem, canLogIn: boolean): boolean {
+  return (
+    !canLogIn &&
+    item.entry.auth.kind === "oauth" &&
+    item.status !== "connected" &&
+    item.status !== "off"
+  );
+}
+
+/** Why a login cannot be offered: one friendly sentence (docs/DESIGN.md §5d). */
+const NEEDS_PUBLIC_ADDRESS =
+  "Para conectar pelo login, a sua VPS precisa ter o endereço público configurado.";
+
 /** The main action of an entry as it stands; none: nothing to do from here. */
-function actionOf(item: CatalogItem): string | undefined {
+function actionOf(item: CatalogItem, canLogIn: boolean): string | undefined {
+  if (loginBlocked(item, canLogIn)) return undefined;
   switch (item.status) {
     case "available":
       return "Conectar";
@@ -209,9 +226,19 @@ function MyConnectors({ entries, onOpen }: { entries: Entry[]; onOpen(): void })
 }
 
 /** One line of the list: the logo, the name with one faded line under it, and its action or state. */
-function Row({ entry, onOpen, onAction }: { entry: Entry; onOpen(): void; onAction(): void }) {
+function Row({
+  entry,
+  canLogIn,
+  onOpen,
+  onAction,
+}: {
+  entry: Entry;
+  canLogIn: boolean;
+  onOpen(): void;
+  onAction(): void;
+}) {
   const { item } = entry;
-  const action = actionOf(item);
+  const action = actionOf(item, canLogIn);
   return (
     <li
       className="flex min-w-0 items-center gap-2 rounded-card pr-2 hover:bg-hover"
@@ -230,14 +257,7 @@ function Row({ entry, onOpen, onAction }: { entry: Entry; onOpen(): void; onActi
           <span className="truncate text-small text-text-muted">{item.entry.description}</span>
         </span>
       </button>
-      {item.status !== "available" && (
-        <StateTag
-          state={item.status}
-          title={
-            item.status === "unverified" ? (item.entry.unverifiedReason ?? undefined) : undefined
-          }
-        />
-      )}
+      {item.status !== "available" && <StateTag state={item.status} />}
       {action !== undefined && (
         <Pill
           tone="quiet"
@@ -265,51 +285,11 @@ function Block({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-/** How the entry logs in, in words. */
-const AUTH_TEXT = {
-  oauth: "Com a sua conta, no navegador",
-  token: "Com um token seu, guardado no cofre",
-  oauth_owner_client: "Com um app OAuth seu",
-} as const;
-
-/** One line of "Informações": the label faded at the left, the value after it. */
-function InfoRow({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex items-start gap-4 py-1.5">
-      <dt className="w-32 flex-none text-text-muted">{label}</dt>
-      <dd className="m-0 min-w-0 wrap-anywhere">{children}</dd>
-    </div>
-  );
-}
-
-/** A date of the server (YYYY-MM-DD) as people read it. */
-const dayOf = (iso: string): string => iso.split("-").reverse().join("/");
-
-/** The host of an address, or the address itself when it is not one. */
-function hostOf(url: string): string {
-  try {
-    return new URL(url).host;
-  } catch {
-    return url;
-  }
-}
-
 /**
  * The browser login is open: the app waits for the server, says so, and lets the person cancel or
- * open the page again. When the server is not on this computer (a VPS), the browser cannot come back
- * to it: the person pastes the address the browser stopped at.
+ * open the page again. The browser comes back to the server by itself: nothing to paste.
  */
-function Waiting({ connect, remote }: { connect: Connect; remote: boolean }) {
-  const [address, setAddress] = useState("");
-  const [sending, setSending] = useState(false);
-  const send = async () => {
-    const text = address.trim();
-    if (text === "") return;
-    setSending(true);
-    await connect.complete(text);
-    setAddress("");
-    setSending(false);
-  };
+function Waiting({ connect }: { connect: Connect }) {
   return (
     <div className="flex flex-col gap-3" data-testid="connector-waiting" aria-live="polite">
       <div className="flex items-center gap-2 text-body">
@@ -317,8 +297,7 @@ function Waiting({ connect, remote }: { connect: Connect; remote: boolean }) {
         Aguardando login no navegador…
       </div>
       <MutedText as="p">
-        Entre com a sua conta na página que abriu e autorize o Suup. Esta tela muda sozinha quando o
-        login terminar.
+        Entre com a sua conta na página que abriu; esta tela muda sozinha.
       </MutedText>
       <div className="flex flex-wrap items-center gap-2">
         <Pill size="sm" onClick={connect.reopen} data-testid="connector-reopen">
@@ -328,75 +307,53 @@ function Waiting({ connect, remote }: { connect: Connect; remote: boolean }) {
           Cancelar
         </Pill>
       </div>
-      {remote && (
-        <div className="flex flex-col gap-2" data-testid="connector-paste">
-          <TextField
-            label="Cole aqui o endereço em que o navegador parou"
-            value={address}
-            onChange={setAddress}
-            placeholder="http://127.0.0.1:…/callback?code=…"
-            hint="O servidor está em outro computador: o navegador não consegue voltar a ele, mas o endereço da página que não abriu completa o login."
-            onEnter={() => void send()}
-            disabled={sending}
-          />
-          <div>
-            <Pill
-              size="sm"
-              onClick={() => void send()}
-              disabled={sending || address.trim() === ""}
-              data-testid="connector-complete"
-            >
-              {sending ? "Concluindo…" : "Concluir o login"}
-            </Pill>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 
-/** What the "Conexão" block says about the entry as it stands. */
-function ConnectionText({ item }: { item: CatalogItem }) {
+/**
+ * What the "Conexão" block says about the entry as it stands: one plain sentence, from the status
+ * the server declares (never its raw `detail`, which is a log: docs/DESIGN.md, "Amigável").
+ */
+function ConnectionText({ item, canLogIn }: { item: CatalogItem; canLogIn: boolean }) {
   const { entry } = item;
-  if (item.status === "unverified") {
-    return (
-      <MutedText as="p" data-testid="connector-unverified">
-        Ainda não pode ser conectado: {entry.unverifiedReason ?? item.detail ?? "não verificado."}
-      </MutedText>
-    );
-  }
-  if (item.status === "connected") {
-    return (
-      <MutedText as="p">
-        {entry.auth.kind === "token" ? (
-          <>
-            Conectado com o token guardado no cofre como <MonoText>{entry.auth.secret}</MonoText>.
-          </>
-        ) : (
-          `Conectado com a sua conta do ${entry.name}.`
-        )}
-      </MutedText>
-    );
-  }
-  if (item.status === "off") {
-    return <MutedText as="p">Instalado, mas desligado.</MutedText>;
-  }
-  if ((item.status === "needs_secret" || item.status === "error") && item.detail !== null) {
-    return <MutedText as="p">{item.detail}</MutedText>;
-  }
+  const text = (() => {
+    if (item.status === "unverified")
+      return entry.unverifiedReason ?? "Ainda não dá para conectar.";
+    if (item.status === "connected") {
+      return entry.auth.kind === "token"
+        ? "Conectado com o seu token, guardado com segurança."
+        : `Conectado com a sua conta do ${entry.name}.`;
+    }
+    if (item.status === "off") return "Conectado, mas desligado.";
+    if (loginBlocked(item, canLogIn)) return NEEDS_PUBLIC_ADDRESS;
+    if (item.status === "error")
+      return `Não deu para falar com o ${entry.name} agora. Tenta de novo?`;
+    if (item.status === "needs_secret") return `Falta guardar o seu token do ${entry.name}.`;
+    if (item.status === "needs_login") return `Entre de novo com a sua conta do ${entry.name}.`;
+    return entry.auth.kind === "oauth"
+      ? `Entre com a sua conta do ${entry.name} no navegador.`
+      : entry.auth.kind === "token"
+        ? `Crie um token no ${entry.name} e guarde aqui; o bot nunca vê o valor.`
+        : `Precisa de um app seu no ${entry.name}.`;
+  })();
   return (
-    <MutedText as="p">
-      {entry.auth.kind === "oauth"
-        ? `Entre com a sua conta do ${entry.name} no navegador.`
-        : entry.auth.kind === "token"
-          ? `Crie um token no ${entry.name} e guarde no cofre pelo formulário seguro; o bot nunca vê o valor.`
-          : `Precisa de um app OAuth seu no ${entry.name}.`}
+    <MutedText as="p" data-testid="connector-connection-text">
+      {text}
     </MutedText>
   );
 }
 
 /** The main button of the page as the entry stands (or the flow this page is running). */
-function MainAction({ entry, connect }: { entry: Entry; connect: Connect }) {
+function MainAction({
+  entry,
+  connect,
+  canLogIn,
+}: {
+  entry: Entry;
+  connect: Connect;
+  canLogIn: boolean;
+}) {
   const { item } = entry;
   const { flow } = connect;
   const name = item.entry.name;
@@ -424,12 +381,16 @@ function MainAction({ entry, connect }: { entry: Entry; connect: Connect }) {
     }
     return null;
   }
-  if (item.status === "unverified") {
+  if (item.status === "unverified" || loginBlocked(item, canLogIn)) {
     return (
       <Pill
         tone="primary"
         disabled
-        title={item.entry.unverifiedReason ?? "A confirmar"}
+        title={
+          item.status === "unverified"
+            ? (item.entry.unverifiedReason ?? "Em breve")
+            : NEEDS_PUBLIC_ADDRESS
+        }
         aria-label={`Conectar ${name}`}
         data-testid="connector-main"
       >
@@ -437,7 +398,7 @@ function MainAction({ entry, connect }: { entry: Entry; connect: Connect }) {
       </Pill>
     );
   }
-  const action = actionOf(item);
+  const action = actionOf(item, canLogIn);
   if (action === undefined) return null;
   return (
     <Pill
@@ -456,7 +417,8 @@ function MainAction({ entry, connect }: { entry: Entry; connect: Connect }) {
  * the reference he gave: the way back ("Conectores > name"), the head (logo, name, where it stands,
  * the line and the main action), a band, with the gradient FIXED for this connector, with examples of
  * what to ask, then "Conexão" (how to connect, the login in progress, the third-party notice) and
- * "Informações" (what the server declares: the source, the licence, the hosts, the notes).
+ * "Bom saber" (the server's notes, in plain words). Nothing technical: no address, licence, hosts or
+ * dates (the owner, 23/11/2026: "a ideia é ser friendly").
  */
 function ConnectorPage({
   entry,
@@ -464,6 +426,7 @@ function ConnectorPage({
   reload,
   autoStart,
   pollMs,
+  canLogIn,
 }: {
   entry: Entry;
   onBack(): void;
@@ -471,8 +434,9 @@ function ConnectorPage({
   /** The line's button was clicked: start its action as the page opens. */
   autoStart: boolean;
   pollMs: number;
+  /** Whether the browser login can come back to the server (see `loginBlocked`). */
+  canLogIn: boolean;
 }) {
-  const { platform, mode } = useServices();
   const openSettings = useUi((s) => s.openSettings);
   const setSettingsConnector = useUi((s) => s.setSettingsConnector);
   const { item, look } = entry;
@@ -487,9 +451,10 @@ function ConnectorPage({
   useEffect(() => {
     if (!autoStart || started.current) return;
     started.current = true;
+    if (loginBlocked(item, canLogIn)) return;
     if (item.status === "off") void connect.turnOn();
     else void connect.connect();
-  }, [autoStart, item.status, connect]);
+  }, [autoStart, item, canLogIn, connect]);
 
   return (
     <Screen data-testid="connector-page" data-plugin={item.entry.id}>
@@ -519,7 +484,7 @@ function ConnectorPage({
               <MutedText>{item.entry.description}</MutedText>
             </div>
           </div>
-          <MainAction entry={entry} connect={connect} />
+          <MainAction entry={entry} connect={connect} canLogIn={canLogIn} />
         </div>
       </header>
       <ScreenBody>
@@ -556,22 +521,24 @@ function ConnectorPage({
               <EntryIcon entry={entry} size="lg" />
               <div className="flex min-w-0 flex-col gap-0.5">
                 <span className="text-label font-label">{name}</span>
-                <ConnectionText item={item} />
+                <ConnectionText item={item} canLogIn={canLogIn} />
               </div>
             </div>
-            {item.entry.auth.kind === "oauth_owner_client" && item.entry.auth.steps.length > 0 && (
-              <ol className="m-0 flex list-decimal flex-col gap-1 pl-5 text-small">
-                {item.entry.auth.steps.map((step) => (
-                  <li key={step}>{step}</li>
-                ))}
-              </ol>
-            )}
+            {item.entry.auth.kind === "oauth_owner_client" &&
+              item.status !== "unverified" &&
+              item.entry.auth.steps.length > 0 && (
+                <ol className="m-0 flex list-decimal flex-col gap-1 pl-5 text-small">
+                  {item.entry.auth.steps.map((step) => (
+                    <li key={step}>{step}</li>
+                  ))}
+                </ol>
+              )}
             {item.entry.disclosure !== null && item.status !== "connected" && (
               <Notice role="note" data-testid="connector-disclosure">
                 {item.entry.disclosure}
               </Notice>
             )}
-            {flow.kind === "waiting" && <Waiting connect={connect} remote={mode === "vps"} />}
+            {flow.kind === "waiting" && <Waiting connect={connect} />}
             {connect.error !== undefined && (
               <Notice role="alert" data-testid="connector-error">
                 {connect.error}
@@ -596,47 +563,17 @@ function ConnectorPage({
             )}
           </div>
         </Block>
-        <Block title="Informações">
-          <div className="flex flex-col gap-3 rounded-card bg-raised p-4">
-            <p className="m-0 text-body">{item.entry.description}</p>
-            <dl className="m-0 flex flex-col" data-testid="connector-info">
-              <InfoRow label="Categoria">{look.category}</InfoRow>
-              <InfoRow label="Disponibilidade">
-                {item.entry.availability === "ready" ? "Pronto para conectar" : "A confirmar"}
-              </InfoRow>
-              <InfoRow label="Login">{AUTH_TEXT[item.entry.auth.kind]}</InfoRow>
-              <InfoRow label="Fonte">
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1.5 border-0 bg-transparent p-0 text-text hover:underline"
-                  onClick={() => platform.openUrl(item.entry.source)}
-                  data-testid="connector-site"
-                >
-                  {hostOf(item.entry.source)}
-                  <ExternalLink size={14} aria-hidden="true" />
-                </button>
-              </InfoRow>
-              <InfoRow label="Licença">{item.entry.license}</InfoRow>
-              {item.entry.egressHosts.length > 0 && (
-                <InfoRow label="Fala com">
-                  {item.entry.egressHosts.map((host) => (
-                    <MonoText key={host}>{host} </MonoText>
-                  ))}
-                </InfoRow>
-              )}
-              <InfoRow label="Conferido em">{dayOf(item.entry.checkedAt)}</InfoRow>
-            </dl>
-            {item.entry.notes.length > 0 && (
-              <div className="text-small">
-                <BulletList data-testid="connector-notes">
-                  {item.entry.notes.map((note) => (
-                    <li key={note}>{note}</li>
-                  ))}
-                </BulletList>
-              </div>
-            )}
-          </div>
-        </Block>
+        {item.entry.notes.length > 0 && (
+          <Block title="Bom saber">
+            <div className="rounded-card bg-raised p-4 text-body">
+              <BulletList data-testid="connector-notes">
+                {item.entry.notes.map((note) => (
+                  <li key={note}>{note}</li>
+                ))}
+              </BulletList>
+            </div>
+          </Block>
+        )}
       </ScreenBody>
       {flow.kind === "secret" && item.entry.auth.kind === "token" && (
         <SecretDialog
@@ -669,10 +606,7 @@ function ConnectorPage({
             </>
           }
         >
-          <MutedText as="p">
-            O login é apagado deste servidor (e revogado no serviço, quando ele deixa) e o conector
-            fica desligado. Os bots deixam de usá-lo até você entrar de novo.
-          </MutedText>
+          <MutedText as="p">Seus bots deixam de usar o {name} até você entrar de novo.</MutedText>
         </Dialog>
       )}
     </Screen>
@@ -688,9 +622,10 @@ function ConnectorPage({
  * shows its page in this same screen. The look of each entry comes from `appearance.ts`, by its id.
  */
 export function ConnectorsScreen({ pollMs = POLL_MS }: { pollMs?: number } = {}) {
-  const { api } = useServices();
+  const { api, mode } = useServices();
   const openSettings = useUi((s) => s.openSettings);
   const [items, setItems] = useState<CatalogItem[] | null>(null);
+  const [callback, setCallback] = useState<"loopback" | "public" | undefined>(undefined);
   const [loadError, setLoadError] = useState<string | undefined>(undefined);
   const [query, setQuery] = useState("");
   const [chosen, setChosen] = useState<{ id: string; autoStart: boolean } | null>(null);
@@ -706,6 +641,16 @@ export function ConnectorsScreen({ pollMs = POLL_MS }: { pollMs?: number } = {})
   useEffect(() => {
     void reload();
   }, [reload]);
+  // Where the browser comes back from a login: the server on this computer always takes it; a VPS
+  // only with its public address (docs/CONECTORES.md, "OAuth do MCP").
+  useEffect(() => {
+    if (mode === "local") return;
+    api.info().then(
+      (info) => setCallback(info.oauthCallback),
+      () => setCallback(undefined),
+    );
+  }, [api, mode]);
+  const canLogIn = mode === "local" || callback === "public";
 
   // Esc goes back from a page to the list (unless a dialog is open on top).
   useEffect(() => {
@@ -748,6 +693,7 @@ export function ConnectorsScreen({ pollMs = POLL_MS }: { pollMs?: number } = {})
         reload={reload}
         autoStart={chosen.autoStart}
         pollMs={pollMs}
+        canLogIn={canLogIn}
       />
     );
   }
@@ -781,7 +727,7 @@ export function ConnectorsScreen({ pollMs = POLL_MS }: { pollMs?: number } = {})
         />
         {loadError !== undefined && (
           <Notice role="alert" data-testid="connectors-load-error">
-            Não foi possível carregar a galeria: {loadError}
+            {loadError}
             <div>
               <Pill size="sm" onClick={() => void reload()}>
                 Tentar de novo
@@ -799,7 +745,7 @@ export function ConnectorsScreen({ pollMs = POLL_MS }: { pollMs?: number } = {})
             title="Nenhum conector encontrado"
             text={
               items.length === 0
-                ? "O servidor não oferece nenhum conector na galeria."
+                ? "Ainda não há conectores por aqui."
                 : "Tente outro nome ou limpe a busca."
             }
           />
@@ -821,6 +767,7 @@ export function ConnectorsScreen({ pollMs = POLL_MS }: { pollMs?: number } = {})
                 <Row
                   key={entry.item.entry.id}
                   entry={entry}
+                  canLogIn={canLogIn}
                   onOpen={() => setChosen({ id: entry.item.entry.id, autoStart: false })}
                   // An entry with a third-party notice opens its page first: the notice is read
                   // before connecting (docs/FRONTEND.md).

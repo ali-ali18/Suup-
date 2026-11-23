@@ -7,8 +7,9 @@ import { messageOf } from "../../data/sync.js";
 // conectores"; docs/CONECTORES.md, "Galeria" and "OAuth"). The steps are the server's: install
 // (`POST /v1/connector-catalog/{id}/install`) and follow `next`: `login` (the OAuth of the MCP in the
 // system browser, then wait for the server to receive the callback), `secret` (the secure form of
-// the vault, then install again), `none` (done). Nothing is optimistic: the screen shows what the
-// server answers, and a refusal is its message, in its words.
+// the vault, then install again), `none` (done). The browser comes back to the server on its own
+// (its loopback, or its public address): there is never an address to paste (the owner, 23/11/2026).
+// Nothing is optimistic: the screen shows what the server answers.
 
 /** How often the app asks where a browser login stands. */
 export const POLL_MS = 1500;
@@ -26,7 +27,7 @@ export type ConnectFlow =
 
 export interface Connect {
   flow: ConnectFlow;
-  /** The server's message of the last failed step, as it came. */
+  /** The last failed step, in one friendly sentence (never the server's raw text). */
   error: string | undefined;
   /** The main action of the entry as it stands (Conectar, Fazer login, Informar token, Tentar de novo). */
   connect(): Promise<void>;
@@ -39,8 +40,6 @@ export interface Connect {
   cancel(): void;
   /** Opens the login page again (a blocked pop-up, a closed tab). */
   reopen(): void;
-  /** Hands over the address the browser stopped at (a server on a VPS). */
-  complete(callbackUrl: string): Promise<void>;
   askDisconnect(): void;
   closeDisconnect(): void;
   disconnect(): Promise<void>;
@@ -107,7 +106,9 @@ export function useConnect(
         await finished();
         return true;
       }
-      setError(status.error ?? "O login não terminou. Tente de novo.");
+      // The server's reason is a log line (it may be the authorization server's own words).
+      if (status.error !== null) console.warn("[suup] login:", status.error);
+      setError("O login não terminou. Tenta de novo?");
       setFlow({ kind: "idle" });
       await reload();
       return true;
@@ -125,7 +126,7 @@ export function useConnect(
         if (Date.now() > waiting.expiresAt) {
           stopped = true;
           clearInterval(timer);
-          setError("O login expirou (10 minutos sem resposta do navegador). Tente de novo.");
+          setError("O login demorou demais. Tenta de novo?");
           setFlow({ kind: "idle" });
           return;
         }
@@ -189,36 +190,29 @@ export function useConnect(
     await step("Ligando…", async () => {
       const result = await api.connectorCatalog.install(item.entry.id);
       if (result.next === "secret") {
-        throw new Error("O servidor ainda não encontrou o token no cofre. Tente de novo.");
+        if (mounted.current) {
+          setError("O token ainda não chegou. Tenta de novo?");
+          setFlow({ kind: "idle" });
+        }
+        return;
       }
       if (mounted.current) setFlow({ kind: "idle" });
       await finished();
     });
   }, [api, item.entry.id, step, finished]);
 
-  const complete = useCallback(
-    async (callbackUrl: string) => {
-      if (waiting === undefined) return;
-      setError(undefined);
-      try {
-        const status = await api.connectors.oauthComplete(waiting.connector, {
-          flowId: waiting.flowId,
-          callbackUrl,
-        });
-        if (mounted.current) await settle(status);
-      } catch (e) {
-        if (mounted.current) setError(messageOf(e));
-      }
-    },
-    [api, waiting, settle],
-  );
-
   const disconnect = useCallback(async () => {
     if (flow.kind !== "confirm-disconnect") return;
     const connector = flow.connector;
     await step("Desconectando…", async () => {
       const outcome = await sync.connectorCall(() => api.connectors.oauthDisconnect(connector));
-      if (!outcome.ok) throw new Error(outcome.message);
+      if (!outcome.ok) {
+        if (mounted.current) {
+          setError(outcome.message);
+          setFlow({ kind: "idle" });
+        }
+        return;
+      }
       if (mounted.current) setFlow({ kind: "idle" });
       await reload();
     });
@@ -231,7 +225,13 @@ export function useConnect(
       const outcome = await sync.connectorCall(() =>
         api.connectors.update(connector, { enabled: true }),
       );
-      if (!outcome.ok) throw new Error(outcome.message);
+      if (!outcome.ok) {
+        if (mounted.current) {
+          setError(outcome.message);
+          setFlow({ kind: "idle" });
+        }
+        return;
+      }
       if (mounted.current) setFlow({ kind: "idle" });
       await reload();
     });
@@ -255,7 +255,6 @@ export function useConnect(
     reopen: () => {
       if (waiting !== undefined) platform.openUrl(waiting.url);
     },
-    complete,
     askDisconnect: () => {
       if (item.connector !== null) {
         setError(undefined);

@@ -314,7 +314,7 @@ export function GeneralSettings({ title, titleId, onClose }: SectionProps) {
               description={
                 m.available || m.unavailableReason === null
                   ? m.provider
-                  : `${m.provider} · ${m.unavailableReason}`
+                  : `${m.provider} · indisponível agora`
               }
               control={
                 <RowValue>

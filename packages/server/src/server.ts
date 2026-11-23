@@ -7,7 +7,13 @@ import {
 import type { AddressInfo, Socket } from "node:net";
 import { streamQuerySchema } from "@suup/api";
 import { migrationStatus, pruneChangeLog } from "@suup/db";
-import { DEFAULT_SERVER, ensureDefaultBot, type Runtime, reconcileRunEffects } from "@suup/runtime";
+import {
+  DEFAULT_SERVER,
+  ensureDefaultBot,
+  OAUTH_CALLBACK_PATH,
+  type Runtime,
+  reconcileRunEffects,
+} from "@suup/runtime";
 import type { z } from "zod";
 import { assertToken, isAuthorized } from "./auth.js";
 import { checkOrigin, corsHeaders } from "./cors.js";
@@ -232,6 +238,26 @@ export function createServer(runtime: Runtime, options: ServerOptions): SuupServ
           throw new HttpError("method_not_allowed", "Use GET.");
         }
         out.json(200, { status: "ok" });
+        return;
+      }
+      // Where the browser comes back from the OAuth login of a connector when the server has a
+      // public address (`server.publicUrl`; docs/CONECTORES.md, "OAuth"). No token: the browser has
+      // none; what protects it is the single-use `state` of a login this server started, checked by
+      // the gallery exactly as on the loopback listener. Without a public address it does not exist.
+      if (path === OAUTH_CALLBACK_PATH) {
+        const page =
+          method === "GET"
+            ? await runtime.connectors.gallery.publicCallback(url.searchParams)
+            : undefined;
+        if (page === undefined) throw new HttpError("not_found", "Rota não encontrada.");
+        res.writeHead(page.status, {
+          "Cache-Control": "no-store",
+          "X-Content-Type-Options": "nosniff",
+          "Referrer-Policy": "no-referrer",
+          "X-Request-Id": requestId,
+          "Content-Type": "text/html; charset=utf-8",
+        });
+        res.end(page.html);
         return;
       }
       if (!path.startsWith("/v1/")) throw new HttpError("not_found", "Rota não encontrada.");
