@@ -5,6 +5,15 @@ export {
   type ConnectorToolInfo,
   MAX_TOOL_DESCRIPTION,
 } from "./adapter.js";
+export {
+  CATALOG_RESEARCH,
+  type CatalogAuth,
+  type CatalogAuthKind,
+  type CatalogEntry,
+  CONNECTOR_CATALOG,
+  catalogEntry,
+  catalogToolOverrides,
+} from "./catalog.js";
 export { MAX_TOOLS, type RawTool, type StdioLauncher } from "./connection.js";
 export { ConnectorError, type ConnectorErrorKind } from "./errors.js";
 export {
@@ -23,6 +32,22 @@ export {
   registeredName,
   TOOL_PREFIX,
 } from "./names.js";
+export {
+  type BeginLoginOptions,
+  beginOAuthLogin,
+  clientMetadataFor,
+  completeOAuthLogin,
+  connectionOAuthProvider,
+  isSecureEndpoint,
+  OAuthFlowError,
+  type OAuthFlowErrorCode,
+  OAuthLoginRequiredError,
+  type OAuthStore,
+  type PendingLogin,
+  type PreRegisteredClient,
+  revokeOAuth,
+  type StoredOAuth,
+} from "./oauth.js";
 export {
   canonicalDefinition,
   type PinnedDefinition,
@@ -49,9 +74,11 @@ export {
 export {
   CONNECTOR_SCOPES,
   ConnectorConfigError,
+  type ConnectorOAuthConfig,
   type ConnectorScope,
   type ConnectorSpec,
   type ConnectorTransport,
+  connectorOAuthSchema,
   connectorSpecSchema,
   connectorTransportSchema,
   DEFAULT_CALL_TIMEOUT_MS,

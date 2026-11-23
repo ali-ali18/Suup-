@@ -2,6 +2,7 @@
 // process. Not used by production code.
 import { fileURLToPath } from "node:url";
 
+export { type FakeOAuthOptions, type FakeOAuthServer, startFakeOAuthMcp } from "./fake-oauth.js";
 export {
   type FakeHttpServer,
   type FakeServerOptions,

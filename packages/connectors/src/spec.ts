@@ -38,7 +38,20 @@ export type ConnectorTransport =
       kind: "http";
       url: string;
       headers: Record<string, ValueRef>;
+      /**
+       * Log in with the OAuth of the MCP protocol instead of a header: the tokens live in the vault
+       * (managed by the Suup, never in this configuration). `clientId`/`clientSecret` are an OAuth
+       * client the person registered on the service themselves (pre-registration, the first choice
+       * of the specification); without them the client registers itself when the server allows it.
+       */
+      oauth?: ConnectorOAuthConfig | undefined;
     };
+
+export interface ConnectorOAuthConfig {
+  scopes?: string[] | undefined;
+  clientId?: string | undefined;
+  clientSecret?: { secret: string } | undefined;
+}
 
 export interface ToolOverride {
   /** What the user says this tool is. Hints from the server can only make it stricter. */
@@ -170,10 +183,19 @@ const stdioSchema = z.strictObject({
     }),
 });
 
+export const connectorOAuthSchema = z.strictObject({
+  scopes: z.array(z.string().min(1).max(200)).max(50).optional(),
+  clientId: z.string().min(1).max(500).optional(),
+  clientSecret: z
+    .strictObject({ secret: z.string().refine(isSecretName, "nome de segredo inválido") })
+    .optional(),
+});
+
 const httpSchema = z.strictObject({
   kind: z.literal("http"),
   url: httpUrl,
   headers: z.record(z.string(), valueRefSchema).default({}),
+  oauth: connectorOAuthSchema.optional(),
 });
 
 export const connectorTransportSchema = z
@@ -212,7 +234,20 @@ export const connectorTransportSchema = z
             path: ["headers", name],
             message: "nome de cabeçalho inválido",
           });
+        } else if (t.oauth !== undefined && name.toLowerCase() === "authorization") {
+          ctx.addIssue({
+            code: "custom",
+            path: ["headers", name],
+            message: "com OAuth o cabeçalho Authorization é do login: tire o cabeçalho ou o OAuth",
+          });
         }
+      }
+      if (t.oauth?.clientSecret !== undefined && t.oauth.clientId === undefined) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["oauth", "clientSecret"],
+          message: "a chave secreta do cliente OAuth precisa do ID do cliente",
+        });
       }
     }
   });
@@ -273,9 +308,14 @@ export function parseConnectorSpec(input: unknown): ConnectorSpec {
 
 /** The names of the vault secrets a connector refers to. */
 export function secretNamesOf(spec: ConnectorSpec): string[] {
-  const refs =
+  const refs: ValueRef[] =
     spec.transport.kind === "stdio"
       ? Object.values(spec.transport.env)
-      : Object.values(spec.transport.headers);
+      : [
+          ...Object.values(spec.transport.headers),
+          ...(spec.transport.oauth?.clientSecret === undefined
+            ? []
+            : [spec.transport.oauth.clientSecret]),
+        ];
   return [...new Set(refs.flatMap((r) => (typeof r === "string" ? [] : [r.secret])))].sort();
 }

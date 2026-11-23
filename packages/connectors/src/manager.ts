@@ -42,6 +42,8 @@ export interface ManagerOptions {
   launcher?: StdioLauncher;
   /** Called when a fresh list of tools was read from a server (the runtime stores it). */
   onListed?(connector: string, tools: RawTool[]): void;
+  /** The OAuth provider of a connector that logs in with the OAuth of the protocol. */
+  oauthProvider?: ConnectionDeps["oauthProvider"];
 }
 
 interface Slot {
@@ -111,6 +113,7 @@ export class ConnectorManager {
       fetch: options.fetch,
       launcher: options.launcher,
       clientInfo: { name: "suup", version: "0.0.0" },
+      oauthProvider: options.oauthProvider,
     };
   }
 
