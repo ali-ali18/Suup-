@@ -3,5 +3,14 @@
   "identifier": "default",
   "description": "Permissões da janela principal: só o necessário. A rede NÃO está aqui: as requisições passam pelos comandos do próprio app, que só falam com o servidor configurado.",
   "windows": ["main"],
-  "permissions": ["core:default", "notification:default"]
+  "permissions": [
+    "core:default",
+    "notification:default",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close",
+    "core:window:allow-start-dragging",
+    "core:window:allow-is-maximized",
+    "core:window:allow-is-decorated"
+  ]
 }

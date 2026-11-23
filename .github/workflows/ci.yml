@@ -41,6 +41,17 @@ jobs:
         run: docker build --tag suup-connector-runner:ci docker/connector-runner
       - name: Build the page reader image (web_read, with Chromium for render)
         run: docker build --file docker/reader/Dockerfile --tag suup-reader:ci .
+      # The desktop app builds the reader from its own recipe (docker/reader/app.Dockerfile and the bundled
+      # program), with no repository; the browser must start in it.
+      - name: Build the page reader image the way the desktop app does
+        run: |
+          node apps/sidecar/scripts/reader-image.mjs "$RUNNER_TEMP/reader-app"
+          docker build --tag suup-reader-app:ci "$RUNNER_TEMP/reader-app"
+          echo "" | docker run -i --rm -e SUUP_RENDER=1 -e SUUP_RENDER_NO_SANDBOX=1 -e HOME=/tmp suup-reader-app:ci node /app/dist/serve.js | grep -F '"renderAvailable":true'
+      - name: Build the egress proxy image (the proxy in its own container; the program is bundled first)
+        run: |
+          node apps/sidecar/scripts/egress-image.mjs docker/egress
+          docker build --tag suup-egress:ci docker/egress
       - name: Build the server image (not pushed)
         run: docker build --file docker/server/Dockerfile --tag suup:ci .
       - name: Smoke test the server image
@@ -66,6 +77,8 @@ jobs:
           SUUP_CONNECTOR_IMAGE: suup-connector-runner:ci
           # The web search and page reader services (packages/web/test/web-docker.test.ts).
           SUUP_READER_IMAGE: suup-reader:ci
+          # The proxy in its own container, with the worker as a host process (the Windows topology).
+          SUUP_EGRESS_IMAGE: suup-egress:ci
       # The desktop app: the web build (the unit tests of the app ran with `pnpm test` above), then the
       # browser tests against a real server in this process (Postgres-backed, scripted provider).
       - name: Build the desktop web app
@@ -100,5 +113,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # `tauri::generate_context!` embeds the built web app, so it must exist.
       - run: pnpm --filter @suup/desktop build
+      # The shell declares the Node runtime as an external binary and the server as resources, and
+      # the build script of Tauri checks they exist: prepare them first (apps/sidecar/scripts).
+      - run: pnpm --filter @suup/sidecar run bundle
       - name: cargo check (no bundle)
         run: cargo check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml

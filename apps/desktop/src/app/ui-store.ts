@@ -9,7 +9,7 @@ import {
 } from "../lib/pane-size.js";
 import type { ToastItem } from "../ui/primitives.js";
 
-export type View = "chat" | "pending" | "memory" | "inspector";
+export type View = "chat" | "pending" | "memory" | "inspector" | "connectors";
 export type PanelTab = "activity" | "library";
 /** The sections of the settings dialog. */
 export type SettingsTab = "general" | "permissions" | "memory" | "vault" | "connectors";
@@ -36,6 +36,8 @@ export interface UiState {
   settingsConnector: string | null;
   selectedBotId: string | null;
   panelOpen: boolean;
+  /** The window has no system title bar, so the app draws its own controls (see `WindowFrame`). */
+  customFrame: boolean;
   panelTab: PanelTab;
   /** The routine whose detail is open in the panel (`null`: the list). Another bot closes it. */
   panelRoutineId: string | null;
@@ -88,6 +90,9 @@ export interface UiState {
   /** Opens a connector's details (or goes back to the list with `null`). */
   setSettingsConnector(name: string | null): void;
   selectBot(botId: string): void;
+  /** Leaving a server (Trocar, Desconectar): nothing the person had open belongs to the next one. */
+  leaveServer(): void;
+  setCustomFrame(custom: boolean): void;
   openPanel(tab?: PanelTab): void;
   togglePanel(): void;
   setPanelTab(tab: PanelTab): void;
@@ -141,6 +146,7 @@ export const useUi = create<UiState>((set, get) => ({
   settingsTab: "general",
   settingsConnector: null,
   selectedBotId: null,
+  customFrame: false,
   // Closed by default on narrow windows (the layout has no room for three columns there).
   // Quem abriu ou fechou o painel guardou a escolha; sem ela, aberto só em janelas largas.
   panelOpen: parseStoredFlag(
@@ -207,6 +213,20 @@ export const useUi = create<UiState>((set, get) => ({
       settingsConnector: null,
     })),
   closeSettings: () => set({ settingsOpen: false, settingsConnector: null }),
+  leaveServer: () =>
+    set({
+      view: "chat",
+      settingsOpen: false,
+      settingsConnector: null,
+      selectedBotId: null,
+      inspectorRunId: null,
+      newBotOpen: false,
+      editBotId: null,
+      paletteOpen: false,
+      shortcutsOpen: false,
+      groupBotId: null,
+    }),
+  setCustomFrame: (customFrame) => set({ customFrame }),
   setSettingsTab: (settingsTab) => set({ settingsTab, settingsConnector: null }),
   setSettingsConnector: (settingsConnector) => set({ settingsConnector }),
   selectBot: (botId) =>

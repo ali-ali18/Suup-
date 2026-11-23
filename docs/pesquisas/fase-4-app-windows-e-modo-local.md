@@ -261,3 +261,31 @@ Tudo abaixo é inferência a partir das fontes; nada foi testado numa máquina W
 5. Subir o servidor local (comando planejado: `docker compose -f docker-compose.local.yml --env-file .env.local up -d --build`).
 6. Baixar o instalador `.exe` do artefato do workflow (ou do rascunho de Release, quando houver tag). Instalar e, se o Windows mostrar o aviso do SmartScreen, seguir o passo documentado (a confirmar).
 7. No app, informar `http://127.0.0.1:8787` e o token. O token vai para o Gerenciador de Credenciais do Windows (fato 4, código local).
+
+## Adendo: proxy em contêiner (19/11/2026)
+
+Motivo: no app embutido o servidor e o worker rodam como processo do Windows e falam com o Docker Desktop pela CLI `docker`. O proxy de saída dos bots escutava no endereço do *gateway* da rede interna, que no Docker Desktop fica dentro da máquina virtual do Docker; o processo do Windows não escuta ali (cai em "sem isolamento", `gateway_unreachable`). A saída pesquisada: pôr o proxy num contêiner pequeno, ligado à rede interna e a uma rede comum, e falar com ele por uma porta publicada em `127.0.0.1`.
+
+Fontes: texto cru do repositório `docker/docs` e `docker/cli` em `raw.githubusercontent.com` (o `docs.docker.com` está bloqueado neste ambiente), lido em 19/11/2026. Os caminhos citados são de `content/manuals/...` na ramificação `main`.
+
+| # | Fato (citação) | Fonte | Uso |
+|---|---|---|---|
+| 1 | "Docker Desktop runs the Docker Engine inside a lightweight Linux virtual machine (VM)." | `desktop/features/networking/_index.md`, "Overview" | Confirma o motivo do problema: os endereços das redes Docker vivem na VM, não no Windows |
+| 2 | "Docker Desktop's backend process listens on the specified host port"; "Docker Desktop forwards the connection into the Linux VM where the container is running"; "Inside the VM, the connection is routed to the container's internal IP address and port" | `desktop/features/networking/_index.md`, "How exposed ports work" | Uma porta **publicada** é alcançável do Windows; é o canal de controle do worker até o proxy |
+| 3 | "you can restrict it to a specific address, such as `127.0.0.1` (`localhost`)"; "If you include the localhost IP address (`127.0.0.1`, or `::1`) with the publish flag, only the Docker host can access the published container port." | mesma página; `engine/network/port-publishing.md` | A porta de controle é publicada só em `127.0.0.1` |
+| 4 | "`host.docker.internal` Resolves to the internal IP address of your host" | `desktop/features/networking/networking-how-tos.md` | É o caminho contrário (contêiner até o host). Considerado e **não usado**: exigiria o worker escutar uma porta aceita de dentro da rede interna (o bot a alcançaria) e depende do firewall do Windows |
+| 5 | "a container can be connected to multiple Docker networks. For example, a frontend container may be connected to a bridge network with external access, and a `--internal` network to communicate with containers running backend services that do not need external network access." | `engine/network/_index.md`, "Connecting to multiple networks" | O contêiner do proxy fica nas duas redes: a interna (os bots o alcançam) e uma comum (ele alcança a internet) |
+| 6 | "The default gateway is selected by Docker, and may change whenever a container's network connections change." Opção `gw-priority` em `docker run` e `docker network connect` | `engine/network/_index.md` | Cuidado: a rota padrão do proxy precisa ser a rede comum. A rede interna não tem saída, então o teste real confere que o proxy chega à internet e que a porta publicada responde |
+| 7 | `docker network connect <rede> <contêiner>` liga um contêiner a uma rede; `--alias` dá outro nome nela | `docker/cli`, `docs/reference/commandline/network_connect.md` | Criar o contêiner numa rede e ligá-lo à outra antes de iniciar (funciona em qualquer versão, sem depender de `--network` repetido) |
+
+**Não verificado:** o comportamento no **Windows** com Docker Desktop (a porta publicada em `127.0.0.1` seguir o item 2 na prática, o firewall, o modo WSL 2 contra Hyper-V); qual rede o Docker escolhe para publicar a porta quando o contêiner está em duas (o teste real em Linux confere, o Docker Desktop não foi exercitado); a configuração "bind to localhost by default" do Docker Desktop (item 2) interagindo com `-p 127.0.0.1:...:...` explícito (explícito vence, pela documentação do `-p`).
+
+**Decisões que saem disto:**
+
+| Decisão | Base | Natureza |
+|---|---|---|
+| Proxy num contêiner `suup-egress` nas duas redes; imagem construída de um Dockerfile que o app leva (mesmo passo "Preparando a máquina dos bots…") | Fatos 1, 5, 7 | Inferência |
+| Canal de controle: o **worker abre** uma conexão TCP até a porta de controle publicada em `127.0.0.1` (saída do worker, sem depender de nada entrar no Windows pela rede), autenticada por um token aleatório por início, passado por variável de ambiente ao contêiner | Fatos 2 e 3 | Inferência |
+| A política (lista, aprovações, banco, eventos) fica **no worker**: o proxy pergunta a lista do sujeito e informa cada decisão | Regra do projeto (o worker é dono da política) | Decisão de desenho |
+| O proxy só escuta a porta de controle na interface da rede comum, **não** na da rede interna: os bots nem a alcançam | Fato 5 | Defesa em profundidade |
+| O caminho com o proxy dentro do worker continua onde funciona (Linux, Compose de produção) | Está provado e é mais simples lá | Escolha, ver REDE.md |

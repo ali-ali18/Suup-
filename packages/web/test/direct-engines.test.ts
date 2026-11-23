@@ -755,6 +755,126 @@ describe("the way out: createDirectGet", () => {
       "es.wikipedia.org",
     ]);
   });
+
+  it("a host off the list is said to be off the engines' list, by the proxy's own code", async () => {
+    const hosts = new Set(engineHosts(directEngineIds(DEFAULT_ENGINES), ["en", "pt"]));
+    const proxy = new EgressProxy({
+      policy: { allowedHosts: async () => hosts },
+      anonymousSubject: { kind: "harness", id: "search-direct" },
+      listenHost: "127.0.0.1",
+    });
+    const { port } = await proxy.start();
+    sites.push({ close: () => proxy.stop() });
+    const get = createDirectGet({ userAgent: HONEST, proxy: { host: "127.0.0.1", port } });
+    await expect(get("https://api.github.com/")).rejects.toThrow(
+      "the egress proxy refused api.github.com:443 (HTTP 403); the host is not on the engines' list",
+    );
+  });
+
+  it("on a computer without DNS, a host ON the list is reported as unresolved, not as off the list", async () => {
+    const hosts = new Set(engineHosts(directEngineIds(DEFAULT_ENGINES), ["en", "pt"]));
+    expect(hosts.has("pt.wikipedia.org")).toBe(true);
+    const refused: { host: string; reason: string | undefined }[] = [];
+    const proxy = new EgressProxy({
+      policy: { allowedHosts: async () => hosts },
+      anonymousSubject: { kind: "harness", id: "search-direct" },
+      listenHost: "127.0.0.1",
+      resolver: {
+        async resolve() {
+          throw new Error("getaddrinfo EAI_AGAIN");
+        },
+      },
+      onEvent: (event) => {
+        if (event.decision === "refused") refused.push({ host: event.host, reason: event.reason });
+      },
+    });
+    const { port } = await proxy.start();
+    sites.push({ close: () => proxy.stop() });
+    const get = createDirectGet({ userAgent: HONEST, proxy: { host: "127.0.0.1", port } });
+    const error = await get("https://pt.wikipedia.org/w/api.php").then(
+      () => undefined,
+      (e: unknown) => e,
+    );
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toBe(
+      "the egress proxy refused pt.wikipedia.org:443 (HTTP 403); the host name could not be resolved (no DNS answer on this computer)",
+    );
+    expect((error as Error).message).not.toContain("engines' list");
+    expect(refused).toEqual([{ host: "pt.wikipedia.org", reason: "dns_failed" }]);
+  });
+
+  it("the real proxy's other refusals keep their own reason (private address, list not available)", async () => {
+    const hosts = new Set(["en.wikipedia.org"]);
+    const privateAnswer = new EgressProxy({
+      policy: { allowedHosts: async () => hosts },
+      anonymousSubject: { kind: "harness", id: "search-direct" },
+      listenHost: "127.0.0.1",
+      resolver: { resolve: async () => ["10.0.0.5"] },
+    });
+    const down = new EgressProxy({
+      policy: {
+        allowedHosts: async () => {
+          throw new Error("restarting");
+        },
+      },
+      anonymousSubject: { kind: "harness", id: "search-direct" },
+      listenHost: "127.0.0.1",
+    });
+    const first = await privateAnswer.start();
+    sites.push({ close: () => privateAnswer.stop() });
+    const second = await down.start();
+    sites.push({ close: () => down.stop() });
+    const viaPrivate = createDirectGet({
+      userAgent: HONEST,
+      proxy: { host: "127.0.0.1", port: first.port },
+    });
+    await expect(viaPrivate("https://en.wikipedia.org/")).rejects.toThrow(
+      "the egress proxy refused en.wikipedia.org:443 (HTTP 403); the host name resolves to an address that is never reachable (private, loopback, link-local or metadata)",
+    );
+    const viaDown = createDirectGet({
+      userAgent: HONEST,
+      proxy: { host: "127.0.0.1", port: second.port },
+    });
+    await expect(viaDown("https://en.wikipedia.org/")).rejects.toThrow(
+      "the egress proxy refused en.wikipedia.org:443 (HTTP 403); the list of allowed hosts is not available right now; try again in a moment",
+    );
+  });
+
+  it("a refusal without a known code reports only the status, with no claim about the list", async () => {
+    const { createServer } = await import("node:http");
+    for (const header of [
+      "",
+      "X-Suup-Egress-Reason: not_a_code\r\n",
+      "X-Suup-Egress-Reason: DNS_FAILED\r\n",
+    ]) {
+      const proxy = createServer();
+      proxy.on("connect", (_req, socket) => {
+        socket.end(`HTTP/1.1 403 Forbidden\r\n${header}\r\n`);
+      });
+      await new Promise<void>((done) => proxy.listen(0, "127.0.0.1", done));
+      sites.push({
+        close: () =>
+          new Promise<void>((done) => {
+            proxy.close(() => done());
+            proxy.closeAllConnections();
+          }),
+      });
+      const address = proxy.address();
+      const port = typeof address === "object" && address !== null ? address.port : 0;
+      const get = createDirectGet({
+        userAgent: HONEST,
+        secure: false,
+        proxy: { host: "127.0.0.1", port },
+      });
+      const error = await get("https://evil.example/").then(
+        () => undefined,
+        (e: unknown) => e,
+      );
+      expect((error as Error).message, header).toBe(
+        "the egress proxy refused evil.example:443 (HTTP 403)",
+      );
+    }
+  });
 });
 
 /** Engines for the search flow: each answers what the table says and counts its calls. */

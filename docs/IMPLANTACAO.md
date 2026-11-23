@@ -121,6 +121,8 @@ O worker comanda a máquina dos bots com `docker exec`, o que exige falar com o 
 
 A máquina dos bots (e cada conector stdio) fica numa rede Docker **interna** e só sai pelo proxy do worker, com uma lista de hosts de nome exato: [REDE.md](REDE.md). No Compose de produção o worker é um contêiner, então ele entra na rede interna com IP fixo e o proxy escuta nesse IP: o `docker-compose.prod.yml` já declara a rede `suup-sandbox-net` (interna, `172.29.77.0/24`, worker em `172.29.77.2`) e o `suup.config.prod.example.json` aponta `sandbox.network.proxy` para esse endereço. Se mudar a sub-rede, mude os dois. A imagem do runner dos conectores (`suup-connector-runner:prod`) é construída pelo serviço `connector-runner-image`.
 
+**Produção usa o proxy dentro do worker** (`sandbox.network.proxy.mode` omitido = `process`): é o caminho provado e o mais simples com o worker na rede interna; o contêiner `suup-egress` (modo `container`, [REDE.md](REDE.md)) existe para quem roda o worker como processo num computador com Docker Desktop (o app no Windows) e não muda o `docker-compose.prod.yml`. Para construir a imagem à mão (desenvolvimento e testes): `pnpm exec tsc -b && node apps/sidecar/scripts/egress-image.mjs docker/egress && docker build -t suup-egress:dev docker/egress`; os testes com Docker real a usam em `SUUP_EGRESS_IMAGE=suup-egress:dev` (o CI constrói `suup-egress:ci`).
+
 Contêineres criados antes desta versão (na rede padrão, com saída direta) são **recriados sozinhos** na primeira execução (o volume do workspace é mantido); `suup doctor` confere que a máquina não tem saída direta.
 
 ## Busca e leitura de páginas (`web_search`, `web_read`)
@@ -135,6 +137,8 @@ Contêineres criados antes desta versão (na rede padrão, com saída direta) s�
 - Construir a imagem do leitor atrás de um proxy que reassina o TLS: os mesmos argumentos da seção seguinte, com `-f docker/reader/Dockerfile`.
 - Sem o leitor ou sem a busca: `"web": { "reader": { "enabled": false } }` e/ou `"search": { "enabled": false }`.
 - Desenvolvimento: `docker compose --profile web up -d searxng` (com `SEARXNG_SECRET`) sobe só o SearXNG na porta `127.0.0.1:8080`, **com a saída do host** (sem a lista): só para desenvolvimento.
+- **Produção (VPS) não muda:** o proxy de motores fica no worker (`web.search.proxy.mode` omitido = `process`). O modo `container` (`suup-egress-search`, a imagem de `docker/egress`) é o do app de desktop no Windows, onde o worker é um processo do computador e não escuta numa rede do Docker ([BUSCA.md](BUSCA.md), "O app embutido").
+- **A imagem do leitor como o app a constrói** (sem o repositório): `pnpm exec tsc -b && node apps/sidecar/scripts/reader-image.mjs /tmp/reader && docker build -t suup-reader:app-dev /tmp/reader` (receita `docker/reader/app.Dockerfile`; o CI a constrói e confere que o navegador sobe). Atrás de um proxy que reassina o TLS, os mesmos argumentos da seção seguinte (`--network host`, `--build-arg HTTPS_PROXY`, `--secret id=build_ca,...`).
 
 ## Construir atrás de um proxy que reassina o TLS
 
@@ -190,6 +194,23 @@ docker run --rm -v suup-workspace:/data -v "$PWD":/backup debian:12-slim \
 ```
 
 Use o usuário e o banco do seu `.env.prod` no lugar de `suup`, e agende (cron) o `pg_dump`, copiando o arquivo para **fora** da VPS. O dump traz, com a busca por palavras, as colunas que o banco calcula; a função e a extensão da busca sem acento são recriadas pelas migrações no banco novo.
+
+## Passar do computador para a VPS
+
+O app de desktop pode rodar o servidor **dentro dele** ("Usar neste computador", [USAR-NO-WINDOWS.md](USAR-NO-WINDOWS.md)) ou falar com esta VPS. **Um cérebro por vez, sem sincronização**: o que está no computador não aparece na VPS até você levar. Levar é um dump e uma restauração (o mesmo `pg_dump`/`pg_restore` de "Backups"):
+
+1. **Suba a VPS** como acima (banco vazio, migrações aplicadas, servidor e worker parados no passo 3).
+2. **No computador, com o app aberto** (o banco só roda enquanto o app está aberto): Configurações > Geral > Servidor > **Banco de dados > Copiar endereço**. O endereço tem a forma `postgres://suup:SENHA@127.0.0.1:PORTA/suup` e leva a senha: não cole em chat nem em arquivo versionado.
+3. **Faça o dump.** O banco embutido não traz `pg_dump`; use o do Docker (o Docker Desktop já está lá se você usa a máquina isolada). Troque `127.0.0.1` por `host.docker.internal` e grave com `-f` (o `>` do PowerShell estraga arquivo binário):
+
+   ```powershell
+   docker run --rm -v "${PWD}:/out" postgres:18 pg_dump -Fc -f /out/suup.dump "postgres://suup:SENHA@host.docker.internal:PORTA/suup"
+   ```
+
+4. **Copie** `suup.dump` para a VPS (`scp`) e **restaure** com o servidor e o worker parados, como em "Backups" (`pg_restore -U suup -d suup --clean --if-exists < suup.dump`), e suba-os de novo.
+5. **No app:** Configurações > Geral > Servidor > **Trocar** > **Conectar à minha VPS** (endereço e token da VPS).
+
+O que **não** vai junto: os **segredos do cofre** (estão cifrados com uma chave que fica no chaveiro do computador e não sai de lá: cadastre-os de novo na VPS), os **arquivos que os bots criaram** na máquina deles (o volume do workspace; copie à parte, se importar) e a **chave da Anthropic** (coloque em `.env.prod`). Depois de passar, **não deixe o computador e a VPS ligados com o mesmo bot**: cada um teria a sua conversa e a sua execução. Para voltar da VPS para o computador, o caminho é o contrário (dump na VPS, restauração no banco do app, que precisa estar parado: peça para eu documentar quando for preciso, ainda não foi exercitado).
 
 ## Atualizar
 

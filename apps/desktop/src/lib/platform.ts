@@ -25,10 +25,102 @@ export interface SettingsStore {
   save(json: string): Promise<void>;
 }
 
+/**
+ * Which server this device uses: the one the app carries (`local`, "neste computador") or the
+ * owner's own (`vps`). One brain at a time, no sync (docs/PLANO.md, "app embutido").
+ */
+export type ServerMode = "local" | "vps";
+
+/** Where the choice is kept: per device, next to the server address (never on the server). */
+export interface ModeStore {
+  load(): Promise<ServerMode | null>;
+  save(mode: ServerMode): Promise<void>;
+  /** Forgets the choice (and what was kept for it): the next start asks again. */
+  clear(): Promise<void>;
+}
+
+/** What the embedded server is doing, in the order it gets there. */
+export type LocalStage = "database" | "migrations" | "machine" | "server";
+
+export type LocalState = "idle" | "starting" | "ready" | "restarting" | "failed" | "stopping";
+
+/**
+ * Why the bots' machine is NOT isolated, as a code (the app writes the sentence): there is no
+ * Docker, or it cannot serve the bots' network from this computer, or its images could not be built.
+ */
+export type NoIsolationReason =
+  | "docker_missing"
+  | "gateway_unreachable"
+  | "image_failed"
+  | "network_failed";
+
+export interface LocalIsolation {
+  /** `docker`: a container with no network of its own. `local`: the bots run on this computer. */
+  mode: "docker" | "local";
+  reason: NoIsolationReason | null;
+  /** The technical detail of the reason, for the log line under it (never parsed). */
+  detail: string | null;
+}
+
+export interface LocalStatus {
+  state: LocalState;
+  stage: LocalStage | null;
+  /** The reason of a failure or of a wait, in words (from the supervisor; shown, never parsed). */
+  message: string | null;
+  url: string | null;
+  isolation: LocalIsolation | null;
+  /** Which start this is (1 for the first); grows with every restart after a crash. */
+  attempt: number;
+  restartInSeconds: number | null;
+  /** Whether an API key of the model provider is saved (the key itself never comes back). */
+  hasApiKey: boolean;
+  /** The folder of the log files. */
+  logsDir: string;
+}
+
+/** The server the app carries: only the Tauri shell has it (the browser build has no `local`). */
+export interface LocalServer {
+  status(): Promise<LocalStatus>;
+  /** Calls `handler` on every change of the status; resolves to the function that stops it. */
+  onStatus(handler: (status: LocalStatus) => void): Promise<() => void>;
+  /** Chooses "neste computador" for this device and starts the server. */
+  select(): Promise<void>;
+  /** Starts it again (after a failure the supervisor gave up on). */
+  start(): Promise<void>;
+  stop(): Promise<void>;
+  /** The address and token of the running server (the token comes from the OS keychain). */
+  connection(): Promise<Connection>;
+  /** Saves the model provider's key in the OS keychain; a running server restarts to take it. */
+  setApiKey(key: string): Promise<void>;
+  /** Opens the folder of the log files in the system's file manager. */
+  openLogs(): Promise<void>;
+  /** The address of the app's own database, password included (to back it up or move it to a VPS). */
+  databaseUrl(): Promise<string>;
+}
+
+/**
+ * The window's frame (Tauri only). When the window has no system title bar the app draws its own
+ * controls, inside itself, like the Grok Bot (owner's decision, 22/11/2026).
+ */
+export interface WindowFrame {
+  /** True when the window has no system title bar: the app draws minimize, maximize and close. */
+  custom(): Promise<boolean>;
+  minimize(): Promise<void>;
+  toggleMaximize(): Promise<void>;
+  close(): Promise<void>;
+  isMaximized(): Promise<boolean>;
+}
+
 export interface Platform {
   /** `"tauri"` (token in the OS keychain, requests through the Rust side) or `"browser"`. */
   kind: "tauri" | "browser";
   connection: ConnectionStore;
+  /** Which server this device uses (Tauri only: the browser build always connects to one address). */
+  mode?: ModeStore;
+  /** The server the app carries (Tauri only). */
+  local?: LocalServer;
+  /** The window's frame (Tauri only). */
+  frame?: WindowFrame;
   settings: SettingsStore;
   /** The `fetch` every request of the app goes through. */
   fetch: typeof fetch;

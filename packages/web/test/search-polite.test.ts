@@ -418,3 +418,49 @@ describe("createWebAccess", () => {
     expect(backend.asked).toHaveLength(2);
   });
 });
+
+describe("what is missing without Docker, said with the reason", () => {
+  const services = async () => ({
+    engines: ["duckduckgo"],
+    searchProblem: "Docker is not available on this computer",
+    readerProblem: "Docker is not available on this computer",
+  });
+
+  it("the search names why the search container is not there", async () => {
+    const web = createWebAccess({ searchEnabled: true, readerEnabled: true, services });
+    const out = await web.search({ query: "kernel" });
+    expect(out).toEqual({
+      ok: false,
+      reason: "unavailable",
+      message: "The search service is not running (Docker is not available on this computer).",
+    });
+  });
+
+  it("an engine of the container among others is reported with that reason", async () => {
+    const search = createSearch({
+      backend: undefined,
+      backendProblem: "Docker is not available on this computer",
+      direct: [{ id: "wikipedia", search: async () => ({ ok: true, hits: [] }) }],
+      engines: ["duckduckgo", "wikipedia"],
+    });
+    const out = await search({ query: "kernel" });
+    expect(out.ok).toBe(true);
+    if (out.ok) {
+      expect(out.suspended).toContainEqual({
+        engine: "duckduckgo",
+        reason: "the search container is not running (Docker is not available on this computer)",
+      });
+    }
+  });
+
+  it("a render asked without the reader container says it needs that container, and why", async () => {
+    const web = createWebAccess({ searchEnabled: true, readerEnabled: true, services });
+    const out = await web.read({ url: "https://example.com/", render: true });
+    expect(out).toEqual({
+      ok: false,
+      reason: "unavailable",
+      message:
+        "Rendering pages with JavaScript needs the reader container, which is not running here (Docker is not available on this computer). Read without render, or tell the user.",
+    });
+  });
+});

@@ -1,6 +1,7 @@
 import type { Bot } from "@suup/api";
 import {
   Ban,
+  Blocks,
   Brain,
   Inbox,
   Keyboard,
@@ -41,7 +42,7 @@ const DEBOUNCE_MS = 250;
 
 /** Ctrl/Cmd+K: jump to a bot, to a message found by search, or run an action, all by keyboard. */
 export function CommandPalette() {
-  const { api, sync, disconnect } = useServices();
+  const { api, sync, disconnect, mode } = useServices();
   const bots = useData((s) => s.bots);
   const conversations = useData((s) => s.conversations);
   const runs = useData((s) => s.runs);
@@ -118,6 +119,8 @@ export function CommandPalette() {
         icon: (
           <Avatar
             avatar={bot.avatar}
+            avatarStyle={bot.avatarStyle}
+            pixel3d={bot.avatarPixel3d}
             color={bot.color}
             seed={bot.id}
             size="md"
@@ -199,6 +202,12 @@ export function CommandPalette() {
         run: () => ui().go("pending"),
       },
       {
+        id: "plugins",
+        label: "Conectores",
+        icon: <Blocks size={18} />,
+        run: () => ui().go("connectors"),
+      },
+      {
         id: "settings",
         label: "Configurações",
         icon: <Settings size={18} />,
@@ -218,7 +227,7 @@ export function CommandPalette() {
       },
       {
         id: "disconnect",
-        label: "Desconectar",
+        label: mode === "local" ? "Trocar de servidor" : "Desconectar",
         icon: <LogOut size={18} />,
         run: () => void disconnect(),
       },
@@ -237,7 +246,19 @@ export function CommandPalette() {
       }
     }
     return out;
-  }, [ordered, query, hits, conversations, bots, runs, selected, collapsed, sync, disconnect]);
+  }, [
+    ordered,
+    query,
+    hits,
+    conversations,
+    bots,
+    runs,
+    selected,
+    collapsed,
+    sync,
+    disconnect,
+    mode,
+  ]);
 
   useEffect(() => {
     setActive((i) => Math.min(i, Math.max(0, entries.length - 1)));

@@ -8,9 +8,11 @@ import { MemoryScreen } from "../memory/MemoryScreen.js";
 import { NewBotDialog } from "../new-bot/NewBotDialog.js";
 import { CommandPalette, ShortcutsDialog } from "../palette/CommandPalette.js";
 import { PendingScreen } from "../pending/PendingScreen.js";
+import { ConnectorsScreen } from "../plugins/ConnectorsScreen.js";
 import { SettingsDialog } from "../settings/SettingsDialog.js";
 import { ApprovalAnnouncer } from "./ApprovalAnnouncer.js";
 import { GroupDialog } from "./GroupDialog.js";
+import { IsolationNotice } from "./IsolationNotice.js";
 import { Sidebar } from "./Sidebar.js";
 
 /** The frame of the app: the sidebar (or the rail) on the left and one content area. */
@@ -76,8 +78,10 @@ export function Shell() {
         {view === "pending" && <PendingScreen />}
         {view === "memory" && <MemoryScreen />}
         {view === "inspector" && <InspectorScreen />}
+        {view === "connectors" && <ConnectorsScreen />}
       </div>
       <ApprovalAnnouncer />
+      <IsolationNotice />
       {settingsOpen && <SettingsDialog />}
       {newBotOpen && <NewBotDialog />}
       {groupBotId !== null && <GroupDialog />}

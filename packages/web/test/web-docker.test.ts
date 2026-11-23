@@ -214,3 +214,120 @@ describe.skipIf(!REAL)("web services, real Docker", () => {
     );
   });
 });
+
+// The engine proxy in its own container (SUUP_EGRESS_IMAGE, the image of docker/egress): the
+// topology of the embedded app on Windows, where this process cannot listen on a Docker network.
+// SearXNG reaches it with the credentials of this start, and they open only the engines' hosts.
+const EGRESS_IMAGE = process.env.SUUP_EGRESS_IMAGE;
+describe.skipIf(!REAL || EGRESS_IMAGE === undefined)(
+  "web search with the engine proxy in its own container, real Docker",
+  () => {
+    const tag = randomBytes(4).toString("hex");
+    const searchContainer = `suup-wtest-csearch-${tag}`;
+    const proxyContainer = `suup-wtest-cegress-${tag}`;
+    const network = `suup-wtest-cnet-${tag}`;
+    let services: WebServices;
+    const logged: string[] = [];
+    const python = (code: string) =>
+      docker([
+        "exec",
+        "--workdir",
+        "/usr/local/searxng",
+        searchContainer,
+        "/usr/local/searxng/.venv/bin/python",
+        "-c",
+        code,
+      ]);
+    /** What the HTTP client SearXNG itself uses gets back from the proxy of its settings for `url`. */
+    const throughSettingsProxy = (url: string, credentials?: "wrong") =>
+      python(
+        [
+          "import httpx",
+          "from searx import settings",
+          "proxy = settings['outgoing']['proxies']['all://']",
+          ...(credentials === "wrong"
+            ? [
+                "scheme, rest = proxy.split('://', 1)",
+                "proxy = scheme + '://harness.search:0@' + rest.split('@', 1)[1]",
+              ]
+            : []),
+          "try:",
+          `    print('STATUS', httpx.get(${JSON.stringify(url)}, proxy=proxy, timeout=8).status_code)`,
+          "except httpx.ProxyError as error:",
+          "    print('PROXY', error)",
+          "except Exception as error:",
+          "    print('OTHER', type(error).__name__)",
+        ].join("\n"),
+      );
+
+    beforeAll(async () => {
+      services = await startWebServices({
+        engines: ["duckduckgo"],
+        languages: ["en"],
+        searchContainer,
+        searchNetwork: network,
+        searchProxy: { mode: "container", image: EGRESS_IMAGE as string, name: proxyContainer },
+        readerEnabled: false,
+        log: (line) => logged.push(line),
+      });
+    }, 600_000);
+
+    afterAll(async () => {
+      await services?.stop();
+      await docker(["rm", "--force", searchContainer]);
+      await docker(["rm", "--force", proxyContainer]);
+      await docker(["network", "rm", network]);
+      await docker(["network", "rm", `${network}-out`]);
+    }, 60_000);
+
+    it("starts SearXNG with the proxy container, which publishes only its control port on 127.0.0.1", async () => {
+      expect(services.searchProblem).toBeUndefined();
+      expect(services.searchBackend).toBeDefined();
+      const ports = await docker(["port", proxyContainer]);
+      expect(ports.code, ports.err).toBe(0);
+      const lines = ports.out.trim().split("\n");
+      expect(lines.length).toBe(1);
+      expect(lines[0]?.startsWith("3129/tcp -> 127.0.0.1:")).toBe(true);
+      const nets = await docker([
+        "inspect",
+        "--format",
+        "{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}",
+        searchContainer,
+      ]);
+      expect(nets.out.trim()).toBe(network);
+    }, 60_000);
+
+    it("the credentials in SearXNG's settings are accepted and open only the engines' hosts", async () => {
+      // A host that is no engine's: the proxy knows who asks (not 407) and refuses it (403).
+      const other = await throughSettingsProxy("https://example.com/");
+      expect(other.code, other.err).toBe(0);
+      expect(other.out).toContain("PROXY");
+      expect(other.out).toContain("403");
+      // Wrong credentials: 407, whatever the host.
+      const wrong = await throughSettingsProxy("https://html.duckduckgo.com/html/", "wrong");
+      expect(wrong.code, wrong.err).toBe(0);
+      expect(wrong.out).toContain("407");
+      expect(logged).toContain("search proxy refused example.com:443 (not_allowed)");
+      // The engine's host is on the list: it is let through, or (where this computer has no DNS or
+      // no internet) fails after the list was passed, never as "not allowed".
+      const engine = await throughSettingsProxy("https://html.duckduckgo.com/html/");
+      expect(engine.code, engine.err).toBe(0);
+      expect(engine.out).not.toContain("407");
+      expect(logged).not.toContain("search proxy refused html.duckduckgo.com:443 (not_allowed)");
+    }, 90_000);
+
+    it("a search answers, and the proxy container goes away when the services stop", async () => {
+      const web = createWebAccess({
+        searchEnabled: true,
+        readerEnabled: false,
+        services: async () => services,
+      });
+      const out = await web.search({ query: "linux kernel", limit: 3 });
+      expect(out.ok, JSON.stringify(out)).toBe(true);
+      if (out.ok) expect(out.hits.length + out.suspended.length).toBeGreaterThan(0);
+      await services.stop();
+      const left = await docker(["ps", "--all", "--quiet", "--filter", `name=^${proxyContainer}$`]);
+      expect(left.out.trim()).toBe("");
+    }, 90_000);
+  },
+);

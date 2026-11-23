@@ -24,6 +24,7 @@ import {
 import { cx } from "../../lib/cx.js";
 import { RUNS_IN_LABEL } from "../../lib/network.js";
 import { reviewNotice } from "../../lib/tool-review.js";
+import { brandGlyphFor } from "../../ui/brand-icons.js";
 import { Dropdown, type DropdownOption } from "../../ui/dropdown.js";
 import {
   Dialog,
@@ -590,7 +591,7 @@ function ConnectorRow({
   return (
     <div data-testid="connector-item" data-name={connector.name}>
       <SettingsRow
-        icon={Plug}
+        icon={brandGlyphFor(connector.name) ?? Plug}
         title={connector.name}
         description={summary}
         control={

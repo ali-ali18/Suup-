@@ -1,0 +1,101 @@
+name: Instalador do app
+
+# Constrói o instalador do app de desktop (o Windows é o que importa; macOS e Linux são um extra).
+# O servidor, o worker e o banco vão DENTRO do app (apps/sidecar): é só instalar e usar.
+# Sem assinatura de código: o Windows mostra o aviso do SmartScreen na primeira vez (docs/USAR-NO-WINDOWS.md).
+# Para baixar: aba Actions > esta execução > "Artifacts" (no fim da página).
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["feat/**"]
+    paths:
+      - "apps/desktop/**"
+      - "apps/sidecar/**"
+      - "apps/cli/**"
+      - "packages/**"
+      - "docker/sandbox/**"
+      - "docker/connector-runner/**"
+      - "docker/egress/**"
+      - "docker/reader/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/desktop-installer.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  installer:
+    name: instalador (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    # Só o Windows precisa passar; os outros são um extra e não derrubam a execução.
+    continue-on-error: ${{ !matrix.required }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+            required: true
+            bundles: nsis
+          - name: macOS
+            os: macos-latest
+            required: false
+            bundles: dmg
+          - name: Linux
+            os: ubuntu-latest
+            required: false
+            bundles: deb
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Bibliotecas da janela (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: >
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends
+          libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev build-essential
+          pkg-config libssl-dev libdbus-1-dev patchelf xdg-utils
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+      - run: pnpm install --frozen-lockfile
+      # Os testes importam os pacotes pelo dist (como no ci.yml, que compila no typecheck).
+      - name: Compilar os pacotes
+        run: pnpm exec tsc -b
+      # A prova mais importante para o Windows: o PostgreSQL embutido, as migrações, o servidor e o
+      # worker sobem do jeito que o app os sobe, respondem uma conversa e param sem deixar nada.
+      - name: Servidor embutido (teste da disposição empacotada)
+        run: pnpm vitest run apps/sidecar
+        env:
+          SUUP_TEST_LOGS_DIR: ${{ runner.temp }}/sidecar-logs
+      - name: Registros do servidor embutido (se falhou)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: registros-sidecar-${{ matrix.name }}
+          path: ${{ runner.temp }}/sidecar-logs
+          if-no-files-found: ignore
+      - name: Preparar o servidor embutido (Node, PostgreSQL, pacote)
+        run: pnpm --filter @suup/sidecar run bundle
+      - uses: tauri-apps/tauri-action@v0
+        with:
+          projectPath: apps/desktop
+          tauriScript: pnpm tauri
+          args: --bundles ${{ matrix.bundles }}
+          uploadWorkflowArtifacts: true
+          # Sem tag, sem release: só os arquivos da execução.
+      # O tauri-action não envia nada sem tag/release; o instalador vai como artefato da execução.
+      - name: Enviar o instalador
+        uses: actions/upload-artifact@v4
+        with:
+          name: instalador-${{ matrix.name }}
+          path: |
+            apps/desktop/src-tauri/target/release/bundle/nsis/*.exe
+            apps/desktop/src-tauri/target/release/bundle/dmg/*.dmg
+            apps/desktop/src-tauri/target/release/bundle/deb/*.deb
+          if-no-files-found: error

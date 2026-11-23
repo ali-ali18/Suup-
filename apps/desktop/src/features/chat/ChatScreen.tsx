@@ -1,5 +1,5 @@
 import type { Run } from "@suup/api";
-import { ChevronDown } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { useSettings } from "../../app/settings-store.js";
@@ -13,10 +13,8 @@ import {
   orderedMessages,
 } from "../../data/reducers.js";
 import { secretRequestsOf } from "../../data/secret-requests.js";
-import { cx } from "../../lib/cx.js";
-import { colorVars, effectiveColor } from "../../lib/mascots.js";
+import { colorVars, themeColor } from "../../lib/mascots.js";
 import { Avatar } from "../../ui/avatar.js";
-import { BotTitle } from "../../ui/bot-title.js";
 import { EventLineButton } from "../../ui/chat-lines.js";
 import { Composer } from "../../ui/composer.js";
 import { DraftReference } from "../../ui/draft-reference.js";
@@ -203,7 +201,7 @@ function ChatForBot({ botId }: { botId: string }) {
   );
   const phrase =
     active === undefined ? "Pensando" : workingPhrase(active, actions, planOf(active, events));
-  const color = bot === undefined ? "cinza" : effectiveColor(bot.color, bot.id);
+  const color = bot === undefined ? "cinza" : themeColor(bot, bot.id);
 
   const send = useCallback(
     async (text: string, ref: { id: string; name: string } | null = null) => {
@@ -236,7 +234,6 @@ function ChatForBot({ botId }: { botId: string }) {
   ]
     .filter(Boolean)
     .join(". ");
-  const description = bot.description.trim();
 
   const menuItems: MenuItem[] = [
     ...runMenuItems(active, {
@@ -268,7 +265,10 @@ function ChatForBot({ botId }: { botId: string }) {
         className="flex min-h-0 min-w-chat-min flex-[1_0_var(--width-chat-min)] flex-col"
         aria-label={`Conversa com ${bot.name}`}
       >
-        <header className="flex min-h-15.5 flex-none justify-center px-4 pt-3">
+        <header
+          className="flex min-h-15.5 flex-none justify-center px-4 pt-3"
+          data-tauri-drag-region
+        >
           <button
             type="button"
             className="group/chip inline-flex h-control max-w-bot-chip items-center gap-2 rounded-pill border border-border-strong bg-transparent py-0 pr-3.5 pl-1.5 text-label hover:bg-hover"
@@ -292,22 +292,19 @@ function ChatForBot({ botId }: { botId: string }) {
           >
             <Avatar
               avatar={bot.avatar}
+              avatarStyle={bot.avatarStyle}
+              pixel3d={bot.avatarPixel3d}
               color={bot.color}
               seed={bot.id}
               size="sm"
               state={display.avatar}
               supervisor={bot.isDefault}
             />
-            <span className="min-w-0 truncate">
-              <BotTitle name={bot.name} description={description} />
-            </span>
-            <ChevronDown
+            <span className="min-w-0 truncate font-label">{bot.name}</span>
+            <ChevronRight
               size={16}
               aria-hidden="true"
-              className={cx(
-                "hidden flex-none transition-transform duration-(--duration-base) group-hover/chip:block group-focus-visible/chip:block",
-                panelOpen && "rotate-180",
-              )}
+              className="hidden flex-none group-hover/chip:block group-focus-visible/chip:block"
             />
           </button>
         </header>

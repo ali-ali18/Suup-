@@ -4,7 +4,7 @@ import { useStore } from "zustand";
 import type { DataState } from "../data/state.js";
 import type { DataStore } from "../data/store.js";
 import type { Sync } from "../data/sync.js";
-import type { Connection, Platform } from "../lib/platform.js";
+import type { Connection, Platform, ServerMode } from "../lib/platform.js";
 
 export interface Services {
   api: SuupClient;
@@ -12,8 +12,12 @@ export interface Services {
   data: DataStore;
   platform: Platform;
   connection: Connection;
-  /** Forgets the saved connection and goes back to the connect screen. */
+  /** Which server this device uses: the one the app carries, or the owner's own. */
+  mode: ServerMode;
+  /** Forgets the saved connection and goes back to the connect screen (local: the first-run choice). */
   disconnect(): Promise<void>;
+  /** Stops using this server and goes back to the first-run choice (the data stays where it is). */
+  switchServer(): Promise<void>;
 }
 
 const Ctx = createContext<Services | null>(null);

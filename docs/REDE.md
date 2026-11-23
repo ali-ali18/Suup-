@@ -5,7 +5,7 @@ Responde à pesquisa [fase-3-aprovacoes-cofre-conectores.md](pesquisas/fase-3-ap
 ## O que mudou
 
 - **A máquina do bot não tem rede própria.** O contêiner roda numa rede Docker **interna** (`--internal`): sem rota para fora, sem DNS para fora. A única coisa alcançável é o endereço do host nessa rede, onde escuta o proxy.
-- **O proxy roda no worker, fora do contêiner.** Só ele fala com a internet. Cada comando do bot (`docker exec`) já nasce com `HTTP_PROXY`/`HTTPS_PROXY` apontando para ele, então `curl`, `npm`, `pip`, `git` por https e o `web_fetch` passam por ele sem o bot fazer nada.
+- **O proxy fica fora da máquina dos bots** (no worker, ou num contêiner próprio: "Onde o proxy roda"). Só ele fala com a internet. Cada comando do bot (`docker exec`) já nasce com `HTTP_PROXY`/`HTTPS_PROXY` apontando para ele, então `curl`, `npm`, `pip`, `git` por https e o `web_fetch` passam por ele sem o bot fazer nada.
 - **O proxy só deixa passar nomes de host da lista.** Comparação por **igualdade exata** do nome normalizado (minúsculas, sem o ponto final). Não há curinga, sufixo nem padrão: `api.exemplo.com` não libera `exemplo.com`, nem `x.api.exemplo.com`.
 - **Endereços IP, `localhost` e o endereço de metadados são recusados sempre**, mesmo que alguém os ponha na lista (a lista nem aceita IP). Depois de resolver o nome, o endereço é conferido **numericamente** contra as faixas privadas, de loopback, link-local, metadados, multicast e reservadas (IPv4 e IPv6, inclusive IPv4 embutido em IPv6); se **qualquer** resposta cair numa dessas faixas, o nome é recusado. O proxy resolve **uma vez** e conecta ao endereço que validou (contra *DNS rebinding*).
 - **Portas:** só 80 e 443 (configurável).
@@ -24,7 +24,7 @@ Ver e mexer: `suup network list <bot>`, `suup network allow <bot> <host>`, `suup
 
 ## Host novo: recusa, aviso e cartão
 
-1. O bot roda `curl https://api.novo.com`. O proxy recusa (`403`) e **registra** a recusa (tabela `network_events`, visível em `suup network list <bot>` e na API).
+1. O bot roda `curl https://api.novo.com`. O proxy recusa (`403`) e **registra** a recusa (tabela `network_events`, visível em `suup network list <bot>` e na API). Toda resposta `403` do proxy (ao `CONNECT` e ao `GET http://`) leva o código da recusa no cabeçalho `X-Suup-Egress-Reason` (`not_allowed`, `ip_literal`, `bad_host`, `bad_port`, `dns_failed`, `forbidden_address`, `policy_unavailable`: `EGRESS_REFUSAL_REASONS` em `packages/sandbox/src/egress/types.ts`) e o texto em `X-Suup-Egress`; quem usa o proxy compara o código, nunca o texto (os motores diretos da busca dizem o motivo por ele: um nome que não resolve não vira "fora da lista").
 2. O resultado da ferramenta mostra, no fim do `stderr`: `suup: network: host api.novo.com is not allowed for this bot. If the user agrees, ask for it with the request_network_access tool (host api.novo.com).`
 3. O bot chama `request_network_access { host, reason }`. É uma chamada comum de ferramenta, de nível `external_irreversible`: **sempre vira cartão** (a execução fica em `waiting_approval`), com o host exato e o motivo. O usuário aprova ou recusa como em qualquer cartão.
 4. Aprovado: o host fica liberado **para esta execução** (linha em `network_hosts` com `run_id`, que só vale enquanto a execução não terminou). O bot repete o comando.
@@ -47,12 +47,43 @@ O que isto **não impede**:
 
 ## Onde o proxy roda (e por quê)
 
-Duas opções foram pesadas:
+Há **dois modos**, escolhidos por `sandbox.network.proxy.mode`. Em ambos, quem decide a política (a lista, as aprovações, o banco) é o **worker**; o código que decide por host (`decideHost`, a conferência numérica de endereços, resolver uma vez) é o mesmo.
 
-- **Dentro do worker (escolhida):** o worker já decide a política (lê o banco), já conhece o bot e já fala com o Docker. O proxy é um servidor `node:http` pequeno escutando no endereço do host na rede interna (o *gateway* da ponte). Vantagens: nenhum contêiner a mais para manter, a lista vem direto do banco, a recusa vira evento na hora. O custo: o proxy compartilha o processo do worker (uma falha no código do proxy é uma falha no worker); por isso o proxy é pequeno, não interpreta o conteúdo e não tem dependências.
-- **Contêiner "sidecar" numa rede interna:** isola o proxy do worker, mas precisaria de um canal de controle para a lista e para as recusas (ou acesso ao banco), e de mais uma imagem. Fica como evolução se o proxy crescer.
+### `process` (padrão): dentro do worker
 
-Em desenvolvimento (worker no host): o proxy escuta no endereço do host na ponte interna (`172.x.0.1`), porta livre. Em produção com Compose (worker em contêiner): o worker entra na rede interna com IP fixo e escuta nele (veja `docs/IMPLANTACAO.md`, "Rede dos bots"). Cada processo (worker, CLI) abre o seu proxy numa porta livre e escreve o endereço certo nos comandos que lança.
+Um servidor `node:http` pequeno no processo do worker, escutando no endereço do host na rede interna (o *gateway* da ponte). Serve onde o worker enxerga esse endereço: um Linux com o Docker no próprio host, ou o worker dentro de um contêiner na rede interna (Compose de produção, veja `docs/IMPLANTACAO.md`). Não há contêiner a mais; a lista vem direto do banco. Cada processo (worker, CLI) abre o seu proxy numa porta livre. **Produção continua assim**: é o caminho que já está provado e o mais simples ali.
+
+### `container`: o proxy no contêiner `suup-egress` (o app no Windows e no macOS)
+
+No **Docker Desktop** as redes do Docker vivem dentro de uma máquina virtual: o endereço do *gateway* não existe para um processo do Windows (o servidor do app), que não consegue escutar lá. Por isso o proxy roda **dentro** da VM, num contêiner:
+
+```
+ Windows (ou macOS)                       Docker (VM do Docker Desktop)
+ ┌────────────────────┐   127.0.0.1:N     ┌───────────────────────────────────────────┐
+ │ servidor + worker  │ ───────────────►  │ suup-egress  (imagem suup-egress)         │
+ │ (processo do host) │  canal de controle│   controle :3129  só na rede comum        │
+ │ lista, aprovações, │ ◄───────────────  │   proxy    :3128  só na rede interna      │
+ │ banco, eventos     │  lista? / eventos │        │ rede comum (bridge) ──► internet │
+ └────────────────────┘                   │        │ rede interna (--internal)        │
+                                          │  máquina dos bots, conectores ──► :3128   │
+                                          └───────────────────────────────────────────┘
+```
+
+- **Redes.** O contêiner entra na rede **interna** dos bots (`sandbox.network.name`, onde os bots e os conectores o alcançam) e numa rede **comum** `<nome>-out` (por onde ele alcança a internet). A máquina dos bots e os conectores seguem só na interna: sem rota, sem DNS para fora. O proxy escuta **só** no endereço que tem na rede interna; a porta de controle escuta **só** no endereço da rede comum, então os bots nem a enxergam (o teste confere).
+- **Canal de controle.** O contêiner **publica** a porta 3129 **somente em `127.0.0.1`** do computador (o Docker Desktop encaminha portas publicadas até o Windows; veja a pesquisa). O **worker abre** uma conexão TCP até essa porta (uma saída do worker: nada precisa entrar no Windows). Uma linha de JSON por mensagem: o worker manda `hello` com o token; o proxy responde `ready`; daí em diante o proxy **pergunta** ao worker a lista de hosts do sujeito (`hosts?`) a cada conexão de um bot e **informa** cada decisão (`event`); a recusa só é respondida ao bot depois que o worker confirmou (`ack`), então o aviso no resultado da ferramenta e a linha em `network_events` continuam exatos. A lista nunca fica copiada no proxy: uma aprovação de `request_network_access` vale na próxima conexão.
+- **Autenticação.** A cada início o worker gera **dois valores aleatórios** (256 bits cada): o token do canal e a chave das credenciais dos sujeitos. Chegam ao contêiner por variável de ambiente (pelo ambiente do cliente `docker`, nunca na linha de comando) e **não aparecem em nenhum registro** (o teste confere). Uma conexão com token errado é fechada sem resposta; sem `hello` em 5 s também. Um novo worker (reinício) toma o lugar do antigo.
+- **Sem worker conectado**, o proxy **recusa tudo** (`policy_unavailable`: "a lista não está disponível agora") e guarda os eventos numa fila limitada (500) que entrega ao próximo worker. Uma pergunta sem resposta em 5 s também é recusa. O proxy nunca libera nada por conta própria.
+- **Um dono.** O contêiner tem nome fixo (`suup-egress`); quem começa o substitui (e as credenciais antigas, feitas com a chave antiga, deixam de valer). Só o processo do app usa este modo; ao parar, ele remove o contêiner.
+- **Rede interna com tráfego entre contêineres ligado.** A máquina dos bots precisa alcançar o proxy pela ponte, então neste modo a rede é criada **sem** `enable_icc=false`. Custo: a máquina dos bots e os contêineres dos conectores (todos na mesma rede) podem falar entre si. A máquina só tem `sleep` e os comandos dos bots; um conector stdio não escuta porta; mas um bot que abra um servidor na máquina o expõe a um conector. Não há isolamento entre eles por rede neste modo (continua sem haver entre bots). Se a rede já existia com a opção antiga e **vazia**, é recriada; com contêineres nela, o app diz o que fazer.
+- **O contêiner do proxy** roda sem capacidades, sem novos privilégios, com o sistema de arquivos só de leitura, usuário não root, 256 MB e limite de processos. Não tem banco, lista nem segredo do cofre.
+- **Imagem.** `docker/egress/Dockerfile` leva um único arquivo JavaScript, `egress.mjs`, gerado por `node apps/sidecar/scripts/egress-image.mjs docker/egress` (depois de `pnpm exec tsc -b`; o arquivo não vai ao repositório). O app já leva os dois e constrói `suup-egress:app-<versão>` na primeira vez, no mesmo passo "Preparando a máquina dos bots…".
+- **Configuração:** `"network": { "proxy": { "mode": "container", "image": "suup-egress:dev" } }`. O app de desktop grava isso sozinho depois de provar o caminho (abre um contêiner descartável e fala com ele pela porta publicada); se não der, tenta o modo `process`; se também não der, cai em "sem isolamento" com o motivo (`gateway_unreachable`).
+
+Os conectores stdio em contêiner (`ContainerStdioLauncher`) usam o mesmo serviço (`EgressService`) nos dois modos: as variáveis de proxy dos comandos e dos conectores apontam para o mesmo proxy.
+
+### Por que não o contrário (o contêiner chamar o host)
+
+`host.docker.internal` leva do contêiner até o host, mas exigiria que o worker escutasse uma porta alcançável **de dentro da rede dos bots** (os bots a alcançariam) e que o firewall do Windows deixasse. O canal por porta publicada em `127.0.0.1` só aceita quem está no próprio computador.
 
 ## O que o bot enxerga
 
@@ -63,7 +94,7 @@ Em desenvolvimento (worker no host): o proxy escuta no endereço do host na pont
 [BUSCA.md](BUSCA.md) descreve `web_search` e `web_read`. Duas exceções **explícitas** a "a saída é só pela lista do bot", ambas decididas pelo dono:
 
 - **`web_read` vai pelo serviço leitor, não pela lista do bot.** O leitor é um contêiner à parte (ou o próprio worker, sem Docker) que baixa **páginas públicas** por nome de host, **sem cartão**: só GET, sem cookies, sem segredo do usuário, só portas 80 e 443, e recusa IP literal e qualquer nome que resolva (depois do DNS, resolvido uma vez) para faixa privada, de loopback, link-local, de metadados ou reservada; cada redirecionamento é conferido de novo. O universo de sites é aberto (cada página puxa recursos de terceiros), por isso a lista de nomes exatos não cabe nele. **A máquina do bot continua só com a lista** e com os cartões; o leitor não lhe dá saída nenhuma. O dono pode desligar o leitor (`web.reader.enabled: false`): então `web_read` lê pela máquina do bot, **pela lista e com cartões**.
-- **A busca sai por dois proxies próprios, ambos com lista fixa de hosts exatos.** (1) O SearXNG (só o DuckDuckGo) vive numa rede interna sozinho e só sai por um proxy do worker (a mesma classe `EgressProxy`) com os hosts exatos dos motores dele. (2) Os motores que o **Suup mesmo pergunta** (Wikipédia, arXiv, Stack Overflow, com o `User-Agent` honesto) saem por um segundo `EgressProxy` do worker que escuta **só em `127.0.0.1`** (porta efêmera, sem Docker) e deixa passar os hosts exatos dos motores diretos ligados; o cliente (`createDirectGet`) faz `CONNECT host:443` e fala TLS até o serviço. Nenhum dos dois toca a lista dos bots.
+- **A busca sai por dois proxies próprios, ambos com lista fixa de hosts exatos.** (1) O SearXNG (só o DuckDuckGo) vive numa rede interna e só sai por um proxy do worker (a mesma classe `EgressProxy`) com os hosts exatos dos motores dele; no app do Windows esse proxy roda no contêiner `suup-egress-search`, do mesmo jeito que o `suup-egress` dos bots (canal de controle por porta publicada em `127.0.0.1`), e o SearXNG se identifica com a credencial desta partida, que só abre a lista dos motores ([BUSCA.md](BUSCA.md), "O app embutido"). (2) Os motores que o **Suup mesmo pergunta** (Wikipédia, arXiv, Stack Overflow, com o `User-Agent` honesto) saem por um segundo `EgressProxy` do worker que escuta **só em `127.0.0.1`** (porta efêmera, sem Docker) e deixa passar os hosts exatos dos motores diretos ligados; o cliente (`createDirectGet`) faz `CONNECT host:443` e fala TLS até o serviço. Nenhum dos dois toca a lista dos bots.
 
 O proxy ganhou dois modos para isso (`packages/sandbox/src/egress/proxy.ts`, com testes): `openWeb` (qualquer **nome** público; o resto da regra continua: sem IP literal, só as portas, endereço resolvido público e conexão ao endereço validado) para o navegador do renderizador, e `anonymousSubject` (sem credencial, lista fixa) para o proxy de motores. Os bots nunca usam nenhum dos dois.
 
@@ -119,6 +150,7 @@ O app desenha (seção "Rede" na edição do bot, `runsIn` e hosts dos conectore
 
 ## Não verificado / adiado
 
+- O modo `container` foi provado com Docker real em **Linux**, com o worker como processo do host falando só pela porta publicada em `127.0.0.1` (`packages/sandbox/test/egress-container.test.ts`, `packages/runtime/test/connector-egress-container.test.ts`, `apps/sidecar/test/embedded.test.ts`). **Não foi exercitado no Windows com Docker Desktop** (porta publicada, firewall, WSL 2 contra Hyper-V); veja a pesquisa, "Adendo: proxy em contêiner".
 - O caminho de produção com o worker em contêiner (Compose, IP fixo na rede interna) foi escrito e validado só com `docker compose config`; a ponta a ponta com Docker dentro de Docker não foi exercida.
 - Limite de volume/taxa por host, um contêiner por bot, e inspeção de SNI/Host dentro do túnel não existem.
 - O botão "Permitir para este bot" no cartão (decisão do dono).

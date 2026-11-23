@@ -122,7 +122,7 @@ test.describe("bots, sidebar, palette, memory", () => {
     const sidebar = page.getByTestId("sidebar");
     await expect(sidebar).toHaveAttribute("data-collapsed", "false");
     const wide = (await sidebar.boundingBox())?.width ?? 0;
-    await page.getByRole("button", { name: "Recolher a barra lateral" }).click();
+    await page.keyboard.press("Control+b");
     await expect(sidebar).toHaveAttribute("data-collapsed", "true");
     expect((await sidebar.boundingBox())?.width ?? 999).toBeLessThan(wide / 2);
     // A bot is still reachable, by its name.
@@ -178,10 +178,10 @@ test.describe("bots, sidebar, palette, memory", () => {
     await page.reload();
     await expect(sidebar).toHaveAttribute("data-collapsed", "false");
     expect(await width()).toBe(330);
-    // The button collapses, and expanding restores the last expanded width.
-    await page.getByRole("button", { name: "Recolher a barra lateral" }).click();
+    // The shortcut (Ctrl+B) collapses, and expanding restores the last expanded width.
+    await page.keyboard.press("Control+b");
     await expect(sidebar).toHaveAttribute("data-collapsed", "true");
-    await page.getByRole("button", { name: "Expandir a barra lateral" }).click();
+    await page.keyboard.press("Control+b");
     expect(await width()).toBe(330);
   });
 
@@ -205,7 +205,7 @@ test.describe("bots, sidebar, palette, memory", () => {
     await expect(handle).toHaveAttribute("aria-valuenow", "404");
   });
 
-  test("the pinned tiles and the active bot: more columns when wider, and no highlight card on the selected bot", async ({
+  test("the pinned tiles and the active bot: more columns when wider, and the selected bot's tile is a quiet fill with no border", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1600, height: 900 });
@@ -220,7 +220,7 @@ test.describe("bots, sidebar, palette, memory", () => {
     await sidebar.getByRole("separator").focus();
     await page.keyboard.press("End");
     expect(await columns()).toBe(3);
-    // The selected bot keeps aria-current but no raised background or border.
+    // The selected bot keeps aria-current and a quiet fill (--color-sidebar-active, dark), but no border.
     await page.mouse.move(900, 500); // fora da barra: o hover tem estilo próprio
     const current = sidebar.locator('[aria-current="page"]');
     await expect(current).toHaveCount(1);
@@ -228,7 +228,7 @@ test.describe("bots, sidebar, palette, memory", () => {
       const css = getComputedStyle(el);
       return { background: css.backgroundColor, border: css.borderTopColor };
     });
-    expect(style.background).toBe("rgba(0, 0, 0, 0)");
+    expect(style.background).toBe("rgb(28, 28, 28)");
     expect(style.border).toBe("rgba(0, 0, 0, 0)");
   });
 
@@ -365,11 +365,13 @@ test.describe("bots, sidebar, palette, memory", () => {
     }
     // The white bot's bubble is a neutral grey, and its send button is the plain white round one;
     // the others' send button follows the bot's colour.
+    // (the send button exists only while there is text: with none, the call ornament is there)
     const sendButton = () => page.getByRole("button", { name: "Enviar mensagem" });
-    await sendButton().evaluate((el) => el.removeAttribute("disabled"));
+    await page.getByLabel("Mensagem", { exact: true }).fill("x");
     await expect(sendButton()).toHaveCSS("background-color", "rgb(255, 255, 255)");
+    await page.getByLabel("Mensagem", { exact: true }).fill("");
     await selectBot(page, "Azulado");
-    await sendButton().evaluate((el) => el.removeAttribute("disabled"));
+    await page.getByLabel("Mensagem", { exact: true }).fill("x");
     await expect(sendButton()).toHaveCSS("background-color", "rgb(16, 132, 254)");
   });
 
@@ -382,6 +384,7 @@ test.describe("bots, sidebar, palette, memory", () => {
     await expect(panel.getByRole("heading", { name: "Painel" })).toBeVisible();
     await expect(page.getByTestId("section-routines")).toContainText("Nenhuma rotina");
     await expect(page.getByTestId("section-computer")).toContainText("Computador do bot");
+    await expect(page.getByTestId("chat-model")).toBeVisible();
     await panel.getByRole("tab", { name: "Biblioteca" }).click();
     await expect(panel.getByRole("button", { name: "Todos" })).toBeVisible();
     await expect(panel).toContainText(
@@ -391,9 +394,15 @@ test.describe("bots, sidebar, palette, memory", () => {
     await expect(panel).toHaveCount(0);
     await page.getByTestId("bot-chip").click();
     await expect(panel).toBeVisible();
-    // Nothing the product does not have is on screen.
-    for (const text of ["Compartilhar", "Chat de voz", "Criar chat em grupo"])
+    // What the product does not have is on screen only as an ornament (owner's decision, 22/11/2026):
+    // the voice chat is hidden from assistive technology, dimmed, "Em breve", with nothing to click.
+    for (const text of ["Compartilhar", "Criar chat em grupo"])
       await expect(page.getByText(text)).toHaveCount(0);
+    await panel.getByRole("tab", { name: "Atividade" }).click();
+    const voice = page.getByTestId("ornament-voice");
+    await expect(voice).toHaveAttribute("aria-hidden", "true");
+    await expect(voice).toContainText("Em breve");
+    await expect(voice.getByRole("button")).toHaveCount(0);
     await expect(page.getByRole("button", { name: /microfone|voz/i })).toHaveCount(0);
   });
 

@@ -1,4 +1,4 @@
-import { ArrowUp, Plus } from "lucide-react";
+import { ArrowUp, AudioLines, Mic, Plus } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { cx } from "../lib/cx.js";
 import { focusOnAppearance } from "../lib/focus.js";
@@ -27,8 +27,11 @@ export interface ComposerProps {
 const MAX_HEIGHT = 200;
 
 /**
- * The composer (Figma v2/Compositor, without the microphone): Enter sends, Shift+Enter breaks the
- * line, nothing is sent empty or while composing with an input method.
+ * The composer (Figma v2/Compositor, slimmer, as in the Grok Bot: owner's decision, 22/11/2026):
+ * Enter sends, Shift+Enter breaks the line, nothing is sent empty or while composing with an input
+ * method. On the right, with no text, there are the dictation and the call: the backend has neither
+ * yet, so they are ornaments (`aria-hidden`, dimmed, nothing to click). With text, the call's place
+ * is taken by the real send button.
  */
 export function Composer({
   placeholder,
@@ -89,17 +92,17 @@ export function Composer({
   const box = (
     <div
       className={cx(
-        "flex min-h-14 items-end gap-2 rounded-composer border border-border bg-raised py-2 pr-2 pl-5 focus-within:border-border-strong",
+        "flex min-h-12 items-end gap-2 rounded-composer border border-border bg-raised p-2 focus-within:border-border-strong",
         disabled && "opacity-60",
       )}
     >
-      <RoundButton label="Anexar (ainda não disponível)" tone="ghost" disabled>
+      <RoundButton label="Anexar (ainda não disponível)" tone="ghost" size="sm" disabled>
         <Plus size={18} aria-hidden="true" />
       </RoundButton>
       <textarea
         ref={ref}
         rows={1}
-        className="max-h-50 min-w-0 flex-1 resize-none border-0 bg-transparent px-0 py-2 text-body text-text outline-none placeholder:text-text-muted"
+        className="max-h-50 min-w-0 flex-1 resize-none border-0 bg-transparent px-1 py-1 text-body text-text outline-none placeholder:text-text-muted"
         aria-label="Mensagem"
         placeholder={disabled && disabledReason !== undefined ? disabledReason : placeholder}
         value={text}
@@ -110,9 +113,28 @@ export function Composer({
         }}
         onKeyDown={onKeyDown}
       />
-      <RoundButton label="Enviar mensagem" tone="bot" disabled={!canSend} onClick={send}>
-        <ArrowUp size={16} aria-hidden="true" />
-      </RoundButton>
+      {canSend ? (
+        <RoundButton label="Enviar mensagem" tone="bot" size="sm" onClick={send}>
+          <ArrowUp size={16} aria-hidden="true" />
+        </RoundButton>
+      ) : (
+        <>
+          <span
+            className="inline-flex size-8 flex-none items-center justify-center text-text-muted opacity-60"
+            aria-hidden="true"
+            data-testid="ornament-dictation"
+          >
+            <Mic size={16} />
+          </span>
+          <span
+            className="inline-flex size-8 flex-none items-center justify-center rounded-pill bg-bot-fill text-bot-on-fill opacity-60 bubble-neutral:bg-bg-inverse bubble-neutral:text-text-inverse"
+            aria-hidden="true"
+            data-testid="ornament-call"
+          >
+            <AudioLines size={16} />
+          </span>
+        </>
+      )}
     </div>
   );
   if (attachment === undefined || attachment === null) return box;

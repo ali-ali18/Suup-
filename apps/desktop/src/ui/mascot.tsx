@@ -6,6 +6,7 @@ import {
   createAvatarRuntime,
   createBrainBudget,
   createCharacter,
+  type PixelClock,
   renderStill,
   type ShapeId,
 } from "@suup/avatar";
@@ -45,6 +46,8 @@ const BRAIN_BUDGET = createBrainBudget(3);
  */
 export interface MascotHost {
   ticker?: AvatarTicker;
+  /** O relógio dos mascotes pixel (um laço só para todos); em produção o do navegador. */
+  pixelClock?: PixelClock;
   reducedMotion?: boolean;
   doneHoldMs?: number;
 }
@@ -69,7 +72,7 @@ export interface MascotProps {
  * "Concluído" só aparece por um instante: o rosto feliz fica `holdMs` e volta ao repouso. Um
  * "concluído" que já estava lá quando o avatar apareceu (a execução antiga de um bot) é só repouso.
  */
-function useBriefDone(state: AvatarStateId, holdMs: number): AvatarStateId {
+export function useBriefDone(state: AvatarStateId, holdMs: number): AvatarStateId {
   const [armed, setArmed] = useState(state !== "done");
   const [over, setOver] = useState(false);
   useEffect(() => {

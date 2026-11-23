@@ -17,11 +17,15 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-notification = "2"
 tauri-plugin-opener = "2"
+# O servidor que o app carrega roda como processo filho (o Node do pacote), iniciado por aqui.
+tauri-plugin-shell = "2"
+getrandom = "0.3"
+base64 = "0.22"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Every request of the app leaves through Rust, to the one server the person configured.
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
-tokio = { version = "1", features = ["sync", "macros"] }
+tokio = { version = "1", features = ["sync", "macros", "time"] }
 futures-util = "0.3"
 # The token lives in the OS keychain (Keychain, Credential Manager, Secret Service).
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }

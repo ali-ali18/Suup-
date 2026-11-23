@@ -1,6 +1,7 @@
 import { type LucideIcon, X } from "lucide-react";
 import type { ComponentProps, HTMLAttributes, ReactNode } from "react";
 import { cx } from "../../lib/cx.js";
+import type { Glyph } from "../../ui/brand-icons.js";
 import { Dropdown } from "../../ui/dropdown.js";
 import { IconButton, Pill } from "../../ui/primitives.js";
 
@@ -249,7 +250,7 @@ export function SettingsRow({
   titleTestId,
   role,
 }: {
-  icon?: LucideIcon;
+  icon?: Glyph;
   title: string;
   description?: ReactNode;
   descriptionTestId?: string;

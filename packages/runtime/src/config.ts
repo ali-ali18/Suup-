@@ -137,6 +137,16 @@ const networkSchema = z.strictObject({
   ports: z.exactOptional(z.array(z.number().int().min(1).max(65535)).min(1).max(10)),
   proxy: z.exactOptional(
     z.strictObject({
+      /**
+       * Where the proxy runs. `process` (default): inside this process, listening on the host's
+       * address of the internal network (a Linux host, or the worker in a container). `container`:
+       * in its own container (`suup-egress`), joined to the internal network and to an ordinary one,
+       * with a control channel on a port published on 127.0.0.1 (the computer where Docker Desktop
+       * keeps its networks inside a virtual machine, e.g. Windows). One process owns the container.
+       */
+      mode: z.exactOptional(z.enum(["process", "container"])),
+      /** `container` mode: the image built from `docker/egress`. */
+      image: z.exactOptional(z.string().min(1)),
       /** Where the proxy listens. Default: the host's address on the internal network. */
       listenHost: z.exactOptional(z.string().min(1)),
       /** The address written into the machines' proxy settings. Default: `listenHost`. */
@@ -409,9 +419,18 @@ const webSchema = z.strictObject({
       image: z.exactOptional(z.string().min(1)),
       /** The internal network of the search container. Default `suup-search-net`. */
       network: z.exactOptional(z.string().min(1)),
-      /** Where the engine proxy listens on that network (needed when the worker runs in a container). */
+      /** Where the engine proxy runs and listens on that network (needed when the worker runs in a container). */
       proxy: z.exactOptional(
         z.strictObject({
+          /**
+           * `process` (default): in this process, on the search network's gateway (a Linux host).
+           * `container`: in its own container (`suup-egress-search`, the image of `docker/egress`),
+           * with its control port published on 127.0.0.1: Docker Desktop (Windows), where this process
+           * cannot listen on a Docker network. The embedded app uses it when the bots' proxy does.
+           */
+          mode: z.exactOptional(z.enum(["process", "container"])),
+          /** `container` mode: the image built from `docker/egress`. */
+          image: z.exactOptional(z.string().min(1)),
           listenHost: z.exactOptional(z.string().min(1)),
           advertiseHost: z.exactOptional(z.string().min(1)),
           port: z.exactOptional(z.number().int().min(1).max(65535)),

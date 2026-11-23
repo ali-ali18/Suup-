@@ -318,15 +318,19 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("routines (migration 0026)"), () => {
 });
 
 describe.skipIf(!DATABASE_URL)(
-  dbSuiteName("migration 0026 after the 0024 (0025 is skipped)"),
+  dbSuiteName("migration 0026 on a database at 0024 (with the 0025 also pending)"),
   () => {
     const ctx = useIsolatedDb({ migrate: false });
 
-    it("applies on a database at 0024, with the gap, and keeps the messages", async () => {
+    it("applies on a database at 0024 and keeps the messages", async () => {
       const dir = await mkdtemp(join(tmpdir(), "suup-migrations-"));
       await cp(MIGRATIONS_DIR, dir, { recursive: true });
       const held = (await readdir(MIGRATIONS_DIR)).filter((f) => f >= "0025" && f.endsWith(".sql"));
-      expect(held).toEqual(["0026_routines.sql", "0027_message_routine_ref.sql"]);
+      expect(held).toEqual([
+        "0025_bot_avatar_style.sql",
+        "0026_routines.sql",
+        "0027_message_routine_ref.sql",
+      ]);
       for (const file of held) await rm(join(dir, file));
       await migrate(ctx.db, dir);
       const [bot] = await ctx.db.sql<{ id: string }[]>`

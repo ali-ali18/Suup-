@@ -30,6 +30,8 @@ Uma mensagem sua abre uma execução. Uma rotina e uma tarefa delegada por outro
 | `avatar` | texto ou vazio | Referência opaca que o app interpreta (`mascot:<formato>` com um dos 25 formatos do motor de avatar, um emoji, id de arquivo...): o servidor só a guarda |
 | `isDefault` | verdadeiro/falso | O bot principal, o que recebe a mensagem quando nenhum é escolhido |
 | `pinned`, `groupName`, `sortOrder` | booleano, texto ou vazio, inteiro ou vazio | Onde o bot aparece na lista: fixado (blocos grandes no topo), sob um grupo nomeado, ou na lista padrão "Bots" |
+| `avatarStyle` | `shapes` ou `pixel` | A família do mascote que `avatar` nomeia: as formas do motor (padrão, e o de todo bot antigo) ou os 17 mascotes pixelados (`mascot:gato`, por exemplo); o app escolhe o desenho por aqui |
+| `avatarPixel3d` | verdadeiro/falso | Só vale com `avatarStyle: pixel`: o mascote é desenhado em 3D (voxels girando, rasterizados de volta em pixels); padrão falso (2D). Escolha por bot; movimento reduzido mostra a vista de frente (= 2D) |
 | `color` | id da paleta ou vazio | A cor do mascote e do balão do usuário (`laranja`, `azul`, `verde`, `roxo`, `rosa`, `amarelo`, `cinza`, `grafite`, `branco`); o servidor só guarda o id; sem cor, o app escolhe uma pelo id do bot |
 | `createdAt`, `updatedAt` | data | |
 | `archivedAt` | data ou vazio | Bot arquivado não recebe trabalho novo |
@@ -294,13 +296,14 @@ Uma tela separada do chat, para quando algo dá errado. A API serve os mesmos c�
 | Desktop do bot | Vídeo da tela e estado da conexão |
 | Conectores | `GET/POST /v1/connectors`, `PATCH`/`DELETE /v1/connectors/{nome}`, concessões por bot, risco por ferramenta, `POST .../test` |
 | Cofre | Segredos: `GET /v1/secrets`, `PUT`/`DELETE /v1/secrets/{nome}`, concessões por bot |
+| Primeira abertura e Servidor | **Não vêm da API do servidor**: vêm da casca do app (Tauri), que guarda a escolha (`mode`: neste computador ou VPS) e, no servidor local, conta o estado (`local_status`: etapa, motivo da falha, isolamento da máquina dos bots, se há chave). No navegador não existem: o app só conecta a um endereço. Só o que a casca informa é desenhado |
 | Dispositivos | Seus computadores e celular |
 | Inspetor | Eventos crus, `requests/{seq}`, `replay`, `resend`, `doctor` |
 | Configurações | Modelos e chaves, limites padrão, notificações; **Memória** (`GET`/`PATCH /v1/memory-settings`: consolidação, compactação, limite do prompt com o aviso por bot, validade) |
 
 ## 11. Momentos em que o avatar do bot pode reagir
 
-O rosto é desenhado pelo motor `@suup/avatar` (formatos, cores e estados no `README` do pacote); o app só escolhe o **estado** do motor a partir da execução, numa função pura (`apps/desktop/src/lib/avatar-state.ts`). A cor do rosto é a do bot (`BOT_PALETTE`); com "Movimento reduzido" ligado (no app ou no sistema) o rosto é uma imagem parada, com a cara do estado.
+O rosto é desenhado pelo motor `@suup/avatar` (formatos, cores e estados no `README` do pacote); o app só escolhe o **estado** do motor a partir da execução, numa função pura (`apps/desktop/src/lib/avatar-state.ts`). A cor do rosto é a do bot (`BOT_PALETTE`; no estilo pixel, sem cor do bot vale a cor do desenho do dono); com "Movimento reduzido" ligado (no app ou no sistema) o rosto é uma imagem parada, com a cara do estado.
 
 | Momento | De onde vem | Estado do avatar |
 |---|---|---|

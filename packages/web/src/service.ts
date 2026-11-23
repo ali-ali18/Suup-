@@ -96,6 +96,7 @@ export function createWebAccess(options: WebAccessOptions): WebAccessWithStatus 
       }
       return await createSearch({
         backend: started.searchBackend,
+        backendProblem: started.searchProblem,
         direct: started.direct ?? [],
         engines: started.engines,
         governor,
@@ -115,7 +116,14 @@ export function createWebAccess(options: WebAccessOptions): WebAccessWithStatus 
         renderKnown = started.reader.renderAvailable === true;
         return outcome;
       }
-      // No container: read in this process (no rendering).
+      // No container: read in this process (no rendering), and say why a render cannot happen.
+      if (request.render === true && started.readerProblem !== undefined) {
+        return {
+          ok: false,
+          reason: "unavailable",
+          message: `Rendering pages with JavaScript needs the reader container, which is not running here (${started.readerProblem}). Read without render, or tell the user.`,
+        };
+      }
       return await localReader().read(request);
     },
     extract: async (input) => localReader().extract(input),

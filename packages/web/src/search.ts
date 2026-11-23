@@ -38,6 +38,8 @@ const answerSchema = z.object({
 export interface SearchOptions {
   /** The SearXNG container's backend. Absent: the engines that need it are reported as not answering. */
   backend?: SearxBackend | undefined;
+  /** Why there is no backend (said to the model as the reason those engines did not answer). */
+  backendProblem?: string | undefined;
   /** The engines Suup asks itself, by official API (direct-engines.ts). An engine with an entry here is never sent to SearXNG. */
   direct?: readonly DirectEngine[];
   /** The engines that are turned on (what a search asks, unless the limits or a suspension leave some out). */
@@ -142,7 +144,15 @@ export function createSearch(
     const useSearx = searxAsk.length > 0 || directAsk.length === 0;
     const [searx, directs] = await Promise.all([
       useSearx
-        ? askSearx(options.backend, searxAsk, query, request, cap, directAsk.length === 0)
+        ? askSearx(
+            options.backend,
+            options.backendProblem,
+            searxAsk,
+            query,
+            request,
+            cap,
+            directAsk.length === 0,
+          )
         : Promise.resolve<SearxPart>({ ok: true, hits: [], unresponsive: [] }),
       Promise.all(
         directAsk.map(async (id) => ({
@@ -232,6 +242,7 @@ type SearxPart =
 /** Asks the SearXNG container for these engines. When nothing else was asked (`alone`), a failure is the search's failure. */
 async function askSearx(
   backend: SearxBackend | undefined,
+  problem: string | undefined,
   engines: readonly string[],
   query: string,
   request: WebSearchRequest,
@@ -250,11 +261,13 @@ async function askSearx(
         outcome: {
           ok: false,
           reason: "unavailable",
-          message: "The search service is not running.",
+          message: `The search service is not running${problem === undefined ? "" : ` (${problem})`}.`,
         },
       };
     }
-    return notAnswering("the search container is not running");
+    return notAnswering(
+      `the search container is not running${problem === undefined ? "" : ` (${problem})`}`,
+    );
   }
   const params = new URLSearchParams({ q: query, format: "json", safesearch: "1" });
   // The engines are named, not left to the categories: a default query asks only the `general`

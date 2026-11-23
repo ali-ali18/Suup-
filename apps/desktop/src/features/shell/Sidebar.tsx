@@ -1,5 +1,5 @@
 import type { Bot } from "@suup/api";
-import { Ellipsis, LayoutGrid, PanelLeftClose, PanelLeftOpen, Plus, Search } from "lucide-react";
+import { Ellipsis, LayoutGrid, Plus, Search } from "lucide-react";
 import { type KeyboardEvent, useCallback, useMemo, useRef, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { botDisplay, pendingQuestions, unreadOf } from "../../app/selectors.js";
@@ -21,7 +21,7 @@ import { ResizeHandle } from "../../ui/resize-handle.js";
 const ENTRY_MAIN = {
   tile: "w-full flex-col gap-2 px-2 pt-3 pb-2",
   row: "w-full gap-3 py-2 pr-9 pl-2.5",
-  rail: "w-auto gap-3 p-1.5",
+  rail: "size-rail-tile justify-center p-0",
 } as const;
 
 /** The name of the bot beside its face in the rail, shown on hover and on keyboard focus. */
@@ -86,7 +86,7 @@ function BotEntry({
   const label = status === "" ? bot.name : `${bot.name} — ${status}`;
   // Enquanto o bot trabalha o rosto vira o indicador de pontos (`data-working`, `data-state`).
   const working = ["working", "thinking", "resuming", "queued"].includes(display.chip ?? "");
-  const size = variant === "tile" ? "tile" : variant === "row" ? "row" : "lg";
+  const size = variant === "tile" ? "tile" : variant === "row" ? "row" : "md";
   const openMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     onMenu(bot, e.clientX, e.clientY);
@@ -97,7 +97,7 @@ function BotEntry({
         ref={setRef}
         type="button"
         className={cx(
-          "flex min-w-0 items-center rounded-card border border-transparent bg-transparent text-left hover:bg-hover",
+          "flex min-w-0 items-center rounded-card border border-transparent bg-transparent text-left hover:bg-hover aria-[current=page]:bg-sidebar-active",
           ENTRY_MAIN[variant],
           variant === "rail" && RAIL_TIP,
         )}
@@ -124,6 +124,8 @@ function BotEntry({
         <span className="relative inline-flex flex-none">
           <Avatar
             avatar={bot.avatar}
+            avatarStyle={bot.avatarStyle}
+            pixel3d={bot.avatarPixel3d}
             color={bot.color}
             seed={bot.id}
             size={size}
@@ -180,7 +182,7 @@ function BotEntry({
  * (pinned tiles, groups, the default list, a bottom bar) and the narrow rail of avatars.
  */
 export function Sidebar() {
-  const { api, sync, disconnect } = useServices();
+  const { api, sync, disconnect, mode } = useServices();
   const bots = useData((s) => s.bots);
   const runs = useData((s) => s.runs);
   const conversations = useData((s) => s.conversations);
@@ -282,9 +284,15 @@ export function Sidebar() {
       label: pending > 0 ? `Pendências (${pending})` : "Pendências",
       onSelect: () => go("pending"),
     },
+    { id: "plugins", label: "Conectores", onSelect: () => go("connectors") },
     { id: "settings", label: "Configurações", onSelect: () => ui().openSettings() },
     { id: "shortcuts", label: "Atalhos de teclado", onSelect: () => ui().setShortcuts(true) },
-    { id: "disconnect", label: "Desconectar", danger: true, onSelect: () => void disconnect() },
+    {
+      id: "disconnect",
+      label: mode === "local" ? "Trocar de servidor" : "Desconectar",
+      danger: true,
+      onSelect: () => void disconnect(),
+    },
   ];
   const ownerButton = (variant: "bar" | "rail") => (
     <button
@@ -302,7 +310,10 @@ export function Sidebar() {
       }}
     >
       <span
-        className="relative inline-flex size-control flex-none items-center justify-center rounded-pill border border-border-strong bg-raised font-label"
+        className={cx(
+          "relative inline-flex flex-none items-center justify-center rounded-pill border border-border-strong bg-raised font-label",
+          variant === "bar" ? "size-control" : "size-avatar-md",
+        )}
         aria-hidden="true"
       >
         V
@@ -377,22 +388,20 @@ export function Sidebar() {
   return (
     <nav
       className={cx(
-        "relative flex min-h-0 flex-none flex-col gap-2 p-3",
+        "relative flex min-h-0 flex-none flex-col bg-sidebar",
         collapsed
-          ? "w-rail items-center"
-          : "w-[var(--sidebar-w,var(--width-sidebar))] border-r border-border",
+          ? "w-rail items-center gap-2 px-0 py-3.5"
+          : "w-[var(--sidebar-w,var(--width-sidebar))] gap-2 border-r border-border p-3",
       )}
       aria-label="Bots e atalhos"
       data-testid="sidebar"
       data-collapsed={collapsed ? "true" : "false"}
+      data-tauri-drag-region
     >
       {collapsed ? (
         <>
-          <RoundButton label="Expandir a barra lateral" tone="ghost" onClick={ui().toggleSidebar}>
-            <PanelLeftOpen size={20} aria-hidden="true" />
-          </RoundButton>
           <div
-            className="flex min-h-0 w-full flex-1 flex-col items-center gap-2 overflow-y-auto py-2"
+            className="flex min-h-0 w-full flex-1 flex-col items-center gap-0.5 overflow-y-auto py-2"
             role="group"
             aria-label="Bots"
           >
@@ -403,10 +412,15 @@ export function Sidebar() {
             {flat.filter((b) => !b.pinned).map((bot) => entry(bot, "rail"))}
           </div>
           <div className="relative flex w-full flex-none flex-col items-center gap-1 pt-2">
-            <RoundButton label="Novo bot" tone="ghost" onClick={ui().openNewBot}>
+            <RoundButton label="Novo bot" tone="ghost" size="circle" onClick={ui().openNewBot}>
               <Plus size={20} aria-hidden="true" />
             </RoundButton>
-            <RoundButton label="Buscar e ações" tone="raised" onClick={() => ui().setPalette(true)}>
+            <RoundButton
+              label="Buscar e ações"
+              tone="raised"
+              size="circle"
+              onClick={() => ui().setPalette(true)}
+            >
               <LayoutGrid size={18} aria-hidden="true" />
             </RoundButton>
             {ownerButton("rail")}
@@ -414,11 +428,8 @@ export function Sidebar() {
         </>
       ) : (
         <>
-          <div className="relative flex flex-none items-center gap-1">
-            <RoundButton label="Recolher a barra lateral" tone="ghost" onClick={ui().toggleSidebar}>
-              <PanelLeftClose size={20} aria-hidden="true" />
-            </RoundButton>
-            <span className="flex-1" />
+          <div className="relative flex flex-none items-center gap-1" data-tauri-drag-region>
+            <span className="flex-1" data-tauri-drag-region />
             <RoundButton label="Buscar" tone="raised" onClick={() => ui().setPalette(true)}>
               <Search size={20} aria-hidden="true" />
             </RoundButton>
