@@ -380,9 +380,7 @@ test.describe("bots, sidebar, palette, memory", () => {
     const panel = page.getByTestId("panel");
     await expect(panel).toBeVisible();
     await expect(panel.getByRole("heading", { name: "Painel" })).toBeVisible();
-    await expect(page.getByTestId("section-soon")).toContainText(
-      "As rotinas deste bot vão aparecer aqui.",
-    );
+    await expect(page.getByTestId("section-routines")).toContainText("Nenhuma rotina");
     await expect(page.getByTestId("section-computer")).toContainText("Computador do bot");
     await panel.getByRole("tab", { name: "Biblioteca" }).click();
     await expect(panel.getByRole("button", { name: "Todos" })).toBeVisible();

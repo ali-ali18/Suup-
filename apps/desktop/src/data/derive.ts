@@ -74,6 +74,11 @@ export const TOOL_LABEL: Record<string, string> = {
   search_tools: "Procurar ferramentas",
   delegate: "Delegar",
   team_recall: "Consultar a equipe",
+  create_routine: "Criar rotina",
+  update_routine: "Mudar rotina",
+  delete_routine: "Apagar rotina",
+  list_routines: "Ver rotinas",
+  update_routine_state: "Guardar nota da rotina",
 };
 
 /**

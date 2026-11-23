@@ -36,6 +36,17 @@ export interface ReviewVerdict {
   model?: ModelAnswer | undefined;
 }
 
+/**
+ * A run that the user did not start by typing: today, a routine's fire (docs/ROTINAS.md). The
+ * instruction was stored earlier, with the user's approval; the fire itself is not the user
+ * speaking now and approves nothing.
+ */
+export interface ReviewTrigger {
+  kind: "routine";
+  /** The routine's instruction (the run's objective). */
+  instruction: string;
+}
+
 /** What only the reviewer that asks a model is given (the level reviewer never is). */
 export interface ModelReviewContext {
   /** What the tool declares it does. */
@@ -44,6 +55,8 @@ export interface ModelReviewContext {
   outbound?: OutboundMessage | undefined;
   /** The user's own messages in this conversation, oldest first, already bounded. */
   userMessages: readonly string[];
+  /** Set when a routine, not the user typing now, started the run. */
+  trigger?: ReviewTrigger | undefined;
   /** The enabled written rules of this bot (its own and the ones for every bot). */
   rules: readonly WrittenRule[];
   signal?: AbortSignal | undefined;

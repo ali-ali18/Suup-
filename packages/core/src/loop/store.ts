@@ -2,6 +2,7 @@ import type {
   ApprovalDecision,
   FailureOrigin,
   PlanStep,
+  RoutineRef,
   RunEventData,
   RunOrigin,
   RunResult,
@@ -53,7 +54,14 @@ export interface RunRecord {
 export type StoredEvent = RunEventData & { seq: number; createdAt: Date };
 
 /** What the server posts to a run from outside while it works. */
-export type InboxItemInput = { kind: "user_message"; text: string } | { kind: "stop" };
+export type InboxItemInput =
+  | {
+      kind: "user_message";
+      text: string;
+      /** The routine the message is about (the app's "Editar"); never part of `text`. */
+      routineRef?: RoutineRef;
+    }
+  | { kind: "stop" };
 
 /**
  * A posted item as the loop sees it. `id` is assigned by the store when the item is posted and

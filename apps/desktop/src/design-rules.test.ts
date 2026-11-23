@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -794,5 +794,50 @@ describe("docs/DESIGN.md is the standard, and everyone is pointed to it", () => 
     for (const file of ["apps/desktop/README.md", "docs/FRONTEND.md", "CLAUDE.md"]) {
       expect(read(join(root, file)), file).toContain("DESIGN.md");
     }
+  });
+});
+
+describe("routines: no schedule form, rows edge to edge, the detail in the panel, Editar in the chat", () => {
+  const panel = read(join(SRC, "features", "panel", "ActivityTab.tsx"));
+  const detail = read(join(SRC, "features", "panel", "RoutineDetail.tsx"));
+  const chip = read(join(SRC, "ui", "source-chip.tsx"));
+  const chat = read(join(SRC, "features", "chat", "ChatScreen.tsx"));
+  const lib = read(join(SRC, "lib", "routines.ts"));
+
+  it("the app has no form for WHEN: routines are created and changed by asking the bot", () => {
+    expect(existsSync(join(SRC, "features", "panel", "RoutineDialogs.tsx"))).toBe(false);
+    const sources = files(SRC, /\.tsx?$/);
+    for (const file of sources) {
+      const text = read(file);
+      expect(text, file).not.toContain("RoutineEditDialog");
+      expect(text, file).not.toContain('testId="routine-kind"');
+    }
+    // the words come from the shared function, never written by the screen
+    expect(panel).toContain("describeSchedule(routine.schedule)");
+    expect(detail).toContain("describeSchedule(routine.schedule)");
+  });
+
+  it("the rows run edge to edge and open the detail, which replaces the list in the panel", () => {
+    expect(panel).toContain("[&>*+*]:border-t");
+    expect(panel).not.toContain("<MenuButton");
+    expect(panel).toContain("openPanelRoutine(r.id)");
+    expect(detail).toContain('label="Voltar às rotinas"');
+    expect(detail).toContain("[&>*+*]:border-t");
+  });
+
+  it("what the bot wrote is the chat's Markdown; the sources follow the icons-of-sites setting", () => {
+    expect(detail).toContain("<Markdown");
+    expect(detail).toContain('settings.favicons === "on"');
+    expect(detail).toContain("<SourceChip");
+    expect(chip).toContain("faviconUrl(safe)");
+    expect(chip).toContain("categoryGlyph(fallback");
+  });
+
+  it("Editar is a draft in the chat with the routine as data; Remover asks first", () => {
+    expect(lib).toContain("export function editDraft");
+    expect(lib.slice(lib.indexOf("export function editDraft"))).not.toContain("routine.id");
+    expect(chat).toContain("routineRef: { id: ref.id }");
+    expect(detail).toContain("<Dialog");
+    expect(detail).toContain('title="Remover a rotina?"');
   });
 });

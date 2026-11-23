@@ -14,6 +14,18 @@ export type PanelTab = "activity" | "library";
 /** The sections of the settings dialog. */
 export type SettingsTab = "general" | "permissions" | "memory" | "vault" | "connectors";
 
+/**
+ * What "Editar" on a routine leaves for the chat of its bot (docs/ROTINAS.md): the draft for the
+ * composer and the routine it is about. The routine goes with the message as data (`routineRef`),
+ * never in the text; the chat drops it when the draft is cleared or another bot is opened.
+ */
+export interface ChatPrefill {
+  botId: string;
+  text: string;
+  routine: { id: string; name: string };
+  nonce: number;
+}
+
 export interface UiState {
   view: View;
   /** The settings dialog (a modal over whatever screen is open). */
@@ -25,6 +37,14 @@ export interface UiState {
   selectedBotId: string | null;
   panelOpen: boolean;
   panelTab: PanelTab;
+  /** The routine whose detail is open in the panel (`null`: the list). Another bot closes it. */
+  panelRoutineId: string | null;
+  openPanelRoutine(id: string | null): void;
+  /** The draft "Editar" left for a bot's chat; the chat takes it (and clears it). */
+  chatPrefill: ChatPrefill | null;
+  /** "Editar" on a routine: to the chat of its bot, with the draft and the routine bound to it. */
+  editRoutineInChat(input: Omit<ChatPrefill, "nonce">): void;
+  takeChatPrefill(): void;
   /** The run the inspector looks at. */
   inspectorRunId: string | null;
   /** Where "back" from the inspector goes. */
@@ -129,6 +149,16 @@ export const useUi = create<UiState>((set, get) => ({
   ),
   panelWidth: readWidth(PANEL_SPEC),
   panelTab: "activity",
+  panelRoutineId: null,
+  openPanelRoutine: (panelRoutineId) => set({ panelRoutineId }),
+  chatPrefill: null,
+  editRoutineInChat: (input) =>
+    set((s) => ({
+      view: "chat",
+      selectedBotId: input.botId,
+      chatPrefill: { ...input, nonce: (s.chatPrefill?.nonce ?? 0) + 1 },
+    })),
+  takeChatPrefill: () => set({ chatPrefill: null }),
   inspectorRunId: null,
   inspectorFrom: "chat",
   newBotOpen: false,
@@ -179,7 +209,13 @@ export const useUi = create<UiState>((set, get) => ({
   closeSettings: () => set({ settingsOpen: false, settingsConnector: null }),
   setSettingsTab: (settingsTab) => set({ settingsTab, settingsConnector: null }),
   setSettingsConnector: (settingsConnector) => set({ settingsConnector }),
-  selectBot: (botId) => set({ view: "chat", selectedBotId: botId }),
+  selectBot: (botId) =>
+    set((s) => ({
+      view: "chat",
+      selectedBotId: botId,
+      // The detail of a routine belongs to the bot it was opened on.
+      panelRoutineId: s.selectedBotId === botId ? s.panelRoutineId : null,
+    })),
   openPanel: (tab) => set((s) => ({ panelOpen: true, panelTab: tab ?? s.panelTab })),
   togglePanel: () => {
     const next = !get().panelOpen;

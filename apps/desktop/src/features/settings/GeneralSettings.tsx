@@ -1,4 +1,4 @@
-import type { ModelInfo } from "@suup/api";
+import type { ModelInfo, UserSettings } from "@suup/api";
 import {
   Activity,
   Bell,
@@ -21,17 +21,20 @@ import {
   Server,
   Sun,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { sortedBots } from "../../app/selectors.js";
 import { useSettings } from "../../app/settings-store.js";
 import { useUi } from "../../app/ui-store.js";
+import { timeZones } from "../../lib/routines.js";
 import type { Settings } from "../../lib/settings.js";
+import { Dropdown } from "../../ui/dropdown.js";
 import { Toggle } from "../../ui/primitives.js";
 import {
   PaneBody,
   PaneHead,
   RowAction,
+  RowLine,
   RowValue,
   type SectionProps,
   SettingsGroup,
@@ -218,6 +221,14 @@ function SwitchRow({ row }: { row: Switch<keyof Settings> }) {
  * Server, how the app looks and behaves on this computer, the models and the limits (the last two
  * read-only: the server has no endpoint to change them).
  */
+/** Where the user's time zone came from, in words. */
+const ZONE_SOURCE: Record<"device" | "user" | "config" | "none", string> = {
+  device: "Do seu computador.",
+  user: "Escolhido por você.",
+  config: "Da configuração do servidor.",
+  none: "Ainda não conhecido: escolha o seu.",
+};
+
 export function GeneralSettings({ title, titleId, onClose }: SectionProps) {
   const { api, connection, disconnect, platform, sync } = useServices();
   const bots = useData((s) => s.bots);
@@ -230,13 +241,25 @@ export function GeneralSettings({ title, titleId, onClose }: SectionProps) {
         setError(e instanceof Error ? e.message : "Não foi possível listar os modelos."),
       );
   }, [api]);
-  const [timeZone, setTimeZone] = useState<string | undefined>(undefined);
+  const [zone, setZone] = useState<UserSettings | undefined>(undefined);
+  const [zoneError, setZoneError] = useState<string | undefined>(undefined);
   useEffect(() => {
     api.info().then(
-      (info) => setTimeZone(info.timeZone),
-      () => setTimeZone(""),
+      (info) => setZone({ timeZone: info.timeZone, timeZoneSource: info.timeZoneSource }),
+      () => setZone({ timeZone: null, timeZoneSource: null }),
     );
   }, [api]);
+  const zones = useMemo(() => timeZones(zone?.timeZone ?? "UTC"), [zone?.timeZone]);
+  /** The user chooses a zone: it shows at once and goes back, with the server's words, if refused. */
+  const chooseZone = (timeZone: string) => {
+    const before = zone;
+    setZoneError(undefined);
+    setZone({ timeZone, timeZoneSource: "user" });
+    api.userSettings.update({ timeZone, source: "user" }).then(setZone, (e: unknown) => {
+      setZone(before);
+      setZoneError(e instanceof Error ? e.message : "Não foi possível mudar o fuso.");
+    });
+  };
   const redo = async (bot: Parameters<typeof sync.resetReception>[0]) => {
     const result = await sync.resetReception(bot);
     useUi
@@ -320,14 +343,39 @@ export function GeneralSettings({ title, titleId, onClose }: SectionProps) {
         </SettingsGroup>
         <SettingsGroup
           label="Hora e recepção"
-          hint="O fuso vem da configuração do servidor e é a hora que os bots usam para datas e lembretes. A recepção é a primeira conversa de cada bot; o que ele aprende fica em Memória."
+          hint="O fuso é o seu, nunca o do servidor: é a hora das rotinas, das datas e dos lembretes dos bots. A recepção é a primeira conversa de cada bot; o que ele aprende fica em Memória."
           testId="reception-group"
         >
           <SettingsRow
             icon={Globe}
             testId="time-zone-row"
             title="Fuso horário"
-            control={<RowValue data-testid="time-zone">{timeZone ?? "…"}</RowValue>}
+            description={
+              <>
+                <RowLine data-testid="time-zone-source">
+                  {zone === undefined ? "…" : ZONE_SOURCE[zone.timeZoneSource ?? "none"]}
+                </RowLine>
+                {zoneError !== undefined && (
+                  <RowLine className="text-danger-text" role="alert">
+                    {zoneError}
+                  </RowLine>
+                )}
+              </>
+            }
+            control={
+              zone === undefined ? (
+                <RowValue data-testid="time-zone">…</RowValue>
+              ) : (
+                <Dropdown
+                  label="Fuso horário"
+                  value={zone.timeZone ?? ""}
+                  placeholder="Escolher"
+                  options={zones.map((z) => ({ value: z, label: z }))}
+                  onChange={chooseZone}
+                  testId="time-zone"
+                />
+              )
+            }
           />
           {active.map((b) => (
             <SettingsRow

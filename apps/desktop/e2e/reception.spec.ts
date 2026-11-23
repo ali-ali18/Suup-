@@ -270,8 +270,10 @@ test.describe("the welcome of a bot", () => {
     await openApp(page, world);
     await openSettings(page, "Geral");
     await expect(page.getByTestId("time-zone")).not.toHaveText("…");
+    // the app told the server the zone of this computer when it connected
     const info = await world.api.info();
-    await expect(page.getByTestId("time-zone")).toHaveText(info.timeZone);
+    expect(info.timeZoneSource).toBe("device");
+    await expect(page.getByTestId("time-zone")).toHaveText(info.timeZone as string);
     await page.waitForTimeout(300);
     await page.screenshot({ path: shot("recepcao-configuracoes") });
     const row = page.getByTestId("reception-row").filter({ hasText: "Tutor da turma" });

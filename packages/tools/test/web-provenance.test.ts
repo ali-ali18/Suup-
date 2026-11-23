@@ -98,6 +98,10 @@ describe("web_read: which addresses are read without a card", () => {
     expect(await cards(s)).toHaveLength(0);
     expect(s.reads).toEqual(["https://User.example:443/doc#intro"]);
     expect((await results(s))[0]?.payload.urlProvenance).toBe("user_message");
+    // the page itself is recorded as the source of the result (the app shows it; docs/ROTINAS.md)
+    expect((await results(s))[0]?.payload.source).toEqual({
+      url: "https://User.example:443/doc#intro",
+    });
   });
 
   it("one a search result showed is read at once (the fragment does not matter)", async () => {

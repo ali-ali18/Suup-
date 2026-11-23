@@ -9,6 +9,7 @@ import {
   describeAction,
   foldActions,
   mergeApprovals,
+  routineNamesOf,
   workingPhrase,
 } from "./actions.js";
 import { toolCategory } from "./approval-text.js";
@@ -72,6 +73,45 @@ describe("describeAction: kind, label, and the two one-line descriptions", () =>
   ];
   it.each(table)("%s %j", (name, args, label, summary, doing) => {
     expect(describeAction(name, args)).toMatchObject({ kindLabel: label, summary, doing });
+  });
+
+  it("a routine the user's message is about is named by its name, never by the id the bot passed", () => {
+    const events = [
+      makeEvent(1, "context_loaded", {
+        rules: [],
+        profile: [],
+        history: [],
+        routineRefs: [{ id: "rot-1", name: "Calendário da manhã", schedule: "todo dia às 08:00" }],
+      }),
+      makeEvent(2, "user_message", {
+        text: "e a outra",
+        routineRef: { id: "rot-2", name: "Resumo", schedule: "toda segunda às 18:00" },
+      }),
+    ];
+    const names = routineNamesOf(events);
+    expect([...names]).toEqual([
+      ["rot-1", "Calendário da manhã"],
+      ["rot-2", "Resumo"],
+    ]);
+    expect(describeAction("update_routine", { routine: "rot-1" }, [], names).summary).toBe(
+      "Mudar a rotina “Calendário da manhã”",
+    );
+    expect(describeAction("delete_routine", { routine: "rot-2" }, [], names).summary).toBe(
+      "Apagar a rotina “Resumo”",
+    );
+    // an exact name the bot wrote stays as written
+    expect(describeAction("update_routine", { routine: "Manhã" }, [], names).summary).toBe(
+      "Mudar a rotina “Manhã”",
+    );
+    const rows = actionsOf("r1", [
+      ...events,
+      makeEvent(3, "tool_call", {
+        callId: "c1",
+        name: "update_routine",
+        args: { routine: "rot-1" },
+      }),
+    ]);
+    expect(rows[0]?.summary).toBe("Mudar a rotina “Calendário da manhã”");
   });
 
   it("kinds, and nothing runs long: a huge command is clipped to one line", () => {

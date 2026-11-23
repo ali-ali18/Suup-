@@ -1,4 +1,4 @@
-import type { Message, RunContextSnapshot } from "@suup/core";
+import { type Message, type RunContextSnapshot, renderRoutineRef } from "@suup/core";
 import {
   type Message as ChatMessage,
   type Db,
@@ -6,6 +6,7 @@ import {
   listMessages,
   MEMORY_PROMPT_CEILING_CHARS,
   memoryContextFor,
+  routineRefsOf,
 } from "@suup/db";
 
 /** Characters of conversation history a run gets when the configuration does not say. */
@@ -27,6 +28,9 @@ const systemNote = (text: string): string => `[System message: ${text}]`;
  *   cancelled run) are kept, as a bracketed note inside the user turn next to them: the model
  *   learns that something did not finish, and none of it becomes a claim by the assistant.
  * - `historyNote` when older messages were left out, pointing to `search_conversations`.
+ * - `routineRefs`: the routines the messages that OPENED the run are about (the app's "Editar";
+ *   the messages posted to its inbox carry their own). A user message of the history that was
+ *   about a routine keeps the same note next to its text.
  *
  * A run without a conversation (a routine, a delegation, `suup run`) gets rules and profile only.
  */
@@ -70,6 +74,14 @@ export async function loadRunContext(
     where conversation_id = ${run.conversationId} and run_id = ${runId} and author_kind = 'user'
     order by seq limit 1`;
   let before = opening === undefined ? Number.POSITIVE_INFINITY : Number(opening.seq);
+  // The routines the opening messages are about (not the ones posted to the inbox: the loop
+  // delivers those with their own reference).
+  const opened = await db.sql<{ routine_ref: string }[]>`
+    select m.routine_ref from messages m
+    where m.conversation_id = ${run.conversationId} and m.run_id = ${runId}
+      and m.author_kind = 'user' and m.routine_ref is not null
+      and not exists (select 1 from run_inbox i where i.message_id = m.id and i.run_id = ${runId})
+    order by m.seq`;
 
   const picked: ChatMessage[] = [];
   let used = 0;
@@ -96,7 +108,15 @@ export async function loadRunContext(
   }
   picked.reverse();
 
-  const history = toTurns(picked);
+  const refs = await routineRefsOf(db, [
+    ...opened.map((r) => r.routine_ref),
+    ...picked.flatMap((m) => (m.routineRef === null ? [] : [m.routineRef])),
+  ]);
+  const routineRefs = opened.flatMap((r) => {
+    const ref = refs.get(r.routine_ref);
+    return ref === undefined ? [] : [ref];
+  });
+  const history = toTurns(picked, refs);
   const first = picked[0];
   const hidden = first === undefined ? 0 : first.seq - 1;
   const note = omitted
@@ -107,6 +127,7 @@ export async function loadRunContext(
     profile,
     history,
     ...(note === undefined ? {} : { historyNote: note }),
+    ...(routineRefs.length === 0 ? {} : { routineRefs }),
     ...extra,
   };
 }
@@ -115,12 +136,17 @@ function textOf(message: ChatMessage): string {
   return message.authorKind === "system" ? systemNote(message.text) : message.text;
 }
 
-/** Chat messages as alternating user/assistant turns. */
-function toTurns(messages: readonly ChatMessage[]): Message[] {
+/** Chat messages as alternating user/assistant turns; a message about a routine keeps its note. */
+function toTurns(
+  messages: readonly ChatMessage[],
+  refs: ReadonlyMap<string, { id: string; name: string; schedule: string }>,
+): Message[] {
   const turns: { role: "user" | "assistant"; text: string }[] = [];
   for (const message of messages) {
     const role = message.authorKind === "bot" ? "assistant" : "user";
-    const text = textOf(message);
+    const ref = message.routineRef === null ? undefined : refs.get(message.routineRef);
+    const text =
+      ref === undefined ? textOf(message) : `${textOf(message)}\n\n${renderRoutineRef(ref)}`;
     const last = turns[turns.length - 1];
     if (last?.role === role) last.text = `${last.text}\n\n${text}`;
     else turns.push({ role, text });

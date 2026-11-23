@@ -12,19 +12,32 @@ export type InboxPost =
     }
   | { kind: "stop" };
 
-/** A posted item as stored. `id` is the identity column rendered as a string (it is a bigint). */
-export type InboxEntry = InboxPost & { id: string; createdAt: Date };
+/**
+ * A posted item as stored. `id` is the identity column rendered as a string (it is a bigint).
+ * `routineRef`: the routine the chat message is about (`messages.routine_ref`), when it has one.
+ */
+export type InboxEntry = InboxPost & { id: string; createdAt: Date; routineRef?: string };
 
 interface InboxRow {
   id: string;
   kind: "user_message" | "stop";
   text: string | null;
   created_at: Date;
+  routine_ref?: string | null;
 }
 
 function mapEntry(row: InboxRow): InboxEntry {
   const base = { id: String(row.id), createdAt: row.created_at };
-  if (row.kind === "user_message") return { ...base, kind: "user_message", text: row.text ?? "" };
+  if (row.kind === "user_message") {
+    return {
+      ...base,
+      kind: "user_message",
+      text: row.text ?? "",
+      ...(row.routine_ref === null || row.routine_ref === undefined
+        ? {}
+        : { routineRef: row.routine_ref }),
+    };
+  }
   return { ...base, kind: "stop" };
 }
 
@@ -87,9 +100,10 @@ export async function postInbox(db: Db, runId: string, item: InboxPost): Promise
 /** Items not consumed yet, in the order they were posted. Does not consume them. */
 export async function peekInboxEntries(db: Db, runId: string): Promise<InboxEntry[]> {
   const rows = await db.sql<InboxRow[]>`
-    select id, kind, text, created_at from run_inbox
-    where run_id = ${runId} and consumed_at is null
-    order by id`;
+    select i.id, i.kind, i.text, i.created_at, m.routine_ref
+    from run_inbox i left join messages m on m.id = i.message_id
+    where i.run_id = ${runId} and i.consumed_at is null
+    order by i.id`;
   return rows.map(mapEntry);
 }
 

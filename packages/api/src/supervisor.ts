@@ -18,8 +18,8 @@ const clockTime = z.string().superRefine((value, ctx) => {
 
 /**
  * What the user controls about the Principal as the supervisor of the team
- * (`GET`/`PATCH /v1/supervisor/settings`, docs/SUPERVISOR.md). Times are in the time zone of the
- * server's configuration (`defaults.timeZone`), which is also said here.
+ * (`GET`/`PATCH /v1/supervisor/settings`, docs/SUPERVISOR.md). Times are in the user's time zone
+ * (Configurações > Geral, or the one the app sent from the user's computer), also said here.
  */
 export const supervisorSettingsSchema = z.object({
   /** The nightly review of what the other bots did. On by default. */
@@ -30,8 +30,8 @@ export const supervisorSettingsSchema = z.object({
   morningTime: z.string().nullable(),
   /** The most one night's review may cost, in US$; `null` (the default): no cap. */
   costCapUsd: z.number().nullable(),
-  /** The time zone the times are in. */
-  timeZone: z.string(),
+  /** The time zone the times are in; `null` while the user's zone is not known (nothing runs then). */
+  timeZone: z.string().nullable(),
   /** Whether the Principal's model can be used now (the review uses it). */
   model: z.object({
     available: z.boolean(),

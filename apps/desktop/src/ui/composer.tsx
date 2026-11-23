@@ -1,5 +1,5 @@
 import { ArrowUp, Plus } from "lucide-react";
-import { type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { cx } from "../lib/cx.js";
 import { focusOnAppearance } from "../lib/focus.js";
 import { RoundButton } from "./primitives.js";
@@ -12,6 +12,15 @@ export interface ComposerProps {
   onSend(text: string): void;
   /** Text given back after a failed send (the draft is restored). */
   restore?: { text: string; nonce: number } | undefined;
+  /**
+   * A draft put in by the app ("Editar" on a routine): it replaces the text, and the field takes
+   * the focus with the caret at the end, for the person to finish it.
+   */
+  prefill?: { text: string; nonce: number } | undefined;
+  /** Every change the PERSON makes to the draft (typing, cutting); not the clearing after a send. */
+  onTextChange?(text: string): void;
+  /** Shown just above the field: what the draft is bound to (a routine), with its remove. */
+  attachment?: ReactNode;
   autoFocus?: boolean;
 }
 
@@ -27,6 +36,9 @@ export function Composer({
   disabledReason,
   onSend,
   restore,
+  prefill,
+  onTextChange,
+  attachment,
   autoFocus,
 }: ComposerProps) {
   const [text, setText] = useState("");
@@ -41,6 +53,17 @@ export function Composer({
   useEffect(() => {
     if (restore !== undefined) setText((current) => (current === "" ? restore.text : current));
   }, [restore]);
+
+  // A draft from the app: in the field, focused, the caret at the end.
+  useEffect(() => {
+    if (prefill === undefined) return;
+    setText(prefill.text);
+    const el = ref.current;
+    if (el === null) return;
+    el.value = prefill.text;
+    el.focus({ preventScroll: true });
+    el.setSelectionRange(prefill.text.length, prefill.text.length);
+  }, [prefill]);
 
   // Grow with the text, up to a limit; then it scrolls inside.
   useEffect(() => {
@@ -63,7 +86,7 @@ export function Composer({
     }
   };
 
-  return (
+  const box = (
     <div
       className={cx(
         "flex min-h-14 items-end gap-2 rounded-composer border border-border bg-raised py-2 pr-2 pl-5 focus-within:border-border-strong",
@@ -81,12 +104,22 @@ export function Composer({
         placeholder={disabled && disabledReason !== undefined ? disabledReason : placeholder}
         value={text}
         disabled={disabled}
-        onChange={(e) => setText(e.target.value)}
+        onChange={(e) => {
+          setText(e.target.value);
+          onTextChange?.(e.target.value);
+        }}
         onKeyDown={onKeyDown}
       />
       <RoundButton label="Enviar mensagem" tone="bot" disabled={!canSend} onClick={send}>
         <ArrowUp size={16} aria-hidden="true" />
       </RoundButton>
+    </div>
+  );
+  if (attachment === undefined || attachment === null) return box;
+  return (
+    <div className="flex flex-col gap-2">
+      {attachment}
+      {box}
     </div>
   );
 }

@@ -260,3 +260,33 @@ describe("approvals and the vault in the error mapping", () => {
     );
   });
 });
+
+describe("the sources of a routine's fire (docs/ROTINAS.md)", () => {
+  it("pages first, then each connector whose tool answered, by the exact registered name", async () => {
+    const { fireSources, FIRE_SOURCES_MAX } = await import("../src/routes/routines.js");
+    const connectors = new Map([
+      ["conn_agenda__eventos", "agenda"],
+      ["conn_agenda__hoje", "agenda"],
+      ["conn_erp__pedido", "erp"],
+    ]);
+    expect(fireSources(undefined, connectors)).toEqual([]);
+    expect(
+      fireSources(
+        {
+          pages: [{ url: "https://g1.globo.com/a", title: "Manchete" }, { url: "https://x.dev/" }],
+          tools: ["web_read", "conn_agenda__hoje", "conn_agenda__eventos", "conn_erp__pedido"],
+        },
+        connectors,
+      ),
+    ).toEqual([
+      { kind: "web", url: "https://g1.globo.com/a", title: "Manchete" },
+      { kind: "web", url: "https://x.dev/", title: null },
+      { kind: "connector", connector: "agenda" },
+      { kind: "connector", connector: "erp" },
+    ]);
+    // a name that only LOOKS like a connector's is not one
+    expect(fireSources({ pages: [], tools: ["conn_agenda__outra"] }, connectors)).toEqual([]);
+    const many = Array.from({ length: 20 }, (_, i) => ({ url: `https://s${i}.example/` }));
+    expect(fireSources({ pages: many, tools: [] }, connectors)).toHaveLength(FIRE_SOURCES_MAX);
+  });
+});

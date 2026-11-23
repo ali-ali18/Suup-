@@ -156,10 +156,15 @@ export const modelInfoSchema = z.object({
 export type ModelInfo = z.infer<typeof modelInfoSchema>;
 export const modelListSchema = list(modelInfoSchema);
 
-/** `GET /v1/info`: what the server says about itself (read-only; it comes from its configuration). */
+/** `GET /v1/info`: what the server says about itself (read-only). */
 export const serverInfoSchema = z.object({
-  /** The user's time zone (IANA name): what "now" means to the bots. */
-  timeZone: z.string(),
+  /**
+   * The user's time zone (IANA name): what "now" and routines mean to the bots. `null` while nobody
+   * said it (the app sends the zone of the user's computer when it connects): never the server's.
+   */
+  timeZone: z.string().nullable(),
+  /** Where it came from: chosen by the user, sent by the app from the computer, or the configuration. */
+  timeZoneSource: z.enum(["user", "device", "config"]).nullable(),
 });
 export type ServerInfo = z.infer<typeof serverInfoSchema>;
 

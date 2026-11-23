@@ -12,6 +12,8 @@ export const workspaceAliases = [
   // The text of an answer: pure, and the only part of `core` the browser needs (the index of
   // `core` has Node modules).
   { find: "@suup/core/answers", replacement: source("core/src/answers.ts") },
+  // The schedule of a routine (docs/ROTINAS.md): zod and Intl only, shared with the server.
+  { find: "@suup/core/schedule", replacement: source("core/src/schedule.ts") },
   { find: /^@suup\/avatar$/, replacement: source("avatar/src/index.ts") },
   { find: /^@suup\/avatar\/browser$/, replacement: source("avatar/src/browser.ts") },
 ];

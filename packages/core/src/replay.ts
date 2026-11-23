@@ -276,6 +276,7 @@ export class ReplayInvoker implements ToolInvoker {
         ...(recorded.isError ? { isError: true } : {}),
         ...(recorded.webUrls === undefined ? {} : { webUrls: recorded.webUrls }),
         ...(recorded.urlProvenance === undefined ? {} : { urlProvenance: recorded.urlProvenance }),
+        ...(recorded.source === undefined ? {} : { source: recorded.source }),
       },
       durationMs: recorded.durationMs,
       outcome: recorded.outcome,

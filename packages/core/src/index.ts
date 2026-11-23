@@ -27,6 +27,8 @@ export {
   REVIEW_DECISIONS,
   REVIEW_SKIPS,
   type ReviewDecision,
+  type RoutineRef,
+  type RoutineRunFacts,
   RUN_EVENT_TYPES,
   RUN_ORIGINS,
   type RunEventData,
@@ -36,6 +38,8 @@ export {
   type RunResult,
   type RunStatus,
   riskLevelSchema,
+  routineRefSchema,
+  routineRunFactsSchema,
   runEventSchema,
   runOriginSchema,
   runResultSchema,
@@ -160,6 +164,7 @@ export {
   RISK_LEVELS,
   type RiskLevel,
 } from "./risk.js";
+export * from "./schedule.js";
 export {
   createRedactor,
   findPlaceholders,
@@ -200,6 +205,7 @@ export {
   type ToolContext,
   type ToolOutput,
   type ToolRisk,
+  type ToolSource,
   WorkspaceEscapeError,
 } from "./tool.js";
 export { EXTERNAL_CLOSE, EXTERNAL_OPEN, wrapUntrusted } from "./untrusted.js";

@@ -162,3 +162,69 @@ export async function listRunEvents(
     limit ${limit}`;
   return rows.map(mapRunEvent);
 }
+
+/** What a run used, read from its recorded tool calls (`listRunSources`). */
+export interface RunSources {
+  /** The pages its tools declared they read (`tool_result.source`), in order, each once. */
+  pages: { url: string; title?: string }[];
+  /** The tools it called that answered without an error, in order, each once (exact names). */
+  tools: string[];
+}
+
+/**
+ * The sources of each run: the pages its tools declared (`web_read` declares the page it read) and
+ * the tools that worked. Structured fields of the log only (`tool_call.name`, `tool_result.source`,
+ * `isError`): no text is read. Runs with no tool calls are absent from the map.
+ */
+export async function listRunSources(
+  db: Db,
+  runIds: readonly string[],
+): Promise<Map<string, RunSources>> {
+  const ids = z.array(z.uuid()).parse([...runIds]);
+  const out = new Map<string, RunSources>();
+  if (ids.length === 0) return out;
+  const rows = await db.sql<
+    {
+      run_id: string;
+      type: string;
+      call_id: string | null;
+      name: string | null;
+      is_error: boolean | null;
+      source: unknown;
+    }[]
+  >`
+    select run_id, type, payload->>'callId' as call_id, payload->>'name' as name,
+      (payload->>'isError')::boolean as is_error, payload->'source' as source
+    from run_events
+    where run_id = any(${ids}::uuid[]) and type in ('tool_call', 'tool_result')
+    order by run_id, seq`;
+  const names = new Map<string, string>();
+  for (const row of rows) {
+    if (row.call_id === null) continue;
+    const key = `${row.run_id}\u0000${row.call_id}`;
+    if (row.type === "tool_call") {
+      if (row.name !== null) names.set(key, row.name);
+      continue;
+    }
+    if (row.is_error !== false) continue;
+    let entry = out.get(row.run_id);
+    if (entry === undefined) {
+      entry = { pages: [], tools: [] };
+      out.set(row.run_id, entry);
+    }
+    const name = names.get(key);
+    if (name !== undefined && !entry.tools.includes(name)) entry.tools.push(name);
+    const source = pageOf(row.source);
+    if (source !== undefined && !entry.pages.some((p) => p.url === source.url)) {
+      entry.pages.push(source);
+    }
+  }
+  return out;
+}
+
+function pageOf(raw: unknown): { url: string; title?: string } | undefined {
+  if (typeof raw !== "object" || raw === null) return undefined;
+  const { url, title } = raw as { url?: unknown; title?: unknown };
+  if (typeof url !== "string" || url === "") return undefined;
+  return typeof title === "string" && title !== "" ? { url, title } : { url };
+}

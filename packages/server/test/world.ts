@@ -70,6 +70,8 @@ export interface WorldOptions {
   wakeEveryMs?: number;
   /** How often the worker looks at the clock for the nightly review and the morning message (default: 60 s). */
   supervisorEveryMs?: number;
+  /** How often the worker looks for routines that came due (default: its own, 15 s). */
+  routinesEveryMs?: number;
 }
 
 /**
@@ -174,6 +176,9 @@ export function useWorld(options: WorldOptions = {}): World {
         ...(options.supervisorEveryMs === undefined
           ? {}
           : { supervisorEveryMs: options.supervisorEveryMs }),
+        ...(options.routinesEveryMs === undefined
+          ? {}
+          : { routinesEveryMs: options.routinesEveryMs }),
         onError: (error, context) => {
           console.error(`worker: ${context}:`, error);
         },

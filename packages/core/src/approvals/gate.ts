@@ -20,6 +20,7 @@ import {
   type AutoReviewer,
   levelReviewer,
   REVIEW_VERDICTS,
+  type ReviewTrigger,
   type ReviewVerdict,
 } from "./reviewer.js";
 import type { ApprovalRule } from "./rules.js";
@@ -53,8 +54,16 @@ export interface GateCall {
    * oldest first. Never the assistant's text or a tool result. Only the loop fills it.
    */
   userMessages?: readonly string[] | undefined;
+  /**
+   * What started the run when it was not the user typing now: a routine's fire. The model reviewer
+   * is told so (the fire is not live input and never approval) and sees the routine's instruction,
+   * stored earlier with the user's approval, apart from the user's messages.
+   */
+  trigger?: ReviewTrigger | undefined;
   /** The URLs the run has seen and where each came from (the loop derives them from the log). */
   webSeen?: ReadonlyMap<string, WebUrlSource> | undefined;
+  /** The routines the user's messages are about: id to name (see `ClassifyEnv.routineNames`). */
+  routineNames?: ReadonlyMap<string, string> | undefined;
   /** The refusals the model reviewer already gave in this run (read from the log). */
   reviewBlocks?: { total: number; consecutive: number } | undefined;
   /** A review of THIS call already in the log (a resumed run): it is used, the model is not asked again. */
@@ -192,6 +201,7 @@ export function createToolGate(options: ToolGateOptions): ToolGate {
       const assessed = options.tools.assess(call.name, call.args, {
         executor: call.executor,
         ...(call.webSeen === undefined ? {} : { webSeen: call.webSeen }),
+        ...(call.routineNames === undefined ? {} : { routineNames: call.routineNames }),
         ...(call.allowed === undefined ? {} : { allowed: call.allowed }),
       });
       if (assessed === undefined) return null;
@@ -346,6 +356,7 @@ async function modelReview(
         toolDescription: proposed.toolDescription,
         ...(proposed.outbound === undefined ? {} : { outbound: proposed.outbound }),
         userMessages: call.userMessages ?? [],
+        ...(call.trigger === undefined ? {} : { trigger: call.trigger }),
         rules,
         signal: call.signal,
       },

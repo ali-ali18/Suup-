@@ -184,6 +184,7 @@ export class Sync {
       if (!this.opened) {
         this.opened = true;
         void this.reload();
+        void this.shareDeviceTimeZone();
       }
       return;
     }
@@ -226,6 +227,21 @@ export class Sync {
           text: run.status === "done" ? (run.result?.summary ?? run.objective) : run.objective,
         });
       }
+    }
+  }
+
+  /**
+   * Tells the server the time zone of THIS computer (docs/ROTINAS.md): the user's routines and "now"
+   * are in the user's zone, never the server's, which may run on a VPS in UTC. It only fills the
+   * blank (or follows the computer): a zone the user chose in Configurações is never replaced.
+   */
+  async shareDeviceTimeZone(): Promise<void> {
+    try {
+      const timeZone = new Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (typeof timeZone !== "string" || timeZone === "") return;
+      await this.deps.api.userSettings.update({ timeZone, source: "device" });
+    } catch {
+      // an older server, or a zone it does not know: Configurações > Geral lets the user choose
     }
   }
 
@@ -476,16 +492,22 @@ export class Sync {
    * Sends a message: it appears at once and is confirmed (or taken back) when the server answers.
    * Returns the text to give back to the composer when the server refused.
    */
+  /** `options.routineRef`: the routine the message is about (the "Editar" of a routine): data, never text. */
   async send(
     conversationId: string,
     text: string,
+    options: { routineRef?: { id: string } } = {},
   ): Promise<{ ok: true; run: Run; message: Message } | { ok: false; text: string }> {
     const tempId = crypto.randomUUID();
     update(this.store, (s) =>
       addOptimisticMessage(s, { tempId, conversationId, text, now: new Date().toISOString() }),
     );
     try {
-      const result = await this.deps.api.conversations.send(conversationId, text);
+      const result = await this.deps.api.conversations.send(
+        conversationId,
+        text,
+        options.routineRef === undefined ? {} : { routineRef: options.routineRef },
+      );
       update(this.store, (s) =>
         mergeRun(resolveOptimisticMessage(s, tempId, result.message), result.run),
       );

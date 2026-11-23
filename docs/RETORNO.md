@@ -14,7 +14,7 @@ schedule_return({ inMinutes: 1..60, note: "até 500 caracteres: o que conferir a
 
 O bot chama, escreve **uma mensagem normal** ao usuário ("Disparei o deploy, volto em 20 minutos para conferir") e a execução fica **parada**, sem worker, sem custo e sem nada na tela. Na hora marcada ela acorda **sozinha**, a **mesma execução** (mesmo plano, mesmo histórico, mesmos orçamentos), recebe a nota que o bot escreveu e continua na mesma conversa.
 
-Não é rotina: não aparece no painel, não tem nome, não se repete e o usuário não a cria. É interno do bot. Horário fixo ou repetição continuam sendo assunto de rotina.
+Não é rotina: não aparece no painel, não tem nome, não se repete e o usuário não a cria. É interno do bot. Horário fixo, outro dia ou repetição são assunto de rotina ([ROTINAS.md](ROTINAS.md)); o prompt diz isso ao bot.
 
 ## Sem marcador na interface
 

@@ -1,5 +1,6 @@
 import {
   Brain,
+  CalendarClock,
   FileText,
   Globe,
   Mail,
@@ -21,6 +22,7 @@ const GLYPH: Record<CategoryIcon, typeof Terminal> = {
   connector: Plug,
   network: Network,
   team: Users,
+  routine: CalendarClock,
   generic: ShieldQuestion,
 };
 

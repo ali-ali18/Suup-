@@ -301,6 +301,18 @@ describe("web_read", () => {
     expect(out.content).toContain("[Content cut: showing the first 60000 of 90000 characters.]");
   });
 
+  it("declares the page it read as the source of the result (url after redirects, title)", () => {
+    const out = formatRead({ ok: true, page: PAGE }, "reader");
+    expect(out.source).toEqual({ url: "https://example.com/final", title: "A page" });
+    const { title: _title, ...untitled } = PAGE;
+    expect(formatRead({ ok: true, page: untitled }, "reader").source).toEqual({
+      url: "https://example.com/final",
+    });
+    expect(formatRead({ ok: false, reason: "robots", message: "no" }, "reader").source).toBe(
+      undefined,
+    );
+  });
+
   it("with the reader service off, reads with the bot machine (curl through its allowlist) and converts the page", async () => {
     const commands: string[] = [];
     const executor = {

@@ -33,6 +33,7 @@ export async function recordUserMessage(ctx: LoopContext, item: InboxItem): Prom
       text: item.text,
       inboxId: item.id,
       ...(link === null ? {} : { linkedApprovalId: link.approvalId }),
+      ...(item.routineRef === undefined ? {} : { routineRef: item.routineRef }),
     },
   });
 }

@@ -107,6 +107,21 @@ import {
 } from "./memory.js";
 import { type BotNetwork, botNetworkSchema } from "./network.js";
 import {
+  type CreateRoutineBody,
+  type ListRoutineFiresQuery,
+  type ListRoutinesQuery,
+  type Routine,
+  type RoutineFire,
+  routineFireListSchema,
+  routineListSchema,
+  routineSchema,
+  runRoutineResultSchema,
+  type UpdateRoutineBody,
+  type UpdateUserSettingsBody,
+  type UserSettings,
+  userSettingsSchema,
+} from "./routines.js";
+import {
   type ListRunsQuery,
   type Run,
   type RunEvents,
@@ -171,8 +186,26 @@ export interface SuupClient {
   /** `GET /health`: no token needed. */
   health(): Promise<{ status: "ok" }>;
   models: { list(): Promise<ModelInfo[]> };
-  /** `GET /v1/info`: the time zone the bots use, from the server's configuration (read-only). */
+  /** `GET /v1/info`: the user's time zone the bots use (`null` while unknown) and where it came from. */
   info(): Promise<ServerInfo>;
+  /** The user's own settings: today the time zone (docs/ROTINAS.md). */
+  userSettings: {
+    get(): Promise<UserSettings>;
+    /** `source: "device"` fills the blank only; `source: "user"` is the user's choice and wins. */
+    update(body: UpdateUserSettingsBody): Promise<UserSettings>;
+  };
+  /** The bots' routines (docs/ROTINAS.md). */
+  routines: {
+    list(query?: ListRoutinesQuery): Promise<Routine[]>;
+    get(id: string): Promise<Routine>;
+    create(body: CreateRoutineBody): Promise<Routine>;
+    update(id: string, body: UpdateRoutineBody): Promise<Routine>;
+    delete(id: string): Promise<void>;
+    /** "Rodar agora": a fire outside the schedule; `409` while the previous run still goes. */
+    run(id: string): Promise<RoutineFire>;
+    /** The history of fires, newest first. */
+    fires(id: string, query?: ListRoutineFiresQuery): Promise<RoutineFire[]>;
+  };
   tools: { list(): Promise<{ items: ToolInfo[]; control: string[] }> };
   bots: {
     list(query?: ListBotsQuery): Promise<Bot[]>;
@@ -200,7 +233,12 @@ export interface SuupClient {
       id: string,
       query?: ListMessagesQuery,
     ): Promise<{ items: Message[]; hasMore: boolean }>;
-    send(id: string, text: string): Promise<SendMessageResult>;
+    /** `options.routineRef`: the routine the message is about (never part of the text). */
+    send(
+      id: string,
+      text: string,
+      options?: { routineRef?: { id: string } },
+    ): Promise<SendMessageResult>;
     markRead(id: string, body?: MarkReadBody): Promise<Conversation>;
     /** The user's decision on a team card (the message that carries it): create the ticked ones, or "Agora não". */
     decideTeam(messageId: string, body: DecideTeamBody): Promise<DecideTeamResult>;
@@ -422,6 +460,34 @@ export function createClient(options: ClientOptions): SuupClient {
     health: () => call("GET", "/health", healthSchema, { auth: false }),
     models: { list: async () => (await call("GET", "/v1/models", modelListSchema)).items },
     info: () => call("GET", "/v1/info", serverInfoSchema),
+    userSettings: {
+      get: () => call("GET", "/v1/user-settings", userSettingsSchema),
+      update: (body) => call("PATCH", "/v1/user-settings", userSettingsSchema, { body }),
+    },
+    routines: {
+      list: async (query) =>
+        (
+          await call("GET", "/v1/routines", routineListSchema, {
+            query: query as Query | undefined,
+          })
+        ).items,
+      get: (routineId) => call("GET", `/v1/routines/${id(routineId)}`, routineSchema),
+      create: (body) => call("POST", "/v1/routines", routineSchema, { body }),
+      update: (routineId, body) =>
+        call("PATCH", `/v1/routines/${id(routineId)}`, routineSchema, { body }),
+      delete: async (routineId) => {
+        await call("DELETE", `/v1/routines/${id(routineId)}`, deletedSchema, noBody);
+      },
+      run: async (routineId) =>
+        (await call("POST", `/v1/routines/${id(routineId)}/run`, runRoutineResultSchema, noBody))
+          .fire,
+      fires: async (routineId, query) =>
+        (
+          await call("GET", `/v1/routines/${id(routineId)}/fires`, routineFireListSchema, {
+            query: query as Query | undefined,
+          })
+        ).items,
+    },
     tools: { list: () => call("GET", "/v1/tools", toolListSchema) },
     bots: {
       list: async (query) =>
@@ -453,9 +519,12 @@ export function createClient(options: ClientOptions): SuupClient {
         call("GET", `/v1/conversations/${id(conversationId)}/messages`, messagePageSchema, {
           query: query as Query | undefined,
         }),
-      send: (conversationId, text) =>
+      send: (conversationId, text, options = {}) =>
         call("POST", `/v1/conversations/${id(conversationId)}/messages`, sendMessageResultSchema, {
-          body: { text },
+          body:
+            options.routineRef === undefined
+              ? { text }
+              : { text, routineRef: { id: options.routineRef.id } },
         }),
       decideTeam: (messageId, body) =>
         call("POST", `/v1/messages/${id(messageId)}/team`, decideTeamResultSchema, {

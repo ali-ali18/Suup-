@@ -7,6 +7,7 @@ import type { ToolSpec } from "../provider.js";
 import { CONTROL_TOOL_NAMES, controlToolSpecs } from "./control-tools.js";
 import {
   buildSystemPrompt,
+  CREATE_ROUTINE_TOOL_NAME,
   formatClock,
   isReminderBlock,
   MEMORY_TOOL_NAMES,
@@ -58,6 +59,7 @@ export function fixedParts(ctx: LoopContext): {
         read: offered.some((spec) => spec.name === WEB_READ_TOOL_NAME),
       },
       returns: canScheduleReturn(ctx),
+      routines: offered.some((spec) => spec.name === CREATE_ROUTINE_TOOL_NAME),
       secrets: ctx.deps.secrets !== undefined,
       approvals: ctx.deps.gate.allowsEverything !== true,
       toolIndex: catalog?.index,

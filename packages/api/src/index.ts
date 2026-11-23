@@ -22,7 +22,9 @@ export {
 } from "./errors.js";
 export * from "./memory.js";
 export * from "./network.js";
+export * from "./routines.js";
 export * from "./runs.js";
+export * from "./schedule.js";
 export { createSseParser, type SseFrame } from "./sse.js";
 export * from "./stream.js";
 export {

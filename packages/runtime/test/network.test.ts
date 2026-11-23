@@ -156,7 +156,8 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("network allowlist and the approval c
       secrets: runtime.vault.settings !== undefined,
       scheduleReturn: true,
     }).length;
-    expect(report.builtinTools).toBe(control + 2);
+    // read_file, the host request and the four routine tools of a conversation run (docs/ROTINAS.md)
+    expect(report.builtinTools).toBe(control + 2 + 4);
     expect(report.mode).toBe("direct");
     expect(report.connectorTools).toBe(0);
     expect(report.deferred).toBe(0);

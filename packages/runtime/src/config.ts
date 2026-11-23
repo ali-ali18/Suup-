@@ -231,14 +231,16 @@ export function isTimeZone(name: string): boolean {
 }
 
 /**
- * The user's time zone: `defaults.timeZone` of the configuration, else the one of the computer the
- * server runs on, else UTC. Read at the start of each run and recorded in its `context_loaded`.
+ * The user's time zone written in the configuration (`defaults.timeZone`), or `undefined`. There is
+ * NO fallback to the zone of the computer the server runs on: the server may be a VPS in UTC or in
+ * another country, and the user's times would silently be wrong (the owner's rule). The runtime
+ * reads the zone the user chose or the app sent (`user_settings`) first; see `Runtime.userTimeZone`.
  */
-export function resolveTimeZone(config: { defaults?: { timeZone?: string } }): string {
+export function configuredTimeZone(config: {
+  defaults?: { timeZone?: string };
+}): string | undefined {
   const configured = config.defaults?.timeZone;
-  if (configured !== undefined && isTimeZone(configured)) return configured;
-  const system = new Intl.DateTimeFormat().resolvedOptions().timeZone;
-  return system !== undefined && system !== "" && isTimeZone(system) ? system : "UTC";
+  return configured !== undefined && isTimeZone(configured) ? configured : undefined;
 }
 
 const defaultsSchema = z.strictObject({
@@ -257,8 +259,9 @@ const defaultsSchema = z.strictObject({
   historyChars: z.exactOptional(positiveInt),
   /**
    * The user's time zone, an IANA name (`America/Sao_Paulo`). It is what "now" means to the bots:
-   * the date and time in their prompt and in the reminder of each turn. Without it, the time zone
-   * of the computer that runs the server (see `resolveTimeZone`).
+   * the date and time in their prompt and in the reminder of each turn. The zone the user chose in
+   * the app (or the app sent from the user's computer) comes first; this is the fallback when
+   * neither said one. Never the server's own zone (see `configuredTimeZone`).
    */
   timeZone: z.exactOptional(
     z.string().refine(isTimeZone, "não é um fuso horário IANA (por exemplo America/Sao_Paulo)"),

@@ -82,7 +82,7 @@ export const MAX_RETURN_NOTE_CHARS = 500;
 /** Consecutive returns one run may have, unless `limits.maxReturns` says otherwise. */
 export const DEFAULT_MAX_RETURNS = 6;
 
-export const SCHEDULE_RETURN_DESCRIPTION = `Agenda um retorno seu, sozinho, daqui a alguns minutos, na mesma conversa. Use quando você disparou algo que demora (um deploy, um pipeline de CI, um build, uma migração, uma fila) e o resultado só existe depois de um tempo: em vez de ficar em laço de espera, agende e termine o turno. Não use para esperar a resposta do usuário (para isso há \`escalate\`) nem para tarefas que se repetem (isso é uma rotina, que o usuário cria).
+export const SCHEDULE_RETURN_DESCRIPTION = `Agenda um retorno seu, sozinho, daqui a alguns minutos, na mesma conversa. Use quando você disparou algo que demora (um deploy, um pipeline de CI, um build, uma migração, uma fila) e o resultado só existe depois de um tempo: em vez de ficar em laço de espera, agende e termine o turno. Não use para esperar a resposta do usuário (para isso há \`escalate\`) nem para tarefas que se repetem ou que são para outro dia (isso é uma rotina, \`create_routine\`, quando o usuário pede).
 
 Argumentos:
 - \`inMinutes\`: inteiro de 1 a ${MAX_RETURN_MINUTES}. Se o que você espera demora mais que isso, agende ${MAX_RETURN_MINUTES} e, ao voltar, confira e agende de novo.

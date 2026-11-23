@@ -34,11 +34,14 @@ import {
   createDb,
   createRun as createRunRow,
   type Db,
+  type FiredRoutine,
+  fireDueRoutines,
   getApprovalMode,
   getBot,
   getDefaultBot,
   getMemorySettings,
   getRun,
+  getUserSettings,
   listBots,
   listConnectorsForBot,
   PgRunQueue,
@@ -61,6 +64,7 @@ import {
 } from "@suup/sandbox";
 import { networkTools, registerBuiltinTools, requestNetworkAccessTool } from "@suup/tools";
 import {
+  configuredTimeZone,
   DEFAULT_CONNECTOR_IMAGE,
   DEFAULT_MAX_TURNS,
   DEFAULT_NETWORK_NAME,
@@ -69,7 +73,6 @@ import {
   type ProviderEntry,
   type RuntimeConfig,
   resolveDatabaseUrl,
-  resolveTimeZone,
 } from "./config.js";
 import {
   type BotConnectorCandidate,
@@ -86,6 +89,17 @@ import {
 import { createMemoryService } from "./memory-service.js";
 import { createNetworkService, type NetworkService } from "./network/service.js";
 import { PROPOSE_TEAM_TOOL, proposeTeamTool } from "./reception.js";
+import {
+  createRoutineTool,
+  deleteRoutineTool,
+  listRoutinesTool,
+  ROUTINE_RUN_TOOL_NAMES,
+  ROUTINE_TOOL_NAMES,
+  routineCostCap,
+  routineRunFacts,
+  updateRoutineStateTool,
+  updateRoutineTool,
+} from "./routines.js";
 import { DEFAULT_HISTORY_CHARS, loadRunContext } from "./run-context.js";
 import { applyStatusEffects, finishRun } from "./run-end.js";
 import { createScriptedProvider } from "./scripted-provider.js";
@@ -144,6 +158,8 @@ export interface CreateWorkerOptions {
   wakeEveryMs?: number;
   /** How often the jobs of the supervisor (nightly review, morning message) check the clock (ms). Default 60000. */
   supervisorEveryMs?: number;
+  /** How often the job that fires the due routines looks for them (ms). Default 15000. */
+  routinesEveryMs?: number;
   onRunEnd?(end: RunEnd): void;
   onError?(error: unknown, context: string): void;
 }
@@ -248,9 +264,22 @@ export interface Runtime {
   }): Promise<ReviewOutcome | null>;
   /** One pass of the morning message: whether it posted one. */
   morningOnce(options?: { now?: Date }): Promise<boolean>;
+  /**
+   * The user's time zone: the one the user chose in the app, else the one the app sent from the
+   * user's computer, else `defaults.timeZone` of the configuration. NEVER the zone of the computer
+   * the server runs on (it may be a VPS in UTC): `timeZone` is `null` when nobody said it.
+   */
+  userTimeZone(): Promise<UserTimeZone>;
+  /** One pass of the routine scheduler, as the worker does it (docs/ROTINAS.md). */
+  routinesOnce(options?: { now?: Date }): Promise<FiredRoutine[]>;
   /** The web (search and reading): starts its services if needed and says what is running. */
   webStatus(): ReturnType<WebWiring["status"]>;
   close(): Promise<void>;
+}
+
+export interface UserTimeZone {
+  timeZone: string | null;
+  source: "user" | "device" | "config" | null;
 }
 
 export interface AutoReviewStatus {
@@ -324,6 +353,16 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     return registry;
   };
   const tools = newRegistry();
+  /**
+   * A registry for one run that starts with EVERYTHING the shared one has, including tools a host
+   * registered on it after creation (the e2e harness adds the network tool there), so adding the
+   * run's own tools (routines, supervisor, welcome) never drops one.
+   */
+  const copyOfBase = (): ToolRegistry => {
+    const copy = new ToolRegistry(registryOptions);
+    for (const tool of tools.list()) copy.register(tool);
+    return copy;
+  };
   const vaultSettings =
     config.vault === undefined
       ? undefined
@@ -743,6 +782,27 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     };
   };
 
+  const userTimeZone = async (): Promise<UserTimeZone> => {
+    const stored = await getUserSettings(runtime.db);
+    if (stored.timeZone !== null) {
+      return { timeZone: stored.timeZone, source: stored.timeZoneSource ?? "user" };
+    }
+    const configured = configuredTimeZone(config);
+    return configured === undefined
+      ? { timeZone: null, source: null }
+      : { timeZone: configured, source: "config" };
+  };
+
+  /** The routine tools of a conversation run of the user (one list for the run and the report). */
+  const routineToolsFor =
+    (handle: Db): ((registry: ToolRegistry) => void) =>
+    (registry) => {
+      registry.register(createRoutineTool(handle, async () => (await userTimeZone()).timeZone));
+      registry.register(updateRoutineTool(handle));
+      registry.register(deleteRoutineTool(handle));
+      registry.register(listRoutinesTool(handle));
+    };
+
   const buildDeps = async (
     runId: string,
     workerId: string,
@@ -778,7 +838,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     if (guarded) {
       const offered = await connectors.toolsForBot(bot.id);
       if (offered.tools.length > 0) {
-        runTools = newRegistry();
+        runTools = copyOfBase();
         const names: string[] = [];
         for (const tool of offered.tools) {
           try {
@@ -800,7 +860,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     const receptionKind: "general" | "bot" | undefined =
       run.origin !== "reception" ? undefined : bot.isDefault ? "general" : "bot";
     if (guarded && receptionKind === "general") {
-      if (runTools === tools) runTools = newRegistry();
+      if (runTools === tools) runTools = copyOfBase();
       runTools.register(proposeTeamTool(runtime));
       botCfg = { ...botCfg, allowedTools: [...botCfg.allowedTools, PROPOSE_TEAM_TOOL] };
     }
@@ -815,10 +875,35 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
             ? undefined
             : "principal";
     if (supervisor === "principal") {
-      if (runTools === tools) runTools = newRegistry();
+      if (runTools === tools) runTools = copyOfBase();
       runTools.register(teamRecallTool(handle));
       runTools.register(delegateTool(handle));
       botCfg = { ...botCfg, allowedTools: [...botCfg.allowedTools, ...SUPERVISOR_TOOL_NAMES] };
+    }
+    // Routines (docs/ROTINAS.md): a bot in the user's conversation sets them up by talking; a
+    // routine's own run reads them, keeps its note and may stop one, never creates or widens one.
+    if (guarded && run.origin === "user") {
+      if (runTools === tools) runTools = copyOfBase();
+      routineToolsFor(handle)(runTools);
+      botCfg = { ...botCfg, allowedTools: [...botCfg.allowedTools, ...ROUTINE_TOOL_NAMES] };
+    } else if (guarded && run.origin === "routine") {
+      if (runTools === tools) runTools = copyOfBase();
+      runTools.register(listRoutinesTool(handle));
+      runTools.register(updateRoutineStateTool(handle));
+      runTools.register(deleteRoutineTool(handle));
+      botCfg = { ...botCfg, allowedTools: [...botCfg.allowedTools, ...ROUTINE_RUN_TOOL_NAMES] };
+      // The routine's own cap per run, if it has one, over the bot's (the lower one wins).
+      const cap = await routineCostCap(handle, run.id);
+      if (cap !== null) {
+        const current = botCfg.limits.maxCostUsd;
+        botCfg = {
+          ...botCfg,
+          limits: {
+            ...botCfg.limits,
+            maxCostUsd: current === undefined ? cap : Math.min(current, cap),
+          },
+        };
+      }
     }
     const executor = await runtime.executorFor(bot.id);
     return {
@@ -865,9 +950,15 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
               const team = (await listBots(handle))
                 .filter((other) => other.id !== bot.id)
                 .map((other) => ({ name: other.name, description: other.description }));
+              const zone = (await userTimeZone()).timeZone;
+              const facts = run.origin === "routine" ? await routineRunFacts(handle, id) : null;
               const withFacts: RunContextSnapshot = {
                 ...snapshot,
-                now: { iso: new Date().toISOString(), timeZone: resolveTimeZone(config) },
+                // Never the server's own zone: unknown is said as unknown (and is UTC).
+                now:
+                  zone === null
+                    ? { iso: new Date().toISOString(), timeZone: "UTC", timeZoneKnown: false }
+                    : { iso: new Date().toISOString(), timeZone: zone },
                 team,
                 machine: {
                   terminal: botCfg.allowedTools.includes("shell"),
@@ -877,6 +968,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
                 connectors: connectorNames,
                 ...(receptionKind === undefined ? {} : { reception: receptionKind }),
                 ...(supervisor === undefined ? {} : { supervisor }),
+                ...(facts === null ? {} : { routine: facts }),
               };
               // The model is told which secrets exist (names and purpose), never their values.
               return vault.status().ok
@@ -960,8 +1052,10 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
           // a name the registry refuses
         }
       }
+      // What a conversation run of the user is offered besides: the routine tools (docs/ROTINAS.md).
+      routineToolsFor(runtime.db)(reg);
       const control = new Set<string>(CONTROL_TOOL_NAMES);
-      const specs = reg.specs([...cfg.allowedTools, ...connectorNames]);
+      const specs = reg.specs([...cfg.allowedTools, ...ROUTINE_TOOL_NAMES, ...connectorNames]);
       const builtin = specs.filter((s) => !connectorNames.has(s.name) && !control.has(s.name));
       const connectorSpecs = new Map(
         specs.filter((s) => connectorNames.has(s.name)).map((s) => [s.name, s]),
@@ -1061,6 +1155,9 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
       }
       const { model, provider: providerEntry } = resolved;
       if (!keyStatus(providerEntry.id).ok) return null;
+      // The night is the user's night: without their zone there is no "03:00" to wait for.
+      const zone = (await userTimeZone()).timeZone;
+      if (zone === null) return null;
       return runNightlyReview({
         db: runtime.db,
         workerId: opts.workerId ?? `review-${hostname()}-${process.pid}`,
@@ -1071,15 +1168,21 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
           pricing: model.pricing,
           supportsForcedToolChoice: model.supportsForcedToolChoice,
         },
-        timeZone: resolveTimeZone(config),
+        timeZone: zone,
         ...(opts.now === undefined ? {} : { now: () => opts.now as Date }),
         ...(opts.log === undefined ? {} : { log: opts.log }),
       });
     },
+    userTimeZone,
+    async routinesOnce(opts = {}) {
+      return fireDueRoutines(runtime.db, opts.now === undefined ? {} : { now: opts.now });
+    },
     async morningOnce(opts = {}) {
+      const zone = (await userTimeZone()).timeZone;
+      if (zone === null) return false;
       return runMorningMessage({
         db: runtime.db,
-        timeZone: resolveTimeZone(config),
+        timeZone: zone,
         ...(opts.now === undefined ? {} : { now: () => opts.now as Date }),
       });
     },
@@ -1175,6 +1278,16 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
                       log: (message) => opts.onError?.(new Error(message), "team review"),
                     });
                     await runtime.morningOnce();
+                  },
+                },
+                {
+                  // The routines that came due fire here: the fire, the run and the next time are
+                  // one transaction per routine, so any number of workers fire each time once
+                  // (docs/ROTINAS.md).
+                  name: "routines",
+                  everyMs: opts.routinesEveryMs ?? 15_000,
+                  run: async () => {
+                    await runtime.routinesOnce();
                   },
                 },
                 {

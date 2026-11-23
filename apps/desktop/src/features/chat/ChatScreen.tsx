@@ -19,6 +19,7 @@ import { Avatar } from "../../ui/avatar.js";
 import { BotTitle } from "../../ui/bot-title.js";
 import { EventLineButton } from "../../ui/chat-lines.js";
 import { Composer } from "../../ui/composer.js";
+import { DraftReference } from "../../ui/draft-reference.js";
 import type { MenuItem } from "../../ui/menu.js";
 import { PopupMenu } from "../../ui/popup-menu.js";
 import { EmptyState } from "../../ui/primitives.js";
@@ -95,6 +96,19 @@ function ChatForBot({ botId }: { botId: string }) {
   const [convId, setConvId] = useState<string | null>(bot?.conversationId ?? null);
   const [restore, setRestore] = useState<{ text: string; nonce: number } | undefined>(undefined);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  // "Editar" on a routine (docs/ROTINAS.md): a draft for the composer and the routine bound to it.
+  // The reference lives with THIS chat's draft: clearing the draft drops it, and another bot is
+  // another chat (this component is keyed by the bot), so it never follows to another one.
+  const chatPrefill = useUi((s) => s.chatPrefill);
+  const takeChatPrefill = useUi((s) => s.takeChatPrefill);
+  const [prefill, setPrefill] = useState<{ text: string; nonce: number } | undefined>(undefined);
+  const [routineRef, setRoutineRef] = useState<{ id: string; name: string } | null>(null);
+  useEffect(() => {
+    if (chatPrefill === null || chatPrefill.botId !== botId) return;
+    setRoutineRef(chatPrefill.routine);
+    setPrefill({ text: chatPrefill.text, nonce: chatPrefill.nonce });
+    takeChatPrefill();
+  }, [chatPrefill, botId, takeChatPrefill]);
 
   // Open (or create) the bot's conversation and keep it fresh while it is on screen.
   useEffect(() => {
@@ -192,13 +206,26 @@ function ChatForBot({ botId }: { botId: string }) {
   const color = bot === undefined ? "cinza" : effectiveColor(bot.color, bot.id);
 
   const send = useCallback(
-    async (text: string) => {
+    async (text: string, ref: { id: string; name: string } | null = null) => {
       if (convId === null) return;
-      const result = await sync.send(convId, text);
-      if (!result.ok) setRestore((r) => ({ text: result.text, nonce: (r?.nonce ?? 0) + 1 }));
+      const result = await sync.send(
+        convId,
+        text,
+        ref === null ? {} : { routineRef: { id: ref.id } },
+      );
+      if (!result.ok) {
+        setRestore((r) => ({ text: result.text, nonce: (r?.nonce ?? 0) + 1 }));
+        // the draft comes back, and the routine with it
+        if (ref !== null) setRoutineRef(ref);
+      }
     },
     [convId, sync],
   );
+  const sendDraft = (text: string) => {
+    const ref = routineRef;
+    setRoutineRef(null);
+    void send(text, ref);
+  };
 
   if (bot === undefined) return null;
   const archived = bot.archivedAt !== null;
@@ -323,7 +350,16 @@ function ChatForBot({ botId }: { botId: string }) {
             disabled={archived || convId === null}
             disabledReason={archived ? "Este bot está arquivado" : "Abrindo a conversa…"}
             restore={restore}
-            onSend={(text) => void send(text)}
+            prefill={prefill}
+            onTextChange={(text) => {
+              if (text.trim() === "") setRoutineRef(null);
+            }}
+            attachment={
+              routineRef === null ? undefined : (
+                <DraftReference name={routineRef.name} onRemove={() => setRoutineRef(null)} />
+              )
+            }
+            onSend={sendDraft}
             autoFocus
           />
         </div>

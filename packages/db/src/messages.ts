@@ -70,6 +70,13 @@ export interface Message {
   question?: MessageQuestion;
   /** Present only on a bot message that proposes a team of bots. */
   team?: TeamProposal;
+  /** The routine whose run this message reports (docs/ROTINAS.md); `null` for any other message. */
+  routineId: string | null;
+  /**
+   * User messages only: the routine this message is about (the app's "Editar" binds it to the
+   * draft). Structured, never in `text`; the harness tells the model which routine it is.
+   */
+  routineRef: string | null;
 }
 
 export interface MessageRow {
@@ -84,6 +91,8 @@ export interface MessageRow {
   created_at: Date;
   question: MessageQuestion | null;
   team: TeamProposal | null;
+  routine_id: string | null;
+  routine_ref: string | null;
 }
 
 export function mapMessage(row: MessageRow): Message {
@@ -100,6 +109,8 @@ export function mapMessage(row: MessageRow): Message {
     createdAt: row.created_at,
     ...(row.question === null || row.question === undefined ? {} : { question: row.question }),
     ...(row.team === null || row.team === undefined ? {} : { team: row.team }),
+    routineId: row.routine_id ?? null,
+    routineRef: row.routine_ref ?? null,
   };
 }
 
@@ -116,6 +127,8 @@ const MESSAGE_COLUMNS = [
   "created_at",
   "question",
   "team",
+  "routine_id",
+  "routine_ref",
 ];
 
 const uuidSchema = z.uuid();
@@ -163,8 +176,17 @@ const appendSchema = z
     dedupeKey: z.exactOptional(z.string().min(1).max(200)),
     question: z.exactOptional(questionSchema),
     team: z.exactOptional(z.array(teamProposalItemSchema).min(1).max(5)),
+    routineId: z.exactOptional(uuidSchema),
+    routineRef: z.exactOptional(uuidSchema),
   })
   .superRefine((m, ctx) => {
+    if (m.routineRef !== undefined && m.authorKind !== "user") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["routineRef"],
+        message: "routineRef only applies to user messages",
+      });
+    }
     if ((m.authorKind === "bot") !== (m.authorBotId !== undefined)) {
       ctx.addIssue({
         code: "custom",
@@ -214,6 +236,10 @@ export interface AppendMessageInput {
   question?: MessageQuestion;
   /** Bot messages only: the bots this message proposes (a pending team card). */
   team?: TeamProposalItem[];
+  /** The routine this message reports the result of (bot or system messages). */
+  routineId?: string;
+  /** User messages only: the routine the message is about (see `Message.routineRef`). */
+  routineRef?: string;
 }
 
 /**
@@ -260,7 +286,7 @@ export async function appendMessageOnce(
       }
     }
     const [row] = await tx.sql<MessageRow[]>`
-      insert into messages (conversation_id, seq, author_kind, author_bot_id, text, run_id, status, dedupe_key, question, team, created_at)
+      insert into messages (conversation_id, seq, author_kind, author_bot_id, text, run_id, status, dedupe_key, question, team, routine_id, routine_ref, created_at)
       values (
         ${m.conversationId},
         (select coalesce(max(seq), 0) + 1 from messages where conversation_id = ${m.conversationId}),
@@ -272,6 +298,8 @@ export async function appendMessageOnce(
         ${m.dedupeKey ?? null},
         ${m.question === undefined ? null : tx.sql.json(m.question)},
         ${m.team === undefined ? null : tx.sql.json({ items: m.team, status: "pending", created: [] })},
+        ${m.routineId ?? null},
+        ${m.routineRef ?? null},
         clock_timestamp()
       )
       returning ${tx.sql(MESSAGE_COLUMNS)}`;

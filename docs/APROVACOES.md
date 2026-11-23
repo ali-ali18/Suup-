@@ -209,6 +209,12 @@ O modelo pode pedir várias ferramentas numa resposta. A regra adotada:
 
 Por quê: as chamadas de um turno saíram da mesma resposta, sem o modelo ter visto o resultado de nenhuma, e podem depender umas das outras (gravar o arquivo, depois enviá-lo). Executar a que vem depois de uma negada "às cegas" aplicaria um lote pela metade. O custo é um turno a mais depois de uma negação, e vários cartões em sequência em vez de todos de uma vez; a vantagem é um estado simples (no máximo um cartão pendente por execução, garantido pelo banco) e nenhum efeito fora de ordem. Mostrar todos os cartões de uma vez é uma melhoria possível, e exigiria decidir o que fazer com as chamadas dependentes.
 
+## Rotinas: criar é permissão permanente; disparar não aprova nada
+
+Veja [ROTINAS.md](ROTINAS.md). `create_routine` e `update_routine` são `write_reversible`: no Auto-review o revisor decide (o usuário pediu a rotina na conversa: roda; o bot inventou: cartão); em "Perguntar tudo", sempre cartão. Só **pausar** (`update_routine` com apenas `paused: true`), `delete_routine`, `list_routines` e `update_routine_state` são `read` (tiram poder ou só leem). O cartão, categoria **"Rotina"** (ícone de calendário), tem o texto do servidor em pt-BR: **"Criar uma rotina: <instrução> — <quando, por extenso>"** (ex.: "Criar uma rotina: Veja meu calendário de hoje. — todo dia às 08:00") ou "Mudar a rotina “Manhã”: toda segunda às 07:30"; rodapé "Recusar" / "Aprovar", como toda ação comum.
+
+O **disparo** de uma rotina não é a voz do usuário nem aprovação (a pesquisa: o texto disparado "can't act as approval or consent"). Dentro da execução da rotina, toda chamada passa pelo portão de sempre; o revisor recebe o bloco "How this run started" dizendo que uma rotina iniciou a execução, com a instrução separada das mensagens do usuário (versão do prompt `auto-review-v3`). Os cartões de uma rotina aparecem em Pendências. `escalate` e `request_secret` são recusados nela (ninguém responde ao vivo).
+
 ## Delegação não muda as aprovações
 
 Uma tarefa delegada pelo Principal ([SUPERVISOR.md](SUPERVISOR.md)) roda como execução do bot de destino, com as ferramentas, as concessões, as regras escritas e o modo de aprovação **dele**: o cartão aparece no chat do bot de destino e **só o usuário decide**. Nenhum bot tem ferramenta para aprovar, e o Principal não herda nem empresta permissão. Uma execução delegada que espera aprovação fica `waiting_approval`; o resumo só volta ao Principal quando ela termina.

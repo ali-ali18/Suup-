@@ -177,6 +177,8 @@ export function formatRead(outcome: WebReadOutcome, from: "reader" | "machine"):
   return {
     untrusted: true,
     ...(webUrls.size === 0 ? {} : { webUrls: [...webUrls] }),
+    // The page itself, declared: the app shows it as a source of the run (a routine's history).
+    source: page.title === undefined ? { url: page.url } : { url: page.url, title: page.title },
     content: `${lines.join("\n")}\n\n${page.markdown === "" ? "(the page has no text)" : page.markdown}${note}`,
   };
 }

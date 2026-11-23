@@ -131,7 +131,11 @@ export async function askGate(
     allowed: bot.allowedTools,
     executor,
     userMessages: ctx.state.userSaid,
+    ...(ctx.state.routineInstruction === null
+      ? {}
+      : { trigger: { kind: "routine" as const, instruction: ctx.state.routineInstruction } }),
     webSeen: webUrlsSeen(ctx.state),
+    routineNames: ctx.state.routineNames,
     reviewBlocks: ctx.state.reviewBlocks,
     ...(ctx.state.reviews.has(call.id) ? { recordedReview: ctx.state.reviews.get(call.id) } : {}),
     signal: ctx.signal,

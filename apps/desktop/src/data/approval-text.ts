@@ -191,6 +191,7 @@ export type CategoryIcon =
   | "connector"
   | "network"
   | "team"
+  | "routine"
   | "generic";
 
 export interface ToolCategory {
@@ -239,6 +240,12 @@ export function toolCategory(
     case "delegate":
     case "team_recall":
       return { label: "Equipe", icon: "team" };
+    case "create_routine":
+    case "update_routine":
+    case "delete_routine":
+    case "list_routines":
+    case "update_routine_state":
+      return { label: "Rotina", icon: "routine" };
     default:
       return { label: "Ferramenta", icon: "generic" };
   }

@@ -134,7 +134,9 @@ export {
   appendRunEvent,
   type ListRunEventsOptions,
   listRunEvents,
+  listRunSources,
   RunNotFoundError,
+  type RunSources,
 } from "./events.js";
 export {
   ackInboxEntries,
@@ -292,6 +294,40 @@ export {
   startReception,
 } from "./reception.js";
 export {
+  CATCH_UP_AFTER_MS,
+  type CreateRoutineInput,
+  createRoutine,
+  deleteRoutine,
+  type FiredRoutine,
+  finishRoutineFire,
+  fireDueRoutines,
+  getRoutine,
+  getRoutineFireByRun,
+  listRoutineFires,
+  listRoutines,
+  MAX_ROUTINE_INSTRUCTION,
+  MAX_ROUTINE_NAME,
+  MAX_ROUTINE_STATE,
+  MAX_ROUTINES_PER_BOT,
+  ROUTINE_FIRE_KINDS,
+  ROUTINE_FIRE_STATUSES,
+  ROUTINE_STATUSES,
+  ROUTINE_TRIGGER_KINDS,
+  type Routine,
+  RoutineError,
+  type RoutineErrorCode,
+  type RoutineFire,
+  type RoutineFireKind,
+  type RoutineFireStatus,
+  type RoutineStatus,
+  type RoutineTriggerKind,
+  routineRefsOf,
+  runRoutineNow,
+  setRoutineState,
+  type UpdateRoutineInput,
+  updateRoutine,
+} from "./routines.js";
+export {
   cancelRun,
   pauseRun,
   RunControlError,
@@ -396,6 +432,13 @@ export type {
   RunOrigin,
   RunStatus,
 } from "./types.js";
+export {
+  getUserSettings,
+  setUserTimeZone,
+  type TimeZoneSource,
+  type UserSettings,
+  UserSettingsError,
+} from "./user-settings.js";
 export { type WakeDueOptions, type WokenRun, wakeDueRuns } from "./wake.js";
 export {
   clearWebSearchCache,

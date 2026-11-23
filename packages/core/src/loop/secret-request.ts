@@ -2,6 +2,7 @@
 // `escalate`; the user answers through the secure form (which writes straight to the vault), and
 // the only thing the model ever gets back is that the secret is now available.
 import { SECRET_NAME_PATTERN } from "../secrets.js";
+import { ROUTINE_NO_QUESTIONS } from "./control-calls.js";
 import { renderArgIssues, requestSecretInputSchema } from "./control-tools.js";
 import { type ControlCall, ensureToolCall, record, recordResult } from "./recording.js";
 import type { LoopContext } from "./run-context.js";
@@ -36,6 +37,14 @@ export async function handleRequestSecret(
       isError: true,
       content:
         "There is no vault in this run, so a secret cannot be requested. Ask the user with escalate how to proceed without it.",
+    });
+    return;
+  }
+  if (ctx.run.origin === "routine") {
+    await recordResult(ctx, call.id, {
+      outcome: "tool_error",
+      isError: true,
+      content: ROUTINE_NO_QUESTIONS,
     });
     return;
   }

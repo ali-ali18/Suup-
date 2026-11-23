@@ -4,10 +4,10 @@ import { describe, expect, it } from "vitest";
 import {
   ConfigError,
   configPath,
+  configuredTimeZone,
   loadConfig,
   parseConfig,
   resolveDatabaseUrl,
-  resolveTimeZone,
 } from "../src/index.js";
 import { rawConfig, tempDir, writeJson } from "./helpers.js";
 
@@ -352,7 +352,7 @@ describe("the user's time zone", () => {
   it("is the one of the configuration when it is a real IANA name", () => {
     const config = parseConfig(rawConfig({ defaults: { timeZone: "America/Sao_Paulo" } }));
     expect(config.defaults?.timeZone).toBe("America/Sao_Paulo");
-    expect(resolveTimeZone(config)).toBe("America/Sao_Paulo");
+    expect(configuredTimeZone(config)).toBe("America/Sao_Paulo");
   });
 
   it("refuses a name that is not a time zone, saying what is expected", () => {
@@ -360,10 +360,9 @@ describe("the user's time zone", () => {
     expect(issues.join("\n")).toContain("fuso horário IANA");
   });
 
-  it("falls back to the time zone of the computer that runs the server, never to nothing", () => {
-    const system = new Intl.DateTimeFormat().resolvedOptions().timeZone;
-    expect(resolveTimeZone({})).toBe(system === undefined || system === "" ? "UTC" : system);
-    expect(resolveTimeZone({ defaults: {} })).toBe(resolveTimeZone({}));
+  it("never falls back to the time zone of the computer that runs the server (it may be a VPS)", () => {
+    expect(configuredTimeZone({})).toBeUndefined();
+    expect(configuredTimeZone({ defaults: {} })).toBeUndefined();
   });
 });
 
