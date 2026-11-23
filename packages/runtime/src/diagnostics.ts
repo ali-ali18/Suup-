@@ -22,6 +22,7 @@ import {
 } from "@suup/core";
 import { type Db, getBot, getRun, listRunEvents, migrationStatus } from "@suup/db";
 import { checkConnectors } from "./connectors/doctor.js";
+import { PROPOSE_CONNECTOR_TOOL, proposeConnectorTool } from "./connectors/propose-tool.js";
 import { RuntimeError } from "./errors.js";
 import { checkMemory } from "./memory-doctor.js";
 import { checkNetwork } from "./network/doctor.js";
@@ -246,11 +247,16 @@ export async function replayRecordedRun(runtime: Runtime, runId: string): Promis
           ]
         : [listRoutinesTool(db), updateRoutineStateTool(db), deleteRoutineTool(db)];
     for (const tool of routineTools) tools.register(tool as never);
+    // The gallery proposal of a conversation run (docs/CONECTORES.md), after the routine tools.
+    if (run.origin === "user")
+      tools.register(proposeConnectorTool(() => runtime.connectors.gallery));
     botCfg = {
       ...botCfg,
       allowedTools: [
         ...botCfg.allowedTools,
-        ...(run.origin === "user" ? ROUTINE_TOOL_NAMES : ROUTINE_RUN_TOOL_NAMES),
+        ...(run.origin === "user"
+          ? [...ROUTINE_TOOL_NAMES, PROPOSE_CONNECTOR_TOOL]
+          : ROUTINE_RUN_TOOL_NAMES),
       ],
     };
   }

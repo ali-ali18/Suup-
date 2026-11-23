@@ -3,6 +3,7 @@ import {
   connectorNameSchema,
   createConnectorBodySchema,
   grantConnectorBodySchema,
+  oauthCompleteBodySchema,
   setToolOutboundBodySchema,
   setToolRiskBodySchema,
   updateConnectorBodySchema,
@@ -11,10 +12,12 @@ import { getBot } from "@suup/db";
 import { HttpError } from "../errors.js";
 import type { Route } from "../http.js";
 import {
+  toCatalogItemDto,
   toConnectorDto,
   toConnectorEventDto,
   toConnectorReviewDto,
   toConnectorTestDto,
+  toOAuthStatusDto,
 } from "../mappers.js";
 
 function nameOf(raw: string): string {
@@ -25,8 +28,9 @@ function nameOf(raw: string): string {
 
 /**
  * MCP connectors (plan 4.11). Creating, changing or enabling one is the user acting: the token of
- * the server is the user. (A bot proposing one, which then needs an approval card, is not built:
- * see docs/CONECTORES.md.) No response holds a credential: a connector only names vault secrets.
+ * the server is the user. (A bot can only PROPOSE a gallery entry, on an approval card: the tool
+ * `propose_connector`.) No response holds a credential: a connector only names vault secrets, and
+ * an OAuth login answers only where it stands.
  */
 export const connectorRoutes: Route[] = [
   {
@@ -167,6 +171,83 @@ export const connectorRoutes: Route[] = [
       const name = nameOf(ctx.params.name ?? "");
       const items = await ctx.runtime.connectors.events(name);
       return { body: { items: items.map(toConnectorEventDto) } };
+    },
+  },
+  {
+    method: "GET",
+    pattern: "/v1/connector-catalog",
+    async handler(ctx) {
+      const items = await ctx.runtime.connectors.gallery.list();
+      return { body: { items: items.map(toCatalogItemDto) } };
+    },
+  },
+  {
+    method: "POST",
+    pattern: "/v1/connector-catalog/:id/install",
+    async handler(ctx) {
+      const parsed = connectorNameSchema.safeParse(ctx.params.id ?? "");
+      if (!parsed.success) throw new HttpError("not_found", "A galeria não tem este conector.");
+      const result = await ctx.runtime.connectors.gallery.install(parsed.data);
+      const connector =
+        result.item.connector === null
+          ? null
+          : await ctx.runtime.connectors.get(result.item.connector);
+      if (connector === null) throw new HttpError("internal_error", "Erro interno do servidor.");
+      return {
+        body: {
+          item: toCatalogItemDto(result.item),
+          next: result.next,
+          connector: toConnectorDto(connector),
+        },
+      };
+    },
+  },
+  {
+    method: "POST",
+    pattern: "/v1/connectors/:name/oauth/start",
+    timeoutMs: 60_000,
+    async handler(ctx) {
+      const name = nameOf(ctx.params.name ?? "");
+      const started = await ctx.runtime.connectors.gallery.oauthStart(name);
+      return {
+        body: {
+          authorizationUrl: started.authorizationUrl,
+          flowId: started.flowId,
+          redirectUri: started.redirectUri,
+          expiresAt: started.expiresAt.toISOString(),
+        },
+      };
+    },
+  },
+  {
+    method: "GET",
+    pattern: "/v1/connectors/:name/oauth/status",
+    async handler(ctx) {
+      const name = nameOf(ctx.params.name ?? "");
+      return { body: toOAuthStatusDto(await ctx.runtime.connectors.gallery.oauthStatus(name)) };
+    },
+  },
+  {
+    method: "POST",
+    pattern: "/v1/connectors/:name/oauth/complete",
+    timeoutMs: 60_000,
+    async handler(ctx) {
+      const name = nameOf(ctx.params.name ?? "");
+      const body = ctx.body(oauthCompleteBodySchema);
+      return {
+        body: toOAuthStatusDto(
+          await ctx.runtime.connectors.gallery.oauthComplete(name, body.flowId, body.callbackUrl),
+        ),
+      };
+    },
+  },
+  {
+    method: "DELETE",
+    pattern: "/v1/connectors/:name/oauth",
+    timeoutMs: 30_000,
+    async handler(ctx) {
+      const name = nameOf(ctx.params.name ?? "");
+      return { body: toConnectorDto(await ctx.runtime.connectors.gallery.oauthDisconnect(name)) };
     },
   },
   {

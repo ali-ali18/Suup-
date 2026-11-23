@@ -37,6 +37,17 @@ export const connectorTransportSchema = z.discriminatedUnion("kind", [
     kind: z.literal("http"),
     url: z.string().min(1).max(2048),
     headers: z.record(z.string(), valueRefSchema).optional(),
+    /**
+     * Log in with the OAuth of the MCP protocol (the tokens live in the vault, never here).
+     * `clientId`/`clientSecret`: an OAuth app the person registered on the service themselves.
+     */
+    oauth: z
+      .strictObject({
+        scopes: z.array(z.string().min(1).max(200)).max(50).optional(),
+        clientId: z.string().min(1).max(500).optional(),
+        clientSecret: z.strictObject({ secret: z.string() }).optional(),
+      })
+      .optional(),
   }),
 ]);
 export type ConnectorTransport = z.infer<typeof connectorTransportSchema>;
@@ -120,8 +131,22 @@ export const connectorSchema = z.object({
   trustAnnotations: z.boolean(),
   timeoutMs: z.number().int(),
   enabled: z.boolean(),
-  /** `proposal`: a bot proposed it (not built yet; such a connector is created off). */
+  /** `proposal`: a bot proposed it with `propose_connector` and the user approved the card; it is created off. */
   origin: z.enum(["user", "proposal"]),
+  /** The gallery entry it was installed from (exact id), or `null`. */
+  catalogId: z.string().nullable().optional(),
+  /**
+   * Where the OAuth login stands (never a token), or `null` when the connector does not log in by
+   * OAuth. `expiresAt`: when the access token stops working (renewed on its own with the refresh token).
+   */
+  oauth: z
+    .object({
+      status: z.enum(["needs_login", "connected", "error"]),
+      lastError: z.string().nullable(),
+      expiresAt: isoDate.nullable(),
+    })
+    .nullable()
+    .optional(),
   /** The bots that have a grant (see `grants` for what each may use). */
   grantedBotIds: z.array(uuid),
   grants: z.array(connectorGrantSchema),

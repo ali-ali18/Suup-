@@ -7,6 +7,7 @@ export {
   type SuupClient,
 } from "./client.js";
 export * from "./common.js";
+export * from "./connector-catalog.js";
 export * from "./connectors.js";
 export * from "./conversations.js";
 export * from "./diagnostics.js";
