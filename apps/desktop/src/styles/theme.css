@@ -23,6 +23,10 @@
   --color-surface: var(--color-surface);
   --color-raised: var(--color-raised);
   --color-hover: var(--color-hover);
+  --color-switch-on: var(--color-switch-on);
+  --color-switch-off: var(--color-switch-off);
+  --color-switch-knob-on: var(--color-switch-knob-on);
+  --color-switch-knob-off: var(--color-switch-knob-off);
   --color-sidebar: var(--color-sidebar);
   --color-sidebar-active: var(--color-sidebar-active);
   --color-border: var(--color-border);

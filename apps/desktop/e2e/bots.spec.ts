@@ -122,7 +122,7 @@ test.describe("bots, sidebar, palette, memory", () => {
     const sidebar = page.getByTestId("sidebar");
     await expect(sidebar).toHaveAttribute("data-collapsed", "false");
     const wide = (await sidebar.boundingBox())?.width ?? 0;
-    await page.getByRole("button", { name: "Recolher a barra lateral" }).click();
+    await page.keyboard.press("Control+b");
     await expect(sidebar).toHaveAttribute("data-collapsed", "true");
     expect((await sidebar.boundingBox())?.width ?? 999).toBeLessThan(wide / 2);
     // A bot is still reachable, by its name.
@@ -178,10 +178,10 @@ test.describe("bots, sidebar, palette, memory", () => {
     await page.reload();
     await expect(sidebar).toHaveAttribute("data-collapsed", "false");
     expect(await width()).toBe(330);
-    // The button collapses, and expanding restores the last expanded width.
-    await page.getByRole("button", { name: "Recolher a barra lateral" }).click();
+    // The shortcut (Ctrl+B) collapses, and expanding restores the last expanded width.
+    await page.keyboard.press("Control+b");
     await expect(sidebar).toHaveAttribute("data-collapsed", "true");
-    await page.getByRole("button", { name: "Expandir a barra lateral" }).click();
+    await page.keyboard.press("Control+b");
     expect(await width()).toBe(330);
   });
 
@@ -382,6 +382,7 @@ test.describe("bots, sidebar, palette, memory", () => {
     await expect(panel.getByRole("heading", { name: "Painel" })).toBeVisible();
     await expect(page.getByTestId("section-routines")).toContainText("Nenhuma rotina");
     await expect(page.getByTestId("section-computer")).toContainText("Computador do bot");
+    await expect(page.getByTestId("chat-model")).toBeVisible();
     await panel.getByRole("tab", { name: "Biblioteca" }).click();
     await expect(panel.getByRole("button", { name: "Todos" })).toBeVisible();
     await expect(panel).toContainText(
@@ -395,6 +396,7 @@ test.describe("bots, sidebar, palette, memory", () => {
     // the voice chat is hidden from assistive technology, dimmed, "Em breve", with nothing to click.
     for (const text of ["Compartilhar", "Criar chat em grupo"])
       await expect(page.getByText(text)).toHaveCount(0);
+    await panel.getByRole("tab", { name: "Atividade" }).click();
     const voice = page.getByTestId("ornament-voice");
     await expect(voice).toHaveAttribute("aria-hidden", "true");
     await expect(voice).toContainText("Em breve");

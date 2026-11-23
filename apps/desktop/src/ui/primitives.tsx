@@ -494,12 +494,15 @@ export function Toggle({
   label,
   disabled,
   testId,
+  accent,
 }: {
   checked: boolean;
   onChange(next: boolean): void;
   label: string;
   disabled?: boolean;
   testId?: string;
+  /** The blue switch (the routines of the panel; owner's decision, 22/11/2026): on is blue, off is light. */
+  accent?: boolean;
 }) {
   return (
     <button
@@ -510,15 +513,24 @@ export function Toggle({
       disabled={disabled}
       data-testid={testId}
       className={cx(
-        "relative h-6 w-10 flex-none rounded-pill border border-border-strong p-0",
-        checked ? "bg-bg-inverse" : "bg-raised",
+        "relative h-6 w-10 flex-none rounded-pill border p-0 disabled:opacity-40",
+        accent === true
+          ? cx("border-transparent", checked ? "bg-switch-on" : "bg-switch-off")
+          : cx("border-border-strong", checked ? "bg-bg-inverse" : "bg-raised"),
       )}
       onClick={() => onChange(!checked)}
     >
       <span
         className={cx(
           "absolute top-0.5 left-0.5 size-4.5 rounded-pill transition-transform",
-          checked ? "translate-x-4 bg-text-inverse" : "bg-text-muted",
+          checked && "translate-x-4",
+          accent === true
+            ? checked
+              ? "bg-switch-knob-on"
+              : "bg-switch-knob-off"
+            : checked
+              ? "bg-text-inverse"
+              : "bg-text-muted",
         )}
       />
     </button>

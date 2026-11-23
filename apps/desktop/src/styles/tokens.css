@@ -18,6 +18,10 @@
   --color-surface: #1e1e1e; /* v2-surface */
   --color-raised: #2a2a2a; /* v2-raised */
   --color-hover: #202024; /* bg-hover */
+  --color-switch-on: #116dd2; /* the blue switch of the routines (owner's decision, 22/11/2026, as in the Grok Bot) */
+  --color-switch-off: #f2f2f2; /* its track when off */
+  --color-switch-knob-on: #ffffff;
+  --color-switch-knob-off: #444444;
   --color-sidebar: #0e0e0e; /* the sidebar and the rail: one step darker than the page (hierarchy by luminosity) */
   --color-sidebar-active: #1c1c1c; /* the selected bot's tile in the sidebar */
   --color-border: rgba(255, 255, 255, 0.08); /* v2-border  #ffffff14 */
@@ -45,9 +49,9 @@
   /* Radii */
   --radius-pill: 999px;
   --radius-full: 999px;
-  --radius-card: 24px;
-  --radius-row: 16px;
-  --radius-inner: 14px;
+  --radius-card: 18px; /* was 24 px: a little less round (owner's decision, 22/11/2026) */
+  --radius-row: 12px;
+  --radius-inner: 10px;
   --radius-bubble: var(--radius-card); /* a bubble's outer corners */
   --radius-bubble-link: 6px; /* a bubble corner that touches the next bubble of the same sender (~1/4 of the outer one, measured on the owner's reference) */
   --radius-chip: 8px; /* the small rounded square behind a card's icon */
@@ -162,6 +166,7 @@
   --color-surface: #ffffff;
   --color-raised: #ececea;
   --color-hover: #e7e7e5;
+  --color-switch-off: #d4d4d2;
   --color-sidebar: #ececea;
   --color-sidebar-active: #e0e0de;
   --color-border: rgba(0, 0, 0, 0.08);

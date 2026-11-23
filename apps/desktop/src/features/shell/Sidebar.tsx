@@ -1,5 +1,5 @@
 import type { Bot } from "@suup/api";
-import { Ellipsis, LayoutGrid, PanelLeftClose, PanelLeftOpen, Plus, Search } from "lucide-react";
+import { Ellipsis, LayoutGrid, Plus, Search } from "lucide-react";
 import { type KeyboardEvent, useCallback, useMemo, useRef, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { botDisplay, pendingQuestions, unreadOf } from "../../app/selectors.js";
@@ -398,14 +398,6 @@ export function Sidebar() {
     >
       {collapsed ? (
         <>
-          <RoundButton
-            label="Expandir a barra lateral"
-            tone="ghost"
-            size="circle"
-            onClick={ui().toggleSidebar}
-          >
-            <PanelLeftOpen size={20} aria-hidden="true" />
-          </RoundButton>
           <div
             className="flex min-h-0 w-full flex-1 flex-col items-center gap-0.5 overflow-y-auto py-2"
             role="group"
@@ -435,9 +427,6 @@ export function Sidebar() {
       ) : (
         <>
           <div className="relative flex flex-none items-center gap-1">
-            <RoundButton label="Recolher a barra lateral" tone="ghost" onClick={ui().toggleSidebar}>
-              <PanelLeftClose size={20} aria-hidden="true" />
-            </RoundButton>
             <span className="flex-1" />
             <RoundButton label="Buscar" tone="raised" onClick={() => ui().setPalette(true)}>
               <Search size={20} aria-hidden="true" />

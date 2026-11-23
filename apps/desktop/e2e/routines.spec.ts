@@ -125,8 +125,9 @@ test.describe("routines", () => {
     const row = panel.getByTestId("routine-row");
     await expect(row).toHaveAttribute("data-routine", "Calendário da manhã");
     await expect(row.getByTestId("routine-schedule")).toHaveText("todo dia às 08:00");
-    await expect(row.getByTestId("routine-next")).toContainText("Próxima:");
-    await expect(row.getByTestId("routine-next")).toContainText("08:00");
+    // one paragraph only (the next run and the last result are in the detail)
+    await expect(row.getByTestId("routine-next")).toHaveCount(0);
+    await expect(row.getByTestId("routine-last")).toHaveCount(0);
     // no menu and no schedule form on the row
     await expect(panel.getByRole("button", { name: /Ações da rotina/ })).toHaveCount(0);
     // the app sent this computer's zone when it connected: the routine is in it
@@ -162,7 +163,7 @@ test.describe("routines", () => {
     await expect(page.getByTestId("chat-log")).toContainText("Nada mais na agenda.");
     const panel = page.getByTestId("panel");
     const row = panel.getByTestId("routine-row");
-    await expect(row.getByTestId("routine-last")).toContainText("Concluída");
+    await expect(row).toHaveAttribute("data-status", "active");
     await page.waitForTimeout(300);
     await page.screenshot({ path: shot("rotinas-resultado-no-chat") });
 

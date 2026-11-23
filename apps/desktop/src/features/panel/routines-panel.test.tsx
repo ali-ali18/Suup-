@@ -58,6 +58,17 @@ function setup(routines: Routine[], fires: RoutineFire[] = [fireOf()]) {
       run: vi.fn(async () => ({ kind: "manual", status: "running" })),
       delete: vi.fn(async () => undefined),
     },
+    models: {
+      list: vi.fn(async () => [
+        { id: "model-x", provider: "scripted", available: true },
+        { id: "model-y", provider: "scripted", available: true },
+      ]),
+    },
+    bots: {
+      update: vi.fn(async (_id: string, body: Record<string, unknown>) =>
+        makeBot({ id: BOT, name: "Agenda", ...body }),
+      ),
+    },
   };
   const store = createDataStore();
   update(store, (s) => mergeBot(s, makeBot({ id: BOT, name: "Agenda" })));
@@ -69,7 +80,7 @@ function setup(routines: Routine[], fires: RoutineFire[] = [fireOf()]) {
       <Panel botId={BOT} />
     </ServicesProvider>,
   );
-  return { api: api.routines, openUrl };
+  return { api: api.routines, apiAll: api, openUrl };
 }
 
 const openDetail = async (name = "Calendário da manhã") => {
@@ -84,6 +95,22 @@ describe("the Rotinas list", () => {
     expect(screen.getByTestId("section-routines").textContent).toContain(
       "Peça no chat, por exemplo",
     );
+  });
+
+  it("changes the bot's chat model from the Chat e voz card, which also holds the voice ornament", async () => {
+    const { apiAll } = setup([]);
+    const dropdown = await screen.findByTestId("chat-model");
+    expect(dropdown.textContent).toContain("model-x");
+    fireEvent.click(dropdown);
+    fireEvent.click(await screen.findByRole("option", { name: /model-y/ }));
+    await waitFor(() =>
+      expect(apiAll.bots.update).toHaveBeenCalledWith(BOT, { modelId: "model-y" }),
+    );
+    const section = screen.getByTestId("section-voice");
+    expect(section.textContent).toContain("Chat e voz");
+    const ornament = within(section).getByTestId("ornament-voice");
+    expect(ornament.getAttribute("aria-hidden")).toBe("true");
+    expect(within(ornament).queryAllByRole("button")).toHaveLength(0);
   });
 
   it("has a switch on each row that pauses and resumes the routine, like the detail's button", async () => {
@@ -122,7 +149,10 @@ describe("the Rotinas list", () => {
     expect(within(rows[0] as HTMLElement).getByTestId("routine-schedule").textContent).toBe(
       "todo dia às 08:00",
     );
-    expect(within(rows[1] as HTMLElement).getByTestId("routine-next").textContent).toBe("Pausada");
+    expect(within(rows[1] as HTMLElement).getByTestId("routine-schedule").textContent).toBe(
+      "Pausada",
+    );
+    expect(within(rows[1] as HTMLElement).queryByTestId("routine-next")).toBeNull();
     expect(screen.queryByRole("button", { name: /Ações da rotina/ })).toBeNull();
     expect(screen.queryByTestId("routine-form")).toBeNull();
   });

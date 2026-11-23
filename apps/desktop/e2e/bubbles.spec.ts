@@ -6,7 +6,7 @@ import { connect, freshBot, selectBot } from "./helpers.js";
 // Dynamic bubbles (docs/DESIGN.md, "Balões"): consecutive text bubbles of one sender link with a
 // small corner on the sender's side; cards never change their radius and break the group.
 
-const FULL = "24px";
+const FULL = "18px";
 const LINK = "6px";
 
 test.describe("dynamic bubbles", () => {

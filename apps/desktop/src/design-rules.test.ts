@@ -818,8 +818,9 @@ describe("routines: no schedule form, rows edge to edge, the detail in the panel
     expect(detail).toContain("describeSchedule(routine.schedule)");
   });
 
-  it("the rows run edge to edge and open the detail, which replaces the list in the panel", () => {
-    expect(panel).toContain("[&>*+*]:border-t");
+  it("the cards of the panel have NO rule between their rows (owner, 22/11/2026); the rows open the detail, which replaces the list in the panel", () => {
+    expect(panel).not.toContain("[&>*+*]:border-t");
+    expect(panel).not.toContain("divide-");
     expect(panel).not.toContain("<MenuButton");
     expect(panel).toContain("openPanelRoutine(r.id)");
     expect(detail).toContain('label="Voltar às rotinas"');

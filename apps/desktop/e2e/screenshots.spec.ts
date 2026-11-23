@@ -314,9 +314,9 @@ test.describe("screenshots", () => {
       await page.mouse.down();
       await page.mouse.move(316, 500, { steps: 6 });
       await page.mouse.up();
-      await page.getByRole("button", { name: "Recolher a barra lateral" }).click();
+      await page.keyboard.press("Control+b");
       await shot("09-barra-recolhida");
-      await page.getByRole("button", { name: "Expandir a barra lateral" }).click();
+      await page.keyboard.press("Control+b");
 
       // Overlays.
       await page.keyboard.press("Control+k");
