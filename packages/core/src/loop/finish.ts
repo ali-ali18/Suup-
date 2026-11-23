@@ -93,6 +93,7 @@ async function decideFinish(
     reasons: string[],
     handedToUser = false,
     endsRun?: { origin: FailureOrigin; detail: string },
+    sentBack = false,
   ) => {
     await record(ctx, {
       type: "finish_attempt",
@@ -104,6 +105,7 @@ async function decideFinish(
         rejectionReasons: reasons,
         ...(handedToUser ? { handedToUser: true } : {}),
         ...(endsRun === undefined ? {} : { endsRun }),
+        ...(sentBack ? { sentBack: true } : {}),
       },
     });
     return { accepted: false, reasons, handedToUser };
@@ -128,6 +130,24 @@ async function decideFinish(
         return outcome;
       }
       review = await requestReview(ctx, call, args);
+    }
+    if (
+      review.verdict === "unverified" &&
+      review.missingEvidence === true &&
+      state.unverifiedSentBack === 0 &&
+      checkLimits(ctx) === undefined
+    ) {
+      // Often what the reviewer lacks is evidence the bot can still produce (run the check, show
+      // the file). The bot gets ONE turn with the reviewer's notes before anyone is asked. A review
+      // that failed, or a run already at its limits, is not something one more turn can fix.
+      return reject(
+        [
+          `An independent reviewer could not verify this yet. The reviewer asked for: ${describeUnverified(review)}\nProduce that evidence (run the check, read the file, show the result) and call finish again with it. If it cannot exist, say exactly why in the evidence.`,
+        ],
+        false,
+        undefined,
+        true,
+      );
     }
     if (review.verdict === "unverified" && ctx.run.origin === "routine") {
       // Nobody answers a routine's run live (docs/ROTINAS.md): handing the decision to the owner
@@ -212,6 +232,8 @@ interface ReviewOutcome {
   namedNothing?: boolean;
   /** The review did not happen (the reviewer failed): who failed. */
   failed?: "provider" | "model";
+  /** It lacked evidence it named, which the bot may still produce. */
+  missingEvidence?: boolean;
 }
 
 const KIND_TEXT = {
@@ -410,6 +432,7 @@ async function requestReview(
       return recordReview(ctx, {
         verdict: "unverified",
         notes: `still asking for evidence after ${EVIDENCE_MAX_ROUNDS} rounds: ${parsed.notes}`,
+        missingEvidence: true,
       });
     }
     const reprompted = ctx.state.reviewSteps.some((step) => step.kind === "reprompt");
@@ -425,6 +448,7 @@ async function requestReview(
           verdict: "unverified",
           notes: parsed.notes,
           unchecked: lacking,
+          missingEvidence: true,
         });
       }
       if (reprompted || parsed.callId === undefined) {
@@ -485,6 +509,7 @@ async function recordReview(ctx: LoopContext, outcome: ReviewOutcome): Promise<R
       ...(outcome.unchecked === undefined ? {} : { unchecked: outcome.unchecked }),
       ...(outcome.namedNothing === true ? { namedNothing: true } : {}),
       ...(outcome.failed === undefined ? {} : { failed: outcome.failed }),
+      ...(outcome.missingEvidence === true ? { missingEvidence: true } : {}),
     },
   });
   return outcome;

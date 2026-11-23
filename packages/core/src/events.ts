@@ -632,6 +632,11 @@ export const runEventSchema = z.discriminatedUnion("type", [
        * safe point, so a resumed or replayed run ends the same way.
        */
       endsRun: z.exactOptional(z.object({ origin: failureOriginSchema, detail: z.string() })),
+      /**
+       * Not accepted because the reviewer could not verify it, and sent back to the bot ONCE with
+       * the reviewer's notes to produce the evidence (the next unverified goes to the owner).
+       */
+      sentBack: z.exactOptional(z.boolean()),
     }),
   }),
   z.object({
@@ -664,6 +669,12 @@ export const runEventSchema = z.discriminatedUnion("type", [
        * (`model`). Never an approval: a user's run asks the owner, a routine's run ends failed.
        */
       failed: z.exactOptional(z.enum(["provider", "model"])),
+      /**
+       * `unverified` because the reviewer lacked evidence it named (still asking after the evidence
+       * rounds, or a `cannot_verify` listing what it lacks): evidence the bot may still produce, so
+       * the first such finish goes back to the bot with these notes before the owner is asked.
+       */
+      missingEvidence: z.exactOptional(z.boolean()),
     }),
   }),
   z.object({

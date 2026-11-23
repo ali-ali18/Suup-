@@ -165,6 +165,8 @@ export interface RunState {
   parkedAt: Date | null;
   /** A `finish` was accepted but the run has not been closed yet. */
   acceptedFinish: { summary: string; evidence: { criterion: string; evidence: string }[] } | null;
+  /** Unverified finishes already sent back to the bot to produce the evidence (at most one). */
+  unverifiedSentBack: number;
   /** The harness already sent a plain-text end back asking for `finish` (criteria, no plan). */
   finishRequested: boolean;
   /** A `finish` ended the run as not concluded (`finish_attempt.endsRun`), not closed yet. */
@@ -292,6 +294,7 @@ export function createRunState(): RunState {
     acceptedFinish: null,
     failedFinish: null,
     finishRequested: false,
+    unverifiedSentBack: 0,
     finishAttempts: new Map(),
     currentReview: null,
     reviewRounds: [],
@@ -650,8 +653,16 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
       break;
 
     case "finish_attempt": {
-      const { callId, accepted, rejectionReasons, summary, evidence, handedToUser, endsRun } =
-        event.payload;
+      const {
+        callId,
+        accepted,
+        rejectionReasons,
+        summary,
+        evidence,
+        handedToUser,
+        endsRun,
+        sentBack,
+      } = event.payload;
       if (callId !== undefined) {
         state.finishAttempts.set(callId, {
           accepted,
@@ -661,6 +672,7 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
       }
       if (accepted) state.acceptedFinish = { summary, evidence: structuredClone(evidence) };
       if (endsRun !== undefined) state.failedFinish = { ...endsRun };
+      if (sentBack === true) state.unverifiedSentBack += 1;
       break;
     }
 

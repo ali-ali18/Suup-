@@ -241,23 +241,27 @@ describe("reviewer", () => {
     expect(rig.reviewerProvider?.calls).toBe(2);
   });
 
-  it("in a routine run, a review that cannot verify also ends the run, never parked for an answer", async () => {
+  it("in a routine run, a review that cannot verify goes back to the bot once, then ends the run, never parked for an answer", async () => {
+    const cannot = () =>
+      use(
+        call("v", "verdict", {
+          verdict: "cannot_verify",
+          notes: "the calendar was never read",
+          unchecked: [{ what: "the calendar entries", kind: "result", ref: "#9" }],
+        }),
+      );
     const rig = createRig({
       origin: "routine",
-      script: [use(finishCall("c1", "Resumo pronto."))],
-      reviewerScript: [
-        use(
-          call("v", "verdict", {
-            verdict: "cannot_verify",
-            notes: "the calendar was never read",
-            unchecked: [{ what: "the calendar entries", kind: "result", ref: "#9" }],
-          }),
-        ),
-      ],
+      script: [use(finishCall("c1", "Resumo pronto.")), use(finishCall("c2", "Resumo pronto."))],
+      reviewerScript: [cannot(), cannot()],
     });
     expect(await rig.run()).toBe("failed");
     const events = await rig.events();
     expect(eventsOfType(events, "escalated")).toEqual([]);
+    expect(eventsOfType(events, "finish_attempt").map((e) => e.payload.sentBack)).toEqual([
+      true,
+      undefined,
+    ]);
     expect(lastStatus(events)?.failure?.origin).toBe("model");
     expect(lastStatus(events)?.failure?.detail).toContain("o revisor não conseguiu confirmar");
   });
