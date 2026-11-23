@@ -1,6 +1,6 @@
 import { listRunsQuerySchema, runEventsQuerySchema } from "@suup/api";
 import { cancelRun, getRun, listRunEvents, listRuns, pauseRun, resumeRun } from "@suup/db";
-import { finishRun, writeOutcomeMessage } from "@suup/runtime";
+import { applyStatusEffects, finishRun } from "@suup/runtime";
 import { HttpError } from "../errors.js";
 import type { Route } from "../http.js";
 import { toRunDto, toRunEventDto } from "../mappers.js";
@@ -80,7 +80,7 @@ export const runRoutes: Route[] = [
       const { db } = ctx.runtime;
       const run = await cancelRun(db, ctx.uuid("id"), {
         onStatusSet: async (tx, done) => {
-          await writeOutcomeMessage(tx, done);
+          await applyStatusEffects(tx, done);
         },
       });
       // A run nobody holds (waiting for an approval) is cancelled right here: the conversation

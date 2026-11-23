@@ -139,6 +139,7 @@ export {
 } from "./routines.js";
 export { DEFAULT_HISTORY_CHARS, loadRunContext } from "./run-context.js";
 export {
+  applyStatusEffects,
   finishRun,
   journalSummary,
   journalText,
