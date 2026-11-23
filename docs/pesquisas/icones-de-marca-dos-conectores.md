@@ -40,3 +40,25 @@ Lidas em 23/11/2026:
 - Dependência `simple-icons` **fixa** em 16.38.1 (sem `^`), importando só os nove ícones por nome (o bundler leva só eles).
 - Um módulo só desenha as marcas: `apps/desktop/src/ui/brand-icons.tsx`, com a tabela de **nomes exatos** e o glifo em `currentColor`. Qualquer outro nome (inclusive composio e higgsfield) mantém o `Plug`.
 - Regra e teste no `docs/DESIGN.md` §5c e em `design-rules.test.ts`.
+
+## Adendo (23/11/2026): referências de galerias de plug-ins e cores
+
+Pergunta: como as galerias de apps e conectores desenham o cartão de um serviço (cor do logo, fundo, espaço)?
+
+Fontes (busca na web em 23/11/2026; **só os resumos dos resultados foram lidos, as páginas não foram abertas**):
+
+- Claude, diretório de conectores: https://claude.com/docs/connectors/directory e https://support.claude.com/en/articles/11724452-use-the-connectors-directory-to-extend-claude-s-capabilities
+- OpenAI, diretrizes de design do Apps SDK: https://developers.openai.com/apps-sdk/concepts/design-guidelines
+- Albato, biblioteca de integrações (análise de padrão, SaaSFrame): https://www.saasframe.io/examples/albato-integrations-library
+- Cursor, marketplace de plug-ins: https://cursor.com/marketplace
+
+Fatos (do que os resumos dizem):
+
+- Os diretórios do Claude e do ChatGPT são catálogos com busca, categorias e uma página de detalhe por item; a listagem pública de um conector do Claude é um cartão com nome, uma frase e um botão.
+- As diretrizes da OpenAI recomendam **cartões** para listas pequenas de itens parecidos, com um só chamado por cartão.
+- A análise da Albato descreve **quadrados claros de cerca de 176 x 176 px, cantos de 16 px, sem sombra forte, e os logos dos apps mantendo as cores diversas**: a marca da galeria fica contida e quem dá a cor são os logos.
+- O marketplace do Cursor mostra, por item, nome e uma frase, em grade por categoria.
+
+Não verificado: as medidas exatas dos diretórios do Claude e da OpenAI (nenhum resumo as dá); o layout real da página do Cursor.
+
+Inferência e decisão do dono (23/11/2026: "os ícones estão sem cores, sem espaçamento"): na galeria de plug-ins o logo vai **colorido, na cor oficial do pacote, num quadrado claro** (o mesmo nos dois temas, para o logo preto do GitHub e do Notion aparecer no escuro), em **cartões com respiro**. Nas linhas de Conectores o logo continua em uma cor só (ver acima).

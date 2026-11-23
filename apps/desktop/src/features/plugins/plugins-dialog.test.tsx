@@ -8,7 +8,7 @@ afterEach(cleanup);
 beforeEach(() => useUi.setState({ pluginsOpen: true }));
 
 describe("the plug-ins dialog", () => {
-  it("is a grid with one line per plug-in: the icon, the name and one faded line under it", () => {
+  it("is a wide grid, one item per plug-in, with no box around each: the logo in its colours on top, the name and one faded line under it", () => {
     render(<PluginsDialog />);
     const dialog = screen.getByRole("dialog", { name: "Plug-ins" });
     const items = within(dialog).getAllByTestId("plugin-item");
@@ -18,7 +18,11 @@ describe("the plug-ins dialog", () => {
     const github = items[0] as HTMLElement;
     expect(github.textContent).toContain("GitHub");
     expect(github.textContent).toContain("Repositórios, issues e pull requests");
-    expect(github.querySelector("svg[data-brand='github']")).not.toBeNull();
+    const mark = github.querySelector("svg[data-brand='github']");
+    expect(mark).not.toBeNull();
+    // in the service's own colour (the hex of Simple Icons), on the light square
+    expect(mark?.getAttribute("fill")).toBe("#181717");
+    expect(mark?.parentElement?.className).toContain("bg-brand-tile");
     // Composio and Higgsfield are not in Simple Icons: the generic plug
     const composio = items.find((i) => i.getAttribute("data-plugin") === "composio");
     expect(composio?.querySelector("svg[data-brand]")).toBeNull();

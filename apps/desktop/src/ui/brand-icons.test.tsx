@@ -33,6 +33,16 @@ describe("brand glyphs of the connectors (Simple Icons, docs/DESIGN.md §5c)", (
     expect(svg?.querySelector("path")?.getAttribute("d")?.length).toBeGreaterThan(50);
   });
 
+  it("coloured, a glyph takes the service's own colour (the hex of the package)", () => {
+    const Github = brandGlyphFor("github");
+    const Gmail = brandGlyphFor("gmail");
+    const a = render(Github === undefined ? null : <Github colored />);
+    expect(a.container.querySelector("svg")?.getAttribute("fill")).toBe("#181717");
+    cleanup();
+    const b = render(Gmail === undefined ? null : <Gmail colored />);
+    expect(b.container.querySelector("svg")?.getAttribute("fill")).toBe("#EA4335");
+  });
+
   it("only an EXACT name has a glyph: a name that merely contains one, a variant or an object key has none", () => {
     for (const name of [
       "github-enterprise",

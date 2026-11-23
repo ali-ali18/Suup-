@@ -889,12 +889,15 @@ export function Dialog({
   children,
   footer,
   wide,
+  gallery,
 }: {
   title: string;
   onClose(): void;
   children: ReactNode;
   footer?: ReactNode;
   wide?: boolean;
+  /** The widest one (820 px): a grid of items, as the plug-ins gallery. */
+  gallery?: boolean;
 }) {
   const { ref, onKeyDown } = useModalFocus(onClose);
   const titleId = useId();
@@ -910,7 +913,7 @@ export function Dialog({
         tabIndex={-1}
         className={cx(
           "flex max-h-[90vh] flex-col gap-4 overflow-hidden rounded-card border border-border-strong bg-surface p-6 shadow-popover",
-          wide ? "w-dialog-wide" : "w-dialog",
+          gallery === true ? "w-dialog-gallery" : wide ? "w-dialog-wide" : "w-dialog",
         )}
         onKeyDown={onKeyDown}
       >

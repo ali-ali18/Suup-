@@ -22,6 +22,8 @@
   --color-bg: var(--color-bg);
   --color-surface: var(--color-surface);
   --color-raised: var(--color-raised);
+  --color-brand-tile: var(--color-brand-tile);
+  --color-on-brand-tile: var(--color-on-brand-tile);
   --color-hover: var(--color-hover);
   --color-switch-on: var(--color-switch-on);
   --color-switch-off: var(--color-switch-off);
@@ -135,6 +137,7 @@
   --container-settings-nav: var(--width-settings-nav);
   --container-dialog: var(--width-dialog);
   --container-dialog-wide: var(--width-dialog-wide);
+  --container-dialog-gallery: var(--width-dialog-gallery);
   --container-toast: var(--width-toast);
   --container-bubble-user: var(--width-bubble-user);
   --container-menu: var(--width-menu);

@@ -995,9 +995,10 @@ describe("conectores: o ícone do serviço (docs/DESIGN.md 5c, plug-ins)", () =>
   });
 
   it("o glifo é de uma cor só, a do texto apagado da linha; a escolha é por nome exato, numa tabela", () => {
-    expect(brand).toContain('fill="currentColor"');
-    expect(brand).not.toContain("hex");
-    expect(brand).toContain("new Map<string, Glyph>");
+    expect(brand).toContain('"currentColor"');
+    // the colour only when asked (the plug-ins dialog), and it is the package's own `hex`, never typed here
+    expect(brand).toContain("icon.hex");
+    expect(brand).toContain("new Map<string, BrandGlyph>");
     expect(brand).toContain("BY_NAME.get(connectorName)");
     for (const searching of [".includes(", ".startsWith(", ".match(", ".test(", "RegExp"]) {
       expect(brand, searching).not.toContain(searching);
@@ -1020,9 +1021,14 @@ describe("plug-ins: o diálogo em grade (docs/DESIGN.md 5d)", () => {
   const palette = read(join(SRC, "features", "palette", "CommandPalette.tsx"));
   const shell = read(join(SRC, "features", "shell", "Shell.tsx"));
 
-  it("duas colunas (uma só na janela estreita), ícone ao lado do nome com uma linha apagada embaixo, e o detalhe em outro diálogo", () => {
+  it("grade larga de duas colunas (uma na janela estreita), sem caixa em volta de cada item, o logo colorido ao lado do nome com a linha apagada embaixo dele, e o detalhe em outro diálogo", () => {
+    expect(dialog).toContain("gallery");
+    expect(dialog).not.toContain("rounded-card border border-border");
     expect(dialog).toContain("grid-cols-2");
     expect(dialog).toContain("narrow:grid-cols-1");
+    expect(dialog).toContain("items-center gap-4");
+    expect(dialog).toContain("bg-brand-tile");
+    expect(dialog).toContain('<Brand size={size === "lg" ? 26 : 20} colored />');
     expect(dialog).toContain("text-small text-text-muted");
     expect(dialog).toContain("<Dialog");
     expect(dialog).toContain("PluginDetail");
