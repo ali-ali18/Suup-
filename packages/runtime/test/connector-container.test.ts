@@ -209,17 +209,21 @@ describe.skipIf(!dockerReady)("stdio connector in a container (real Docker)", ()
   }, 90_000);
 
   it("closing the manager removes the container", async () => {
+    // A name of its own: other test files start connector containers at the same time, so the
+    // check looks only at the containers of THIS connector (`suup-conn-<name>-…`).
     const m = manager();
-    await m.tools(spec());
+    await m.tools({ ...spec(), name: "fecha" });
+    const mine = ["ps", "--all", "--quiet", "--filter", "name=suup-conn-fecha-"];
+    expect((await run("docker", mine)).stdout.trim()).not.toBe("");
     await m.close();
     await launcher.closeAll();
-    const left = await run("docker", [
-      "ps",
-      "--all",
-      "--quiet",
-      "--filter",
-      "label=suup.role=connector",
-    ]);
-    expect(left.stdout.trim()).toBe("");
+    // Removal by the daemon can lag the command a little: wait for it, within a bound.
+    let left = "";
+    for (let i = 0; i < 50; i++) {
+      left = (await run("docker", mine)).stdout.trim();
+      if (left === "") break;
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    expect(left).toBe("");
   }, 60_000);
 });
