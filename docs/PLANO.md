@@ -239,7 +239,9 @@ Requisito de infraestrutura: o servidor na VPS precisa de domínio e HTTPS públ
 - Autorização por conector, com escopo (por exemplo, somente leitura).
 - Um registro onde o bot procura e propõe instalar conectores novos; a instalação passa por aprovação.
 
-**Estado (fase 3, backend):** feitos o protocolo (cliente do SDK oficial em `packages/connectors`, `stdio` e *streamable HTTP*), a autorização por conector e por bot com escopo e risco por ferramenta, e a passagem pelo mesmo registro, aprovação, cofre e rótulo de conteúdo não confiável das ferramentas embutidas. **Não feito:** o bot propor a instalação (e o registro onde procura). Como funciona e o que não protege: [CONECTORES.md](CONECTORES.md).
+**Estado (fase 3, backend):** feitos o protocolo (cliente do SDK oficial em `packages/connectors`, `stdio` e *streamable HTTP*), a autorização por conector e por bot com escopo e risco por ferramenta, e a passagem pelo mesmo registro, aprovação, cofre e rótulo de conteúdo não confiável das ferramentas embutidas. Como funciona e o que não protege: [CONECTORES.md](CONECTORES.md).
+
+**Estado (fase 4, backend):** a galeria predefinida (o "registro": uma lista fixa no repositório, entrada = aprovação do dono), o login pelo OAuth do MCP (revisão 2026-07-28, tokens no cofre, retorno em loopback no processo do servidor) e o bot propondo uma entrada da galeria (`propose_connector`, cartão; instala desligado). Pesquisa: [galeria, OAuth do MCP e Composio](pesquisas/fase-4-conectores-galeria-oauth-composio.md). Falta a tela da galeria no app.
 
 ### 4.12 App e agente local
 

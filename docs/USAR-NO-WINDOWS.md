@@ -49,6 +49,15 @@ Os bots buscam na web e leem páginas com as mesmas ferramentas do servidor (`we
 - **Sem o Docker,** o bot recebe o motivo quando a busca geral ou a leitura com navegador não estão disponíveis ("precisa do Docker"), e pode dizer isso a você.
 - **Na primeira abertura com o Docker,** junto com as imagens dos bots, o app **constrói a imagem do leitor** (parte da imagem do Playwright, com o navegador: **alguns GB** de download) e **baixa a do SearXNG**. Se uma delas falhar, os bots continuam isolados normalmente; só aquela parte da web fica de fora (o motivo vai para os registros).
 
+## 4c. Conectar serviços (galeria)
+
+Em **Configurações > Conectores** fica a galeria: GitHub, Notion, Linear, Figma, Composio (opcional, de terceiros) e, a confirmar, Stack Overflow e Google Workspace ([CONECTORES.md](CONECTORES.md), "Galeria").
+
+- **Login no navegador (Notion, Linear, Figma):** "Conectar" abre a página de login do serviço no seu navegador; o app mostra "Aguardando login…" e, quando você autoriza, o navegador volta para o próprio Suup (um endereço `http://127.0.0.1:<porta>/callback` que o servidor embutido abre só neste computador) e a linha vira "Conectado". Os tokens ficam no cofre, cifrados; você não copia nada.
+- **Com token (GitHub, Composio):** "Conectar" mostra onde criar o token e o formulário seguro; o valor vai para o cofre e o bot nunca o vê.
+- **Se o app está ligado a uma VPS**, o navegador não consegue voltar para o servidor (ele está em outra máquina): a página de retorno não abre, e você cola no app o endereço que ficou na barra do navegador.
+- O Windows pode perguntar se o Suup pode receber conexões: o retorno é só em `127.0.0.1` (este computador), não precisa liberar na rede.
+
 ## 5. Onde ficam os dados e os registros
 
 | O quê | Onde (Windows) |
