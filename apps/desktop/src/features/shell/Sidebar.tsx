@@ -21,7 +21,7 @@ import { ResizeHandle } from "../../ui/resize-handle.js";
 const ENTRY_MAIN = {
   tile: "w-full flex-col gap-2 px-2 pt-3 pb-2",
   row: "w-full gap-3 py-2 pr-9 pl-2.5",
-  rail: "w-auto gap-3 p-1.5",
+  rail: "size-rail-tile justify-center p-0",
 } as const;
 
 /** The name of the bot beside its face in the rail, shown on hover and on keyboard focus. */
@@ -86,7 +86,7 @@ function BotEntry({
   const label = status === "" ? bot.name : `${bot.name} — ${status}`;
   // Enquanto o bot trabalha o rosto vira o indicador de pontos (`data-working`, `data-state`).
   const working = ["working", "thinking", "resuming", "queued"].includes(display.chip ?? "");
-  const size = variant === "tile" ? "tile" : variant === "row" ? "row" : "lg";
+  const size = variant === "tile" ? "tile" : variant === "row" ? "row" : "md";
   const openMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     onMenu(bot, e.clientX, e.clientY);
@@ -97,7 +97,7 @@ function BotEntry({
         ref={setRef}
         type="button"
         className={cx(
-          "flex min-w-0 items-center rounded-card border border-transparent bg-transparent text-left hover:bg-hover",
+          "flex min-w-0 items-center rounded-card border border-transparent bg-transparent text-left hover:bg-hover aria-[current=page]:bg-sidebar-active",
           ENTRY_MAIN[variant],
           variant === "rail" && RAIL_TIP,
         )}
@@ -309,7 +309,10 @@ export function Sidebar() {
       }}
     >
       <span
-        className="relative inline-flex size-control flex-none items-center justify-center rounded-pill border border-border-strong bg-raised font-label"
+        className={cx(
+          "relative inline-flex flex-none items-center justify-center rounded-pill border border-border-strong bg-raised font-label",
+          variant === "bar" ? "size-control" : "size-avatar-md",
+        )}
         aria-hidden="true"
       >
         V
@@ -384,10 +387,10 @@ export function Sidebar() {
   return (
     <nav
       className={cx(
-        "relative flex min-h-0 flex-none flex-col gap-2 p-3",
+        "relative flex min-h-0 flex-none flex-col bg-sidebar",
         collapsed
-          ? "w-rail items-center"
-          : "w-[var(--sidebar-w,var(--width-sidebar))] border-r border-border",
+          ? "w-rail items-center gap-2 px-0 py-3.5"
+          : "w-[var(--sidebar-w,var(--width-sidebar))] gap-2 border-r border-border p-3",
       )}
       aria-label="Bots e atalhos"
       data-testid="sidebar"
@@ -399,7 +402,7 @@ export function Sidebar() {
             <PanelLeftOpen size={20} aria-hidden="true" />
           </RoundButton>
           <div
-            className="flex min-h-0 w-full flex-1 flex-col items-center gap-2 overflow-y-auto py-2"
+            className="flex min-h-0 w-full flex-1 flex-col items-center gap-0.5 overflow-y-auto py-2"
             role="group"
             aria-label="Bots"
           >

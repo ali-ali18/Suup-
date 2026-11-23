@@ -18,6 +18,8 @@
   --color-surface: #1e1e1e; /* v2-surface */
   --color-raised: #2a2a2a; /* v2-raised */
   --color-hover: #202024; /* bg-hover */
+  --color-sidebar: #0e0e0e; /* the sidebar and the rail: one step darker than the page (hierarchy by luminosity) */
+  --color-sidebar-active: #1c1c1c; /* the selected bot's tile in the sidebar */
   --color-border: rgba(255, 255, 255, 0.08); /* v2-border  #ffffff14 */
   --color-border-strong: rgba(255, 255, 255, 0.14); /* v2-border-strong  #ffffff24 */
 
@@ -101,6 +103,7 @@
   --size-star-badge-lg: 18px; /* ...on the large avatars (panel, preview) */
   --width-sidebar: 316px; /* owner's layout: expanded sidebar */
   --width-rail: 110px; /* owner's layout: narrow icon rail on the left */
+  --size-rail-tile: 60px; /* a bot's tile in the rail: the face (36 px) inside a box; the tiles sit 2 px apart (a 62 px pitch, measured on the reference) */
   --width-panel: 450px; /* owner's layout: bot panel on the right */
   --width-chat-min: 420px; /* the chat column never gets narrower than this */
   --width-reading: 700px; /* the widest a bot bubble gets */
@@ -159,6 +162,8 @@
   --color-surface: #ffffff;
   --color-raised: #ececea;
   --color-hover: #e7e7e5;
+  --color-sidebar: #ececea;
+  --color-sidebar-active: #e0e0de;
   --color-border: rgba(0, 0, 0, 0.08);
   --color-border-strong: rgba(0, 0, 0, 0.16);
   --color-text: #161616;

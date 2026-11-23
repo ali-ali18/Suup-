@@ -154,10 +154,10 @@ As telas que aparecem antes do app abrir (`features/connect/`) são **um cartão
 
 ## 5. Barra lateral
 
-- [ ] Sem destaque fixo do bot selecionado; o cartão do bot só aparece no hover, com raio 24 px.
-- [ ] Colunas 1 e 3 arrastáveis (`lib/pane-size.ts`): barra lateral 240–420 px (padrão 316; abaixo de 200 vira trilho de 110), painel do bot 340–640 px (padrão 450; abaixo de 280 fecha).
+- [ ] **Cor e destaque** (decisão do dono, 22/11/2026, a partir do estilo do Grok Bot): a barra lateral e o trilho usam `--color-sidebar` (um degrau mais escuro que a página: a hierarquia vem da luminosidade, não de borda nova). O bot selecionado ganha só um preenchimento calmo (`--color-sidebar-active`), sem borda e sem cor de destaque; o cartão do bot no hover continua com raio 24 px. Bordas e raios do app não mudam: a base é a nossa.
+- [ ] Colunas 1 e 3 arrastáveis (`lib/pane-size.ts`): barra lateral 240–420 px (padrão 316; abaixo de 200 vira trilho de 110, `--width-rail`; no trilho cada bot é um quadro de 60 px, `--size-rail-tile`, com o rosto de 36 px dentro e 2 px entre quadros, como na referência), painel do bot 340–640 px (padrão 450; abaixo de 280 fecha).
 - [ ] **A estrela do Principal** (decisão do dono, 21/11/2026; a única exceção à regra de que o avatar é só o rosto): o bot principal (`bot.isDefault`, o supervisor da equipe) leva uma **estrela pequena e calma** no canto inferior direito do avatar, na barra lateral (linha, trilho e quadro), no cabeçalho do chat, no painel do bot e na paleta. É um chip redondo (`--size-star-badge`, 14 px; `--size-star-badge-lg`, 18 px no avatar grande e na prévia) com o fundo `--color-raised`, a borda de 2 px na cor da página e a estrela cheia na cor do texto; fica no canto de baixo para não encostar na contagem de não lidas (canto de cima). Sem estrela no avatar de 16 px (não cabe) nem em qualquer outro bot. Vale para os dois estilos de rosto (formas e pixel), porque a estrela é desenhada **em volta** do rosto, em `ui/avatar.tsx` (a prop `supervisor`), nunca dentro do motor `@suup/avatar` nem dos mascotes. Nenhuma outra peça desenha estrela sobre um avatar (teste em `design-rules.test.ts`).
-- [ ] Avatares (token / caixa): linha 36 px, trilho 56 px, painel 72 px, pequeno 28 px. O dono falou em corpo visível ~42 / ~64 / ~74 / ~27 px; a caixa do código é a que vale até haver medida do corpo. O avatar nunca é recortado por um círculo.
+- [ ] Avatares (token / caixa): linha 36 px, trilho 36 px (dentro do quadro de 60), painel 72 px, pequeno 28 px. O dono falou em corpo visível ~42 / ~64 / ~74 / ~27 px; a caixa do código é a que vale até haver medida do corpo. O avatar nunca é recortado por um círculo.
 
 ## 5b. Painel do bot: Rotinas
 

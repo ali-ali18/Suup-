@@ -205,7 +205,7 @@ test.describe("bots, sidebar, palette, memory", () => {
     await expect(handle).toHaveAttribute("aria-valuenow", "404");
   });
 
-  test("the pinned tiles and the active bot: more columns when wider, and no highlight card on the selected bot", async ({
+  test("the pinned tiles and the active bot: more columns when wider, and the selected bot's tile is a quiet fill with no border", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1600, height: 900 });
@@ -220,7 +220,7 @@ test.describe("bots, sidebar, palette, memory", () => {
     await sidebar.getByRole("separator").focus();
     await page.keyboard.press("End");
     expect(await columns()).toBe(3);
-    // The selected bot keeps aria-current but no raised background or border.
+    // The selected bot keeps aria-current and a quiet fill (--color-sidebar-active, dark), but no border.
     await page.mouse.move(900, 500); // fora da barra: o hover tem estilo próprio
     const current = sidebar.locator('[aria-current="page"]');
     await expect(current).toHaveCount(1);
@@ -228,7 +228,7 @@ test.describe("bots, sidebar, palette, memory", () => {
       const css = getComputedStyle(el);
       return { background: css.backgroundColor, border: css.borderTopColor };
     });
-    expect(style.background).toBe("rgba(0, 0, 0, 0)");
+    expect(style.background).toBe("rgb(28, 28, 28)");
     expect(style.border).toBe("rgba(0, 0, 0, 0)");
   });
 
