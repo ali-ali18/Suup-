@@ -59,6 +59,14 @@ export {
 } from "./change-feed.js";
 export { type CreateDbOptions, createDb, type Db, withTransaction } from "./client.js";
 export {
+  type ConnectorOAuthRow,
+  type ConnectorOAuthStatus,
+  deleteConnectorOAuth,
+  getConnectorOAuth,
+  saveConnectorOAuth,
+  setConnectorOAuthStatus,
+} from "./connector-oauth.js";
+export {
   approvePin,
   type ConnectorToolEvent,
   listConnectorEvents,
