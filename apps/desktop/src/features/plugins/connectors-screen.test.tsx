@@ -49,9 +49,9 @@ describe("the connectors screen", () => {
     const github = itemOf("github");
     const logo = github.querySelector("img[data-logo='github']");
     expect(logo?.getAttribute("alt")).toBe("");
-    // the logo on the background of its tone (GitHub: ink), nothing inverted
+    // the logo on the background of its FIXED tone (GitHub: slate), nothing inverted
     expect(logo?.className).not.toContain("invert");
-    expect(logo?.parentElement?.className).toContain("bg-tile-ink");
+    expect(logo?.parentElement?.className).toContain("bg-tile-slate");
     expect(github.textContent).toContain("GitHub");
     expect(github.textContent).toContain("Repositórios, issues e pull requests");
     const connect = within(github).getByRole("button", { name: "Conectar GitHub" });
@@ -102,7 +102,7 @@ describe("the connectors screen", () => {
     const tiles = [...mine.querySelectorAll("span[class*='bg-tile-']")].map((t) =>
       [...t.classList].find((c) => c.startsWith("bg-tile-")),
     );
-    expect(tiles).toEqual(["bg-tile-ink", "bg-tile-ink", "bg-tile-paper", "bg-tile-sky"]);
+    expect(tiles).toEqual(["bg-tile-slate", "bg-tile-ink", "bg-tile-coral", "bg-tile-amber"]);
   });
 
   it('"Adicionar personalizado" is real: it opens Configurações > Conectores', () => {
@@ -131,10 +131,10 @@ describe("the page of a connector, in the same screen", () => {
     expect(within(page).getByTestId("connector-state").textContent).toContain("Não conectado");
     const connect = within(page).getByRole("button", { name: "Conectar Google Docs" });
     expect((connect as HTMLButtonElement).disabled).toBe(true);
-    // the band with the examples: a gradient of the family of the service (Google Docs: sky)
+    // the band with the examples: a gradient of the family of the service (Google Docs: indigo)
     const examples = within(page).getByTestId("connector-examples");
     expect(examples.className).toContain("bg-linear-to-br");
-    expect(examples.className).toContain("from-banner-sky-from");
+    expect(examples.className).toContain("from-banner-indigo-from");
     expect(examples.textContent).toContain("Resuma o documento de requisitos.");
     expect(within(examples).getAllByText("Google Docs")).toHaveLength(3);
     // the blocks

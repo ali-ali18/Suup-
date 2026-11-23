@@ -21,15 +21,45 @@ import stackOverflow from "../../assets/brand/stack-overflow.svg";
  * (an ornament too: illustrations, not a promise).
  */
 /**
- * The five backgrounds a logo can have (like an app icon) and the family of the banner of its page:
- * `ink` (black), `paper` (white), `sky` (blue), `mint` (green) and `sun` (orange). Owner,
- * 23/11/2026, with the reference he gave: the logos come with colour behind them.
+ * The twelve backgrounds a logo can have (like an app icon) and the family of the banner of its page.
+ * Four dark (`ink`, `slate`, `navy`, `plum`, for a white logo or a plug) and eight light. Owner,
+ * 23/11/2026, with the reference he gave: the logos come with colour behind them, in many
+ * variations, and each connector has ITS OWN, always the same.
  */
-export type Tone = "ink" | "paper" | "sky" | "mint" | "sun";
+export const TONES = [
+  "ink",
+  "slate",
+  "navy",
+  "plum",
+  "paper",
+  "sky",
+  "mint",
+  "sun",
+  "coral",
+  "amber",
+  "indigo",
+  "lilac",
+] as const;
+export type Tone = (typeof TONES)[number];
+
+/**
+ * The tone of a connector that has none declared (one the user made): picked by its id, always the
+ * same one for the same id (the sum of its characters, modulo the number of tones), so it never
+ * changes between openings, themes or machines. No text is read for its meaning: only summed.
+ */
+export function toneFor(id: string): Tone {
+  let sum = 0;
+  for (const char of id) sum += char.codePointAt(0) ?? 0;
+  return TONES[sum % TONES.length] as Tone;
+}
+
+/** The tone of an entry: its declared one, else the stable one of its id. */
+export const toneOf = (entry: { id: string; tone?: Tone }): Tone => entry.tone ?? toneFor(entry.id);
 
 export interface CatalogEntry {
   id: string;
-  tone: Tone;
+  /** FIXED for this connector (see `TONES`). */
+  tone?: Tone;
   name: string;
   /** One line: what the service is. */
   about: string;
@@ -53,7 +83,7 @@ export const CATEGORIES = [
 export const CATALOG: readonly CatalogEntry[] = [
   {
     id: "gmail",
-    tone: "paper",
+    tone: "coral",
     name: "Gmail",
     about: "Ler, buscar e rascunhar e-mails",
     category: "Produtividade",
@@ -98,7 +128,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   },
   {
     id: "google-docs",
-    tone: "sky",
+    tone: "indigo",
     name: "Google Docs",
     about: "Documentos de texto compartilhados",
     category: "Documentos",
@@ -128,7 +158,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   },
   {
     id: "google-drive",
-    tone: "sky",
+    tone: "amber",
     name: "Google Drive",
     about: "Arquivos e pastas na nuvem",
     category: "Documentos",
@@ -143,7 +173,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   },
   {
     id: "github",
-    tone: "ink",
+    tone: "slate",
     name: "GitHub",
     about: "Repositórios, issues e pull requests",
     category: "Desenvolvimento",
@@ -188,7 +218,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   },
   {
     id: "composio",
-    tone: "ink",
+    tone: "plum",
     name: "Composio",
     about: "Centenas de apps por um só conector",
     category: "Automação e mídia",
@@ -203,7 +233,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   },
   {
     id: "higgsfield",
-    tone: "ink",
+    tone: "navy",
     name: "Higgsfield",
     about: "Imagens e vídeos gerados por IA",
     category: "Automação e mídia",
