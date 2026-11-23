@@ -30,7 +30,10 @@ export function ScreenHead({
   action?: ReactNode;
 }) {
   return (
-    <header className="flex flex-none items-center justify-between gap-4 px-6 pt-5 pb-3">
+    <header
+      className="flex flex-none items-center justify-between gap-4 px-6 pt-5 pb-3"
+      data-tauri-drag-region
+    >
       <div className="flex min-w-0 items-center gap-3">
         {leading}
         <div>

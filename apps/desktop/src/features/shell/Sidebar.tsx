@@ -395,6 +395,7 @@ export function Sidebar() {
       aria-label="Bots e atalhos"
       data-testid="sidebar"
       data-collapsed={collapsed ? "true" : "false"}
+      data-tauri-drag-region
     >
       {collapsed ? (
         <>
@@ -426,8 +427,8 @@ export function Sidebar() {
         </>
       ) : (
         <>
-          <div className="relative flex flex-none items-center gap-1">
-            <span className="flex-1" />
+          <div className="relative flex flex-none items-center gap-1" data-tauri-drag-region>
+            <span className="flex-1" data-tauri-drag-region />
             <RoundButton label="Buscar" tone="raised" onClick={() => ui().setPalette(true)}>
               <Search size={20} aria-hidden="true" />
             </RoundButton>

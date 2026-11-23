@@ -934,3 +934,31 @@ describe("o texto não rola para o lado e nenhuma barra de rolagem aparece (docs
     expect(chat).not.toContain("<BotTitle");
   });
 });
+
+describe("a janela não tem barra do sistema: os controles são do app (docs/DESIGN.md, Janela)", () => {
+  const TAURI = join(SRC, "..", "src-tauri");
+
+  it("o Windows e o Linux abrem sem barra, o macOS mantém a nativa, e as permissões da janela estão liberadas", () => {
+    const conf = JSON.parse(read(join(TAURI, "tauri.conf.json")));
+    expect(conf.app.windows[0].decorations).toBe(false);
+    const macos = JSON.parse(read(join(TAURI, "tauri.macos.conf.json")));
+    expect(macos.app.windows[0].decorations).toBe(true);
+    const capabilities = read(join(TAURI, "capabilities", "default.json"));
+    for (const permission of [
+      "core:window:allow-minimize",
+      "core:window:allow-toggle-maximize",
+      "core:window:allow-close",
+      "core:window:allow-start-dragging",
+    ])
+      expect(capabilities).toContain(permission);
+  });
+
+  it("os controles só existem quando o Tauri diz que a janela não tem barra, e o fechar do painel os deixa livres", () => {
+    const app = read(join(SRC, "app", "App.tsx"));
+    expect(app).toContain("customFrame && platform?.frame !== undefined");
+    const panel = read(join(SRC, "features", "panel", "Panel.tsx"));
+    expect(panel).toContain('customFrame ? "right-37.5" : "right-3"');
+    const controls = read(join(SRC, "ui", "window-controls.tsx"));
+    for (const label of ["Minimizar", "Fechar a janela"]) expect(controls).toContain(label);
+  });
+});

@@ -265,7 +265,10 @@ function ChatForBot({ botId }: { botId: string }) {
         className="flex min-h-0 min-w-chat-min flex-[1_0_var(--width-chat-min)] flex-col"
         aria-label={`Conversa com ${bot.name}`}
       >
-        <header className="flex min-h-15.5 flex-none justify-center px-4 pt-3">
+        <header
+          className="flex min-h-15.5 flex-none justify-center px-4 pt-3"
+          data-tauri-drag-region
+        >
           <button
             type="button"
             className="group/chip inline-flex h-control max-w-bot-chip items-center gap-2 rounded-pill border border-border-strong bg-transparent py-0 pr-3.5 pl-1.5 text-label hover:bg-hover"

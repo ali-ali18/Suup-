@@ -5,6 +5,7 @@ import { useServices } from "../../app/context.js";
 import { useSettings } from "../../app/settings-store.js";
 import { useUi } from "../../app/ui-store.js";
 import { messageOf } from "../../data/sync.js";
+import { cx } from "../../lib/cx.js";
 import { Markdown } from "../../lib/markdown.js";
 import {
   describeSchedule,
@@ -149,6 +150,7 @@ function RemoveDialog({
 export function RoutineDetail({ botId, routineId }: { botId: string; routineId: string }) {
   const { api } = useServices();
   const toast = useUi((s) => s.toast);
+  const customFrame = useUi((s) => s.customFrame);
   const openPanelRoutine = useUi((s) => s.openPanelRoutine);
   const editRoutineInChat = useUi((s) => s.editRoutineInChat);
   const [routine, setRoutine] = useState<Routine | undefined>(undefined);
@@ -200,11 +202,17 @@ export function RoutineDetail({ botId, routineId }: { botId: string; routineId: 
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="routine-detail">
-      <div className="flex flex-none items-center gap-1 px-3 pt-3 pb-2">
+      <div
+        className={cx(
+          "flex flex-none items-center gap-1 pt-3 pb-2 pl-3",
+          customFrame ? "pr-37.5" : "pr-3",
+        )}
+        data-tauri-drag-region
+      >
         <RoundButton label="Voltar às rotinas" tone="ghost" onClick={back}>
           <ArrowLeft size={18} aria-hidden="true" />
         </RoundButton>
-        <span className="flex-1" />
+        <span className="flex-1" data-tauri-drag-region />
         {routine !== undefined && (
           <>
             <RoundButton

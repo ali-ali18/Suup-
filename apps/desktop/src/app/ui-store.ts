@@ -36,6 +36,8 @@ export interface UiState {
   settingsConnector: string | null;
   selectedBotId: string | null;
   panelOpen: boolean;
+  /** The window has no system title bar, so the app draws its own controls (see `WindowFrame`). */
+  customFrame: boolean;
   panelTab: PanelTab;
   /** The routine whose detail is open in the panel (`null`: the list). Another bot closes it. */
   panelRoutineId: string | null;
@@ -90,6 +92,7 @@ export interface UiState {
   selectBot(botId: string): void;
   /** Leaving a server (Trocar, Desconectar): nothing the person had open belongs to the next one. */
   leaveServer(): void;
+  setCustomFrame(custom: boolean): void;
   openPanel(tab?: PanelTab): void;
   togglePanel(): void;
   setPanelTab(tab: PanelTab): void;
@@ -143,6 +146,7 @@ export const useUi = create<UiState>((set, get) => ({
   settingsTab: "general",
   settingsConnector: null,
   selectedBotId: null,
+  customFrame: false,
   // Closed by default on narrow windows (the layout has no room for three columns there).
   // Quem abriu ou fechou o painel guardou a escolha; sem ela, aberto só em janelas largas.
   panelOpen: parseStoredFlag(
@@ -222,6 +226,7 @@ export const useUi = create<UiState>((set, get) => ({
       shortcutsOpen: false,
       groupBotId: null,
     }),
+  setCustomFrame: (customFrame) => set({ customFrame }),
   setSettingsTab: (settingsTab) => set({ settingsTab, settingsConnector: null }),
   setSettingsConnector: (settingsConnector) => set({ settingsConnector }),
   selectBot: (botId) =>

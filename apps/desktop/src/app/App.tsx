@@ -5,6 +5,7 @@ import { LocalScreen } from "../features/connect/LocalScreen.js";
 import { Shell } from "../features/shell/Shell.js";
 import { type Connection, getPlatform, type Platform, type ServerMode } from "../lib/platform.js";
 import { ToastStack } from "../ui/primitives.js";
+import { WindowControls } from "../ui/window-controls.js";
 import { connect, describeConnectError, normalizeServerUrl } from "./connect.js";
 import { type Services, ServicesProvider } from "./context.js";
 import { initSettings } from "./settings-store.js";
@@ -26,6 +27,7 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const platformRef = useRef<Platform | null>(null);
   const servicesRef = useRef<Services | null>(null);
+  const customFrame = useUi((s) => s.customFrame);
   const toasts = useUi((s) => s.toasts);
   const dismissToast = useUi((s) => s.dismissToast);
 
@@ -82,6 +84,10 @@ export function App() {
     void (async () => {
       const platform = await getPlatform();
       platformRef.current = platform;
+      void platform.frame?.custom().then(
+        (custom) => useUi.getState().setCustomFrame(custom),
+        () => undefined,
+      );
       await initSettings(platform);
       const mode = platform.local === undefined ? "vps" : await (platform.mode?.load() ?? null);
       if (cancelled) return;
@@ -110,6 +116,15 @@ export function App() {
 
   return (
     <>
+      {customFrame && platform?.frame !== undefined && (
+        <>
+          {/* Before the shell there is no header of its own to drag the window by. */}
+          {phase.kind !== "ready" && (
+            <div data-tauri-drag-region className="fixed inset-x-0 top-0 z-30 h-8" />
+          )}
+          <WindowControls frame={platform.frame} />
+        </>
+      )}
       {phase.kind === "boot" && (
         <div className="flex h-full items-center justify-center text-text-muted" role="status">
           Conectando…
