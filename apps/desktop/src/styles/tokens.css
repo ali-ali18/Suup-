@@ -19,9 +19,9 @@
   --color-raised: #2a2a2a; /* v2-raised */
   --color-hover: #202024; /* bg-hover */
   --color-switch-on: #116dd2; /* the blue switch of the routines (owner's decision, 22/11/2026, as in the Grok Bot) */
-  --color-switch-off: #f2f2f2; /* its track when off */
+  --color-switch-off: #3a3a3a; /* its track when off: a dark grey, never white (owner, 22/11/2026) */
   --color-switch-knob-on: #ffffff;
-  --color-switch-knob-off: #444444;
+  --color-switch-knob-off: #e6e6e6;
   --color-sidebar: #0e0e0e; /* the sidebar and the rail: one step darker than the page (hierarchy by luminosity) */
   --color-sidebar-active: #1c1c1c; /* the selected bot's tile in the sidebar */
   --color-border: rgba(255, 255, 255, 0.08); /* v2-border  #ffffff14 */
@@ -166,7 +166,8 @@
   --color-surface: #ffffff;
   --color-raised: #ececea;
   --color-hover: #e7e7e5;
-  --color-switch-off: #d4d4d2;
+  --color-switch-off: #cfcfcd;
+  --color-switch-knob-off: #ffffff;
   --color-sidebar: #ececea;
   --color-sidebar-active: #e0e0de;
   --color-border: rgba(0, 0, 0, 0.08);
