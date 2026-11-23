@@ -24,6 +24,7 @@ import {
 } from "@suup/connectors";
 import { type Db, getConnector, getConnectorOAuth, setConnectorOAuthStatus } from "@suup/db";
 import { RuntimeError } from "../errors.js";
+import { VaultError } from "../vault/crypto.js";
 import type { Vault } from "../vault/service.js";
 import { forgetOAuth, vaultOAuthStore } from "./oauth-store.js";
 import type { ConnectorService, ConnectorView } from "./service.js";
@@ -449,6 +450,8 @@ export function createGallery(deps: {
           now,
         });
       } catch (error) {
+        // The vault without its key is the server's problem, not the request's (503).
+        if (error instanceof VaultError) throw error;
         const text = message(error);
         await setConnectorOAuthStatus(db(), connector, "error", text).catch(() => {});
         throw new RuntimeError("invalid_input", `Conector "${connector}": ${text}`, {
