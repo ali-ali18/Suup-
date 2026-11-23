@@ -19,6 +19,7 @@ import {
   Toggle,
 } from "../../ui/primitives.js";
 import { SecretInput, type SecretInputHandle } from "../../ui/secret-input.js";
+import { MonoText } from "../../ui/text.js";
 import { formatWhen } from "./formatting.js";
 import {
   PaneBody,
@@ -40,11 +41,17 @@ import { useTask } from "./use-task.js";
  */
 export function SecretDialog({
   existing,
+  preset,
   onClose,
   onSaved,
 }: {
   /** The name of the secret being replaced; `undefined`: a new one. */
   existing: string | undefined;
+  /**
+   * A secret whose NAME is fixed by someone else (the token of a gallery connector: the server
+   * declares the name and where to create it). The name is not typed; the steps are shown instead.
+   */
+  preset?: { name: string; title: string; steps: readonly string[] } | undefined;
   onClose(): void;
   onSaved?(secret: Secret): void;
 }) {
@@ -52,7 +59,7 @@ export function SecretDialog({
   const bots = useData((s) => s.bots);
   const vault = useData((s) => s.vault);
   const field = useRef<SecretInputHandle>(null);
-  const [name, setName] = useState(existing ?? "");
+  const [name, setName] = useState(preset?.name ?? existing ?? "");
   const [description, setDescription] = useState("");
   const [grants, setGrants] = useState<string[]>([]);
   const [problem, setProblem] = useState<{ field: "name" | "value"; text: string } | undefined>(
@@ -64,7 +71,8 @@ export function SecretDialog({
   const save = async () => {
     setProblem(undefined);
     // The name is checked first, while the value is still in the field (nothing to retype).
-    const nameError = existing === undefined ? nameProblem(name) : undefined;
+    const nameError =
+      existing === undefined && preset === undefined ? nameProblem(name) : undefined;
     if (nameError !== undefined) {
       setProblem({ field: "name", text: nameError });
       return;
@@ -76,7 +84,7 @@ export function SecretDialog({
       const outcome = await writeSecret(api.vault, name, {
         value,
         ...(description.trim() === "" ? {} : { description: description.trim() }),
-        ...(existing === undefined ? { grantBotIds: grants } : {}),
+        ...(existing === undefined && preset === undefined ? { grantBotIds: grants } : {}),
       });
       if (!outcome.ok) return { ok: false, message: outcome.message };
       saved = outcome.result;
@@ -91,7 +99,13 @@ export function SecretDialog({
 
   return (
     <Dialog
-      title={existing === undefined ? "Novo segredo" : `Trocar o valor de ${existing}`}
+      title={
+        preset !== undefined
+          ? preset.title
+          : existing === undefined
+            ? "Novo segredo"
+            : `Trocar o valor de ${existing}`
+      }
       onClose={onClose}
       footer={
         <>
@@ -123,7 +137,23 @@ export function SecretDialog({
             O servidor não consegue guardar segredos agora: {vault.reason}
           </Notice>
         )}
-        {existing === undefined ? (
+        {preset !== undefined ? (
+          <>
+            {preset.steps.length > 0 && (
+              <ol
+                className="m-0 flex list-decimal flex-col gap-1 pl-5 text-small"
+                data-testid="secret-steps"
+              >
+                {preset.steps.map((step) => (
+                  <li key={step}>{step}</li>
+                ))}
+              </ol>
+            )}
+            <MutedText as="p">
+              Fica no cofre como <MonoText>{preset.name}</MonoText>; o bot nunca vê o valor.
+            </MutedText>
+          </>
+        ) : existing === undefined ? (
           <TextField
             label="Nome"
             value={name}
@@ -147,15 +177,17 @@ export function SecretDialog({
           error={problem?.field === "value" ? problem.text : task.error}
           hint="De 8 a 16 384 caracteres. Fica cifrado no servidor e nunca volta para esta tela."
           onEnter={() => void save()}
-          autoFocus={existing !== undefined}
+          autoFocus={existing !== undefined || preset !== undefined}
         />
-        <TextField
-          label="Para que serve (opcional)"
-          value={description}
-          onChange={setDescription}
-          hint="Os bots que podem usá-lo veem esta descrição."
-        />
-        {existing === undefined && sortedBots(bots).length > 0 && (
+        {preset === undefined && (
+          <TextField
+            label="Para que serve (opcional)"
+            value={description}
+            onChange={setDescription}
+            hint="Os bots que podem usá-lo veem esta descrição."
+          />
+        )}
+        {existing === undefined && preset === undefined && sortedBots(bots).length > 0 && (
           <FormRow as="fieldset">
             <FieldLabel as="legend" className="mb-1 p-0">
               Quem pode usar já na criação
