@@ -1032,7 +1032,9 @@ describe("plug-ins: o diálogo em grade (docs/DESIGN.md 5d)", () => {
     expect(dialog).toContain("light:invert");
     expect(dialog).toContain("data-logo={entry.id}");
     expect(dialog).toContain("text-small text-text-muted");
-    expect(dialog).toContain("<Dialog");
+    // ONE dialog: choosing an item changes its content (owner, 23/11/2026: "abrir outro dialog não, usa o mesmo")
+    expect(dialog.split("<Dialog").length - 1).toBe(1);
+    expect(dialog).toContain("onBack:");
     expect(dialog).toContain("PluginDetail");
     // the detail is the menu of a connector as the Grok Bot's: connect (off), Informações, Ferramentas
     for (const word of [
@@ -1044,7 +1046,7 @@ describe("plug-ins: o diálogo em grade (docs/DESIGN.md 5d)", () => {
     ]) {
       expect(dialog, word).toContain(word);
     }
-    expect(dialog).toContain("headerExtra={<MyPlugins />}");
+    expect(dialog).toContain("headerExtra: <MyPlugins />");
     expect(dialog).toContain("flex-row-reverse");
   });
 

@@ -64,9 +64,12 @@ describe("the connectors gallery dialog", () => {
     expect(screen.getByTestId("plugins-soon").textContent).toContain("Conectores");
   });
 
-  it("choosing one opens ITS dialog over this one; closing goes back to the grid", () => {
+  it("choosing one changes the content of the SAME dialog to its menu; the back arrow and Esc return to the grid", () => {
     render(<PluginsDialog />);
     fireEvent.click(screen.getAllByTestId("plugin-item")[4] as HTMLElement);
+    // one dialog only, its title is now the service's, and the grid is gone
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(screen.queryByTestId("plugins-grid")).toBeNull();
     const detail = screen.getByRole("dialog", { name: "Google Drive" });
     expect(within(detail).getByTestId("plugin-detail").getAttribute("data-plugin")).toBe(
       "google-drive",
@@ -84,9 +87,20 @@ describe("the connectors gallery dialog", () => {
     );
     expect(within(detail).getByRole("heading", { name: "Ferramentas" })).toBeTruthy();
     expect(within(detail).getByTestId("plugin-tools").textContent).toContain("depois de conectar");
-    fireEvent.click(within(detail).getByRole("button", { name: "Fechar" }));
-    expect(screen.queryByRole("dialog", { name: "Google Drive" })).toBeNull();
+    // the back arrow returns to the grid, in the same dialog
+    fireEvent.click(within(detail).getByRole("button", { name: "Voltar" }));
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
     expect(screen.getByRole("dialog", { name: "Conectores" })).toBeTruthy();
+    expect(screen.getByTestId("plugins-grid")).toBeTruthy();
+    // Esc does the same from the menu, and from the grid it does not close anything first
+    fireEvent.click(screen.getAllByTestId("plugin-item")[0] as HTMLElement);
+    fireEvent.keyDown(screen.getByRole("dialog", { name: "GitHub" }), { key: "Escape" });
+    expect(screen.getByRole("dialog", { name: "Conectores" })).toBeTruthy();
+    expect(useUi.getState().pluginsOpen).toBe(true);
+    // the X closes the whole dialog, even from the menu
+    fireEvent.click(screen.getAllByTestId("plugin-item")[0] as HTMLElement);
+    fireEvent.click(screen.getByRole("button", { name: "Fechar janela" }));
+    expect(useUi.getState().pluginsOpen).toBe(false);
   });
 
   it("Fechar closes it in the store", () => {

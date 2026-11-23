@@ -91,113 +91,108 @@ function Block({ title, children }: { title: string; children: ReactNode }) {
 }
 
 /**
- * What opens when a service of the gallery is chosen (docs/DESIGN.md §5d), laid out as the Grok Bot's
- * (read in its code with the REA, 23/11/2026): the logo with the name's line and the state, the
- * button to connect, then "Informações" and "Ferramentas". Nothing is connected: the backend does not
- * connect an account of a service, so the state says "Não conectado", the button is off (the
- * ornament: "Em breve"), the information is what the gallery declares and the tools appear only
- * after a connection. What works today is in Configurações > Conectores, and the text says so.
+ * What a service of the gallery shows when it is chosen (docs/DESIGN.md §5d), IN THE SAME dialog, in
+ * place of the grid (owner, 23/11/2026: "abrir outro dialog não, usa o mesmo"), laid out as the Grok
+ * Bot's (read in its code with the REA): the logo with the name's line and the state, the button to
+ * connect, then "Informações" and "Ferramentas". Nothing is connected: the backend does not connect
+ * an account of a service, so the state says "Não conectado", the button is off (the ornament: "Em
+ * breve"), the information is what the gallery declares and the tools appear only after a
+ * connection. What works today is in Configurações > Conectores, and the text says so.
  */
-function PluginDetail({ entry, onClose }: { entry: CatalogEntry; onClose(): void }) {
+function PluginDetail({ entry }: { entry: CatalogEntry }) {
   return (
-    <Dialog
-      title={entry.name}
-      onClose={onClose}
-      footer={
-        <Pill tone="primary" onClick={onClose}>
-          Fechar
-        </Pill>
-      }
-    >
-      <div className="flex flex-col gap-5" data-testid="plugin-detail" data-plugin={entry.id}>
-        <div className="flex items-center gap-4">
-          <EntryIcon entry={entry} size="lg" />
-          <div className="flex min-w-0 flex-col gap-0.5">
-            <p className="m-0 text-body">{entry.about}</p>
-            <MutedText data-testid="plugin-state">Não conectado</MutedText>
-          </div>
+    <div className="flex flex-col gap-5" data-testid="plugin-detail" data-plugin={entry.id}>
+      <div className="flex items-center gap-4">
+        <EntryIcon entry={entry} size="lg" />
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <p className="m-0 text-body">{entry.about}</p>
+          <MutedText data-testid="plugin-state">Não conectado</MutedText>
         </div>
-        <Pill tone="primary" disabled title="Em breve" data-testid="plugin-connect">
-          Conectar {entry.name}
-        </Pill>
-        <Block title="Informações">
-          <dl className="m-0 flex flex-col" data-testid="plugin-info">
-            <div className="flex items-center justify-between gap-4 py-1.5">
-              <dt className="text-text-muted">Categoria</dt>
-              <dd className="m-0">{entry.category}</dd>
-            </div>
-            <div className="flex items-center justify-between gap-4 py-1.5">
-              <dt className="text-text-muted">Disponibilidade</dt>
-              <dd className="m-0">Em breve</dd>
-            </div>
-          </dl>
-        </Block>
-        <Block title="Ferramentas">
-          <MutedText as="p" data-testid="plugin-tools">
-            Aparecem aqui depois de conectar.
-          </MutedText>
-        </Block>
-        <MutedText as="p">
-          Este conector ainda não funciona aqui. Para ligar um serviço a um bot hoje, use
-          Configurações &gt; Conectores.
-        </MutedText>
       </div>
-    </Dialog>
+      <Pill tone="primary" disabled title="Em breve" data-testid="plugin-connect">
+        Conectar {entry.name}
+      </Pill>
+      <Block title="Informações">
+        <dl className="m-0 flex flex-col" data-testid="plugin-info">
+          <div className="flex items-center justify-between gap-4 py-1.5">
+            <dt className="text-text-muted">Categoria</dt>
+            <dd className="m-0">{entry.category}</dd>
+          </div>
+          <div className="flex items-center justify-between gap-4 py-1.5">
+            <dt className="text-text-muted">Disponibilidade</dt>
+            <dd className="m-0">Em breve</dd>
+          </div>
+        </dl>
+      </Block>
+      <Block title="Ferramentas">
+        <MutedText as="p" data-testid="plugin-tools">
+          Aparecem aqui depois de conectar.
+        </MutedText>
+      </Block>
+      <MutedText as="p">
+        Este conector ainda não funciona aqui. Para ligar um serviço a um bot hoje, use
+        Configurações &gt; Conectores.
+      </MutedText>
+    </div>
   );
 }
 
 /**
- * The plug-ins, in a dialog (docs/DESIGN.md §5d): a wide grid, two columns (one when the window is
- * narrow), each item a row: the service's logo in its colours at the left and, side by side with it,
- * the name with a faded line of at most two lines UNDER it (owner, 23/11/2026). No box around an item (owner, 23/11/2026: a card each
- * weighs too much): only the hover. All of them show with no scrolling. Choosing one opens its own dialog. Nothing here is installed or run: the backend has no
- * plug-ins yet, so one line above the grid says "Em breve" and the detail says so too.
+ * The connectors gallery, in ONE dialog (docs/DESIGN.md §5d): a wide grid, two columns (one when
+ * the window is narrow), each item a row: the service's logo in its colours at the left and, side by
+ * side with it, the name with a faded line of at most two lines UNDER it. Choosing one changes the
+ * content of this same dialog to its menu (back arrow and Esc return to the grid; the X closes).
+ * No box around an item (owner, 23/11/2026). Nothing here is installed or run: the backend has no
+ * plug-ins yet, so one line above the grid says "Em breve" and the menu says so too.
  */
 export function PluginsDialog() {
   const close = () => useUi.getState().setPlugins(false);
   const [chosen, setChosen] = useState<CatalogEntry | null>(null);
   return (
-    <>
-      <Dialog
-        title="Conectores"
-        gallery
-        headerExtra={<MyPlugins />}
-        onClose={close}
-        footer={
-          <Pill tone="primary" onClick={close}>
-            Fechar
-          </Pill>
-        }
-      >
-        <MutedText as="p" className="mb-4" data-testid="plugins-soon">
-          Em breve: esta vitrine ainda não liga nada. Hoje, um serviço se liga a um bot em
-          Configurações &gt; Conectores.
-        </MutedText>
-        <ul
-          className="m-0 grid list-none grid-cols-2 gap-x-2 gap-y-1 p-0 narrow:grid-cols-1"
-          aria-label="Conectores"
-          data-testid="plugins-grid"
-        >
-          {CATALOG.map((entry) => (
-            <li key={entry.id} className="min-w-0">
-              <button
-                type="button"
-                className="flex h-full w-full min-w-0 items-center gap-4 rounded-card border-0 bg-transparent p-3 text-left text-text hover:bg-hover"
-                data-testid="plugin-item"
-                data-plugin={entry.id}
-                onClick={() => setChosen(entry)}
-              >
-                <EntryIcon entry={entry} size="lg" />
-                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span className="truncate text-label font-label">{entry.name}</span>
-                  <span className="line-clamp-2 text-small text-text-muted">{entry.about}</span>
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </Dialog>
-      {chosen !== null && <PluginDetail entry={chosen} onClose={() => setChosen(null)} />}
-    </>
+    <Dialog
+      title={chosen === null ? "Conectores" : chosen.name}
+      gallery
+      {...(chosen === null ? { headerExtra: <MyPlugins /> } : { onBack: () => setChosen(null) })}
+      onClose={close}
+      footer={
+        <Pill tone="primary" onClick={close}>
+          Fechar
+        </Pill>
+      }
+    >
+      {chosen !== null ? (
+        <PluginDetail entry={chosen} />
+      ) : (
+        <>
+          <MutedText as="p" className="mb-4" data-testid="plugins-soon">
+            Em breve: esta vitrine ainda não liga nada. Hoje, um serviço se liga a um bot em
+            Configurações &gt; Conectores.
+          </MutedText>
+          <ul
+            className="m-0 grid list-none grid-cols-2 gap-x-2 gap-y-1 p-0 narrow:grid-cols-1"
+            aria-label="Conectores"
+            data-testid="plugins-grid"
+          >
+            {CATALOG.map((entry) => (
+              <li key={entry.id} className="min-w-0">
+                <button
+                  type="button"
+                  className="flex h-full w-full min-w-0 items-center gap-4 rounded-card border-0 bg-transparent p-3 text-left text-text hover:bg-hover"
+                  data-testid="plugin-item"
+                  data-plugin={entry.id}
+                  onClick={() => setChosen(entry)}
+                >
+                  <EntryIcon entry={entry} size="lg" />
+                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="truncate text-label font-label">{entry.name}</span>
+                    <span className="line-clamp-2 text-small text-text-muted">{entry.about}</span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </Dialog>
   );
 }
