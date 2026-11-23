@@ -84,7 +84,7 @@ A resposta que o modelo recebe é só *"The secret NAME is now available. Use it
 
 **Só o que o cofre conhece.** A redação compara com os valores **exatos** guardados (e suas formas codificadas). Não existe detecção de "texto que parece uma chave ou senha" (isso seria reconhecer por padrão, uma amarra; veja [REGRAS.md](REGRAS.md)): um segredo que **não** está no cofre (digitado no chat, repetido pelo bot no resumo, colado numa memória) **não** é filtrado. Por isso o conteúdo de um segredo deve entrar pelo formulário seguro.
 
-Todo valor conhecido, e suas formas comuns (base64 em qualquer alinhamento, base64url, codificação de URL, escape de JSON, hexadecimal), é trocado por `[REDACTED:NOME]` em:
+Todo valor conhecido, e suas formas comuns (base64 em qualquer alinhamento, base64url, codificação de URL, escape de JSON, hexadecimal em minúsculas e em maiúsculas), é trocado por `[REDACTED:NOME]` em:
 
 | Onde | Como |
 |---|---|
@@ -95,6 +95,8 @@ Todo valor conhecido, e suas formas comuns (base64 em qualquer alinhamento, base
 | Saída da CLI (`inspect`, `show`, `replay`, listas, erros) | Em tudo que a CLI imprime, quando há cofre |
 | Diário de memória | O redator do cofre roda no fim da execução, antes do corte, sobre o que alimenta o diário |
 | Diagnóstico (replay, reenvio) | Os registros já nascem limpos; a saída passa pelo filtro da CLI/servidor |
+
+O redator guarda os segredos **pelo nome**: um valor novo para um nome substitui o antigo, e dois nomes com o mesmo valor continuam os dois conhecidos (o marcador mostra o primeiro nome em ordem alfabética, sempre o mesmo). Em JSON, duas chaves que ficam iguais depois da troca não se perdem: a segunda vira `[REDACTED:NOME]#2` (na ordem das chaves). Valores com menos de 8 caracteres são recusados pelo cofre com uma frase que explica por quê; o redator ignora os de menos de 4.
 
 Há um teste de aceitação ("segredo nunca aparece no log"): depois de uma execução que usou um segredo, o banco inteiro (todas as tabelas, em texto) é varrido atrás do valor e de cada codificação, e não acha nenhuma ocorrência (só o texto cifrado, que não contém o valor).
 
