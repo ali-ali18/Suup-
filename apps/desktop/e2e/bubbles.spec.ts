@@ -6,7 +6,8 @@ import { connect, freshBot, selectBot } from "./helpers.js";
 // Dynamic bubbles (docs/DESIGN.md, "Balões"): consecutive text bubbles of one sender link with a
 // small corner on the sender's side; cards never change their radius and break the group.
 
-const FULL = "24px";
+const FULL = "24px"; // a bubble's outer corner
+const CARD = "18px"; // a card's radius
 const LINK = "6px";
 
 test.describe("dynamic bubbles", () => {
@@ -93,7 +94,7 @@ test.describe("dynamic bubbles", () => {
     // The card is not part of any group: its chrome and radius are the standard ones, and it
     // carries no position.
     const card = page.getByTestId("question-card");
-    await expect(card).toHaveCSS("border-radius", FULL);
+    await expect(card).toHaveCSS("border-radius", CARD);
     await expect(card).toHaveCSS("border-top-width", "1px");
     const cardRow = page
       .getByTestId("message-bot")

@@ -7,6 +7,11 @@ export interface MockOptions {
   isolation?: { mode: "docker" | "local"; reason: string | null; detail: string | null };
   /** The first start fails with this reason (a second one, after "Tentar de novo", works). */
   failFirstStartWith?: string;
+  /**
+   * The window's frame: `custom` has no system title bar (the app draws its own controls, as on
+   * Windows and Linux); `native` has one (as on macOS). Default: `native`.
+   */
+  frame?: "custom" | "native";
 }
 
 /**
@@ -84,6 +89,9 @@ export async function installTauriMock(
         ];
         for (const [ms, run] of steps) setTimeout(run, ms);
       };
+      const windowCalls: string[] = [];
+      let maximized = false;
+      w.__windowCalls = windowCalls;
       const commands: Record<string, (args: Record<string, unknown>) => unknown> = {
         mode_load: () => store("mode"),
         mode_save: (a) => put("mode", a.mode as string),
@@ -97,6 +105,15 @@ export async function installTauriMock(
           put("connection", JSON.stringify({ serverUrl: a.serverUrl, token: a.token })),
         connection_clear: () => put("connection", null),
         connection_allow: () => undefined,
+        // The window plugin: what the page asks of its window is kept in `__windowCalls`.
+        "plugin:window|is_decorated": () => options.frame !== "custom",
+        "plugin:window|is_maximized": () => maximized,
+        "plugin:window|minimize": () => windowCalls.push("minimize"),
+        "plugin:window|toggle_maximize": () => {
+          maximized = !maximized;
+          windowCalls.push("toggle_maximize");
+        },
+        "plugin:window|close": () => windowCalls.push("close"),
         settings_load: () => store("settings"),
         settings_save: (a) => put("settings", a.json as string),
         local_status: () => status,
@@ -148,6 +165,10 @@ export async function installTauriMock(
       // (`local::start_if_selected`): a reloaded page finds it starting again.
       if (store("mode") === "local") begin();
       w.__TAURI_INTERNALS__ = {
+        metadata: {
+          currentWindow: { label: "main" },
+          currentWebview: { windowLabel: "main", label: "main" },
+        },
         transformCallback(callback: unknown) {
           const id = nextCallback++;
           callbacks.set(id, callback);

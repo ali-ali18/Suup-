@@ -1,5 +1,5 @@
 import type { Routine, RoutineFire, SuupClient } from "@suup/api";
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type Services, ServicesProvider } from "../../app/context.js";
 import { useSettings } from "../../app/settings-store.js";
@@ -9,7 +9,6 @@ import { createDataStore, update } from "../../data/store.js";
 import { Sync } from "../../data/sync.js";
 import { makeBot, routineOf } from "../../test-fixtures.js";
 import { Panel } from "./Panel.js";
-import { FIRES_PAGE } from "./RoutineDetail.js";
 
 afterEach(cleanup);
 beforeEach(() => {
@@ -58,6 +57,17 @@ function setup(routines: Routine[], fires: RoutineFire[] = [fireOf()]) {
       run: vi.fn(async () => ({ kind: "manual", status: "running" })),
       delete: vi.fn(async () => undefined),
     },
+    models: {
+      list: vi.fn(async () => [
+        { id: "model-x", provider: "scripted", available: true },
+        { id: "model-y", provider: "scripted", available: true },
+      ]),
+    },
+    bots: {
+      update: vi.fn(async (_id: string, body: Record<string, unknown>) =>
+        makeBot({ id: BOT, name: "Agenda", ...body }),
+      ),
+    },
   };
   const store = createDataStore();
   update(store, (s) => mergeBot(s, makeBot({ id: BOT, name: "Agenda" })));
@@ -69,7 +79,7 @@ function setup(routines: Routine[], fires: RoutineFire[] = [fireOf()]) {
       <Panel botId={BOT} />
     </ServicesProvider>,
   );
-  return { api: api.routines, openUrl };
+  return { api: api.routines, apiAll: api, openUrl };
 }
 
 const openDetail = async (name = "Calendário da manhã") => {
@@ -83,6 +93,38 @@ describe("the Rotinas list", () => {
     expect(await screen.findByText("Nenhuma rotina")).toBeTruthy();
     expect(screen.getByTestId("section-routines").textContent).toContain(
       "Peça no chat, por exemplo",
+    );
+  });
+
+  it("changes the bot's chat model from the Chat e voz card, which also holds the voice ornament", async () => {
+    const { apiAll } = setup([]);
+    const dropdown = await screen.findByTestId("chat-model");
+    expect(dropdown.textContent).toContain("model-x");
+    fireEvent.click(dropdown);
+    fireEvent.click(await screen.findByRole("option", { name: /model-y/ }));
+    await waitFor(() =>
+      expect(apiAll.bots.update).toHaveBeenCalledWith(BOT, { modelId: "model-y" }),
+    );
+    const section = screen.getByTestId("section-voice");
+    expect(section.textContent).toContain("Chat e voz");
+    const ornament = within(section).getByTestId("ornament-voice");
+    expect(ornament.getAttribute("aria-hidden")).toBe("true");
+    expect(within(ornament).queryAllByRole("button")).toHaveLength(0);
+  });
+
+  it("has a switch on each row that pauses and resumes the routine, like the detail's button", async () => {
+    const { api } = setup([routineOf()]);
+    const toggle = await screen.findByTestId("routine-toggle");
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(toggle);
+    await waitFor(() => expect(api.update).toHaveBeenCalledWith(routineOf().id, { paused: true }));
+    await waitFor(() =>
+      expect(screen.getByTestId("routine-toggle").getAttribute("aria-checked")).toBe("false"),
+    );
+    expect(screen.getByTestId("routine-row").getAttribute("data-status")).toBe("paused");
+    fireEvent.click(screen.getByTestId("routine-toggle"));
+    await waitFor(() =>
+      expect(api.update).toHaveBeenLastCalledWith(routineOf().id, { paused: false }),
     );
   });
 
@@ -106,103 +148,57 @@ describe("the Rotinas list", () => {
     expect(within(rows[0] as HTMLElement).getByTestId("routine-schedule").textContent).toBe(
       "todo dia às 08:00",
     );
-    expect(within(rows[1] as HTMLElement).getByTestId("routine-next").textContent).toBe("Pausada");
+    expect(within(rows[1] as HTMLElement).getByTestId("routine-schedule").textContent).toBe(
+      "Pausada",
+    );
+    expect(within(rows[1] as HTMLElement).queryByTestId("routine-next")).toBeNull();
     expect(screen.queryByRole("button", { name: /Ações da rotina/ })).toBeNull();
     expect(screen.queryByTestId("routine-form")).toBeNull();
   });
 });
 
 describe("the detail of a routine, in the panel", () => {
-  it("replaces the list: back on the left, the routine in words, its results", async () => {
-    setup([routineOf()]);
+  it("replaces the list: header with the way back and the name, the instruction in Markdown, nothing else", async () => {
+    setup([routineOf({ instruction: "Veja **meu** calendário:\n\n- hoje\n- amanhã" })]);
     const detail = await openDetail();
     expect(screen.queryByTestId("section-routines")).toBeNull();
     expect(
       await within(detail).findByRole("heading", { name: "Calendário da manhã" }),
     ).toBeTruthy();
+    const content = await within(detail).findByTestId("routine-instruction");
+    expect(within(content).getByText("meu").tagName).toBe("STRONG");
+    expect(content.querySelectorAll("li")).toHaveLength(2);
+    expect(content.textContent).not.toContain("**");
+    // as in the Grok Bot: the section "Quando executar" has the clock and the words; no results list
+    expect(within(detail).getByRole("heading", { name: "Instrução" })).toBeTruthy();
+    expect(within(detail).getByRole("heading", { name: "Quando executar" })).toBeTruthy();
     expect(within(detail).getByTestId("routine-schedule").textContent).toBe("todo dia às 08:00");
-    expect(within(detail).getByTestId("routine-next").textContent).toContain("Próxima:");
+    expect(within(detail).queryByTestId("routine-fires")).toBeNull();
     fireEvent.click(within(detail).getByRole("button", { name: "Voltar às rotinas" }));
     expect(await screen.findByTestId("section-routines")).toBeTruthy();
     expect(screen.queryByTestId("routine-detail")).toBeNull();
   });
 
-  it("what the bot wrote is Markdown, with the same renderer as the chat", async () => {
+  it("the actions are one row at the foot of the column: two equal buttons and the trash circle", async () => {
     setup([routineOf()]);
     const detail = await openDetail();
-    const result = await within(detail).findByTestId("routine-result");
-    expect(within(result).getByText("Hoje").className).toContain("font-title");
-    expect(within(result).getByText("15h").tagName).toBe("STRONG");
-    expect(result.querySelectorAll("li")).toHaveLength(2);
-    expect(result.textContent).not.toContain("**");
-  });
-
-  it("the sources: the generic icon while the icons of sites are off, the site's own when on", async () => {
-    const { openUrl } = setup([routineOf()]);
-    const detail = await openDetail();
-    const [web, connector] = await within(detail).findAllByTestId("routine-source");
-    expect(web?.textContent).toBe("agenda.exemplo.com.br");
-    expect(web?.getAttribute("href")).toBe("https://agenda.exemplo.com.br/hoje");
-    expect(web?.querySelector("img")).toBeNull();
-    expect(web?.querySelector(".lucide-globe")).not.toBeNull();
-    expect(connector?.textContent).toBe("calendario");
-    expect(connector?.querySelector(".lucide-plug")).not.toBeNull();
-    fireEvent.click(web as HTMLElement);
-    expect(openUrl).toHaveBeenCalledWith("https://agenda.exemplo.com.br/hoje");
-    act(() => useSettings.getState().update({ favicons: "on" }));
-    const img = within(detail).getAllByTestId("routine-source")[0]?.querySelector("img");
-    // the host ONLY, never the page's path
-    expect(img?.getAttribute("src")).toBe("https://agenda.exemplo.com.br/favicon.ico");
-  });
-
-  it("a skipped fire is one quiet line; a failure shows the reason as plain text", async () => {
-    setup(
-      [routineOf()],
-      [
-        fireOf({ id: "00000000-0000-4000-8000-0000000000f3", status: "skipped", runId: null }),
-        fireOf({
-          id: "00000000-0000-4000-8000-0000000000f2",
-          status: "failed",
-          resultText: "A execução falhou: **sem** acesso.",
-          sources: [],
-        }),
-      ],
-    );
-    const detail = await openDetail();
-    const [skipped, failed] = await within(detail).findAllByTestId("routine-fire");
-    expect(skipped?.textContent).toContain("Pulada: a anterior ainda rodava");
-    expect(within(skipped as HTMLElement).queryByTestId("routine-result")).toBeNull();
-    expect(within(failed as HTMLElement).getByTestId("routine-result").textContent).toBe(
-      "A execução falhou: **sem** acesso.",
+    const actions = await within(detail).findByTestId("routine-actions");
+    expect(detail.lastElementChild).toBe(actions);
+    for (const id of ["routine-pause", "routine-edit"]) {
+      expect(within(actions).getByTestId(id).className).toContain("flex-1");
+    }
+    expect(within(actions).getByTestId("routine-remove").getAttribute("aria-label")).toBe(
+      "Excluir rotina",
     );
   });
 
-  it("shows more on request", async () => {
-    const many = Array.from({ length: FIRES_PAGE + 3 }, (_, i) =>
-      fireOf({ id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}` }),
-    );
-    const { api } = setup([routineOf()], many);
-    const detail = await openDetail();
-    await waitFor(() =>
-      expect(within(detail).getAllByTestId("routine-fire")).toHaveLength(FIRES_PAGE),
-    );
-    fireEvent.click(within(detail).getByTestId("routine-more"));
-    await waitFor(() =>
-      expect(within(detail).getAllByTestId("routine-fire")).toHaveLength(FIRES_PAGE + 3),
-    );
-    expect(api.fires).toHaveBeenLastCalledWith(routineOf().id, { limit: FIRES_PAGE * 2 });
-    expect(within(detail).queryByTestId("routine-more")).toBeNull();
-  });
-
-  it("pauses, resumes and runs now from the icons on top", async () => {
+  it("Pausar and Retomar change the routine", async () => {
     const { api } = setup([routineOf()]);
     const detail = await openDetail();
-    fireEvent.click(await within(detail).findByRole("button", { name: "Pausar a rotina" }));
+    fireEvent.click(await within(detail).findByRole("button", { name: "Pausar" }));
     await waitFor(() => expect(api.update).toHaveBeenCalledWith(routineOf().id, { paused: true }));
-    expect(await within(detail).findByRole("button", { name: "Retomar a rotina" })).toBeTruthy();
-    expect(within(detail).getByTestId("routine-next").textContent).toBe("Pausada");
-    fireEvent.click(within(detail).getByRole("button", { name: /Rodar agora/ }));
-    await waitFor(() => expect(api.run).toHaveBeenCalledWith(routineOf().id));
+    expect(await within(detail).findByRole("button", { name: "Retomar" })).toBeTruthy();
+    expect(within(detail).queryByRole("button", { name: "Testar" })).toBeNull();
   });
 
   it("Editar goes to the chat with the draft and the routine bound to it (never its id in the text)", async () => {

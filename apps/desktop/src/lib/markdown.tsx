@@ -173,7 +173,7 @@ export function Markdown({
   favicons?: boolean;
 }) {
   return (
-    <div className="flex min-w-0 flex-col gap-3 text-body">
+    <div className="flex min-w-0 flex-col gap-3 text-body wrap-anywhere">
       {parseBlocks(text).map((block, i) => {
         const key = i;
         switch (block.kind) {
@@ -211,7 +211,7 @@ export function Markdown({
             return (
               <pre
                 key={key}
-                className="m-0 max-h-80 overflow-auto rounded-inner border border-border bg-bg px-3.5 py-3"
+                className="m-0 max-h-80 overflow-x-hidden overflow-y-auto rounded-inner border border-border bg-bg px-3.5 py-3 wrap-anywhere whitespace-pre-wrap"
               >
                 <code>{block.text}</code>
               </pre>

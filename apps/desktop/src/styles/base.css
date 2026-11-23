@@ -20,6 +20,16 @@ body {
 button {
   cursor: pointer;
 }
+/*
+ * No scrollbar is drawn anywhere (owner's decision, 22/11/2026: a visible bar looks odd); the
+ * wheel, the trackpad, the keyboard and a touch still scroll. Text never scrolls sideways: it wraps.
+ */
+* {
+  scrollbar-width: none;
+}
+*::-webkit-scrollbar {
+  display: none;
+}
 button:disabled {
   cursor: not-allowed;
 }
