@@ -827,19 +827,24 @@ describe("routines: no schedule form, rows edge to edge, the detail in the panel
     expect(detail).not.toContain("[&>*+*]:border-t");
   });
 
-  it("the detail is only a header, the instruction in Markdown and the two buttons at the foot, half of the width each (owner, 23/11/2026, as in the Grok Bot)", () => {
+  it("the detail is built as the Grok Bot's (read with the REA, 23/11/2026): header, Instrução and Quando executar, one row of actions at the foot", () => {
     expect(detail).toContain("<Markdown");
     expect(detail).toContain("routine.instruction");
     expect(detail).toContain('settings.favicons === "on"');
     expect(detail).toContain('className="flex-1"');
-    for (const gone of [
-      "<SourceChip",
-      "routines.fires",
-      "routines.run",
-      "Pausar a rotina",
+    for (const word of [
+      "Instrução",
+      "Quando executar",
+      "Pausar",
+      "Retomar",
+      "Testar",
+      "Editar",
+      "Excluir rotina",
       "describeSchedule",
-      "nextText",
     ]) {
+      expect(detail, word).toContain(word);
+    }
+    for (const gone of ["<SourceChip", "routines.fires", "nextText"]) {
       expect(detail, gone).not.toContain(gone);
     }
     expect(chip).toContain("faviconUrl(safe)");

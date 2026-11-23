@@ -1,5 +1,5 @@
 import type { Routine } from "@suup/api";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Clock, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useServices } from "../../app/context.js";
 import { useSettings } from "../../app/settings-store.js";
@@ -7,7 +7,7 @@ import { useUi } from "../../app/ui-store.js";
 import { messageOf } from "../../data/sync.js";
 import { cx } from "../../lib/cx.js";
 import { Markdown } from "../../lib/markdown.js";
-import { editDraft } from "../../lib/routines.js";
+import { describeSchedule, editDraft } from "../../lib/routines.js";
 import { Dialog, FieldError, MutedText, Pill, RoundButton } from "../../ui/primitives.js";
 import { useBotRunMark } from "./run-mark.js";
 
@@ -54,22 +54,39 @@ function RemoveDialog({
   );
 }
 
+/** A section of the detail, as in the Grok Bot: a label of 30 px and what it holds. */
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="flex flex-col" aria-label={title}>
+      <h3 className="flex h-7.5 items-center px-2 text-label font-normal text-text-muted">
+        {title}
+      </h3>
+      {children}
+    </section>
+  );
+}
+
 /**
- * The detail of a routine, in the bot's panel in place of the list (docs/DESIGN.md §5b), as in the
- * Grok Bot and nothing more: a header (the way back and the routine's name), the content (what the
- * routine asks the bot, in Markdown) and, at the foot of the column, Editar (to the chat, by asking
- * the bot) and Remover (a dialog), each one half of the full width. When it runs, the bot's answer
- * arrives in the chat. Read from `/v1/routines/{id}`, again when a run of the bot changes.
+ * The detail of a routine, in the bot's panel in place of the list (docs/DESIGN.md §5b), built as
+ * the Grok Bot's (read in its code with the REA, 23/11/2026): a header (the way back and the name),
+ * the content in two sections, "Instrução" (what the routine asks the bot, in Markdown) and "Quando
+ * executar" (a row with the clock and the schedule in words), and at the foot of the column the
+ * actions in one row: Pausar or Retomar, Testar (run once now), Editar (to the chat, by asking the
+ * bot), each one an equal share of the width, and the trash circle (Remover, a dialog). When it
+ * runs, the bot's answer arrives in the chat. Read from `/v1/routines/{id}`, again when a run of
+ * the bot changes.
  */
 export function RoutineDetail({ botId, routineId }: { botId: string; routineId: string }) {
   const { api, platform } = useServices();
   const favicons = useSettings((s) => s.settings.favicons === "on");
   const customFrame = useUi((s) => s.customFrame);
+  const toast = useUi((s) => s.toast);
   const openPanelRoutine = useUi((s) => s.openPanelRoutine);
   const editRoutineInChat = useUi((s) => s.editRoutineInChat);
   const [routine, setRoutine] = useState<Routine | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
   const [removing, setRemoving] = useState(false);
+  const [running, setRunning] = useState(false);
   const mark = useBotRunMark(botId);
 
   const load = useCallback(() => {
@@ -86,6 +103,27 @@ export function RoutineDetail({ botId, routineId }: { botId: string; routineId: 
   }, [load, mark]);
 
   const back = () => openPanelRoutine(null);
+  const paused = routine?.status === "paused";
+  const togglePause = () => {
+    if (routine === undefined) return;
+    api.routines
+      .update(routine.id, { paused: !paused })
+      .then(setRoutine, (e: unknown) => toast(messageOf(e), "error"));
+  };
+  const runNow = () => {
+    if (routine === undefined) return;
+    setRunning(true);
+    api.routines.run(routine.id).then(
+      () => {
+        setRunning(false);
+        toast(`“${routine.name}” começou a rodar. O resultado chega no chat.`, "info");
+      },
+      (e: unknown) => {
+        setRunning(false);
+        toast(messageOf(e), "error");
+      },
+    );
+  };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="routine-detail">
@@ -103,16 +141,43 @@ export function RoutineDetail({ botId, routineId }: { botId: string; routineId: 
           <h2 className="min-w-0 truncate text-title font-title">{routine.name}</h2>
         )}
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-2 pb-4">
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 pt-2 pb-6">
         {error !== undefined && <FieldError>{error}</FieldError>}
         {routine !== undefined && (
-          <div data-testid="routine-instruction">
-            <Markdown text={routine.instruction} openUrl={platform.openUrl} favicons={favicons} />
+          <div className="flex flex-col gap-3">
+            <Section title="Instrução">
+              <div className="px-2" data-testid="routine-instruction">
+                <Markdown
+                  text={routine.instruction}
+                  openUrl={platform.openUrl}
+                  favicons={favicons}
+                />
+              </div>
+            </Section>
+            <Section title="Quando executar">
+              <ul className="flex list-none flex-col gap-0.5 p-0" aria-label="Quando executar">
+                <li className="flex items-center gap-2 px-2 py-1 text-body text-text-muted">
+                  <Clock size={16} className="flex-none" aria-hidden="true" />
+                  <span data-testid="routine-schedule">{describeSchedule(routine.schedule)}</span>
+                </li>
+              </ul>
+            </Section>
           </div>
         )}
       </div>
       {routine !== undefined && (
-        <div className="flex flex-none gap-2 px-4 pb-4" data-testid="routine-actions">
+        <div className="flex flex-none items-stretch gap-2 px-3 pb-3" data-testid="routine-actions">
+          <Pill
+            className="flex-1"
+            disabled={routine.status === "ended"}
+            onClick={togglePause}
+            data-testid="routine-pause"
+          >
+            {paused ? "Retomar" : "Pausar"}
+          </Pill>
+          <Pill className="flex-1" disabled={running} onClick={runNow} data-testid="routine-run">
+            {running ? "Em execução…" : "Testar"}
+          </Pill>
           <Pill
             className="flex-1"
             onClick={() =>
@@ -126,14 +191,14 @@ export function RoutineDetail({ botId, routineId }: { botId: string; routineId: 
           >
             Editar
           </Pill>
-          <Pill
-            className="flex-1"
-            tone="danger"
+          <RoundButton
+            label="Excluir rotina"
+            tone="raised"
             onClick={() => setRemoving(true)}
             data-testid="routine-remove"
           >
-            Remover
-          </Pill>
+            <Trash2 size={16} className="text-danger-text" aria-hidden="true" />
+          </RoundButton>
         </div>
       )}
       {removing && routine !== undefined && (

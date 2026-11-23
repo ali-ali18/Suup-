@@ -171,17 +171,19 @@ test.describe("routines", () => {
     const detail = panel.getByTestId("routine-detail");
     await expect(detail.getByRole("heading", { name: "Calendário da manhã" })).toBeVisible();
     await expect(panel.getByTestId("section-routines")).toHaveCount(0);
-    // only the header, the content (the instruction, in Markdown) and the two buttons at the foot
+    // as in the Grok Bot: Instrução and Quando executar, and one row of actions at the foot
     await expect(detail.getByTestId("routine-instruction")).toContainText("ROTINA-CALENDARIO");
+    await expect(detail.getByTestId("routine-schedule")).toHaveText("todo dia às 08:00");
     await expect(detail.getByTestId("routine-fire")).toHaveCount(0);
-    await expect(detail.getByRole("button", { name: "Pausar a rotina" })).toHaveCount(0);
-    const [edit, remove] = await Promise.all(
-      ["routine-edit", "routine-remove"].map((id) => detail.getByTestId(id).boundingBox()),
+    const boxes = await Promise.all(
+      ["routine-pause", "routine-run", "routine-edit"].map((id) =>
+        detail.getByTestId(id).boundingBox(),
+      ),
     );
+    const widths = boxes.map((x) => Math.round(x?.width ?? 0));
+    expect(Math.max(...widths) - Math.min(...widths)).toBeLessThanOrEqual(2);
     const box = await detail.boundingBox();
-    expect(edit?.width).toBeGreaterThan((box?.width ?? 0) / 2 - 24);
-    expect(remove?.width).toBeGreaterThan((box?.width ?? 0) / 2 - 24);
-    expect((edit?.y ?? 0) + (edit?.height ?? 0)).toBeGreaterThan(
+    expect((boxes[0]?.y ?? 0) + (boxes[0]?.height ?? 0)).toBeGreaterThan(
       (box?.y ?? 0) + (box?.height ?? 0) - 24,
     );
     await page.waitForTimeout(400);

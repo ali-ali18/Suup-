@@ -169,23 +169,37 @@ describe("the detail of a routine, in the panel", () => {
     expect(within(content).getByText("meu").tagName).toBe("STRONG");
     expect(content.querySelectorAll("li")).toHaveLength(2);
     expect(content.textContent).not.toContain("**");
-    // as in the Grok Bot: no schedule lines, no results list, no pause or run icons
-    expect(within(detail).queryByTestId("routine-schedule")).toBeNull();
+    // as in the Grok Bot: the section "Quando executar" has the clock and the words; no results list
+    expect(within(detail).getByRole("heading", { name: "Instrução" })).toBeTruthy();
+    expect(within(detail).getByRole("heading", { name: "Quando executar" })).toBeTruthy();
+    expect(within(detail).getByTestId("routine-schedule").textContent).toBe("todo dia às 08:00");
     expect(within(detail).queryByTestId("routine-fires")).toBeNull();
-    expect(within(detail).queryByRole("button", { name: "Pausar a rotina" })).toBeNull();
     fireEvent.click(within(detail).getByRole("button", { name: "Voltar às rotinas" }));
     expect(await screen.findByTestId("section-routines")).toBeTruthy();
     expect(screen.queryByTestId("routine-detail")).toBeNull();
   });
 
-  it("the two buttons are at the foot of the column, each one half of the full width", async () => {
+  it("the actions are one row at the foot of the column: three equal buttons and the trash circle", async () => {
     setup([routineOf()]);
     const detail = await openDetail();
     const actions = await within(detail).findByTestId("routine-actions");
     expect(detail.lastElementChild).toBe(actions);
-    for (const id of ["routine-edit", "routine-remove"]) {
+    for (const id of ["routine-pause", "routine-run", "routine-edit"]) {
       expect(within(actions).getByTestId(id).className).toContain("flex-1");
     }
+    expect(within(actions).getByTestId("routine-remove").getAttribute("aria-label")).toBe(
+      "Excluir rotina",
+    );
+  });
+
+  it("Pausar and Retomar change the routine, Testar runs it once now", async () => {
+    const { api } = setup([routineOf()]);
+    const detail = await openDetail();
+    fireEvent.click(await within(detail).findByRole("button", { name: "Pausar" }));
+    await waitFor(() => expect(api.update).toHaveBeenCalledWith(routineOf().id, { paused: true }));
+    expect(await within(detail).findByRole("button", { name: "Retomar" })).toBeTruthy();
+    fireEvent.click(within(detail).getByRole("button", { name: "Testar" }));
+    await waitFor(() => expect(api.run).toHaveBeenCalledWith(routineOf().id));
   });
 
   it("Editar goes to the chat with the draft and the routine bound to it (never its id in the text)", async () => {
