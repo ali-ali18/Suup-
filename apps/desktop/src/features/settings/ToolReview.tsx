@@ -8,6 +8,7 @@ import { History } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useServices } from "../../app/context.js";
 import { cx } from "../../lib/cx.js";
+import { friendlyError } from "../../lib/friendly-error.js";
 import {
   type Cell,
   CHANGED_AGAIN,
@@ -281,7 +282,7 @@ export function ReviewDialog({ connector, onClose }: { connector: Connector; onC
       setItems(await api.connectors.review(connector.name));
       setError(undefined);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Não foi possível carregar a revisão.");
+      setError(friendlyError(e));
     }
   }, [api, connector.name]);
   useEffect(() => {
@@ -359,7 +360,7 @@ export function ToolHistory({ connector }: { connector: Connector }) {
         }
       },
       (e: unknown) => {
-        if (current) setError(e instanceof Error ? e.message : "Não foi possível ler o histórico.");
+        if (current) setError(friendlyError(e));
       },
     );
     return () => {

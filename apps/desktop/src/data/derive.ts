@@ -321,9 +321,8 @@ export function timelineNotices(events: readonly RunEvent[]): Timeline {
           notices.push({
             seq: event.seq,
             text:
-              p.retryable === true
-                ? "Tentando de novo…"
-                : `Erro do modelo: ${str(p.message) ?? "desconhecido"}`,
+              // The provider's own words are a log line (the Inspector shows them).
+              p.retryable === true ? "Tentando de novo…" : "O modelo não respondeu desta vez.",
           });
         }
         break;
@@ -381,6 +380,21 @@ export const ORIGIN_EXPLANATION: Record<string, string> = {
   limit: "Um limite configurado foi atingido: número de turnos, custo ou tempo.",
   approval: "Uma ação precisava de aprovação e foi negada ou expirou.",
   user: "A execução foi encerrada a seu pedido.",
+};
+
+/**
+ * What the chat says when a run failed, in ONE friendly sentence by the declared origin (never the
+ * failure's detail, which is a log: it stays in the Inspector; docs/DESIGN.md, "Amigável").
+ */
+export const FRIENDLY_FAILURE: Record<string, string> = {
+  provider:
+    "O modelo não respondeu agora (rede, chave ou limite de uso). Tenta de novo daqui a pouco?",
+  model: "O modelo não conseguiu terminar esta tarefa.",
+  tool: "Uma ferramenta falhou no meio do caminho.",
+  harness: "Algo deu errado do nosso lado.",
+  limit: "Chegou ao limite de passos, custo ou tempo deste bot.",
+  approval: "Uma ação precisava da sua aprovação e não foi aprovada.",
+  user: "Você encerrou esta execução.",
 };
 
 export function failureOriginLabel(origin: string | null): string {

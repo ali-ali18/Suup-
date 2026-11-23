@@ -11,6 +11,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { useUi } from "../../app/ui-store.js";
 import { cx } from "../../lib/cx.js";
+import { formError, friendlyError } from "../../lib/friendly-error.js";
 import {
   avatarOf,
   colorVars,
@@ -109,13 +110,7 @@ export function NewBotDialog() {
         );
         setTools((cur) => cur ?? main?.allowedTools ?? t.items.map((x) => x.name));
       },
-      (e: unknown) =>
-        useUi
-          .getState()
-          .toast(
-            e instanceof Error ? e.message : "Não foi possível carregar modelos e ferramentas.",
-            "error",
-          ),
+      (e: unknown) => useUi.getState().toast(friendlyError(e), "error"),
     );
     return () => {
       current = false;
@@ -147,7 +142,7 @@ export function NewBotDialog() {
       setDescription(draft.description);
       setPersonality(draft.personality);
     } catch (e) {
-      setDraftError(e instanceof Error ? e.message : "Não foi possível gerar a sugestão.");
+      setDraftError(friendlyError(e));
     } finally {
       setDrafting(false);
     }
@@ -177,9 +172,7 @@ export function NewBotDialog() {
       close();
       selectBot(bot.id);
     } catch (e) {
-      useUi
-        .getState()
-        .toast(e instanceof Error ? e.message : "Não foi possível salvar o bot.", "error");
+      useUi.getState().toast(formError(e), "error");
       setSaving(false);
     }
   };

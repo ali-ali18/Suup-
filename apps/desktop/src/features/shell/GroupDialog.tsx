@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { useUi } from "../../app/ui-store.js";
 import { groupNames } from "../../data/botlist.js";
+import { friendlyError } from "../../lib/friendly-error.js";
 import { ChoiceGroup, ChoiceRow } from "../../ui/choice.js";
 import { Dialog, Pill, TextField } from "../../ui/primitives.js";
 
@@ -28,9 +29,7 @@ export function GroupDialog() {
       sync.mergeBotNow(await api.bots.update(bot.id, { groupName: target }));
       close(null);
     } catch (error) {
-      useUi
-        .getState()
-        .toast(error instanceof Error ? error.message : "Não foi possível mover o bot.", "error");
+      useUi.getState().toast(friendlyError(error), "error");
       setBusy(false);
     }
   };

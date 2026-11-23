@@ -244,6 +244,7 @@ export function SettingsRow({
   title,
   description,
   descriptionTestId,
+  descriptionTitle,
   control,
   testId,
   titleId,
@@ -254,6 +255,8 @@ export function SettingsRow({
   title: string;
   description?: ReactNode;
   descriptionTestId?: string;
+  /** A technical detail kept out of sight, on hover only (docs/DESIGN.md, "Amigável"). */
+  descriptionTitle?: string | undefined;
   control?: ReactNode;
   testId?: string;
   titleId?: string;
@@ -274,7 +277,9 @@ export function SettingsRow({
             {title}
           </RowTitle>
           {description !== undefined && (
-            <RowDescription data-testid={descriptionTestId}>{description}</RowDescription>
+            <RowDescription data-testid={descriptionTestId} title={descriptionTitle}>
+              {description}
+            </RowDescription>
           )}
         </RowText>
       </div>

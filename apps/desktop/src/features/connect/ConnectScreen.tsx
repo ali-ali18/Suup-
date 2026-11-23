@@ -43,7 +43,7 @@ export function ConnectScreen({
         type="password"
         value={token}
         onChange={setToken}
-        hint="O mesmo valor de SUUP_SERVER_TOKEN. No app de desktop ele fica guardado no chaveiro do sistema."
+        hint="O token que você configurou no servidor; fica guardado no chaveiro do sistema."
       />
       {error !== undefined && <FieldError data-testid="connect-error">{error}</FieldError>}
       <Pill tone="primary" type="submit" disabled={!ready}>

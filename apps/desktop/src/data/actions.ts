@@ -1,5 +1,11 @@
 import type { Approval, PlanStep, Run, RunEvent } from "@suup/api";
-import { type CategoryIcon, NETWORK_TOOL, STATUS_LABEL, toolCategory } from "./approval-text.js";
+import {
+  type CategoryIcon,
+  NETWORK_TOOL,
+  parseConnectorTool,
+  STATUS_LABEL,
+  toolCategory,
+} from "./approval-text.js";
 import {
   CONTROL_TOOLS,
   currentStep,
@@ -269,13 +275,27 @@ export function describeAction(
       const [summary, doing] = words[name] as [string, string];
       return { kind: "other", ...label, summary, doing };
     }
-    default:
+    default: {
+      // A connector's tool: its own name on the server, in words (`get_file_contents` reads "get
+      // file contents"); never the internal `conn_<connector>__<tool>` (docs/DESIGN.md, "Amigável").
+      // The connector is already the bold label.
+      const ref = parseConnectorTool(name, connectors);
+      if (ref !== null) {
+        const tool = ref.tool.replaceAll("_", " ").trim();
+        return {
+          kind: "other",
+          ...label,
+          summary: tool === "" ? "Usar o conector" : `Usar “${tool}”`,
+          doing: tool === "" ? "Usando o conector" : `Usando “${tool}”`,
+        };
+      }
       return {
         kind: "other",
         ...label,
         summary: `Usar ${toolLabel(name).toLowerCase()}`,
         doing: `Usando ${toolLabel(name).toLowerCase()}`,
       };
+    }
   }
 }
 

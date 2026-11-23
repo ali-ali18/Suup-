@@ -93,7 +93,7 @@ export function MemoryScreen() {
     <Screen data-testid="memory-screen">
       <ScreenHead
         title="Memória"
-        subtitle="Tudo o que o Suup sabe e usa. Uma memória nova ou esquecida vale a partir da próxima execução."
+        subtitle="Tudo o que o Suup sabe e usa; o que muda vale a partir da próxima conversa."
         action={
           <Pill
             tone="primary"

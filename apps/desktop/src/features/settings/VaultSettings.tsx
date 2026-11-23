@@ -268,23 +268,12 @@ export function VaultSettings({ title, titleId, onClose }: SectionProps) {
                 ? "O cofre não tem a chave"
                 : "Este servidor não tem cofre configurado"}
             </strong>
-            <p>{vault.reason}.</p>
-            <p>
-              Sem o cofre não dá para guardar segredos nem para um bot pedir um. Para ligar: gere
-              uma chave (<code>suup vault key generate</code>), ponha na variável de ambiente do
-              servidor e do worker, e inclua a seção <code>vault</code> no arquivo de configuração
-              (veja <code>docs/COFRE.md</code>).
-            </p>
+            {/* How to turn it on (the key, the variable, the configuration) is in docs/COFRE.md. */}
+            <p>Sem ele não dá para guardar segredos; quem cuida do servidor precisa ligá-lo.</p>
           </Notice>
         )}
         <SettingsHint data-testid="vault-status">
-          O valor só se escreve ou se troca: nunca é mostrado. Os bots usam o segredo pelo nome.
-          {vault?.ok === true && vault.keyEnv !== null && (
-            <span className="sr-only" data-testid="vault-ok">
-              {" "}
-              A chave está na variável {vault.keyEnv} do servidor.
-            </span>
-          )}
+          O valor só se escreve ou se troca: nunca é mostrado.
         </SettingsHint>
         {secrets.length > 0 && (
           <div className="flex flex-wrap items-center justify-end gap-3">

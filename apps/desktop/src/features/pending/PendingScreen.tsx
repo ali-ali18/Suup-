@@ -155,7 +155,7 @@ export function PendingScreen() {
             <EmptyState
               icon={<ShieldCheck size={16} />}
               title="Nenhuma aprovação"
-              text="Quando um bot precisar da sua permissão para uma ação, o pedido aparece aqui, com o conteúdo exato que vai rodar."
+              text="Quando um bot precisar da sua permissão para uma ação, o pedido aparece aqui."
             />
           ) : (
             cards.map((card, index) => {
@@ -186,7 +186,7 @@ export function PendingScreen() {
             <EmptyState
               icon={<KeyRound size={16} />}
               title="Nenhum segredo pedido"
-              text="Quando um bot precisar de uma credencial, o formulário seguro aparece aqui. O valor vai direto para o cofre."
+              text="Quando um bot precisar de uma credencial, o formulário seguro aparece aqui."
             />
           ) : (
             secrets.map(({ run, request }) => {

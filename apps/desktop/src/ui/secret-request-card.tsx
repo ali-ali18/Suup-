@@ -110,7 +110,7 @@ function OpenForm({
       title={`${botName} pede um segredo`}
       lede={
         reason === null || reason === ""
-          ? "O valor vai direto para o cofre. O bot só fica sabendo que o segredo está disponível."
+          ? "O valor vai direto para o cofre; o bot só fica sabendo que ele existe."
           : `Motivo dado pelo bot: ${reason}`
       }
       footerNote={

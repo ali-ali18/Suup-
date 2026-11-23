@@ -1171,3 +1171,102 @@ describe("conectores: a tela da vitrine (docs/DESIGN.md 5d)", () => {
     expect(read(join(SRC, "features", "shell", "Sidebar.tsx"))).toContain('go("connectors")');
   });
 });
+
+describe('amigável: nada de log para o usuário (dono, 23/11/2026: "a ideia é ser friendly")', () => {
+  const sources = files(SRC, /\.tsx?$/).filter(
+    (f) =>
+      !f.endsWith("design-rules.test.ts") &&
+      // the one place that turns an error into words, and the diagnostic screen
+      !f.endsWith(join("lib", "friendly-error.ts")) &&
+      // the transport of the shell: its text becomes a network ApiError, whose kind is what is shown
+      !f.endsWith(join("lib", "tauri.ts")) &&
+      !f.includes(join("features", "inspector")),
+  );
+
+  it("nenhuma tela lê o texto cru de um erro: a frase vem do tipo declarado (friendlyError/formError)", () => {
+    for (const f of sources) {
+      const text = read(f);
+      for (const raw of [
+        "instanceof Error ?",
+        " e.message",
+        "(e.message",
+        "error.message",
+        "err.message",
+        "String(e)",
+      ]) {
+        expect(text.includes(raw), `${rel(f)}: ${raw}`).toBe(false);
+      }
+    }
+    const friendly = read(join(SRC, "lib", "friendly-error.ts"));
+    // by the kind the API declares, compared exactly: never by the text
+    expect(friendly).toContain("BY_CODE[error.code]");
+    expect(friendly).toContain('"Algo deu errado. Tenta de novo?"');
+    for (const searching of [".includes(", ".startsWith(", ".match(", ".test(", "RegExp"]) {
+      expect(friendly, searching).not.toContain(searching);
+    }
+    expect(read(join(SRC, "data", "sync.ts"))).toContain("export const messageOf = friendlyError;");
+  });
+
+  it("a página de um conector não mostra endereço, licença, hosts, data, detalhe cru nem o nome do segredo", () => {
+    const screen = read(join(SRC, "features", "plugins", "ConnectorsScreen.tsx"));
+    for (const technical of [
+      "entry.source",
+      "entry.license",
+      "entry.egressHosts",
+      "entry.checkedAt",
+      "item.detail",
+      "status.error",
+    ]) {
+      expect(screen, technical).not.toContain(technical);
+    }
+    // the secure form never shows the name the token is kept under
+    const vault = read(join(SRC, "features", "settings", "VaultSettings.tsx"));
+    expect(vault).not.toContain("{preset.name}");
+    expect(vault).not.toContain("vault.keyEnv");
+    expect(vault).not.toContain("{vault.reason}");
+  });
+
+  it("nunca há campo para colar o endereço de retorno de um login (dono: “por que raios eu colaria um link?”)", () => {
+    for (const f of sources) {
+      const text = read(f);
+      for (const paste of ["oauthComplete", "callbackUrl", "connector-paste"]) {
+        expect(text.includes(paste), `${rel(f)}: ${paste}`).toBe(false);
+      }
+    }
+  });
+
+  it("as telas antes do app e o Servidor não mostram caminho de arquivo nem nome de variável", () => {
+    const local = read(join(SRC, "features", "connect", "LocalScreen.tsx"));
+    expect(local).not.toContain("{status.logsDir}");
+    expect(local).not.toContain("{status.message");
+    expect(local).toContain("Abrir a pasta de registros");
+    const server = read(join(SRC, "features", "settings", "ServerGroup.tsx"));
+    expect(server).not.toContain("description={status.logsDir}");
+    expect(server).not.toContain("description={connection.serverUrl}");
+    for (const f of [
+      join(SRC, "features", "connect", "ConnectScreen.tsx"),
+      join(SRC, "app", "connect.ts"),
+    ]) {
+      for (const name of ["SUUP_", "allowedOrigins", "tokenEnv"]) {
+        expect(read(f).includes(name), `${rel(f)}: ${name}`).toBe(false);
+      }
+    }
+  });
+
+  it("o chat não mostra o nome interno de uma ferramenta de conector nem o detalhe cru de uma falha", () => {
+    const actions = read(join(SRC, "data", "actions.ts"));
+    expect(actions).toContain("parseConnectorTool(name, connectors)");
+    const list = read(join(SRC, "features", "chat", "MessageList.tsx"));
+    expect(list).not.toContain("failureDetail");
+    expect(list).toContain("FRIENDLY_FAILURE[");
+    // the motives a server sends without a kind stay out of the screens: a fixed sentence
+    for (const [file, raw] of [
+      [join(SRC, "features", "settings", "PermissionsSettings.tsx"), "reviewer.reason"],
+      [join(SRC, "features", "settings", "MemorySettings.tsx"), "reviewer.reason"],
+      [join(SRC, "features", "settings", "SupervisorSettings.tsx"), "model.reason"],
+      [join(SRC, "features", "settings", "GeneralSettings.tsx"), "{m.unavailableReason}"],
+    ] as const) {
+      expect(read(file).includes(raw), `${rel(file)}: ${raw}`).toBe(false);
+    }
+  });
+});

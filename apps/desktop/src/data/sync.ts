@@ -330,7 +330,7 @@ export class Sync {
     } catch (error) {
       return {
         ok: false,
-        message: error instanceof Error ? error.message : "Não foi possível refazer a recepção.",
+        message: friendlyError(error),
       };
     }
   }
@@ -351,7 +351,7 @@ export class Sync {
     } catch (error) {
       return {
         ok: false,
-        message: error instanceof Error ? error.message : "Não foi possível decidir a proposta.",
+        message: friendlyError(error),
       };
     }
   }
