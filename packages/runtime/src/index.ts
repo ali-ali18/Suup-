@@ -25,6 +25,23 @@ export {
   type ServerConfig,
 } from "./config.js";
 export {
+  type CatalogItem,
+  type CatalogStatus,
+  type ConnectorGallery,
+  type InstallResult,
+  OAUTH_CLIENT_NAME,
+  OAUTH_FLOW_TTL_MS,
+  type OAuthLoginStatus,
+  type OAuthStartResult,
+  type OAuthStatusView,
+} from "./connectors/gallery.js";
+export { oauthSecretNames } from "./connectors/oauth-store.js";
+export {
+  PROPOSE_CONNECTOR_TOOL,
+  proposalCardLine,
+  proposeConnectorTool,
+} from "./connectors/propose-tool.js";
+export {
   type BotConnectorCandidate,
   type BotConnectorTools,
   type ConnectorGrantView,

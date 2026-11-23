@@ -44,6 +44,8 @@ export interface FakeOAuthServer {
   expireAccessTokens(): void;
   /** The access tokens currently valid. */
   validAccessTokens(): string[];
+  /** The refresh tokens currently valid. */
+  validRefreshTokens(): string[];
   close(): Promise<void>;
 }
 
@@ -295,6 +297,7 @@ export async function startFakeOAuthMcp(options: FakeOAuthOptions = {}): Promise
     calls,
     expireAccessTokens: () => access.clear(),
     validAccessTokens: () => [...access],
+    validRefreshTokens: () => [...refresh.keys()],
     close: async () => {
       await Promise.all([close(resourceServer), close(asServer)]);
     },

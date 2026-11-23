@@ -76,6 +76,7 @@ import {
   type RuntimeConfig,
   resolveDatabaseUrl,
 } from "./config.js";
+import { PROPOSE_CONNECTOR_TOOL, proposeConnectorTool } from "./connectors/propose-tool.js";
 import {
   type BotConnectorCandidate,
   type ConnectorService,
@@ -900,7 +901,11 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     if (guarded && run.origin === "user") {
       if (runTools === tools) runTools = copyOfBase();
       routineToolsFor(handle)(runTools);
-      botCfg = { ...botCfg, allowedTools: [...botCfg.allowedTools, ...ROUTINE_TOOL_NAMES] };
+      runTools.register(proposeConnectorTool(() => connectors.gallery));
+      botCfg = {
+        ...botCfg,
+        allowedTools: [...botCfg.allowedTools, ...ROUTINE_TOOL_NAMES, PROPOSE_CONNECTOR_TOOL],
+      };
     } else if (guarded && run.origin === "routine") {
       if (runTools === tools) runTools = copyOfBase();
       runTools.register(listRoutinesTool(handle));
@@ -1069,8 +1074,14 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
       }
       // What a conversation run of the user is offered besides: the routine tools (docs/ROTINAS.md).
       routineToolsFor(runtime.db)(reg);
+      reg.register(proposeConnectorTool(() => connectors.gallery));
       const control = new Set<string>(CONTROL_TOOL_NAMES);
-      const specs = reg.specs([...cfg.allowedTools, ...ROUTINE_TOOL_NAMES, ...connectorNames]);
+      const specs = reg.specs([
+        ...cfg.allowedTools,
+        ...ROUTINE_TOOL_NAMES,
+        PROPOSE_CONNECTOR_TOOL,
+        ...connectorNames,
+      ]);
       const builtin = specs.filter((s) => !connectorNames.has(s.name) && !control.has(s.name));
       const connectorSpecs = new Map(
         specs.filter((s) => connectorNames.has(s.name)).map((s) => [s.name, s]),
