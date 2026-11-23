@@ -1,4 +1,4 @@
-import { ArrowLeft, X } from "lucide-react";
+import { X } from "lucide-react";
 import {
   type ButtonHTMLAttributes,
   type HTMLAttributes,
@@ -889,27 +889,14 @@ export function Dialog({
   children,
   footer,
   wide,
-  gallery,
-  headerExtra,
-  onBack,
 }: {
   title: string;
   onClose(): void;
   children: ReactNode;
   footer?: ReactNode;
   wide?: boolean;
-  /** The widest one (820 px): a grid of items, as the plug-ins gallery. */
-  gallery?: boolean;
-  /** Beside the close button, in the title row (e.g. "Meus plug-ins"). */
-  headerExtra?: ReactNode;
-  /**
-   * A dialog whose content changes in place (a list, then the detail of one item): the way back to
-   * the previous content. It shows a back arrow before the title and Esc takes it; the X and a click
-   * outside still close the dialog.
-   */
-  onBack?: () => void;
 }) {
-  const { ref, onKeyDown } = useModalFocus(onBack ?? onClose);
+  const { ref, onKeyDown } = useModalFocus(onClose);
   const titleId = useId();
   // In the body, not inside whatever opened it: a dialog opened from another dialog (a rule from the
   // settings) is its own modal surface, the topmost one, with its own focus trap.
@@ -923,27 +910,17 @@ export function Dialog({
         tabIndex={-1}
         className={cx(
           "flex max-h-[90vh] flex-col gap-4 overflow-hidden rounded-card border border-border-strong bg-surface p-6 shadow-popover",
-          gallery === true ? "w-dialog-gallery" : wide ? "w-dialog-wide" : "w-dialog",
+          wide ? "w-dialog-wide" : "w-dialog",
         )}
         onKeyDown={onKeyDown}
       >
         <div className="flex items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-2">
-            {onBack !== undefined && (
-              <IconButton label="Voltar" onClick={onBack}>
-                <ArrowLeft size={18} aria-hidden="true" />
-              </IconButton>
-            )}
-            <h2 id={titleId} className="min-w-0 truncate text-title font-title">
-              {title}
-            </h2>
-          </div>
-          <div className="flex items-center gap-2">
-            {headerExtra}
-            <IconButton label="Fechar janela" onClick={onClose}>
-              <X size={18} aria-hidden="true" />
-            </IconButton>
-          </div>
+          <h2 id={titleId} className="text-title font-title">
+            {title}
+          </h2>
+          <IconButton label="Fechar janela" onClick={onClose}>
+            <X size={18} aria-hidden="true" />
+          </IconButton>
         </div>
         {/* A tall form scrolls inside the dialog; the title and the buttons stay where they are. */}
         <div className="-m-0.5 min-h-0 flex-auto overflow-y-auto p-0.5">{children}</div>

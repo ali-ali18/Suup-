@@ -10,102 +10,209 @@ import notion from "../../assets/brand/notion.svg";
 import stackOverflow from "../../assets/brand/stack-overflow.svg";
 
 /**
- * The shop window of the plug-ins dialog (docs/DESIGN.md §5d): what the dialog draws while the
- * backend has no plug-ins (it has connectors, and they are another screen). Declared here, in one
- * place, so a real list from the server replaces it with no change to the dialog.
+ * The shop window of the connectors screen (docs/DESIGN.md §5d): what the screen draws while the
+ * backend cannot connect the account of a service (it has the connectors of Configurações >
+ * Conectores, which are another thing). Declared here, in one place, so a real list from the server
+ * replaces it with no change to the screen.
  *
  * `logo` is the service's own logo, an SVG of the thesvg library copied into `assets/brand/` (its
  * README has the source, the commit and the licence); none: the generic plug. The Google ones are
- * the 2026 redesign (`gmail-2026` and the like). `whiteOnDark`: the logo is white (made for the
- * dark theme), so the light theme inverts it.
+ * the 2026 redesign (`gmail-2026` and the like). `tone`: the background of the logo. `examples`: what one could ask a bot once connected
+ * (an ornament too: illustrations, not a promise).
  */
+/**
+ * The five backgrounds a logo can have (like an app icon) and the family of the banner of its page:
+ * `ink` (black), `paper` (white), `sky` (blue), `mint` (green) and `sun` (orange). Owner,
+ * 23/11/2026, with the reference he gave: the logos come with colour behind them.
+ */
+export type Tone = "ink" | "paper" | "sky" | "mint" | "sun";
+
 export interface CatalogEntry {
   id: string;
+  tone: Tone;
   name: string;
+  /** One line: what the service is. */
   about: string;
-  /** One or two words: what the service is for (the "Categoria" of the detail). */
+  /** The section of the screen and the "Categoria" of the page. */
   category: string;
+  developer: string;
+  /** The site: the host shown and the address opened. */
+  site: { host: string; url: string };
+  examples: readonly [string, string, string];
   logo?: string;
-  whiteOnDark?: boolean;
 }
+
+/** The sections of the screen, in order. */
+export const CATEGORIES = [
+  "Produtividade",
+  "Documentos",
+  "Desenvolvimento",
+  "Automação e mídia",
+] as const;
 
 export const CATALOG: readonly CatalogEntry[] = [
   {
-    id: "github",
-    category: "Código",
-    name: "GitHub",
-    about: "Repositórios, issues e pull requests",
-    logo: github,
-    whiteOnDark: true,
-  },
-  {
-    id: "notion",
-    category: "Anotações",
-    name: "Notion",
-    about: "Páginas, bancos de dados e notas",
-    logo: notion,
-  },
-  {
-    id: "figma",
-    category: "Design",
-    name: "Figma",
-    about: "Arquivos de design e componentes",
-    logo: figma,
-  },
-  {
     id: "gmail",
-    category: "E-mail",
+    tone: "paper",
     name: "Gmail",
     about: "Ler, buscar e rascunhar e-mails",
+    category: "Produtividade",
+    developer: "Google",
+    site: { host: "gmail.com", url: "https://mail.google.com" },
+    examples: [
+      "Resuma os e-mails não lidos de hoje.",
+      "Procure o e-mail da fatura de outubro.",
+      "Rascunhe uma resposta ao último e-mail do cliente.",
+    ],
     logo: gmail,
   },
   {
-    id: "google-drive",
-    category: "Arquivos",
-    name: "Google Drive",
-    about: "Arquivos e pastas na nuvem",
-    logo: googleDrive,
-  },
-  {
     id: "google-calendar",
-    category: "Agenda",
+    tone: "sky",
     name: "Google Agenda",
     about: "Compromissos e horários livres",
+    category: "Produtividade",
+    developer: "Google",
+    site: { host: "calendar.google.com", url: "https://calendar.google.com" },
+    examples: [
+      "O que tenho na agenda amanhã?",
+      "Ache um horário livre de 30 minutos nesta semana.",
+      "Crie um compromisso para sexta às 15h.",
+    ],
     logo: googleCalendar,
   },
   {
+    id: "notion",
+    tone: "paper",
+    name: "Notion",
+    about: "Páginas, bancos de dados e notas",
+    category: "Produtividade",
+    developer: "Notion Labs",
+    site: { host: "notion.so", url: "https://www.notion.so" },
+    examples: [
+      "Resuma a página de planejamento do projeto.",
+      "Quais itens do meu banco de tarefas estão em aberto?",
+      "Crie uma página com as notas da reunião de hoje.",
+    ],
+    logo: notion,
+  },
+  {
     id: "google-docs",
-    category: "Documentos",
+    tone: "sky",
     name: "Google Docs",
     about: "Documentos de texto compartilhados",
+    category: "Documentos",
+    developer: "Google",
+    site: { host: "docs.google.com", url: "https://docs.google.com" },
+    examples: [
+      "Resuma o documento de requisitos.",
+      "Reescreva o segundo parágrafo com um tom mais direto.",
+      "Crie um documento com a ata da reunião.",
+    ],
     logo: googleDocs,
   },
   {
     id: "google-sheets",
-    category: "Planilhas",
+    tone: "mint",
     name: "Google Planilhas",
     about: "Planilhas e tabelas de dados",
+    category: "Documentos",
+    developer: "Google",
+    site: { host: "sheets.google.com", url: "https://sheets.google.com" },
+    examples: [
+      "Some a coluna de gastos da planilha de outubro.",
+      "Quais linhas da tabela de entregas estão atrasadas?",
+      "Adicione uma linha com o pedido de hoje.",
+    ],
     logo: googleSheets,
   },
   {
+    id: "google-drive",
+    tone: "sky",
+    name: "Google Drive",
+    about: "Arquivos e pastas na nuvem",
+    category: "Documentos",
+    developer: "Google",
+    site: { host: "drive.google.com", url: "https://drive.google.com" },
+    examples: [
+      "Ache o contrato mais recente na minha pasta.",
+      "Liste os arquivos alterados esta semana.",
+      "Resuma o documento de requisitos da pasta Projetos.",
+    ],
+    logo: googleDrive,
+  },
+  {
+    id: "github",
+    tone: "ink",
+    name: "GitHub",
+    about: "Repositórios, issues e pull requests",
+    category: "Desenvolvimento",
+    developer: "GitHub",
+    site: { host: "github.com", url: "https://github.com" },
+    examples: [
+      "Resuma os pull requests abertos do meu repositório.",
+      "Quais issues estão sem responsável?",
+      "Abra uma issue com o erro que acabei de descrever.",
+    ],
+    logo: github,
+  },
+  {
     id: "stack-overflow",
-    category: "Perguntas e respostas",
+    tone: "sun",
     name: "Stack Overflow",
     about: "Perguntas e respostas de programação",
+    category: "Desenvolvimento",
+    developer: "Stack Overflow",
+    site: { host: "stackoverflow.com", url: "https://stackoverflow.com" },
+    examples: [
+      "Ache respostas sobre esse erro de TypeScript.",
+      "Qual a forma mais aceita de ordenar uma lista de objetos?",
+      "Resuma a resposta mais votada dessa pergunta.",
+    ],
     logo: stackOverflow,
   },
   {
+    id: "figma",
+    tone: "ink",
+    name: "Figma",
+    about: "Arquivos de design e componentes",
+    category: "Desenvolvimento",
+    developer: "Figma",
+    site: { host: "figma.com", url: "https://www.figma.com" },
+    examples: [
+      "Liste os componentes do arquivo da nossa biblioteca.",
+      "Quais telas mudaram desde a última versão?",
+      "Descreva o layout da tela de login.",
+    ],
+    logo: figma,
+  },
+  {
     id: "composio",
-    category: "Automação",
+    tone: "ink",
     name: "Composio",
     about: "Centenas de apps por um só conector",
+    category: "Automação e mídia",
+    developer: "Composio",
+    site: { host: "composio.dev", url: "https://composio.dev" },
+    examples: [
+      "Quais apps posso ligar pelo Composio?",
+      "Conecte minha agenda e meu e-mail num só conector.",
+      "Liste as ações disponíveis no app que escolhi.",
+    ],
     logo: composio,
-    whiteOnDark: true,
   },
   {
     id: "higgsfield",
-    category: "Mídia",
+    tone: "ink",
     name: "Higgsfield",
     about: "Imagens e vídeos gerados por IA",
+    category: "Automação e mídia",
+    developer: "Higgsfield",
+    site: { host: "higgsfield.ai", url: "https://higgsfield.ai" },
+    examples: [
+      "Gere uma imagem de um produto sobre fundo claro.",
+      "Crie um vídeo curto a partir desta imagem.",
+      "Quais estilos de vídeo estão disponíveis?",
+    ],
   },
 ];

@@ -1014,51 +1014,69 @@ describe("conectores: o ícone do serviço (docs/DESIGN.md 5c, plug-ins)", () =>
   });
 });
 
-describe("plug-ins: o diálogo em grade (docs/DESIGN.md 5d)", () => {
-  const dialog = read(join(SRC, "features", "plugins", "PluginsDialog.tsx"));
+describe("conectores: a tela da vitrine (docs/DESIGN.md 5d)", () => {
+  const screen = read(join(SRC, "features", "plugins", "ConnectorsScreen.tsx"));
   const palette = read(join(SRC, "features", "palette", "CommandPalette.tsx"));
   const shell = read(join(SRC, "features", "shell", "Shell.tsx"));
 
-  it("grade larga de duas colunas (uma na janela estreita), sem caixa em volta de cada item, o logo colorido ao lado do nome com a linha apagada embaixo dele, e o detalhe em outro diálogo", () => {
-    expect(dialog).toContain("gallery");
-    expect(dialog).not.toContain("rounded-card border border-border");
-    expect(dialog).toContain("grid-cols-2");
-    expect(dialog).toContain("narrow:grid-cols-1");
-    expect(dialog).toContain("items-center gap-4");
-    expect(dialog).not.toContain("bg-brand-tile");
-    expect(dialog).toContain("bg-raised");
-    expect(dialog).not.toContain("bg-logo-tile");
-    expect(dialog).toContain("<img");
-    expect(dialog).toContain("light:invert");
-    expect(dialog).toContain("data-logo={entry.id}");
-    expect(dialog).toContain("text-small text-text-muted");
-    // ONE dialog: choosing an item changes its content (owner, 23/11/2026: "abrir outro dialog não, usa o mesmo")
-    expect(dialog.split("<Dialog").length - 1).toBe(1);
-    expect(dialog).toContain("onBack:");
-    expect(dialog).toContain("PluginDetail");
-    // the detail is the menu of a connector as the Grok Bot's: connect (off), Informações, Ferramentas
+  it("é uma tela no lugar do chat e do painel, não um diálogo (dono, 23/11/2026), e o detalhe é uma página da mesma tela", () => {
+    expect(existsSync(join(SRC, "features", "plugins", "PluginsDialog.tsx"))).toBe(false);
+    expect(screen).not.toContain("<Dialog");
+    expect(screen).toContain("<Screen");
+    expect(screen).toContain("<ScreenHead");
+    expect(shell).toContain("<ConnectorsScreen />");
+    expect(shell).toContain('view === "connectors"');
+    expect(screen).toContain("function ConnectorPage");
+    expect(screen).toContain('aria-label="Caminho"');
+  });
+
+  it("título, busca, seções com contagem, duas colunas, o logo ao lado do nome com a linha apagada embaixo, + Conectar em cada linha", () => {
+    expect(screen).toContain('type="search"');
+    expect(screen).toContain("grid-cols-2");
+    expect(screen).toContain("narrow:grid-cols-1");
+    expect(screen).toContain("Adicionar personalizado");
+    expect(screen).toContain("text-small text-text-muted");
+    // the logo: thesvg, as an <img>, on the project's grey, white ones inverted in the light theme
+    expect(screen).toContain("<img");
+    expect(screen).toContain("data-logo={entry.id}");
+    // five backgrounds (owner, 23/11/2026, with the reference): one per tone, nothing inverted
+    for (const tone of ["ink", "paper", "sky", "mint", "sun"]) {
+      expect(screen, tone).toContain(`bg-tile-${tone}`);
+      expect(screen, tone).toContain(`from-banner-${tone}-from`);
+    }
+    expect(screen).not.toContain("invert");
+    expect(screen).not.toContain("bg-brand-tile");
+    expect(screen).not.toContain("bg-logo-tile");
+    // no box around a line (owner: "cada um ser um card pesa muito")
+    expect(screen).not.toContain("rounded-card border border-border bg-transparent");
+  });
+
+  it("a página: o caminho, o estado, o Conectar desligado (enfeite), os exemplos, Conexão e Informações", () => {
     for (const word of [
-      "Conectar {entry.name}",
-      "Informações",
-      "Ferramentas",
       "Não conectado",
       "disabled",
+      "Exemplos do que você poderá pedir",
+      "Conexão",
+      "Informações",
+      "Desenvolvedor",
+      "Categoria",
+      "Disponibilidade",
+      "Site",
     ]) {
-      expect(dialog, word).toContain(word);
+      expect(screen, word).toContain(word);
     }
-    expect(dialog).toContain("headerExtra: <MyPlugins />");
-    expect(dialog).toContain("flex-row-reverse");
+    expect(screen).toContain("flex-row-reverse");
+    expect(screen).toContain("opacity-60");
   });
 
-  it("o app não finge: a vitrine é declarada num lugar só e o diálogo avisa que ainda não funciona", () => {
-    expect(dialog).toContain("Em breve");
+  it("o app não finge: a vitrine é declarada num lugar só, não chama a API, e leva ao que é real", () => {
     expect(read(join(SRC, "features", "plugins", "catalog.ts"))).toContain("CATALOG");
-    expect(dialog).not.toContain("api.");
+    expect(screen).not.toContain("api.");
+    expect(screen).toContain('openSettings("connectors")');
   });
 
-  it("abre pela paleta de ações e pelo menu do dono, e o Shell o monta", () => {
-    expect(palette).toContain("setPlugins(true)");
-    expect(read(join(SRC, "features", "shell", "Sidebar.tsx"))).toContain("setPlugins(true)");
-    expect(shell).toContain("<PluginsDialog />");
+  it("abre pela paleta de ações e pelo menu do dono", () => {
+    expect(palette).toContain('go("connectors")');
+    expect(read(join(SRC, "features", "shell", "Sidebar.tsx"))).toContain('go("connectors")');
   });
 });

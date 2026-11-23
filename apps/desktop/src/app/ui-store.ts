@@ -9,7 +9,7 @@ import {
 } from "../lib/pane-size.js";
 import type { ToastItem } from "../ui/primitives.js";
 
-export type View = "chat" | "pending" | "memory" | "inspector";
+export type View = "chat" | "pending" | "memory" | "inspector" | "connectors";
 export type PanelTab = "activity" | "library";
 /** The sections of the settings dialog. */
 export type SettingsTab = "general" | "permissions" | "memory" | "vault" | "connectors";
@@ -63,7 +63,6 @@ export interface UiState {
   panelWidth: number;
   paletteOpen: boolean;
   shortcutsOpen: boolean;
-  pluginsOpen: boolean;
   groupBotId: string | null;
   openEditBot(botId: string, step?: 1 | 2): void;
   toggleSidebar(): void;
@@ -75,7 +74,6 @@ export interface UiState {
   setPanelLayout(layout: PaneLayout): void;
   setPalette(open: boolean): void;
   setShortcuts(open: boolean): void;
-  setPlugins(open: boolean): void;
   setGroupBot(botId: string | null): void;
   /** Which memories the full Memory screen starts on: every bot, or this one. */
   memoryBot: string;
@@ -176,7 +174,6 @@ export const useUi = create<UiState>((set, get) => ({
   sidebarWidth: readWidth(SIDEBAR_SPEC),
   paletteOpen: false,
   shortcutsOpen: false,
-  pluginsOpen: false,
   groupBotId: null,
   openEditBot: (botId, step = 1) => set({ newBotOpen: true, editBotId: botId, editBotStep: step }),
   toggleSidebar: () => {
@@ -202,7 +199,6 @@ export const useUi = create<UiState>((set, get) => ({
   },
   setPalette: (paletteOpen) => set({ paletteOpen }),
   setShortcuts: (shortcutsOpen) => set({ shortcutsOpen }),
-  setPlugins: (pluginsOpen) => set({ pluginsOpen }),
   setGroupBot: (groupBotId) => set({ groupBotId }),
   memoryBot: "all",
   setMemoryBot: (memoryBot) => set({ memoryBot }),
@@ -228,7 +224,6 @@ export const useUi = create<UiState>((set, get) => ({
       editBotId: null,
       paletteOpen: false,
       shortcutsOpen: false,
-      pluginsOpen: false,
       groupBotId: null,
     }),
   setCustomFrame: (customFrame) => set({ customFrame }),

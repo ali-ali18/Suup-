@@ -205,7 +205,7 @@ export function CommandPalette() {
         id: "plugins",
         label: "Conectores",
         icon: <Blocks size={18} />,
-        run: () => ui().setPlugins(true),
+        run: () => ui().go("connectors"),
       },
       {
         id: "settings",

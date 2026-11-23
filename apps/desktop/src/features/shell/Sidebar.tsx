@@ -284,7 +284,7 @@ export function Sidebar() {
       label: pending > 0 ? `Pendências (${pending})` : "Pendências",
       onSelect: () => go("pending"),
     },
-    { id: "plugins", label: "Conectores", onSelect: () => ui().setPlugins(true) },
+    { id: "plugins", label: "Conectores", onSelect: () => go("connectors") },
     { id: "settings", label: "Configurações", onSelect: () => ui().openSettings() },
     { id: "shortcuts", label: "Atalhos de teclado", onSelect: () => ui().setShortcuts(true) },
     {
