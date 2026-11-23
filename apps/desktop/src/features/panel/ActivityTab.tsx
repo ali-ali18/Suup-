@@ -1,15 +1,20 @@
-import type { Routine } from "@suup/api";
-import { CalendarClock, ChevronRight, MonitorSmartphone, Pause } from "lucide-react";
+import type { ModelInfo, Routine } from "@suup/api";
+import { ChevronDown, Clock, MonitorSmartphone } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
-import { useServices } from "../../app/context.js";
+import { useData, useServices } from "../../app/context.js";
 import { useUi } from "../../app/ui-store.js";
 import { messageOf } from "../../data/sync.js";
 import { cx } from "../../lib/cx.js";
-import { describeSchedule, lastText, nextText } from "../../lib/routines.js";
-import { MutedText } from "../../ui/primitives.js";
+import { describeSchedule } from "../../lib/routines.js";
+import { Dropdown } from "../../ui/dropdown.js";
+import { MutedText, Toggle } from "../../ui/primitives.js";
 import { useBotRunMark } from "./run-mark.js";
 
-/** A titled box of the panel: a muted title, then its rows in a card. `flush`: rows edge to edge. */
+/**
+ * A titled box of the panel: a muted title, then its rows in a card. `flush`: rows edge to edge.
+ * The rows of a panel card have NO rule between them (owner's decision, 22/11/2026, as in the Grok
+ * Bot): docs/DESIGN.md §5b and `design-rules.test.ts` keep it so.
+ */
 function PanelSection({
   title,
   label,
@@ -25,11 +30,11 @@ function PanelSection({
 }) {
   return (
     <section aria-label={label} data-testid={testId}>
-      <h3 className="px-2 pb-2 text-label font-normal text-text-muted">{title}</h3>
+      <h3 className="px-1 pb-2 text-small font-normal text-text-muted">{title}</h3>
       <div
         className={cx(
           "rounded-card border border-border bg-surface",
-          flush === true ? "overflow-hidden [&>*+*]:border-t [&>*+*]:border-border" : "p-1",
+          flush === true ? "overflow-hidden" : "p-1",
         )}
       >
         {children}
@@ -63,7 +68,7 @@ function PanelRow({
       </span>
       {thumb !== undefined && (
         <span
-          className="inline-flex h-12 w-20 items-center justify-center rounded-inner bg-raised text-text-muted"
+          className="inline-flex h-10 w-17.5 items-center justify-center rounded-inner bg-raised text-text-muted"
           aria-hidden="true"
         >
           {thumb}
@@ -74,35 +79,53 @@ function PanelRow({
 }
 
 /** One routine: its name, when in words, the next run, the last result. The row opens its detail. */
-function RoutineRow({ routine, onOpen }: { routine: Routine; onOpen(): void }) {
+function RoutineRow({
+  routine,
+  onOpen,
+  onToggle,
+}: {
+  routine: Routine;
+  onOpen(): void;
+  onToggle(paused: boolean): void;
+}) {
   const paused = routine.status === "paused";
-  const last = lastText(routine);
+  // One paragraph under the title (as in the Grok Bot): when it runs, or "Pausada" / "Encerrada".
+  // The next run and the last result are in the detail.
+  const paragraph =
+    routine.status === "paused"
+      ? "Pausada"
+      : routine.status === "ended"
+        ? "Encerrada"
+        : describeSchedule(routine.schedule);
   return (
-    <button
-      type="button"
-      className="group/row flex w-full min-w-0 items-start gap-3 border-0 bg-transparent px-4 py-3 text-left text-text hover:bg-hover"
-      data-testid="routine-row"
-      data-routine={routine.name}
-      data-status={routine.status}
-      aria-label={`Abrir a rotina ${routine.name}`}
-      onClick={onOpen}
-    >
-      <span className="inline-flex pt-0.5 text-text-muted" aria-hidden="true">
-        {paused ? <Pause size={16} /> : <CalendarClock size={16} />}
-      </span>
-      <span className="flex min-w-0 flex-1 flex-col">
-        <span className="text-label font-label wrap-anywhere">{routine.name}</span>
-        <MutedText data-testid="routine-schedule">{describeSchedule(routine.schedule)}</MutedText>
-        <MutedText data-testid="routine-next">{nextText(routine)}</MutedText>
-        {last !== null && <MutedText data-testid="routine-last">{last}</MutedText>}
-      </span>
-      <span
-        className="inline-flex self-center text-text-muted opacity-0 group-hover/row:opacity-100 group-focus-visible/row:opacity-100"
-        aria-hidden="true"
+    <div className="flex w-full min-w-0 items-center gap-3 pr-3 hover:bg-hover">
+      <button
+        type="button"
+        className="flex min-w-0 flex-1 items-center gap-3 border-0 bg-transparent py-2.5 pl-3 text-left text-text"
+        data-testid="routine-row"
+        data-routine={routine.name}
+        data-status={routine.status}
+        aria-label={`Abrir a rotina ${routine.name}`}
+        onClick={onOpen}
       >
-        <ChevronRight size={16} />
-      </span>
-    </button>
+        <span className="inline-flex text-text-muted" aria-hidden="true">
+          <Clock size={16} />
+        </span>
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="text-label font-label wrap-anywhere">{routine.name}</span>
+          <MutedText data-testid="routine-schedule">{paragraph}</MutedText>
+        </span>
+      </button>
+      {/* The switch is the same pause and resume of the detail: on = the routine runs. */}
+      <Toggle
+        accent
+        checked={!paused}
+        disabled={routine.status === "ended"}
+        label={`Rotina ativa: ${routine.name}`}
+        testId="routine-toggle"
+        onChange={(next) => onToggle(!next)}
+      />
+    </div>
   );
 }
 
@@ -139,41 +162,109 @@ function RoutinesSection({ botId }: { botId: string }) {
     const timer = setInterval(load, 2000);
     return () => clearInterval(timer);
   }, [anyRunning, load]);
+  const toast = useUi((s) => s.toast);
+  // The switch of a row: the same call as the pause button of the detail; the server answers with
+  // the routine, which replaces the row (nothing is optimistic).
+  const togglePause = (routine: Routine, paused: boolean) => {
+    api.routines.update(routine.id, { paused }).then(
+      (updated) => setRoutines((list) => list?.map((r) => (r.id === updated.id ? updated : r))),
+      (e: unknown) => toast(messageOf(e), "error"),
+    );
+  };
 
   return (
     <PanelSection title="Rotinas" label="Rotinas" testId="section-routines" flush>
       {error !== undefined && (
-        <PanelRow
-          icon={<CalendarClock size={16} />}
-          title="Não foi possível ler as rotinas"
-          text={error}
-        />
+        <PanelRow icon={<Clock size={16} />} title="Não foi possível ler as rotinas" text={error} />
       )}
       {routines !== undefined && routines.length === 0 && error === undefined && (
         <PanelRow
-          icon={<CalendarClock size={16} />}
+          icon={<Clock size={16} />}
           title="Nenhuma rotina"
           text="Peça no chat, por exemplo: “vê meu calendário todo dia às 8h”."
         />
       )}
       {routines?.map((r) => (
-        <RoutineRow key={r.id} routine={r} onOpen={() => openPanelRoutine(r.id)} />
+        <RoutineRow
+          key={r.id}
+          routine={r}
+          onOpen={() => openPanelRoutine(r.id)}
+          onToggle={(paused) => togglePause(r, paused)}
+        />
       ))}
     </PanelSection>
   );
 }
 
-/** The Atividade tab: the bot's routines, and its computer (which waits for its phase). */
+/** The model that answers this bot's chat, with the app's dropdown: a real control (it changes the bot). */
+function ChatModelRow({ botId }: { botId: string }) {
+  const { api, sync } = useServices();
+  const bot = useData((s) => s.bots[botId]);
+  const toast = useUi((s) => s.toast);
+  const [models, setModels] = useState<ModelInfo[]>([]);
+  useEffect(() => {
+    api.models.list().then(setModels, () => undefined);
+  }, [api]);
+  if (bot === undefined) return null;
+  const usable = models.filter((m) => m.available || m.id === bot.modelId);
+  const change = (modelId: string) => {
+    api.bots.update(bot.id, { modelId }).then(
+      (updated) => sync.mergeBotNow(updated),
+      (e: unknown) => toast(messageOf(e), "error"),
+    );
+  };
+  return (
+    <div className="flex min-w-0 items-center gap-3 py-1 pr-1 pl-3">
+      <span className="min-w-0 flex-1 text-label">Modelo de chat</span>
+      <Dropdown
+        label="Modelo de chat"
+        value={bot.modelId}
+        options={
+          usable.length > 0
+            ? usable.map((m) => ({ value: m.id, label: `${m.id} · ${m.provider}` }))
+            : [{ value: bot.modelId, label: bot.modelId }]
+        }
+        onChange={change}
+        testId="chat-model"
+      />
+    </div>
+  );
+}
+
+/** A row of the voice ornament: a name and a muted value with a chevron. It does nothing. */
+function OrnamentRow({ title, value }: { title: string; value: string }) {
+  return (
+    <div className="flex min-w-0 items-center gap-3 px-3 py-2.5">
+      <span className="min-w-0 flex-1 text-label">{title}</span>
+      <MutedText>{value}</MutedText>
+      <ChevronDown size={14} className="text-text-muted" aria-hidden="true" />
+    </div>
+  );
+}
+
+/**
+ * The Atividade tab: the bot's routines, its computer (which waits for its phase), and "Chat e voz":
+ * the chat model, which is real (it changes the bot), and the voice and its language, which the
+ * backend does not have yet: they are an ornament (owner's decision, 22/11/2026), hidden from
+ * assistive technology, dimmed, "Em breve", and with nothing to click.
+ */
 export function ActivityTab({ botId }: { botId: string }) {
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-8">
       <RoutinesSection botId={botId} />
-      <PanelSection title="Computador" label="Computador" testId="section-computer">
+      <PanelSection title="Computador" label="Computador" testId="section-computer" flush>
         <PanelRow
           title="Computador do bot"
           text="Ainda não disponível"
           thumb={<MonitorSmartphone size={22} />}
         />
+      </PanelSection>
+      <PanelSection title="Chat e voz" label="Chat e voz" testId="section-voice" flush>
+        <ChatModelRow botId={botId} />
+        <div aria-hidden="true" className="opacity-60" data-testid="ornament-voice">
+          <OrnamentRow title="Voz" value="Em breve" />
+          <OrnamentRow title="Idioma" value="Em breve" />
+        </div>
       </PanelSection>
     </div>
   );

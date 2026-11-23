@@ -324,9 +324,10 @@ describe("chat cards share one chrome and one collapsed row", () => {
     expect(message).toContain("rounded-bubble");
   });
 
-  it("dynamic bubbles: the outer radius is the card's, the linking one is a smaller token, and only bubbles carry the position", () => {
+  it("dynamic bubbles: the outer radius is the bubble's own 24 px (apart from the card's), the linking one is a smaller token, and only bubbles carry the position", () => {
     const tokens = read(join(SRC, "styles", "tokens.css"));
-    expect(tokens).toContain("--radius-bubble: var(--radius-card);");
+    expect(tokens).toContain("--radius-bubble: 24px;");
+    expect(tokens).toContain("--radius-card: 18px;");
     expect(tokens).toContain("--radius-bubble-link:");
     expect(tokens).toContain("--bubble-gap-group:");
     // The position is set by the two text bubbles and by nothing else: cards keep their chrome.
@@ -371,7 +372,7 @@ describe("approval buttons: normal = Aprovar / Recusar; the split button is only
     const offenders = files(SRC, /\.tsx?$/)
       .filter((f) => !f.endsWith("design-rules.test.ts"))
       .filter((f) => read(f).includes("split-button"))
-      .map(rel);
+      .map((f) => rel(f).split("\\").join("/"));
     expect(offenders).toEqual(["ui/approval-card.tsx"]);
     const messageFooter = between(card, "function MessageFooter(", "function ResolvedCard(");
     expect(messageFooter).toContain('data-testid="split-button"');
@@ -815,21 +816,36 @@ describe("routines: no schedule form, rows edge to edge, the detail in the panel
     }
     // the words come from the shared function, never written by the screen
     expect(panel).toContain("describeSchedule(routine.schedule)");
-    expect(detail).toContain("describeSchedule(routine.schedule)");
   });
 
-  it("the rows run edge to edge and open the detail, which replaces the list in the panel", () => {
-    expect(panel).toContain("[&>*+*]:border-t");
+  it("the cards of the panel have NO rule between their rows (owner, 22/11/2026); the rows open the detail, which replaces the list in the panel", () => {
+    expect(panel).not.toContain("[&>*+*]:border-t");
+    expect(panel).not.toContain("divide-");
     expect(panel).not.toContain("<MenuButton");
     expect(panel).toContain("openPanelRoutine(r.id)");
     expect(detail).toContain('label="Voltar às rotinas"');
-    expect(detail).toContain("[&>*+*]:border-t");
+    expect(detail).not.toContain("[&>*+*]:border-t");
   });
 
-  it("what the bot wrote is the chat's Markdown; the sources follow the icons-of-sites setting", () => {
+  it("the detail is built as the Grok Bot's (read with the REA, 23/11/2026): header, Instrução and Quando executar, one row of actions at the foot", () => {
     expect(detail).toContain("<Markdown");
+    expect(detail).toContain("routine.instruction");
     expect(detail).toContain('settings.favicons === "on"');
-    expect(detail).toContain("<SourceChip");
+    expect(detail).toContain('className="flex-1"');
+    for (const word of [
+      "Instrução",
+      "Quando executar",
+      "Pausar",
+      "Retomar",
+      "Editar",
+      "Excluir rotina",
+      "describeSchedule",
+    ]) {
+      expect(detail, word).toContain(word);
+    }
+    for (const gone of ["<SourceChip", "routines.fires", "routines.run", "Testar", "nextText"]) {
+      expect(detail, gone).not.toContain(gone);
+    }
     expect(chip).toContain("faviconUrl(safe)");
     expect(chip).toContain("categoryGlyph(fallback");
   });
@@ -909,5 +925,193 @@ describe("avatares: dois estilos, desenhados só pelo motor (docs/DESIGN.md, Mas
       "features/pending/PendingScreen.tsx",
     ])
       expect(read(join(SRC, file)), file).toContain("avatarStyle={bot.avatarStyle}");
+  });
+});
+
+describe("o texto não rola para o lado e nenhuma barra de rolagem aparece (docs/DESIGN.md, Rolagem)", () => {
+  it("o base.css esconde as barras de rolagem de tudo (a roda, o toque e o teclado continuam rolando)", () => {
+    const base = read(join(SRC, "styles", "base.css"));
+    expect(base).toContain("scrollbar-width: none;");
+    expect(base).toContain("::-webkit-scrollbar");
+  });
+
+  it("o Markdown quebra o texto e o bloco de código, e não rola para o lado", () => {
+    const markdown = read(join(SRC, "lib", "markdown.tsx"));
+    expect(markdown).toContain("wrap-anywhere");
+    expect(markdown).not.toContain("overflow-auto");
+    expect(markdown).toContain("overflow-x-hidden");
+  });
+
+  it("a pílula do bot mostra só o nome (a descrição fica na barra lateral e no painel)", () => {
+    const chat = read(join(SRC, "features", "chat", "ChatScreen.tsx"));
+    expect(chat).toContain("{bot.name}</span>");
+    expect(chat).not.toContain("<BotTitle");
+  });
+});
+
+describe("a janela não tem barra do sistema: os controles são do app (docs/DESIGN.md, Janela)", () => {
+  const TAURI = join(SRC, "..", "src-tauri");
+
+  it("o Windows e o Linux abrem sem barra, o macOS mantém a nativa, e as permissões da janela estão liberadas", () => {
+    const conf = JSON.parse(read(join(TAURI, "tauri.conf.json")));
+    expect(conf.app.windows[0].decorations).toBe(false);
+    const macos = JSON.parse(read(join(TAURI, "tauri.macos.conf.json")));
+    expect(macos.app.windows[0].decorations).toBe(true);
+    const capabilities = read(join(TAURI, "capabilities", "default.json"));
+    for (const permission of [
+      "core:window:allow-minimize",
+      "core:window:allow-toggle-maximize",
+      "core:window:allow-close",
+      "core:window:allow-start-dragging",
+    ])
+      expect(capabilities).toContain(permission);
+  });
+
+  it("os controles só existem quando o Tauri diz que a janela não tem barra, e o fechar do painel os deixa livres", () => {
+    const app = read(join(SRC, "app", "App.tsx"));
+    expect(app).toContain("customFrame && platform?.frame !== undefined");
+    const panel = read(join(SRC, "features", "panel", "Panel.tsx"));
+    expect(panel).toContain('customFrame ? "right-37.5" : "right-3"');
+    const controls = read(join(SRC, "ui", "window-controls.tsx"));
+    for (const label of ["Minimizar", "Fechar a janela"]) expect(controls).toContain(label);
+  });
+});
+
+describe("conectores: o ícone do serviço (docs/DESIGN.md 5c, plug-ins)", () => {
+  const brand = read(join(SRC, "ui", "brand-icons.tsx"));
+
+  it("só ui/brand-icons.tsx importa o simple-icons, na versão fixa, e só ícones pelo nome", () => {
+    const users = files(SRC, /\.tsx?$/)
+      .filter((f) => !f.endsWith(".test.ts") && !f.endsWith(".test.tsx"))
+      .filter((f) => read(f).includes('from "simple-icons"'))
+      .map((f) => rel(f).split("\\").join("/"));
+    expect(users).toEqual(["ui/brand-icons.tsx"]);
+    expect(brand).not.toContain("import * as");
+    expect(brand).not.toContain("import simple");
+    const pkg = JSON.parse(read(join(SRC, "..", "package.json"))) as {
+      dependencies: Record<string, string>;
+    };
+    expect(pkg.dependencies["simple-icons"]).toBe("16.38.1");
+  });
+
+  it("o glifo é de uma cor só, a do texto apagado da linha; a escolha é por nome exato, numa tabela", () => {
+    expect(brand).toContain('"currentColor"');
+    expect(brand).toContain("new Map<string, Glyph>");
+    expect(brand).toContain("BY_NAME.get(connectorName)");
+    for (const searching of [".includes(", ".startsWith(", ".match(", ".test(", "RegExp"]) {
+      expect(brand, searching).not.toContain(searching);
+    }
+  });
+
+  it("a linha do conector usa o glifo da marca ou o plug, e a pesquisa está escrita", () => {
+    const row = read(join(SRC, "features", "settings", "ConnectorsSettings.tsx"));
+    expect(row).toContain("icon={brandGlyphFor(connector.name) ?? Plug}");
+    const root = join(SRC, "..", "..", "..");
+    expect(existsSync(join(root, "docs", "pesquisas", "icones-de-marca-dos-conectores.md"))).toBe(
+      true,
+    );
+    expect(read(join(root, "docs", "DESIGN.md"))).toContain("## 5c. Conectores");
+  });
+});
+
+describe("conectores: a tela da vitrine (docs/DESIGN.md 5d)", () => {
+  const screen = read(join(SRC, "features", "plugins", "ConnectorsScreen.tsx"));
+  const palette = read(join(SRC, "features", "palette", "CommandPalette.tsx"));
+  const shell = read(join(SRC, "features", "shell", "Shell.tsx"));
+
+  it("é uma tela no lugar do chat e do painel, não um diálogo (dono, 23/11/2026), e o detalhe é uma página da mesma tela", () => {
+    expect(existsSync(join(SRC, "features", "plugins", "PluginsDialog.tsx"))).toBe(false);
+    expect(screen).not.toContain("<Dialog");
+    expect(screen).toContain("<Screen");
+    expect(screen).toContain("<ScreenHead");
+    expect(shell).toContain("<ConnectorsScreen />");
+    expect(shell).toContain('view === "connectors"');
+    expect(screen).toContain("function ConnectorPage");
+    expect(screen).toContain('aria-label="Caminho"');
+  });
+
+  it("título, busca, seções com contagem, duas colunas, o logo ao lado do nome com a linha apagada embaixo, + Conectar em cada linha", () => {
+    // the search is an input group with the magnifier INSIDE it, and its width is limited (owner: "limita o tamanho do input")
+    expect(screen).toContain("<SearchField");
+    // the search and the blocks of the page take the colour of the chat input (bg-raised), not a bordered surface
+    expect(read(join(SRC, "ui", "primitives.tsx"))).toContain(
+      "fieldControlClass({ search: true, raised: true })",
+    );
+    expect(screen).not.toContain("border border-border bg-surface");
+    expect(screen).toContain('className="max-w-search"');
+    expect(read(join(SRC, "ui", "primitives.tsx"))).toContain("export function SearchField");
+    expect(screen).toContain("grid-cols-2");
+    expect(screen).toContain("narrow:grid-cols-1");
+    expect(screen).toContain("Conector personalizado");
+    expect(screen).toContain("text-small text-text-muted");
+    // the logo: thesvg, as an <img>, on the project's grey, white ones inverted in the light theme
+    expect(screen).toContain("<img");
+    expect(screen).toContain("data-logo={entry.id}");
+    // the band of a page: one of twelve gradients, a class for each (owner: "cadê o bg do gradiente que falamos?")
+    for (const name of [
+      "ink",
+      "slate",
+      "navy",
+      "plum",
+      "paper",
+      "sky",
+      "mint",
+      "sun",
+      "coral",
+      "amber",
+      "indigo",
+      "lilac",
+    ]) {
+      expect(screen, name).toContain(`from-banner-${name}-from to-banner-${name}-to`);
+    }
+    expect(screen).toContain("BANNER_BG[entry.banner]");
+    // neutral backgrounds only (owner, 23/11/2026): the project's grey, or the black or the white a brand's own icon has
+    expect(screen).toContain("bg-raised");
+    expect(screen).toContain("bg-tile-black");
+    expect(screen).toContain("bg-tile-white");
+    for (const colour of ["bg-tile-sky", "bg-tile-mint", "bg-tile-sun"]) {
+      expect(screen, colour).not.toContain(colour);
+    }
+    expect(screen).not.toContain("invert");
+    expect(screen).not.toContain("bg-brand-tile");
+    expect(screen).not.toContain("bg-logo-tile");
+    // a one-colour brand: its OWN colour (from the package) as the tile, the mark in white over it
+    expect(screen).toContain("solidMarkFor(entry.id)");
+    expect(screen).toContain("backgroundColor:");
+    expect(screen).toContain("solid.hex");
+    expect(screen).toContain("text-tile-white");
+    // the body takes the whole width, like the head with its buttons at the right edge: no empty strip
+    expect(screen).not.toContain("limit=");
+    // no box around a line (owner: "cada um ser um card pesa muito")
+    expect(screen).not.toContain("rounded-card border border-border bg-transparent");
+  });
+
+  it("a página: o caminho, o estado, o Conectar desligado (enfeite), os exemplos, Conexão e Informações", () => {
+    for (const word of [
+      "Não conectado",
+      "disabled",
+      "Exemplos do que você poderá pedir",
+      "Conexão",
+      "Informações",
+      "Desenvolvedor",
+      "Categoria",
+      "Disponibilidade",
+      "Site",
+    ]) {
+      expect(screen, word).toContain(word);
+    }
+    expect(screen).toContain("flex-row-reverse");
+    expect(screen).toContain("opacity-60");
+  });
+
+  it("o app não finge: a vitrine é declarada num lugar só, não chama a API, e leva ao que é real", () => {
+    expect(read(join(SRC, "features", "plugins", "catalog.ts"))).toContain("CATALOG");
+    expect(screen).not.toContain("api.");
+    expect(screen).toContain('openSettings("connectors")');
+  });
+
+  it("abre pela paleta de ações e pelo menu do dono", () => {
+    expect(palette).toContain('go("connectors")');
+    expect(read(join(SRC, "features", "shell", "Sidebar.tsx"))).toContain('go("connectors")');
   });
 });

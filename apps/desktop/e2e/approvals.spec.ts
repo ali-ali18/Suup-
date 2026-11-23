@@ -60,7 +60,7 @@ test.describe("approval cards", () => {
     await expect(pending.getByTestId("approval-risk")).toHaveText(/Externa ou irreversível/);
     // Border, radius and reading width of the shared chrome.
     await expect(pending).toHaveCSS("border-top-width", "1px");
-    await expect(pending).toHaveCSS("border-top-left-radius", "24px");
+    await expect(pending).toHaveCSS("border-top-left-radius", "18px");
     expect((await pending.boundingBox())?.width ?? 0).toBeLessThanOrEqual(700);
     // A normal action: ONLY the plain text Recusar and the pill Aprovar. No split button, no menu.
     await expect(pending.getByRole("button", { name: /Mostrar tudo/ })).toHaveCount(0);

@@ -98,6 +98,19 @@ export interface LocalServer {
   databaseUrl(): Promise<string>;
 }
 
+/**
+ * The window's frame (Tauri only). When the window has no system title bar the app draws its own
+ * controls, inside itself, like the Grok Bot (owner's decision, 22/11/2026).
+ */
+export interface WindowFrame {
+  /** True when the window has no system title bar: the app draws minimize, maximize and close. */
+  custom(): Promise<boolean>;
+  minimize(): Promise<void>;
+  toggleMaximize(): Promise<void>;
+  close(): Promise<void>;
+  isMaximized(): Promise<boolean>;
+}
+
 export interface Platform {
   /** `"tauri"` (token in the OS keychain, requests through the Rust side) or `"browser"`. */
   kind: "tauri" | "browser";
@@ -106,6 +119,8 @@ export interface Platform {
   mode?: ModeStore;
   /** The server the app carries (Tauri only). */
   local?: LocalServer;
+  /** The window's frame (Tauri only). */
+  frame?: WindowFrame;
   settings: SettingsStore;
   /** The `fetch` every request of the app goes through. */
   fetch: typeof fetch;

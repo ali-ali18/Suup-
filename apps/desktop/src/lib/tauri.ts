@@ -1,4 +1,5 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import type {
   AppNotification,
   Connection,
@@ -6,6 +7,7 @@ import type {
   LocalStatus,
   Platform,
   ServerMode,
+  WindowFrame,
 } from "./platform.js";
 
 // The Tauri side. Everything that leaves the app goes through Rust commands, never through the
@@ -129,9 +131,21 @@ export function tauriLocal(): LocalServer {
   };
 }
 
+/** The window of the shell: a title bar of the system, or none (then the app draws its controls). */
+function tauriFrame(): WindowFrame {
+  return {
+    custom: async () => !(await getCurrentWindow().isDecorated()),
+    minimize: () => getCurrentWindow().minimize(),
+    toggleMaximize: () => getCurrentWindow().toggleMaximize(),
+    close: () => getCurrentWindow().close(),
+    isMaximized: () => getCurrentWindow().isMaximized(),
+  };
+}
+
 export function tauriPlatform(): Platform {
   return {
     kind: "tauri",
+    frame: tauriFrame(),
     connection: {
       load: () => invoke<Connection | null>("connection_load"),
       save: (connection) =>

@@ -61,7 +61,13 @@ export type {
   EgressSession,
   EgressSubject,
 } from "./egress/types.js";
-export { subjectKey } from "./egress/types.js";
+export {
+  EGRESS_REASON_HEADER,
+  EGRESS_REFUSAL_REASONS,
+  type EgressRefusalReason,
+  egressRefusalReason,
+  subjectKey,
+} from "./egress/types.js";
 export {
   assertExtraCaBundle,
   EXTRA_CA_CONTAINER_PATH,

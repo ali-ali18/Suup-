@@ -17,8 +17,10 @@ import { DEFAULT_ALLOWED_PORTS, decideHost, normalizeHost } from "@suup/core";
 import { type Resolver, resolveForConnect, systemResolver } from "./resolve.js";
 import { RefusalSessions } from "./sessions.js";
 import {
+  EGRESS_REASON_HEADER,
   type EgressEvent,
   type EgressPolicy,
+  type EgressRefusalReason,
   type EgressService,
   type EgressSession,
   type EgressSubject,
@@ -206,7 +208,8 @@ export class EgressProxy implements EgressService {
     port: number,
   ): Promise<
     | { ok: true; subject: EgressSubject; name: string; address: string }
-    | { ok: false; status: 403 | 407; message: string }
+    | { ok: false; status: 407; message: string }
+    | { ok: false; status: 403; reason: EgressRefusalReason; message: string }
   > {
     const subject = this.#options.anonymousSubject ?? this.#identify(header);
     if (subject === undefined) {
@@ -222,7 +225,7 @@ export class EgressProxy implements EgressService {
         // The party that owns the list cannot be asked (the server is restarting): nothing is allowed.
         const message = "the allowlist is not available right now; try again in a moment";
         await this.#refuse(subject, host, port, "policy_unavailable", message);
-        return { ok: false, status: 403, message };
+        return { ok: false, status: 403, reason: "policy_unavailable", message };
       }
     }
     const verdict = decideHost(
@@ -232,7 +235,7 @@ export class EgressProxy implements EgressService {
     );
     if (!verdict.allow) {
       await this.#refuse(subject, verdict.host, port, verdict.reason, verdict.message);
-      return { ok: false, status: 403, message: verdict.message };
+      return { ok: false, status: 403, reason: verdict.reason, message: verdict.message };
     }
     const resolved = await resolveForConnect(
       verdict.host,
@@ -240,7 +243,7 @@ export class EgressProxy implements EgressService {
     );
     if (!resolved.ok) {
       await this.#refuse(subject, verdict.host, port, resolved.reason, resolved.message);
-      return { ok: false, status: 403, message: resolved.message };
+      return { ok: false, status: 403, reason: resolved.reason, message: resolved.message };
     }
     void this.#report({
       subject,
@@ -256,7 +259,7 @@ export class EgressProxy implements EgressService {
     subject: EgressSubject,
     host: string,
     port: number,
-    reason: string,
+    reason: EgressRefusalReason,
     message: string,
   ): Promise<void> {
     this.#sessions.refused(subject, { host, port, reason, message });
@@ -292,7 +295,14 @@ export class EgressProxy implements EgressService {
       target.host,
       target.port,
     );
-    if (!admitted.ok) return reply(client, admitted.status, admitted.message);
+    if (!admitted.ok) {
+      return reply(
+        client,
+        admitted.status,
+        admitted.message,
+        admitted.status === 403 ? admitted.reason : undefined,
+      );
+    }
     const upstream = this.#dial(admitted.address, target.port);
     const idle = this.#options.idleTimeoutMs ?? 120_000;
     upstream.setTimeout(this.#options.connectTimeoutMs ?? 10_000, () => upstream.destroy());
@@ -337,7 +347,9 @@ export class EgressProxy implements EgressService {
       res
         .writeHead(admitted.status, {
           "content-type": "text/plain",
-          ...(admitted.status === 407 ? { "proxy-authenticate": 'Basic realm="suup"' } : {}),
+          ...(admitted.status === 407
+            ? { "proxy-authenticate": 'Basic realm="suup"' }
+            : { [EGRESS_REASON_HEADER]: admitted.reason }),
         })
         .end(`${admitted.message}\n`);
       return;
@@ -379,13 +391,20 @@ function openSetFor(host: string): ReadonlySet<string> {
   return normalized.kind === "name" ? new Set([normalized.name]) : new Set();
 }
 
-function reply(client: Socket, status: number, message: string): void {
+/** Answers a CONNECT and closes. A refusal (403) carries its code in `EGRESS_REASON_HEADER`. */
+function reply(
+  client: Socket,
+  status: number,
+  message: string,
+  reason?: EgressRefusalReason,
+): void {
   const text =
     status === 407 ? "Proxy Authentication Required" : status === 403 ? "Forbidden" : "Error";
   client.end(
     `HTTP/1.1 ${status} ${text}\r\n` +
       (status === 407 ? 'Proxy-Authenticate: Basic realm="suup"\r\n' : "") +
       "Content-Type: text/plain\r\nConnection: close\r\n" +
+      (reason !== undefined ? `X-Suup-Egress-Reason: ${reason}\r\n` : "") +
       `X-Suup-Egress: ${message.replaceAll("\r", " ").replaceAll("\n", " ")}\r\n\r\n${message}\n`,
   );
 }
