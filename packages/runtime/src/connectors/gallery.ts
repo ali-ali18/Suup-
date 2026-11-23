@@ -16,7 +16,6 @@ import {
   beginOAuthLogin,
   type CatalogEntry,
   CONNECTOR_CATALOG,
-  catalogEntry,
   catalogToolOverrides,
   completeOAuthLogin,
   type PendingLogin,
@@ -134,8 +133,15 @@ export function createGallery(deps: {
   callback?: { host?: string; port?: number } | undefined;
   now?: () => number;
   ttlMs?: number;
+  /**
+   * The entries of the gallery. Default: the owner's list (`CONNECTOR_CATALOG`). Only tests pass
+   * another (an entry that points at a fake OAuth server), never the configuration.
+   */
+  catalog?: readonly CatalogEntry[] | undefined;
 }): ConnectorGallery {
   const { db, vault, service } = deps;
+  const catalog = deps.catalog ?? CONNECTOR_CATALOG;
+  const catalogEntry = (id: string): CatalogEntry | undefined => catalog.find((e) => e.id === id);
   const now = deps.now ?? Date.now;
   const ttl = deps.ttlMs ?? OAUTH_FLOW_TTL_MS;
   const flows = new Map<string, Flow>();
@@ -361,7 +367,7 @@ export function createGallery(deps: {
     async list() {
       const views = await service.list();
       const secrets = new Set((await vault.list()).map((s) => s.name));
-      return Promise.all(CONNECTOR_CATALOG.map((e) => itemOf(e, views, secrets)));
+      return Promise.all(catalog.map((e) => itemOf(e, views, secrets)));
     },
     async install(id, options = {}) {
       const entry = catalogEntry(id);

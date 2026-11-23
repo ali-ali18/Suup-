@@ -4,6 +4,7 @@
 // (`@suup/connectors`) and the vault; the loop and the tools know none of this.
 import {
   adaptConnector,
+  type CatalogEntry,
   ConnectorConfigError,
   ConnectorError,
   ConnectorManager,
@@ -347,6 +348,8 @@ export function createConnectorService(options: {
   oauthFlowTtlMs?: number | undefined;
   /** The clock of the logins (tests). */
   now?: (() => number) | undefined;
+  /** Another list of gallery entries (tests only: an entry that points at a fake OAuth server). */
+  catalog?: readonly CatalogEntry[] | undefined;
   /** For tests of backoff and health checks. */
   managerOptions?: Partial<ConstructorParameters<typeof ConnectorManager>[0]> | undefined;
 }): ConnectorService {
@@ -802,6 +805,7 @@ export function createConnectorService(options: {
     callback: options.oauthCallback,
     ...(options.oauthFlowTtlMs === undefined ? {} : { ttlMs: options.oauthFlowTtlMs }),
     ...(options.now === undefined ? {} : { now: options.now }),
+    ...(options.catalog === undefined ? {} : { catalog: options.catalog }),
   });
   return service;
 }

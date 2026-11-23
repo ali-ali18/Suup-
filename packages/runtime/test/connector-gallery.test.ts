@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { type CatalogEntry, CONNECTOR_CATALOG } from "@suup/connectors";
 import { type FakeOAuthServer, startFakeOAuthMcp } from "@suup/connectors/testing";
 import { createBot, type Db, decideApproval, listApprovals, listRunEvents } from "@suup/db";
 import { afterEach, describe, expect, it } from "vitest";
@@ -49,7 +50,10 @@ describe.skipIf(!DATABASE_URL)(
       fake = undefined;
     });
 
-    async function open(script: unknown = { agent: [{ text: "ok" }] }) {
+    async function open(
+      script: unknown = { agent: [{ text: "ok" }] },
+      connectorCatalog?: readonly CatalogEntry[],
+    ) {
       await ctx.db.sql`delete from connectors`;
       await ctx.db.sql`delete from secrets`;
       const dir = await tempDir();
@@ -62,7 +66,7 @@ describe.skipIf(!DATABASE_URL)(
             toolSearch: { minTools: 1000, minDefinitionTokens: 1_000_000 },
           }),
         ),
-        { env, baseDir: dir },
+        { env, baseDir: dir, ...(connectorCatalog === undefined ? {} : { connectorCatalog }) },
       );
       return runtime;
     }
@@ -103,6 +107,31 @@ describe.skipIf(!DATABASE_URL)(
         {},
       );
       await expect(rt.connectors.gallery.install("notion")).rejects.toThrow("não veio da galeria");
+    });
+
+    it("a test can give the gallery another list (the app's e2e): only those entries, installed and logged in the same way", async () => {
+      fake = await startFakeOAuthMcp();
+      const notion = CONNECTOR_CATALOG.find((e) => e.id === "notion");
+      if (notion === undefined) throw new Error("notion missing");
+      const rt = await open(undefined, [
+        {
+          ...notion,
+          id: "fakeauth",
+          name: "Falso",
+          transport: { kind: "http", url: fake.mcpUrl, headers: {} },
+        },
+      ]);
+      expect((await rt.connectors.gallery.list()).map((i) => i.entry.id)).toEqual(["fakeauth"]);
+      await expect(rt.connectors.gallery.install("notion")).rejects.toThrow("não tem");
+      const installed = await rt.connectors.gallery.install("fakeauth");
+      expect(installed).toMatchObject({ next: "login", item: { status: "needs_login" } });
+      const start = await rt.connectors.gallery.oauthStart("fakeauth");
+      const page = await fetch(await authorize(start.authorizationUrl));
+      expect(page.status).toBe(200);
+      expect(await rt.connectors.gallery.oauthStatus("fakeauth")).toMatchObject({
+        status: "connected",
+      });
+      expect((await rt.connectors.gallery.list())[0]?.status).toBe("connected");
     });
 
     it("installs an OAuth entry off, with its exact transport, and a token entry once its token is in the vault", async () => {

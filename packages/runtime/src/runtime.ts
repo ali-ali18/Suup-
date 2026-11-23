@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { hostname } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
-import type { StdioLauncher } from "@suup/connectors";
+import type { CatalogEntry, StdioLauncher } from "@suup/connectors";
 import {
   type AutoReviewer,
   allowAllGate,
@@ -129,6 +129,11 @@ export interface RuntimeOptions {
   fetch?: typeof fetch;
   /** Path of the docker CLI. Default: `SUUP_DOCKER_PATH` from the environment, else `docker`. */
   dockerPath?: string;
+  /**
+   * Another list of gallery entries in place of the owner's (tests only, e.g. the app's end-to-end
+   * tests with an entry that points at a fake OAuth server). Never read from the configuration.
+   */
+  connectorCatalog?: readonly CatalogEntry[];
 }
 
 export interface ResolvedModel {
@@ -452,6 +457,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     vault,
     launcher: containerLauncher,
     ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+    ...(options.connectorCatalog === undefined ? {} : { catalog: options.connectorCatalog }),
   });
   // Every tool call goes through the approval policy: the user's rules, the reviewer, then a card.
   // The gate asks the registry of the RUN (built-in tools plus the connector tools of its bot).
