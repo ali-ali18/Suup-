@@ -40,7 +40,10 @@
     "connectors": { "image": "suup-connector-runner:dev" }
   },
   "web": {
-    "search": { "engines": ["wikipedia", "arxiv", "stackoverflow"] },
+    "search": {
+      "engines": ["wikipedia", "arxiv", "stackoverflow", "tavily", "brave"],
+      "general": { "order": ["tavily", "brave"] }
+    },
     "reader": { "image": "suup-reader:dev" }
   },
   "worker": { "concurrency": 4, "leaseRenewMs": 10000, "staleAfterMs": 30000 },

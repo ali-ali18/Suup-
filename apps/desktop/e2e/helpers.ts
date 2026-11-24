@@ -66,7 +66,7 @@ export async function openWithBot(page: Page, world: World, name: string): Promi
   await selectBot(page, name);
 }
 
-export type SettingsSection = "Geral" | "Permissões" | "Memória" | "Cofre" | "Conectores";
+export type SettingsSection = "Geral" | "Permissões" | "Memória" | "Busca" | "Cofre" | "Conectores";
 
 /** Opens the settings dialog on a section (from the owner menu, as a person would). */
 export async function openSettings(page: Page, section: SettingsSection): Promise<void> {

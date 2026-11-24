@@ -21,13 +21,13 @@ describe("search problems in the logs", () => {
       ok: true,
       query: "meu segredo",
       hits: [],
-      engines: ["duckduckgo", "wikipedia"],
-      suspended: [{ engine: "duckduckgo", reason: "captcha", retryInSeconds: 3600 }],
+      engines: ["tavily", "wikipedia"],
+      suspended: [{ engine: "tavily", reason: "no credits", retryInSeconds: 3600 }],
       throttled: [{ engine: "arxiv", retryInSeconds: 3 }],
-      generalUnavailable: { retryInSeconds: 3600 },
+      generalUnavailable: { retryInSeconds: 3600, cause: "quota" },
     });
     expect(line).toBe(
-      "web_search: 0 results; duckduckgo did not answer (captcha, retry_in=3600s); arxiv left out by Suup's limit (retry_in=3s); no general web engine available",
+      "web_search: 0 results; tavily did not answer (no credits, retry_in=3600s); arxiv left out by Suup's limit (retry_in=3s); no general web engine available (quota)",
     );
     expect(line).not.toContain("meu segredo");
   });
@@ -49,13 +49,13 @@ describe("search problems in the logs", () => {
     const web = createWebAccess({
       searchEnabled: true,
       readerEnabled: false,
-      services: async () => ({ engines: [], searchProblem: "Docker is not running" }),
+      services: async () => ({ engines: [], searchProblem: "the proxy did not start" }),
       log: (line) => lines.push(line),
     });
     const out = await web.search({ query: "q" });
     expect(out.ok).toBe(false);
     expect(lines).toEqual([
-      "web_search: unavailable: The search service is not running (Docker is not running).",
+      "web_search: unavailable: The search engines could not be started (the proxy did not start).",
     ]);
   });
 });

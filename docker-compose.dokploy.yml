@@ -3,7 +3,7 @@
 # Por que é assim (Docker isolado, redes, Traefik): docs/pesquisas/deploy-vps-dokploy.md
 #
 # A diferença para o docker-compose.prod.yml: NADA aqui monta o socket do Docker do host. As máquinas dos
-# bots, os conectores, o leitor e o SearXNG rodam num Docker próprio do Suup (o serviço `docker`, Docker
+# bots, os conectores e o leitor rodam num Docker próprio do Suup (o serviço `docker`, Docker
 # dentro de Docker), com dados num volume só dele. Quem controla esse Docker não enxerga os contêineres
 # dos outros projetos da VPS.
 #
@@ -115,7 +115,7 @@ services:
     restart: "no"
     environment:
       DOCKER_HOST: unix:///var/run/dind/docker.sock
-      SUUP_IMAGES: ${SUUP_IMAGES:-sandbox connector-runner reader searxng}
+      SUUP_IMAGES: ${SUUP_IMAGES:-sandbox connector-runner reader}
       SUUP_READER_BROWSER: ${SUUP_READER_BROWSER:-1}
     volumes:
       - dind-sock:/var/run/dind
@@ -153,7 +153,7 @@ services:
         condition: service_completed_successfully
 
   # Roda as execuções. Usa a REDE do serviço `docker` (network_mode: service): assim o proxy de saída dos
-  # bots e o do SearXNG escutam no gateway das redes internas criadas lá dentro, como num Linux com o
+  # bots escuta no gateway da rede interna criada lá dentro, como num Linux com o
   # Docker no próprio host (docs/REDE.md, modo `process`). Fala com o Docker isolado pelo socket do volume
   # `dind-sock`, nunca com o do host.
   worker:

@@ -606,6 +606,9 @@ export async function runEval(options: RunEvalOptions): Promise<EvalReport> {
 }
 
 async function run(runtime: Runtime, options: RunEvalOptions): Promise<EvalReport> {
+  // Brave's terms forbid using its results to evaluate AI models: no evaluation asks it, whatever
+  // the configuration says (docs/BUSCA.md).
+  await runtime.restrictWebForEvaluation();
   const plan = planEval({ ...options, runtime });
   const progress = (event: EvalProgress) => {
     try {

@@ -18,7 +18,7 @@ export async function checkWeb(runtime: Runtime): Promise<DoctorCheck[]> {
         detail:
           status.search === "off"
             ? 'desligada na configuração ("web.search.enabled": false)'
-            : "liga quando um bot usa web_search pela primeira vez (APIs oficiais chamadas pelo Suup e, para o DuckDuckGo, o contêiner SearXNG; docs/BUSCA.md); este processo ainda não a usou",
+            : "liga quando um bot usa web_search pela primeira vez (APIs oficiais chamadas pelo Suup, sem Docker; docs/BUSCA.md); este processo ainda não a usou",
       },
       {
         component: "Leitura de páginas",
@@ -37,9 +37,28 @@ export async function checkWeb(runtime: Runtime): Promise<DoctorCheck[]> {
       status.search === "off"
         ? 'desligada na configuração ("web.search.enabled": false)'
         : status.search === "ready"
-          ? `serviço de busca no ar; motores: ${status.engines.join(", ")} (docs/BUSCA.md)`
+          ? `busca no ar; motores: ${status.engines.join(", ")} (docs/BUSCA.md)`
           : `web_search indisponível: ${status.searchProblem ?? "serviço não iniciou"}`,
   });
+  const providers = await runtime.webSearchProviders().catch(() => []);
+  if (providers.length > 0) {
+    const words = {
+      ready: "pronta",
+      no_key: "sem chave",
+      quota: "cota do mês usada",
+      key_rejected: "chave não aceita",
+      unavailable: "não respondeu",
+      off: "desligada",
+    } as const;
+    checks.push({
+      component: "Busca geral (fila)",
+      ok: providers.some((p) => p.state === "ready"),
+      detail: `${providers
+        .filter((p) => p.state !== "off")
+        .map((p) => `${p.position}. ${p.label}: ${words[p.state]}`)
+        .join("; ")}; as chaves vêm da variável de ambiente ou do cofre (docs/BUSCA.md)`,
+    });
+  }
   checks.push({
     component: "Leitura de páginas",
     ok: status.reader !== "container" || status.readerProblem === undefined,

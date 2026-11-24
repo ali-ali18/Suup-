@@ -1,10 +1,11 @@
 // The politeness of the search (docs/BUSCA.md, "Busca educada"): rate limits with a queue, a cache,
-// and what is said about engines that were suspended. A fake clock: no test waits for real time.
+// and what is said about engines that asked to be left alone. A fake clock: no test waits for real time.
 import type { WebSearchOutcome } from "@suup/core";
 import { describe, expect, it } from "vitest";
-import { createSearch, type SearxBackend } from "../src/search.js";
+import type { DirectEngine, DirectSearchResult } from "../src/direct-engines.js";
+import { createSearch } from "../src/search.js";
 import { memorySearchCache, normalizeQuery, searchCacheKey } from "../src/search-cache.js";
-import { parseReason, SearchGovernor } from "../src/search-governor.js";
+import { SearchGovernor } from "../src/search-governor.js";
 import { createWebAccess } from "../src/service.js";
 
 class Clock {
@@ -19,32 +20,33 @@ class Clock {
   }
 }
 
-const answer = (
-  hits: { url: string; title?: string; engine?: string }[],
-  unresponsive: [string, string][] = [],
-): string =>
-  JSON.stringify({
-    results: hits.map((h) => ({
-      url: h.url,
-      title: h.title ?? h.url,
-      content: "c",
-      engine: h.engine ?? "wikipedia",
-    })),
-    unresponsive_engines: unresponsive,
-  });
+const hit = (id: string, n: number) => ({
+  title: `${id} ${n}`,
+  url: `https://${id}.example/${n}`,
+  snippet: "c",
+  engine: id,
+});
 
-function backendOf(
-  replies: (params: URLSearchParams) => string,
-): SearxBackend & { asked: URLSearchParams[] } {
-  const asked: URLSearchParams[] = [];
-  return {
-    asked,
-    async query(params) {
-      asked.push(params);
-      return replies(params);
+/** An engine that answers what `reply` says, and counts how many times it was asked. */
+function fake(
+  id: string,
+  reply: (call: number) => DirectSearchResult | Promise<DirectSearchResult>,
+): DirectEngine & { calls: number } {
+  const engine = {
+    id,
+    calls: 0,
+    async search() {
+      engine.calls += 1;
+      return await reply(engine.calls);
     },
   };
+  return engine;
 }
+
+const hits = (id: string, count = 1): DirectSearchResult => ({
+  ok: true,
+  hits: Array.from({ length: count }, (_, i) => hit(id, i + 1)),
+});
 
 const ok = (outcome: WebSearchOutcome) => {
   if (!outcome.ok) throw new Error(`expected a result: ${outcome.message}`);
@@ -65,25 +67,6 @@ describe("normalizeQuery and the cache key", () => {
     expect(searchCacheKey(base)).not.toBe(searchCacheKey({ ...base, language: "pt" }));
     expect(searchCacheKey(base)).not.toBe(searchCacheKey({ ...base, timeRange: "day" }));
     expect(searchCacheKey(base)).not.toBe(searchCacheKey({ ...base, query: "hello world!" }));
-  });
-});
-
-describe("the reasons SearXNG gives", () => {
-  it("knows the windows by exact text, and only those", () => {
-    expect(parseReason("CAPTCHA")).toEqual({
-      suspendedBefore: false,
-      kind: "CAPTCHA",
-      windowSeconds: 3600,
-    });
-    expect(parseReason("Suspended: too many requests")).toEqual({
-      suspendedBefore: true,
-      kind: "too many requests",
-      windowSeconds: 180,
-    });
-    expect(parseReason("Suspended: access denied").windowSeconds).toBe(180);
-    expect(parseReason("timeout")).toEqual({ suspendedBefore: false, kind: "timeout" });
-    expect(parseReason("captcha").windowSeconds).toBeUndefined();
-    expect(parseReason("Suspended: something else").windowSeconds).toBeUndefined();
   });
 });
 
@@ -128,34 +111,33 @@ describe("rate limits", () => {
   it("applies a limit per engine: the engine over its own limit is left out while others go on", async () => {
     const clock = new Clock();
     const governor = new SearchGovernor({
-      limits: { perMinute: 100, perEngine: { duckduckgo: 1 }, maxWaitMs: 1_000 },
+      limits: { perMinute: 100, perEngine: { arxiv: 1 }, maxWaitMs: 1_000 },
       now: () => clock.now,
       sleep: clock.sleep,
     });
-    expect(await governor.acquire(["wikipedia", "duckduckgo"])).toMatchObject({
+    expect(await governor.acquire(["wikipedia", "arxiv"])).toMatchObject({
       ok: true,
-      engines: ["wikipedia", "duckduckgo"],
+      engines: ["wikipedia", "arxiv"],
     });
     clock.advance(15_000);
-    expect(await governor.acquire(["wikipedia", "duckduckgo"])).toEqual({
+    expect(await governor.acquire(["wikipedia", "arxiv"])).toEqual({
       ok: true,
       engines: ["wikipedia"],
-      throttled: [{ engine: "duckduckgo", retryInSeconds: 45 }],
+      throttled: [{ engine: "arxiv", retryInSeconds: 45 }],
       waitedMs: 0,
     });
     // Only the engine that is over its limit: nothing to ask, so the time to come back.
-    expect(await governor.acquire(["duckduckgo"])).toEqual({
+    expect(await governor.acquire(["arxiv"])).toEqual({
       ok: false,
       retryInSeconds: 45,
       scope: "engines",
     });
   });
 
-  it("DuckDuckGo's own default is low (6 a minute), and the configuration overrides it", () => {
-    expect(new SearchGovernor().limitFor("duckduckgo")).toBeLessThanOrEqual(6);
-    expect(
-      new SearchGovernor({ limits: { perEngine: { duckduckgo: 2 } } }).limitFor("duckduckgo"),
-    ).toBe(2);
+  it("the general engines have a default per minute of their own, and the configuration overrides it", () => {
+    expect(new SearchGovernor().limitFor("tavily")).toBe(30);
+    expect(new SearchGovernor().limitFor("brave")).toBe(30);
+    expect(new SearchGovernor({ limits: { perEngine: { brave: 2 } } }).limitFor("brave")).toBe(2);
   });
 
   it("serves queued searches one after another, in the order they came", async () => {
@@ -172,11 +154,11 @@ describe("rate limits", () => {
     expect(clock.slept).toEqual([60_000, 60_000]);
   });
 
-  it("the search tool answers rate_limited with retryInSeconds, and the backend is not asked", async () => {
+  it("the search tool answers rate_limited with retryInSeconds, and the engine is not asked", async () => {
     const clock = new Clock();
-    const backend = backendOf(() => answer([{ url: "https://a.example/" }]));
+    const wiki = fake("wikipedia", () => hits("wikipedia"));
     const search = createSearch({
-      backend,
+      direct: [wiki],
       engines: ["wikipedia"],
       governor: new SearchGovernor({
         limits: { perMinute: 1, maxWaitMs: 0 },
@@ -188,73 +170,66 @@ describe("rate limits", () => {
     ok(await search({ query: "one" }));
     const refused = await search({ query: "two" });
     expect(refused).toMatchObject({ ok: false, reason: "rate_limited", retryInSeconds: 60 });
-    expect(backend.asked).toHaveLength(1);
+    expect(wiki.calls).toBe(1);
   });
 });
 
 describe("the cache", () => {
-  const build = (clock: Clock, replies: (p: URLSearchParams) => string, ttlMs = 3_600_000) => {
-    const backend = backendOf(replies);
-    const cache = memorySearchCache();
+  const build = (clock: Clock, reply: () => DirectSearchResult, ttlMs = 3_600_000) => {
+    const wiki = fake("wikipedia", reply);
     const search = createSearch({
-      backend,
-      engines: ["wikipedia", "duckduckgo"],
-      cache,
+      direct: [wiki],
+      engines: ["wikipedia"],
+      cache: memorySearchCache(),
       cacheTtlMs: ttlMs,
       now: () => clock.now,
     });
-    return { backend, cache, search };
+    return { wiki, search };
   };
 
   it("an identical search (blanks and case aside) is answered from the cache and says when it was made", async () => {
     const clock = new Clock();
-    const { backend, search } = build(clock, () =>
-      answer([{ url: "https://a.example/1" }, { url: "https://a.example/2" }]),
-    );
+    const { wiki, search } = build(clock, () => hits("wikipedia", 2));
     const first = ok(await search({ query: "Climate  Change" }));
     expect(first.cached).toBeUndefined();
     clock.advance(125_000);
     const again = ok(await search({ query: " climate change ", limit: 1 }));
-    expect(backend.asked).toHaveLength(1);
+    expect(wiki.calls).toBe(1);
     expect(again.cached).toEqual({
       at: new Date(clock.now - 125_000).toISOString(),
       ageSeconds: 125,
     });
-    expect(again.hits.map((h) => h.url)).toEqual(["https://a.example/1"]);
+    expect(again.hits.map((h) => h.url)).toEqual(["https://wikipedia.example/1"]);
     expect(first.hits).toHaveLength(2);
   });
 
   it("a different language, range or query is a miss", async () => {
     const clock = new Clock();
-    const { backend, search } = build(clock, () => answer([{ url: "https://a.example/1" }]));
+    const { wiki, search } = build(clock, () => hits("wikipedia"));
     await search({ query: "x y" });
     await search({ query: "x y", language: "pt" });
     await search({ query: "x y", timeRange: "day" });
     await search({ query: "x z" });
-    expect(backend.asked).toHaveLength(4);
+    expect(wiki.calls).toBe(4);
   });
 
   it("expires after the time to live", async () => {
     const clock = new Clock();
-    const { backend, search } = build(
-      clock,
-      () => answer([{ url: "https://a.example/1" }]),
-      10_000,
-    );
+    const { wiki, search } = build(clock, () => hits("wikipedia"), 10_000);
     await search({ query: "x y" });
     clock.advance(9_000);
     expect(ok(await search({ query: "x y" })).cached).toBeDefined();
     clock.advance(2_000);
     expect(ok(await search({ query: "x y" })).cached).toBeUndefined();
-    expect(backend.asked).toHaveLength(2);
+    expect(wiki.calls).toBe(2);
   });
 
   it("does not keep a search that found nothing", async () => {
     const clock = new Clock();
-    const { backend, search } = build(clock, () => answer([]));
+    const { wiki, search } = build(clock, () => hits("wikipedia", 0));
     await search({ query: "x y" });
     await search({ query: "x y" });
-    expect(backend.asked).toHaveLength(2);
+    expect(wiki.calls).toBe(2);
   });
 
   it("survives a restart when the store does: a second search object over the same store hits", async () => {
@@ -262,7 +237,7 @@ describe("the cache", () => {
     const store = memorySearchCache();
     const make = () =>
       createSearch({
-        backend: backendOf(() => answer([{ url: "https://a.example/1" }])),
+        direct: [fake("wikipedia", () => hits("wikipedia"))],
         engines: ["wikipedia"],
         cache: store,
         now: () => clock.now,
@@ -275,7 +250,7 @@ describe("the cache", () => {
   it("a cache that fails does not fail the search", async () => {
     const clock = new Clock();
     const search = createSearch({
-      backend: backendOf(() => answer([{ url: "https://a.example/1" }])),
+      direct: [fake("wikipedia", () => hits("wikipedia"))],
       engines: ["wikipedia"],
       cache: {
         get: async () => {
@@ -291,107 +266,92 @@ describe("the cache", () => {
   });
 });
 
-describe("engines suspended by the search service", () => {
-  const engines = ["wikipedia", "duckduckgo"];
-  const setup = (reply: (n: number) => string) => {
+describe("engines that asked to be left alone", () => {
+  const setup = (reply: (n: number) => DirectSearchResult) => {
     const clock = new Clock();
-    let n = 0;
-    const backend = backendOf(() => reply(++n));
+    const wiki = fake("wikipedia", () => hits("wikipedia"));
+    const arxiv = fake("arxiv", reply);
     const governor = new SearchGovernor({ now: () => clock.now, sleep: clock.sleep });
-    const search = createSearch({ backend, engines, governor, now: () => clock.now });
-    return { clock, backend, search, governor };
+    const search = createSearch({
+      direct: [wiki, arxiv],
+      engines: ["wikipedia", "arxiv"],
+      governor,
+      now: () => clock.now,
+    });
+    return { clock, wiki, arxiv, search, governor };
   };
 
-  it("reports which engine, why and for how long after a captcha, and the general search is unavailable", async () => {
-    const { search } = setup(() =>
-      answer([{ url: "https://w.example/1" }], [["duckduckgo", "CAPTCHA"]]),
-    );
+  it("reports which engine, why and for how long, and keeps what the others gave", async () => {
+    const { search } = setup(() => ({ ok: false, reason: "access denied", suspendSeconds: 3600 }));
     const out = ok(await search({ query: "x y" }));
     expect(out.suspended).toEqual([
-      { engine: "duckduckgo", reason: "CAPTCHA", retryInSeconds: 3600 },
+      { engine: "arxiv", reason: "access denied", retryInSeconds: 3600 },
     ]);
-    expect(out.generalUnavailable).toEqual({ retryInSeconds: 3600 });
     expect(out.hits).toHaveLength(1);
   });
 
-  it("a too-many-requests lasts three minutes", async () => {
-    const { search } = setup(() => answer([], [["duckduckgo", "too many requests"]]));
-    expect(ok(await search({ query: "x y" })).suspended[0]).toMatchObject({ retryInSeconds: 180 });
-  });
-
   it("does not ask a suspended engine again, counts the time down, and asks it again when the window ends", async () => {
-    const { clock, backend, search } = setup((n) =>
-      n === 1
-        ? answer([{ url: "https://w.example/1" }], [["duckduckgo", "CAPTCHA"]])
-        : answer([
-            { url: "https://w.example/2" },
-            { url: "https://d.example/2", engine: "duckduckgo" },
-          ]),
+    const { clock, arxiv, search } = setup((n) =>
+      n === 1 ? { ok: false, reason: "too many requests", suspendSeconds: 180 } : hits("arxiv"),
     );
     await search({ query: "first one" });
-    clock.advance(600_000);
+    clock.advance(60_000);
     const second = ok(await search({ query: "second one" }));
-    expect(backend.asked[1]?.get("engines")).toBe("wikipedia");
+    expect(arxiv.calls).toBe(1);
     expect(second.suspended).toEqual([
-      { engine: "duckduckgo", reason: "Suspended: CAPTCHA", retryInSeconds: 3000 },
+      { engine: "arxiv", reason: "too many requests", retryInSeconds: 120 },
     ]);
-    expect(second.generalUnavailable).toEqual({ retryInSeconds: 3000 });
-    clock.advance(3_001_000);
+    clock.advance(121_000);
     const third = ok(await search({ query: "third one" }));
-    expect(backend.asked[2]?.get("engines")).toBe("wikipedia,duckduckgo");
+    expect(arxiv.calls).toBe(2);
     expect(third.suspended).toEqual([]);
-    expect(third.generalUnavailable).toBeUndefined();
-  });
-
-  it("with no general engine available the search service is not even asked, and the answer says when it is back", async () => {
-    const { backend, search } = setup(() =>
-      answer(
-        [],
-        [
-          ["wikipedia", "CAPTCHA"],
-          ["duckduckgo", "CAPTCHA"],
-        ],
-      ),
-    );
-    await search({ query: "first one" });
-    const second = ok(await search({ query: "second one" }));
-    expect(backend.asked).toHaveLength(1);
-    expect(second.hits).toEqual([]);
-    expect(second.engines).toEqual([]);
-    expect(second.generalUnavailable).toEqual({ retryInSeconds: 3600 });
   });
 
   it("an engine that has no known window is reported without a time, and is asked again at once", async () => {
-    const { backend, search } = setup((n) =>
-      n === 1 ? answer([], [["duckduckgo", "timeout"]]) : answer([{ url: "https://d.example/" }]),
+    const { arxiv, search } = setup((n) =>
+      n === 1 ? { ok: false, reason: "timeout" } : hits("arxiv"),
     );
     const first = ok(await search({ query: "first one" }));
-    expect(first.suspended).toEqual([{ engine: "duckduckgo", reason: "timeout" }]);
+    expect(first.suspended).toEqual([{ engine: "arxiv", reason: "timeout" }]);
     ok(await search({ query: "second one" }));
-    expect(backend.asked[1]?.get("engines")).toBe("wikipedia,duckduckgo");
+    expect(arxiv.calls).toBe(2);
   });
 
   it("an engine that answers again is forgotten as suspended", async () => {
     const { clock, search, governor } = setup((n) =>
-      n === 1
-        ? answer([], [["duckduckgo", "too many requests"]])
-        : answer([{ url: "https://d.example/" }]),
+      n === 1 ? { ok: false, reason: "busy", suspendSeconds: 180 } : hits("arxiv"),
     );
     await search({ query: "first one" });
     clock.advance(181_000);
     ok(await search({ query: "second one" }));
     expect(governor.suspended().size).toBe(0);
   });
+
+  it("with every engine suspended nothing is asked, and the answer is empty", async () => {
+    const clock = new Clock();
+    const arxiv = fake("arxiv", () => ({ ok: false, reason: "busy", suspendSeconds: 600 }));
+    const search = createSearch({
+      direct: [arxiv],
+      engines: ["arxiv"],
+      governor: new SearchGovernor({ now: () => clock.now, sleep: clock.sleep }),
+      now: () => clock.now,
+    });
+    await search({ query: "first one" });
+    const second = ok(await search({ query: "second one" }));
+    expect(arxiv.calls).toBe(1);
+    expect(second.hits).toEqual([]);
+    expect(second.engines).toEqual([]);
+  });
 });
 
 describe("createWebAccess", () => {
   it("one governor and one cache for all searches: the second identical search is a cache hit, the limit is shared", async () => {
     const clock = new Clock();
-    const backend = backendOf(() => answer([{ url: "https://a.example/1" }]));
+    const wiki = fake("wikipedia", () => hits("wikipedia"));
     const web = createWebAccess({
       searchEnabled: true,
       readerEnabled: false,
-      services: async () => ({ searchBackend: backend, engines: ["wikipedia"] }),
+      services: async () => ({ direct: [wiki], engines: ["wikipedia"] }),
       limits: { perMinute: 1, maxWaitMs: 0 },
       now: () => clock.now,
       sleep: clock.sleep,
@@ -402,55 +362,53 @@ describe("createWebAccess", () => {
       ok: false,
       reason: "rate_limited",
     });
-    expect(backend.asked).toHaveLength(1);
+    expect(wiki.calls).toBe(1);
   });
 
   it("the cache can be turned off", async () => {
-    const backend = backendOf(() => answer([{ url: "https://a.example/1" }]));
+    const wiki = fake("wikipedia", () => hits("wikipedia"));
     const web = createWebAccess({
       searchEnabled: true,
       readerEnabled: false,
       cacheEnabled: false,
-      services: async () => ({ searchBackend: backend, engines: ["wikipedia"] }),
+      services: async () => ({ direct: [wiki], engines: ["wikipedia"] }),
     });
     await web.search({ query: "same words" });
     await web.search({ query: "same words" });
-    expect(backend.asked).toHaveLength(2);
+    expect(wiki.calls).toBe(2);
   });
 });
 
-describe("what is missing without Docker, said with the reason", () => {
+describe("what is missing, said with the reason", () => {
   const services = async () => ({
-    engines: ["duckduckgo"],
-    searchProblem: "Docker is not available on this computer",
+    direct: [],
+    engines: ["wikipedia"],
     readerProblem: "Docker is not available on this computer",
   });
 
-  it("the search names why the search container is not there", async () => {
-    const web = createWebAccess({ searchEnabled: true, readerEnabled: true, services });
-    const out = await web.search({ query: "kernel" });
-    expect(out).toEqual({
+  it("no engine could be started: the search says so, with the reason", async () => {
+    const web = createWebAccess({
+      searchEnabled: true,
+      readerEnabled: true,
+      services: async () => ({ direct: [], engines: [], searchProblem: "the proxy did not start" }),
+    });
+    expect(await web.search({ query: "kernel" })).toEqual({
       ok: false,
       reason: "unavailable",
-      message: "The search service is not running (Docker is not available on this computer).",
+      message: "The search engines could not be started (the proxy did not start).",
     });
   });
 
-  it("an engine of the container among others is reported with that reason", async () => {
+  it("an engine that is on but was not built is reported as not available", async () => {
     const search = createSearch({
-      backend: undefined,
-      backendProblem: "Docker is not available on this computer",
-      direct: [{ id: "wikipedia", search: async () => ({ ok: true, hits: [] }) }],
-      engines: ["duckduckgo", "wikipedia"],
+      direct: [fake("wikipedia", () => hits("wikipedia"))],
+      engines: ["wikipedia", "arxiv"],
     });
-    const out = await search({ query: "kernel" });
-    expect(out.ok).toBe(true);
-    if (out.ok) {
-      expect(out.suspended).toContainEqual({
-        engine: "duckduckgo",
-        reason: "the search container is not running (Docker is not available on this computer)",
-      });
-    }
+    const out = ok(await search({ query: "kernel" }));
+    expect(out.suspended).toContainEqual({
+      engine: "arxiv",
+      reason: "the engine is not available",
+    });
   });
 
   it("a render asked without the reader container says it needs that container, and why", async () => {

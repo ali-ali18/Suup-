@@ -843,6 +843,8 @@ Data: 21/11/2026. Desenho em [BUSCA.md](BUSCA.md).
 
 **O que foi exercitado de verdade aqui (sem modelo):**
 
+> **Superado em 24/11/2026:** o SearXNG, o DuckDuckGo e o contêiner e o proxy de busca foram removidos (decisão do dono); as linhas abaixo sobre eles são o histórico do que foi medido antes. A busca geral agora é uma fila de APIs oficiais (Tavily, Brave) e **nada dela foi chamado de verdade** (sem chave, sem rede nesta máquina): ver BUSCA.md, "Testes".
+
 | O quê | Resultado |
 |---|---|
 | Imagem **oficial** do SearXNG (`2026.3.25-541c6c3cb`) com o `settings.yml` gerado, atrás do proxy de motores | sobe, responde JSON em `/search?format=json`, reconhece só os motores da lista; com motores inalcançáveis devolve `unresponsive_engines` com cada motor e o motivo, e a ferramenta mostra isso |

@@ -40,6 +40,8 @@ export interface ConfigInput {
   networkName: string;
   /** The origins of the app's webview (the Rust side sends none; kept for the browser build). */
   allowedOrigins: readonly string[];
+  /** The locale of the person's computer (`pt-BR`): the general search engines rank for its country and language. */
+  locale?: string;
 }
 
 /**
@@ -86,17 +88,15 @@ export function buildConfig(input: ConfigInput): Record<string, unknown> {
 
 /**
  * Web search and page reading (docs/BUSCA.md), the way the server has them: the engines with a public
- * API (Wikipedia, arXiv, Stack Overflow) always, in this process, with no Docker; DuckDuckGo through
- * the SearXNG container and `web_read` through the reader container when Docker is there. The
- * search container's only way out is an engine proxy: in its own container when the bots' proxy is
- * one (Windows: this process cannot listen on a Docker network), in this process otherwise. Without
- * Docker, `web_read` reads in this process (no `render`), and the tools say why the rest is missing.
+ * API (Wikipedia, arXiv, Stack Overflow) and the queue of general engines (Tavily, then Brave; each
+ * only with a key, which the person adds to the vault in Settings) always, in this process, with no
+ * Docker; `web_read` through the reader container when Docker is there. Without Docker, `web_read`
+ * reads in this process (no `render`), and the tools say why the rest is missing. The locale is the
+ * one of the person's computer, so a Brazilian gets Brazil and Portuguese.
  */
 function webConfig(input: ConfigInput): Record<string, unknown> {
   return {
-    ...(input.isolation.mode === "docker" && input.egress === "container"
-      ? { search: { proxy: { mode: "container", image: input.images.egress } } }
-      : {}),
+    ...(input.locale === undefined ? {} : { search: { locale: input.locale } }),
     reader: { image: input.images.reader },
   };
 }

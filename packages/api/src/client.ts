@@ -162,6 +162,7 @@ import {
   type VaultStatus,
   vaultStatusSchema,
 } from "./vault.js";
+import { type WebSearchSettings, webSearchSchema } from "./web-search.js";
 
 export interface ClientOptions {
   /** Where the server is, e.g. `http://127.0.0.1:8787`. */
@@ -377,6 +378,10 @@ export interface SuupClient {
     allow(botId: string, host: string): Promise<BotNetwork>;
     /** Takes the host away from the bot's own list. */
     remove(botId: string, host: string): Promise<BotNetwork>;
+  };
+  webSearch: {
+    /** The general search engines in the order they are tried, with where each stands this month. */
+    get(): Promise<WebSearchSettings>;
   };
   vault: {
     /** Whether the server has a vault it can write to (the section and the key), and why not. */
@@ -754,6 +759,9 @@ export function createClient(options: ClientOptions): SuupClient {
         call("PUT", `/v1/bots/${id(botId)}/network/hosts/${id(host)}`, botNetworkSchema, noBody),
       remove: (botId, host) =>
         call("DELETE", `/v1/bots/${id(botId)}/network/hosts/${id(host)}`, botNetworkSchema),
+    },
+    webSearch: {
+      get: () => call("GET", "/v1/web-search", webSearchSchema),
     },
     vault: {
       status: () => call("GET", "/v1/vault", vaultStatusSchema),

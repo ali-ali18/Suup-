@@ -70,15 +70,14 @@ export async function pullImage(
 }
 
 /**
- * The images of the web (docs/BUSCA.md): the page reader, built from the folder the app carries, and
- * the pinned SearXNG, pulled. Neither is needed for the bots' machine, so a failure here only leaves
- * that part of the web off (the tools say it): `web_read` then reads in this process, without
- * `render`, and `web_search` keeps the engines with a public API. Returns what failed, for the log.
+ * The image of the web reader (docs/BUSCA.md), built from the folder the app carries. It is not
+ * needed for the bots' machine, so a failure here only leaves that part of the web off (the tool
+ * says it): `web_read` then reads in this process, without `render`. Web search needs no image.
+ * Returns what failed, for the log.
  */
 export async function prepareWebImages(options: {
   docker: string;
   reader: { image: string; context: string };
-  searxng: string;
   onBuild(): void;
   log(text: string): void;
 }): Promise<string[]> {
@@ -96,14 +95,6 @@ export async function prepareWebImages(options: {
     }
   } catch (error) {
     failed.push(`leitor de páginas: ${String(error)}`);
-  }
-  try {
-    if (!(await imageExists(docker, options.searxng))) {
-      announce();
-      await pullImage(docker, options.searxng, log);
-    }
-  } catch (error) {
-    failed.push(`busca (SearXNG): ${String(error)}`);
   }
   return failed;
 }

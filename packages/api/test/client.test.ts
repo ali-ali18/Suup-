@@ -308,6 +308,7 @@ describe("client", () => {
       ],
       [`PATCH /v1/written-rules/${uuid}`, () => api.writtenRules.update(uuid, { kind: "ask" })],
       [`DELETE /v1/written-rules/${uuid}`, () => api.writtenRules.remove(uuid)],
+      ["GET /v1/web-search", () => api.webSearch.get()],
       ["GET /v1/vault", () => api.vault.status()],
       ["GET /v1/secrets", () => api.vault.list()],
       ["PUT /v1/secrets/API_TOKEN", () => api.vault.set("API_TOKEN", { value: "12345678" })],

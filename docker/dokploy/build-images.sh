@@ -12,8 +12,7 @@ set -eu
 
 : "${DOCKER_HOST:?defina DOCKER_HOST (o socket do Docker isolado)}"
 SRC=/src
-IMAGES="${SUUP_IMAGES:-sandbox connector-runner reader searxng}"
-SEARXNG_IMAGE=docker.io/searxng/searxng:2026.3.25-541c6c3cb
+IMAGES="${SUUP_IMAGES:-sandbox connector-runner reader}"
 
 echo "suup-images: esperando o Docker isolado ($DOCKER_HOST)..."
 tries=0
@@ -53,11 +52,8 @@ for image in $IMAGES; do
       else
         build suup-reader:prod "$SRC" -f "$SRC/docker/reader/Dockerfile"
       fi ;;
-    searxng)
-      echo "suup-images: baixando $SEARXNG_IMAGE"
-      docker pull --quiet "$SEARXNG_IMAGE" ;;
     *)
-      echo "suup-images: imagem desconhecida em SUUP_IMAGES: $image (use sandbox, connector-runner, reader, searxng)" >&2
+      echo "suup-images: imagem desconhecida em SUUP_IMAGES: $image (use sandbox, connector-runner, reader)" >&2
       exit 1 ;;
   esac
 done

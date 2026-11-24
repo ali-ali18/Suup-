@@ -80,14 +80,6 @@ services:
     command: ["true"]
     restart: "no"
 
-  # Só baixa a imagem do SearXNG, FIXADA na versão para a qual o settings.yml foi escrito (nunca `latest`).
-  # Quem o sobe é o worker (rede interna suup-search-net, saída só para os motores ligados). SearXNG é AGPL v3
-  # e roda sem modificação. docs/BUSCA.md.
-  searxng-image:
-    image: docker.io/searxng/searxng:2026.3.25-541c6c3cb
-    entrypoint: ["true"]
-    restart: "no"
-
   # Aplica as migrações e sai. O servidor e o worker só sobem depois que ela termina bem.
   migrate:
     <<: *app
@@ -140,9 +132,6 @@ services:
       default: {}
       sandbox-net:
         ipv4_address: 172.29.77.2
-      # O proxy de saída do SearXNG (só os hosts dos motores ligados) escuta neste IP.
-      search-net:
-        ipv4_address: 172.29.78.2
     # O worker não tem HTTP: sem o teste de /health da imagem.
     healthcheck:
       disable: true
@@ -159,8 +148,6 @@ services:
         condition: service_completed_successfully
       reader-image:
         condition: service_completed_successfully
-      searxng-image:
-        condition: service_completed_successfully
 
 networks:
   # A rede da máquina dos bots e dos conectores: SEM rota para fora (internal). O worker é o único
@@ -171,15 +158,6 @@ networks:
     ipam:
       config:
         - subnet: 172.29.77.0/24
-
-  # A rede do SearXNG (busca na web): SEM rota para fora (internal). Seu único caminho é o proxy de motores do
-  # worker, neste mesmo IP (suup.config.json, web.search.proxy), que só deixa passar os hosts dos motores.
-  search-net:
-    name: suup-search-net
-    internal: true
-    ipam:
-      config:
-        - subnet: 172.29.78.0/24
 
 volumes:
   pgdata:

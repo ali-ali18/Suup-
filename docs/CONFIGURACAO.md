@@ -194,21 +194,22 @@ Abaixo dos dois limites, as ferramentas vão direto. Para desligar a busca, ponh
 
 ### `web` (opcional)
 
-Busca e leitura de páginas, feitas por peças de código aberto que o Suup mesmo roda ([BUSCA.md](BUSCA.md)). Tudo é opcional.
+Busca e leitura de páginas ([BUSCA.md](BUSCA.md)). Tudo é opcional. A busca **não usa Docker**: o Suup chama as APIs oficiais ele mesmo.
 
 | Campo | Padrão | Significado |
 |---|---|---|
 | `search.enabled` | `true` | `false` desliga `web_search` (a ferramenta diz que está desligada) |
-| `search.engines` | `["wikipedia","arxiv","stackoverflow","duckduckgo"]` | ids dos motores (BUSCA.md lista todos). `wikipedia`, `arxiv` e `stackoverflow` são chamados pelo próprio Suup pelas APIs oficiais, com o nome honesto; `duckduckgo` (SearXNG) é o único motor geral ligado por padrão (decisão do dono; taxa baixa, nome honesto, sem contornar captcha). `brave` e `startpage` foram removidos (o SearXNG mandaria o `User-Agent` sorteado dele) e são recusados como id desconhecido. **`github` não existe** (busca no GitHub é o conector MCP). Sem nenhum motor do SearXNG na lista, o contêiner de busca não é criado. Id desconhecido é recusado |
-| `search.languages` | `["en","pt"]` | idiomas cujo host da Wikipédia a busca alcança (o proxy de saída das APIs diretas libera só esses hosts) (`pt-br` vira `pt-br.wikipedia.org`; só letras, números e hífen) |
+| `search.engines` | `["wikipedia","arxiv","stackoverflow","tavily","brave"]` | ids dos motores (BUSCA.md lista todos). `wikipedia`, `arxiv` e `stackoverflow` são especializados e não precisam de chave; `tavily` e `brave` são a **busca geral** (uma fila, abaixo) e **precisam de chave**: sem ela o motor é pulado. **`github`, `duckduckgo`, `google`, `bing` e `firecrawl` não existem** (busca no GitHub é o conector MCP). Id desconhecido é recusado |
+| `search.general.order` | `["tavily","brave"]` | a **ordem da fila** da busca geral: o primeiro é tentado primeiro, e o próximo entra sozinho quando um está sem cota, indisponível ou falhou. Só aceita ids de motores gerais; um que falta na lista vai depois, na ordem padrão |
+| `search.general.tavily`, `search.general.brave` | `{}` | onde cada motor acha a **chave**: `apiKeyEnv` (o **nome** da variável de ambiente; padrão `TAVILY_API_KEY` e `BRAVE_SEARCH_API_KEY`) e `secret` (o nome do segredo do cofre; padrão o mesmo). O ambiente vale primeiro, depois o cofre (o app grava em Configurações > Busca). **A chave nunca fica no arquivo**: um campo `apiKey` é recusado. Lida a cada busca: uma chave adicionada depois vale na hora |
+| `search.locale` | (nenhum) | o locale da pessoa (`pt-BR`): os motores gerais pedem resultados do Brasil e em português (Tavily `country: "brazil"`, `language: "pt"`; Brave `country=BR`, `search_lang=pt-br`). O app embutido manda o idioma do computador |
+| `search.languages` | `["en","pt"]` | idiomas cujo host da Wikipédia a busca alcança (o proxy de saída libera só esses hosts) (`pt-br` vira `pt-br.wikipedia.org`; só letras, números e hífen) |
 | `search.maxResults` | `10` | no máximo, por busca (1 a 20) |
 | `search.limits.perMinute` | `20` | no máximo, de buscas em qualquer minuto, no geral (1 a 600). Passando disso a busca espera na fila ou o resultado diz quando tentar de novo |
-| `search.limits.perEngine` | o de cada motor (`duckduckgo` 6, `stackoverflow` 10, `arxiv` 15, `wikipedia` 30) | `{ "<id do motor>": n }`: buscas por minuto a um motor. Id desconhecido é recusado |
+| `search.limits.perEngine` | o de cada motor (`stackoverflow` 10, `arxiv` 15, `wikipedia` 30, `tavily` 30, `brave` 30) | `{ "<id do motor>": n }`: buscas por minuto a um motor. Id desconhecido é recusado |
 | `search.limits.maxWaitSeconds` | `20` | o máximo que uma busca espera na fila (0 a 120); além disso o resultado é "tente em X s" |
-| `search.cache.enabled` | `true` | `false` desliga o cache de buscas idênticas |
+| `search.cache.enabled` | `true` | `false` desliga o cache de buscas idênticas. **Resultados da Brave nunca são guardados no cache** (termos dela), qualquer que seja este campo |
 | `search.cache.ttlMinutes` | `180` | quanto vive uma busca no cache (1 a 10080). O cache fica no banco (tabela `web_search_cache`) |
-| `search.url` | (nenhum) | use um SearXNG seu, nesta URL http(s), em vez do contêiner que o Suup sobe (o formato `json` tem de estar ligado nele) |
-| `search.image`, `search.network`, `search.proxy` | imagem fixada, `suup-search-net`, gateway da rede e porta 3129 | avançado: imagem, rede interna e onde o proxy de motores escuta (necessário com o worker em contêiner: `{ "listenHost", "advertiseHost", "port" }`) |
 | `reader.enabled` | `true` | `false`: `web_read` lê pela máquina do bot, pela lista de hosts e com cartões, em vez do serviço leitor |
 | `reader.render` | `true` | permite `render: true` (Chromium no contêiner leitor) |
 | `reader.image` | `suup-reader:dev` | imagem do leitor |
@@ -216,7 +217,7 @@ Busca e leitura de páginas, feitas por peças de código aberto que o Suup mesm
 
 **`web_read` só abre sem cartão um endereço que já apareceu na execução** (mensagem do usuário, resultado de busca ou link de página lida); qualquer outro é um cartão "Ler uma página nova". Não há campo para desligar isto ([BUSCA.md](BUSCA.md), "A leitura só abre o que já apareceu"; [APROVACOES.md](APROVACOES.md)).
 
-`suup doctor` mostra se a busca e o leitor estão ligados e, depois do primeiro uso, o que está rodando. Sem Docker, `web_search` fica indisponível e `web_read` lê no próprio processo, sem `render`. A saída do `web_search` e do `web_read` já chega ao modelo como dado externo (`<<<EXTERNAL_DATA`), sem precisar de `untrustedOutputTools`.
+`suup doctor` mostra se a busca e o leitor estão ligados, o estado de cada motor da fila ("pronta", "sem chave", "cota do mês usada") e, depois do primeiro uso, o que está rodando. Sem Docker, `web_search` funciona inteira e `web_read` lê no próprio processo, sem `render`. **Os campos antigos `search.url`, `search.image`, `search.network` e `search.proxy` (do SearXNG) foram removidos**: um arquivo que os traga é recusado como campo desconhecido. A saída do `web_search` e do `web_read` já chega ao modelo como dado externo (`<<<EXTERNAL_DATA`), sem precisar de `untrustedOutputTools`.
 
 ### Conectores
 

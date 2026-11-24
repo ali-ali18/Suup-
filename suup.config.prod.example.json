@@ -33,9 +33,12 @@
   },
   "web": {
     "search": {
-      "engines": ["wikipedia", "arxiv", "stackoverflow", "duckduckgo"],
-      "network": "suup-search-net",
-      "proxy": { "listenHost": "172.29.78.2", "advertiseHost": "172.29.78.2", "port": 3129 }
+      "engines": ["wikipedia", "arxiv", "stackoverflow", "tavily", "brave"],
+      "general": {
+        "order": ["tavily", "brave"],
+        "tavily": { "apiKeyEnv": "TAVILY_API_KEY" },
+        "brave": { "apiKeyEnv": "BRAVE_SEARCH_API_KEY" }
+      }
     },
     "reader": { "image": "suup-reader:prod" }
   },

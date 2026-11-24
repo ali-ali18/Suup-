@@ -306,6 +306,7 @@ Uma tela separada do chat, para quando algo dá errado. A API serve os mesmos c�
 | Desktop do bot | Vídeo da tela e estado da conexão |
 | Conectores | `GET/POST /v1/connectors`, `PATCH`/`DELETE /v1/connectors/{nome}`, concessões por bot, risco por ferramenta, `POST .../test`; galeria: `GET /v1/connector-catalog`, `POST /v1/connector-catalog/{id}/install`, `POST .../oauth/start`, `GET .../oauth/status`, `DELETE .../oauth`; `GET /v1/info` (`oauthCallback`) |
 | Cofre | Segredos: `GET /v1/secrets`, `PUT`/`DELETE /v1/secrets/{nome}`, concessões por bot |
+| Busca na web | `GET /v1/web-search`: `{ enabled, providers: [{ id, label, position, state, retryInSeconds?, searchesThisMonth, keyNames? }] }`, os motores da busca geral na ordem em que são tentados; a chave entra pelo cofre (`PUT /v1/secrets/{keyNames.secret}`). Configurações > Busca |
 | Primeira abertura e Servidor | **Não vêm da API do servidor**: vêm da casca do app (Tauri), que guarda a escolha (`mode`: neste computador ou VPS) e, no servidor local, conta o estado (`local_status`: etapa, motivo da falha, isolamento da máquina dos bots, se há chave). No navegador não existem: o app só conecta a um endereço. Só o que a casca informa é desenhado |
 | Dispositivos | Seus computadores e celular |
 | Inspetor | Eventos crus, `requests/{seq}`, `replay`, `resend`, `doctor` |

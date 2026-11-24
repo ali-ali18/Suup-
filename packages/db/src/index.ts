@@ -460,6 +460,7 @@ export {
   putWebSearchCache,
   type WebSearchCacheRow,
 } from "./web-search-cache.js";
+export { getWebSearchUsage, recordWebSearchUsage } from "./web-search-usage.js";
 export {
   type CreateWrittenRuleInput,
   createWrittenRule,
