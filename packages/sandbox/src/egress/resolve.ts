@@ -17,8 +17,19 @@ export const systemResolver: Resolver = {
 };
 
 export type Resolution =
-  | { ok: true; address: string }
-  | { ok: false; reason: "dns_failed" | "forbidden_address"; message: string };
+  | {
+      ok: true;
+      address: string;
+      /** Every address of the answer, in order (all checked; `address` is the first). */
+      addresses: string[];
+    }
+  | {
+      ok: false;
+      reason: "dns_failed" | "forbidden_address";
+      message: string;
+      /** The resolver's error code when it threw (`ENOTFOUND`, `EAI_AGAIN`...), for diagnostics. */
+      code?: string;
+    };
 
 /**
  * One answer to connect to. If ANY address of the answer is in a forbidden range the whole name is
@@ -29,8 +40,14 @@ export async function resolveForConnect(host: string, resolver: Resolver): Promi
   let addresses: string[];
   try {
     addresses = await resolver.resolve(host);
-  } catch {
-    return { ok: false, reason: "dns_failed", message: `host ${host} could not be resolved` };
+  } catch (error) {
+    const code = (error as { code?: unknown } | null)?.code;
+    return {
+      ok: false,
+      reason: "dns_failed",
+      message: `host ${host} could not be resolved`,
+      ...(typeof code === "string" ? { code } : {}),
+    };
   }
   const first = addresses[0];
   if (first === undefined) {
@@ -45,5 +62,5 @@ export async function resolveForConnect(host: string, resolver: Resolver): Promi
       };
     }
   }
-  return { ok: true, address: first };
+  return { ok: true, address: first, addresses };
 }

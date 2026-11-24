@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildSystemPrompt,
+  buildSystemPromptParts,
   formatClock,
   MEMORY_TOOL_NAMES,
   type RunPromptContext,
@@ -79,7 +80,7 @@ const base: RunPromptContext = { rules: [], profile: [] };
 const NOW = { iso: "2026-11-21T17:32:00.000Z", timeZone: "America/Sao_Paulo" };
 
 describe("system prompt: the order of the blocks", () => {
-  it("reads who you are, now, team, what you have, rules, profile, how you work, in that order", () => {
+  it("reads how you work, the harness, tools and data, then who you are, now, team, what you have, rules, profile, in that order", () => {
     const prompt = buildSystemPrompt(
       { name: "Ada", personality: "Dry." },
       {
@@ -93,21 +94,68 @@ describe("system prompt: the order of the blocks", () => {
       { returns: true },
     );
     const heads = [
+      "## How you work",
+      "## Messages from the harness",
+      "## Tools and data",
       "## Who you are",
       "## Now",
       "## Your team",
       "## What you have",
       "## Standing rules from the user",
       "## What you know about the user",
-      "## How you work",
-      "## Messages from the harness",
-      "## Tools and data",
     ];
     const at = heads.map((h) => prompt.indexOf(h));
     expect(at.every((i) => i >= 0)).toBe(true);
     expect([...at].sort((a, b) => a - b)).toEqual(at);
-    expect(prompt.indexOf("Dry.")).toBeGreaterThan(at[0] as number);
-    expect(prompt.indexOf("Dry.")).toBeLessThan(at[1] as number);
+    expect(prompt.startsWith("## How you work")).toBe(true);
+    expect(prompt.indexOf("Dry.")).toBeGreaterThan(at[3] as number);
+    expect(prompt.indexOf("Dry.")).toBeLessThan(at[4] as number);
+  });
+
+  it("starts with a long part that is byte-identical across bots and runs (the prompt cache prefix)", () => {
+    const options = { returns: true, approvals: true, secrets: true, routines: true };
+    const ada = buildSystemPromptParts(
+      { name: "Ada", personality: "Dry." },
+      {
+        rules: [{ text: "Always short." }],
+        profile: [{ text: "Lives in Recife." }],
+        now: NOW,
+        team: [{ name: "Finanças", description: "Cuida do dinheiro." }],
+        secrets: [{ name: "GITHUB_TOKEN", description: "" }],
+      },
+      options,
+    );
+    const bia = buildSystemPromptParts(
+      { name: "Bia", personality: "Warm and chatty." },
+      {
+        rules: [],
+        profile: [{ text: "Has a cat." }],
+        now: { ...NOW, iso: "2027-03-02T08:15:00.000Z" },
+      },
+      options,
+    );
+    expect(ada.stableLength).toBe(bia.stableLength);
+    expect(ada.stableLength).toBeGreaterThan(2500);
+    const prefix = ada.text.slice(0, ada.stableLength);
+    expect(bia.text.slice(0, bia.stableLength)).toBe(prefix);
+    // Nothing of the bot or the run is in it; all of that comes after.
+    for (const own of [
+      "Ada",
+      "Dry.",
+      "Always short.",
+      "Recife",
+      "Finanças",
+      "GITHUB_TOKEN",
+      "2026",
+    ]) {
+      expect(prefix, own).not.toContain(own);
+      expect(ada.text.slice(ada.stableLength), own).toContain(own);
+    }
+    expect(ada.text.slice(ada.stableLength).startsWith("## Who you are")).toBe(true);
+    // The same text as before, only in another order.
+    expect(buildSystemPrompt({ name: "Ada", personality: "Dry." }, base, options)).toBe(
+      buildSystemPromptParts({ name: "Ada", personality: "Dry." }, base, options).text,
+    );
   });
 });
 
@@ -231,6 +279,75 @@ describe("system prompt: what you have", () => {
       "- No terminal and no files: you work only with the tools listed to you.",
     );
     expect(prompt).not.toContain("Memory screen");
+  });
+});
+
+describe("system prompt: your routines", () => {
+  const bot = { name: "Ada", personality: "" };
+  const lembrete = {
+    id: "rot-1",
+    name: "Lembrete: trabalhos e prova",
+    schedule: "todo dia às 20:00, até 30/11/2026",
+    timeZone: "America/Sao_Paulo",
+    status: "active" as const,
+  };
+
+  it("lists the routines an earlier run set up, with the ids only for the tools", () => {
+    const prompt = buildSystemPrompt(
+      bot,
+      {
+        ...base,
+        ownRoutines: {
+          items: [lembrete, { ...lembrete, id: "rot-2", name: "Água", status: "paused" }],
+          more: 3,
+        },
+      },
+      { routines: true },
+    );
+    expect(prompt).toContain(
+      '## Your routines\n\nYour routines as this run started; they are real, set up by the user or by an earlier run of yours: the earlier turns of this conversation are text only, without the tool calls behind them, so not seeing a tool result there does not mean it was not done.\n\n- "Lembrete: trabalhos e prova": todo dia às 20:00, até 30/11/2026 (America/Sao_Paulo); active; id rot-1\n- "Água": todo dia às 20:00, até 30/11/2026 (America/Sao_Paulo); PAUSED; id rot-2\n- and 3 more (`list_routines` lists them all)\n\nThe ids are for your tools',
+    );
+    expect(prompt).toContain("never show them to the user");
+    // before creating, the bot checks the list (routines and reminders); it never claims what no
+    // tool result shows
+    expect(prompt).toContain(
+      'Before creating a routine or a reminder, look at "Your routines" (or call `list_routines`): if one already does what the user asked, change that one with `update_routine` instead of creating another. Never say you created or changed one unless the tool result of THIS run shows it, or it is in "Your routines".',
+    );
+  });
+
+  it("marks a one-time reminder in the list, so the bot knows what it already promised", () => {
+    const prompt = buildSystemPrompt(
+      bot,
+      {
+        ...base,
+        ownRoutines: {
+          items: [
+            {
+              id: "rot-9",
+              name: "Lembrete: pagar o boleto",
+              schedule: "uma vez, em 29/11/2026 às 19:00",
+              timeZone: "America/Sao_Paulo",
+              status: "active",
+              reminder: true,
+            },
+          ],
+          more: 0,
+        },
+      },
+      { routines: true },
+    );
+    expect(prompt).toContain(
+      '- "Lembrete: pagar o boleto": uma vez, em 29/11/2026 às 19:00 (America/Sao_Paulo); one-time reminder (not in the panel); id rot-9',
+    );
+  });
+
+  it("says so when there is none, and has no section in a run that did not load them", () => {
+    expect(
+      buildSystemPrompt(bot, { ...base, ownRoutines: { items: [], more: 0 } }, { routines: true }),
+    ).toContain(
+      "## Your routines\n\nYour routines as this run started; they are real, set up by the user or by an earlier run of yours: the earlier turns of this conversation are text only, without the tool calls behind them, so not seeing a tool result there does not mean it was not done.\n\nYou have no routines yet.",
+    );
+    expect(buildSystemPrompt(bot, base, { routines: true })).not.toContain("## Your routines");
   });
 });
 

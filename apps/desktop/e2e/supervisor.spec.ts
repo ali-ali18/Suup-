@@ -71,7 +71,12 @@ const SCRIPTS = {
     cases: [
       {
         whenObjectiveContains: "Task delegated by",
+        // A delegated run has acceptance criteria: the plain answer is sent back once asking for
+        // finish; this model answers in plain text again, which ends the run.
         agent: [
+          s({
+            text: "Cronograma da prova de sexta: segunda e terça, revisão dos capítulos 1 a 4; quarta, exercícios; quinta, simulado de duas horas.",
+          }),
           s({
             text: "Cronograma da prova de sexta: segunda e terça, revisão dos capítulos 1 a 4; quarta, exercícios; quinta, simulado de duas horas.",
           }),

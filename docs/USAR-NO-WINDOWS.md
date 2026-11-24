@@ -48,6 +48,27 @@ Os bots buscam na web e leem páginas com as mesmas ferramentas do servidor (`we
 - **Com o Docker Desktop:** também a **busca geral (DuckDuckGo)**, pelo SearXNG num contêiner sem saída própria, e a leitura **com navegador** (para páginas que só aparecem com JavaScript), num contêiner próprio. A saída do SearXNG passa por um segundo proxy em contêiner (`suup-egress-search`), do mesmo jeito que a dos bots: só para os endereços dos motores, controlado pelo app por uma porta publicada só em `127.0.0.1`.
 - **Sem o Docker,** o bot recebe o motivo quando a busca geral ou a leitura com navegador não estão disponíveis ("precisa do Docker"), e pode dizer isso a você.
 - **Na primeira abertura com o Docker,** junto com as imagens dos bots, o app **constrói a imagem do leitor** (parte da imagem do Playwright, com o navegador: **alguns GB** de download) e **baixa a do SearXNG**. Se uma delas falhar, os bots continuam isolados normalmente; só aquela parte da web fica de fora (o motivo vai para os registros).
+- **"Não consegui acessar o site agora".** Quando o leitor não alcança um site (o nome não resolve, não há rota, o TLS falha, o tempo acaba), o bot recebe que foi um problema de conexão **deste lado**, não o site recusando, e pode tentar de novo em alguns minutos ou usar outra fonte. Antes (até 24/11/2026) isso aparecia como "pt.wikipedia.org could not be asked for its robots.txt", como se o site tivesse se fechado para robôs: o `robots.txt` é o primeiro pedido a um site, então qualquer falha de rede aparecia ali.
+- **"A busca volta em ~60 min".** É o DuckDuckGo: quando ele responde com um captcha, o Suup para de perguntar a ele por uma hora (o tempo do próprio SearXNG; [BUSCA.md](BUSCA.md), "Busca educada"). A Wikipédia, o arXiv e o Stack Overflow continuam respondendo nesse meio-tempo.
+
+### O que procurar nos registros quando uma página não abre
+
+Abra **Configurações > Geral > Servidor > Registros > Abrir pasta** e procure, no arquivo do dia (`suup-AAAA-MM-DD.log`), linhas que começam com `web_read: could not reach`. Cada uma diz o site, qual pedido falhou (`robots` = o `robots.txt`, o primeiro; `page` = a página), onde o leitor rodou (`reader container` = no contêiner `suup-reader` do Docker; `reader local` = dentro do app) e o que falhou:
+
+```
+web_read: could not reach pt.wikipedia.org (robots, reader container, reason unreachable): stage=dns code=EAI_AGAIN
+```
+
+| `stage` / `code` | O que quer dizer | O que fazer |
+|---|---|---|
+| `dns`, `EAI_AGAIN` (ou outro) | O DNS não respondeu de onde o leitor roda | Com `reader container`: o DNS do Docker Desktop. Teste `docker run --rm suup-reader:app-<versão> getent hosts pt.wikipedia.org`; reinicie o Docker Desktop; VPN ou DNS próprio no Windows costumam ser a causa |
+| `dns`, `ENOTFOUND` | O nome não existe para o DNS usado | Confira a grafia; se está certa, é o mesmo caso acima |
+| `connect`, `ENETUNREACH` / `EHOSTUNREACH` | Sem rota até o endereço (comum com IPv6 quebrado) | O leitor já tenta os outros endereços do nome (`addresses=` mostra quais); se todos falham, é a rede do Docker ou do PC |
+| `connect`, `ECONNREFUSED` / `ETIMEDOUT` | A conexão foi recusada ou não completou | Firewall, VPN ou proxy no caminho |
+| `tls`, `SELF_SIGNED_CERT_IN_CHAIN` / `UNABLE_TO_GET_ISSUER_CERT_LOCALLY` | Alguém no caminho troca o certificado do site | Quase sempre um antivírus com "verificação de HTTPS" (ou um proxy de empresa): desligue essa verificação para o Docker ou o Suup |
+| `timeout` | O site ou a rede não responderam em 20 s | Tente de novo; se é sempre, a rede do Docker está lenta |
+
+Linhas `reader container unavailable: ...` dizem por que o contêiner do leitor não subiu (aí o app lê sozinho, `reader local`). Os registros nunca têm o endereço completo da página nem o conteúdo, só o nome do site.
 
 ## 4c. Conectar serviços (galeria)
 
@@ -77,6 +98,12 @@ Os registros **não** contêm chaves nem o token. **Avançado:** para trocar os 
 ## 7. Passar para a VPS
 
 Em **Configurações > Geral > Servidor > Trocar** o app volta à primeira tela e você escolhe **Conectar à minha VPS** (endereço e token). Nada é apagado e **nada é copiado** entre os dois. Para levar os bots, as conversas e a memória, faça o dump e a restauração descritos em [IMPLANTACAO.md](IMPLANTACAO.md), "Passar do computador para a VPS". Depois disso, o computador deixa de valer: não deixe os dois com o mesmo bot ligados.
+
+## 8. Atualizações (sem reinstalar)
+
+Depois de instalado, o app **se atualiza sozinho**: quando sai uma versão nova, aparece no canto "Nova versão do Suup disponível"; **Atualizar agora** baixa, e **Reiniciar para concluir** fecha, instala e abre o Suup de novo, com os seus dados. Em **Configurações > Geral**, no fim, a linha "Versão x.y.z" tem **Procurar atualização**.
+
+Isso fica **desligado** até o dono gerar a chave de assinatura no computador dele e publicar a primeira Release. O passo a passo (gerar a chave, os dois segredos do GitHub, colar a chave pública, criar a tag, publicar o rascunho) e o requisito do repositório **público** estão em [ATUALIZACAO.md](ATUALIZACAO.md), "Passo a passo do dono". Com as Releases ligadas, o instalador também pode ser baixado da aba **Releases** do GitHub, em vez de Actions.
 
 ## O que foi e o que não foi verificado
 

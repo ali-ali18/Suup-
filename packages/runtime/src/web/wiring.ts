@@ -63,6 +63,7 @@ export function createWebWiring(
       const web = lib.createWebAccess({
         searchEnabled,
         readerEnabled,
+        ...(options.log === undefined ? {} : { log: options.log }),
         ...(settings?.search?.maxResults === undefined
           ? {}
           : { maxResults: settings.search.maxResults }),

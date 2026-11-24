@@ -93,6 +93,7 @@ export { execSearxBackend } from "./searx-exec.js";
 export { renderSearxSettings, type SearxSettingsInput } from "./searx-settings.js";
 export {
   createWebAccess,
+  readFailureLogLine,
   type StartedServices,
   type WebAccessOptions,
   type WebAccessWithStatus,

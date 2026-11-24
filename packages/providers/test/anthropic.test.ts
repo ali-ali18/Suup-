@@ -100,6 +100,39 @@ describe("anthropic adapter", () => {
     expect(provider.capabilities.promptCache).toBe(true);
   });
 
+  it("puts a second breakpoint where the shared part of the system prompt ends (four at most)", async () => {
+    const script = scriptedFetch([{ body: start() + textBlock("a") + end() }]);
+    const provider = createAnthropicProvider({
+      id: "anthropic",
+      apiKey: API_KEY,
+      fetch: script.fetch,
+    });
+    const system = "## How you work\n\nShared rules.\n\n## Who you are\n\nYou are Ada.";
+    const cut = system.indexOf("## Who you are");
+    await run(provider, { ...conformanceRequest(), system, systemCacheBreak: cut });
+    const body = script.calls[0]?.body as { system: { text: string }[] };
+    const cc = { type: "ephemeral" };
+    expect(body.system).toEqual([
+      { type: "text", text: "## How you work\n\nShared rules.\n\n", cache_control: cc },
+      { type: "text", text: "## Who you are\n\nYou are Ada.", cache_control: cc },
+    ]);
+    expect(body.system.map((b) => b.text).join("")).toBe(system);
+    const marks = JSON.stringify(body).split('"cache_control"').length - 1;
+    expect(marks).toBeLessThanOrEqual(4);
+    // A break at either end (or none) is one block, as before.
+    for (const at of [undefined, 0, system.length]) {
+      const again = scriptedFetch([{ body: start() + textBlock("a") + end() }]);
+      const p2 = createAnthropicProvider({ id: "anthropic", apiKey: API_KEY, fetch: again.fetch });
+      await run(p2, {
+        ...conformanceRequest(),
+        system,
+        ...(at === undefined ? {} : { systemCacheBreak: at }),
+      });
+      const sent = again.calls[0]?.body as { system: unknown[] } | undefined;
+      expect(sent?.system).toHaveLength(1);
+    }
+  });
+
   it("omits system, tools and empty text blocks when there is nothing to send", async () => {
     const { provider, script } = make([{ body: start() + textBlock("a") + end() }], {
       promptCache: false,

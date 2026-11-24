@@ -117,7 +117,27 @@ export function createReader(options: ReaderOptions = {}): Reader {
 
       if (robots !== undefined) {
         const verdict = await robots.check(url);
-        if (!verdict.allowed) return { ok: false, reason: verdict.kind, message: verdict.reason };
+        if (!verdict.allowed) {
+          if (verdict.kind === "server_error") {
+            return {
+              ok: false,
+              reason: "http",
+              ...(verdict.status === undefined ? {} : { status: verdict.status }),
+              message: verdict.reason,
+            };
+          }
+          return {
+            ok: false,
+            reason:
+              verdict.kind === "unreachable" && verdict.diagnostic?.stage === "timeout"
+                ? "timeout"
+                : verdict.kind,
+            message: verdict.reason,
+            ...(verdict.diagnostic === undefined
+              ? {}
+              : { diagnostic: { ...verdict.diagnostic, request: "robots" as const } }),
+          };
+        }
       }
       await limiter.wait(url.hostname);
 
@@ -154,12 +174,23 @@ export function createReader(options: ReaderOptions = {}): Reader {
         ...fetchOptions,
         ...(request.signal === undefined ? {} : { signal: request.signal }),
       });
-      if (!response.ok)
+      if (!response.ok) {
+        // A page that could not be reached from here is a connection problem on this side.
+        const unreachable =
+          response.diagnostic !== undefined && response.diagnostic.stage !== "timeout";
         return {
           ok: false,
-          reason: response.reason === "too_many_redirects" ? "failed" : response.reason,
+          reason: unreachable
+            ? "unreachable"
+            : response.reason === "too_many_redirects"
+              ? "failed"
+              : response.reason,
           message: response.message,
+          ...(response.diagnostic === undefined
+            ? {}
+            : { diagnostic: { ...response.diagnostic, request: "page" as const } }),
         };
+      }
       if (response.status >= 400) {
         return {
           ok: false,

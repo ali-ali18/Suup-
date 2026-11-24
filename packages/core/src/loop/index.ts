@@ -38,9 +38,11 @@ export {
 export {
   APPROVALS_PROMPT_MARK,
   buildSystemPrompt,
+  buildSystemPromptParts,
   CREATE_ROUTINE_TOOL_NAME,
   formatClock,
   MEMORY_TOOL_NAMES,
+  OWN_ROUTINES_PROMPT_MAX,
   renderRoutineRef,
   renderStateReminder,
   WEB_READ_TOOL_NAME,

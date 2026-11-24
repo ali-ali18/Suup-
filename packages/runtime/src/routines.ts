@@ -14,9 +14,13 @@ import {
   INTERVAL_UNITS,
   isKnownTimeZone,
   MAX_RETURN_MINUTES,
+  OWN_ROUTINES_PROMPT_MAX,
+  type OwnRoutines,
   type RoutineRunFacts,
+  routineNameKey,
   SCHEDULE_KINDS,
   type Schedule,
+  sameSchedule,
   scheduleSchema,
   WEEKDAYS,
 } from "@suup/core";
@@ -130,6 +134,57 @@ function routineLine(r: Routine): string {
   return `- ${JSON.stringify(r.name)} (id ${r.id}, ${what}): ${scheduleWords(r)} (${r.timeZone}); ${status}${last}. Instruction: ${clip(r.instruction, 300)}`;
 }
 
+/**
+ * The routine of the bot that a new one would duplicate: one that is not ended, with the same name
+ * (`routineNameKey`, compared exactly) AND the same schedule in the same time zone (`sameSchedule`).
+ * Structure only: no text is interpreted.
+ */
+export function duplicateRoutineOf(
+  mine: readonly Pick<Routine, "id" | "name" | "schedule" | "timeZone" | "status">[],
+  wanted: { name: string; schedule: Schedule; timeZone: string },
+): Pick<Routine, "id" | "name" | "schedule" | "timeZone" | "status"> | undefined {
+  const key = routineNameKey(wanted.name);
+  return mine.find(
+    (r) =>
+      r.status !== "ended" &&
+      r.schedule !== null &&
+      r.timeZone === wanted.timeZone &&
+      routineNameKey(r.name) === key &&
+      sameSchedule(r.schedule, wanted.schedule),
+  );
+}
+
+/**
+ * The bot's own routines as a run starts (recorded in `context_loaded.ownRoutines`): the ones that
+ * are not ended, active first, capped at `OWN_ROUTINES_PROMPT_MAX`; the rest is counted.
+ */
+export async function ownRoutinesFor(
+  db: Db,
+  botId: string,
+  max: number = OWN_ROUTINES_PROMPT_MAX,
+): Promise<OwnRoutines> {
+  // One-time reminders too, marked: the model must know what it already promised to remind.
+  const live = (await listRoutines(db, { botId, reminders: true })).filter(
+    (r) => r.status !== "ended",
+  );
+  const ordered = [
+    ...live.filter((r) => r.status === "active"),
+    ...live.filter((r) => r.status !== "active"),
+  ];
+  const shown = ordered.slice(0, max);
+  return {
+    items: shown.map((r) => ({
+      id: r.id,
+      name: r.name,
+      schedule: scheduleWords(r),
+      timeZone: r.timeZone,
+      status: r.status === "active" ? ("active" as const) : ("paused" as const),
+      ...(r.reminder ? { reminder: true } : {}),
+    })),
+    more: ordered.length - shown.length,
+  };
+}
+
 function routineErrorText(error: RoutineError): string {
   const advice: Record<RoutineError["code"], string> = {
     not_found: "Check the routine with list_routines.",
@@ -236,6 +291,21 @@ export function createRoutineTool(db: Db, userZone: UserZone) {
           content: `Not created: something for one time only is not a routine (routines repeat; the user sees them in your panel). Within the next ${MAX_RETURN_MINUTES} minutes use schedule_return; later, use create_reminder with the date and time.`,
         };
       }
+      // The same routine twice is never what the user wants: the model is told it already exists.
+      const twin = duplicateRoutineOf(
+        await listRoutines(db, { botId: ctx.botId, reminders: true }),
+        {
+          name,
+          schedule: read.schedule,
+          timeZone: zone,
+        },
+      );
+      if (twin !== undefined) {
+        return {
+          isError: true,
+          content: `Not created: you already have this routine, ${JSON.stringify(twin.name)} (id ${twin.id}), ${scheduleWords(twin)} (${twin.timeZone}), ${twin.status === "paused" ? "PAUSED" : "active"}. It was set up before and is real. Do not create it again: to change it, call update_routine with routine: "${twin.id}"${twin.status === "paused" ? " (paused: false resumes it)" : ""}; if it is already what the user asked, just tell them it is set up.`,
+        };
+      }
       try {
         const routine = await createRoutine(db, {
           botId: ctx.botId,
@@ -301,10 +371,22 @@ export function createReminderTool(db: Db, userZone: UserZone) {
       }
       const read = readSchedule({ kind: "once", date, time });
       if ("error" in read) return { isError: true, content: read.error };
+      const name = clip(`Lembrete: ${text}`, MAX_ROUTINE_NAME);
+      // The same reminder twice is refused like a routine twice (same name, time and zone).
+      const twin = duplicateRoutineOf(
+        await listRoutines(db, { botId: ctx.botId, reminders: true }),
+        { name, schedule: read.schedule, timeZone: zone },
+      );
+      if (twin !== undefined) {
+        return {
+          isError: true,
+          content: `Not set: you already have this reminder, ${JSON.stringify(twin.name)} (id ${twin.id}), ${scheduleWords(twin)} (${twin.timeZone}). It is real. Do not set it again; if it is what the user asked, just tell them it is set.`,
+        };
+      }
       try {
         const reminder = await createRoutine(db, {
           botId: ctx.botId,
-          name: clip(`Lembrete: ${text}`, MAX_ROUTINE_NAME),
+          name,
           instruction: clip(
             `Lembre o usuário, numa mensagem curta: ${text}`,
             MAX_ROUTINE_INSTRUCTION,

@@ -8,7 +8,9 @@ import {
   offsetMinutesAt,
   parseLocalDate,
   parseLocalTime,
+  routineNameKey,
   type Schedule,
+  sameSchedule,
   scheduleSchema,
 } from "./schedule.js";
 
@@ -286,5 +288,49 @@ describe("in words", () => {
     expect(describeSchedule({ kind: "daily", time: "08:00", until: "2026-12-31" })).toBe(
       "todo dia às 08:00, até 31/12/2026",
     );
+  });
+});
+
+describe("the same schedule, the same name (for a duplicate routine; no text compared)", () => {
+  it("compares the fields exactly: weekly days as a set, an interval by its minutes", () => {
+    const daily: Schedule = { kind: "daily", time: "20:00", until: "2026-11-30" };
+    expect(sameSchedule(daily, { kind: "daily", time: "20:00", until: "2026-11-30" })).toBe(true);
+    expect(sameSchedule(daily, { kind: "daily", time: "20:00" })).toBe(false);
+    expect(sameSchedule(daily, { kind: "daily", time: "20:01", until: "2026-11-30" })).toBe(false);
+    expect(
+      sameSchedule(
+        { kind: "weekly", days: ["mon", "wed"], time: "09:00" },
+        { kind: "weekly", days: ["wed", "mon"], time: "09:00" },
+      ),
+    ).toBe(true);
+    expect(
+      sameSchedule(
+        { kind: "weekly", days: ["mon", "wed"], time: "09:00" },
+        { kind: "weekly", days: ["mon"], time: "09:00" },
+      ),
+    ).toBe(false);
+    expect(
+      sameSchedule(
+        { kind: "interval", every: 2, unit: "hours" },
+        { kind: "interval", every: 120, unit: "minutes" },
+      ),
+    ).toBe(true);
+    expect(
+      sameSchedule({ kind: "monthly", day: 5, time: "08:00" }, { kind: "daily", time: "08:00" }),
+    ).toBe(false);
+    expect(
+      sameSchedule(
+        { kind: "once", date: "2026-12-01", time: "08:00" },
+        { kind: "once", date: "2026-12-01", time: "08:00" },
+      ),
+    ).toBe(true);
+  });
+
+  it("folds case and trims the ends of a name; nothing else is equal", () => {
+    expect(routineNameKey("  Lembrete: Provas ")).toBe(routineNameKey("lembrete: provas"));
+    expect(routineNameKey("ÁGUA")).toBe(routineNameKey("água"));
+    // the same letter composed or decomposed is the same name
+    expect(routineNameKey("Água")).toBe(routineNameKey("A\u0301gua"));
+    expect(routineNameKey("Lembrete provas")).not.toBe(routineNameKey("Lembrete: provas"));
   });
 });

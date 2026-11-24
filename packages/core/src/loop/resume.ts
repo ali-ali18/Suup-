@@ -235,6 +235,7 @@ async function ensureContext(ctx: LoopContext): Promise<void> {
       ...(snapshot.routineRefs === undefined || snapshot.routineRefs.length === 0
         ? {}
         : { routineRefs: snapshot.routineRefs }),
+      ...(snapshot.ownRoutines === undefined ? {} : { ownRoutines: snapshot.ownRoutines }),
       ...(snapshot.compactionThreshold === undefined
         ? {}
         : { compactionThreshold: snapshot.compactionThreshold }),

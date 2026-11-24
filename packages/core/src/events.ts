@@ -262,6 +262,30 @@ export const routineRefSchema = z.object({
 });
 export type RoutineRef = z.infer<typeof routineRefSchema>;
 
+/**
+ * The bot's own routines as the run starts (docs/ROTINAS.md): name, schedule in words, time zone
+ * and state, plus the id for the model. Told to the model in "Your routines", so a new run knows
+ * what an earlier run already set up (the history carries text only, not the tool calls behind it).
+ * Read once and recorded in `context_loaded.ownRoutines`: a resumed run and a replay read the same.
+ */
+export const ownRoutineSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  /** The schedule in words (pt-BR), as the user reads it. */
+  schedule: z.string(),
+  timeZone: z.string(),
+  status: z.enum(["active", "paused"]),
+  /** A one-time reminder (internal, not in the panel), not a routine (docs/ROTINAS.md). */
+  reminder: z.exactOptional(z.boolean()),
+});
+export type OwnRoutine = z.infer<typeof ownRoutineSchema>;
+export const ownRoutinesSchema = z.object({
+  items: z.array(ownRoutineSchema),
+  /** How many more routines exist beyond the ones listed (the list is capped). */
+  more: z.number().int().nonnegative(),
+});
+export type OwnRoutines = z.infer<typeof ownRoutinesSchema>;
+
 /** Why a pending return was dropped: the user wrote, the run was stopped, a new call replaced it, or the run finished. */
 export const WAIT_CANCEL_REASONS = ["user_message", "cancelled", "replaced", "finished"] as const;
 export type WaitCancelReason = (typeof WAIT_CANCEL_REASONS)[number];
@@ -374,6 +398,11 @@ export const runEventSchema = z.discriminatedUnion("type", [
       routine: z.exactOptional(routineRunFactsSchema),
       /** The routines the messages that opened the run are about (the app's "Editar"). */
       routineRefs: z.exactOptional(z.array(routineRefSchema)),
+      /**
+       * The bot's own routines when the run started (only in a run that may create routines).
+       * Absent in a run recorded before it existed.
+       */
+      ownRoutines: z.exactOptional(ownRoutinesSchema),
       /**
        * The share of the context window past which this run compacts its history (the user's
        * setting at the start of the run). Recorded so that a replay compacts at the same point.
