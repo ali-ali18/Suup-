@@ -78,13 +78,32 @@ function fakeEntry(fake: FakeOAuthServer) {
   };
 }
 
+/**
+ * The GitHub entry pointed at a closed local port: the test never depends on whether the machine it
+ * runs on reaches the internet (on CI it does, here it does not). Connecting with a token then fails
+ * to list the tools the same way everywhere.
+ */
+function offlineGithub(
+  entry: (typeof CONNECTOR_CATALOG)[number],
+): (typeof CONNECTOR_CATALOG)[number] {
+  const transport = entry.transport;
+  if (entry.id !== "github" || transport === null || transport.kind !== "http") return entry;
+  return {
+    ...entry,
+    transport: { ...transport, url: "http://127.0.0.1:9/mcp" },
+    egressHosts: ["127.0.0.1"],
+  };
+}
+
 test.describe("the connectors screen, wired to the server's gallery", () => {
   test.skip(DATABASE_URL === undefined, SKIP_REASON);
   let world: World;
   let fake: FakeOAuthServer;
   test.beforeAll(async () => {
     fake = await startFakeOAuthMcp();
-    world = await startWorld({ connectorCatalog: [...CONNECTOR_CATALOG, fakeEntry(fake)] });
+    world = await startWorld({
+      connectorCatalog: [...CONNECTOR_CATALOG.map(offlineGithub), fakeEntry(fake)],
+    });
   });
   test.afterAll(async () => {
     await world?.stop();
@@ -213,8 +232,8 @@ test.describe("the connectors screen, wired to the server's gallery", () => {
     await dialog.getByTestId("secret-input").fill(VALUE);
     await dialog.getByTestId("secret-write").click();
     await expect(dialog).toHaveCount(0);
-    // The token turns it on, and turning it on lists its tools at once. This test server reaches no
-    // internet, so the listing fails: the page says so plainly and offers to try again (it is on).
+    // The token turns it on, and turning it on lists its tools at once. The entry points at a closed
+    // local port (offlineGithub), so the listing fails: the page says so plainly and offers to try again.
     await expect.poll(async () => (await world.api.connectors.get("github")).enabled).toBe(true);
     await expect(state(page)).toHaveText("Não conectou");
     await expect(page.getByTestId("plugin-unlisted")).toContainText(
