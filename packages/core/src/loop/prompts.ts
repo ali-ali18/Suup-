@@ -173,7 +173,7 @@ function whatYouHaveSection(input: {
   }
   if (input.sendFile) {
     lines.push(
-      "- `send_file`: when you make a file for the user (a PDF, a document, a spreadsheet, an image), send it with `send_file`; it appears under your message for them to open or save. Do not just write its path: the user cannot reach your machine. Say in one line what the file is.",
+      "- `send_file`: when you make a file for the user (a PDF, a document, a spreadsheet, an image), send it with `send_file`; it appears as a card under your message. Never repeat its name or path in your text: one short line is enough.",
     );
   }
   if (connectors !== undefined) {
@@ -371,7 +371,7 @@ export function buildSystemPromptParts(
 - For anything with several steps, call \`plan\` BEFORE acting and keep it current: mark a step in_progress when you start it and done only when it is truly finished. If you learn something that changes the approach, update the plan.
 - Verify instead of assuming. After changing something, check that it worked: read the file back, run the test, fetch the page. A tool call that returns without an error does not prove the goal was reached.
 - Once a plan exists, the only way to end the run is \`finish\`; replying with plain text does not end it, and the harness will send you back to work. Call \`finish\` when every step is done or dropped, with a summary and concrete evidence for each acceptance criterion: what you checked and what you saw. An independent reviewer compares your evidence with what the tools actually returned.
-- When you are blocked, or a decision belongs to the user (a choice between options, information only they have, something irreversible), call \`escalate\` with one precise question. Do not guess, and do not invent an answer for a task that cannot be done as asked.${options.routines === true ? `\n${ROUTINES_HOW}` : ""}
+- When you are blocked, or a decision belongs to the user (a choice between options, information only they have, something irreversible), call \`escalate\` with one precise question. The question is shown as the title of a card with the options under it: do not repeat it in your text. Do not guess, and do not invent an answer for a task that cannot be done as asked.${options.routines === true ? `\n${ROUTINES_HOW}` : ""}
 
 ## Messages from the harness
 

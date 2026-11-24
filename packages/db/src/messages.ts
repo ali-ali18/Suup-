@@ -29,6 +29,11 @@ export interface MessageQuestionItem {
 export interface MessageQuestion {
   questions: MessageQuestionItem[];
   reason?: "review_tie_break";
+  /**
+   * What the bot wrote besides the question, in the same turn (the chat's bubble above the card).
+   * Absent when it only asked: the card, whose title is the question, is then all there is.
+   */
+  lead?: string;
 }
 
 /** A file a bot message shows (`send_file`): what the chat draws; the content is in `files`. */
@@ -172,6 +177,7 @@ const questionSchema = z.object({
     .min(1)
     .max(5),
   reason: z.exactOptional(z.literal("review_tie_break")),
+  lead: z.exactOptional(z.string().min(1)),
 });
 
 export const teamProposalItemSchema = z.object({

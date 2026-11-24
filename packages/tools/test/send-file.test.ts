@@ -49,6 +49,11 @@ async function setup(files: Record<string, Uint8Array | string> = {}) {
 const PDF = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34, 0x0a, 0x00, 0xff]);
 
 describe("send_file", () => {
+  it("tells the bot the file is a card under its message, so it never repeats the name or path", () => {
+    expect(sendFileTool.description).toContain("It appears as a card under your message");
+    expect(sendFileTool.description).toContain("never repeat its name or path in your text");
+  });
+
   it("is a read: it reaches only the user's own chat", () => {
     expect(sendFileTool.risk).toBe("read");
     expect(sendFileTool.outbound).toBeUndefined();
@@ -59,7 +64,7 @@ describe("send_file", () => {
     const r = await registry.invoke("send_file", { path: "pesquisa/historia.pdf" }, ctx);
     expect(r.outcome).toBe("ok");
     expect(r.output.content).toContain('Sent "historia.pdf"');
-    expect(r.output.content).toContain("do not repeat the path");
+    expect(r.output.content).toContain("do not repeat its name or path");
     expect(sent).toHaveLength(1);
     expect(sent[0]?.callId).toBe("call-7");
     expect(sent[0]?.file.name).toBe("historia.pdf");

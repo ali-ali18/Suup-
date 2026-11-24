@@ -36,8 +36,9 @@ const MB = 1024 * 1024;
 export const sendFileTool = defineTool({
   name: SEND_FILE_TOOL_NAME,
   description: [
-    "Sends a file from your workspace to the user: it appears under your message in the chat, with its name and size, for them to open or save.",
-    "Use it whenever you make a file for the user (a PDF, a document, a spreadsheet, an image, a zip). Writing the path in your message is not enough: the user cannot reach your machine.",
+    "Sends a file from your workspace to the user. It appears as a card under your message in the chat (its name, kind and size, to open or save).",
+    "Use it whenever you make a file for the user (a PDF, a document, a spreadsheet, an image, a zip): the user cannot reach your machine.",
+    'Because the card shows the file, never repeat its name or path in your text: one short line such as "Gerei o PDF." is enough.',
     `Up to ${MAX_SENT_FILE_BYTES / MB} MB per file; call it once per file.`,
   ].join(" "),
   input,
@@ -100,7 +101,7 @@ export const sendFileTool = defineTool({
       ctx.callId ?? `${ctx.runId}:${path}`,
     );
     return {
-      content: `Sent ${JSON.stringify(shown)} (${sizeText(bytes.length)}, ${mime}) to the user (file ${id}). It appears under your next message as a card they can open or save: do not repeat the path; say in one line what the file is.`,
+      content: `Sent ${JSON.stringify(shown)} (${sizeText(bytes.length)}, ${mime}) to the user (file ${id}). It appears as a card under your next message: do not repeat its name or path; one short line is enough.`,
     };
   },
 });

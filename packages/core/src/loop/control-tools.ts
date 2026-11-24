@@ -62,7 +62,7 @@ If the task cannot be completed as asked, do not finish: use \`escalate\`.`;
 
 export const ESCALATE_DESCRIPTION = `Stop and ask the user a question (or, rarely, a short questionnaire). Use it when you are blocked (missing information or access), when the task is impossible or ambiguous in a way that matters, when a decision belongs to the user, or before something risky or irreversible that was not clearly authorized. Do not use it for things you can find out or decide yourself.
 
-Make each question precise and answerable in a sentence or two: say what you need to know, what you already tried or found, the options you see, and what you would do by default. Include the context needed to answer without reading the whole history: every question must be answerable on its own, without scrolling back.
+How the user sees it: the question is the TITLE of a card in the chat, with the options under it. So keep each question short and precise (one sentence), and never repeat it in your message text. Write text in the same turn only when you have something to add (what you tried or found, a short reason, what you would do by default): it shows as your message above the card. With nothing to add, write no text at all and only call this tool. Together, your text and the question must be answerable on their own, without scrolling back.
 
 Two forms (use exactly one):
 - \`question\` (plus optional \`options\`): ONE question. This is the usual form.
