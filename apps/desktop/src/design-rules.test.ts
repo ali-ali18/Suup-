@@ -384,6 +384,29 @@ describe("a base dos componentes: cópias do shadcn base-maia sobre Base UI (doc
     expect(handMade).toEqual(["ui/primitives.tsx", "ui/question-card.tsx"]);
   });
 
+  it("lote 4, campo: Field e Input são as cópias sobre o Base UI; o TextField e o SecretInput os usam e o inválido vem da tela", () => {
+    const field = read(join(SRC, "ui", "field.tsx"));
+    expect(field).toContain('from "@base-ui/react/field"');
+    expect(field).toContain("invalid={invalid === true}");
+    expect(field).toContain('role="alert"');
+    const input = read(join(SRC, "ui", "input.tsx"));
+    expect(input).toContain('from "@base-ui/react/input"');
+    expect(input).toContain("export function fieldControlClass");
+    // the screen decides what is wrong: Base UI's own validation is never switched on
+    for (const file of files(SRC, /\.tsx$/).filter((f) => !f.endsWith(".test.tsx"))) {
+      const source = read(file);
+      expect(source, rel(file)).not.toContain("validationMode");
+      expect(source, rel(file)).not.toContain("pattern=");
+    }
+    const primitives = read(join(SRC, "ui", "primitives.tsx"));
+    const text = primitives.slice(primitives.indexOf("export function TextField"));
+    expect(text.slice(0, text.indexOf("\n}\n"))).toContain("<Field invalid={error !== undefined}");
+    expect(read(join(SRC, "ui", "secret-input.tsx"))).toContain(
+      "<Field invalid={error !== undefined}",
+    );
+    expect(read(join(SRC, "ui", "secret-input.tsx"))).toContain("<Input");
+  });
+
   it("lote 1: o interruptor, a dica e o popover são as cópias sobre o Base UI", () => {
     const sw = read(join(SRC, "ui", "switch.tsx"));
     expect(sw).toContain('from "@base-ui/react/switch"');
@@ -1347,7 +1370,7 @@ describe("conectores: a tela da vitrine (docs/DESIGN.md 5d)", () => {
     expect(screen).toContain("<SearchField");
     // the search and the blocks of the page take the colour of the chat input (bg-raised), not a bordered surface
     expect(read(join(SRC, "ui", "primitives.tsx"))).toContain(
-      "fieldControlClass({ search: true, raised: true })",
+      "look={{ search: true, raised: true }}",
     );
     expect(screen).not.toContain("border border-border bg-surface");
     expect(screen).toContain('className="max-w-search"');

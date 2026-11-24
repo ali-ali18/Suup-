@@ -3,7 +3,6 @@ import {
   type ButtonHTMLAttributes,
   type HTMLAttributes,
   type KeyboardEvent,
-  type LabelHTMLAttributes,
   type ReactNode,
   type Ref,
   useEffect,
@@ -11,7 +10,13 @@ import {
   useRef,
 } from "react";
 import { cx } from "../lib/cx.js";
+import { Field, FieldCaption, FieldDescription, FieldMessage } from "./field.js";
+import { Input, Textarea } from "./input.js";
 import { Tip } from "./tooltip.js";
+
+/** The pieces of a form field live in their own files (the base-maia copies on Base UI); screens import them from here. */
+export { FieldError, FieldHint, FieldLabel } from "./field.js";
+export { fieldControlClass } from "./input.js";
 
 /**
  * `primary` is the white pill, `secondary` and `danger` the neutral ones with a border, `ghost` plain
@@ -232,110 +237,6 @@ export function Counter({ value, label }: { value: number; label?: string }) {
   );
 }
 
-/**
- * The pieces of a form field, shared by the text field here, the secure field, the dropdown's
- * bordered variant and the rows of the settings: a screen never writes these classes again.
- */
-const FIELD_CONTROL =
-  "w-full min-w-0 border text-text placeholder:text-text-muted focus-visible:border-border-strong focus-visible:outline-2 focus-visible:outline-focus focus-visible:outline-offset-0";
-
-/** The control of a field: a line (a pill, one control high) or a text area (a rounded box). */
-export function fieldControlClass(
-  options: {
-    multiline?: boolean;
-    error?: boolean;
-    align?: "center";
-    /** `sm`: a field of a settings row (32 px, small text). */
-    size?: "sm";
-    /** Room at the end for a button inside the field (the eye), in monospace (a secret). */
-    secret?: boolean;
-    /** Room at the start for the magnifier inside the field (`SearchField`). */
-    search?: boolean;
-    /** The colour of the chat input (`bg-raised`) instead of the page's (owner, 23/11/2026). */
-    raised?: boolean;
-  } = {},
-): string {
-  return cx(
-    FIELD_CONTROL,
-    options.raised === true ? "bg-raised" : "bg-bg",
-    options.multiline === true
-      ? "resize-y rounded-row px-4 py-2.5"
-      : cx(
-          "rounded-pill py-0",
-          options.size === "sm" ? "h-8" : "h-control",
-          options.secret === true
-            ? "pr-11 pl-4 font-mono"
-            : options.search === true
-              ? "pr-4 pl-11"
-              : "px-4",
-        ),
-    options.size === "sm" ? "text-small" : "text-body",
-    options.error === true ? "border-danger-text" : "border-border",
-    options.align === "center" && "text-center",
-  );
-}
-
-/**
- * The label of a field (or of a group of them): small and muted. It is a `label` by default; `as`
- * names the element when the caption belongs to something that is not one control (a legend, a
- * heading, the caption of a dropdown).
- */
-export function FieldLabel({
-  children,
-  as: Element = "label",
-  className,
-  ...rest
-}: {
-  children: ReactNode;
-  as?: "label" | "span" | "legend" | "h3";
-} & LabelHTMLAttributes<HTMLElement>) {
-  return (
-    <Element
-      className={cx("text-small text-text-muted", Element === "h3" && "font-bold", className)}
-      {...rest}
-    >
-      {children}
-    </Element>
-  );
-}
-
-/** The error of a field or of a form: said in words, in the danger colour. */
-export function FieldError({
-  as: Element = "p",
-  alert = true,
-  children,
-  className,
-  ...rest
-}: {
-  as?: "p" | "span";
-  /** `false` for a line that only colours a counter: it is not announced as an alert. */
-  alert?: boolean;
-  children: ReactNode;
-} & HTMLAttributes<HTMLElement>) {
-  return (
-    <Element
-      {...(alert ? { role: "alert" } : {})}
-      className={cx("text-small leading-inherit text-danger-text", className)}
-      {...rest}
-    >
-      {children}
-    </Element>
-  );
-}
-
-/** One quiet line under a field. */
-export function FieldHint({
-  as: Element = "p",
-  children,
-  ...rest
-}: { as?: "p" | "span"; children: ReactNode } & HTMLAttributes<HTMLElement>) {
-  return (
-    <Element className="text-small leading-inherit text-text-muted" {...rest}>
-      {children}
-    </Element>
-  );
-}
-
 /** A calm notice (`role` is the caller's: status, note or alert): a bordered box, no alert colour. */
 export function Notice({
   children,
@@ -441,7 +342,7 @@ export interface TextFieldProps {
   align?: "center";
 }
 
-/** Text field (Figma v2/Campo): single or multiline, with focus and error states. */
+/** Text field (Figma v2/Campo): single or multiline, with focus and error states, on `Field` and `Input`. */
 export function TextField({
   label,
   value,
@@ -459,36 +360,27 @@ export function TextField({
   hideLabel,
   align,
 }: TextFieldProps) {
-  const id = useId();
-  const describedBy =
-    error !== undefined ? `${id}-err` : hint !== undefined ? `${id}-hint` : undefined;
-  const common = {
-    id,
-    name,
-    value,
-    placeholder,
-    disabled,
-    autoFocus,
-    "aria-invalid": error !== undefined ? true : undefined,
-    "aria-describedby": describedBy,
-    className: fieldControlClass({
-      multiline,
-      error: error !== undefined,
-      ...(align === undefined ? {} : { align }),
-    }),
-  } as const;
+  const look = { error: error !== undefined, ...(align === undefined ? {} : { align }) } as const;
   return (
-    <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className={hideLabel ? "sr-only" : "text-small text-text-muted"}>
-        {label}
-      </label>
+    <Field invalid={error !== undefined} disabled={disabled} name={name}>
+      <FieldCaption hidden={hideLabel}>{label}</FieldCaption>
       {multiline ? (
-        <textarea {...common} rows={rows} onChange={(e) => onChange(e.target.value)} />
+        <Textarea
+          look={look}
+          value={value}
+          placeholder={placeholder}
+          autoFocus={autoFocus}
+          rows={rows}
+          onValueChange={onChange}
+        />
       ) : (
-        <input
-          {...common}
+        <Input
+          look={look}
           type={type}
-          onChange={(e) => onChange(e.target.value)}
+          value={value}
+          placeholder={placeholder}
+          autoFocus={autoFocus}
+          onValueChange={onChange}
           onKeyDown={(e) => {
             if (e.key === "Enter" && onEnter !== undefined) {
               e.preventDefault();
@@ -498,11 +390,11 @@ export function TextField({
         />
       )}
       {error !== undefined ? (
-        <FieldError id={`${id}-err`}>{error}</FieldError>
+        <FieldMessage>{error}</FieldMessage>
       ) : hint !== undefined ? (
-        <FieldHint id={`${id}-hint`}>{hint}</FieldHint>
+        <FieldDescription>{hint}</FieldDescription>
       ) : null}
-    </div>
+    </Field>
   );
 }
 
@@ -539,13 +431,13 @@ export function SearchField({
         className="pointer-events-none absolute top-1/2 left-4 -translate-y-1/2 text-text-muted"
         aria-hidden="true"
       />
-      <input
+      <Input
         id={id}
         type="search"
         value={value}
         placeholder={placeholder}
-        className={fieldControlClass({ search: true, raised: true })}
-        onChange={(e) => onChange(e.target.value)}
+        look={{ search: true, raised: true }}
+        onValueChange={onChange}
       />
     </div>
   );

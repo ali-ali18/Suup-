@@ -26,6 +26,7 @@ import { RUNS_IN_LABEL } from "../../lib/network.js";
 import { reviewNotice } from "../../lib/tool-review.js";
 import { brandGlyphFor } from "../../ui/brand-icons.js";
 import { Dropdown, type DropdownOption } from "../../ui/dropdown.js";
+import { Input } from "../../ui/input.js";
 import {
   Dialog,
   FieldError,
@@ -33,7 +34,6 @@ import {
   FieldLabel,
   FormRow,
   FormStack,
-  fieldControlClass,
   IconButton,
   Notice,
   Pill,
@@ -103,12 +103,11 @@ function RefRows({
     <FormRow>
       {rows.map((row) => (
         <div key={row.id} className="cond-row cond-row--ref" data-testid="ref-row">
-          <input
-            className={fieldControlClass()}
+          <Input
             aria-label={`Nome d${noun === "variável" ? "a" : "o"} ${noun}`}
             placeholder={noun === "variável" ? "NOME_DA_VARIAVEL" : "Nome-do-cabecalho"}
             value={row.key}
-            onChange={(e) => set(row.id, { key: e.target.value })}
+            onValueChange={(key) => set(row.id, { key })}
           />
           <Dropdown
             variant="field"
@@ -118,12 +117,11 @@ function RefRows({
             onChange={(mode) => set(row.id, { mode })}
           />
           {row.mode === "text" ? (
-            <input
-              className={fieldControlClass()}
+            <Input
               aria-label="Valor (texto)"
               placeholder="valor"
               value={row.text}
-              onChange={(e) => set(row.id, { text: e.target.value })}
+              onValueChange={(text) => set(row.id, { text })}
             />
           ) : (
             <Dropdown
@@ -405,15 +403,15 @@ function OutboundMark({ connector, tool }: { connector: Connector; tool: Connect
           title="Campo do destinatário"
           titleId={`${id}-label`}
           control={
-            <input
+            <Input
               id={id}
-              className={fieldControlClass({ size: "sm" })}
+              look={{ size: "sm" }}
               aria-labelledby={`${id}-label`}
               placeholder="ex.: to (separe vários por vírgula)"
               value={fields}
               disabled={task.busy}
               data-testid="tool-outbound-fields"
-              onChange={(e) => setFields(e.target.value)}
+              onValueChange={setFields}
             />
           }
         />
