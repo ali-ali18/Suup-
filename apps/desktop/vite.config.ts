@@ -14,6 +14,8 @@ export const workspaceAliases = [
   { find: "@suup/core/answers", replacement: source("core/src/answers.ts") },
   // The schedule of a routine (docs/ROTINAS.md): zod and Intl only, shared with the server.
   { find: "@suup/core/schedule", replacement: source("core/src/schedule.ts") },
+  // What a file the bot sends is (its kind, from the MIME type): exact tables, no Node module.
+  { find: "@suup/core/files", replacement: source("core/src/files.ts") },
   { find: /^@suup\/avatar$/, replacement: source("avatar/src/index.ts") },
   { find: /^@suup\/avatar\/browser$/, replacement: source("avatar/src/browser.ts") },
 ];

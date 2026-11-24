@@ -365,6 +365,28 @@ describe("chat cards share one chrome and one collapsed row", () => {
     );
   });
 
+  it("a file the bot handed over is a card apart, under its message: the shared chrome, icon by the declared kind, no MIME, no path", () => {
+    const card = read(join(SRC, "ui", "file-card.tsx"));
+    expect(card).toContain("className={CARD_CHROME}");
+    // The icon and the words come from the kind the server declared, by exact tables.
+    expect(card).toContain("FILE_ICON[file.kind]");
+    expect(card).toContain("FILE_KIND_LABEL[file.kind]");
+    // Nothing technical: the MIME type is never drawn.
+    expect(card).not.toContain("file.mime");
+    // The app opens and saves; the browser only downloads (no "Abrir" without `open`).
+    const rows = read(join(SRC, "features", "chat", "FileRows.tsx"));
+    expect(rows).toContain("canOpen={platform.files.open !== undefined}");
+    expect(read(join(SRC, "lib", "platform.ts"))).toContain(
+      "files: { save: (file) => browserDownload(file) }",
+    );
+    // The chat draws the files in their own row, after the message, never inside the bubble.
+    const list = read(join(SRC, "features", "chat", "MessageList.tsx"));
+    expect(list).toContain('case "files":');
+    expect(read(join(SRC, "features", "chat", "timeline.ts"))).toContain(
+      'items.push({ kind: "files"',
+    );
+  });
+
   it("a question with options is ALWAYS apart: the bot's bubble, then the card of options under it, titles only", () => {
     const list = read(join(SRC, "features", "chat", "MessageList.tsx"));
     // The bubble with the question's text comes first, and the card in its own row after it.

@@ -518,6 +518,37 @@ describe("buildTimeline: approval cards and secure forms among the bot's actions
   });
 });
 
+describe("buildTimeline: the files a bot handed over", () => {
+  it("come right under their message, as one card item that breaks the bubbles", () => {
+    const file = {
+      id: "00000000-0000-4000-8000-0000000000f1",
+      name: "a.pdf",
+      mime: "application/pdf",
+      size: 10,
+      kind: "pdf" as const,
+    };
+    const base = {
+      conversationId: "c",
+      authorBotId: "b",
+      runId: null,
+      status: null,
+      createdAt: new Date(2026, 10, 24, 14, 0).toISOString(),
+    };
+    const items = buildTimeline(
+      [
+        { ...base, id: "m1", seq: 1, authorKind: "bot", text: "Aqui está.", attachments: [file] },
+        { ...base, id: "m2", seq: 2, authorKind: "bot", text: "Mais alguma coisa?" },
+      ] as never,
+      {},
+      [],
+      new Date(2026, 10, 24, 15, 0),
+    ).filter((i) => i.kind !== "separator");
+    expect(items.map((i) => i.kind)).toEqual(["bot", "files", "bot"]);
+    expect(items[1]).toMatchObject({ key: "m1-files", files: [file] });
+    expect(Object.fromEntries(bubblePositions(items))).toEqual({ m1: "single", m2: "single" });
+  });
+});
+
 describe("bubblePositions: consecutive text bubbles of one sender form a group", () => {
   const user = (key: string, state: "sending" | "sent" | "delivered" | undefined = undefined) =>
     ({ kind: "user", key, text: key, state }) as TimelineItem;

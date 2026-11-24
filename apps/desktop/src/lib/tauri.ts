@@ -198,5 +198,11 @@ export function tauriPlatform(): Platform {
     openUrl(url) {
       void invoke("open_url", { url });
     },
+    // The download, the "Salvar como" window and the opening happen in Rust (`files.rs`), through
+    // the same single allowed server as every request.
+    files: {
+      save: (file) => invoke<boolean>("file_save", { ...file }),
+      open: (file) => invoke("file_open", { ...file }),
+    },
   };
 }

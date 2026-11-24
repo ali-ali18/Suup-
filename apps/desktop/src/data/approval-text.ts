@@ -227,6 +227,7 @@ export function toolCategory(
     case "edit_file":
     case "list_files":
     case "search_files":
+    case "send_file":
       return { label: "Arquivo", icon: "file" };
     case "web_fetch":
     case "web_search":
@@ -299,6 +300,12 @@ export function approvalTitle(
       return path === undefined ? "Editar um arquivo" : `Editar ${path}`;
     case "read_file":
       return path === undefined ? "Ler um arquivo" : `Ler ${path}`;
+    case "send_file": {
+      const shown = text(args, "name") ?? lastSegment(text(args, "path"));
+      return shown === undefined
+        ? "Entregar um arquivo no chat"
+        : `Entregar ${oneLine(shown)} no chat`;
+    }
     case "web_fetch": {
       const url = text(args, "url");
       return url === undefined ? "Acessar uma página" : `Acessar ${oneLine(url)}`;
@@ -376,4 +383,11 @@ export function expiryText(expiresAt: string, now: number): string {
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
   return `Expira em ${hours} h${rest === 0 ? "" : ` ${rest} min`}`;
+}
+
+/** The last segment of a path the bot gave (what the person knows the file by), split on "/". */
+export function lastSegment(path: string | undefined): string | undefined {
+  if (path === undefined) return undefined;
+  const parts = path.split("/").filter((p) => p !== "");
+  return parts[parts.length - 1];
 }

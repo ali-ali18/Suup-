@@ -21,6 +21,21 @@ const result = (seq: number, callId: string, content = "ok", isError = false) =>
   makeEvent(seq, "tool_result", { callId, content, isError, truncated: false, durationMs: 1200 });
 
 describe("describeAction: kind, label, and the two one-line descriptions", () => {
+  it("send_file is a file row that names the file the person sees, never the bot's path", () => {
+    expect(
+      describeAction("send_file", { path: "/workspace/bots/x/pesquisa/historia.pdf" }),
+    ).toMatchObject({
+      kind: "files",
+      kindLabel: "Arquivo",
+      icon: "file",
+      summary: "Entregar historia.pdf no chat",
+      doing: "Entregando historia.pdf",
+    });
+    expect(describeAction("send_file", { path: "a.bin", name: "Relatório.pdf" }).summary).toBe(
+      "Entregar Relatório.pdf no chat",
+    );
+  });
+
   const table: [string, Record<string, unknown>, string, string, string][] = [
     [
       "shell",

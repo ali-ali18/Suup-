@@ -22,6 +22,7 @@ import { QuestionCard } from "../../ui/question-card.js";
 import { ScrollFade } from "../../ui/scroll-fade.js";
 import { TeamCard } from "../../ui/team-card.js";
 import { ApprovalRow, CallRow, callKey, SecretRequestRow } from "./ApprovalRows.js";
+import { FileRows } from "./FileRows.js";
 import { bubblePositions, isChoiceCard, type TimelineItem } from "./timeline.js";
 
 const NEAR_BOTTOM = 80;
@@ -210,6 +211,12 @@ export function MessageList({
                     openUrl={platform.openUrl}
                     favicons={favicons}
                   />
+                );
+              case "files":
+                return (
+                  <BotMessage key={item.key}>
+                    <FileRows files={item.files} />
+                  </BotMessage>
                 );
               case "team":
                 return (

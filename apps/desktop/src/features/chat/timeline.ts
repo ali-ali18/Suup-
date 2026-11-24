@@ -1,4 +1,4 @@
-import type { Approval, Question, Run, TeamProposal } from "@suup/api";
+import type { Approval, MessageAttachment, Question, Run, TeamProposal } from "@suup/api";
 import {
   type ActionEntry,
   type ActionItem,
@@ -28,6 +28,8 @@ export type TimelineItem =
         tieBreak: boolean;
       };
     }
+  /** The files the bot handed over with the message just before (`send_file`): one card each. */
+  | { kind: "files"; key: string; files: readonly MessageAttachment[] }
   /** The main bot's proposal of a team of bots: the card where the user ticks which to create. */
   | { kind: "team"; key: string; messageId: string; text: string; team: TeamProposal }
   /** The tool calls made between two messages, as cards (older finished ones folded). */
@@ -221,6 +223,10 @@ export function buildTimeline(
           tieBreak: message.question.reason === "review_tie_break",
         },
       });
+    }
+    // The files of a bot (or system) message: right under it, apart from the bubble.
+    if (message.authorKind !== "user" && message.attachments !== undefined) {
+      items.push({ kind: "files", key: `${message.id}-files`, files: message.attachments });
     }
   });
   // Whatever is left (the run is still working, or no message opened it).

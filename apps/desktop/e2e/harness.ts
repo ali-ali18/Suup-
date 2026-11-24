@@ -105,6 +105,31 @@ export const SCRIPTS = {
         ],
       },
       {
+        // The bot makes a document on its machine (with commands whose output is long, so the
+        // collapsed rows are seen) and hands it over: the file card under its answer.
+        whenObjectiveContains: "CASE-FILE",
+        agent: [
+          s({
+            calls: [
+              shell(
+                "mkdir -p pesquisa && printf '%%PDF-1.4\\n%% Historia da PUCPR\\n%%%%EOF\\n' > pesquisa/historia_pucpr.pdf && ls -l pesquisa",
+              ),
+            ],
+            delayMs: 300,
+          }),
+          s({
+            calls: [
+              shell(
+                'for i in 1 2 3 4 5 6 7 8 9 10 11 12; do echo "linha $i do relatório de conferência"; done',
+              ),
+            ],
+            delayMs: 300,
+          }),
+          s({ calls: [{ name: "send_file", args: { path: "pesquisa/historia_pucpr.pdf" } }] }),
+          s({ text: "Pronto: o PDF com a história da PUCPR está aqui embaixo." }),
+        ],
+      },
+      {
         whenObjectiveContains: "CASE-OPTIONS",
         agent: [
           s({
