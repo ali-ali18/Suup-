@@ -95,6 +95,7 @@ export {
   createWebAccess,
   readFailureLogLine,
   type StartedServices,
+  searchProblemLogLine,
   type WebAccessOptions,
   type WebAccessWithStatus,
   type WebStatus,

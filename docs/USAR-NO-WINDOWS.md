@@ -51,6 +51,17 @@ Os bots buscam na web e leem páginas com as mesmas ferramentas do servidor (`we
 - **"Não consegui acessar o site agora".** Quando o leitor não alcança um site (o nome não resolve, não há rota, o TLS falha, o tempo acaba), o bot recebe que foi um problema de conexão **deste lado**, não o site recusando, e pode tentar de novo em alguns minutos ou usar outra fonte. Antes (até 24/11/2026) isso aparecia como "pt.wikipedia.org could not be asked for its robots.txt", como se o site tivesse se fechado para robôs: o `robots.txt` é o primeiro pedido a um site, então qualquer falha de rede aparecia ali.
 - **"A busca volta em ~60 min".** É o DuckDuckGo: quando ele responde com um captcha, o Suup para de perguntar a ele por uma hora (o tempo do próprio SearXNG; [BUSCA.md](BUSCA.md), "Busca educada"). A Wikipédia, o arXiv e o Stack Overflow continuam respondendo nesse meio-tempo.
 
+### O que procurar nos registros quando uma busca dá erro
+
+No mesmo arquivo do dia, procure linhas que começam com `web_search:`. Elas aparecem quando a busca falha ou quando algum buscador não respondeu, e nunca trazem o que foi pesquisado:
+
+```
+web_search: unavailable: The search service is not running (Docker is not running).
+web_search: 3 results; duckduckgo did not answer (captcha, retry_in=3600s)
+```
+
+`unavailable` quer dizer que o serviço de busca não está rodando (o motivo vai entre parênteses); `did not answer (captcha ...)` é o DuckDuckGo pedindo captcha, e ele volta sozinho depois do tempo indicado; `rate_limited` é o limite do próprio Suup.
+
 ### O que procurar nos registros quando uma página não abre
 
 Abra **Configurações > Geral > Servidor > Registros > Abrir pasta** e procure, no arquivo do dia (`suup-AAAA-MM-DD.log`), linhas que começam com `web_read: could not reach`. Cada uma diz o site, qual pedido falhou (`robots` = o `robots.txt`, o primeiro; `page` = a página), onde o leitor rodou (`reader container` = no contêiner `suup-reader` do Docker; `reader local` = dentro do app) e o que falhou:

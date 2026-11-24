@@ -43,10 +43,35 @@ export interface WebAccessOptions {
   /** The in-process reader used when there is no reader container. */
   local?: Reader;
   /**
-   * Where a read that could not reach a site is told, with what failed (the logs; never the model
-   * nor the user): `web_read: could not reach <host> (robots, container): stage=dns code=EAI_AGAIN ...`.
+   * Where a read that could not reach a site, or a search that failed, is told, with what failed
+   * (the logs; never the model nor the user): `web_read: could not reach <host> (robots, container):
+   * stage=dns code=EAI_AGAIN ...`, `web_search: unavailable: ...`.
    */
   log?: (message: string) => void;
+}
+
+/**
+ * One line for the logs about a search that failed or where engines did not answer
+ * (docs/USAR-NO-WINDOWS.md, 4b). Never the query: it can carry what the user is looking for.
+ */
+export function searchProblemLogLine(outcome: WebSearchOutcome): string | undefined {
+  if (!outcome.ok) {
+    const retry =
+      outcome.retryInSeconds === undefined ? "" : ` retry_in=${outcome.retryInSeconds}s`;
+    return `web_search: ${outcome.reason}: ${outcome.message}${retry}`;
+  }
+  const parts: string[] = [];
+  for (const s of outcome.suspended) {
+    parts.push(
+      `${s.engine} did not answer (${s.reason}${s.retryInSeconds === undefined ? "" : `, retry_in=${s.retryInSeconds}s`})`,
+    );
+  }
+  for (const t of outcome.throttled ?? []) {
+    parts.push(`${t.engine} left out by Suup's limit (retry_in=${t.retryInSeconds}s)`);
+  }
+  if (outcome.generalUnavailable !== undefined) parts.push("no general web engine available");
+  if (parts.length === 0) return undefined;
+  return `web_search: ${outcome.hits.length} results; ${parts.join("; ")}`;
 }
 
 /** One line for the logs about a read that could not reach the site (docs/USAR-NO-WINDOWS.md, 4b). */
@@ -111,13 +136,15 @@ export function createWebAccess(options: WebAccessOptions): WebAccessWithStatus 
       }
       const started = await options.services();
       if (started.searchBackend === undefined && (started.direct ?? []).length === 0) {
-        return {
+        const outcome: WebSearchOutcome = {
           ok: false,
           reason: "unavailable",
           message: `The search service is not running${started.searchProblem === undefined ? "" : ` (${started.searchProblem})`}.`,
         };
+        options.log?.(searchProblemLogLine(outcome) ?? "");
+        return outcome;
       }
-      return await createSearch({
+      const outcome = await createSearch({
         backend: started.searchBackend,
         backendProblem: started.searchProblem,
         direct: started.direct ?? [],
@@ -128,6 +155,9 @@ export function createWebAccess(options: WebAccessOptions): WebAccessWithStatus 
         ...(options.now === undefined ? {} : { now: options.now }),
         ...(options.maxResults === undefined ? {} : { maxResults: options.maxResults }),
       })(request);
+      const line = searchProblemLogLine(outcome);
+      if (line !== undefined) options.log?.(line);
+      return outcome;
     },
     async read(request): Promise<WebReadOutcome> {
       if (!options.readerEnabled) {
