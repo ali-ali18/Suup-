@@ -12,5 +12,5 @@
   - **No máximo 3 agentes ao mesmo tempo.** O que dá para fazer direto, faça direto.
   - **A sessão principal revisa** o que for sensível (segurança, segredos, banco/migrações, o loop do motor, permissões, aprovações) antes de enviar.
   - **Rede bloqueada numa pesquisa:** a sessão principal libera o host no ambiente (só o necessário) e a pesquisa segue com a página oficial.
-- **Pesquisa antes, sempre com fonte lida.** Toda pesquisa em `docs/pesquisas/` usa a página oficial lida de verdade; resumo de busca não vale. Se a rede bloquear o site, avisar o dono e pedir a liberação antes de escrever a pesquisa.
+- **Pesquisa antes, sempre com fonte lida.** Toda pesquisa em `docs/pesquisas/` usa a página oficial lida de verdade; resumo de busca não vale. Se a rede bloquear o site, a sessão principal libera o host antes de escrever a pesquisa.
 - **Anotar o que fizer.** Ao terminar um item, marcar o estado em `docs/MELHORIAS.md` (com o commit) no mesmo commit; pesquisas e decisões vão para o Git na hora, nunca ficam só na pasta.
