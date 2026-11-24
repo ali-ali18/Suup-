@@ -627,8 +627,8 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup, end to end"), { timeout: 30_00
     ]);
     const r = await p.suup(["run", "Repete tudo", "--bot", "curto"]);
     expect(r.code, r.stdout + r.stderr).toBe(0);
-    expect(r.stdout).toContain("Continuar (+25 passos)");
-    expect(r.stdout).toContain("Cheguei no limite de passos desta tarefa.");
+    expect(r.stdout).toContain("Continuar");
+    expect(r.stdout).toContain("Esta tarefa está levando mais tempo do que o normal.");
     expect(r.stdout).toContain("o juiz diz: incerto (sem certeza)");
     const shown = (await p.suup(["show", idOf(r)])).stdout;
     expect(shown).not.toContain("ORIGEM: LIMIT");

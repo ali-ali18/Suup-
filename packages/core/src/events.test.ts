@@ -140,19 +140,19 @@ const samples: RunEventData[] = [
   },
   {
     type: "progress_decided",
-    payload: { choice: "continue", grant: 25, text: "Continuar (+25 passos)", inboxIds: ["i1"] },
+    payload: { choice: "continue", grant: 25, text: "Continuar", inboxIds: ["i1"] },
   },
   {
     type: "escalated",
     payload: {
-      question: "Quer que eu continue por mais 25 passos?",
+      question: "Quer que eu continue?",
       questions: [
         {
-          question: "Quer que eu continue por mais 25 passos?",
-          options: [{ label: "Continuar (+25 passos)" }, { label: "Parar por aqui" }],
+          question: "Quer que eu continue?",
+          options: [{ label: "Continuar" }, { label: "Parar por aqui" }],
         },
       ],
-      lead: "Cheguei no limite de passos desta tarefa.",
+      lead: "Esta tarefa está levando mais tempo do que o normal.",
       reason: "progress_limit",
       progress: { cause: "limit", grant: 25 },
     },

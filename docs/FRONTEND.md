@@ -140,7 +140,7 @@ Observações:
 - Em `GET /v1/runs/{id}/events?view=chat` (e no stream), o `payload` de `model_request` vem **resumido** (`omitted: true`, `provider`, `model`, `purpose`, `messageCount`, `toolCount` e `toolStats`, só números): o pedido inteiro pode ter megabytes e só o Inspetor o desenha (`GET /v1/runs/{id}/requests/{seq}`). Todos os outros tipos desta tabela vêm inteiros.
 - `model_response`, `model_request` e `model_error` têm `purpose`: `agent` (o bot), `review` (o revisor), `compaction` (resumo do histórico) ou `progress` (o juiz do vigia). Na conversa, só `agent` aparece.
 - O texto do bot chega **por turno**, inteiro, e não letra por letra.
-- `escalated` com `reason: "progress_limit"` é a pergunta do vigia (limite de passos ou laço): o balão é `lead` (a frase amigável e o resumo do que foi feito e falta), o cartão é o de pergunta de sempre com "Continuar (+25 passos)" e "Parar por aqui"; a resposta é texto comum, como em qualquer pergunta ([VIGIA.md](VIGIA.md)).
+- `escalated` com `reason: "progress_limit"` é a pergunta do vigia (limite de passos ou laço): o balão é `lead` (a frase amigável e o resumo do que foi feito e falta), o cartão é o de pergunta de sempre com "Continuar" e "Parar por aqui"; a resposta é texto comum, como em qualquer pergunta ([VIGIA.md](VIGIA.md)).
 - `escalated` com `reason: "review_tie_break"` é o caso em que o revisor recusou duas vezes (ou não conseguiu verificar, `review` com `unverified`, o que inclui reprovar duas vezes sem apontar divergência) e o Suup pede que você decida; o texto da pergunta diz qual dos dois foi.
 - Resultado de ferramenta pode ser grande ou cortado (`truncated`); mostrar recolhido por padrão.
 

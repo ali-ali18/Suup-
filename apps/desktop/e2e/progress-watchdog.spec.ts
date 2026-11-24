@@ -4,7 +4,7 @@ import { openWithBot, send, userBubbles } from "./helpers.js";
 
 // The progress watchdog, seen from the chat (docs/VIGIA.md): a bot that repeats the same call does
 // NOT fail. The run stops and the chat shows the question card with the two options, a friendly
-// line and a short account of what is done and left. "Continuar (+25 passos)" lets the run go on;
+// line and a short account of what is done and left. "Continuar" lets the run go on;
 // "Parar por aqui" (and the X) ends it cleanly, never as an error. No technical text anywhere.
 
 const usage = { inputTokens: 500, outputTokens: 50 };
@@ -82,11 +82,11 @@ test.describe("o vigia de progresso", () => {
     const card = page.getByTestId("question-card");
     await expect(card).toHaveAttribute("data-state", "open");
     await expect(card.getByTestId("question-text")).toHaveText(
-      "Quer que eu continue por mais 25 passos?",
+      "Quer que eu continue?",
     );
     const options = card.getByTestId("question-option");
     await expect(options).toHaveCount(2);
-    await expect(options.nth(0)).toContainText("Continuar (+25 passos)");
+    await expect(options.nth(0)).toContainText("Continuar");
     await expect(options.nth(1)).toContainText("Parar por aqui");
     await expect(card.getByTestId("question-dismiss")).toBeVisible();
     // The hint sits right under the card, outside it (docs/DESIGN.md, "Pergunta com opções").
@@ -95,7 +95,7 @@ test.describe("o vigia de progresso", () => {
     // One friendly line, and what is done and left, in the bot's bubble above the card.
     const lead = page
       .getByTestId("message-bot")
-      .filter({ hasText: "Estou repetindo a mesma coisa." });
+      .filter({ hasText: "Acho que estou andando em círculos." });
     await expect(lead).toContainText("Já fiz: Preparar o arquivo.");
     await expect(lead).toContainText("Falta: Conferir o resultado.");
     // The run is paused, not failed.
@@ -111,7 +111,7 @@ test.describe("o vigia de progresso", () => {
     });
 
     await options.nth(0).click();
-    await expect(userBubbles(page).last()).toHaveText("Continuar (+25 passos)");
+    await expect(userBubbles(page).last()).toHaveText("Continuar");
     await expect(
       page.getByTestId("message-bot").filter({ hasText: "Mudei de abordagem e terminei." }),
     ).toBeVisible();

@@ -19,7 +19,7 @@ import { runLoop } from "./loop.js";
 import { rebuildState } from "./state.js";
 import type { ProgressJudge, WatchdogConfig } from "./watchdog.js";
 
-const CONTINUE = "Continuar (+25 passos)";
+const CONTINUE = "Continuar";
 const STOP = "Parar por aqui";
 
 /** Distinct, successful reads: the run moves (every call and result is new). */
@@ -392,16 +392,16 @@ describe("watchdog: the owner's answer", () => {
     const [card] = await asked(rig);
     expect(card?.payload).toMatchObject({
       reason: "progress_limit",
-      question: "Quer que eu continue por mais 25 passos?",
+      question: "Quer que eu continue?",
       questions: [
         {
-          question: "Quer que eu continue por mais 25 passos?",
+          question: "Quer que eu continue?",
           options: [{ label: CONTINUE }, { label: STOP }],
         },
       ],
     });
     expect(card?.payload.lead).toBe(
-      "Estou repetindo a mesma coisa. Já fiz: Read the data. Falta: Write the report.",
+      "Acho que estou andando em círculos. Já fiz: Read the data. Falta: Write the report.",
     );
     expect(card?.payload.callId).toBeUndefined();
   });
@@ -506,7 +506,7 @@ describe("watchdog: a routine has nobody to ask", () => {
     expect(await asked(rig)).toHaveLength(0);
     const status = lastStatus(events);
     expect(status?.failure?.origin).toBe("limit");
-    expect(status?.failure?.detail).toContain("Estou repetindo a mesma coisa.");
+    expect(status?.failure?.detail).toContain("Acho que estou andando em círculos.");
     expect(status?.failure?.detail).toContain("sem ninguém acompanhando");
     expect(eventsOfType(events, "nudge")).toHaveLength(1);
     expect((await checks(rig)).at(-1)?.payload.action).toBe("stop");
@@ -526,7 +526,7 @@ describe("watchdog: a routine has nobody to ask", () => {
     expect(await rig.run()).toBe("failed");
     expect(await asked(rig)).toHaveLength(0);
     expect(lastStatus(await rig.events())?.failure?.detail).toContain(
-      "Cheguei no limite de passos desta tarefa.",
+      "Esta tarefa está levando mais tempo do que o normal.",
     );
   });
 

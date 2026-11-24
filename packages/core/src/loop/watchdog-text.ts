@@ -10,11 +10,11 @@ export type ProgressCause = "limit" | "repeat" | "error_loop" | "no_tool" | "alt
 export function headline(cause: ProgressCause): string {
   switch (cause) {
     case "limit":
-      return "Cheguei no limite de passos desta tarefa.";
+      return "Esta tarefa está levando mais tempo do que o normal.";
     case "no_tool":
-      return "Parei sem conseguir dar o próximo passo.";
+      return "Travei e não consegui seguir sozinho.";
     default:
-      return "Estou repetindo a mesma coisa.";
+      return "Acho que estou andando em círculos.";
   }
 }
 
@@ -45,11 +45,14 @@ export function summaryLine(plan: readonly PlanStep[], actions: number): string 
   return parts.join(" ");
 }
 
-/** The card's labels. The loop reads the answer by comparing the text with these exactly. */
-export const continueLabel = (grant: number): string => `Continuar (+${grant} passos)`;
+/**
+ * The card's labels. The loop reads the answer by comparing the text with these exactly. Plain
+ * words only: the owner does not need to know about steps (owner, 24/11/2026: "o usuário nem
+ * imagina o que seja isso"); the grant stays in the event, not on the screen.
+ */
+export const continueLabel = (_grant: number): string => "Continuar";
 export const STOP_LABEL = "Parar por aqui";
-export const progressQuestion = (grant: number): string =>
-  `Quer que eu continue por mais ${grant} passos?`;
+export const progressQuestion = (_grant: number): string => "Quer que eu continue?";
 
 /** The bubble above the card: what happened, and what is done and left. */
 export function askLead(cause: ProgressCause, summary: string): string {

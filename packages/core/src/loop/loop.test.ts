@@ -1245,7 +1245,7 @@ describe("runLoop: repetition guard", () => {
     expect(nudges[0]?.payload.text).toContain('"fixed"');
     const [asked] = eventsOfType(events, "escalated");
     expect(asked?.payload.progress?.cause).toBe("repeat");
-    expect(asked?.payload.lead).toContain("Estou repetindo a mesma coisa.");
+    expect(asked?.payload.lead).toContain("Acho que estou andando em círculos.");
     expect(rig.provider.calls).toBe(5);
     // The nudge rides in the same user message as the third result.
     const fourth = rig.provider.requests[3]?.messages.at(-1);
