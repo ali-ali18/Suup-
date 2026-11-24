@@ -67,7 +67,12 @@ function setup(over: Partial<Bot> = {}) {
       <ChatScreen />
     </ServicesProvider>,
   );
-  const set = (patch: Partial<Run>) => act(() => update(store, (s) => mergeRun(s, { ...run, ...patch, updatedAt: new Date(Date.now() + 1000).toISOString() })));
+  const set = (patch: Partial<Run>) =>
+    act(() =>
+      update(store, (s) =>
+        mergeRun(s, { ...run, ...patch, updatedAt: new Date(Date.now() + 1000).toISOString() }),
+      ),
+    );
   const events = (...items: ReturnType<typeof makeEvent>[]) =>
     act(() => update(store, (s) => mergeRunEvents(s, run.id, items)));
   const answer = (text: string) =>

@@ -56,9 +56,10 @@ test.describe("the live avatar in the chat", () => {
       await expect(face(page)).toHaveAttribute("data-state", "pondering");
       await expect(face(page)).toHaveAttribute("data-mode", "animated");
       await expect(page.getByTestId("dots-dot")).toHaveCount(0);
-      if (style.extra.avatarStyle === "pixel") {
+      if ("avatarStyle" in style.extra) {
         await expect(face(page)).toHaveAttribute("data-mascot-style", "pixel");
-        if ("avatarPixel3d" in style.extra) await expect(face(page)).toHaveAttribute("data-pixel3d", "true");
+        if ("avatarPixel3d" in style.extra)
+          await expect(face(page)).toHaveAttribute("data-pixel3d", "true");
       } else {
         await expect(face(page)).toHaveAttribute("data-mascot", "blob");
         await expect(face(page)).toHaveAttribute("data-color", "azul");

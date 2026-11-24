@@ -63,11 +63,7 @@ describe("buildTimeline", () => {
   });
 
   it("a message still being sent is 'sending' and does not open a separator", () => {
-    const items = buildTimeline(
-      [msg(1), { ...msg(2), id: "local:x", local: "sending" }],
-      {},
-      NOW,
-    );
+    const items = buildTimeline([msg(1), { ...msg(2), id: "local:x", local: "sending" }], {}, NOW);
     expect(kinds(items)).toEqual(["separator", "user", "user"]);
     expect(items[2]).toMatchObject({ state: "sending" });
   });
@@ -117,17 +113,12 @@ describe("buildTimeline", () => {
       "working",
     ]);
     expect(
-      kinds(
-        buildTimeline(
-          [opener],
-          { [run.id]: { ...run, status: "queued", paused: true } },
-          NOW,
-        ),
-      ),
+      kinds(buildTimeline([opener], { [run.id]: { ...run, status: "queued", paused: true } }, NOW)),
     ).toEqual(["separator", "user", "working"]);
-    expect(
-      kinds(buildTimeline([opener], { [run.id]: { ...run, status: "done" } }, NOW)),
-    ).toEqual(["separator", "user"]);
+    expect(kinds(buildTimeline([opener], { [run.id]: { ...run, status: "done" } }, NOW))).toEqual([
+      "separator",
+      "user",
+    ]);
     // Waiting for you (an answer, an approval) keeps the live avatar, with its asking face.
     for (const status of ["waiting_user", "waiting_approval"] as const) {
       expect(kinds(buildTimeline([opener], { [run.id]: { ...run, status } }, NOW))).toEqual([
@@ -211,8 +202,7 @@ describe("buildTimeline", () => {
     it("a questionnaire and the tie-break keep their shape; an ordinary message has no `ask`", () => {
       const two = [...colors, { question: "Algo mais?" }];
       expect(
-        botItem(buildTimeline([ask("1. a\n2. b", two)], { [run.id]: run }, NOW)).ask
-          ?.questions,
+        botItem(buildTimeline([ask("1. a\n2. b", two)], { [run.id]: run }, NOW)).ask?.questions,
       ).toHaveLength(2);
       const tie = msg(1, {
         authorKind: "bot",
@@ -556,11 +546,7 @@ describe("bubblePositions: consecutive text bubbles of one sender form a group",
         text: `m${seq}`,
       });
     const two = buildTimeline([message(1, "bot"), message(2, "bot")], {}, NOW);
-    const three = buildTimeline(
-      [message(1, "bot"), message(2, "bot"), message(3, "bot")],
-      {},
-      NOW,
-    );
+    const three = buildTimeline([message(1, "bot"), message(2, "bot"), message(3, "bot")], {}, NOW);
     const before = [...bubblePositions(two).values()];
     const after = [...bubblePositions(three).values()];
     expect(before).toEqual(["first", "last"]);

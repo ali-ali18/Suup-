@@ -291,4 +291,3 @@ describe("ActionCard", () => {
     expect(screen.getByRole("button", { name: "Abrir computador" })).toBeTruthy();
   });
 });
-

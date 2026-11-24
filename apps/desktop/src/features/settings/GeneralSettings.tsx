@@ -113,8 +113,8 @@ const CHAT_CHOICES: readonly Choice<keyof Settings>[] = [
   {
     key: "phrase",
     icon: MessageSquareText,
-    title: "Frase do indicador de trabalho",
-    description: "O que o bot está fazendo agora, ou só os três pontos.",
+    title: "Frase do avatar trabalhando",
+    description: "O que o bot está fazendo agora, ou só o rosto.",
     options: [
       ["real", "Estado real"],
       ["discreet", "Discreta"],

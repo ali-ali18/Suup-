@@ -170,8 +170,7 @@ function ChatForBot({ botId }: { botId: string }) {
     [latest, events],
   );
   const items = useMemo(
-    () =>
-      buildTimeline(messages, runs, new Date(), { approvals: cards, secrets: secretRequests }),
+    () => buildTimeline(messages, runs, new Date(), { approvals: cards, secrets: secretRequests }),
     [messages, runs, cards, secretRequests],
   );
   // What the user opened, in THIS conversation: another chat starts with every row collapsed.

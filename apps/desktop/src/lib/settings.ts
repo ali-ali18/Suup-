@@ -13,9 +13,8 @@ export interface Settings {
   /** A largura da coluna de leitura. */
   width: "default" | "wide";
   density: "comfortable" | "compact";
-  /** A frase do indicador de trabalho: o estado real, ou só os três pontos. */
+  /** A frase do avatar vivo: o estado real, ou só o rosto (a frase fica para o leitor de tela). */
   phrase: "real" | "discreet";
-  /** As ações dobradas ("Mais N ações"). */
   /** O ícone dos sites nos links: busca `https://<host>/favicon.ico`, por isso desligado por padrão. */
   favicons: "off" | "on";
   /** Movimento reduzido: segue o sistema, ou sempre. */

@@ -39,7 +39,8 @@ export async function dismissQuestion(
     // sees it, and the two never deadlock.
     const [owner] = await tx.sql<{ conversation_id: string }[]>`
       select conversation_id from messages where id = ${messageId}`;
-    if (owner === undefined) throw new QuestionDismissError("not_found", "Pergunta não encontrada.");
+    if (owner === undefined)
+      throw new QuestionDismissError("not_found", "Pergunta não encontrada.");
     await tx.sql`
       select 1 from conversations where id = ${owner.conversation_id} for no key update`;
     const [row] = await tx.sql<

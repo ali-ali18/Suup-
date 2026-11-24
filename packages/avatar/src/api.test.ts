@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   AVATAR_COLORS,
   AVATAR_STATES,
-  BODY_MORPH_STATES,
   type AvatarRenderData,
+  BODY_MORPH_STATES,
   createAvatarRuntime,
   createCharacter,
   createFrameLoop,
