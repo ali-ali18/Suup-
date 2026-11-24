@@ -10,7 +10,7 @@ const usage = { inputTokens: 1000, outputTokens: 100 };
 const s = <T extends object>(step: T) => ({ ...step, usage });
 // A plain text file: a PDF would be opened and checked before delivery (send_file), and this test
 // is about the card and the download, not about the check.
-const PDF_TEXT = "História da PUCPR\n";
+const PDF_TEXT = "História da biblioteca da cidade\n";
 
 const SCRIPTS = {
   roteiro: {
@@ -22,7 +22,7 @@ const SCRIPTS = {
             calls: [
               {
                 name: "write_file",
-                args: { path: "pesquisa/historia_pucpr.txt", content: PDF_TEXT },
+                args: { path: "pesquisa/historia_biblioteca.txt", content: PDF_TEXT },
               },
             ],
           }),
@@ -30,7 +30,10 @@ const SCRIPTS = {
             calls: [
               {
                 name: "send_file",
-                args: { path: "pesquisa/historia_pucpr.txt", name: "História da PUCPR.txt" },
+                args: {
+                  path: "pesquisa/historia_biblioteca.txt",
+                  name: "História da biblioteca da cidade.txt",
+                },
               },
             ],
           }),
@@ -65,7 +68,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("the server, end to end: files in the
     );
     const attachment = {
       id: expect.any(String),
-      name: "História da PUCPR.txt",
+      name: "História da biblioteca da cidade.txt",
       mime: "text/plain",
       size: Buffer.byteLength(PDF_TEXT),
       kind: "text",
@@ -95,7 +98,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("the server, end to end: files in the
     expect(raw.headers.get("content-type")).toBe("text/plain");
     expect(raw.headers.get("content-length")).toBe(String(Buffer.byteLength(PDF_TEXT)));
     expect(raw.headers.get("content-disposition")).toBe(
-      `attachment; filename="Hist_ria da PUCPR.txt"; filename*=UTF-8''Hist%C3%B3ria%20da%20PUCPR.txt`,
+      `attachment; filename="Hist_ria da biblioteca da cidade.txt"; filename*=UTF-8''Hist%C3%B3ria%20da%20biblioteca%20da%20cidade.txt`,
     );
     expect(raw.headers.get("x-content-type-options")).toBe("nosniff");
     expect(raw.headers.get("content-security-policy")).toContain("sandbox");

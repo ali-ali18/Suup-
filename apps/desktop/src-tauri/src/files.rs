@@ -112,7 +112,7 @@ mod tests {
 
     #[test]
     fn keeps_the_name_and_drops_what_a_file_system_refuses() {
-        assert_eq!(safe_name("História da PUCPR.pdf"), "História da PUCPR.pdf");
+        assert_eq!(safe_name("História da biblioteca da cidade.pdf"), "História da biblioteca da cidade.pdf");
         assert_eq!(safe_name("../../etc/passwd"), "passwd");
         assert_eq!(safe_name("a\\b\\c:d?.txt"), "c_d_.txt");
         assert_eq!(safe_name(""), "arquivo");

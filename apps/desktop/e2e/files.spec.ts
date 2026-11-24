@@ -21,19 +21,19 @@ test.describe("files in the chat, no tool rows, the question apart", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     world = await startWorld();
     await openWithBot(page, world, "Pesquisa");
-    await send(page, "CASE-FILE faça um PDF com a história da PUCPR");
+    await send(page, "CASE-FILE faça um PDF com a história da biblioteca da cidade");
 
-    const answer = page
-      .getByTestId("message-bot")
-      .filter({ hasText: "Pronto: o PDF com a história da PUCPR está aqui embaixo." });
+    const answer = page.getByTestId("message-bot").filter({
+      hasText: "Pronto: o PDF com a história da biblioteca da cidade está aqui embaixo.",
+    });
     await expect(answer).toBeVisible({ timeout: 60_000 });
 
     // The card, right under the answer: icon by kind, the name, what it is and its size.
     const card = page.getByTestId("file-card");
     await expect(card).toHaveCount(1);
     await expect(card).toHaveAttribute("data-kind", "pdf");
-    await expect(card.getByTestId("file-name")).toHaveText("historia_pucpr.pdf");
-    await expect(card.getByTestId("file-meta")).toHaveText("PDF · 35 bytes");
+    await expect(card.getByTestId("file-name")).toHaveText("historia_biblioteca.pdf");
+    await expect(card.getByTestId("file-meta")).toHaveText("PDF · 50 bytes");
     const aBox = await answer.boundingBox();
     const cBox = await card.boundingBox();
     expect(cBox?.y ?? 0).toBeGreaterThan((aBox?.y ?? 0) + (aBox?.height ?? 0) - 1);
@@ -42,7 +42,7 @@ test.describe("files in the chat, no tool rows, the question apart", () => {
     await expect(card).not.toContainText("application/pdf");
 
     // The file appears ONCE: the card. The call that handed it over is no row (nor in a fold).
-    await expect(page.getByTestId("chat-log").getByText("historia_pucpr.pdf")).toHaveCount(1);
+    await expect(page.getByTestId("chat-log").getByText("historia_biblioteca.pdf")).toHaveCount(1);
     // The chat shows results only: the terminal calls of the run are no rows at all (steps live in the Inspector).
     await expect(page.getByTestId("action-card")).toHaveCount(0);
     await expect(page.getByTestId("action-fold")).toHaveCount(0);
@@ -60,9 +60,11 @@ test.describe("files in the chat, no tool rows, the question apart", () => {
       page.waitForEvent("download"),
       card.getByRole("button", { name: "Baixar" }).click(),
     ]);
-    expect(download.suggestedFilename()).toBe("historia_pucpr.pdf");
+    expect(download.suggestedFilename()).toBe("historia_biblioteca.pdf");
     const path = await download.path();
-    expect(await readFile(path, "utf8")).toBe("%PDF-1.4\n% Historia da PUCPR\n%%EOF\n");
+    expect(await readFile(path, "utf8")).toBe(
+      "%PDF-1.4\n% Historia da biblioteca da cidade\n%%EOF\n",
+    );
   });
 
   test("a question: the bot's words in the bubble, the question as the card's title, the hint; the X locks it", async ({
@@ -71,7 +73,7 @@ test.describe("files in the chat, no tool rows, the question apart", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     world = await startWorld();
     await openWithBot(page, world, "Cores");
-    await send(page, "CASE-ASKCTX faça o PDF da PUCPR");
+    await send(page, "CASE-ASKCTX faça o PDF da biblioteca");
     const card = page.getByTestId("question-card");
     await expect(card).toHaveAttribute("data-state", "open");
     // The bubble: the bot's context, which does not repeat the question.
@@ -89,7 +91,7 @@ test.describe("files in the chat, no tool rows, the question apart", () => {
     );
     await expect(card.getByTestId("question-option")).toHaveText([
       "AEsperar e tentar de novo",
-      "BMandar um link da PUCPR",
+      "BMandar um link da biblioteca",
       "CPDF sem fontes",
     ]);
     const hint = page.getByTestId("question-hint");

@@ -5,7 +5,7 @@ import { FILE_ICON, FILE_KIND_LABEL, FileCard, fileSizeText } from "./file-card.
 
 const pdf: MessageAttachment = {
   id: "00000000-0000-4000-8000-000000000001",
-  name: "historia_pucpr.pdf",
+  name: "historia_biblioteca.pdf",
   mime: "application/pdf",
   size: 3006,
   kind: "pdf",
@@ -14,10 +14,10 @@ const pdf: MessageAttachment = {
 describe("FileCard: a file the bot handed over", () => {
   it("one row: the name, what it is in plain words and the size; never the MIME type", () => {
     render(<FileCard file={pdf} canOpen busy={null} onOpen={vi.fn()} onSave={vi.fn()} />);
-    expect(screen.getByTestId("file-name").textContent).toBe("historia_pucpr.pdf");
+    expect(screen.getByTestId("file-name").textContent).toBe("historia_biblioteca.pdf");
     expect(screen.getByTestId("file-meta").textContent).toBe("PDF · 3 KB");
     expect(screen.getByTestId("file-card").textContent).not.toContain("application/pdf");
-    expect(screen.getByRole("group", { name: "Arquivo: historia_pucpr.pdf" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Arquivo: historia_biblioteca.pdf" })).toBeTruthy();
   });
 
   it("the app: Salvar (text) and Abrir (the pill); the browser: only Baixar", () => {

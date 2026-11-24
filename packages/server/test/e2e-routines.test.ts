@@ -318,7 +318,10 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("routines through the API"), { timeou
       return items.length >= 2 ? items : undefined;
     }, "the first answer");
 
-    const second = await api.conversations.send(conversation.id, "LEMBRETE-2 pesquisa a PUC");
+    const second = await api.conversations.send(
+      conversation.id,
+      "LEMBRETE-2 pesquisa a biblioteca",
+    );
     expect((await finished(second.run.id)).status).toBe("done");
     // only ONE routine: the second create_routine was refused as a duplicate
     const routines = await api.routines.list({ botId: bot.id });

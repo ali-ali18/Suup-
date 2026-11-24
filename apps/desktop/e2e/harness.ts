@@ -112,7 +112,7 @@ export const SCRIPTS = {
           s({
             calls: [
               shell(
-                "mkdir -p pesquisa && printf '%%PDF-1.4\\n%% Historia da PUCPR\\n%%%%EOF\\n' > pesquisa/historia_pucpr.pdf && ls -l pesquisa",
+                "mkdir -p pesquisa && printf '%%PDF-1.4\\n%% Historia da biblioteca da cidade\\n%%%%EOF\\n' > pesquisa/historia_biblioteca.pdf && ls -l pesquisa",
               ),
             ],
             delayMs: 300,
@@ -132,14 +132,14 @@ export const SCRIPTS = {
               {
                 name: "send_file",
                 args: {
-                  path: "pesquisa/historia_pucpr.pdf",
+                  path: "pesquisa/historia_biblioteca.pdf",
                   force: true,
                   reason: "o dono pediu um PDF mínimo de teste",
                 },
               },
             ],
           }),
-          s({ text: "Pronto: o PDF com a história da PUCPR está aqui embaixo." }),
+          s({ text: "Pronto: o PDF com a história da biblioteca da cidade está aqui embaixo." }),
         ],
       },
       {
@@ -155,7 +155,7 @@ export const SCRIPTS = {
                   question: "Como você prefere seguir?",
                   options: [
                     { label: "Esperar e tentar de novo", description: "Volto em uma hora." },
-                    { label: "Mandar um link da PUCPR" },
+                    { label: "Mandar um link da biblioteca" },
                     { label: "PDF sem fontes" },
                   ],
                 },

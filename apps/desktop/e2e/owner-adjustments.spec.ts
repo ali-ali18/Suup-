@@ -24,8 +24,8 @@ test.describe("owner adjustments", () => {
   let world: World;
   test.beforeAll(async () => {
     world = await startWorld();
-    await freshBot(world, "Estudo PUC", { color: "azul", avatar: "mascot:blob" });
-    await freshBot(world, "Dev do Ali", { color: "amarelo", avatar: "mascot:cloud" });
+    await freshBot(world, "Estudo de Leitura", { color: "azul", avatar: "mascot:blob" });
+    await freshBot(world, "Dev de Exemplo", { color: "amarelo", avatar: "mascot:cloud" });
   });
   test.afterAll(async () => {
     await world?.stop();
@@ -90,15 +90,15 @@ test.describe("owner adjustments", () => {
       // The rail: hovering a bot shows only its name.
       await page.keyboard.press("Control+b");
       await expect(page.getByTestId("sidebar")).toHaveAttribute("data-collapsed", "true");
-      await botItem(page, "Estudo PUC").hover();
-      await expect(page.getByTestId("rail-tip")).toHaveText("Estudo PUC");
+      await botItem(page, "Estudo de Leitura").hover();
+      await expect(page.getByTestId("rail-tip")).toHaveText("Estudo de Leitura");
       await shot("32-trilho-so-o-nome");
       await page.mouse.move(size.viewport.width / 2, size.viewport.height / 2);
       await page.keyboard.press("Control+b");
       await expect(page.getByTestId("sidebar")).toHaveAttribute("data-collapsed", "false");
 
       // Picking a bot marks it.
-      await botItem(page, "Estudo PUC").click();
+      await botItem(page, "Estudo de Leitura").click();
       await expect(page.getByTestId("sidebar").locator('[aria-current="page"]')).toHaveCount(1);
 
       // The new bot dialog: white by default, the 3D pixel mascot as big as the shapes.

@@ -47,12 +47,12 @@ describe("pdf", () => {
     const doc = await made({ format: "pdf", name: "h.pdf", style: "padrao", markdown: HISTORIA });
     expect(doc.mime).toBe("application/pdf");
     expect(doc.pages).toBe(1);
-    expect(doc.title).toBe("História da PUCPR");
+    expect(doc.title).toBe("História da biblioteca da cidade");
     const pdf = await readPdf(doc.bytes);
-    expect(pdf.info.Title).toBe("História da PUCPR");
+    expect(pdf.info.Title).toBe("História da biblioteca da cidade");
     expect(pdf.info.Author).toBe("Bot Teste");
     const text = pdf.pages[0] ?? "";
-    expect(text).toContain("História da PUCPR");
+    expect(text).toContain("História da biblioteca da cidade");
     expect(text).toContain("acentuação, ç, ã, õ");
     expect(text).toContain("28.500");
     expect(text).toContain("Página 1 de 1");
@@ -124,11 +124,11 @@ describe("docx", () => {
     expect(tagAttributes(xml, "w:pgSz")[0]).toMatchObject({ "w:w": "11906", "w:h": "16838" });
     expect(tagAttributes(xml, "w:pgMar")[0]).toMatchObject({ "w:top": "1247", "w:left": "1247" });
     const text = tagTexts(xml, "w:t").join("");
-    expect(text).toContain("História da PUCPR");
+    expect(text).toContain("História da biblioteca da cidade");
     expect(text).toContain("acentuação, ç, ã, õ");
     expect(xml.split("<w:tbl>").length - 1).toBe(1);
     const core = strFromU8(files["docProps/core.xml"] ?? new Uint8Array());
-    expect(tagTexts(core, "dc:title")).toEqual(["História da PUCPR"]);
+    expect(tagTexts(core, "dc:title")).toEqual(["História da biblioteca da cidade"]);
     expect(tagTexts(core, "dc:creator")).toEqual(["Bot Teste"]);
     expect(Object.keys(files).some((n) => n.startsWith("word/fonts/"))).toBe(true);
   });
@@ -274,10 +274,10 @@ describe("verification fails: nothing is delivered", () => {
     );
     files["word/document.xml"] = new TextEncoder().encode(xml);
     const check = checkDocx(zipSync(files), {
-      title: "História da PUCPR",
+      title: "História da biblioteca da cidade",
       author: "Bot Teste",
       style: "padrao",
-      texts: ["História da PUCPR"],
+      texts: ["História da biblioteca da cidade"],
       tables: 1,
       figures: 0,
     });

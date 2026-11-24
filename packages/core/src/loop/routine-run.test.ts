@@ -284,7 +284,7 @@ describe("a conversation run knows the routines an earlier run created", () => {
   it("lists them in the prompt of every turn, recorded once, and a rebuilt run reads the same", async () => {
     const rig = createRig({
       script: [use(call("c1", "echo", { text: "x" })), say("Seu lembrete já está criado.")],
-      objective: "pesquisa a história da PUC",
+      objective: "pesquisa a história da biblioteca",
     });
     await runLoop(
       rig.deps({ loadRunContext: async () => context({ ownRoutines: OWN }, false) }),

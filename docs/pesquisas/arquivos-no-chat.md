@@ -1,6 +1,6 @@
 # Pesquisa: o bot entrega arquivos no chat, e a máquina dos bots faz documentos
 
-Data da pesquisa: 24/11/2026. Valida os itens do dono de 24/11/2026: "Ele tinha que me mandar o doc aqui no chat" (o bot fez `/workspace/pesquisa/historia_pucpr.pdf` e só escreveu o caminho) e "sh: pip: not found" (a máquina não tinha `pip` nem `reportlab`). Ver [CONFIGURACAO.md](../CONFIGURACAO.md) ("O que a máquina tem") e [API.md](../API.md) (`GET /v1/files/:id`).
+Data da pesquisa: 24/11/2026. Valida os itens do dono de 24/11/2026: "Ele tinha que me mandar o doc aqui no chat" (o bot fez `/workspace/pesquisa/historia_biblioteca.pdf` e só escreveu o caminho) e "sh: pip: not found" (a máquina não tinha `pip` nem `reportlab`). Ver [CONFIGURACAO.md](../CONFIGURACAO.md) ("O que a máquina tem") e [API.md](../API.md) (`GET /v1/files/:id`).
 
 ## Pergunta
 

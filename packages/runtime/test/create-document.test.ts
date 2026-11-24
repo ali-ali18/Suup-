@@ -42,9 +42,9 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("create_document in a conversation"),
           calls: [
             call("create_document", {
               format: "pdf",
-              name: "historia-da-pucpr",
+              name: "historia-biblioteca",
               content:
-                "# História da PUCPR\n\nFundada em Curitiba, em 1959.\n\n| Ano | Cursos |\n| --- | --- |\n| 1959 | 3 |",
+                "# História da biblioteca da cidade\n\nFundada em 1959.\n\n| Ano | Seções |\n| --- | --- |\n| 1959 | 3 |",
             }),
           ],
         },
@@ -76,7 +76,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("create_document in a conversation"),
     expect(answer?.attachments).toEqual([
       {
         id: expect.any(String),
-        name: "historia-da-pucpr.pdf",
+        name: "historia-biblioteca.pdf",
         mime: "application/pdf",
         size: expect.any(Number),
       },

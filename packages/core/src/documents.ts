@@ -83,7 +83,7 @@ export const createDocumentInputSchema = z.object({
     .string()
     .min(1)
     .describe(
-      'File name the user sees, e.g. "historia-da-pucpr.pdf" (extension added if missing).',
+      'File name the user sees, e.g. "historia-biblioteca.pdf" (extension added if missing).',
     ),
   title: z
     .string()

@@ -55,7 +55,7 @@ describe("a site that cannot be reached from here", () => {
       },
     };
     const cache = new RobotsCache({ userAgent: UA, resolver, timeoutMs: 500 }, () => clock);
-    const verdict = await cache.check(new URL("https://pt.wikipedia.org/wiki/PUCPR"));
+    const verdict = await cache.check(new URL("https://pt.wikipedia.org/wiki/Biblioteca"));
     expect(verdict).toMatchObject({
       allowed: false,
       kind: "unreachable",
@@ -70,10 +70,10 @@ describe("a site that cannot be reached from here", () => {
     expect(verdict.reason).not.toContain("check the spelling");
     // cached for a short while only
     clock += 30_000;
-    await cache.check(new URL("https://pt.wikipedia.org/wiki/PUCPR"));
+    await cache.check(new URL("https://pt.wikipedia.org/wiki/Biblioteca"));
     expect(calls).toBe(1);
     clock += 31_000;
-    await cache.check(new URL("https://pt.wikipedia.org/wiki/PUCPR"));
+    await cache.check(new URL("https://pt.wikipedia.org/wiki/Biblioteca"));
     expect(calls).toBe(2);
   });
 
@@ -94,7 +94,7 @@ describe("a site that cannot be reached from here", () => {
 
   it("the reader says `unreachable` (with the diagnostic for the logs) when the robots.txt cannot be fetched", async () => {
     const reader = createReader({ resolver: brokenDns, minIntervalMs: 0, timeoutMs: 500 });
-    const out = await reader.read({ url: "https://pt.wikipedia.org/wiki/PUCPR" });
+    const out = await reader.read({ url: "https://pt.wikipedia.org/wiki/Biblioteca" });
     expect(out).toMatchObject({
       ok: false,
       reason: "unreachable",
@@ -152,7 +152,7 @@ describe("a site that cannot be reached from here", () => {
       local: createReader({ resolver: brokenDns, minIntervalMs: 0, timeoutMs: 500 }),
       log: (line) => lines.push(line),
     });
-    const out = await web.read({ url: "https://pt.wikipedia.org/wiki/PUCPR" });
+    const out = await web.read({ url: "https://pt.wikipedia.org/wiki/Biblioteca" });
     expect(out.ok).toBe(false);
     expect(lines).toEqual([
       "web_read: could not reach pt.wikipedia.org (robots, reader local, reason unreachable): stage=dns code=EAI_AGAIN",
