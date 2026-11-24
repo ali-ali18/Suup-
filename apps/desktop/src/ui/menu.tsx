@@ -1,4 +1,4 @@
-import { Check } from "lucide-react";
+import { Check, type LucideIcon } from "lucide-react";
 import {
   type CSSProperties,
   type KeyboardEvent,
@@ -18,6 +18,8 @@ export interface MenuItem {
   label: string;
   /** A muted line under the label. */
   description?: string;
+  /** A lucide icon before the label (data only: the item draws it, muted, at the icon size). */
+  icon?: LucideIcon;
   /** A menu item that is on or off (drawn with a check): `role="menuitemcheckbox"`. */
   checked?: boolean;
   testId?: string;
@@ -66,9 +68,18 @@ export function focusEntry(el: HTMLElement | null | undefined): void {
 
 /** The content of a menu item: its label, and the muted line and the check when it has them. */
 export function MenuItemBody({ item }: { item: MenuItem }) {
+  const Icon = item.icon;
   return (
     <>
-      <span className="flex min-w-0 flex-col">
+      {Icon !== undefined && (
+        <Icon
+          size={16}
+          className={cx("flex-none", item.danger === true ? "" : "text-text-muted")}
+          aria-hidden="true"
+          data-testid="menu-icon"
+        />
+      )}
+      <span className="flex min-w-0 flex-1 flex-col">
         <span data-testid="menu-label">{item.label}</span>
         {item.description !== undefined && (
           <span className="text-small text-text-muted">{item.description}</span>

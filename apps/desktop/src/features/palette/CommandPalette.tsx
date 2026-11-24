@@ -312,8 +312,8 @@ export function CommandPalette() {
           }
         }}
       >
-        <div className="flex items-center gap-3 border-b border-border px-5 py-4">
-          <Search size={20} aria-hidden="true" />
+        <div className="flex items-center gap-3 border-b border-border px-4 py-3">
+          <Search size={16} className="text-text-muted" aria-hidden="true" />
           <input
             ref={inputRef}
             autoFocus
@@ -325,7 +325,7 @@ export function CommandPalette() {
             }
             aria-autocomplete="list"
             aria-label="Buscar Bots, chats, configurações"
-            className="min-w-0 flex-1 border-0 bg-transparent py-px text-heading outline-0"
+            className="min-w-0 flex-1 border-0 bg-transparent py-px text-body outline-0"
             placeholder="Buscar Bots, chats, configurações…"
             value={query}
             onChange={(e) => {

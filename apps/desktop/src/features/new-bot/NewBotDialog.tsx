@@ -38,6 +38,9 @@ import {
 } from "../../ui/primitives.js";
 import { BotNetwork } from "./BotNetwork.js";
 
+/** The colour a new bot starts with (shapes style; pixel starts with its own drawing's colours). */
+export const DEFAULT_NEW_COLOR: BotColor = "branco";
+
 const COLOR_NAME: Record<BotColor, string> = {
   laranja: "Laranja",
   azul: "Azul",
@@ -119,9 +122,13 @@ export function NewBotDialog() {
 
   // Pixel sem cor escolhida: o mascote fica na cor do desenho (`original`) e o tema, na mais parecida.
   const original = style === "pixel" && color === null;
+  // A new bot starts white (owner, 23/11/2026: "a cor padrão é branco"); an old bot without a colour
+  // keeps the one its id gave it.
   const shownColor = original
     ? PIXEL_THEME_COLOR[pixel]
-    : effectiveColor(color, editing?.id ?? "new");
+    : editing === undefined
+      ? (color ?? DEFAULT_NEW_COLOR)
+      : effectiveColor(color, editing.id);
   const chosen = style === "pixel" ? pixel : mascot;
   const nameOk = name.trim() !== "";
   const usable = useMemo(
@@ -216,7 +223,12 @@ export function NewBotDialog() {
     >
       {step === 1 ? (
         <FormStack data-testid="newbot-step-1" style={colorVars(shownColor) as React.CSSProperties}>
-          <div className="flex justify-center" data-testid="newbot-preview" data-color={shownColor}>
+          {/* Room above and below: the preview breathes (it grows a little) and is never cut. */}
+          <div
+            className="flex justify-center py-3"
+            data-testid="newbot-preview"
+            data-color={shownColor}
+          >
             <Avatar
               avatar={mascotValue(chosen)}
               avatarStyle={style}
@@ -265,7 +277,7 @@ export function NewBotDialog() {
             aria-label="Mascote"
             data-testid="newbot-mascots"
             data-style={style}
-            className="flex flex-wrap justify-center gap-2"
+            className="flex flex-wrap justify-center gap-3"
           >
             {style === "pixel"
               ? PIXELS.map((m) => (
@@ -313,7 +325,7 @@ export function NewBotDialog() {
                   </button>
                 ))}
           </div>
-          <div role="radiogroup" aria-label="Cor" className="flex flex-wrap justify-center gap-2">
+          <div role="radiogroup" aria-label="Cor" className="flex flex-wrap justify-center gap-2.5">
             {style === "pixel" && (
               <button
                 type="button"
@@ -325,7 +337,7 @@ export function NewBotDialog() {
                 className={cx(
                   "size-7 rounded-pill border-2",
                   original
-                    ? "border-bg ring-2 ring-text"
+                    ? "border-bg ring-2 ring-picked-ring"
                     : "border-transparent ring-1 ring-border-strong",
                 )}
                 style={{
@@ -345,7 +357,7 @@ export function NewBotDialog() {
                 className={cx(
                   "size-7 rounded-pill border-2",
                   !original && shownColor === c
-                    ? "border-bg ring-2 ring-text"
+                    ? "border-bg ring-2 ring-picked-ring"
                     : "border-transparent ring-1 ring-border-strong",
                 )}
                 style={{ background: BOT_PALETTE[c].fill }}

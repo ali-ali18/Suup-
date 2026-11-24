@@ -16,6 +16,8 @@
 @custom-variant narrow (@media (max-width: 640px));
 @custom-variant bubble-neutral (:root[data-bubble="neutral"] &);
 @custom-variant phrase-discreet (:root[data-phrase="discreet"] &);
+/* The window has no system title bar: the app draws its own buttons in the top right corner. */
+@custom-variant framed (:root[data-frame="custom"] &);
 
 @theme inline {
   --color-*: initial;
@@ -57,6 +59,12 @@
   --color-sidebar-active: var(--color-sidebar-active);
   --color-border: var(--color-border);
   --color-border-strong: var(--color-border-strong);
+  --color-picked-ring: var(--color-picked-ring);
+  --color-star-badge: var(--color-star-badge);
+  --color-star-glyph: var(--color-star-glyph);
+  --color-status-working: var(--color-status-working);
+  --color-status-unread: var(--color-status-unread);
+  --color-mask: var(--color-mask);
   --color-text: var(--color-text);
   --color-text-muted: var(--color-text-muted);
   --color-text-inverse: var(--color-text-inverse);
@@ -134,6 +142,7 @@
 
   --shadow-*: initial;
   --shadow-popover: var(--shadow-popover);
+  --shadow-star-badge: var(--shadow-star-badge);
 
   /* Spacing: the 4 px grid of --space-1, so p-4 is 16 px (--space-4) and p-2.5 is 10 px. */
   --spacing: var(--space-1);
@@ -146,9 +155,20 @@
   --spacing-avatar-lg: var(--size-avatar-lg);
   --spacing-star-badge: var(--size-star-badge);
   --spacing-star-badge-lg: var(--size-star-badge-lg);
+  --spacing-star-glyph: var(--size-star-glyph);
+  --spacing-star-glyph-lg: var(--size-star-glyph-lg);
+  --spacing-status-dot-sm: var(--size-status-dot-sm);
+  --spacing-status-dot-row: var(--size-status-dot-row);
+  --spacing-status-dot-lg: var(--size-status-dot-lg);
+  --spacing-status-dot-xl: var(--size-status-dot-xl);
   --spacing-rail-avatar: var(--size-rail-avatar);
   --spacing-rail-tile: var(--size-rail-tile);
   --spacing-panel-avatar: var(--size-panel-avatar);
+  --spacing-head-end: var(--space-head-end);
+  --spacing-window-controls: var(--width-window-controls);
+  --spacing-window-reserve: var(--size-window-reserve);
+  --spacing-fade: var(--size-fade);
+  --spacing-chat-head: var(--size-chat-head);
   --spacing-settings-height: var(--height-settings);
   --spacing-events: var(--height-events);
   --spacing-tile: var(--width-tile);
@@ -172,6 +192,7 @@
   --container-palette: var(--width-palette);
   --container-screen-narrow: var(--width-screen-narrow);
   --container-screen-wide: var(--width-screen-wide);
+  --container-screen-max: var(--width-screen-max);
   --container-memory-list: var(--width-memory-list);
   --container-bot-chip: var(--width-bot-chip);
   --container-search: var(--width-search);
@@ -187,6 +208,14 @@
 @theme {
   --animate-dot: ui-dot 1.2s ease-in-out infinite;
   --animate-badge: ui-pulse 1.4s ease-in-out infinite;
+  /* Something that appears fades in, never pops (docs/DESIGN.md §1 "Nada seco"). */
+  --animate-fade-in: ui-fade-in var(--duration-base) ease-out both;
+
+  @keyframes ui-fade-in {
+    from {
+      opacity: 0;
+    }
+  }
 
   @keyframes ui-pulse {
     50% {

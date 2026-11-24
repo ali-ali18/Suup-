@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { actionsOf, mergeApprovals } from "../../data/actions.js";
 import { makeApproval, makeEvent } from "../../test-fixtures.js";
-import { ActionRow } from "./ActionRow.js";
+import { ActionRow, FAILED_TEXT } from "./ActionRow.js";
 
 const item = (name: string, args: Record<string, unknown>, content?: string, isError = false) => {
   const events = [makeEvent(1, "tool_call", { callId: "c", name, args })];
@@ -61,7 +61,7 @@ describe("ActionRow: what an expanded action says, as plain text", () => {
     );
   });
 
-  it("a failed action shows its error; a web action its address and an excerpt (cut when long)", () => {
+  it("a failed action says so in a plain sentence, never the raw error; a web read is no row at all", () => {
     render(
       <ActionRow
         item={item("read_file", { path: "x" }, "arquivo não existe", true)}
@@ -70,15 +70,13 @@ describe("ActionRow: what an expanded action says, as plain text", () => {
       />,
     );
     expect(screen.getByRole("button").textContent).toContain("Falhou · Ler x");
-    expect(screen.getByTestId("action-output").getAttribute("data-error")).toBe("true");
-    const web = render(
-      <ActionRow
-        item={item("web_fetch", { url: "https://example.com/a" }, "y".repeat(3000))}
-        expanded
-        onToggle={() => {}}
-      />,
-    );
-    expect(web.getAllByTestId("action-output").at(-1)?.textContent?.length).toBeLessThan(1600);
+    // docs/DESIGN.md §1 "Amigável": the tool's text (English, an EXTERNAL_DATA envelope) stays out
+    expect(screen.getByTestId("action-failed").textContent).toBe(FAILED_TEXT);
+    expect(screen.queryByTestId("action-output")).toBeNull();
+    expect(document.body.textContent).not.toContain("arquivo não existe");
+    // searching and reading the web are the bot working (owner, 24/11/2026): no row in the chat
+    for (const name of ["web_fetch", "web_read", "web_search"])
+      expect(item(name, { url: "https://example.com/a" }, "y".repeat(3000)), name).toBeUndefined();
   });
 
   it("toggles from the row", () => {
@@ -168,7 +166,8 @@ describe("ActionRow: what an expanded action says, as plain text", () => {
         <ActionRow item={merged("approved", "disco cheio", true)} expanded onToggle={() => {}} />,
       );
       expect(screen.getByRole("button").textContent).toContain("Aprovado, mas falhou · Escrever");
-      expect(screen.getByTestId("action-output").getAttribute("data-error")).toBe("true");
+      expect(screen.getByTestId("action-failed").textContent).toBe(FAILED_TEXT);
+      expect(document.body.textContent).not.toContain("disco cheio");
     });
 
     it("denied: no execution, the reason, and no result block", () => {

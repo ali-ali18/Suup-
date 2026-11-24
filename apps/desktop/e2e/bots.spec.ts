@@ -124,7 +124,10 @@ test.describe("bots, sidebar, palette, memory", () => {
     const wide = (await sidebar.boundingBox())?.width ?? 0;
     await page.keyboard.press("Control+b");
     await expect(sidebar).toHaveAttribute("data-collapsed", "true");
-    expect((await sidebar.boundingBox())?.width ?? 999).toBeLessThan(wide / 2);
+    // the width eases to the rail ("Nada seco", docs/DESIGN.md §1): wait for it to land
+    await expect
+      .poll(async () => (await sidebar.boundingBox())?.width ?? 999)
+      .toBeLessThan(wide / 2);
     // A bot is still reachable, by its name.
     await expect(sidebar.getByRole("button", { name: /^Principal/ })).toBeVisible();
     await page.reload();
@@ -166,7 +169,7 @@ test.describe("bots, sidebar, palette, memory", () => {
     );
     await page.mouse.up();
     await expect(sidebar).toHaveAttribute("data-collapsed", "true");
-    expect(await width()).toBeLessThan(150);
+    await expect.poll(width).toBeLessThan(150);
     await expect(sidebar.getByTestId("bot-item").first()).toBeVisible();
     await expect(sidebar.getByTestId("bot-entry-text")).toHaveCount(0);
     await page.reload();
@@ -182,7 +185,8 @@ test.describe("bots, sidebar, palette, memory", () => {
     await page.keyboard.press("Control+b");
     await expect(sidebar).toHaveAttribute("data-collapsed", "true");
     await page.keyboard.press("Control+b");
-    expect(await width()).toBe(330);
+    // the width eases back (docs/DESIGN.md §1 "Nada seco")
+    await expect.poll(width).toBe(330);
   });
 
   test("the sidebar handle works with the keyboard", async ({ page }) => {
@@ -219,7 +223,8 @@ test.describe("bots, sidebar, palette, memory", () => {
     expect(await columns()).toBe(2);
     await sidebar.getByRole("separator").focus();
     await page.keyboard.press("End");
-    expect(await columns()).toBe(3);
+    // the width eases to the new size (docs/DESIGN.md §1 "Nada seco")
+    await expect.poll(columns).toBe(3);
     // The selected bot keeps aria-current and a quiet fill (--color-sidebar-active, dark), but no border.
     await page.mouse.move(900, 500); // fora da barra: o hover tem estilo próprio
     const current = sidebar.locator('[aria-current="page"]');

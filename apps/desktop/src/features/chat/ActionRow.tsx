@@ -24,6 +24,10 @@ export interface CallContext {
   collapseLong?: boolean;
 }
 
+/** What a failed call says in the chat, instead of the tool's raw error. */
+export const FAILED_TEXT =
+  "Não deu certo. O bot recebeu o aviso e seguiu; o detalhe fica no Inspetor.";
+
 const str = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
 
 /** What the details of an action say, as plain text: the command and its output, the path and the diff... */
@@ -123,18 +127,21 @@ export function ActionDetail({ item, context = {} }: { item: ActionItem; context
   } else if (Object.keys(args).length > 0) {
     blocks.push(pre(JSON.stringify(args, null, 2), "args"));
   }
-  if (output !== undefined && output !== "") {
+  if (item.state === "failed") {
+    // Never the tool's raw error in the chat (docs/DESIGN.md §1 "Amigável"): it may be English, an
+    // envelope of external data, a stack. One plain sentence; the detail stays in the Inspector.
+    blocks.push(
+      <ActionLabel key="failed" data-testid="action-failed">
+        {FAILED_TEXT}
+      </ActionLabel>,
+    );
+  } else if (output !== undefined && output !== "") {
     const limit = item.kind === "web" ? 1500 : undefined;
     const shown =
       limit !== undefined && output.length > limit ? `${output.slice(0, limit)}…` : output;
+    blocks.push(label(item.kind === "web" ? "Trecho" : "Resultado", "out-label"));
     blocks.push(
-      label(
-        item.state === "failed" ? "Erro" : item.kind === "web" ? "Trecho" : "Resultado",
-        "out-label",
-      ),
-    );
-    blocks.push(
-      <ActionPre key="out" error={item.state === "failed"} data-testid="action-output">
+      <ActionPre key="out" data-testid="action-output">
         {shown}
         {item.truncated ? "\n(saída cortada)" : ""}
       </ActionPre>,

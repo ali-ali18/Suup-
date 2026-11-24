@@ -1,5 +1,15 @@
 import type { Bot } from "@suup/api";
-import { Ellipsis, LayoutGrid, Plus, Search } from "lucide-react";
+import {
+  Brain,
+  Ellipsis,
+  Inbox,
+  Keyboard,
+  LogOut,
+  Plug,
+  Plus,
+  Search,
+  Settings,
+} from "lucide-react";
 import { type KeyboardEvent, useCallback, useMemo, useRef, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { botDisplay, pendingQuestions, unreadOf } from "../../app/selectors.js";
@@ -17,6 +27,7 @@ import type { MenuItem } from "../../ui/menu.js";
 import { PopupMenu } from "../../ui/popup-menu.js";
 import { Dialog, MutedText, Pill, RoundButton } from "../../ui/primitives.js";
 import { ResizeHandle } from "../../ui/resize-handle.js";
+import { ScrollFade } from "../../ui/scroll-fade.js";
 
 /** How a bot's entry is laid out: a tile (pinned), a row (a list), or only the face (the rail). */
 const ENTRY_MAIN = {
@@ -25,11 +36,10 @@ const ENTRY_MAIN = {
   rail: "size-rail-tile justify-center p-0",
 } as const;
 
-/** The name of the bot beside its face in the rail, shown on hover and on keyboard focus. */
-const RAIL_TIP =
-  "relative after:pointer-events-none after:absolute after:top-1/2 after:left-full after:z-30 after:ml-2.5 after:-translate-y-1/2 after:rounded-pill after:border after:border-border-strong after:bg-raised after:px-2.5 after:py-1 after:text-small after:whitespace-nowrap after:content-none hover:after:content-[attr(data-tip)] focus-visible:after:content-[attr(data-tip)]";
-
 /** The "more" button of an entry: shown on hover and on focus, over the end of a row or a tile's corner. */
+/** The line under a bot that has not talked yet (owner, 23/11/2026). */
+export const NO_MESSAGES = "Sem interação";
+
 const ENTRY_MORE = {
   tile: "top-2 right-2",
   row: "top-1/2 right-1.5 -translate-y-1/2",
@@ -45,6 +55,8 @@ interface EntryProps {
   onMenu(bot: Bot, x: number, y: number): void;
   setRef(el: HTMLButtonElement | null): void;
   onKeyDown(e: KeyboardEvent): void;
+  /** The rail only: show (a box) or hide (`null`) the bot's name beside its face. */
+  onTip?(box: DOMRect | null): void;
 }
 
 function BotEntry({
@@ -57,6 +69,7 @@ function BotEntry({
   onMenu,
   setRef,
   onKeyDown,
+  onTip,
 }: EntryProps) {
   const runs = useData((s) => s.runs);
   const conversations = useData((s) => s.conversations);
@@ -73,7 +86,7 @@ function BotEntry({
   else if (display.chip === "doubt" || display.chip === "permission")
     badge = { kind: "question", text: "?" };
   else if (display.chip === "paused") badge = { kind: "paused", text: "" };
-  else if (unread > 0) badge = { kind: "unread", text: unread > 9 ? "9+" : String(unread) };
+  // An unread message is the blue dot in the avatar's corner (`unread` below), not a count.
   else if (display.chip === "failed") badge = { kind: "failed", text: "!" };
   const status = [
     display.label,
@@ -85,7 +98,7 @@ function BotEntry({
     .filter(Boolean)
     .join(", ");
   const label = status === "" ? bot.name : `${bot.name} — ${status}`;
-  // Enquanto o bot trabalha o rosto vira o indicador de pontos (`data-working`, `data-state`).
+  // O bot trabalhando (`data-working`): o rosto continua o rosto (docs/DESIGN.md §6).
   const working = ["working", "thinking", "resuming", "queued"].includes(display.chip ?? "");
   const size = variant === "tile" ? "tile" : variant === "row" ? "row" : "md";
   const openMenu = (e: React.MouseEvent) => {
@@ -100,17 +113,22 @@ function BotEntry({
         className={cx(
           "flex min-w-0 items-center rounded-card border border-transparent bg-transparent text-left hover:bg-hover aria-[current=page]:bg-sidebar-active",
           ENTRY_MAIN[variant],
-          variant === "rail" && RAIL_TIP,
         )}
         aria-label={label}
         aria-current={active ? "page" : undefined}
-        data-tip={variant === "rail" ? bot.name : undefined}
         data-testid="bot-item"
         data-bot={bot.name}
         data-chip={display.chip ?? ""}
         data-working={working}
         tabIndex={tabStop ? 0 : -1}
         onClick={onSelect}
+        onMouseEnter={(e) => onTip?.(e.currentTarget.getBoundingClientRect())}
+        onMouseLeave={() => onTip?.(null)}
+        onFocus={(e) => {
+          if (e.currentTarget.matches(":focus-visible"))
+            onTip?.(e.currentTarget.getBoundingClientRect());
+        }}
+        onBlur={() => onTip?.(null)}
         onKeyDown={(e) => {
           if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
             e.preventDefault();
@@ -132,6 +150,8 @@ function BotEntry({
             size={size}
             state={display.avatar}
             supervisor={bot.isDefault}
+            working={working}
+            unread={unread > 0}
           />
           {badge !== undefined && (
             <BotBadge
@@ -154,7 +174,7 @@ function BotEntry({
             <span className="truncate text-label">
               <BotTitle name={bot.name} description={bot.description} />
             </span>
-            <MutedText className="truncate">{preview ?? "Sem mensagens"}</MutedText>
+            <MutedText className="truncate">{preview ?? NO_MESSAGES}</MutedText>
           </span>
         )}
       </button>
@@ -162,7 +182,7 @@ function BotEntry({
         <button
           type="button"
           className={cx(
-            "absolute inline-flex size-7 items-center justify-center rounded-pill border-0 bg-transparent text-text-muted opacity-0 group-focus-within/entry:opacity-100 group-hover/entry:opacity-100 hover:bg-raised hover:text-text",
+            "absolute inline-flex size-7 items-center justify-center rounded-pill border-0 bg-transparent text-text-muted opacity-0 transition-opacity group-focus-within/entry:opacity-100 group-hover/entry:opacity-100 hover:bg-raised hover:text-text",
             ENTRY_MORE[variant],
           )}
           aria-label={`Mais opções de ${bot.name}`}
@@ -192,7 +212,11 @@ export function Sidebar() {
   const sidebarWidth = useUi((s) => s.sidebarWidth);
   const view = useUi((s) => s.view);
   const selected = useUi((s) => s.selectedBotId);
+  const picked = useUi((s) => s.botPicked);
   const ui = useUi.getState;
+  // The name beside a face of the rail: drawn fixed on the page, so no scrolling list clips it.
+  // Only the name: the message preview of a row is unreadable there (owner, 23/11/2026).
+  const [tip, setTip] = useState<{ name: string; x: number; y: number } | null>(null);
   const selectBot = useUi((s) => s.selectBot);
   const go = useUi((s) => s.go);
   const [menu, setMenu] = useState<{ bot: Bot; x: number; y: number } | null>(null);
@@ -207,13 +231,14 @@ export function Sidebar() {
     () => pendingQuestions({ runs, bots }).length + pendingApprovals({ approvals, bots }).length,
     [runs, bots, approvals],
   );
-  const activeId = view === "chat" ? selected : null;
+  // Only a bot the person chose is marked; the one the app opened by itself is not.
+  const activeId = view === "chat" && picked ? selected : null;
   const tabStop = flat.some((b) => b.id === activeId) ? activeId : flat[0]?.id;
 
   const previewOf = (bot: Bot): string => {
     const conversation =
       bot.conversationId === null ? undefined : conversations[bot.conversationId];
-    return plainText(conversation?.lastMessage?.text ?? "") || "Sem mensagens";
+    return plainText(conversation?.lastMessage?.text ?? "") || NO_MESSAGES;
   };
 
   const move = (e: KeyboardEvent, id: string) => {
@@ -270,22 +295,44 @@ export function Sidebar() {
         refs.current[bot.id] = el;
       }}
       onKeyDown={(e) => move(e, bot.id)}
+      {...(variant === "rail"
+        ? {
+            onTip: (box: DOMRect | null) =>
+              setTip(
+                box === null
+                  ? null
+                  : { name: bot.name, x: box.right + 10, y: box.top + box.height / 2 },
+              ),
+          }
+        : {})}
     />
   );
 
   const ownerItems: MenuItem[] = [
-    { id: "memory", label: "Memória", onSelect: () => go("memory") },
     {
       id: "pending",
       label: pending > 0 ? `Pendências (${pending})` : "Pendências",
+      icon: Inbox,
       onSelect: () => go("pending"),
     },
-    { id: "plugins", label: "Conectores", onSelect: () => go("connectors") },
-    { id: "settings", label: "Configurações", onSelect: () => ui().openSettings() },
-    { id: "shortcuts", label: "Atalhos de teclado", onSelect: () => ui().setShortcuts(true) },
+    { id: "memory", label: "Memória", icon: Brain, onSelect: () => go("memory") },
+    { id: "plugins", label: "Conectores", icon: Plug, onSelect: () => go("connectors") },
+    {
+      id: "settings",
+      label: "Configurações",
+      icon: Settings,
+      onSelect: () => ui().openSettings(),
+    },
+    {
+      id: "shortcuts",
+      label: "Atalhos de teclado",
+      icon: Keyboard,
+      onSelect: () => ui().setShortcuts(true),
+    },
     {
       id: "disconnect",
       label: mode === "local" ? "Trocar de servidor" : "Desconectar",
+      icon: LogOut,
       danger: true,
       onSelect: () => void disconnect(),
     },
@@ -294,8 +341,8 @@ export function Sidebar() {
     <button
       type="button"
       className={cx(
-        "inline-flex items-center rounded-pill border-0 bg-transparent hover:bg-hover",
-        variant === "bar" ? "gap-3 py-1 pr-2.5 pl-1" : "p-1",
+        "inline-flex items-center rounded-row border-0 bg-transparent transition-colors hover:bg-hover",
+        variant === "bar" ? "min-w-0 flex-1 gap-2.5 py-1.5 pr-3 pl-1.5" : "p-1",
       )}
       aria-haspopup="menu"
       aria-label={pending > 0 ? `Menu da sua conta (${pending} pendências)` : "Menu da sua conta"}
@@ -303,12 +350,12 @@ export function Sidebar() {
       onClick={(e) => {
         const rect = e.currentTarget.getBoundingClientRect();
         setOwnerMenu({ x: rect.left, y: rect.top - ownerItems.length * 40 - 16 });
+        setTip(null);
       }}
     >
       <span
         className={cx(
-          "relative inline-flex flex-none items-center justify-center rounded-pill border border-border-strong bg-raised font-label",
-          variant === "bar" ? "size-control" : "size-avatar-md",
+          "relative inline-flex size-avatar-sm flex-none items-center justify-center rounded-pill border border-border-strong bg-raised text-small font-label",
         )}
         aria-hidden="true"
       >
@@ -319,12 +366,22 @@ export function Sidebar() {
           </BotBadge>
         )}
       </span>
-      {variant === "bar" && <span className="text-label font-label">Você</span>}
+      {variant === "bar" && <span className="truncate text-label font-label">Você</span>}
     </button>
   );
 
   const popups = (
     <>
+      {collapsed && tip !== null && (
+        <span
+          role="tooltip"
+          className="pointer-events-none fixed z-60 -translate-y-1/2 animate-fade-in rounded-pill border border-border-strong bg-raised px-2.5 py-1 text-small whitespace-nowrap shadow-popover"
+          style={{ left: tip.x, top: tip.y }}
+          data-testid="rail-tip"
+        >
+          {tip.name}
+        </span>
+      )}
       {ownerMenu !== null && (
         <PopupMenu
           x={ownerMenu.x}
@@ -379,7 +436,9 @@ export function Sidebar() {
   return (
     <nav
       className={cx(
-        "relative flex min-h-0 flex-none flex-col bg-sidebar",
+        // Nothing to select in it (owner, 23/11/2026); the width eases between the rail and the bar
+        // instead of jumping (docs/DESIGN.md §1 "Nada seco").
+        "relative flex min-h-0 flex-none flex-col bg-sidebar transition-[width] duration-(--duration-base) ease-out select-none",
         collapsed
           ? "w-rail items-center gap-2 px-0 py-3.5"
           : "w-[var(--sidebar-w,var(--width-sidebar))] gap-2 border-r border-border p-3",
@@ -392,28 +451,37 @@ export function Sidebar() {
       {collapsed ? (
         <>
           <div
-            className="flex min-h-0 w-full flex-1 flex-col items-center gap-0.5 overflow-y-auto py-2"
-            role="group"
-            aria-label="Bots"
+            className="flex flex-none animate-fade-in flex-col items-center gap-1"
+            data-tauri-drag-region
           >
-            {layout.pinned.map((bot) => entry(bot, "rail"))}
-            {layout.pinned.length > 0 && flat.length > layout.pinned.length && (
-              <hr className="my-0.5 w-6 border-0 border-t border-border-strong" />
-            )}
-            {flat.filter((b) => !b.pinned).map((bot) => entry(bot, "rail"))}
-          </div>
-          <div className="relative flex w-full flex-none flex-col items-center gap-1 pt-2">
-            <RoundButton label="Novo bot" tone="ghost" size="circle" onClick={ui().openNewBot}>
-              <Plus size={20} aria-hidden="true" />
-            </RoundButton>
             <RoundButton
-              label="Buscar e ações"
-              tone="raised"
+              label="Buscar"
+              tone="ghost"
               size="circle"
               onClick={() => ui().setPalette(true)}
             >
-              <LayoutGrid size={18} aria-hidden="true" />
+              <Search size={18} aria-hidden="true" />
             </RoundButton>
+            <RoundButton label="Novo bot" tone="ghost" size="circle" onClick={ui().openNewBot}>
+              <Plus size={20} aria-hidden="true" />
+            </RoundButton>
+          </div>
+          <div className="relative flex min-h-0 w-full flex-1 flex-col">
+            <div
+              className="flex min-h-0 w-full flex-1 animate-fade-in flex-col items-center gap-0.5 overflow-y-auto py-2"
+              role="group"
+              aria-label="Bots"
+              onScroll={() => setTip(null)}
+            >
+              {layout.pinned.map((bot) => entry(bot, "rail"))}
+              {layout.pinned.length > 0 && flat.length > layout.pinned.length && (
+                <hr className="my-0.5 w-6 border-0 border-t border-border-strong" />
+              )}
+              {flat.filter((b) => !b.pinned).map((bot) => entry(bot, "rail"))}
+            </div>
+            <ScrollFade tone="sidebar" />
+          </div>
+          <div className="relative flex w-full flex-none flex-col items-center pt-2">
             {ownerButton("rail")}
           </div>
         </>
@@ -428,46 +496,43 @@ export function Sidebar() {
               <Plus size={20} aria-hidden="true" />
             </RoundButton>
           </div>
-          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto py-2">
-            {layout.pinned.length > 0 && (
-              <section aria-label="Fixados" data-testid="pinned-section">
-                <div
-                  className="grid grid-cols-[repeat(auto-fill,var(--width-tile))] justify-center gap-1"
-                  data-testid="pinned-tiles"
+          <div className="relative flex min-h-0 flex-1 flex-col">
+            <div className="flex min-h-0 flex-1 animate-fade-in flex-col gap-4 overflow-y-auto py-2">
+              {layout.pinned.length > 0 && (
+                <section aria-label="Fixados" data-testid="pinned-section">
+                  <div
+                    className="grid grid-cols-[repeat(auto-fill,var(--width-tile))] justify-center gap-1"
+                    data-testid="pinned-tiles"
+                  >
+                    {layout.pinned.map((b) => entry(b, "tile"))}
+                  </div>
+                </section>
+              )}
+              {layout.groups.map((group) => (
+                <section
+                  key={group.name}
+                  aria-label={`Grupo ${group.name}`}
+                  data-testid="group-section"
+                  data-group={group.name}
                 >
-                  {layout.pinned.map((b) => entry(b, "tile"))}
-                </div>
-              </section>
-            )}
-            {layout.groups.map((group) => (
-              <section
-                key={group.name}
-                aria-label={`Grupo ${group.name}`}
-                data-testid="group-section"
-                data-group={group.name}
-              >
-                <SidebarLabel>{group.name}</SidebarLabel>
-                <div className="flex flex-col gap-0.5">
-                  {group.bots.map((b) => entry(b, "row"))}
-                </div>
-              </section>
-            ))}
-            {layout.rest.length > 0 && (
-              <section aria-label="Bots" data-testid="rest-section">
-                <SidebarLabel>Bots</SidebarLabel>
-                <div className="flex flex-col gap-0.5">
-                  {layout.rest.map((b) => entry(b, "row"))}
-                </div>
-              </section>
-            )}
+                  <SidebarLabel>{group.name}</SidebarLabel>
+                  <div className="flex flex-col gap-0.5">
+                    {group.bots.map((b) => entry(b, "row"))}
+                  </div>
+                </section>
+              ))}
+              {layout.rest.length > 0 && (
+                <section aria-label="Bots" data-testid="rest-section">
+                  <SidebarLabel>Bots</SidebarLabel>
+                  <div className="flex flex-col gap-0.5">
+                    {layout.rest.map((b) => entry(b, "row"))}
+                  </div>
+                </section>
+              )}
+            </div>
+            <ScrollFade tone="sidebar" />
           </div>
-          <div className="relative flex flex-none items-center gap-1 pt-2">
-            {ownerButton("bar")}
-            <span className="flex-1" />
-            <RoundButton label="Buscar e ações" tone="raised" onClick={() => ui().setPalette(true)}>
-              <LayoutGrid size={18} aria-hidden="true" />
-            </RoundButton>
-          </div>
+          <div className="relative flex flex-none items-center pt-2">{ownerButton("bar")}</div>
         </>
       )}
       {resizer}

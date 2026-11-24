@@ -133,9 +133,7 @@ describe("deriveRunDisplay (FRONTEND.md sections 4 and 11)", () => {
     expect(deriveRunDisplay(null).avatar).toBe("idle");
     expect(state({ status: "running" })).toBe("working");
     expect(state({ status: "running" }, [call(1, "c1", "shell")])).toBe("working");
-    expect(state({ status: "running" }, [call(1, "c1", "shell"), result(2, "c1")])).toBe(
-      "working",
-    );
+    expect(state({ status: "running" }, [call(1, "c1", "shell"), result(2, "c1")])).toBe("working");
     expect(state({ status: "running", paused: true })).toBe("paused");
     expect(state({ status: "waiting_user" })).toBe("asking");
     expect(state({ status: "waiting_approval" })).toBe("asking");

@@ -2,7 +2,6 @@ import { X } from "lucide-react";
 import { useState } from "react";
 import { useData } from "../../app/context.js";
 import { useUi } from "../../app/ui-store.js";
-import { cx } from "../../lib/cx.js";
 import { PANEL_SPEC } from "../../lib/pane-size.js";
 import { Avatar } from "../../ui/avatar.js";
 import { LibraryList } from "../../ui/library-list.js";
@@ -16,6 +15,13 @@ const TABS = [
   { id: "library", label: "Biblioteca" },
 ] as const;
 
+/**
+ * Where the panel's close sits: the top right of the panel; with the app's own window buttons, on
+ * their strip (centred on its 32 px) and just left of them.
+ */
+export const PANEL_CLOSE =
+  "absolute top-3 right-3 framed:top-0.5 framed:right-window-controls framed:mr-2";
+
 /** The bot's panel on the right: who it is, and two tabs, Atividade and Biblioteca. */
 export function Panel({ botId }: { botId: string }) {
   const bot = useData((s) => s.bots[botId]);
@@ -25,7 +31,6 @@ export function Panel({ botId }: { botId: string }) {
   const panelWidth = useUi((s) => s.panelWidth);
   const setPanelLayout = useUi((s) => s.setPanelLayout);
   const routineId = useUi((s) => s.panelRoutineId);
-  const customFrame = useUi((s) => s.customFrame);
   const [now] = useState(() => new Date());
   if (bot === undefined) return null;
   const resize = (
@@ -53,16 +58,20 @@ export function Panel({ botId }: { botId: string }) {
   return (
     <aside className={frame} aria-label={`Painel de ${bot.name}`} data-testid="panel">
       <div
-        className="relative flex flex-none flex-col items-center gap-4 px-5 pt-14 pb-5"
+        className="relative flex flex-none flex-col items-center gap-3 px-5 pt-12 pb-5"
         data-tauri-drag-region
       >
+        {/* The close: the outline round button, on the line of the window's own buttons and just
+            left of them (owner, 23/11/2026, as in the Grok Bot). */}
         <RoundButton
           label="Fechar o painel"
-          tone="ghost"
-          className={cx("absolute top-3", customFrame ? "right-37.5" : "right-3")}
+          tone="outline"
+          size="xs"
+          className={PANEL_CLOSE}
           onClick={togglePanel}
+          data-testid="panel-close"
         >
-          <X size={18} aria-hidden="true" />
+          <X size={14} aria-hidden="true" />
         </RoundButton>
         <Avatar
           avatar={bot.avatar}
@@ -70,7 +79,7 @@ export function Panel({ botId }: { botId: string }) {
           pixel3d={bot.avatarPixel3d}
           color={bot.color}
           seed={bot.id}
-          size="xl"
+          size="lg"
           supervisor={bot.isDefault}
         />
         <h2 className="text-title font-label">{bot.name}</h2>

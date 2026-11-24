@@ -4,12 +4,14 @@ import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState }
 import { useServices } from "../../app/context.js";
 import { useSettings } from "../../app/settings-store.js";
 import { FRIENDLY_FAILURE } from "../../data/derive.js";
+import { cx } from "../../lib/cx.js";
 import { SOMETHING_WRONG } from "../../lib/friendly-error.js";
 import { ActionFold, ActionList } from "../../ui/action-card.js";
 import { EndedLine, WorkingIndicator } from "../../ui/chat-lines.js";
 import { BotMessage, EventLine, UserMessage } from "../../ui/message.js";
 import { Pill, RoundButton } from "../../ui/primitives.js";
 import { QuestionCard } from "../../ui/question-card.js";
+import { ScrollFade } from "../../ui/scroll-fade.js";
 import { TeamCard } from "../../ui/team-card.js";
 import { ApprovalRow, CallRow, callKey, SecretRequestRow } from "./ApprovalRows.js";
 import { bubblePositions, isChoiceCard, type TimelineItem } from "./timeline.js";
@@ -37,6 +39,7 @@ export function MessageList({
   phrase,
   announce,
   empty,
+  head,
 }: {
   items: readonly TimelineItem[];
   runs: Record<string, Run>;
@@ -58,6 +61,11 @@ export function MessageList({
   phrase: string;
   /** A short text for the live region (a new bot message). */
   announce: string;
+  /**
+   * What floats over the top of the log (the bot's pill): on a fade from the page's colour to
+   * transparent, so the messages melt under it instead of being cut by a hard edge ("Nada seco").
+   */
+  head?: ReactNode;
   empty?: ReactNode;
 }) {
   const { platform } = useServices();
@@ -121,7 +129,10 @@ export function MessageList({
     <div className="relative flex min-h-0 flex-1 flex-col">
       <div
         ref={ref}
-        className="min-h-0 flex-1 overflow-y-auto px-5 py-4"
+        className={cx(
+          "min-h-0 flex-1 overflow-y-auto px-5 pb-4",
+          head === undefined ? "pt-4" : "pt-chat-head",
+        )}
         onScroll={onScroll}
         data-testid="message-scroll"
       >
@@ -297,8 +308,18 @@ export function MessageList({
           {announce}
         </div>
       </div>
+      {head !== undefined && (
+        <header
+          className="absolute inset-x-0 top-0 z-10 flex h-chat-head justify-center bg-linear-to-b from-bg from-40% to-transparent px-4 pt-3"
+          data-testid="chat-head"
+          data-tauri-drag-region
+        >
+          {head}
+        </header>
+      )}
+      <ScrollFade edges={["bottom"]} />
       {away && (
-        <div className="absolute bottom-3 left-1/2 -translate-x-1/2">
+        <div className="absolute bottom-3 left-1/2 z-20 -translate-x-1/2">
           <RoundButton
             label="Ir para o fim da conversa"
             tone="raised"

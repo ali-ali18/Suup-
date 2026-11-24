@@ -85,15 +85,23 @@ const ROUND_TONE = {
   /** The send button of the composer: the bot's colour (the neutral bubble setting turns it off). */
   bot: "border-transparent bg-bot-fill text-bot-on-fill bubble-neutral:bg-bg-inverse bubble-neutral:text-text-inverse",
   ghost: "border-transparent bg-transparent text-text enabled:hover:bg-hover",
+  /** The project's outline button: a thin ring, no fill (the panel's close, as in the Grok Bot). */
+  outline: "border-border-strong bg-transparent text-text enabled:hover:bg-hover",
 } as const;
 
-const ROUND_SIZE = { md: "size-control", circle: "size-icon-circle", sm: "size-8" } as const;
+const ROUND_SIZE = {
+  md: "size-control",
+  circle: "size-icon-circle",
+  sm: "size-8",
+  /** 28 px: beside the window's own buttons, centred on their 32 px strip. */
+  xs: "size-7",
+} as const;
 
 export interface RoundButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   tone?: keyof typeof ROUND_TONE;
   /** Buttons without text need a name for screen readers. */
   label: string;
-  size?: "md" | "circle" | "sm";
+  size?: keyof typeof ROUND_SIZE;
   ref?: Ref<HTMLButtonElement>;
 }
 

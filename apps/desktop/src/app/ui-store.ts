@@ -35,6 +35,12 @@ export interface UiState {
   /** The connector whose details are open in Conectores (`null`: the list). Clicking "Conectores" in the nav, or Esc, goes back to the list. */
   settingsConnector: string | null;
   selectedBotId: string | null;
+  /**
+   * The person chose the open bot (a click, the palette, "Editar"): only then the sidebar marks it.
+   * The bot the app opens on its own (the main one, at start) is shown but not highlighted (owner,
+   * 23/11/2026: "nenhum bot selecionado sem eu ter selecionado").
+   */
+  botPicked: boolean;
   panelOpen: boolean;
   /** The window has no system title bar, so the app draws its own controls (see `WindowFrame`). */
   customFrame: boolean;
@@ -146,6 +152,7 @@ export const useUi = create<UiState>((set, get) => ({
   settingsTab: "general",
   settingsConnector: null,
   selectedBotId: null,
+  botPicked: false,
   customFrame: false,
   // Closed by default on narrow windows (the layout has no room for three columns there).
   // Quem abriu ou fechou o painel guardou a escolha; sem ela, aberto só em janelas largas.
@@ -162,6 +169,7 @@ export const useUi = create<UiState>((set, get) => ({
     set((s) => ({
       view: "chat",
       selectedBotId: input.botId,
+      botPicked: true,
       chatPrefill: { ...input, nonce: (s.chatPrefill?.nonce ?? 0) + 1 },
     })),
   takeChatPrefill: () => set({ chatPrefill: null }),
@@ -219,6 +227,7 @@ export const useUi = create<UiState>((set, get) => ({
       settingsOpen: false,
       settingsConnector: null,
       selectedBotId: null,
+      botPicked: false,
       inspectorRunId: null,
       newBotOpen: false,
       editBotId: null,
@@ -233,6 +242,7 @@ export const useUi = create<UiState>((set, get) => ({
     set((s) => ({
       view: "chat",
       selectedBotId: botId,
+      botPicked: true,
       // The detail of a routine belongs to the bot it was opened on.
       panelRoutineId: s.selectedBotId === botId ? s.panelRoutineId : null,
     })),

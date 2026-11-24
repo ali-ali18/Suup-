@@ -81,9 +81,10 @@ test.describe("approval cards", () => {
       "question",
     );
     await expect(page.getByTestId("pending-counter")).toHaveText("1");
+    // waiting for you is "asking" (the face stays a face: never the orbit; docs/DESIGN.md §6)
     await expect(botItem(page, "Aprovador").locator("[data-mascot]")).toHaveAttribute(
       "data-state",
-      "waiting",
+      "asking",
     );
     await expect(page.getByTestId("approval-announcer")).toContainText("Aprovador pede aprovação");
     // The card took the focus when it appeared (the card, not a button: a stray Enter decides nothing).

@@ -6,6 +6,7 @@ import {
   drawPixelFrame,
   drawPixelImage,
   layoutPixels,
+  PIXEL_GRID,
   type PixelCharacterId,
   type PixelClockHandle,
   type PixelLayout,
@@ -87,11 +88,14 @@ export function PixelMascot({
     const measure = () => {
       const rect = box.getBoundingClientRect();
       ratio = window.devicePixelRatio || 1;
-      layout = layoutPixels(
-        Math.min(rect.width, rect.height),
-        ratio,
-        pixel3d ? RASTER_SIZE : undefined,
-      );
+      const side = Math.min(rect.width, rect.height);
+      // 3D: the image has a margin around the 19 x 19 grid (room for the turned solid). The canvas
+      // is drawn that much bigger than the box, overflowing it evenly, so each cell is as big as in
+      // the flat drawing and the mascot keeps the size of the shapes (owner, 23/11/2026: "no 3D o
+      // mascote fica minúsculo"); the margin is transparent.
+      layout = pixel3d
+        ? layoutPixels((side * RASTER_SIZE) / PIXEL_GRID, ratio, RASTER_SIZE)
+        : layoutPixels(side, ratio);
       el.width = layout.buffer;
       el.height = layout.buffer;
       // O estilo mede o buffer em pixels CSS: a tela não reescala (e não borra) o desenho.
@@ -161,7 +165,7 @@ export function PixelMascot({
       data-mode={animated ? "animated" : "still"}
       aria-hidden="true"
     >
-      <canvas ref={canvas} className="block" style={{ imageRendering: "pixelated" }} />
+      <canvas ref={canvas} className="block flex-none" style={{ imageRendering: "pixelated" }} />
     </span>
   );
 }

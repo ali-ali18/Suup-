@@ -138,8 +138,11 @@ describe("PixelMascot", () => {
       for (const n of [r.x, r.y, r.w, r.h]) expect(Number.isInteger(n)).toBe(true);
     expect(rects.some((r) => r.style === "#2fb36b")).toBe(true);
     const canvasEl = container.querySelector("canvas") as HTMLCanvasElement;
-    expect(rects.every((r) => r.h === 1)).toBe(true); // 38 px a 1x: 1 px por voxel (grade de 25)
-    expect(canvasEl.width).toBe(38);
+    // 38 px a 1x: a célula do 3D tem o MESMO tamanho da do desenho plano (2 px, 38 / 19), para o
+    // mascote não encolher no 3D (dono, 23/11/2026); o canvas cresce na proporção da margem do giro
+    // (25 / 19) e transborda a caixa por igual.
+    expect(rects.every((r) => r.h === 2)).toBe(true);
+    expect(canvasEl.width).toBe(50);
   });
 
   it("sem a opção, não há 3D", () => {

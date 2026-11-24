@@ -265,50 +265,49 @@ function ChatForBot({ botId }: { botId: string }) {
         className="flex min-h-0 min-w-chat-min flex-[1_0_var(--width-chat-min)] flex-col"
         aria-label={`Conversa com ${bot.name}`}
       >
-        <header
-          className="flex min-h-15.5 flex-none justify-center px-4 pt-3"
-          data-tauri-drag-region
-        >
-          <button
-            type="button"
-            className="group/chip inline-flex h-control max-w-bot-chip items-center gap-2 rounded-pill border border-border-strong bg-transparent py-0 pr-3.5 pl-1.5 text-label hover:bg-hover"
-            aria-expanded={panelOpen}
-            aria-haspopup="menu"
-            aria-label={`${bot.name}. ${panelOpen ? "Fechar" : "Abrir"} o painel do bot. Menu de contexto para controlar a execução`}
-            data-testid="bot-chip"
-            data-run={display.chip ?? ""}
-            onClick={togglePanel}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              setMenu({ x: e.clientX, y: e.clientY });
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
-                e.preventDefault();
-                const rect = e.currentTarget.getBoundingClientRect();
-                setMenu({ x: rect.left, y: rect.bottom + 4 });
-              }
-            }}
-          >
-            <Avatar
-              avatar={bot.avatar}
-              avatarStyle={bot.avatarStyle}
-              pixel3d={bot.avatarPixel3d}
-              color={bot.color}
-              seed={bot.id}
-              size="sm"
-              state={display.avatar}
-              supervisor={bot.isDefault}
-            />
-            <span className="min-w-0 truncate font-label">{bot.name}</span>
-            <ChevronRight
-              size={16}
-              aria-hidden="true"
-              className="hidden flex-none group-hover/chip:block group-focus-visible/chip:block"
-            />
-          </button>
-        </header>
         <MessageList
+          head={
+            <button
+              type="button"
+              className="group/chip inline-flex h-11 max-w-bot-chip items-center gap-2.5 rounded-pill border border-border-strong bg-bg py-0 pr-4 pl-2 text-label transition-colors hover:bg-hover"
+              aria-expanded={panelOpen}
+              aria-haspopup="menu"
+              aria-label={`${bot.name}. ${panelOpen ? "Fechar" : "Abrir"} o painel do bot. Menu de contexto para controlar a execução`}
+              data-testid="bot-chip"
+              data-run={display.chip ?? ""}
+              onClick={togglePanel}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setMenu({ x: e.clientX, y: e.clientY });
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+                  e.preventDefault();
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setMenu({ x: rect.left, y: rect.bottom + 4 });
+                }
+              }}
+            >
+              <Avatar
+                avatar={bot.avatar}
+                avatarStyle={bot.avatarStyle}
+                pixel3d={bot.avatarPixel3d}
+                color={bot.color}
+                seed={bot.id}
+                size="sm"
+                state={display.avatar}
+                supervisor={bot.isDefault}
+              />
+              <span className="min-w-0 truncate font-label">{bot.name}</span>
+              {/* The chevron grows in on hover or focus, never pops (docs/DESIGN.md §1 "Nada seco"). */}
+              <ChevronRight
+                size={16}
+                aria-hidden="true"
+                data-testid="bot-chip-chevron"
+                className="-ml-2.5 w-0 flex-none -translate-x-1 opacity-0 transition-all duration-(--duration-base) ease-out group-hover/chip:ml-0 group-hover/chip:w-4 group-hover/chip:translate-x-0 group-hover/chip:opacity-100 group-focus-visible/chip:ml-0 group-focus-visible/chip:w-4 group-focus-visible/chip:translate-x-0 group-focus-visible/chip:opacity-100"
+              />
+            </button>
+          }
           items={items}
           botName={bot.name}
           hasOlder={slice?.hasOlder ?? false}

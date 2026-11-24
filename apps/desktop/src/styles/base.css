@@ -56,6 +56,8 @@ html[data-resizing] {
 html[data-resizing] * {
   cursor: col-resize !important;
   user-select: none !important;
+  /* the pane follows the pointer, no easing behind it */
+  transition: none !important;
 }
 
 @media (prefers-reduced-motion: reduce) {

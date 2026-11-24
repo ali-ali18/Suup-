@@ -749,9 +749,13 @@ describe("o Principal é o supervisor: a estrela, a revisão e o silêncio sobre
     const tokens = read(join(SRC, "styles", "tokens.css"));
     expect(tokens).toContain("--size-star-badge:");
     expect(tokens).toContain("--size-star-badge-lg:");
-    // nenhuma outra peça desenha um ícone de estrela sobre um avatar
+    // nenhuma outra peça desenha uma estrela sobre um avatar (nem a do lucide)
     const drawers = files(SRC, /\.tsx$/)
-      .filter((f) => /\bStar\b/.test(read(f)) && /from "lucide-react"/.test(read(f)))
+      .filter(
+        (f) =>
+          read(f).includes("STAR_PATH") ||
+          (/\bStar\b/.test(read(f)) && /from "lucide-react"/.test(read(f))),
+      )
       .map(rel);
     expect(drawers).toEqual([join("ui", "avatar.tsx")]);
   });
@@ -784,7 +788,9 @@ describe("o Principal é o supervisor: a estrela, a revisão e o silêncio sobre
   it("salvar e esquecer uma memória não aparecem no chat como linha nem como indicador (decisão do dono)", () => {
     const derive = read(join(SRC, "data", "derive.ts"));
     expect(derive).toContain("SILENT_TOOLS");
-    expect(derive).toMatch(/SILENT_TOOLS[^\n]*new Set\(\["remember", "forget"/);
+    expect(derive).toContain("export const SILENT_TOOLS");
+    for (const tool of ["remember", "forget", "create_reminder"])
+      expect(derive).toContain(`"${tool}",`);
     expect(read(join(SRC, "data", "actions.ts"))).toContain("SILENT_TOOLS.has(name)");
   });
 });
@@ -971,7 +977,15 @@ describe("a janela não tem barra do sistema: os controles são do app (docs/DES
     const app = read(join(SRC, "app", "App.tsx"));
     expect(app).toContain("customFrame && platform?.frame !== undefined");
     const panel = read(join(SRC, "features", "panel", "Panel.tsx"));
-    expect(panel).toContain('customFrame ? "right-37.5" : "right-3"');
+    // the close sits on the strip of the window buttons, just left of them (docs/DESIGN.md §4c)
+    expect(panel).toContain("framed:right-window-controls");
+    expect(panel).toContain('tone="outline"');
+    expect(read(join(SRC, "styles", "theme.css"))).toContain(
+      '@custom-variant framed (:root[data-frame="custom"] &);',
+    );
+    expect(app).toContain('root.dataset.frame = "custom"');
+    // every screen head keeps the corner of the window buttons free
+    expect(read(join(SRC, "ui", "screen.tsx"))).toContain("framed:pr-head-end");
     const controls = read(join(SRC, "ui", "window-controls.tsx"));
     for (const label of ["Minimizar", "Fechar a janela"]) expect(controls).toContain(label);
   });
@@ -1268,5 +1282,142 @@ describe('amigável: nada de log para o usuário (dono, 23/11/2026: "a ideia é 
     ] as const) {
       expect(read(file).includes(raw), `${rel(file)}: ${raw}`).toBe(false);
     }
+  });
+});
+
+describe("nada seco: nada aparece, some ou corta de repente (docs/DESIGN.md §1, dono 23/11/2026)", () => {
+  const components = files(SRC, /\.tsx$/);
+  /** Every quoted class list of a file (the text between double quotes that has a space). */
+  const classLists = (text: string): string[] =>
+    text
+      .split('"')
+      .filter((_, i) => i % 2 === 1)
+      .filter((chunk) => chunk.includes(" ") || chunk.includes(":"));
+
+  it("as áreas que rolam têm degradê nas bordas", () => {
+    expect(read(join(SRC, "ui", "screen.tsx"))).toContain("<ScrollFade />");
+    expect(read(join(SRC, "features", "chat", "MessageList.tsx"))).toContain("<ScrollFade");
+    expect(read(join(SRC, "features", "chat", "MessageList.tsx"))).toContain(
+      "bg-linear-to-b from-bg",
+    );
+    const sidebar = read(join(SRC, "features", "shell", "Sidebar.tsx"));
+    expect(sidebar.split('<ScrollFade tone="sidebar" />').length - 1).toBe(2);
+  });
+
+  it("nada surge no hover com hidden/block, e o que muda de opacidade no hover tem transição", () => {
+    const offenders: string[] = [];
+    for (const file of components) {
+      const lists = classLists(read(file));
+      // a variant map (a tone) carries the hover; the piece's base class carries the transition
+      const baseFades = lists.some(
+        (l) => l.includes("transition-[background-color,opacity]") || l.includes("transition-all"),
+      );
+      for (const [index, list] of lists.entries()) {
+        const words = list.split(" ");
+        // the same piece's classes are often split in a few strings of one cx(...) (base + tone)
+        const near = lists
+          .slice(Math.max(0, index - 3), index + 4)
+          .join(" ")
+          .split(" ");
+        const showsOnHover = words.some(
+          (w) =>
+            (w.includes("hover") || w.includes("focus")) &&
+            (w.endsWith(":block") || w.endsWith(":flex") || w.endsWith(":inline-flex")),
+        );
+        const fadesOnHover = words.some(
+          (w) => (w.includes("hover") || w.includes("focus")) && w.includes(":opacity-"),
+        );
+        if (showsOnHover) offenders.push(`${rel(file)}: ${list}`);
+        if (fadesOnHover && !baseFades && !near.some((w) => w.includes("transition")))
+          offenders.push(`${rel(file)}: ${list}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("o que aparece entra esmaecendo e a barra lateral anima a largura (sem transição no arrasto)", () => {
+    expect(read(join(SRC, "styles", "theme.css"))).toContain("@keyframes ui-fade-in");
+    expect(read(join(SRC, "features", "shell", "Sidebar.tsx"))).toContain(
+      "transition-[width] duration-(--duration-base)",
+    );
+    expect(read(join(SRC, "styles", "base.css"))).toContain("transition: none !important;");
+  });
+});
+
+describe("ajustes do dono de 23/11/2026 (docs/DESIGN.md §2, §4a, §4c, §5, §6)", () => {
+  const sidebar = read(join(SRC, "features", "shell", "Sidebar.tsx"));
+
+  it("telas cheias: coluna centralizada de largura máxima, e o cabeçalho guarda o canto dos botões da janela", () => {
+    const screen = read(join(SRC, "ui", "screen.tsx"));
+    expect(screen).toContain("max-w-screen-max");
+    expect(screen).toContain("mx-auto");
+    expect(screen).toContain("framed:pr-head-end");
+    expect(read(join(SRC, "styles", "tokens.css"))).toContain("--width-screen-max:");
+    // a página de um conector usa o mesmo cabeçalho; nenhuma tela desenha <header> próprio
+    const connectors = read(join(SRC, "features", "plugins", "ConnectorsScreen.tsx"));
+    expect(connectors).toContain("<ScreenHeader>");
+    expect(connectors).not.toContain("<header");
+  });
+
+  it("barra lateral: sem bot marcado sem escolha, só o nome no trilho, 'Sem interação', nada selecionável", () => {
+    expect(sidebar).toContain('view === "chat" && picked ? selected : null');
+    expect(sidebar).toContain('data-testid="rail-tip"');
+    expect(sidebar).toContain("{tip.name}");
+    expect(sidebar).toContain('"Sem interação"');
+    expect(sidebar).not.toContain("Sem mensagens");
+    expect(sidebar).toContain("select-none");
+    // o rodapé tem só a conta; o menu dela tem ícones
+    expect(sidebar).not.toContain("Buscar e ações");
+    for (const icon of ["Inbox", "Brain", "Plug", "Settings", "Keyboard", "LogOut"])
+      expect(sidebar).toContain(`icon: ${icon}`);
+  });
+
+  it("a pílula do chat flutua num degradê e o chevron entra animado", () => {
+    const chat = read(join(SRC, "features", "chat", "ChatScreen.tsx"));
+    expect(chat).toContain("head={");
+    expect(chat).toContain("group-hover/chip:opacity-100");
+    expect(chat).not.toContain("hidden flex-none group-hover");
+  });
+
+  it("criar bot: branco por padrão e contorno discreto do escolhido", () => {
+    const dialog = read(join(SRC, "features", "new-bot", "NewBotDialog.tsx"));
+    expect(dialog).toContain('DEFAULT_NEW_COLOR: BotColor = "branco"');
+    expect(dialog).not.toContain("ring-text");
+    expect(read(join(SRC, "styles", "tokens.css"))).toContain("var(--color-picked-ring)");
+  });
+
+  it("a estrela do Principal é o marcador laranja do desenho do dono, com o rosto recortado em volta", () => {
+    const avatar = read(join(SRC, "ui", "avatar.tsx"));
+    const tokens = read(join(SRC, "styles", "tokens.css"));
+    for (const token of [
+      "--color-star-badge: #ff9800",
+      "--color-star-glyph: #fcfcfc",
+      "--color-status-working: #22c55e",
+      "--color-status-unread: #2496e8",
+    ])
+      expect(tokens).toContain(token);
+    expect(avatar).toContain("bg-star-badge text-star-glyph");
+    expect(avatar).toContain("maskImage: notch");
+    // the corner: working > unread > the star, and the sidebar feeds the first two
+    expect(avatar).toContain('if (s.working === true) return "working";');
+    const sidebar = read(join(SRC, "features", "shell", "Sidebar.tsx"));
+    expect(sidebar).toContain("working={working}");
+    expect(sidebar).toContain("unread={unread > 0}");
+    expect(avatar).not.toContain("border-2 border-bg");
+  });
+});
+
+describe("o chat não mostra pesquisa na web nem erro cru de ferramenta (docs/DESIGN.md §3, dono 24/11/2026)", () => {
+  it("buscar e ler páginas são o bot trabalhando: nenhuma linha no chat (ficam no Inspetor)", () => {
+    const derive = read(join(SRC, "data", "derive.ts"));
+    const silent = derive.slice(derive.indexOf("export const SILENT_TOOLS"));
+    for (const tool of ["web_search", "web_read", "web_fetch"])
+      expect(silent.slice(0, silent.indexOf("]);"))).toContain(`"${tool}"`);
+  });
+
+  it("uma chamada que falhou diz isso numa frase, nunca o texto de erro da ferramenta", () => {
+    const row = read(join(SRC, "features", "chat", "ActionRow.tsx"));
+    expect(row).toContain('data-testid="action-failed"');
+    expect(row).not.toContain('error={item.state === "failed"}');
   });
 });

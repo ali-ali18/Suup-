@@ -16,7 +16,7 @@ import {
   Pill,
   SearchField,
 } from "../../ui/primitives.js";
-import { Screen, ScreenBody, ScreenHead } from "../../ui/screen.js";
+import { Screen, ScreenBody, ScreenHead, ScreenHeader } from "../../ui/screen.js";
 import { SecretDialog } from "../settings/VaultSettings.js";
 import { type Appearance, appearanceOf, type Banner, CATEGORIES, type Tone } from "./appearance.js";
 import { type Connect, POLL_MS, useConnect } from "./use-connect.js";
@@ -55,7 +55,9 @@ const PLUG_FG: Record<Tone, string> = {
 
 /** The rounded square and the logo inside it, per size. */
 const TILE = {
-  sm: { box: "size-avatar-sm rounded-chip ring-2 ring-bg", logo: "size-4" },
+  /* Round inside the "Meus conectores" pill: a square tile's corners poked out of the pill's round
+     end (owner, 24/11/2026). */
+  sm: { box: "size-avatar-sm rounded-pill ring-2 ring-bg", logo: "size-4" },
   lg: { box: "size-avatar-lg rounded-row", logo: "size-7" },
 } as const;
 
@@ -202,7 +204,7 @@ function MyConnectors({ entries, onOpen }: { entries: Entry[]; onOpen(): void })
   return (
     <button
       type="button"
-      className="inline-flex h-control items-center gap-3 rounded-pill border border-border bg-transparent py-1 pr-1.5 pl-3 text-label text-text hover:bg-hover"
+      className="inline-flex h-control items-center gap-3 rounded-pill border border-border bg-transparent py-1 pr-1.5 pl-4 text-label text-text hover:bg-hover"
       data-testid="connectors-mine"
       onClick={onOpen}
     >
@@ -458,7 +460,7 @@ function ConnectorPage({
 
   return (
     <Screen data-testid="connector-page" data-plugin={item.entry.id}>
-      <header className="flex flex-none flex-col gap-4 px-6 pt-5 pb-3" data-tauri-drag-region>
+      <ScreenHeader>
         <nav aria-label="Caminho" className="flex items-center gap-1 text-small">
           <button
             type="button"
@@ -486,7 +488,7 @@ function ConnectorPage({
           </div>
           <MainAction entry={entry} connect={connect} canLogIn={canLogIn} />
         </div>
-      </header>
+      </ScreenHeader>
       <ScreenBody>
         {look.examples.length > 0 && (
           <section

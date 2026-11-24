@@ -35,7 +35,7 @@ export function Shell() {
     const current = selected === null ? undefined : bots[selected];
     if (current === undefined || current.archivedAt !== null) {
       const main = list.find((b) => b.isDefault) ?? list[0];
-      if (main !== undefined) useUi.setState({ selectedBotId: main.id });
+      if (main !== undefined) useUi.setState({ selectedBotId: main.id, botPicked: false });
     }
   }, [loaded, selected, bots, list]);
 
