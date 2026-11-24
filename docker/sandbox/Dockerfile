@@ -37,7 +37,6 @@ RUN --mount=type=secret,id=build_ca,required=false,mode=0444 \
         findutils \
         git \
         jq \
-        pandoc \
         procps \
         python3 \
         python3-docx \
