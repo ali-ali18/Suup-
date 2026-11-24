@@ -4,6 +4,8 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
   allowRecipientSentence,
   approvalTitle,
+  decidedDetail,
+  decidedLabel,
   expiryText,
   instructionLine,
   LEVEL_HINT,
@@ -14,8 +16,6 @@ import {
   parseConnectorTool,
   ruleSentence,
   SOURCE_REASON,
-  STATUS_DETAIL,
-  STATUS_LABEL,
   toolCategory,
   toolTitle,
 } from "../data/approval-text.js";
@@ -423,13 +423,13 @@ function ResolvedCard({
       icon={categoryGlyph(category.icon)}
       kind={category.label}
       state={state}
-      stateLabel={STATUS_LABEL[approval.status] ?? approval.status}
+      stateLabel={decidedLabel(approval)}
       summary={title}
       expanded={expanded}
       onToggle={onToggle}
     >
       <ActionLabel data-testid="approval-detail">
-        {toolTitle(approval.tool, connectors)} · {botName}. {STATUS_DETAIL[approval.status] ?? ""}
+        {toolTitle(approval.tool, connectors)} · {botName}. {decidedDetail(approval)}
         {decided !== undefined &&
           ` Decidido às ${decided.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}.`}
       </ActionLabel>

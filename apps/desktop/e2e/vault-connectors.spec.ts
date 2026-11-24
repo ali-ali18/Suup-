@@ -82,11 +82,8 @@ test.describe("secret requests and the vault", () => {
     await expect(page.getByTestId("secret-card")).toContainText("Segredo E2E_TOKEN disponível");
     await expect(page.getByTestId("secret-card")).toHaveAttribute("data-state", "done");
     await expect(botMessage(page, "Recebi o segredo e usei.")).toBeVisible();
-    const echo = page.getByTestId("action-card").filter({ hasText: "echo token-recebido" });
-    await echo.getByRole("button").click();
-    await expect(echo.getByTestId("action-output")).toContainText(
-      "token-recebido=[REDACTED:E2E_TOKEN]",
-    );
+    // The command is no row in the chat (steps live in the Inspector); what it printed is in the run's log.
+    await expect(page.getByTestId("action-card")).toHaveCount(0);
     // The value appears nowhere: the DOM, the browser's storage, anything the server answered.
     expect(await page.content()).not.toContain(VALUE);
     const storage = await page.evaluate(() =>
@@ -101,6 +98,7 @@ test.describe("secret requests and the vault", () => {
     const runs = await world.api.runs.list({ botId: bot });
     const events = await world.api.runs.events(runs.items[0]?.id as string, { limit: 500 });
     expect(JSON.stringify(events)).not.toContain(VALUE);
+    expect(JSON.stringify(events)).toContain("token-recebido=[REDACTED:E2E_TOKEN]");
     const conversation = await world.api.bots.openConversation(bot);
     expect(
       JSON.stringify(await world.api.conversations.messages(conversation.id, { limit: 100 })),
@@ -379,16 +377,14 @@ test.describe("connectors", () => {
     );
     await card.getByTestId("approval-approve").click();
     await expect(botMessage(page, "Criei a coisa no conector.")).toBeVisible();
-    // The row says the tool in words, never the internal `conn_<connector>__<tool>` name.
-    const action = page.getByTestId("action-card").filter({ hasText: "Usar “write thing”" });
-    await expect(action).toBeVisible();
-    await expect(action).not.toContainText("conn_fake__write_thing");
-    // One row for the call, with the connector's name as its category, the same as on the card.
-    await expect(page.getByTestId("action-card")).toHaveCount(1);
-    await expect(action.locator('[data-testid="action-kind"]')).toHaveText("fake");
-    await expect(action).toContainText("Aprovado e concluído");
-    await action.getByRole("button").click();
-    await expect(action.getByTestId("action-output")).toContainText("wrote coisa");
+    // The call is no row; the decision stays as one line, with the connector's name as its category.
+    await expect(page.getByTestId("action-card")).toHaveCount(0);
+    const decided = page.getByTestId("approval-card");
+    await expect(decided).toHaveCount(1);
+    await expect(decided).toHaveAttribute("data-state", "done");
+    await expect(decided.locator('[data-testid="action-kind"]')).toHaveText("fake");
+    await expect(decided).toContainText("Aprovado");
+    await expect(decided).not.toContainText("conn_fake__write_thing");
     // Removing it asks first; the bot loses the tools.
     await openSettings(page, "Conectores");
     await page

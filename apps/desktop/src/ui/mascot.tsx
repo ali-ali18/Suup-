@@ -66,6 +66,11 @@ export interface MascotProps {
   still?: boolean;
   /** O escolhido numa lista: a forma é contornada, em vez de ganhar uma caixa em volta. */
   picked?: boolean;
+  /**
+   * O avatar vivo do chat: respira e tem o movimento contínuo de cada atividade (o "cérebro" do
+   * motor: lendo e programando se mexem diferente) mesmo pequeno. Sem isso, só os grandes.
+   */
+  lively?: boolean;
 }
 
 /**
@@ -152,6 +157,7 @@ export function Mascot({
   seed = shape,
   still = false,
   picked = false,
+  lively = false,
 }: MascotProps) {
   const host = useContext(MascotHostContext);
   const systemReduced = useReducedMotion();
@@ -191,8 +197,8 @@ export function Mascot({
       state: latest.current,
       size: px,
       // Os pequenos só piscam e assentam; respirar e "trabalhar" ficam para os grandes.
-      breathe: px >= 64,
-      brain: px >= 56,
+      breathe: lively || px >= 64,
+      brain: lively || px >= 56,
       budget: BRAIN_BUDGET,
     });
     const handle = (tickerOverride ?? getTicker()).register({
@@ -210,7 +216,7 @@ export function Mascot({
       runtime.dispose();
       live.current = null;
     };
-  }, [animated, character, px, size, tickerOverride]);
+  }, [animated, character, px, size, tickerOverride, lively]);
 
   useLayoutEffect(() => {
     const current = live.current;

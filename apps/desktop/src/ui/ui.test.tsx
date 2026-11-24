@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { ActionCard, ActionFold } from "./action-card.js";
-import { Dots, EndedLine, WorkingIndicator } from "./chat-lines.js";
+import { ActionCard } from "./action-card.js";
+import { EndedLine, WorkingIndicator } from "./chat-lines.js";
 import { Composer } from "./composer.js";
 import { UserMessage } from "./message.js";
 import { Tabs } from "./primitives.js";
@@ -127,16 +127,32 @@ describe("messages and lines", () => {
     );
   });
 
-  it("the working indicator is a status with three dots and the phrase; still when not animated", () => {
+  it("the working indicator is a status with the bot's face and the phrase (no dots)", () => {
     const { container, rerender } = render(
-      <WorkingIndicator phrase="Rodando o comando pnpm test" />,
+      <WorkingIndicator phrase="Pensando" activity="thinking" face={<i data-testid="face" />} />,
     );
-    expect(screen.getByRole("status").textContent).toBe("Rodando o comando pnpm test");
-    expect(container.querySelectorAll('[data-testid="dots-dot"]')).toHaveLength(3);
-    expect(container.querySelector('[data-animated="true"]')).not.toBeNull();
-    rerender(<WorkingIndicator phrase="Pausado" animated={false} />);
-    expect(container.querySelector('[data-animated="true"]')).toBeNull();
-    expect(render(<Dots />).container.querySelectorAll('[data-testid="dots-dot"]')).toHaveLength(3);
+    expect(screen.getByRole("status").textContent).toBe("Pensando…");
+    expect(screen.getByTestId("face")).not.toBeNull();
+    expect(container.querySelector('[data-testid="dots-dot"]')).toBeNull();
+    // A pause is not "going on": no ellipsis.
+    rerender(<WorkingIndicator phrase="Pausado" activity="paused" face={<i />} />);
+    expect(screen.getByRole("status").textContent).toBe("Pausado");
+  });
+
+  it("leaving, it closes smoothly, is no longer announced, and says when its fade ended", () => {
+    const onLeft = vi.fn();
+    const { container } = render(
+      <WorkingIndicator phrase="Pronto" activity="done" face={<i />} leaving onLeft={onLeft} />,
+    );
+    expect(screen.queryByRole("status")).toBeNull();
+    const wrap = container.querySelector('[data-testid="working-wrap"]') as HTMLElement;
+    expect(wrap.dataset.leaving).toBe("true");
+    expect(wrap.className).toContain("grid-rows-[0fr]");
+    expect(wrap.className).toContain("duration-(--duration-leave)");
+    fireEvent.transitionEnd(wrap, { propertyName: "grid-template-rows" });
+    expect(onLeft).not.toHaveBeenCalled();
+    fireEvent.transitionEnd(wrap, { propertyName: "opacity" });
+    expect(onLeft).toHaveBeenCalledOnce();
   });
 });
 
@@ -273,28 +289,5 @@ describe("ActionCard", () => {
       "ComputadorConcluído · Faça o login no ChatGPT",
     );
     expect(screen.getByRole("button", { name: "Abrir computador" })).toBeTruthy();
-  });
-});
-
-describe("ActionFold", () => {
-  it("'Mais N ações' expands in place to show the folded cards", () => {
-    const onToggle = vi.fn();
-    const { rerender } = render(
-      <ActionFold count={4} expanded={false} onToggle={onToggle}>
-        <p>os cartões</p>
-      </ActionFold>,
-    );
-    expect(screen.getByRole("button").textContent).toBe("Mais 4 açõesConcluídas");
-    expect(screen.queryByText("os cartões")).toBeNull();
-    fireEvent.click(screen.getByRole("button"));
-    expect(onToggle).toHaveBeenCalledOnce();
-    rerender(
-      <ActionFold count={4} expanded onToggle={onToggle}>
-        <p>os cartões</p>
-      </ActionFold>,
-    );
-    expect(screen.getByRole("region", { name: "4 ações anteriores" }).textContent).toBe(
-      "os cartões",
-    );
   });
 });

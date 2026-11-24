@@ -8,7 +8,7 @@ import { openWithBot, send } from "./helpers.js";
 // are collapsed lines, and a question with options is the bubble and, apart, the card. Screenshots
 // at 1440x900@2x go to screenshots/1440x900@2x/ (outside git).
 
-test.describe("files in the chat, collapsed rows, the question apart", () => {
+test.describe("files in the chat, no tool rows, the question apart", () => {
   test.skip(DATABASE_URL === undefined, SKIP_REASON);
   let world: World;
   test.afterEach(async () => {
@@ -43,14 +43,10 @@ test.describe("files in the chat, collapsed rows, the question apart", () => {
 
     // The file appears ONCE: the card. The call that handed it over is no row (nor in a fold).
     await expect(page.getByTestId("chat-log").getByText("historia_pucpr.pdf")).toHaveCount(1);
-    await expect(page.getByTestId("action-card")).toHaveCount(2);
+    // The chat shows results only: the terminal calls of the run are no rows at all (steps live in the Inspector).
+    await expect(page.getByTestId("action-card")).toHaveCount(0);
+    await expect(page.getByTestId("action-fold")).toHaveCount(0);
     await expect(page.getByTestId("chat-log")).not.toContainText("Entregar");
-    // The terminal rows of the run are ONE collapsed line each: no command, no output in view.
-    const rows = page.getByTestId("action-card");
-    await expect(rows.first()).toHaveAttribute("data-state", "done");
-    for (const row of await rows.all()) {
-      await expect(row).toHaveAttribute("data-expanded", "false");
-    }
     await expect(page.getByTestId("action-output")).toHaveCount(0);
     await expect(page.getByTestId("chat-log")).not.toContainText("linha 7 do relatório");
 
@@ -67,12 +63,6 @@ test.describe("files in the chat, collapsed rows, the question apart", () => {
     expect(download.suggestedFilename()).toBe("historia_pucpr.pdf");
     const path = await download.path();
     expect(await readFile(path, "utf8")).toBe("%PDF-1.4\n% Historia da PUCPR\n%%EOF\n");
-
-    // A click opens a row in place (the command and its output); the others stay closed.
-    await rows.nth(1).getByRole("button").click();
-    await expect(rows.nth(1)).toHaveAttribute("data-expanded", "true");
-    await expect(page.getByTestId("action-output")).toContainText("linha 7 do relatório");
-    await expect(rows.nth(0)).toHaveAttribute("data-expanded", "false");
   });
 
   test("a question: the bot's words in the bubble, the question as the card's title, the hint; the X locks it", async ({

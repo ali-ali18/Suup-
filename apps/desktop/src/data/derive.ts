@@ -96,32 +96,6 @@ export const CONTROL_TOOLS: ReadonlySet<string> = new Set([
   "propose_team",
 ]);
 
-/**
- * The tools whose calls the chat never shows as a row or an indicator (docs/DESIGN.md, owner's rule:
- * "Eu não quero ter que ficar gerenciando memória"): saving and forgetting a memory are the bot's
- * own housekeeping. Reading (`recall`, `search_conversations`) stays a row, because it explains an
- * answer. A one-time reminder (`create_reminder`) is internal like the return (docs/RETORNO.md, "sem
- * marcador"): the bot's message is the only notice. Web searches and page reads are quiet too
- * (below). A card that WAITS for the user (an approval) is
- * still shown: only the finished call is quiet.
- */
-export const SILENT_TOOLS: ReadonlySet<string> = new Set([
-  "remember",
-  "forget",
-  "create_reminder",
-  // Searching the web and reading a page are the bot working, not something to look at (owner,
-  // 24/11/2026: "não faz sentido aparecer por pesquisas"): the answer says what it used. They stay
-  // in the Inspector, and a card that asks to read a NEW page still waits for the owner.
-  "web_search",
-  "web_read",
-  "web_fetch",
-  // Handing a file over is the file card under the bot's message, never a row too (owner,
-  // 24/11/2026: the file must not appear twice in the thread).
-  "send_file",
-  // The same for a document Suup builds (`create_document`): only the card under the message.
-  "create_document",
-]);
-
 export const toolLabel = (name: string): string => TOOL_LABEL[name] ?? name;
 
 /** The tool that finds the definitions of deferred connector tools (tool search, `meta` and `client` modes). */
@@ -176,7 +150,11 @@ function isActivity(event: RunEvent): boolean {
   ].includes(event.type);
 }
 
-/** A tool call whose result has not arrived: the tool is running. */
+/**
+ * The tool running now: the last call whose result has not arrived (the control tools, which are the
+ * bot's message, a card or nothing at all, do not count). The name is the real tool's (`use_tool`
+ * resolved), compared exactly by whoever reads it.
+ */
 export function runningTool(events: readonly RunEvent[]): string | undefined {
   const resolved = new Set<string>();
   for (const event of events) {
@@ -192,7 +170,7 @@ export function runningTool(events: readonly RunEvent[]): string | undefined {
     const logged = str(event.payload.name);
     if (callId === undefined || logged === undefined) continue;
     const { name } = resolveToolCall(logged, event.payload.args);
-    if (CONTROL_TOOLS.has(name) || SILENT_TOOLS.has(name)) continue;
+    if (CONTROL_TOOLS.has(name)) continue;
     if (!resolved.has(callId)) return name;
   }
   return undefined;

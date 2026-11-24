@@ -2,9 +2,7 @@ import type { Run } from "@suup/api";
 import { ChevronRight, CircleStop, CircleX, Pause, Pencil, Play, ScanSearch } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
-import { useSettings } from "../../app/settings-store.js";
 import { useUi } from "../../app/ui-store.js";
-import { actionsOf, VISIBLE_ACTIONS, workingPhrase } from "../../data/actions.js";
 import { deriveRunDisplay, planOf } from "../../data/derive.js";
 import {
   approvalsOfConversation,
@@ -13,6 +11,7 @@ import {
   orderedMessages,
 } from "../../data/reducers.js";
 import { secretRequestsOf } from "../../data/secret-requests.js";
+import { activityPhrase, chatActivityOf } from "../../lib/chat-activity.js";
 import { colorVars, themeColor } from "../../lib/mascots.js";
 import { Avatar } from "../../ui/avatar.js";
 import { EventLineButton } from "../../ui/chat-lines.js";
@@ -85,9 +84,6 @@ function ChatForBot({ botId }: { botId: string }) {
   const messagesByConversation = useData((s) => s.messages);
   const eventsByRun = useData((s) => s.events);
   const approvals = useData((s) => s.approvals);
-  const connectorsByName = useData((s) => s.connectors);
-  const connectors = useMemo(() => Object.values(connectorsByName), [connectorsByName]);
-  const fold = useSettings((s) => s.settings.fold);
   const panelOpen = useUi((s) => s.panelOpen);
   const togglePanel = useUi((s) => s.togglePanel);
   const openInspector = useUi((s) => s.openInspector);
@@ -162,13 +158,9 @@ function ChatForBot({ botId }: { botId: string }) {
       void sync.markRead(convId);
   }, [convId, unread, messages.length, sync]);
 
-  // The tool calls of the latest run are cards; what is expanded survives new events (keyed by call id).
-  const actions = useMemo(
-    () => (latest === undefined ? [] : actionsOf(latest.id, events, connectors)),
-    [latest, events, connectors],
-  );
-  // The approval cards of the conversation (from the store: the stream and REST) and the secure form
-  // of the run on screen, placed among the actions where they were asked.
+  // The chat shows results only (the tool calls and the steps are in the Inspector): the approval
+  // cards of the conversation (from the store: the stream and REST) and the secure form of the run
+  // on screen, placed where they were asked.
   const cards = useMemo(
     () => (convId === null ? [] : approvalsOfConversation({ approvals, runs }, convId)),
     [approvals, runs, convId],
@@ -178,16 +170,8 @@ function ChatForBot({ botId }: { botId: string }) {
     [latest, events],
   );
   const items = useMemo(
-    () =>
-      buildTimeline(
-        messages,
-        runs,
-        actions,
-        new Date(),
-        fold === "on" ? VISIBLE_ACTIONS : Number.POSITIVE_INFINITY,
-        { approvals: cards, secrets: secretRequests, connectors },
-      ),
-    [messages, runs, actions, fold, cards, secretRequests, connectors],
+    () => buildTimeline(messages, runs, new Date(), { approvals: cards, secrets: secretRequests }),
+    [messages, runs, cards, secretRequests],
   );
   // What the user opened, in THIS conversation: another chat starts with every row collapsed.
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
@@ -214,8 +198,13 @@ function ChatForBot({ botId }: { botId: string }) {
       }),
     [],
   );
-  const phrase =
-    active === undefined ? "Pensando" : workingPhrase(active, actions, planOf(active, events));
+  // What the run on screen is doing now: the expression of the live avatar and its phrase.
+  const activity = chatActivityOf(active ?? null, active === undefined ? [] : events) ?? "thinking";
+  const phrase = activityPhrase(
+    activity,
+    active ?? null,
+    active === undefined ? [] : planOf(active, events),
+  );
   const color = bot === undefined ? "cinza" : themeColor(bot, bot.id);
 
   const send = useCallback(
@@ -348,6 +337,19 @@ function ChatForBot({ botId }: { botId: string }) {
           expanded={expanded}
           onToggle={toggle}
           phrase={phrase}
+          activity={activity}
+          liveFace={(state) => (
+            <Avatar
+              avatar={bot.avatar}
+              avatarStyle={bot.avatarStyle}
+              pixel3d={bot.avatarPixel3d}
+              color={bot.color}
+              seed={bot.id}
+              size="md"
+              state={state}
+              lively
+            />
+          )}
           announce={announce}
           empty={
             needsPersonality ? (

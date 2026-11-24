@@ -278,7 +278,7 @@ test.describe("the Principal as the supervisor", () => {
       });
   });
 
-  test("saving a memory leaves no row in the chat, and reading one still does", async ({
+  test("saving a memory leaves no row in the chat, and neither does reading one", async ({
     page,
   }) => {
     await world.api.bots.create({
@@ -301,10 +301,8 @@ test.describe("the Principal as the supervisor", () => {
     expect(memories.map((m) => m.text)).toContain("O usuário prefere estudar à noite.");
     await expect(page.getByTestId("chat-log")).not.toContainText("Salvar na memória");
     await expect(page.getByTestId("chat-log")).not.toContainText("Salvando na memória");
-    // Reading is a row: open the folded work to see it.
-    const rows = page.getByTestId("action-card");
-    await expect(rows.filter({ hasText: "Consultar a memória" })).toHaveCount(1);
-    await expect(rows.filter({ hasText: "Salvar" })).toHaveCount(0);
+    // Reading is no row either: the chat shows results only (the calls are in the Inspector).
+    await expect(page.getByTestId("action-card")).toHaveCount(0);
     await page.waitForTimeout(400);
     await page.screenshot({ path: shot("supervisor-memoria-fora-do-chat") });
   });

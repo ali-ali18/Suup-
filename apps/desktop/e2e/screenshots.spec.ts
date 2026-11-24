@@ -293,22 +293,20 @@ test.describe("screenshots", () => {
       await shot("04b-questionario");
       await page.getByTestId("question-card").getByRole("button", { name: "Avançar" }).click();
 
-      // The bot working: the cards, the indicator, the dots in the sidebar; then an expanded card.
+      // The bot working: the live avatar with its friendly phrase (no tool row); then the answer alone.
       await selectBot(page, "Nova");
       await send(page, "CASE-ACTIONS faça o arquivo ola.txt e confira");
       await expect(page.getByTestId("working-indicator")).toHaveAttribute(
-        "data-phrase",
-        "Rodando o comando sleep 3; echo primeiro",
+        "data-activity",
+        "terminal",
       );
-      await shot("05-trabalhando-cartao-e-indicador");
-      await expect(page.getByTestId("action-card").first()).toHaveAttribute("data-state", "done");
-      await page.getByTestId("action-card").first().getByRole("button").click();
-      await shot("06-cartao-expandido");
+      await expect(page.getByTestId("action-card")).toHaveCount(0);
+      await shot("05-trabalhando-avatar-vivo");
       await expect(
         page.getByTestId("message-bot").filter({ hasText: "Terminei as cinco ações." }),
       ).toBeVisible({ timeout: 90_000 });
-      await page.getByTestId("action-fold").getByRole("button").click();
-      await shot("07-resposta-final-e-acoes-dobradas");
+      await expect(page.getByTestId("action-card")).toHaveCount(0);
+      await shot("07-resposta-final-so-resultados");
 
       // Layout states.
       await page.getByTestId("bot-chip").click();
@@ -385,8 +383,9 @@ test.describe("screenshots", () => {
       await expect(
         page.getByTestId("message-bot").filter({ hasText: "Escrevi o arquivo aprovado." }),
       ).toBeVisible();
-      // One row for the call: the approval merged into it.
-      const approved = page.getByTestId("action-card");
+      // One line for the decision; the call is no row (the chat shows results only).
+      await expect(page.getByTestId("action-card")).toHaveCount(0);
+      const approved = page.getByTestId("approval-card");
       await expect(approved).toHaveCount(1);
       await expect(approved).toHaveAttribute("data-state", "done");
       // Collapsed to one row, chevron hidden at rest; then on hover; then opened.
@@ -414,7 +413,8 @@ test.describe("screenshots", () => {
       await shot("18g-mensagem-menu");
       await page.keyboard.press("Escape");
       await message.getByTestId("approval-deny").click();
-      await expect(page.getByTestId("approval-card")).toHaveCount(0);
+      // Denied: the card is now its one decided line, and nothing waits any more.
+      await expect(page.getByTestId("approval-card")).toHaveAttribute("data-state", "stopped");
       await selectBot(page, "Chaveiro");
       const secret = page.getByTestId("secret-card");
       await expect(secret).toHaveAttribute("data-state", "needs-action");

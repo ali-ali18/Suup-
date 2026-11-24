@@ -36,6 +36,37 @@ export const STATUS_LABEL: Record<string, string> = {
   expired: "Expirou",
 };
 
+/** How long a card waited, in the owner's words: "40 min", "5 h", "3 dias". */
+export function waitedText(ms: number): string {
+  const minutes = Math.max(1, Math.round(ms / 60_000));
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `${hours} h`;
+  return `${Math.round(hours / 24)} dias`;
+}
+
+/** The word of a decided card: approved after waiting too long says so (the action did not run then). */
+export function decidedLabel(approval: {
+  status: string;
+  stale: boolean;
+  waitedMs: number | null;
+}): string {
+  if (approval.status === "approved" && approval.stale && approval.waitedMs !== null)
+    return `Aprovado depois de ${waitedText(approval.waitedMs)}`;
+  return STATUS_LABEL[approval.status] ?? approval.status;
+}
+
+/** What a decided card says in its open body. */
+export function decidedDetail(approval: {
+  status: string;
+  stale: boolean;
+  waitedMs: number | null;
+}): string {
+  if (approval.status === "approved" && approval.stale && approval.waitedMs !== null)
+    return `Você aprovou depois de ${waitedText(approval.waitedMs)}: a ação não rodou na hora. O bot foi avisado, conferiu se ainda fazia sentido e só então seguiu.`;
+  return STATUS_DETAIL[approval.status] ?? "";
+}
+
 export const STATUS_DETAIL: Record<string, string> = {
   approved: "Você aprovou e a ação rodou exatamente com este conteúdo.",
   denied: "Você recusou: o bot foi avisado e seguiu sem executar a ação.",

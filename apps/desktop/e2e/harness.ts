@@ -205,7 +205,16 @@ export const SCRIPTS = {
         ],
       },
       {
-        // Several tool calls, one of them slow enough to see it run: cards, folding, the indicator.
+        // The bot's live avatar (docs/DESIGN.md §3): thinking (the model takes a while), a slow
+        // command (the terminal face), then the answer, when the avatar leaves.
+        whenObjectiveContains: "CASE-LIVE",
+        agent: [
+          s({ calls: [shell("sleep 4; echo conferido")], delayMs: 4000 }),
+          s({ text: "Pronto: conferi tudo e está certo.", delayMs: 300 }),
+        ],
+      },
+      {
+        // Several tool calls, one of them slow enough to see it run: the live avatar says what it does.
         whenObjectiveContains: "CASE-ACTIONS",
         agent: [
           s({

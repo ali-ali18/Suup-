@@ -127,16 +127,13 @@ test.describe("per-tool grants and the review of a definition", () => {
     await selectBot(page, "Seletivo");
     await send(page, "CASE-GRANTS use as ferramentas");
     await expect(botMessage(page, "Terminei: usei uma e não consegui a outra.")).toBeVisible();
-    const echo = page.getByTestId("action-card").filter({ hasText: "Usar “echo”" });
-    await expect(echo).toHaveAttribute("data-state", "done");
-    await echo.getByRole("button").click();
-    await expect(echo.getByTestId("action-output")).toContainText("echo: oi do bot");
-    const hidden = page.getByTestId("action-card").filter({ hasText: "Usar “lying read”" });
-    await expect(hidden).toHaveAttribute("data-state", "failed");
+    // The chat shows results only: neither call is a row (the calls and their outputs are in the Inspector).
+    await expect(page.getByTestId("action-card")).toHaveCount(0);
     const runs = await world.api.runs.list({ botId: await botId(world, "Seletivo") });
     const events = await world.api.runs.events(runs.items[0]?.id as string, { limit: 500 });
     const results = events.items.filter((e) => e.type === "tool_result");
     expect(results.map((e) => e.payload.isError)).toEqual([false, true]);
+    expect(String(results[0]?.payload.content)).toContain("echo: oi do bot");
     expect(String(results[1]?.payload.content)).toContain("lying_read");
 
     // "Nenhuma" and the shortcuts: "só as de leitura" ticks the reads, "todas" is the only `all`.
@@ -258,9 +255,14 @@ test.describe("per-tool grants and the review of a definition", () => {
     await selectBot(page, "Revisor A");
     await send(page, "CASE-GRANTS antes da revisão");
     await expect(botMessage(page, "Terminei: usei uma e não consegui a outra.")).toBeVisible();
-    await expect(
-      page.getByTestId("action-card").filter({ hasText: "Usar “echo”" }),
-    ).toHaveAttribute("data-state", "failed");
+    await expect(page.getByTestId("action-card")).toHaveCount(0);
+    const refused = await world.api.runs.list({ botId: await botId(world, "Revisor A") });
+    const refusedEvents = await world.api.runs.events(refused.items[0]?.id as string, {
+      limit: 500,
+    });
+    expect(
+      refusedEvents.items.filter((e) => e.type === "tool_result" && e.payload.isError === true),
+    ).not.toHaveLength(0);
 
     // The version on screen is now the current one: approving it works.
     await openSettings(page, "Conectores");
@@ -293,9 +295,12 @@ test.describe("per-tool grants and the review of a definition", () => {
     await selectBot(page, "Revisor B");
     await send(page, "CASE-GRANTS depois da revisão");
     await expect(botMessage(page, "Terminei: usei uma e não consegui a outra.")).toBeVisible();
-    await expect(
-      page.getByTestId("action-card").filter({ hasText: "Usar “echo”" }),
-    ).toHaveAttribute("data-state", "done");
+    await expect(page.getByTestId("action-card")).toHaveCount(0);
+    const used = await world.api.runs.list({ botId: await botId(world, "Revisor B") });
+    const usedEvents = await world.api.runs.events(used.items[0]?.id as string, { limit: 500 });
+    expect(
+      usedEvents.items.filter((e) => e.type === "tool_result").map((e) => e.payload.isError),
+    ).toEqual([false, true]);
 
     // The last one is approved from the notice again, and the notice goes away.
     await openSettings(page, "Conectores");
@@ -456,8 +461,9 @@ test.describe("the card that asks for a host", () => {
     await raw.locator("summary").click();
     await card.getByTestId("approval-approve").click();
     await expect(botMessage(page, "Tentei liberar o host.")).toBeVisible();
-    // One row for the call: the category, the decision, and what it was.
-    const row = page.getByTestId("action-card");
+    // One line for the decision (the call itself is no row): the category, the decision, what it was.
+    await expect(page.getByTestId("action-card")).toHaveCount(0);
+    const row = page.getByTestId("approval-card");
     await expect(row).toHaveCount(1);
     await expect(row.locator('[data-testid="action-kind"]')).toHaveText("Rede");
     await expect(row).toContainText("Acessar api.novo.com");
@@ -480,7 +486,8 @@ test.describe("the card that asks for a host", () => {
     await expect(card).toHaveAttribute("data-state", "needs-action");
     await card.getByTestId("approval-deny").click();
     await expect(botMessage(page, "Tentei liberar o host.")).toBeVisible();
-    const row = page.getByTestId("action-card");
+    await expect(page.getByTestId("action-card")).toHaveCount(0);
+    const row = page.getByTestId("approval-card");
     await expect(row).toHaveCount(1);
     await expect(row).toContainText("Recusado");
     await expect(row).toContainText("Acessar api.novo.com");
@@ -500,7 +507,7 @@ test.describe("tool search: the measure of the definitions, and the real tool in
     await world?.stop();
   });
 
-  test("search and use calls show as the real tool; the inspector says the mode and what the definitions cost", async ({
+  test("search and use calls are no row, the run records the real tool; the inspector says the mode and what the definitions cost", async ({
     page,
   }) => {
     await freshBot(world, "Pesquisador", { allowedTools: [] });
@@ -517,16 +524,20 @@ test.describe("tool search: the measure of the definitions, and the real tool in
     await selectBot(page, "Pesquisador");
     await send(page, "CASE-META consulte o registro");
     await expect(botMessage(page, "Consultei o registro 7.")).toBeVisible();
-    // The chat shows the lookup and the REAL tool, never the wrapper.
-    const rows = page.getByTestId("action-card");
-    await expect(rows).toHaveCount(2);
-    await expect(rows.nth(0)).toContainText("Procurar ferramentas");
-    await expect(rows.nth(0)).toContainText("no conector fake");
-    // the tool in words, never the internal `conn_<connector>__<tool>` name
-    await expect(rows.nth(1)).toContainText("Usar “gen 3”");
+    // The chat shows no row at all (neither the lookup nor the tool), and never the wrapper's name.
+    await expect(page.getByTestId("action-card")).toHaveCount(0);
     await expect(page.getByTestId("chat")).not.toContainText("conn_fake__");
-    await expect(rows.nth(1).locator('[data-testid="action-kind"]')).toHaveText("fake");
     await expect(page.getByTestId("chat")).not.toContainText("use_tool");
+    // The REAL tool is what the run recorded (the server writes the real name, never `use_tool`).
+    const searched = await world.api.runs.list({ botId: await botId(world, "Pesquisador") });
+    const searchEvents = await world.api.runs.events(searched.items[0]?.id as string, {
+      limit: 500,
+    });
+    const called = searchEvents.items.flatMap((e) =>
+      e.type === "tool_call" ? [e.payload.name] : [],
+    );
+    expect(called).toContain("conn_fake__gen_3");
+    expect(called).not.toContain("use_tool");
 
     // The inspector: the mode of the run, and the definitions of each request.
     await page.getByTestId("bot-chip").click({ button: "right" });

@@ -113,6 +113,8 @@ export interface AvatarProps {
   state?: AvatarStateId;
   /** Sempre imagem parada. */
   still?: boolean;
+  /** O avatar vivo do chat: o movimento de cada atividade mesmo pequeno (ver `Mascot`). */
+  lively?: boolean;
   title?: string;
   /**
    * É o bot principal, o supervisor da equipe: uma estrela pequena e calma no canto (a única marca
@@ -136,6 +138,7 @@ export function Avatar({
   size = "md",
   state = "idle",
   still = false,
+  lively = false,
   title,
   supervisor = false,
   working = false,
@@ -183,6 +186,7 @@ export function Avatar({
             size={MASCOT_OF[size]}
             seed={seed}
             still={still}
+            lively={lively}
           />
         ) : (
           <span className="text-[1.1em] leading-none">{spec.text}</span>

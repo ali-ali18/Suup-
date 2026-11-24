@@ -41,6 +41,8 @@ export const POSE_FIGMA_NAME: Readonly<Record<PixelPose, string>> = {
  *
  * - `sleeping` e `celebrating` não têm arte própria no Figma: dormir fica na pose parada (olhos
  *   abertos, sem símbolo; não se inventa arte) e comemorar usa "Concluiu".
+ * - `pondering` (pensar sem o corpo virar indicador) é "Pensando"; `reading` e `coding` não têm
+ *   arte própria e ficam em "Trabalhando".
  * - `waiting` (espera uma aprovação) é "Pedindo permissão" (o "!"); `asking` (precisa de uma
  *   resposta) é "Com dúvida" (o "?").
  */
@@ -55,6 +57,9 @@ export const PIXEL_POSE_OF: Readonly<Record<AvatarStateId, PixelPose>> = {
   paused: "pausado",
   sleeping: "parado",
   celebrating: "concluiu",
+  pondering: "pensando",
+  reading: "trabalhando",
+  coding: "trabalhando",
 };
 
 const ONLY_POSE: Readonly<Record<PixelOnlyState, PixelPose>> = {
