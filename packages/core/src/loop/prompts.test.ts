@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildSystemPrompt,
   buildSystemPromptParts,
+  formatCalendar,
   formatClock,
   MEMORY_TOOL_NAMES,
   type RunPromptContext,
@@ -163,7 +164,7 @@ describe("system prompt: now", () => {
   it("says the weekday, the date, the time and the time zone of the run start", () => {
     const prompt = buildSystemPrompt({ name: "Ada", personality: "" }, { ...base, now: NOW });
     expect(prompt).toContain(
-      "## Now\n\nIt is Saturday 2026-11-21, 14:32 (America/Sao_Paulo, GMT-3), in the user's time zone. That is when this run started: the STATE REMINDER at the end of each user turn gives the current time. Use this time zone for every date and time you say, schedule or compare, unless the user says otherwise.",
+      '## Now\n\nIt is Saturday 2026-11-21, 14:32 (America/Sao_Paulo, GMT-3), in the user\'s time zone. Calendar: yesterday Friday 2026-11-20; today Saturday 2026-11-21; tomorrow Sunday 2026-11-22; Monday 2026-11-23; Tuesday 2026-11-24; Wednesday 2026-11-25; Thursday 2026-11-26; Friday 2026-11-27; Saturday 2026-11-28; Sunday 2026-11-29. Never work out a weekday yourself: read it from this calendar. Earlier messages in this chat may be from other days, so their "today" or "tomorrow" is not today. That is when this run started: the STATE REMINDER at the end of each user turn gives the current time. Use this time zone for every date and time you say, schedule or compare, unless the user says otherwise.',
     );
   });
 
@@ -250,7 +251,7 @@ describe("system prompt: what you have", () => {
       { returns: true },
     );
     expect(prompt).toContain(
-      "## What you have\n\n- A machine of your own with a terminal and files, in a private workspace. It is isolated from the user's computer: what you do there cannot touch their own files.\n- Connectors the user granted you: gmail, github. Their tools are found through the tool index.\n- `schedule_return`: you can come back by yourself in a few minutes, in this same conversation, to check something that takes time.\n- Memory: what you save is shown to the user in the Memory screen, where they can read, edit and delete it.",
+      "## What you have\n\n- A machine of your own with a terminal and files, in a private workspace. It is isolated from the user's computer: what you do there cannot touch their own files.\n- Connectors the user granted you: gmail, github. Their tools are found through the tool index. Connectors are only for reaching the user's apps and services outside Suup (their mail, calendar, documents). Scheduling, routines, reminders and running code are Suup's own: use `create_routine`, `create_reminder` and your own machine for them, never a connector's remote shell, code runner or scheduler, even when it offers one.\n- `schedule_return`: you can come back by yourself in a few minutes, in this same conversation, to check something that takes time.\n- Memory: what you save is shown to the user in the Memory screen, where they can read, edit and delete it.",
     );
   });
 
@@ -441,5 +442,130 @@ describe("the web line", () => {
     });
     expect(readOnly).not.toContain("web_search");
     expect(readOnly).toContain("`web_read` reads a public page");
+  });
+});
+
+describe("the weekday (M16)", () => {
+  const SP = "America/Sao_Paulo";
+  it("names the weekday of the user's zone, not UTC's, around midnight", () => {
+    // 01:30 UTC on Wednesday is still 22:30 on Tuesday in Sao Paulo
+    const at = new Date("2026-11-25T01:30:00.000Z");
+    expect(formatClock(at, SP)).toBe("Tuesday 2026-11-24, 22:30 (America/Sao_Paulo, GMT-3)");
+    expect(formatClock(at, "UTC")).toContain("Wednesday 2026-11-25");
+    expect(formatClock(new Date("2026-11-24T14:00:00.000Z"), "Pacific/Auckland")).toContain(
+      "Wednesday 2026-11-25",
+    );
+  });
+
+  it("gives a calendar of the next days with weekdays computed, in the user's zone", () => {
+    const at = new Date("2026-11-25T01:30:00.000Z");
+    expect(formatCalendar(at, SP, 3)).toBe(
+      "yesterday Monday 2026-11-23; today Tuesday 2026-11-24; tomorrow Wednesday 2026-11-25; Thursday 2026-11-26; Friday 2026-11-27",
+    );
+    // across a month and a year
+    expect(formatCalendar(new Date("2026-12-31T15:00:00.000Z"), SP, 2)).toBe(
+      "yesterday Wednesday 2026-12-30; today Thursday 2026-12-31; tomorrow Friday 2027-01-01; Saturday 2027-01-02",
+    );
+  });
+
+  it("puts the calendar and the rule in the Now section", () => {
+    const prompt = buildSystemPrompt(
+      { name: "Ada", personality: "" },
+      { ...base, now: { iso: "2026-11-24T15:00:00.000Z", timeZone: SP } },
+    );
+    expect(prompt).toContain("Calendar: yesterday Monday 2026-11-23; today Tuesday 2026-11-24;");
+    expect(prompt).toContain("Never work out a weekday yourself");
+  });
+});
+
+describe("what happened to the routines (M14, M15)", () => {
+  const bot = { name: "Ada", personality: "" };
+  const withRecent = (recent: NonNullable<RunPromptContext["ownRoutines"]>["recent"]) =>
+    buildSystemPrompt(
+      bot,
+      {
+        ...base,
+        now: { iso: "2026-11-24T15:00:00.000Z", timeZone: "America/Sao_Paulo" },
+        ownRoutines: { items: [], more: 0, ...(recent === undefined ? {} : { recent }) },
+      },
+      { routines: true },
+    );
+
+  it("tells the bot the user deleted a routine, so it is not a failure of its own", () => {
+    const prompt = withRecent([
+      { kind: "deleted", actor: "owner", name: "Bom dia", at: "2026-11-23T12:00:00.000Z" },
+    ]);
+    expect(prompt).toContain("### Recent changes to your routines and reminders");
+    expect(prompt).toContain(
+      'Monday 2026-11-23, 09:00 (America/Sao_Paulo, GMT-3): The USER DELETED the routine "Bom dia"',
+    );
+    expect(prompt).toContain("it is not an error of yours and it did not fail");
+  });
+
+  it("separates a reminder that already went off from the pending ones", () => {
+    const prompt = withRecent([
+      {
+        kind: "fired",
+        actor: "system",
+        name: "Pagar o boleto",
+        reminder: true,
+        at: "2026-11-24T11:00:00.000Z",
+      },
+      {
+        kind: "edited",
+        actor: "owner",
+        name: "Resumo",
+        at: "2026-11-23T12:00:00.000Z",
+        detail: "todo dia às 09:00 (America/Sao_Paulo)",
+      },
+    ]);
+    expect(prompt).toContain(
+      'the reminder "Pagar o boleto" ALREADY WENT OFF and was removed: it is DONE, not pending',
+    );
+    expect(prompt).toContain('The USER CHANGED the routine "Resumo" (todo dia às 09:00');
+    expect(prompt).toContain('Only what is under "Your routines" above is pending or active now');
+  });
+
+  it("adds nothing when nothing happened (logs from before keep their prompt)", () => {
+    expect(withRecent(undefined)).not.toContain("Recent changes");
+    expect(withRecent([])).not.toContain("Recent changes");
+  });
+});
+
+describe("whose job is whose (M17, M18, M19)", () => {
+  const bot = { name: "Ada", personality: "" };
+
+  it("a request that starts later is a routine, created in the same turn (M17)", () => {
+    const prompt = buildSystemPrompt(bot, base, { routines: true });
+    expect(prompt).toContain('A request that implies "from now on" IS a request for a routine');
+    expect(prompt).toContain(
+      "Confirming the rule in words without creating the routine is a failure",
+    );
+    expect(prompt).toContain('"todo dia às 8h; quer mudar?"');
+  });
+
+  it("the Principal delegates what a team bot's description covers, by the description (M18)", () => {
+    const prompt = buildSystemPrompt(
+      bot,
+      {
+        ...base,
+        team: [
+          { name: "Agenda", description: "cuida de rotinas e lembretes" },
+          { name: "Código", description: "escreve e revisa programas" },
+        ],
+        supervisor: "principal",
+      },
+      {},
+    );
+    expect(prompt).toContain("- Agenda: cuida de rotinas e lembretes");
+    expect(prompt).toContain("when a bot of the team clearly covers what the user asked");
+    expect(prompt).toContain("A routine or a reminder belongs to the bot that will run it");
+  });
+
+  it("connectors reach outside apps; schedules, routines, reminders and code are Suup's own (M19)", () => {
+    const prompt = buildSystemPrompt(bot, { ...base, connectors: ["composio"] }, {});
+    expect(prompt).toContain(
+      "Scheduling, routines, reminders and running code are Suup's own: use `create_routine`, `create_reminder` and your own machine for them, never a connector's remote shell",
+    );
   });
 });

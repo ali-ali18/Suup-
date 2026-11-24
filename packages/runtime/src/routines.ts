@@ -34,6 +34,7 @@ import {
   finishRoutineFire,
   getRoutine,
   getRoutineFireByRun,
+  listRoutineEvents,
   listRoutines,
   MAX_ROUTINE_INSTRUCTION,
   MAX_ROUTINE_NAME,
@@ -154,6 +155,10 @@ export function duplicateRoutineOf(
   );
 }
 
+/** How far back, and how many, recent changes the bot is told about. */
+export const RECENT_CHANGES_DAYS = 14;
+export const RECENT_CHANGES_MAX = 10;
+
 /**
  * The bot's own routines as a run starts (recorded in `context_loaded.ownRoutines`): the ones that
  * are not ended, active first, capped at `OWN_ROUTINES_PROMPT_MAX`; the rest is counted.
@@ -162,6 +167,7 @@ export async function ownRoutinesFor(
   db: Db,
   botId: string,
   max: number = OWN_ROUTINES_PROMPT_MAX,
+  now: Date = new Date(),
 ): Promise<OwnRoutines> {
   // One-time reminders too, marked: the model must know what it already promised to remind.
   const live = (await listRoutines(db, { botId, reminders: true })).filter(
@@ -172,7 +178,24 @@ export async function ownRoutinesFor(
     ...live.filter((r) => r.status !== "active"),
   ];
   const shown = ordered.slice(0, max);
+  // What happened to them since: the owner deleted, changed or paused one; a reminder went off.
+  const events = await listRoutineEvents(db, botId, {
+    since: new Date(now.getTime() - RECENT_CHANGES_DAYS * 86_400_000),
+    limit: RECENT_CHANGES_MAX,
+  });
   return {
+    ...(events.length === 0
+      ? {}
+      : {
+          recent: events.map((e) => ({
+            kind: e.kind,
+            actor: e.actor,
+            name: e.routineName,
+            ...(e.reminder ? { reminder: true } : {}),
+            at: e.createdAt.toISOString(),
+            ...(e.detail === null ? {} : { detail: e.detail }),
+          })),
+        }),
     items: shown.map((r) => ({
       id: r.id,
       name: r.name,
@@ -266,7 +289,7 @@ export function createRoutineTool(db: Db, userZone: UserZone) {
   return defineTool({
     name: CREATE_ROUTINE_TOOL,
     description:
-      "Creates a routine of yours: an instruction you will run on your own AGAIN AND AGAIN on a schedule (daily, weekly, monthly or every few minutes/hours), in the user's time zone, with the result posted in this chat. Use it only when the user asks for something recurring. Something for one time only is not a routine: a reminder within the next hour is `schedule_return`; a later one is `create_reminder`. If they did not say when, choose a sensible time yourself, and after it is created tell them in your message what you set up and when, and ask if they want another time.",
+      "Creates a routine of yours: an instruction you will run on your own AGAIN AND AGAIN on a schedule (daily, weekly, monthly or every few minutes/hours), in the user's time zone, with the result posted in this chat. Use it when the user asks for something recurring, including a rule that starts later ('from tomorrow on', 'every day'): do the part that is for now and create the routine for the rest in the same turn; saying you will do it every day without creating it means it never happens. Schedules and routines are yours, never a connector's. Something for one time only is not a routine: a reminder within the next hour is `schedule_return`; a later one is `create_reminder`. If they did not say when, choose a sensible time yourself, and after it is created tell them in your message what you set up and when, and ask if they want another time.",
     input: createInput,
     risk: "write_reversible",
     ownOutput: true,
@@ -476,6 +499,7 @@ export function updateRoutineTool(db: Db) {
       }
       try {
         const routine = await updateRoutine(db, found.routine.id, {
+          actor: "bot",
           ...(args.name === undefined ? {} : { name: args.name }),
           ...(args.instruction === undefined ? {} : { instruction: args.instruction }),
           ...(read === undefined ? {} : { schedule: read.schedule }),
@@ -516,7 +540,7 @@ export function deleteRoutineTool(db: Db) {
     async execute({ routine }, ctx) {
       const found = await routineOf(db, ctx.botId, routine);
       if ("error" in found) return { isError: true, content: found.error };
-      await deleteRoutine(db, found.routine.id);
+      await deleteRoutine(db, found.routine.id, "bot");
       return {
         content: `${found.routine.reminder ? "Reminder" : "Routine"} ${JSON.stringify(found.routine.name)} deleted.`,
       };
@@ -653,7 +677,7 @@ export async function completeRoutineFire(
   });
   // A one-time reminder that fired is gone: nothing is left behind (no panel, no history).
   if (reminder && routine !== null) {
-    await deleteRoutine(db, routine.id);
+    await deleteRoutine(db, routine.id, "system", "fired");
   }
   return recorded;
 }

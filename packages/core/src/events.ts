@@ -279,8 +279,27 @@ export const ownRoutineSchema = z.object({
   reminder: z.exactOptional(z.boolean()),
 });
 export type OwnRoutine = z.infer<typeof ownRoutineSchema>;
+/**
+ * Something that happened to one of the bot's routines or reminders after the bot set it up
+ * (docs/ROTINAS.md, "O que aconteceu com elas"): the owner deleted, changed, paused or resumed it,
+ * or a one-time reminder already went off. A routine deleted in the panel leaves no row, so
+ * without this the bot would think its own creation had failed.
+ */
+export const ownRoutineEventSchema = z.object({
+  kind: z.enum(["deleted", "edited", "paused", "resumed", "fired"]),
+  actor: z.enum(["owner", "bot", "system"]),
+  name: z.string(),
+  reminder: z.exactOptional(z.boolean()),
+  /** When it happened (ISO 8601). */
+  at: z.string(),
+  /** What changed, in short words (the new schedule). */
+  detail: z.exactOptional(z.string()),
+});
+export type OwnRoutineEvent = z.infer<typeof ownRoutineEventSchema>;
 export const ownRoutinesSchema = z.object({
   items: z.array(ownRoutineSchema),
+  /** Recent changes by the owner (and the bot's own deletes), newest first; absent in old logs. */
+  recent: z.exactOptional(z.array(ownRoutineEventSchema)),
   /** How many more routines exist beyond the ones listed (the list is capped). */
   more: z.number().int().nonnegative(),
 });

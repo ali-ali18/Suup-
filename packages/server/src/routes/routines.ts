@@ -216,6 +216,7 @@ export const routineRoutes: Route[] = [
       await visibleRoutine(ctx.runtime.db, id);
       const routine = await guarded(() =>
         updateRoutine(ctx.runtime.db, id, {
+          actor: "owner",
           ...(body.name === undefined ? {} : { name: body.name }),
           ...(body.instruction === undefined ? {} : { instruction: body.instruction }),
           ...(body.schedule === undefined ? {} : { schedule: body.schedule }),
@@ -240,7 +241,7 @@ export const routineRoutes: Route[] = [
     async handler(ctx) {
       const id = ctx.uuid("id");
       await visibleRoutine(ctx.runtime.db, id);
-      const deleted = await deleteRoutine(ctx.runtime.db, id);
+      const deleted = await deleteRoutine(ctx.runtime.db, id, "owner");
       if (!deleted) throw new HttpError("not_found", "Rotina não encontrada.");
       return { body: { deleted: true } };
     },

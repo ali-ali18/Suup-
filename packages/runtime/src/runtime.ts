@@ -998,6 +998,13 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
         ...botCfg,
         allowedTools: [...botCfg.allowedTools, ...ROUTINE_TOOL_NAMES, PROPOSE_CONNECTOR_TOOL],
       };
+    } else if (guarded && run.origin === "delegation") {
+      // A task the Principal handed over ("set up this routine"): the routine belongs to the bot
+      // that does the work, so the bot that receives it must be able to create it. The
+      // approval gate is the same as in a conversation (docs/SUPERVISOR.md, "Delegar rotinas").
+      if (runTools === tools) runTools = copyOfBase();
+      routineToolsFor(handle)(runTools);
+      botCfg = { ...botCfg, allowedTools: [...botCfg.allowedTools, ...ROUTINE_TOOL_NAMES] };
     } else if (guarded && run.origin === "routine") {
       if (runTools === tools) runTools = copyOfBase();
       runTools.register(listRoutinesTool(handle));
@@ -1068,7 +1075,9 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
               // The bot's routines, in a run that may create them: a new run knows what an
               // earlier one set up (the history is text only, without the tool calls behind it).
               const ownRoutines =
-                run.origin === "user" ? await ownRoutinesFor(handle, bot.id) : undefined;
+                run.origin === "user" || run.origin === "delegation"
+                  ? await ownRoutinesFor(handle, bot.id)
+                  : undefined;
               const withFacts: RunContextSnapshot = {
                 ...snapshot,
                 // Never the server's own zone: unknown is said as unknown (and is UTC).
