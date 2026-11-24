@@ -222,4 +222,47 @@
       opacity: 0.4;
     }
   }
+
+  /* The light that runs across the words of the bot at work (docs/DESIGN.md §3; the technique of
+     shadcn's shimmer, docs/pesquisas/texto-brilhante.md). */
+  --animate-shimmer: ui-shimmer 2s linear infinite;
+
+  @keyframes ui-shimmer {
+    from {
+      background-position: 100% 0;
+    }
+    to {
+      background-position: 0 0;
+    }
+  }
+}
+
+/* Text with a moving light: a gradient of our own text colours clipped to the letters. Reduced
+   motion (the system's or the app's) keeps the words still, in the muted colour: never transparent
+   text that the global reduced-motion rule would leave invisible. */
+@utility ui-shimmer {
+  background-image: linear-gradient(
+    90deg,
+    var(--color-text-muted) 40%,
+    var(--color-text) 50%,
+    var(--color-text-muted) 60%
+  );
+  background-size: 250% 100%;
+  background-position: 100% 0;
+  background-repeat: no-repeat;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: var(--animate-shimmer);
+
+  @media (prefers-reduced-motion: reduce) {
+    background-image: none;
+    color: var(--color-text-muted);
+    animation: none;
+  }
+  :root[data-motion="reduce"] & {
+    background-image: none;
+    color: var(--color-text-muted);
+    animation: none;
+  }
 }

@@ -124,7 +124,14 @@ export function WorkingIndicator({
         >
           {face}
           {/* "Discreet" (a setting) keeps the phrase for screen readers only. */}
-          <span className="truncate text-label text-text-muted phrase-discreet:sr-only">
+          <span
+            className={cx(
+              "truncate text-label phrase-discreet:sr-only",
+              going ? "ui-shimmer" : "text-text-muted",
+            )}
+            data-testid="working-phrase"
+            data-shimmer={going}
+          >
             {going ? `${phrase}…` : phrase}
           </span>
         </div>

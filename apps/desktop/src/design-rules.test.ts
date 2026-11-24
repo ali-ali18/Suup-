@@ -1861,3 +1861,15 @@ describe("atualização do app: um aviso calmo e uma linha em Geral (docs/DESIGN
     expect(rust).toContain('"SUBSTITUA-PELA-CHAVE-PUBLICA-DO-SUUP"');
   });
 });
+
+describe("a frase do bot trabalhando brilha (docs/DESIGN.md §3, dono 24/11/2026)", () => {
+  it("a frase usa ui-shimmer só enquanto trabalha, e o brilho some com movimento reduzido", () => {
+    const lines = read(join(SRC, "ui", "chat-lines.tsx"));
+    expect(lines).toContain('going ? "ui-shimmer" : "text-text-muted"');
+    const theme = read(join(SRC, "styles", "theme.css"));
+    const util = theme.slice(theme.indexOf("@utility ui-shimmer"));
+    expect(util).toContain("prefers-reduced-motion: reduce");
+    expect(util).toContain(':root[data-motion="reduce"] &');
+    expect(util).toContain("color: var(--color-text-muted)");
+  });
+});
