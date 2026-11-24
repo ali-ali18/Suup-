@@ -1270,3 +1270,59 @@ describe('amigável: nada de log para o usuário (dono, 23/11/2026: "a ideia é 
     }
   });
 });
+
+describe("atualização do app: um aviso calmo e uma linha em Geral (docs/DESIGN.md 3e)", () => {
+  const notice = read(join(SRC, "features", "shell", "UpdateNotice.tsx"));
+  const row = read(join(SRC, "features", "settings", "UpdateGroup.tsx"));
+  const store = read(join(SRC, "app", "update-store.ts"));
+
+  it("o aviso é um cartão no canto, nunca um diálogo, com 'Depois' e uma ação primária", () => {
+    expect(notice).toContain('role="status"');
+    expect(notice).not.toContain("<Dialog");
+    expect(notice).not.toContain("aria-modal");
+    expect(notice).toContain("Nova versão do Suup disponível");
+    expect(notice).toContain("Depois");
+    for (const action of ["Atualizar agora", "Reiniciar para concluir", "Tentar de novo"])
+      expect(notice, action).toContain(action);
+    expect(notice).toContain('tone="primary"');
+    expect(notice).toContain('role="progressbar"');
+    expect(read(join(SRC, "features", "shell", "Shell.tsx"))).toContain("<UpdateNotice />");
+  });
+
+  it("a linha de Geral usa as peças de Configurações e um só controle (RowAction)", () => {
+    expect(row).toContain('from "./parts.js"');
+    expect(row).toContain("<SettingsRow");
+    expect(row).toContain("<RowAction");
+    expect(row).not.toContain("<Pill");
+    expect(row).toContain("Procurar atualização");
+    expect(read(join(SRC, "features", "settings", "GeneralSettings.tsx"))).toContain(
+      "<UpdateGroup />",
+    );
+  });
+
+  it("nada técnico: nem GitHub, nem latest.json, nem assinatura; o erro só vai para o registro", () => {
+    for (const [name, source] of [
+      ["UpdateNotice.tsx", notice],
+      ["UpdateGroup.tsx", row],
+    ] as const) {
+      for (const technical of ["github", "latest.json", "assinatura", "pubkey", ".message"]) {
+        expect(source.toLowerCase().includes(technical), `${name}: ${technical}`).toBe(false);
+      }
+    }
+    // the store logs the detail and keeps only which step failed
+    expect(store).toContain("console.warn(");
+    expect(store).toContain('failure: "download"');
+    expect(store).toContain('failure: "install"');
+  });
+
+  it("o servidor embutido para antes do instalador, e a chave de marcador desliga tudo", () => {
+    const rust = read(join(SRC, "..", "src-tauri", "src", "update.rs"));
+    expect(rust).toContain("local::stop(&local, local::GRACEFUL_STOP).await;");
+    expect(rust.indexOf("local::stop(")).toBeLessThan(rust.indexOf("update.install(&bytes)"));
+    expect(rust).toContain("key != PLACEHOLDER_PUBKEY");
+    const conf = JSON.parse(read(join(SRC, "..", "src-tauri", "tauri.conf.json"))) as {
+      plugins: { updater: { pubkey: string } };
+    };
+    expect(rust).toContain(`"${conf.plugins.updater.pubkey}"`);
+  });
+});

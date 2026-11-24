@@ -78,6 +78,12 @@ Os registros **não** contêm chaves nem o token. **Avançado:** para trocar os 
 
 Em **Configurações > Geral > Servidor > Trocar** o app volta à primeira tela e você escolhe **Conectar à minha VPS** (endereço e token). Nada é apagado e **nada é copiado** entre os dois. Para levar os bots, as conversas e a memória, faça o dump e a restauração descritos em [IMPLANTACAO.md](IMPLANTACAO.md), "Passar do computador para a VPS". Depois disso, o computador deixa de valer: não deixe os dois com o mesmo bot ligados.
 
+## 8. Atualizações (sem reinstalar)
+
+Depois de instalado, o app **se atualiza sozinho**: quando sai uma versão nova, aparece no canto "Nova versão do Suup disponível"; **Atualizar agora** baixa, e **Reiniciar para concluir** fecha, instala e abre o Suup de novo, com os seus dados. Em **Configurações > Geral**, no fim, a linha "Versão x.y.z" tem **Procurar atualização**.
+
+Isso fica **desligado** até o dono gerar a chave de assinatura no computador dele e publicar a primeira Release. O passo a passo (gerar a chave, os dois segredos do GitHub, colar a chave pública, criar a tag, publicar o rascunho) e o requisito do repositório **público** estão em [ATUALIZACAO.md](ATUALIZACAO.md), "Passo a passo do dono". Com as Releases ligadas, o instalador também pode ser baixado da aba **Releases** do GitHub, em vez de Actions.
+
 ## O que foi e o que não foi verificado
 
 - **Provado num Linux (esta entrega):** o banco PostgreSQL embutido sobe e aplica as migrações (27 nesta versão); o servidor e o worker respondem uma conversa; a parada deixa nenhum processo; um comando de bot roda dentro da máquina Docker, e a saída dele sai pelo proxy em contêiner, com o servidor como processo do computador falando com ele só pela porta publicada em `127.0.0.1` (a topologia do Docker Desktop); o app (no navegador, com o Tauri simulado) faz a primeira abertura, a troca e o aviso de isolamento. O Rust compila (`cargo check`).

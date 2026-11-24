@@ -1,0 +1,99 @@
+name: Release do app
+
+# Publica uma versão nova do app de desktop para o atualizador (docs/ATUALIZACAO.md): compila o
+# instalador ASSINADO para o atualizador (minisign, a chave privada do dono nos segredos do
+# repositório), cria uma Release do GitHub como RASCUNHO com os instaladores e o `latest.json`, e
+# para por aí: o app só vê a versão nova quando o dono clica em "Publish release".
+#
+# Disparo: empurrar uma tag `v<versão>` igual à versão do tauri.conf.json (pnpm release:version), ou
+# à mão (aba Actions > "Release do app" > Run workflow), que usa a versão do tauri.conf.json.
+# Precisa dos segredos TAURI_SIGNING_PRIVATE_KEY e TAURI_SIGNING_PRIVATE_KEY_PASSWORD e da chave
+# PÚBLICA no tauri.conf.json (plugins.updater.pubkey). Sem isso, o primeiro passo explica e para.
+# O desktop-installer.yml continua compilando sem segredo nenhum (sem pacotes de atualização).
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: release (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    # O Windows é o que importa; o macOS é um extra e não derruba a execução. O Linux fica de fora:
+    # o pacote .deb não é atualizável por este caminho (o do atualizador é o AppImage).
+    continue-on-error: ${{ !matrix.required }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+            required: true
+            bundles: nsis
+          - name: macOS
+            os: macos-latest
+            required: false
+            bundles: app,dmg
+    steps:
+      - uses: actions/checkout@v4
+      - name: Conferir a chave, os segredos e a versão
+        shell: bash
+        env:
+          HAS_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+        run: |
+          node -e '
+            const conf = require("./apps/desktop/src-tauri/tauri.conf.json");
+            const key = String(conf.plugins?.updater?.pubkey ?? "").trim();
+            const fail = (text) => { console.log(`::error::${text}`); process.exit(1); };
+            if (key === "" || key === "SUBSTITUA-PELA-CHAVE-PUBLICA-DO-SUUP")
+              fail("A chave PÚBLICA do atualizador ainda é o marcador: cole a sua em apps/desktop/src-tauri/tauri.conf.json (plugins.updater.pubkey). Ver docs/ATUALIZACAO.md.");
+            if (process.env.HAS_PRIVATE_KEY !== "true")
+              fail("Falta o segredo TAURI_SIGNING_PRIVATE_KEY (Settings > Secrets and variables > Actions). Ver docs/ATUALIZACAO.md.");
+            if (process.env.GITHUB_REF_TYPE === "tag" && process.env.GITHUB_REF_NAME !== `v${conf.version}`)
+              fail(`A tag ${process.env.GITHUB_REF_NAME} não é a versão do app (v${conf.version}): rode pnpm release:version.`);
+            console.log(`Versão ${conf.version}.`);
+          '
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+      - run: pnpm install --frozen-lockfile
+      - name: Compilar os pacotes
+        run: pnpm exec tsc -b
+      # A mesma prova do desktop-installer.yml: o servidor embutido sobe, migra, responde e para.
+      - name: Servidor embutido (teste da disposição empacotada)
+        run: pnpm vitest run apps/sidecar
+        env:
+          SUUP_TEST_LOGS_DIR: ${{ runner.temp }}/sidecar-logs
+      - name: Preparar o servidor embutido (Node, PostgreSQL, pacote)
+        run: pnpm --filter @suup/sidecar run bundle
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: apps/desktop
+          tauriScript: pnpm tauri
+          # Os pacotes do atualizador (e as assinaturas) só aqui: tauri.updater.conf.json.
+          args: --bundles ${{ matrix.bundles }} --config src-tauri/tauri.updater.conf.json
+          tagName: v__VERSION__
+          releaseName: Suup v__VERSION__
+          releaseBody: Nova versão do Suup. Quem já tem o app recebe sozinho, depois que esta Release for publicada.
+          releaseDraft: true
+          prerelease: false
+          uploadUpdaterJson: true
+          updaterJsonPreferNsis: true

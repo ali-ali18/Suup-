@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from "react";
-import { useData } from "../../app/context.js";
+import { useData, useServices } from "../../app/context.js";
 import { sortedBots } from "../../app/selectors.js";
 import { useUi } from "../../app/ui-store.js";
 import { ChatScreen } from "../chat/ChatScreen.js";
@@ -14,6 +14,7 @@ import { ApprovalAnnouncer } from "./ApprovalAnnouncer.js";
 import { GroupDialog } from "./GroupDialog.js";
 import { IsolationNotice } from "./IsolationNotice.js";
 import { Sidebar } from "./Sidebar.js";
+import { UpdateNotice, useUpdateChecks } from "./UpdateNotice.js";
 
 /** The frame of the app: the sidebar (or the rail) on the left and one content area. */
 export function Shell() {
@@ -28,6 +29,7 @@ export function Shell() {
   const groupBotId = useUi((s) => s.groupBotId);
   const settingsOpen = useUi((s) => s.settingsOpen);
   const list = useMemo(() => sortedBots(bots), [bots]);
+  useUpdateChecks(useServices().platform.updater);
 
   // Nothing selected yet (or the selected bot vanished): the main bot, else the first.
   useEffect(() => {
@@ -82,6 +84,7 @@ export function Shell() {
       </div>
       <ApprovalAnnouncer />
       <IsolationNotice />
+      <UpdateNotice />
       {settingsOpen && <SettingsDialog />}
       {newBotOpen && <NewBotDialog />}
       {groupBotId !== null && <GroupDialog />}

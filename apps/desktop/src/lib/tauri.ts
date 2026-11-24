@@ -2,11 +2,14 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type {
   AppNotification,
+  AppUpdater,
   Connection,
   LocalServer,
   LocalStatus,
   Platform,
   ServerMode,
+  UpdateInfo,
+  UpdateProgress,
   WindowFrame,
 } from "./platform.js";
 
@@ -131,6 +134,21 @@ export function tauriLocal(): LocalServer {
   };
 }
 
+/** The updater lives in Rust (`src-tauri/src/update.rs`); the page only asks. */
+export function tauriUpdater(): AppUpdater {
+  return {
+    info: () => invoke<UpdateInfo>("update_info"),
+    check: () => invoke<{ version: string } | null>("update_check"),
+    async download(onProgress) {
+      const channel = new Channel<{ kind: "progress" } & UpdateProgress>();
+      channel.onmessage = (event) =>
+        onProgress({ downloaded: event.downloaded, total: event.total });
+      await invoke("update_download", { onEvent: channel });
+    },
+    install: () => invoke("update_install"),
+  };
+}
+
 /** The window of the shell: a title bar of the system, or none (then the app draws its controls). */
 function tauriFrame(): WindowFrame {
   return {
@@ -153,6 +171,7 @@ export function tauriPlatform(): Platform {
       clear: () => invoke("connection_clear"),
     },
     local: tauriLocal(),
+    updater: tauriUpdater(),
     mode: {
       load: () => invoke<ServerMode | null>("mode_load"),
       save: (mode) => invoke("mode_save", { mode }),
