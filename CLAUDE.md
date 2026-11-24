@@ -7,6 +7,7 @@
 - O app só desenha o que o backend oferece (`docs/FRONTEND.md`): nada inventado.
 - Antes de entregar uma tela: `pnpm lint`, `pnpm typecheck`, `pnpm vitest run`, o Playwright do app, e comparar as capturas com as referências do dono.
 - Nunca colocar segredos, chaves ou dados pessoais em código, testes, capturas ou mensagens de commit.
+- **Nada do escopo pessoal do dono no projeto (regra do dono, 24/11/2026).** O Suup é aberto e genérico: nada no código, prompts, testes, avaliações, exemplos ou docs pode depender dos bots, contas, nomes, faculdade, e-mails ou rotinas do dono. Exemplo: delegar "ao bot Rotina" é errado; o supervisor delega pela descrição declarada de cada bot da equipe, qualquer que seja. Testes e exemplos usam dados fictícios e genéricos. Casos reais do dono entram como pedidos genéricos ("um bot de rotinas na equipe").
 - **Agentes de apoio e a cota do dono (regra do dono, 24/11/2026; detalhes em `.claude/agents/`).** A cota é do dono e acabou uma vez por descuido: nunca usar o modelo da sessão principal para coisa simples.
   - **Pesquisa → Haiku** (agente `pesquisa`). **Escrita de código → Sonnet** (agente `codigo`). Ao delegar, sempre escolher um desses; nunca deixar herdar o modelo da sessão principal.
   - **No máximo 3 agentes ao mesmo tempo.** O que dá para fazer direto, faça direto.
