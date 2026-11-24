@@ -59,8 +59,8 @@ function setup(routines: Routine[], fires: RoutineFire[] = [fireOf()]) {
     },
     models: {
       list: vi.fn(async () => [
-        { id: "model-x", provider: "scripted", available: true },
-        { id: "model-y", provider: "scripted", available: true },
+        { id: "model-x", name: "Modelo X", provider: "scripted", available: true },
+        { id: "model-y", name: "Modelo Y", provider: "scripted", available: true },
       ]),
     },
     bots: {
@@ -99,9 +99,14 @@ describe("the Rotinas list", () => {
   it("changes the bot's chat model from the Chat e voz card, which also holds the voice ornament", async () => {
     const { apiAll } = setup([]);
     const dropdown = await screen.findByTestId("chat-model");
-    expect(dropdown.textContent).toContain("model-x");
+    // only the short name the server declares: no id, no provider (owner, 24/11/2026)
+    await waitFor(() => expect(dropdown.textContent).toBe("Modelo X"));
     fireEvent.click(dropdown);
-    pressOption(await screen.findByRole("option", { name: /model-y/ }));
+    expect((await screen.findAllByRole("option")).map((o) => o.textContent)).toEqual([
+      "Modelo X",
+      "Modelo Y",
+    ]);
+    pressOption(await screen.findByRole("option", { name: "Modelo Y" }));
     await waitFor(() =>
       expect(apiAll.bots.update).toHaveBeenCalledWith(BOT, { modelId: "model-y" }),
     );

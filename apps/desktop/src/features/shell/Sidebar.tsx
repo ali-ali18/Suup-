@@ -1,10 +1,15 @@
 import type { Bot } from "@suup/api";
 import {
+  Archive,
   Brain,
   Ellipsis,
+  FolderInput,
   Inbox,
   Keyboard,
   LogOut,
+  Pencil,
+  Pin,
+  PinOff,
   Plug,
   Plus,
   Search,
@@ -23,10 +28,11 @@ import { SIDEBAR_SPEC } from "../../lib/pane-size.js";
 import { Avatar } from "../../ui/avatar.js";
 import { type BadgeKind, BotBadge } from "../../ui/bot-badge.js";
 import { BotTitle } from "../../ui/bot-title.js";
-import { MenuButton, type MenuItem, PopupMenu, popupKey } from "../../ui/menu.js";
+import { MenuButton, type MenuSection, PopupMenu, popupKey } from "../../ui/menu.js";
 import { Dialog, MutedText, Pill, RoundButton } from "../../ui/primitives.js";
 import { ResizeHandle } from "../../ui/resize-handle.js";
 import { ScrollFade } from "../../ui/scroll-fade.js";
+import { Separator } from "../../ui/separator.js";
 import { Tip } from "../../ui/tooltip.js";
 
 /** How a bot's entry is laid out: a tile (pinned), a row (a list), or only the face (the rail). */
@@ -267,15 +273,37 @@ export function Sidebar() {
     [api, sync],
   );
 
-  const menuItems = (bot: Bot): MenuItem[] => [
+  const menuItems = (bot: Bot): MenuSection[] => [
     {
-      id: "pin",
-      label: bot.pinned ? "Desafixar" : "Fixar",
-      onSelect: () => void patch(bot, { pinned: !bot.pinned }),
+      id: "bot",
+      items: [
+        {
+          id: "pin",
+          label: bot.pinned ? "Desafixar" : "Fixar",
+          icon: bot.pinned ? PinOff : Pin,
+          onSelect: () => void patch(bot, { pinned: !bot.pinned }),
+        },
+        {
+          id: "group",
+          label: "Mover para grupo…",
+          icon: FolderInput,
+          onSelect: () => ui().setGroupBot(bot.id),
+        },
+        { id: "edit", label: "Editar…", icon: Pencil, onSelect: () => ui().openEditBot(bot.id) },
+      ],
     },
-    { id: "group", label: "Mover para grupo…", onSelect: () => ui().setGroupBot(bot.id) },
-    { id: "edit", label: "Editar…", onSelect: () => ui().openEditBot(bot.id) },
-    { id: "archive", label: "Arquivar…", danger: true, onSelect: () => setArchiving(bot) },
+    {
+      id: "archive",
+      items: [
+        {
+          id: "archive",
+          label: "Arquivar…",
+          icon: Archive,
+          danger: true,
+          onSelect: () => setArchiving(bot),
+        },
+      ],
+    },
   ];
 
   const entry = (bot: Bot, variant: EntryProps["variant"]) => (
@@ -295,33 +323,50 @@ export function Sidebar() {
     />
   );
 
-  const ownerItems: MenuItem[] = [
+  // Three groups split by a line: the screens, the app, leaving (owner, 24/11/2026).
+  const ownerItems: MenuSection[] = [
     {
-      id: "pending",
-      label: pending > 0 ? `Pendências (${pending})` : "Pendências",
-      icon: Inbox,
-      onSelect: () => go("pending"),
-    },
-    { id: "memory", label: "Memória", icon: Brain, onSelect: () => go("memory") },
-    { id: "plugins", label: "Conectores", icon: Plug, onSelect: () => go("connectors") },
-    {
-      id: "settings",
-      label: "Configurações",
-      icon: Settings,
-      onSelect: () => ui().openSettings(),
-    },
-    {
-      id: "shortcuts",
-      label: "Atalhos de teclado",
-      icon: Keyboard,
-      onSelect: () => ui().setShortcuts(true),
+      id: "screens",
+      items: [
+        {
+          id: "pending",
+          label: "Pendências",
+          icon: Inbox,
+          ...(pending > 0 ? { hint: String(pending) } : {}),
+          onSelect: () => go("pending"),
+        },
+        { id: "memory", label: "Memória", icon: Brain, onSelect: () => go("memory") },
+        { id: "plugins", label: "Conectores", icon: Plug, onSelect: () => go("connectors") },
+      ],
     },
     {
-      id: "disconnect",
-      label: mode === "local" ? "Trocar de servidor" : "Desconectar",
-      icon: LogOut,
-      danger: true,
-      onSelect: () => void disconnect(),
+      id: "app",
+      items: [
+        {
+          id: "settings",
+          label: "Configurações",
+          icon: Settings,
+          onSelect: () => ui().openSettings(),
+        },
+        {
+          id: "shortcuts",
+          label: "Atalhos de teclado",
+          icon: Keyboard,
+          onSelect: () => ui().setShortcuts(true),
+        },
+      ],
+    },
+    {
+      id: "leave",
+      items: [
+        {
+          id: "disconnect",
+          label: mode === "local" ? "Trocar de servidor" : "Desconectar",
+          icon: LogOut,
+          danger: true,
+          onSelect: () => void disconnect(),
+        },
+      ],
     },
   ];
   // The account button opens its menu above it, lined up with its start (the menu of sempre).
@@ -450,7 +495,7 @@ export function Sidebar() {
             >
               {layout.pinned.map((bot) => entry(bot, "rail"))}
               {layout.pinned.length > 0 && flat.length > layout.pinned.length && (
-                <hr className="my-0.5 w-6 border-0 border-t border-border-strong" />
+                <Separator tone="strong" className="my-0.5 w-6" />
               )}
               {flat.filter((b) => !b.pinned).map((bot) => entry(bot, "rail"))}
             </div>

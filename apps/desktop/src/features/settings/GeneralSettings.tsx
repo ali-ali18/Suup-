@@ -301,7 +301,7 @@ export function GeneralSettings({ title, titleId }: SectionProps) {
               key={m.id}
               icon={Cpu}
               testId="model-row"
-              title={m.id}
+              title={m.name}
               description={
                 m.available || m.unavailableReason === null
                   ? m.provider

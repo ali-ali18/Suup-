@@ -1,5 +1,5 @@
 import type { Run } from "@suup/api";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, CircleStop, CircleX, Pause, Pencil, Play, ScanSearch } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { useSettings } from "../../app/settings-store.js";
@@ -18,7 +18,7 @@ import { Avatar } from "../../ui/avatar.js";
 import { EventLineButton } from "../../ui/chat-lines.js";
 import { Composer } from "../../ui/composer.js";
 import { DraftReference } from "../../ui/draft-reference.js";
-import { type MenuItem, PopupMenu, popupKey } from "../../ui/menu.js";
+import { type MenuItem, type MenuSection, PopupMenu, popupKey } from "../../ui/menu.js";
 import { EmptyState } from "../../ui/primitives.js";
 import { Panel } from "../panel/Panel.js";
 import { MessageList } from "./MessageList.js";
@@ -57,17 +57,19 @@ export function runMenuItems(
     active !== undefined && (active.status === "queued" || active.status === "running");
   return [
     active?.paused === true
-      ? { id: "resume", label: "Continuar", onSelect: actions.resume }
-      : { id: "pause", label: "Pausar", disabled: !working, onSelect: actions.pause },
+      ? { id: "resume", label: "Continuar", icon: Play, onSelect: actions.resume }
+      : { id: "pause", label: "Pausar", icon: Pause, disabled: !working, onSelect: actions.pause },
     {
       id: "interrupt",
       label: "Interromper agora",
+      icon: CircleStop,
       disabled: !working,
       onSelect: actions.interrupt,
     },
     {
       id: "cancel",
       label: "Cancelar a execução",
+      icon: CircleX,
       danger: true,
       disabled: active === undefined || isTerminal(active.status),
       onSelect: actions.cancel,
@@ -234,20 +236,31 @@ function ChatForBot({ botId }: { botId: string }) {
     .filter(Boolean)
     .join(". ");
 
-  const menuItems: MenuItem[] = [
-    ...runMenuItems(active, {
-      pause: () => active !== undefined && void sync.runAction(active.id, "pause"),
-      resume: () => active !== undefined && void sync.runAction(active.id, "resume"),
-      interrupt: () => active !== undefined && void sync.runAction(active.id, "interrupt"),
-      cancel: () => active !== undefined && void sync.runAction(active.id, "cancel"),
-    }),
+  // The run's controls under their title, then the bot's (owner, 24/11/2026: groups and labels).
+  const menuItems: MenuSection[] = [
     {
-      id: "inspector",
-      label: "Abrir o inspetor da última execução",
-      disabled: latest === undefined,
-      onSelect: () => latest !== undefined && openInspector(latest.id),
+      id: "run",
+      label: "Execução",
+      items: runMenuItems(active, {
+        pause: () => active !== undefined && void sync.runAction(active.id, "pause"),
+        resume: () => active !== undefined && void sync.runAction(active.id, "resume"),
+        interrupt: () => active !== undefined && void sync.runAction(active.id, "interrupt"),
+        cancel: () => active !== undefined && void sync.runAction(active.id, "cancel"),
+      }),
     },
-    { id: "edit", label: "Editar o bot…", onSelect: () => openEditBot(bot.id) },
+    {
+      id: "bot",
+      items: [
+        {
+          id: "inspector",
+          label: "Abrir o inspetor da última execução",
+          icon: ScanSearch,
+          disabled: latest === undefined,
+          onSelect: () => latest !== undefined && openInspector(latest.id),
+        },
+        { id: "edit", label: "Editar o bot…", icon: Pencil, onSelect: () => openEditBot(bot.id) },
+      ],
+    },
   ];
 
   const openQuestion = items.some((i) => i.kind === "bot" && i.ask?.open === true);

@@ -404,6 +404,37 @@ describe("a base dos componentes: cópias do shadcn base-maia sobre Base UI (doc
       expect(read(join(SRC, file)), file).toContain("key={menu.key}");
   });
 
+  it("o menu do dono (24/11/2026): linhas de ícone e rótulo, grupos com Separator e Label, dica e submenu; nome curto do modelo", () => {
+    const menu = read(join(SRC, "ui", "menu.tsx"));
+    for (const part of [
+      "<Menu.Separator",
+      "<Menu.GroupLabel",
+      "<Menu.SubmenuTrigger",
+      "<ChevronRight",
+      'data-testid="menu-hint"',
+      "font-normal",
+    ])
+      expect(menu, part).toContain(part);
+    expect(read(join(SRC, "ui", "separator.tsx"))).toContain('from "@base-ui/react/separator"');
+    // no hand-made divider
+    const hr = files(SRC, /\.tsx$/).filter((f) => read(f).includes("<hr"));
+    expect(hr.map(rel)).toEqual([]);
+    // the model is shown by the short name the server declares, never the id with the provider
+    for (const file of [
+      join("features", "panel", "ActivityTab.tsx"),
+      join("features", "new-bot", "NewBotDialog.tsx"),
+      join("features", "inspector", "InspectorScreen.tsx"),
+    ]) {
+      const source = read(join(SRC, file));
+      expect(source, file).toContain("label: m.name");
+      expect(source, file).not.toContain("m.provider}");
+    }
+    // the account menu: its groups, the pending count as a hint
+    const sidebar = read(join(SRC, "features", "shell", "Sidebar.tsx"));
+    expect(sidebar).toContain("const ownerItems: MenuSection[]");
+    expect(sidebar).toContain("hint: String(pending)");
+  });
+
   it("a raiz isola o empilhamento, para os popups no body ficarem por cima", () => {
     expect(read(join(SRC, "styles", "base.css"))).toContain("isolation: isolate;");
   });

@@ -93,3 +93,59 @@ describe("PopupMenu (a menu at a point: the context menu)", () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 });
+
+describe("the menu rule of the owner (24/11/2026): icon + label rows, groups, titles, hints, submenus", () => {
+  it("groups are split by a separator, a group may have a title, and a row may have a muted hint", async () => {
+    render(
+      <MenuButton
+        label="Sua conta"
+        items={[
+          {
+            id: "a",
+            label: "Execução",
+            items: [{ id: "p", label: "Pendências", icon: Inbox, hint: "3", onSelect() {} }],
+          },
+          {
+            id: "b",
+            items: [{ id: "s", label: "Sair", icon: LogOut, danger: true, onSelect() {} }],
+          },
+        ]}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Sua conta" }));
+    const menu = await screen.findByRole("menu");
+    expect(menu.querySelectorAll('[role="separator"]')).toHaveLength(1);
+    expect(menu.querySelectorAll('[role="group"]')).toHaveLength(2);
+    expect(screen.getByText("Execução")).toBeTruthy();
+    expect(screen.getByTestId("menu-hint").textContent).toBe("3");
+    expect(
+      screen
+        .getAllByRole("menuitem")
+        .map((i) => i.querySelector('[data-testid="menu-label"]')?.textContent),
+    ).toEqual(["Pendências", "Sair"]);
+  });
+
+  it("a row with a submenu shows the chevron and opens its own menu", async () => {
+    const onSelect = vi.fn();
+    render(
+      <MenuButton
+        label="Mais"
+        items={[
+          {
+            id: "move",
+            label: "Mover para",
+            onSelect() {},
+            submenu: [{ id: "x", label: "Estudos", onSelect }],
+          },
+        ]}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Mais" }));
+    const row = await screen.findByRole("menuitem", { name: "Mover para" });
+    expect(row.getAttribute("aria-haspopup")).toBe("menu");
+    expect(row.querySelector(".lucide-chevron-right")).not.toBeNull();
+    fireEvent.click(row);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Estudos" }));
+    expect(onSelect).toHaveBeenCalled();
+  });
+});

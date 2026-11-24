@@ -17,6 +17,7 @@ import { useMemo, useState } from "react";
 import { cx } from "../lib/cx.js";
 import { MENU_ITEM } from "./menu.js";
 import { POPUP_LAYER, POPUP_MOTION, POPUP_SURFACE } from "./popover.js";
+import { Separator } from "./separator.js";
 
 export interface DropdownOption<V extends string = string> {
   value: V;
@@ -222,7 +223,7 @@ function FilteredDropdown<V extends string>({
           className={cx(POPUP_LAYER, "outline-none")}
         >
           <Combobox.Popup aria-label={label} className={PANEL}>
-            <div className="mb-1 flex h-9 flex-none items-center gap-2 border-b border-border px-3 text-text-muted">
+            <div className="flex h-9 flex-none items-center gap-2 px-2.5 text-text-muted">
               <Search size={14} aria-hidden="true" />
               <Combobox.Input
                 aria-label={`Filtrar: ${label}`}
@@ -241,6 +242,7 @@ function FilteredDropdown<V extends string>({
                 className="min-w-0 flex-1 border-0 bg-transparent text-small text-text focus-visible:outline-none"
               />
             </div>
+            <Separator className="-mx-1.5 my-1.5" />
             <Combobox.Empty className="text-small text-text-muted">
               <p className="p-3">Nada com “{query.trim()}”.</p>
             </Combobox.Empty>

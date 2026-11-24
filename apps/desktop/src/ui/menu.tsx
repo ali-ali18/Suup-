@@ -12,7 +12,7 @@
  * trigger when the page behind scrolls.
  */
 import { Menu } from "@base-ui/react/menu";
-import { Check, type LucideIcon } from "lucide-react";
+import { Check, ChevronRight, type LucideIcon } from "lucide-react";
 import {
   type ButtonHTMLAttributes,
   type ReactElement,
@@ -32,6 +32,10 @@ export interface MenuItem {
   description?: string;
   /** A lucide icon before the label (data only: the item draws it, muted, at the icon size). */
   icon?: LucideIcon;
+  /** A short muted text at the right end of the row ("3" pending, a value): never a sentence. */
+  hint?: string;
+  /** The items of a submenu: the row opens it (a chevron at its right end) instead of acting. */
+  submenu?: readonly MenuItem[];
   /** A menu item that is on or off (drawn with a check): `role="menuitemcheckbox"`. */
   checked?: boolean;
   testId?: string;
@@ -39,6 +43,22 @@ export interface MenuItem {
   danger?: boolean;
   onSelect(): void;
 }
+
+/**
+ * A group of items. Groups are split by a separator (Base UI's `Menu.Separator`), and a group that
+ * needs a title has a `label` (Base UI's `Menu.GroupLabel`, the shadcn `DropdownMenuLabel`).
+ */
+export interface MenuSection {
+  id: string;
+  label?: string;
+  items: readonly MenuItem[];
+}
+
+/** What a menu shows: plain items, or sections of them. */
+export type MenuEntries = readonly MenuItem[] | readonly MenuSection[];
+
+const isSections = (entries: MenuEntries): entries is readonly MenuSection[] =>
+  entries.length > 0 && "items" in (entries[0] as MenuItem | MenuSection);
 
 /** What a custom trigger receives and spreads on its button (Base UI's props: ref, ARIA, handlers). */
 export type MenuTriggerProps = ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -55,9 +75,19 @@ const MENU_PANEL = cx(
 /** The width of a menu: `wide` for a menu of a button (items with a line under them), `normal` at a point. */
 const MENU_WIDTH = { normal: "min-w-menu", wide: "min-w-menu-wide" } as const;
 
-/** One entry of a menu or a list (Base UI marks the one under the pointer or the keys `data-highlighted`). */
+/**
+ * One row of a menu or a list (owner, 24/11/2026): the icon, the label in the normal weight, a
+ * comfortable height, the highlight inset in the panel with the row radius (Base UI marks the row
+ * under the pointer or the keys `data-highlighted`).
+ */
 export const MENU_ITEM =
-  "flex w-full cursor-default items-center justify-between gap-3 rounded-row border-0 bg-transparent px-3 py-2.5 text-left text-label leading-inherit outline-none select-none data-disabled:opacity-40 data-highlighted:bg-hover";
+  "flex w-full cursor-default items-center justify-between gap-2.5 rounded-row border-0 bg-transparent px-2.5 py-2 text-left text-label leading-inherit font-normal outline-none select-none data-disabled:opacity-40 data-highlighted:bg-hover data-popup-open:bg-hover";
+
+/** The title of a group of a menu: small and muted, aligned with the labels of the rows. */
+const MENU_LABEL = "px-2.5 pt-1.5 pb-1 text-small text-text-muted select-none";
+
+/** The line between two groups, with room above and below. */
+const MENU_SEPARATOR = "-mx-1.5 my-1.5 h-px flex-none bg-border";
 
 const ITEM_TONE = { normal: "text-text", danger: "text-danger-text" } as const;
 
@@ -80,16 +110,56 @@ export function MenuItemBody({ item }: { item: MenuItem }) {
           <span className="text-small text-text-muted">{item.description}</span>
         )}
       </span>
+      {item.hint !== undefined && (
+        <span className="flex-none text-small text-text-muted" data-testid="menu-hint">
+          {item.hint}
+        </span>
+      )}
       {item.checked === true && (
         <Check size={16} className="flex-none text-text-muted" aria-hidden="true" />
+      )}
+      {item.submenu !== undefined && (
+        <ChevronRight size={16} className="flex-none text-text-muted" aria-hidden="true" />
       )}
     </>
   );
 }
 
-/** The items of a menu: a plain item, or a checkbox item when it is on or off. Each is a native button. */
+/**
+ * The items of a menu: a plain item, a checkbox item when it is on or off, or the row of a
+ * submenu. Each is a native button.
+ */
 function MenuItems({ items }: { items: readonly MenuItem[] }) {
   return items.map((item) => {
+    if (item.submenu !== undefined)
+      return (
+        <Menu.SubmenuRoot key={item.id}>
+          <Menu.SubmenuTrigger
+            nativeButton
+            render={<button type="button" />}
+            disabled={item.disabled === true}
+            data-testid={item.testId}
+            label={item.label}
+            className={cx(MENU_ITEM, ITEM_TONE.normal)}
+          >
+            <MenuItemBody item={item} />
+          </Menu.SubmenuTrigger>
+          <Menu.Portal>
+            <Menu.Positioner
+              side="right"
+              align="start"
+              alignOffset={-6}
+              sideOffset={4}
+              collisionPadding={8}
+              className={cx(POPUP_LAYER, "outline-none")}
+            >
+              <Menu.Popup aria-label={item.label} className={cx(MENU_PANEL, MENU_WIDTH.normal)}>
+                <MenuItems items={item.submenu} />
+              </Menu.Popup>
+            </Menu.Positioner>
+          </Menu.Portal>
+        </Menu.SubmenuRoot>
+      );
     const shared = {
       nativeButton: true,
       render: <button type="button" />,
@@ -112,6 +182,20 @@ function MenuItems({ items }: { items: readonly MenuItem[] }) {
   });
 }
 
+/** The entries of a menu: the items, or the groups with their titles and the lines between them. */
+function MenuContent({ entries }: { entries: MenuEntries }) {
+  if (!isSections(entries)) return <MenuItems items={entries} />;
+  return entries.map((section, index) => (
+    <Menu.Group key={section.id} className="flex flex-col">
+      {index > 0 && <Menu.Separator className={MENU_SEPARATOR} />}
+      {section.label !== undefined && (
+        <Menu.GroupLabel className={MENU_LABEL}>{section.label}</Menu.GroupLabel>
+      )}
+      <MenuItems items={section.items} />
+    </Menu.Group>
+  ));
+}
+
 /** The popup of a menu, in a portal on the body, above the dialogs. */
 function MenuPopup({
   label,
@@ -122,7 +206,7 @@ function MenuPopup({
   anchor,
 }: {
   label: string;
-  items: readonly MenuItem[];
+  items: MenuEntries;
   side: "top" | "bottom";
   align: "start" | "end";
   width: keyof typeof MENU_WIDTH;
@@ -139,7 +223,7 @@ function MenuPopup({
         {...(anchor === undefined ? {} : { anchor })}
       >
         <Menu.Popup aria-label={label} className={cx(MENU_PANEL, MENU_WIDTH[width])}>
-          <MenuItems items={items} />
+          <MenuContent entries={items} />
         </Menu.Popup>
       </Menu.Positioner>
     </Menu.Portal>
@@ -163,7 +247,7 @@ export function MenuButton({
 }: {
   label: string;
   icon?: ReactNode;
-  items: readonly MenuItem[];
+  items: MenuEntries;
   trigger?(props: MenuTriggerProps): ReactElement;
   placement?: "below" | "above";
   align?: "start" | "end";
@@ -222,7 +306,7 @@ export function PopupMenu({
   x: number;
   y: number;
   label: string;
-  items: readonly MenuItem[];
+  items: MenuEntries;
   onClose(): void;
 }) {
   const [open, setOpen] = useState(true);
