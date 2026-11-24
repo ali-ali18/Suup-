@@ -470,22 +470,29 @@ describe("chat cards share one chrome and one collapsed row", () => {
     expect(source).toContain("ticked.size === 0");
   });
 
-  it("the tool actions are drawn by the same collapsed row", () => {
-    expect(read(join(SRC, "features", "chat", "ActionRow.tsx"))).toContain("ActionCard");
+  it("the chat shows results only: no tool row, no fold of actions, no steps (owner, 24/11/2026)", () => {
+    // "Por mim nem precisa do panel atividade ou avisar os passos deles, quero o resultado com
+    // excelência e nada mais!" The calls and the steps live in the Inspector.
+    expect(existsSync(join(SRC, "features", "chat", "ActionRow.tsx"))).toBe(false);
+    expect(existsSync(join(SRC, "data", "actions.ts"))).toBe(false);
+    const timeline = read(join(SRC, "features", "chat", "timeline.ts"));
+    expect(timeline).not.toContain('kind: "actions"');
+    expect(timeline).not.toContain("mergeApprovals");
+    const list = read(join(SRC, "features", "chat", "MessageList.tsx"));
+    expect(list).not.toContain('case "actions"');
+    expect(list).not.toContain("ActionFold");
+    expect(list).not.toContain("CallRow");
+    expect(read(join(SRC, "ui", "action-card.tsx"))).not.toContain("ActionFold");
+    // No setting to fold what is no longer there.
+    expect(read(join(SRC, "lib", "settings.ts"))).not.toContain("fold");
+    // Nothing is "silent" any more: there is nothing to be loud about.
+    for (const file of files(SRC, /\.tsx?$/))
+      expect(read(file).includes("SILENT_TOOLS"), rel(file)).toBe(false);
   });
 
-  it("one tool vocabulary: the decision card, the decided approval and the action row read the label and icon from toolCategory", () => {
-    const row = read(join(SRC, "features", "chat", "ActionRow.tsx"));
-    expect(row).toContain("categoryGlyph(item.icon)");
-    expect(row).not.toMatch(/SquareTerminal|FileText|Globe|Brain|Wrench/);
-    expect(read(join(SRC, "data", "actions.ts"))).toContain("toolCategory(name, connectors)");
-    expect(read(join(SRC, "data", "actions.ts"))).not.toMatch(/kindLabel: "/);
+  it("one tool vocabulary: the decision card and the decided approval read the label and icon from toolCategory", () => {
     for (const name of ["approval-card.tsx"])
       expect(ui(name), name).toContain("categoryGlyph(category.icon)");
-  });
-
-  it("one row per tool call: the chat timeline merges the approvals into their calls", () => {
-    expect(read(join(SRC, "features", "chat", "timeline.ts"))).toContain("mergeApprovals(");
   });
 
   it("the chrome of every chat card is the same: 1px border and the card radius", () => {
@@ -526,17 +533,7 @@ describe("chat cards share one chrome and one collapsed row", () => {
     expect(src).not.toMatch(/\bChevron(Down|Up)\b/);
   });
 
-  it("a finished tool row is collapsed: the command and its output open only on a click (§1 'Amigável')", () => {
-    const rows = read(join(SRC, "features", "chat", "ApprovalRows.tsx"));
-    // A call without an approval is open only when the user clicked it; the setting of decided
-    // cards never opens a plain tool row.
-    expect(rows).toContain("? clicked.has(key)");
-    // The key carries the run: a call id repeated by another run never opens this row.
-    expect(rows).toContain("`call-$" + "{item.runId}-$" + "{item.callId}`");
-    expect(read(join(SRC, "data", "actions.ts"))).toContain(
-      "`fold:$" + "{first.runId}:$" + "{first.callId}`",
-    );
-    // Another conversation starts with nothing open.
+  it("another conversation starts with nothing open", () => {
     expect(read(join(SRC, "features", "chat", "ChatScreen.tsx"))).toContain(
       "setExpanded(new Set());",
     );
@@ -1005,6 +1002,7 @@ describe("o retorno interno do bot não tem marcador próprio na interface (docs
       "features/chat/ChatScreen.tsx",
       "features/inspector/InspectorScreen.tsx",
       "lib/avatar-state.ts",
+      "lib/chat-activity.ts",
     ]);
   });
 });
@@ -1055,13 +1053,11 @@ describe("o Principal é o supervisor: a estrela, a revisão e o silêncio sobre
     );
   });
 
-  it("salvar e esquecer uma memória não aparecem no chat como linha nem como indicador (decisão do dono)", () => {
-    const derive = read(join(SRC, "data", "derive.ts"));
-    expect(derive).toContain("SILENT_TOOLS");
-    expect(derive).toContain("export const SILENT_TOOLS");
-    for (const tool of ["remember", "forget", "create_reminder"])
-      expect(derive).toContain(`"${tool}",`);
-    expect(read(join(SRC, "data", "actions.ts"))).toContain("SILENT_TOOLS.has(name)");
+  it("salvar e esquecer uma memória não aparecem no chat como linha (decisão do dono): nenhuma ferramenta aparece", () => {
+    const list = read(join(SRC, "features", "chat", "MessageList.tsx"));
+    expect(list).not.toContain('case "actions"');
+    // O avatar vivo diz no máximo "Usando a memória", uma frase fixa: nunca o que foi guardado.
+    expect(read(join(SRC, "lib", "chat-activity.ts"))).toContain('memory: "Usando a memória"');
   });
 });
 
@@ -1538,8 +1534,10 @@ describe('amigável: nada de log para o usuário (dono, 23/11/2026: "a ideia é 
   });
 
   it("o chat não mostra o nome interno de uma ferramenta de conector nem o detalhe cru de uma falha", () => {
-    const actions = read(join(SRC, "data", "actions.ts"));
-    expect(actions).toContain("parseConnectorTool(name, connectors)");
+    // The live avatar's phrase is one of a fixed table: never a tool's name, a command or a path.
+    const activity = read(join(SRC, "lib", "chat-activity.ts"));
+    expect(activity).toContain("ACTIVITY_PHRASE[activity]");
+    expect(activity).not.toContain("${tool");
     const list = read(join(SRC, "features", "chat", "MessageList.tsx"));
     expect(list).not.toContain("failureDetail");
     expect(list).toContain("FRIENDLY_FAILURE[");
@@ -1682,24 +1680,47 @@ describe("ajustes do dono de 23/11/2026 (docs/DESIGN.md §2, §4a, §4c, §5, §
   });
 });
 
-describe("o chat não mostra pesquisa na web nem erro cru de ferramenta (docs/DESIGN.md §3, dono 24/11/2026)", () => {
-  it("buscar e ler páginas são o bot trabalhando: nenhuma linha no chat (ficam no Inspetor)", () => {
-    const derive = read(join(SRC, "data", "derive.ts"));
-    const silent = derive.slice(derive.indexOf("export const SILENT_TOOLS"));
-    for (const tool of ["web_search", "web_read", "web_fetch"])
-      expect(silent.slice(0, silent.indexOf("]);"))).toContain(`"${tool}"`);
+describe("o avatar vivo no chat (docs/DESIGN.md §3, dono 24/11/2026)", () => {
+  it("o bot trabalhando é o avatar dele, não os três pontinhos", () => {
+    const lines = read(join(SRC, "ui", "chat-lines.tsx"));
+    expect(lines).not.toContain("dots-dot");
+    expect(lines).not.toContain("animate-dot");
+    expect(read(join(SRC, "styles", "theme.css"))).not.toContain("ui-dot");
+    // A linha leva o rosto que a conversa entrega e é anunciada com calma (role="status").
+    expect(lines).toContain('{ role: "status" }');
+    expect(read(join(SRC, "features", "chat", "MessageList.tsx"))).toContain(
+      "liveFace(ACTIVITY_AVATAR[live.shown.activity])",
+    );
   });
 
-  it("entregar um arquivo não é linha: o cartão do arquivo embaixo da mensagem é o único (dono, 24/11/2026)", () => {
-    const derive = read(join(SRC, "data", "derive.ts"));
-    const silent = derive.slice(derive.indexOf("export const SILENT_TOOLS"));
-    expect(silent.slice(0, silent.indexOf("]);"))).toContain('"send_file"');
+  it("o rosto é o do bot: o estilo, o 3D e a cor dele, pelo ui/avatar.tsx, vivo", () => {
+    const chat = read(join(SRC, "features", "chat", "ChatScreen.tsx"));
+    const face = chat.slice(chat.indexOf("liveFace={"));
+    const tag = face.slice(0, face.indexOf("/>"));
+    for (const prop of [
+      "avatarStyle={bot.avatarStyle}",
+      "pixel3d={bot.avatarPixel3d}",
+      "color={bot.color}",
+      "state={state}",
+      "lively",
+    ])
+      expect(tag).toContain(prop);
   });
 
-  it("uma chamada que falhou diz isso numa frase, nunca o texto de erro da ferramenta", () => {
-    const row = read(join(SRC, "features", "chat", "ActionRow.tsx"));
-    expect(row).toContain('data-testid="action-failed"');
-    expect(row).not.toContain('error={item.state === "failed"}');
+  it("a expressão vem de uma tabela exata por atividade declarada, nunca do texto", () => {
+    const activity = read(join(SRC, "lib", "chat-activity.ts"));
+    expect(activity).toContain("ACTIVITY_AVATAR: Readonly<Record<ChatActivity, AvatarStateId>>");
+    expect(activity).toContain("toolCategory(tool).icon");
+    expect(activity).not.toContain("RegExp");
+  });
+
+  it("sai com transição, sem pulo, e o movimento reduzido zera a saída", () => {
+    const tokens = read(join(SRC, "styles", "tokens.css"));
+    expect(tokens).toContain("--duration-leave:");
+    expect(tokens.split("--duration-leave: 0ms;").length - 1).toBe(2);
+    const lines = read(join(SRC, "ui", "chat-lines.tsx"));
+    expect(lines).toContain("grid-rows-[0fr]");
+    expect(lines).toContain("duration-(--duration-leave)");
   });
 });
 

@@ -204,10 +204,9 @@
   --default-transition-timing-function: ease;
 }
 
-/* The animations of the app that are not Tailwind's own: the three dots of "working" and the pulse
-   of the "working" badge of a bot. */
+/* The animations of the app that are not Tailwind's own: the pulse of the "working" badge of a bot
+   and the fade of what appears. */
 @theme {
-  --animate-dot: ui-dot 1.2s ease-in-out infinite;
   --animate-badge: ui-pulse 1.4s ease-in-out infinite;
   /* Something that appears fades in, never pops (docs/DESIGN.md §1 "Nada seco"). */
   --animate-fade-in: ui-fade-in var(--duration-base) ease-out both;
@@ -221,18 +220,6 @@
   @keyframes ui-pulse {
     50% {
       opacity: 0.4;
-    }
-  }
-
-  @keyframes ui-dot {
-    0%,
-    100% {
-      transform: translateY(0);
-      opacity: 0.45;
-    }
-    40% {
-      transform: translateY(-3px);
-      opacity: 1;
     }
   }
 }

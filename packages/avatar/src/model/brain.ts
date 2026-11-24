@@ -50,6 +50,7 @@ const PULSES: readonly PulseKind[] = ["toolStart", "toolOk", "toolFail"];
 export function familyOfState(state: AvatarState): ActivityFamily {
   switch (state) {
     case "thinking":
+    case "pondering":
       return "think";
     case "searching":
     case "radar":

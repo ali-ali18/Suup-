@@ -240,6 +240,9 @@
   --menu-gap: 6px; /* between a menu button and its menu */
   --duration-fast: 120ms;
   --duration-base: 200ms;
+  /* The bot's live avatar leaving the chat when its answer arrives: a little longer than the
+     base, so the face of "done" is seen while the row fades and closes (docs/DESIGN.md §3). */
+  --duration-leave: 420ms;
 }
 
 :root[data-theme="light"] {
@@ -272,6 +275,7 @@
   :root {
     --duration-fast: 0ms;
     --duration-base: 0ms;
+    --duration-leave: 0ms;
   }
 }
 
@@ -288,4 +292,5 @@
 :root[data-motion="reduce"] {
   --duration-fast: 0ms;
   --duration-base: 0ms;
+  --duration-leave: 0ms;
 }

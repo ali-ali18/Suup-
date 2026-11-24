@@ -14,6 +14,9 @@ export const AVATAR_STATES = [
   "paused",
   "sleeping",
   "celebrating",
+  "pondering",
+  "reading",
+  "coding",
 ] as const;
 
 export type AvatarStateId = (typeof AVATAR_STATES)[number];
@@ -40,6 +43,12 @@ export const STATE_MAP: Readonly<Record<AvatarStateId, EngineState>> = {
   sleeping: "sleeping",
   /** Big celebration (spin). */
   celebrating: "celebrate",
+  /** Working something out WITHOUT the indicator: the face stays, the eyes look up now and then. */
+  pondering: "pondering",
+  /** Reading (files, pages, memory): working clips, calm eyes. */
+  reading: "reading",
+  /** Writing code or running commands: working clips, squinted (focused) eyes. */
+  coding: "coding",
 };
 
 export function isAvatarState(value: unknown): value is AvatarStateId {

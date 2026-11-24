@@ -10,7 +10,6 @@ import {
   Globe,
   HandHelping,
   Image,
-  Layers,
   type LucideIcon,
   MessageSquareText,
   MoveHorizontal,
@@ -144,14 +143,6 @@ const CHAT_CHOICES: readonly Choice<keyof Settings>[] = [
 ];
 
 const CHAT_SWITCHES: readonly Switch<keyof Settings>[] = [
-  {
-    key: "fold",
-    icon: Layers,
-    title: "Dobrar as ações antigas",
-    description: "As mais antigas viram uma linha “Mais N ações”.",
-    on: "on",
-    off: "off",
-  },
   {
     key: "notifyApprovals",
     icon: Bell,

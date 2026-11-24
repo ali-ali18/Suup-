@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   AVATAR_COLORS,
   AVATAR_STATES,
+  BODY_MORPH_STATES,
   type AvatarRenderData,
   createAvatarRuntime,
   createCharacter,
@@ -203,5 +204,28 @@ describe("runtime in the shared ticker", () => {
     expect(seen.length).toBeGreaterThan(1);
     handle.unregister();
     runtime.dispose();
+  });
+});
+
+describe("the states of the chat's live avatar (they keep the face)", () => {
+  it("pondering, reading and coding never turn the body into an indicator", () => {
+    for (const state of ["pondering", "reading", "coding"] as const) {
+      expect(AVATAR_STATES).toContain(state);
+      expect(BODY_MORPH_STATES).not.toContain(state);
+    }
+  });
+
+  it("each has its own look: reading and coding change the eyes of working; pondering keeps the face", () => {
+    const c = createCharacter({ id: "chat", shape: "blob" });
+    const working = renderStill(c, "working");
+    expect(renderStill(c, "reading")).not.toBe(working);
+    expect(renderStill(c, "coding")).not.toBe(working);
+    expect(renderStill(c, "coding")).not.toBe(renderStill(c, "reading"));
+    // thinking turns the body into the dots indicator; pondering keeps the face (two eyes, no dots)
+    const rt = createAvatarRuntime(c, { state: "pondering", brain: true });
+    let f = rt.frame(0);
+    for (let t = 16; t < 2000; t += 16) f = rt.frame(t);
+    expect(f.parts.every((p) => p.opacity === "0")).toBe(true);
+    expect(f.eyes.split("M").length - 1).toBe(2);
   });
 });

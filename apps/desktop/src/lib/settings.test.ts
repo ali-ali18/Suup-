@@ -10,7 +10,7 @@ import {
 } from "./settings.js";
 
 describe("settings: one typed object with defaults", () => {
-  it("nothing stored: the defaults (dark, bubble follows the bot, real phrase, folding on, icons off)", () => {
+  it("nothing stored: the defaults (dark, bubble follows the bot, real phrase, icons off)", () => {
     expect(parseSettings(null)).toEqual(DEFAULT_SETTINGS);
     expect(DEFAULT_SETTINGS).toMatchObject({
       theme: "dark",
@@ -18,7 +18,6 @@ describe("settings: one typed object with defaults", () => {
       width: "default",
       density: "comfortable",
       phrase: "real",
-      fold: "on",
       favicons: "off",
       motion: "system",
       approvalResolved: "collapsed",
@@ -45,7 +44,6 @@ describe("settings: one typed object with defaults", () => {
       theme: "light",
       bubble: "neutral",
       favicons: "on",
-      fold: "off",
     } as const;
     expect(parseSettings(serializeSettings(changed))).toEqual(changed);
     expect(JSON.parse(serializeSettings(changed)).version).toBe(1);
@@ -58,7 +56,6 @@ describe("settings: one typed object with defaults", () => {
       width: 7,
       density: null,
       phrase: "discreet",
-      fold: "maybe",
       favicons: "ON",
       motion: "reduce",
       extra: "x",

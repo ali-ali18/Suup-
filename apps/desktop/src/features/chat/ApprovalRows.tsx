@@ -1,15 +1,13 @@
-import type { Approval, ApprovalRule, WrittenRule } from "@suup/api";
-import { useCallback, useEffect, useMemo } from "react";
+import type { Approval, ApprovalRule } from "@suup/api";
+import { useCallback, useMemo } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { useSettings } from "../../app/settings-store.js";
 import { useUi } from "../../app/ui-store.js";
-import type { ActionItem } from "../../data/actions.js";
 import { STATUS_LABEL } from "../../data/approval-text.js";
 import type { SecretRequestItem } from "../../data/secret-requests.js";
 import { answerSecretRequest } from "../../lib/secret-form.js";
 import { ApprovalCard } from "../../ui/approval-card.js";
 import { SecretRequestCard } from "../../ui/secret-request-card.js";
-import { ActionRow } from "./ActionRow.js";
 
 /**
  * Whether a decided card is open: its own choice (a click) flips what the setting says by default.
@@ -67,76 +65,6 @@ export function ApprovalRow({
             : `Este pedido já tinha sido decidido em outro lugar: ${(STATUS_LABEL[card.status] ?? card.status).toLowerCase()}.`,
         )
       }
-    />
-  );
-}
-
-/**
- * The row of one tool call: the same row whether or not it had an approval. With one, the row says
- * the decision and the execution together and opens to what was approved and what happened; its
- * default (open or closed) follows the setting for decided cards, a click flips it.
- */
-/**
- * The key of a call's row among what is expanded. A call id is only unique inside its run (a
- * provider may number them), so a call without an approval is keyed by its run too: a click on one
- * row never opens another. Approval ids are unique already.
- */
-export const callKey = (item: ActionItem): string =>
-  item.approval === undefined
-    ? `call-${item.runId}-${item.callId}`
-    : `approval-${item.approval.id}`;
-
-export function CallRow({
-  item,
-  clicked,
-  onToggle,
-}: {
-  item: ActionItem;
-  clicked: ReadonlySet<string>;
-  onToggle(key: string): void;
-}) {
-  const approval = item.approval;
-  const bot = useData((s) => (approval === undefined ? undefined : s.bots[approval.botId]));
-  const connectorsByName = useData((s) => s.connectors);
-  const connectors = useMemo(() => Object.values(connectorsByName), [connectorsByName]);
-  const rule: ApprovalRule | undefined = useData((s) =>
-    approval?.ruleId == null ? undefined : s.rules[approval.ruleId],
-  );
-  const { sync } = useServices();
-  const writtenRuleId = item.blocked?.writtenRuleId ?? null;
-  const writtenRule: WrittenRule | undefined = useData((s) =>
-    writtenRuleId === null ? undefined : s.writtenRules[writtenRuleId],
-  );
-  const writtenLoaded = useData((s) => s.writtenRulesLoaded);
-  // A call a written rule refused says that rule's text: read the rules once if they are not here yet.
-  useEffect(() => {
-    if (item.blocked !== undefined && !writtenLoaded) void sync.loadWrittenRules();
-  }, [item.blocked, writtenLoaded, sync]);
-  const settings = useSettings((s) => s.settings);
-  const key = callKey(item);
-  // A finished call is ONE collapsed line (docs/DESIGN.md §1 "Amigável", §3): the command and its
-  // output open only on the user's click. Only a decided approval follows the user's setting.
-  const expanded =
-    approval === undefined
-      ? clicked.has(key)
-      : resolvedOpen(clicked, key, settings.approvalResolved);
-  return (
-    <ActionRow
-      item={item}
-      expanded={expanded}
-      onToggle={() => onToggle(key)}
-      {...(approval !== undefined
-        ? {
-            context: {
-              botName: bot?.name ?? "O bot",
-              rule,
-              connectors,
-              collapseLong: settings.approvalLong === "collapse",
-            },
-          }
-        : item.blocked !== undefined
-          ? { context: { writtenRule } }
-          : {})}
     />
   );
 }

@@ -43,6 +43,9 @@ export const BEHAVIOR_TUNING = {
 
 const B = BEHAVIOR_TUNING;
 
+/** Estados de pensar: o olhar procura para cima, mais devagar (com ou sem o corpo virar indicador). */
+const THINKING_STATES: ReadonlySet<string> = new Set(["thinking", "pondering"]);
+
 /** Expressões da cutucada, em ciclo. */
 export const POKE_CYCLE: readonly Expression[] = ["happy", "surprised", "confused"];
 
@@ -310,13 +313,13 @@ export class StateMachine {
   }
 
   private nextLook(): number {
-    return resolveState(this.state) === "thinking"
+    return THINKING_STATES.has(resolveState(this.state))
       ? between(this.random, B.thinkLookMinS, B.thinkLookMaxS)
       : between(this.random, B.lookMinS, B.lookMaxS);
   }
 
   private glance(): void {
-    const up = resolveState(this.state) === "thinking" ? 0.5 : 0;
+    const up = THINKING_STATES.has(resolveState(this.state)) ? 0.5 : 0;
     const dir = {
       x: between(this.random, -0.9, 0.9),
       y: between(this.random, -0.5, 0.5) - up,
