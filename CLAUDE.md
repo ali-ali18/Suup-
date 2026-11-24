@@ -7,7 +7,10 @@
 - O app só desenha o que o backend oferece (`docs/FRONTEND.md`): nada inventado.
 - Antes de entregar uma tela: `pnpm lint`, `pnpm typecheck`, `pnpm vitest run`, o Playwright do app, e comparar as capturas com as referências do dono.
 - Nunca colocar segredos, chaves ou dados pessoais em código, testes, capturas ou mensagens de commit.
-- **Cota do dono (regra do dono, 24/11/2026: a cota da semana acabou por excesso de agentes).** Antes de abrir qualquer subagente, **avisar o dono**: quantos, para quê, em qual modelo, e pedir o ok. No máximo **um** agente de código por vez. Nunca abrir agentes em paralelo "para adiantar". Se a conversa já está longa ou o trabalho é grande, avisar que vai pesar na cota **antes** de começar, não depois.
+- **Agentes de apoio e a cota do dono (regra do dono, 24/11/2026; detalhes em `.claude/agents/`).** A cota é do dono e acabou uma vez por descuido: nunca usar o modelo da sessão principal para coisa simples.
+  - **Pesquisa → Haiku** (agente `pesquisa`). **Escrita de código → Sonnet** (agente `codigo`). Ao delegar, sempre escolher um desses; nunca deixar herdar o modelo da sessão principal.
+  - **No máximo 3 agentes ao mesmo tempo.** O que dá para fazer direto, faça direto.
+  - **A sessão principal revisa** o que for sensível (segurança, segredos, banco/migrações, o loop do motor, permissões, aprovações) antes de enviar.
+  - **Rede bloqueada numa pesquisa:** a sessão principal libera o host no ambiente (só o necessário) e a pesquisa segue com a página oficial.
 - **Pesquisa antes, sempre com fonte lida.** Toda pesquisa em `docs/pesquisas/` usa a página oficial lida de verdade; resumo de busca não vale. Se a rede bloquear o site, avisar o dono e pedir a liberação antes de escrever a pesquisa.
 - **Anotar o que fizer.** Ao terminar um item, marcar o estado em `docs/MELHORIAS.md` (com o commit) no mesmo commit; pesquisas e decisões vão para o Git na hora, nunca ficam só na pasta.
-- **Modelos dos agentes de apoio (regra do dono).** Ao delegar trabalho a subagentes: **Haiku para pesquisa** (ler documentação, comparar opções, levantar fontes) e **Sonnet para escrever código**. Nunca deixar o subagente herdar o modelo da sessão principal sem escolher. Poucos agentes por vez; o que dá para fazer direto, faça direto.
