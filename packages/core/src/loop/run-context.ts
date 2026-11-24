@@ -2,6 +2,7 @@
 // `RunLoopOptions`, `ToolInvoker`), the `LoopContext` object every loop module receives instead of
 // a long parameter list, and the `Interrupted` signal used to unwind on a hard interruption.
 import type { ToolGate } from "../approvals/gate.js";
+import type { DocumentMaker } from "../documents.js";
 import type {
   ContextItem,
   MachineInfo,
@@ -148,6 +149,8 @@ export interface LoopDeps {
   webFor?(run: RunRecord): WebAccess;
   /** Where the files this run sends to the user go (`send_file`); without it the tool says so. */
   filesFor?(run: RunRecord): FileSender;
+  /** Who builds the documents this run makes (`create_document`), with the bot as the author. */
+  documentsFor?(run: RunRecord): DocumentMaker;
   /**
    * The run may schedule its own return (`schedule_return`): set for a conversation run of the
    * user, left out for an evaluation (isolated) run. It is also required that the run's origin is

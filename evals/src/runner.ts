@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import {
+  CREATE_DOCUMENT_TOOL_NAME,
   type InboxItem,
   type InboxItemInput,
   type LoopDeps,
@@ -643,7 +644,13 @@ async function run(runtime: Runtime, options: RunEvalOptions): Promise<EvalRepor
     .list()
     .map((t) => t.name)
     // `send_file` hands a file to the user's chat: an evaluation has none (an isolated run).
-    .filter((name) => !isEvalTool(name) && !isMemoryTool(name) && name !== SEND_FILE_TOOL_NAME);
+    .filter(
+      (name) =>
+        !isEvalTool(name) &&
+        !isMemoryTool(name) &&
+        name !== SEND_FILE_TOOL_NAME &&
+        name !== CREATE_DOCUMENT_TOOL_NAME,
+    );
   const startedAt = new Date();
   const results: CellResult[] = [];
   const inflight = new Map<number, { cost: number; done: Promise<void> }>();

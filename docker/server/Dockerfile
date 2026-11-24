@@ -28,6 +28,7 @@ COPY packages/api/package.json packages/api/
 COPY packages/connectors/package.json packages/connectors/
 COPY packages/core/package.json packages/core/
 COPY packages/db/package.json packages/db/
+COPY packages/documents/package.json packages/documents/
 COPY packages/providers/package.json packages/providers/
 COPY packages/runtime/package.json packages/runtime/
 COPY packages/sandbox/package.json packages/sandbox/

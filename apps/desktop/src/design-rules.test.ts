@@ -1704,6 +1704,12 @@ describe("o chat não mostra pesquisa na web nem erro cru de ferramenta (docs/DE
     expect(silent.slice(0, silent.indexOf("]);"))).toContain('"send_file"');
   });
 
+  it("o documento que o Suup monta (`create_document`) também é só o cartão, nunca uma linha (dono, 24/11/2026)", () => {
+    const derive = read(join(SRC, "data", "derive.ts"));
+    const silent = derive.slice(derive.indexOf("export const SILENT_TOOLS"));
+    expect(silent.slice(0, silent.indexOf("]);"))).toContain('"create_document"');
+  });
+
   it("uma chamada que falhou diz isso numa frase, nunca o texto de erro da ferramenta", () => {
     const row = read(join(SRC, "features", "chat", "ActionRow.tsx"));
     expect(row).toContain('data-testid="action-failed"');

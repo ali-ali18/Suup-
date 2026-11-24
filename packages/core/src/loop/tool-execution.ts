@@ -171,6 +171,7 @@ async function handleTool(
   const network = ctx.deps.networkFor?.(ctx.run);
   const web = ctx.deps.webFor?.(ctx.run);
   const files = ctx.deps.filesFor?.(ctx.run);
+  const documents = ctx.deps.documentsFor?.(ctx.run);
   const toolCtx: ToolContext = {
     runId: ctx.runId,
     botId: bot.id,
@@ -183,6 +184,7 @@ async function handleTool(
     ...(network === undefined ? {} : { network }),
     ...(web === undefined ? {} : { web }),
     ...(files === undefined ? {} : { files }),
+    ...(documents === undefined ? {} : { documents }),
     callId: call.id,
   };
   let invocation: ToolInvocation;

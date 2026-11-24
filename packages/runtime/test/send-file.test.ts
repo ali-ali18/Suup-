@@ -80,8 +80,8 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("send_file in a conversation"), () =>
       modelId: "model-s",
       allowedTools: ["read_file", "write_file"],
     });
-    // Counted in what the bot is offered: its two file tools and send_file; a bot with no
-    // machine tools does not get it.
+    // Counted in what the bot is offered: its two file tools, send_file and create_document; a bot
+    // with no machine tools gets neither.
     const bare = await createBot(runtime.db, {
       name: "Sem máquina",
       modelProvider: "script",
@@ -89,12 +89,13 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("send_file in a conversation"), () =>
       allowedTools: [],
     });
     const offered = (await runtime.toolReport(bot.id)).builtinTools;
-    expect(offered - (await runtime.toolReport(bare.id)).builtinTools).toBe(3);
+    expect(offered - (await runtime.toolReport(bare.id)).builtinTools).toBe(4);
     const first = await sendMessage(runtime, { botId: bot.id, text: "oi" });
     await work(runtime, first.run.id);
     const events = await listRunEvents(runtime.db, first.run.id);
     const request = JSON.stringify(events.filter((e) => e.type === "model_request"));
     expect(request).toContain("send_file");
+    expect(request).toContain("create_document");
     await runtime.close();
   });
 });

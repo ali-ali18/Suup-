@@ -175,6 +175,14 @@ export function describeAction(
         shown === undefined ? "Entregando um arquivo" : `Entregando ${shown}`,
       );
     }
+    case "create_document": {
+      const raw = text("name");
+      const shown = raw === undefined ? undefined : clip(raw, 60);
+      return files(
+        shown === undefined ? "Criar um documento" : `Criar ${shown}`,
+        shown === undefined ? "Criando um documento" : `Criando ${shown}`,
+      );
+    }
     case "search_files": {
       const pattern =
         text("pattern") === undefined ? undefined : clip(text("pattern") as string, 40);

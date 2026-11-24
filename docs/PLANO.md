@@ -469,6 +469,7 @@ packages/
   core/        loop, contexto, revisor, limites, tipos
   providers/   camada de provedores e adaptadores
   tools/       registro e ferramentas
+  documents/   monta PDF, Word e Excel no processo do servidor (create_document)
   db/          esquema, migrações, acesso a dados
   sandbox/     executor da máquina dos bots
   api/         contrato da API (esquemas, cliente, stream) compartilhado com o app

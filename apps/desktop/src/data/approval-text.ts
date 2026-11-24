@@ -228,6 +228,7 @@ export function toolCategory(
     case "list_files":
     case "search_files":
     case "send_file":
+    case "create_document":
       return { label: "Arquivo", icon: "file" };
     case "web_fetch":
     case "web_search":
