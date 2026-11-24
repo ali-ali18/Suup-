@@ -1,5 +1,5 @@
 // Owns what the web tools (`web_search`, `web_read`) may use. Tools see only this interface: the
-// implementation (a SearXNG container, a reader service, a headless renderer) lives in `@suup/web`
+// implementation (search engines asked through their official APIs, a reader service, a headless renderer) lives in `@suup/web`
 // and is bound to the run by the runtime, the same way `NetworkAccess` is. Nothing here names a
 // provider: a search backend is whatever the runtime wired.
 
@@ -36,7 +36,7 @@ export type WebSearchOutcome =
        * (three minutes), and Suup stops asking it for as long.
        */
       suspended: { engine: string; reason: string; retryInSeconds?: number }[];
-      /** Engines that were asked. */
+      /** Engines that were asked (a general engine of the queue that failed and was passed over is listed here too, and in `suspended` with why). */
       engines: string[];
       /** Engines left out of THIS search because Suup's own rate limit for them was used up. */
       throttled?: { engine: string; retryInSeconds: number }[];
@@ -45,7 +45,17 @@ export type WebSearchOutcome =
        * rate limit): the hits, if any, come from encyclopedia, papers, code and Q&A only.
        * `retryInSeconds`: when the first of them may answer again, when known.
        */
-      generalUnavailable?: { retryInSeconds?: number };
+      generalUnavailable?: {
+        retryInSeconds?: number;
+        /**
+         * Why: `quota` (the credits of every general engine are used up), `no_key` (none has a key
+         * configured), `unavailable` (the services did not answer or did not accept the key),
+         * `limit` (Suup's own limit for them is used up for the minute).
+         */
+        cause?: "quota" | "no_key" | "unavailable" | "limit";
+      };
+      /** The general web engine (one of the queue, such as `tavily` or `brave`) that answered, when one did. */
+      generalEngine?: string;
       /** The answer comes from the cache of an identical search made at `at` (ISO time); nothing was searched now. */
       cached?: { at: string; ageSeconds: number };
       /** The search waited this long in the queue of Suup's rate limit before it ran. */

@@ -128,6 +128,8 @@ import {
 } from "./supervisor.js";
 import { createVault, DEFAULT_VAULT_KEY_ENV, type Vault } from "./vault/service.js";
 import { dbSearchCache } from "./web/search-cache.js";
+import { createSearchKeys } from "./web/search-keys.js";
+import { dbSearchUsage } from "./web/search-usage.js";
 import { createWebWiring, type WebWiring } from "./web/wiring.js";
 
 type Env = Record<string, string | undefined>;
@@ -300,6 +302,13 @@ export interface Runtime {
   routinesOnce(options?: { now?: Date; log?: (message: string) => void }): Promise<FiredRoutine[]>;
   /** The web (search and reading): starts its services if needed and says what is running. */
   webStatus(): ReturnType<WebWiring["status"]>;
+  /** The general search engines of the queue and where each stands (Settings, `GET /v1/web-search`). */
+  webSearchProviders(): ReturnType<WebWiring["searchProviders"]>;
+  /**
+   * Leaves out of web search the engines whose terms forbid using their results to evaluate AI
+   * (Brave). `runEval` calls it before anything runs; it applies to this runtime from then on.
+   */
+  restrictWebForEvaluation(): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -415,6 +424,19 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     ...(options.log === undefined ? {} : { log: options.log }),
     // Identical searches are answered from the database: it outlives a restart and is shared.
     searchCache: dbSearchCache(() => runtime.db),
+    // The keys of the general engines: the environment variable of the configuration, then the vault.
+    searchKeys: createSearchKeys({
+      env,
+      vault,
+      settings: (id) =>
+        id === "tavily"
+          ? config.web?.search?.general?.tavily
+          : id === "brave"
+            ? config.web?.search?.general?.brave
+            : undefined,
+    }),
+    // How many searches each general engine answered this month (a count, never the query).
+    searchUsage: dbSearchUsage(() => runtime.db),
   });
   let egressStarted: Promise<EgressRuntime> | undefined;
   /** The internal network and the proxy: made once, at the first use of the docker sandbox. */
@@ -1396,6 +1418,8 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
       });
     },
     webStatus: () => web.status(),
+    webSearchProviders: () => web.searchProviders(),
+    restrictWebForEvaluation: () => web.restrictForEvaluation(),
     async close() {
       await web.close();
       await connectors.close();

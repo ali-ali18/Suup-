@@ -12,7 +12,7 @@ import type { ToastItem } from "../ui/primitives.js";
 export type View = "chat" | "pending" | "memory" | "inspector" | "connectors";
 export type PanelTab = "activity" | "library";
 /** The sections of the settings dialog. */
-export type SettingsTab = "general" | "permissions" | "memory" | "vault" | "connectors";
+export type SettingsTab = "general" | "permissions" | "memory" | "search" | "vault" | "connectors";
 
 /**
  * What "Editar" on a routine leaves for the chat of its bot (docs/ROTINAS.md): the draft for the

@@ -365,6 +365,7 @@ Só **escrita**: não existe rota nem campo que devolva um valor. O que é e o q
 | Método e caminho | Corpo | Resposta |
 |---|---|---|
 | `GET /v1/vault` | | `200 { configured, ok, keyEnv, reason }`: o servidor consegue guardar segredos? `configured`: a seção `vault` está na configuração; `ok`: a chave existe no ambiente e é válida; `keyEnv`: o **nome** da variável (nunca a chave); `reason`: o que falta, em português. O app usa para avisar antes de tentar escrever |
+| `GET /v1/web-search` | | `200 { enabled, providers: [{ id, label, position, state, retryInSeconds?, searchesThisMonth, keyNames? }] }`: os motores da **busca geral** (Tavily, Brave) na ordem em que são tentados. `state`: `ready`, `no_key`, `quota` (cota do mês usada), `key_rejected`, `unavailable` ou `off`; `searchesThisMonth`: quantas buscas o motor respondeu no mês (UTC; nunca o texto de uma busca); `keyNames.secret`: o nome do segredo do cofre onde a chave entra (`PUT /v1/secrets/{nome}`), `keyNames.env`: a variável de ambiente que o servidor também lê. Nunca devolve uma chave. Não inicia nada |
 | `GET /v1/secrets` | | `200 { items: [Secret] }` |
 | `PUT /v1/secrets/{nome}` | `{ value, description?, grantBotIds? }` | `200 Secret`. Cria ou **substitui** o valor (as concessões ficam); `value` de 8 a 16 384 caracteres; `400`; `503` |
 | `DELETE /v1/secrets/{nome}` | | `200 { deleted: true }`; `404` |

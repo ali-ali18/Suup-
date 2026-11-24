@@ -1,8 +1,10 @@
-// Owns the one way Suup's own search engines (Wikipedia, arXiv, Stack Overflow: direct-engines.ts)
-// reach the internet: a GET to an exact host, carrying the honest user agent, through an egress
-// proxy of ours (CONNECT) that lets through only the exact host names of those engines. No cookies,
-// no credentials, no redirect is followed (an API answer that redirects is an answer we do not
-// understand), and the answer is bounded in time and size. docs/BUSCA.md, docs/REDE.md.
+// Owns the one way Suup's own search engines (Wikipedia, arXiv, Stack Overflow: direct-engines.ts;
+// Tavily, Brave: general-engines.ts) reach the internet: a request to an exact host, carrying the
+// honest user agent, through an egress proxy of ours (CONNECT) that lets through only the exact
+// host names of those engines. No cookies, no redirect is followed (an API answer that redirects is
+// an answer we do not understand), and the answer is bounded in time and size. The only credential
+// that ever travels is the API key of a general engine, in a header the engine's module sets (never
+// in the address, so it is in no log line of ours). docs/BUSCA.md, docs/REDE.md.
 import { Agent, request as httpRequest, type IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import { connect as tlsConnect } from "node:tls";
@@ -19,9 +21,15 @@ export interface DirectResponse {
 export interface DirectGetOptions {
   signal?: AbortSignal;
   accept?: string;
+  /** Default `GET`. `POST` sends `body`. */
+  method?: "GET" | "POST";
+  /** Extra headers (the API key of a general engine). The user agent and the host are not replaceable. */
+  headers?: Readonly<Record<string, string>>;
+  /** The body of a `POST` (JSON text). */
+  body?: string;
 }
 
-/** A GET that carries the user agent and never throws a non-readable answer: it throws with a readable message instead. */
+/** A request that carries the user agent and never throws a non-readable answer: it throws with a readable message instead. */
 export type DirectGet = (url: string, options?: DirectGetOptions) => Promise<DirectResponse>;
 
 export interface DirectGetSettings {
@@ -61,21 +69,26 @@ export function createDirectGet(settings: DirectGetSettings): DirectGet {
           ...(settings.ca === undefined ? {} : { ca: settings.ca }),
         })
       : raw;
+    const body = options.body === undefined ? undefined : Buffer.from(options.body, "utf8");
     return await new Promise<DirectResponse>((resolve, reject) => {
       const request = httpRequest(
         {
-          method: "GET",
+          method: options.method ?? "GET",
           host: url.hostname,
           port,
           path: `${url.pathname}${url.search}`,
           // An agent of its own whose only connection is the one already opened (through the proxy).
           agent: oneConnection(stream),
           headers: {
+            ...options.headers,
             host: url.host,
             "user-agent": settings.userAgent,
             accept: options.accept ?? "application/json",
             "accept-encoding": "gzip, deflate, br",
             connection: "close",
+            ...(body === undefined
+              ? {}
+              : { "content-type": "application/json", "content-length": String(body.length) }),
           },
         },
         (response) => {
@@ -106,7 +119,7 @@ export function createDirectGet(settings: DirectGetSettings): DirectGet {
         stream.destroy();
         reject(error);
       });
-      request.end();
+      request.end(body);
     });
   };
 }

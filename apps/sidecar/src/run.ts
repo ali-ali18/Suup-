@@ -3,7 +3,6 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import { type CliIo, main as cli } from "@suup/cli";
 import { createDb, migrate } from "@suup/db";
-import { SEARXNG_IMAGE } from "@suup/web/engines";
 import { buildConfig } from "./config.js";
 import { type AppImages, chooseIsolation, prepareWebImages } from "./docker.js";
 import { createLogger, rotateIfBig, scrubber } from "./log.js";
@@ -176,9 +175,8 @@ export function startSidecar(env: SidecarEnv, emit: (event: SidecarEvent) => voi
       const failed = await prepareWebImages({
         docker: env.dockerPath,
         reader: { image: images.reader, context: join(env.resources, "docker", "reader") },
-        searxng: SEARXNG_IMAGE,
         onBuild: () =>
-          logger.line("preparando as imagens da busca e da leitura (só na primeira vez)"),
+          logger.line("preparando a imagem da leitura de páginas (só na primeira vez)"),
         log: (text) => logger.line(text),
       });
       for (const line of failed) logger.line(`web sem parte do Docker: ${line}`);
@@ -202,7 +200,16 @@ export function startSidecar(env: SidecarEnv, emit: (event: SidecarEvent) => voi
       configPath,
       JSON.stringify(
         {
-          ...buildConfig({ isolation, egress, workspace, images, networkName, allowedOrigins: [] }),
+          ...buildConfig({
+            isolation,
+            egress,
+            workspace,
+            images,
+            networkName,
+            allowedOrigins: [],
+            // The computer's own locale: the general web search ranks for its country and language.
+            locale: Intl.DateTimeFormat().resolvedOptions().locale,
+          }),
           ...override,
         },
         null,

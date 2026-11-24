@@ -41,7 +41,7 @@ describe("configuration: valid files", () => {
     const config = parseConfig(JSON.parse(text), "suup.config.dokploy.example.json");
     expect(config.sandbox.kind).toBe("docker");
     expect(JSON.parse(text).sandbox.network.proxy).toBeUndefined();
-    expect(JSON.parse(text).web.search.proxy).toBeUndefined();
+    expect(config.web?.search?.general?.order).toEqual(["tavily", "brave"]);
     expect(config.server?.publicUrl).toBe("https://agent.kodea.com.br");
     expect(config.vault?.keyEnv).toBe("SUUP_VAULT_KEY");
   });
@@ -380,13 +380,14 @@ describe("the user's time zone", () => {
 });
 
 describe("configuration: web", () => {
-  it("takes the engines, the languages, a search URL and the reader settings", () => {
+  it("takes the engines, the languages, the locale and the reader settings", () => {
     const config = parseConfig(
       rawConfig({
         web: {
           search: {
-            engines: ["wikipedia", "duckduckgo"],
+            engines: ["wikipedia", "tavily", "brave"],
             languages: ["en", "pt-br"],
+            locale: "pt-BR",
             maxResults: 5,
           },
           reader: { enabled: false },
@@ -394,12 +395,50 @@ describe("configuration: web", () => {
       }),
       "suup.config.json",
     );
-    expect(config.web?.search?.engines).toEqual(["wikipedia", "duckduckgo"]);
+    expect(config.web?.search?.engines).toEqual(["wikipedia", "tavily", "brave"]);
+    expect(config.web?.search?.locale).toBe("pt-BR");
     expect(config.web?.reader?.enabled).toBe(false);
+  });
+
+  it("takes the queue of general engines: the order, and where each key is (the NAME of a variable or of a vault secret, never a key)", () => {
+    const config = parseConfig(
+      rawConfig({
+        web: {
+          search: {
+            general: {
+              order: ["brave", "tavily"],
+              tavily: { apiKeyEnv: "MY_TAVILY", secret: "MINHA_TAVILY" },
+              brave: { apiKeyEnv: "BRAVE_SEARCH_API_KEY" },
+            },
+          },
+        },
+      }),
+      "suup.config.json",
+    );
+    expect(config.web?.search?.general).toEqual({
+      order: ["brave", "tavily"],
+      tavily: { apiKeyEnv: "MY_TAVILY", secret: "MINHA_TAVILY" },
+      brave: { apiKeyEnv: "BRAVE_SEARCH_API_KEY" },
+    });
+    // A key in the file is refused, with the way to do it right.
+    const issues = issuesOf(
+      rawConfig({ web: { search: { general: { tavily: { apiKey: "tvly-not-a-real-key" } } } } }),
+    ).join("\n");
+    expect(issues).toContain("chaves de API nunca ficam no arquivo");
+    expect(issues).not.toContain("tvly-not-a-real-key");
+    // The order names general engines only.
     expect(
-      parseConfig(rawConfig({ web: { search: { url: "http://localhost:8080" } } }), "x").web?.search
-        ?.url,
-    ).toBe("http://localhost:8080");
+      issuesOf(
+        rawConfig({ web: { search: { general: { order: ["tavily", "wikipedia"] } } } }),
+      ).join("\n"),
+    ).toContain("não é um motor de busca geral: wikipedia");
+    expect(
+      issuesOf(rawConfig({ web: { search: { general: { order: ["duckduckgo"] } } } })).join("\n"),
+    ).toContain("duckduckgo");
+    expect(
+      issuesOf(rawConfig({ web: { search: { general: { tavily: { secret: "minha chave" } } } } }))
+        .length,
+    ).toBeGreaterThan(0);
   });
 
   it("refuses an engine that is not in the list (Google is not)", () => {
@@ -417,8 +456,8 @@ describe("configuration: web", () => {
     ).toContain("github");
   });
 
-  it("refuses brave and startpage as engines (removed: SearXNG would send its random browser user agent)", () => {
-    for (const id of ["brave", "startpage"]) {
+  it("refuses DuckDuckGo, Startpage and the other SearXNG engines (removed with SearXNG), and Firecrawl", () => {
+    for (const id of ["duckduckgo", "startpage", "searxng", "firecrawl"]) {
       expect(
         issuesOf(rawConfig({ web: { search: { engines: ["wikipedia", id] } } })).join("\n"),
       ).toContain(`motor desconhecido: ${id}`);
@@ -428,13 +467,15 @@ describe("configuration: web", () => {
     }
   });
 
-  it("refuses a language that could name another host, and a search URL that is not http(s)", () => {
+  it("refuses a language that could name another host, and the keys of the removed SearXNG", () => {
     expect(
       issuesOf(rawConfig({ web: { search: { languages: ["en.evil.com"] } } })).join("\n"),
     ).toContain("código de idioma inválido");
-    expect(issuesOf(rawConfig({ web: { search: { url: "ftp://x.test" } } })).join("\n")).toContain(
-      "URL http(s)",
-    );
+    for (const key of ["url", "image", "network", "proxy"]) {
+      expect(issuesOf(rawConfig({ web: { search: { [key]: "x" } } })).join("\n"), key).toContain(
+        "desconhecido",
+      );
+    }
   });
 
   it("takes the search limits and the cache, and refuses a limit for an engine that does not exist", () => {
@@ -442,7 +483,7 @@ describe("configuration: web", () => {
       rawConfig({
         web: {
           search: {
-            limits: { perMinute: 10, perEngine: { duckduckgo: 3 }, maxWaitSeconds: 5 },
+            limits: { perMinute: 10, perEngine: { tavily: 3 }, maxWaitSeconds: 5 },
             cache: { enabled: true, ttlMinutes: 60 },
           },
         },
@@ -451,7 +492,7 @@ describe("configuration: web", () => {
     );
     expect(config.web?.search?.limits).toEqual({
       perMinute: 10,
-      perEngine: { duckduckgo: 3 },
+      perEngine: { tavily: 3 },
       maxWaitSeconds: 5,
     });
     expect(config.web?.search?.cache).toEqual({ enabled: true, ttlMinutes: 60 });

@@ -429,7 +429,7 @@ describe.skipIf(!CAN_RUN || process.env.SUUP_DOCKER_TESTS !== "1")(
       // here, it would download a browser of several GB.
       const readerImage = process.env.SUUP_READER_IMAGE ?? "suup-reader:dev";
       execFileSync("docker", ["tag", readerImage, "suup-reader:app-dockertest"]);
-      for (const name of ["suup-egress-search", "suup-searxng", "suup-reader"])
+      for (const name of ["suup-reader"])
         execFileSync("docker", ["rm", "--force", name], { stdio: "ignore" });
       // The egress proxy image is NOT tagged here: the sidecar builds it from the Dockerfile and the
       // bundle the app carries, as it does on a first run.
@@ -569,8 +569,8 @@ describe.skipIf(!CAN_RUN || process.env.SUUP_DOCKER_TESTS !== "1")(
         };
         expect(written.sandbox.network.proxy.mode).toBe("container");
 
-        // The web, the Windows way: SearXNG's engine proxy in its own container too, controlled by
-        // this host process through a port published on 127.0.0.1.
+        // The web search with the bots' machine in Docker: it needs no container of its own (the
+        // engines go out through this process's own egress proxy).
         await api.conversations.send(conversation.id, "BUSCA-DOCKER");
         const searched = Date.now() + 240_000;
         for (;;) {
@@ -579,16 +579,19 @@ describe.skipIf(!CAN_RUN || process.env.SUUP_DOCKER_TESTS !== "1")(
           if (Date.now() > searched) throw new Error("a busca com o Docker não terminou");
           await new Promise((r) => setTimeout(r, 200));
         }
-        const running = (name: string) =>
-          execFileSync("docker", ["inspect", "--format", "{{.State.Running}}", name], {
-            encoding: "utf8",
-          }).trim();
-        expect(running("suup-egress-search")).toBe("true");
-        expect(running("suup-searxng")).toBe("true");
+        // No container for the search any more: neither SearXNG nor an engine proxy of its own.
+        for (const gone of ["suup-searxng", "suup-egress-search"]) {
+          const found = execFileSync(
+            "docker",
+            ["ps", "--all", "--quiet", "--filter", `name=^${gone}$`],
+            { encoding: "utf8" },
+          );
+          expect(found.trim(), gone).toBe("");
+        }
         const searchWeb = JSON.parse(readFileSync(join(appData, "suup.config.json"), "utf8")) as {
-          web: { search: { proxy: { mode: string } }; reader: { image: string } };
+          web: { search?: { proxy?: unknown }; reader: { image: string } };
         };
-        expect(searchWeb.web.search.proxy.mode).toBe("container");
+        expect(searchWeb.web.search?.proxy).toBeUndefined();
         expect(searchWeb.web.reader.image).toBe("suup-reader:app-dockertest");
       } finally {
         proc.stdin?.write("stop\n");
@@ -603,21 +606,9 @@ describe.skipIf(!CAN_RUN || process.env.SUUP_DOCKER_TESTS !== "1")(
             encoding: "utf8",
           },
         );
-        const leftSearch = execFileSync(
-          "docker",
-          ["ps", "--all", "--quiet", "--filter", "name=^suup-egress-search$"],
-          { encoding: "utf8" },
-        );
-        for (const name of [
-          "suup-machine",
-          "suup-egress",
-          "suup-egress-search",
-          "suup-searxng",
-          "suup-reader",
-        ])
+        for (const name of ["suup-machine", "suup-egress", "suup-reader"])
           execFileSync("docker", ["rm", "--force", name], { stdio: "ignore" });
         expect(left.trim(), "o contêiner do proxy deve sumir quando o app para").toBe("");
-        expect(leftSearch.trim(), "o proxy da busca também").toBe("");
       }
     });
   },

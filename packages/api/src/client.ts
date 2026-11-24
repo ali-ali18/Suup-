@@ -163,6 +163,7 @@ import {
   type VaultStatus,
   vaultStatusSchema,
 } from "./vault.js";
+import { type WebSearchSettings, webSearchSchema } from "./web-search.js";
 
 export interface ClientOptions {
   /** Where the server is, e.g. `http://127.0.0.1:8787`. */
@@ -386,6 +387,10 @@ export interface SuupClient {
     url(fileId: string): string;
     /** Downloads a file the bot sent (`GET /v1/files/:id`): its exact bytes. */
     download(fileId: string, signal?: AbortSignal): Promise<Uint8Array>;
+  };
+  webSearch: {
+    /** The general search engines in the order they are tried, with where each stands this month. */
+    get(): Promise<WebSearchSettings>;
   };
   vault: {
     /** Whether the server has a vault it can write to (the section and the key), and why not. */
@@ -796,6 +801,9 @@ export function createClient(options: ClientOptions): SuupClient {
     files: {
       url: (fileId) => `${baseUrl}/v1/files/${id(fileId)}`,
       download: (fileId, signal) => download(`/v1/files/${id(fileId)}`, signal),
+    },
+    webSearch: {
+      get: () => call("GET", "/v1/web-search", webSearchSchema),
     },
     vault: {
       status: () => call("GET", "/v1/vault", vaultStatusSchema),

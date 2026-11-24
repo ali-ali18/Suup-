@@ -1,4 +1,4 @@
-import { Brain, KeyRound, Plug, Settings, ShieldCheck } from "lucide-react";
+import { Brain, KeyRound, Plug, Search, Settings, ShieldCheck } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useId, useRef } from "react";
 import { type SettingsTab, useUi } from "../../app/ui-store.js";
 import { Modal } from "../../ui/dialog.js";
@@ -6,12 +6,14 @@ import { ConnectorsSettings } from "./ConnectorsSettings.js";
 import { GeneralSettings } from "./GeneralSettings.js";
 import { MemorySettings } from "./MemorySettings.js";
 import { PermissionsSettings } from "./PermissionsSettings.js";
+import { SearchSettings } from "./SearchSettings.js";
 import { VaultSettings } from "./VaultSettings.js";
 
 const SECTIONS: readonly { id: SettingsTab; label: string; icon: ReactNode }[] = [
   { id: "general", label: "Geral", icon: <Settings size={16} aria-hidden="true" /> },
   { id: "permissions", label: "Permissões", icon: <ShieldCheck size={16} aria-hidden="true" /> },
   { id: "memory", label: "Memória", icon: <Brain size={16} aria-hidden="true" /> },
+  { id: "search", label: "Busca", icon: <Search size={16} aria-hidden="true" /> },
   { id: "vault", label: "Cofre", icon: <KeyRound size={16} aria-hidden="true" /> },
   { id: "connectors", label: "Conectores", icon: <Plug size={16} aria-hidden="true" /> },
 ];
@@ -93,6 +95,7 @@ export function SettingsDialog() {
         {tab === "general" && <GeneralSettings title={current?.label} titleId={titleId} />}
         {tab === "permissions" && <PermissionsSettings title={current?.label} titleId={titleId} />}
         {tab === "memory" && <MemorySettings title={current?.label} titleId={titleId} />}
+        {tab === "search" && <SearchSettings title={current?.label} titleId={titleId} />}
         {tab === "vault" && <VaultSettings title={current?.label} titleId={titleId} />}
         {tab === "connectors" && <ConnectorsSettings title={current?.label} titleId={titleId} />}
       </div>

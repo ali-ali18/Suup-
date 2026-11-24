@@ -44,6 +44,7 @@ import { routineRoutes } from "./routes/routines.js";
 import { runRoutes } from "./routes/runs.js";
 import { supervisorRoutes } from "./routes/supervisor.js";
 import { vaultRoutes } from "./routes/vault.js";
+import { webSearchRoutes } from "./routes/web-search.js";
 import { createDbSource, createPgNotifier } from "./stream/db-source.js";
 import {
   type Clock,
@@ -158,6 +159,7 @@ export function createServer(runtime: Runtime, options: ServerOptions): SuupServ
     ...approvalRoutes,
     ...networkRoutes,
     ...vaultRoutes,
+    ...webSearchRoutes,
     ...connectorRoutes,
     ...metaRoutes,
   ].map(compileRoute);

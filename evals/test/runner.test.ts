@@ -1,7 +1,13 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createDb, getRun, listMemories } from "@suup/db";
-import { finishRun, parseConfig, type RuntimeConfig, reconcileRunEffects } from "@suup/runtime";
+import {
+  createRuntime,
+  finishRun,
+  parseConfig,
+  type RuntimeConfig,
+  reconcileRunEffects,
+} from "@suup/runtime";
 import { describe, expect, it } from "vitest";
 import {
   type CellResult,
@@ -66,6 +72,33 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("the evaluation runner, end to end"),
     if (found === undefined) throw new Error(`no cell ${taskId} x ${model}`);
     return found;
   };
+
+  it("never asks Brave in an evaluation (its terms forbid using its results to evaluate AI), whatever the configuration says", async () => {
+    const p = await project(
+      { alpha: solver("alpha-2026-11") },
+      {
+        web: { search: { engines: ["wikipedia", "tavily", "brave"] }, reader: { enabled: false } },
+      },
+    );
+    const runtime = createRuntime(p.config, {
+      env: { ...p.env, BRAVE_SEARCH_API_KEY: "BSA-made-up-key-for-this-test" },
+      baseDir: p.baseDir,
+    });
+    try {
+      const stateOfBrave = async () =>
+        (await runtime.webSearchProviders()).find((x) => x.id === "brave")?.state;
+      expect(await stateOfBrave()).toBe("ready");
+      await runEval({
+        runtime,
+        models: ["alpha-1"],
+        tasks: [task("simple-question")],
+        budgetUsd: 10,
+      });
+      expect(await stateOfBrave()).toBe("off");
+    } finally {
+      await runtime.close();
+    }
+  });
 
   it("isolates the evaluation from memory: no rules, profile or memory tools reach the model", async () => {
     // What a real user told the system, sitting in the very database the evaluation runs on.

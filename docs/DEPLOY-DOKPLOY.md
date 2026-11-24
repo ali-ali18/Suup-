@@ -17,7 +17,7 @@ Passo a passo para pôr o Suup na sua VPS da Hostinger, que o **Dokploy** gerenc
                                                                     postgres ◄─┤
                                                                                │
    worker ── usa a rede do contêiner "docker" ──► docker  (o Docker PRÓPRIO do Suup, dind)
-                                                    └─ suup-machine (bots), conectores, leitor, SearXNG
+                                                    └─ suup-machine (bots), conectores, leitor
 ```
 
 | Serviço | O que faz | Rede |
@@ -112,7 +112,7 @@ Opcionais:
 |---|---|---|
 | `SUUP_IMAGE_TAG` | `main` | a versão das imagens: `main` segue o ramo; o **sha completo** de um commit fixa aquela versão (para voltar atrás: passo 11); `v1.2.3` usa a de uma versão marcada |
 | `SUUP_READER_BROWSER` | `1` | `0` baixa o leitor de páginas **sem** o Chromium (economiza alguns GB; `web_read` com `render` fica indisponível) |
-| `SUUP_IMAGES` | `sandbox connector-runner reader searxng` | quais imagens dos bots o serviço `images` baixa |
+| `SUUP_IMAGES` | `sandbox connector-runner reader` | quais imagens dos bots o serviço `images` baixa |
 | `SUUP_IMAGE_REGISTRY` | `ghcr.io/ali-ali18` | de onde baixar; só muda se as imagens forem para outra conta |
 | `SUUP_DOCKER_PRIVILEGED` / `SUUP_DOCKER_RUNTIME` | `true` / `runc` | só com o Sysbox instalado na VPS: `false` / `sysbox-runc` (veja "Riscos e isolamento") |
 
@@ -149,7 +149,7 @@ Ainda mais (não obrigatório): **Authenticated Origin Pulls** (a VPS só aceita
 
 1. Confira que o passo 0 terminou (workflow **Images** verde e os quatro pacotes públicos).
 2. Aba **General** > **Deploy**. Acompanhe em **Deployments** (o registro ao vivo).
-3. A VPS **não compila nada**: ela baixa a imagem do Suup e o serviço `images` baixa, **dentro** do Docker do Suup, a máquina dos bots, o runner dos conectores, o leitor (perto de 1 GB comprimido) e o SearXNG. A primeira vez é o download inteiro; as seguintes só baixam as camadas que mudaram.
+3. A VPS **não compila nada**: ela baixa a imagem do Suup e o serviço `images` baixa, **dentro** do Docker do Suup, a máquina dos bots, o runner dos conectores, o leitor (perto de 1 GB comprimido). A primeira vez é o download inteiro; as seguintes só baixam as camadas que mudaram.
 4. Na aba **Logs**: `migrate` termina com a lista das migrações; `server` diz "Servidor no ar em http://0.0.0.0:8787" (o aviso de "HTTP puro" é esperado: o TLS está no Traefik e no Cloudflare; a porta 8787 não está aberta para a internet); `worker` diz "Worker ... pronto"; `images` termina com "suup-images: pronto".
 
 Se o `images` falhar, o `worker` não sobe (de propósito): o log do `images` diz qual imagem e por quê ("Problemas comuns", no fim). Corrija e faça **Redeploy**.
@@ -267,7 +267,7 @@ Uma versão marcada (`git tag v1.2.3` + push) também ganha imagens com a tag `v
 
 ## Recursos
 
-Medido em 24/11/2026 (pesquisa, "Verificação local"): em repouso, servidor, worker, Postgres e o Docker do Suup somam perto de **200 MB** de RAM. Com uso, cresce até os limites da configuração: a máquina dos bots até `sandbox.memory` (**2 GB** no exemplo), cada conector até 512 MB, o SearXNG até 512 MB e o Chromium do leitor quando renderiza uma página. Disco: perto de 2 GB de imagens na VPS (Suup, dind, Postgres, a CLI do Docker do serviço `images`) mais, **dentro** do Docker do Suup, as imagens dos bots (perto de 4 GB com o leitor completo; estimativa; sem cache de build, que agora fica no GitHub), o banco e o workspace. A cada atualização, o `images` apaga as versões antigas que nenhum contêiner usa.
+Medido em 24/11/2026 (pesquisa, "Verificação local"): em repouso, servidor, worker, Postgres e o Docker do Suup somam perto de **200 MB** de RAM. Com uso, cresce até os limites da configuração: a máquina dos bots até `sandbox.memory` (**2 GB** no exemplo), cada conector até 512 MB e o Chromium do leitor quando renderiza uma página. Disco: perto de 2 GB de imagens na VPS (Suup, dind, Postgres, a CLI do Docker do serviço `images`) mais, **dentro** do Docker do Suup, as imagens dos bots (perto de 4 GB com o leitor completo; estimativa; sem cache de build, que agora fica no GitHub), o banco e o workspace. A cada atualização, o `images` apaga as versões antigas que nenhum contêiner usa.
 
 Recomendação para o Suup numa VPS que já roda outros projetos: **4 GB de RAM livres** e **15 GB de disco livres**. Com menos, ponha `"memory": "1g"` em `sandbox` na configuração e `SUUP_READER_BROWSER=0`. Para ver o uso: aba **Monitoring** do Dokploy, ou `docker system df` dentro do contêiner `docker` (`docker exec <nome-do-contêiner-docker> docker -H unix:///var/run/dind/docker.sock system df`).
 

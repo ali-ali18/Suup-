@@ -1,6 +1,7 @@
 // Owns the search engines Suup asks itself, through their official APIs and with its honest user
 // agent (docs/BUSCA.md, "O nome que o Suup usa"; research: docs/pesquisas/fase-4-busca-apis-diretas.md):
-// Wikipedia (MediaWiki Action API), arXiv (Atom) and Stack Overflow (Stack Exchange API 2.3).
+// Wikipedia (MediaWiki Action API), arXiv (Atom) and Stack Overflow (Stack Exchange API 2.3). The
+// general web engines with a key (Tavily, Brave) are in general-engines.ts and share these types.
 // Each engine answers with its hits or with a refusal that says why and, when it knows, for how
 // long Suup must leave it alone. Answers are read structurally (JSON, a real XML parser, an HTML
 // parser for the markup inside a snippet); an answer that is not what was expected fails closed.
@@ -18,17 +19,35 @@ export interface DirectSearchInput {
   query: string;
   /** The most hits wanted from this engine. */
   limit: number;
-  /** A language code the caller asked for (only Wikipedia uses it). */
+  /** A language code the caller asked for (Wikipedia and the general engines use it). */
   language?: string | undefined;
+  /** The person's locale (`pt-BR`), from the configuration: the general engines use its country. */
+  locale?: string | undefined;
+  /** How recent the hits must be (only the general engines use it). */
+  timeRange?: "day" | "month" | "year" | undefined;
   signal?: AbortSignal | undefined;
 }
+
+/**
+ * Why an engine did not answer, for the queue of general engines: `quota` (the month's credits or
+ * the plan's limit are used up), `rate_limited` (too many requests for a moment), `key_rejected`
+ * (the service does not accept the key), `no_key` (there is none), `unavailable` (the service is
+ * down or did not answer), `other` (the request failed in some other way).
+ */
+export type FailureKind =
+  | "quota"
+  | "rate_limited"
+  | "key_rejected"
+  | "no_key"
+  | "unavailable"
+  | "other";
 
 export type DirectSearchResult =
   | {
       ok: true;
       hits: WebSearchHit[];
       /** The engine asked Suup to leave it alone for a while (Stack Exchange `backoff`, or its quota). */
-      suspend?: { seconds: number; reason: string };
+      suspend?: { seconds: number; reason: string; kind?: FailureKind };
     }
   | {
       ok: false;
@@ -36,11 +55,18 @@ export type DirectSearchResult =
       reason: string;
       /** How long Suup does not ask this engine again, when it is known. */
       suspendSeconds?: number;
+      /** What kind of failure it was, when the engine knows (general engines always do). */
+      kind?: FailureKind;
     };
 
 export interface DirectEngine {
   /** Equal to the id in `ENGINES`. */
   id: string;
+  /**
+   * An engine that needs a key says whether it has one (looked up now, never cached), so the queue
+   * can skip it without taking a place in Suup's limits. Absent: nothing is needed.
+   */
+  configured?(): Promise<boolean>;
   search(input: DirectSearchInput): Promise<DirectSearchResult>;
 }
 
@@ -91,10 +117,15 @@ export class Pacer {
   }
 }
 
-const refusal = (reason: string, suspendSeconds?: number): DirectSearchResult => ({
+export const refusal = (
+  reason: string,
+  suspendSeconds?: number,
+  kind?: FailureKind,
+): DirectSearchResult => ({
   ok: false,
   reason,
   ...(suspendSeconds === undefined ? {} : { suspendSeconds }),
+  ...(kind === undefined ? {} : { kind }),
 });
 
 /** What an HTTP status other than 200 means for every engine. */
@@ -122,7 +153,7 @@ async function ask(
   }
 }
 
-function parseJson(body: string): unknown {
+export function parseJson(body: string): unknown {
   try {
     return JSON.parse(body);
   } catch {

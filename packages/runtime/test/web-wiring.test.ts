@@ -1,46 +1,13 @@
-import { createServer, type Server } from "node:http";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
+import { createSearchKeys } from "../src/web/search-keys.js";
 import { createWebWiring } from "../src/web/wiring.js";
 
-// A stub that speaks SearXNG's JSON API: what a SearXNG the user runs themselves answers.
-let stub: Server | undefined;
-afterEach(async () => {
-  await new Promise<void>((done) => (stub === undefined ? done() : stub.close(() => done())));
-  stub = undefined;
-});
-
-async function stubSearx(): Promise<{ url: string; queries: string[] }> {
-  const queries: string[] = [];
-  stub = createServer((req, res) => {
-    queries.push(req.url ?? "");
-    res.writeHead(200, { "content-type": "application/json" }).end(
-      JSON.stringify({
-        results: [
-          {
-            url: "https://en.wikipedia.org/wiki/Test",
-            title: "Test",
-            content: "A test.",
-            engine: "wikipedia",
-          },
-        ],
-        unresponsive_engines: [["arxiv", "timeout"]],
-      }),
-    );
-  });
-  await new Promise<void>((done) => stub?.listen(0, "127.0.0.1", done));
-  const address = stub.address();
-  return {
-    url: `http://127.0.0.1:${typeof address === "object" && address !== null ? address.port : 0}`,
-    queries,
-  };
-}
+// A key that exists only in these tests (never a real one).
+const FAKE_KEY = "tvly-test-key-not-real-0000";
 
 describe("web wiring", () => {
   it("starts nothing until a tool asks, and the doctor does not start it", async () => {
-    const wiring = createWebWiring({
-      search: { url: "http://127.0.0.1:1" },
-      reader: { enabled: false },
-    });
+    const wiring = createWebWiring({ reader: { enabled: false } });
     expect(await wiring.status()).toMatchObject({
       started: false,
       search: "pending",
@@ -50,22 +17,67 @@ describe("web wiring", () => {
     await wiring.close();
   });
 
-  it("searches through the SearXNG it is pointed at", async () => {
-    const searx = await stubSearx();
-    // Only an engine SearXNG asks: the engines Suup asks itself would go to the internet.
+  it("with no key the general engines are skipped, and the answer says the general search is not set up", async () => {
     const wiring = createWebWiring({
-      search: { url: searx.url, engines: ["duckduckgo"] },
+      search: { engines: ["tavily", "brave"] },
       reader: { enabled: false },
     });
     const out = await wiring.access.search({ query: "test", limit: 3 });
     expect(out).toMatchObject({
       ok: true,
-      hits: [{ title: "Test", url: "https://en.wikipedia.org/wiki/Test", engine: "wikipedia" }],
-      suspended: [{ engine: "arxiv", reason: "timeout" }],
+      hits: [],
+      engines: [],
+      generalUnavailable: { cause: "no_key" },
     });
-    expect(searx.queries[0]).toContain("format=json");
-    expect(await wiring.status()).toMatchObject({ started: true, search: "ready", reader: "off" });
+    expect(await wiring.searchProviders()).toMatchObject([
+      { id: "tavily", position: 1, state: "no_key", searchesThisMonth: 0 },
+      { id: "brave", position: 2, state: "no_key", searchesThisMonth: 0 },
+    ]);
     await wiring.close();
+  });
+
+  it("lists the providers in the configured order, with their states, and turned-off ones last", async () => {
+    const keys = createSearchKeys({
+      env: { MY_BRAVE: FAKE_KEY },
+      vault: { status: () => ({ ok: false }) } as never,
+      settings: (id) => (id === "brave" ? { apiKeyEnv: "MY_BRAVE" } : undefined),
+    });
+    const wiring = createWebWiring(
+      { search: { engines: ["wikipedia", "brave"], general: { order: ["brave", "tavily"] } } },
+      { searchKeys: keys },
+    );
+    expect(await wiring.searchProviders()).toMatchObject([
+      { id: "brave", position: 1, state: "ready", keyNames: { env: "MY_BRAVE" } },
+      { id: "tavily", position: 2, state: "off" },
+    ]);
+    await wiring.close();
+  });
+
+  it("for an evaluation Brave is left out (its terms forbid using its results to evaluate AI), and the rest of the queue stays", async () => {
+    const keys = createSearchKeys({
+      env: { BRAVE_SEARCH_API_KEY: FAKE_KEY, TAVILY_API_KEY: FAKE_KEY },
+      vault: { status: () => ({ ok: false }) } as never,
+      settings: () => undefined,
+    });
+    const wiring = createWebWiring(
+      { search: { engines: ["wikipedia", "tavily", "brave"] }, reader: { enabled: false } },
+      { searchKeys: keys },
+    );
+    expect(await wiring.searchProviders()).toMatchObject([
+      { id: "tavily", state: "ready" },
+      { id: "brave", state: "ready" },
+    ]);
+    await wiring.restrictForEvaluation();
+    expect(await wiring.searchProviders()).toMatchObject([
+      { id: "tavily", state: "ready" },
+      { id: "brave", state: "off" },
+    ]);
+    // Even the default list (nothing in the configuration) loses it.
+    const plain = createWebWiring({ reader: { enabled: false } }, { searchKeys: keys });
+    await plain.restrictForEvaluation();
+    expect((await plain.searchProviders()).find((p) => p.id === "brave")?.state).toBe("off");
+    await wiring.close();
+    await plain.close();
   });
 
   it("says search is off when the configuration turns it off, and reading is off when the reader is", async () => {
@@ -78,6 +90,7 @@ describe("web wiring", () => {
       ok: false,
       reason: "unavailable",
     });
+    expect(await wiring.searchProviders()).toEqual([]);
     await wiring.close();
   });
 
