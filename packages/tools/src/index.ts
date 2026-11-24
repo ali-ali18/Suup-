@@ -24,6 +24,7 @@ export { rememberTool } from "./remember.js";
 export { requestNetworkAccessTool } from "./request-network-access.js";
 export { searchConversationsTool } from "./search-conversations.js";
 export { buildSearchCommand, searchFilesTool } from "./search-files.js";
+export { sendFileTool } from "./send-file.js";
 export { shellTool } from "./shell.js";
 export { shellJoin, shellQuote } from "./shell-quote.js";
 export { buildCurlCommand, webFetchTool } from "./web-fetch.js";

@@ -21,6 +21,7 @@ export {
   errorBodySchema,
   errorCodeSchema,
 } from "./errors.js";
+export * from "./files.js";
 export * from "./memory.js";
 export * from "./network.js";
 export * from "./routines.js";

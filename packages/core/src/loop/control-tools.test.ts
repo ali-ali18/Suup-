@@ -43,7 +43,7 @@ describe("control tool specs", () => {
     expect(props.questions).toMatchObject({ minItems: 1, maxItems: 5 });
     const description = specs[2]?.description ?? "";
     expect(description).toContain("genuinely discrete");
-    expect(description).toContain("answerable on its own");
+    expect(description).toContain("answerable on their own");
     expect(description).toContain("questionnaire");
     expect(description).toContain("(pulou)");
   });

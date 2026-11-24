@@ -134,12 +134,23 @@ export function PendingScreen() {
                       Carregando a pergunta…
                     </MutedText>
                   ) : ask.question?.questions.some((q) => q.options !== undefined) ? (
-                    <QuestionCard
-                      questions={ask.question.questions}
-                      onSubmit={(text) =>
-                        run.conversationId !== null && void sync.send(run.conversationId, text)
-                      }
-                    />
+                    // As in the chat: the card, whose title is the question; a bubble above it only
+                    // with what the bot wrote besides the question (`question.lead`, from the server).
+                    <div className="flex flex-col gap-(--chat-gap)">
+                      {ask.question.lead !== undefined && (
+                        <BotBubble data-testid="pending-text">
+                          <p className="text-body wrap-anywhere whitespace-pre-wrap">
+                            {ask.question.lead}
+                          </p>
+                        </BotBubble>
+                      )}
+                      <QuestionCard
+                        questions={ask.question.questions}
+                        onSubmit={(text) =>
+                          run.conversationId !== null && void sync.send(run.conversationId, text)
+                        }
+                      />
+                    </div>
                   ) : (
                     <BotBubble data-testid="pending-text">
                       <p className="text-body wrap-anywhere whitespace-pre-wrap">{ask.text}</p>

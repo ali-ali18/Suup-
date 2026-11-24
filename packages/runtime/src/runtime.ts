@@ -15,6 +15,7 @@ import {
   type Executor,
   type LoopDeps,
   type NativeToolSearch,
+  type OutgoingFile,
   type Provider,
   ProviderError,
   planToolSearch,
@@ -42,6 +43,7 @@ import {
   getMemorySettings,
   getRun,
   getUserSettings,
+  insertFile,
   listBots,
   listConnectorsForBot,
   PgRunQueue,
@@ -64,7 +66,12 @@ import {
   NetworkedExecutor,
   startEgressContainer,
 } from "@suup/sandbox";
-import { networkTools, registerBuiltinTools, requestNetworkAccessTool } from "@suup/tools";
+import {
+  networkTools,
+  registerBuiltinTools,
+  requestNetworkAccessTool,
+  sendFileTool,
+} from "@suup/tools";
 import {
   configuredTimeZone,
   DEFAULT_CONNECTOR_IMAGE,
@@ -108,6 +115,7 @@ import {
 import { DEFAULT_HISTORY_CHARS, loadRunContext } from "./run-context.js";
 import { applyStatusEffects, finishRun } from "./run-end.js";
 import { createScriptedProvider } from "./scripted-provider.js";
+import { FILE_TOOL_NAMES, withSendFileTool } from "./send-file.js";
 import {
   delegateTool,
   type ReviewOutcome,
@@ -367,6 +375,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
   const newRegistry = (): ToolRegistry => {
     const registry = registerBuiltinTools(new ToolRegistry(registryOptions));
     if (config.sandbox.kind === "docker") for (const tool of networkTools) registry.register(tool);
+    registry.register(sendFileTool);
     return registry;
   };
   const tools = newRegistry();
@@ -885,7 +894,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
         botCfg = { ...cfg, allowedTools: [...cfg.allowedTools, ...names] };
         toolSearch = toolSearchSetup(offered.candidates, bot.modelId);
       }
-      botCfg = withNetworkTool(botCfg);
+      botCfg = withSendFileTool(withNetworkTool(botCfg));
       connectorNames = [
         ...new Set((await listConnectorsForBot(handle, bot.id)).map((c) => c.name)),
       ];
@@ -1049,6 +1058,25 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
             },
           }),
       webFor: () => web.access,
+      // The files a run sends wait in the database for the run's next message in the chat. An
+      // evaluation (isolated) has no chat: the tool says so.
+      ...(guarded
+        ? {
+            filesFor: (record: { botId: string; id: string }) => ({
+              send: async (file: OutgoingFile, callId: string) => {
+                const { file: stored } = await insertFile(handle, {
+                  botId: record.botId,
+                  runId: record.id,
+                  callId,
+                  name: file.name,
+                  mime: file.mime,
+                  content: file.bytes,
+                });
+                return { id: stored.id };
+              },
+            }),
+          }
+        : {}),
       ...(sandbox.kind === "docker" && guarded
         ? {
             networkFor: (record: { botId: string; id: string }) => ({
@@ -1083,7 +1111,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     async toolReport(botId) {
       const bot = await getBot(runtime.db, botId);
       if (bot === null) throw new RuntimeError("bot_not_found", `Bot ${botId} não encontrado.`);
-      const cfg = withNetworkTool(botConfig(bot));
+      const cfg = withSendFileTool(withNetworkTool(botConfig(bot)));
       const offered = await connectors.toolsForBot(bot.id);
       const reg = newRegistry();
       const connectorNames = new Set<string>();
@@ -1386,7 +1414,6 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
  * `provider`) instead of the whole program refusing to start.
  */
 /** The tools that give a bot files on its machine (the names are declared by the tools). */
-const FILE_TOOL_NAMES = ["read_file", "write_file", "edit_file", "list_files", "search_files"];
 
 function unavailableProvider(id: string, message: string): Provider {
   return {

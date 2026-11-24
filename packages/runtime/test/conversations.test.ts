@@ -317,6 +317,30 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("conversation engine"), () => {
       await runtime.close();
     });
 
+    it("what the bot wrote besides the question is the message's lead, apart from the question (the card's title)", async () => {
+      const options = [{ label: "Azul" }, { label: "Verde" }];
+      const runtime = await open({
+        agent: [
+          {
+            text: "A busca está fora do ar.",
+            calls: [call("escalate", { question: "Qual cor?", options })],
+          },
+          { text: "Então vai de azul." },
+        ],
+      });
+      const bot = await newBot(runtime);
+      const first = await sendMessage(runtime, { botId: bot.id, text: "Escolha uma cor" });
+      await work(runtime, first.run.id);
+      const [ask] = await botMessages(runtime, first.message.conversationId);
+      expect(ask?.question).toEqual({
+        questions: [{ question: "Qual cor?", options }],
+        lead: "A busca está fora do ar.",
+      });
+      // Whoever reads only the text (the CLI, the history) gets both.
+      expect(ask?.text).toBe("A busca está fora do ar.\n\nQual cor?");
+      await runtime.close();
+    });
+
     it("a message while a run waits for approval is stored and posted, and approves nothing", async () => {
       const runtime = await open({ agent: [] });
       const bot = await newBot(runtime);

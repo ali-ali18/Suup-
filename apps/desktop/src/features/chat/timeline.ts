@@ -1,4 +1,4 @@
-import type { Approval, Question, Run, TeamProposal } from "@suup/api";
+import type { Approval, MessageAttachment, Question, Run, TeamProposal } from "@suup/api";
 import {
   type ActionEntry,
   type ActionItem,
@@ -26,8 +26,15 @@ export type TimelineItem =
         /** The run still waits for the reply. */
         open: boolean;
         tieBreak: boolean;
+        /**
+         * What the bot wrote besides the question (`message.question.lead`, from the server), for a
+         * bubble above the card; absent when the bot only asked: the card, titled by the question.
+         */
+        lead?: string;
       };
     }
+  /** The files the bot handed over with the message just before (`send_file`): one card each. */
+  | { kind: "files"; key: string; files: readonly MessageAttachment[] }
   /** The main bot's proposal of a team of bots: the card where the user ticks which to create. */
   | { kind: "team"; key: string; messageId: string; text: string; team: TeamProposal }
   /** The tool calls made between two messages, as cards (older finished ones folded). */
@@ -219,8 +226,14 @@ export function buildTimeline(
           answer: reply?.text,
           open: reply === undefined && run?.status === "waiting_user",
           tieBreak: message.question.reason === "review_tie_break",
+          // What the bot wrote besides the question, as the server declares it (never compared).
+          ...(message.question.lead === undefined ? {} : { lead: message.question.lead }),
         },
       });
+    }
+    // The files of a bot (or system) message: right under it, apart from the bubble.
+    if (message.authorKind !== "user" && message.attachments !== undefined) {
+      items.push({ kind: "files", key: `${message.id}-files`, files: message.attachments });
     }
   });
   // Whatever is left (the run is still working, or no message opened it).
@@ -242,14 +255,18 @@ export function isChoiceCard(item: TimelineItem): boolean {
 /** The sender of a text bubble, or null for anything that is not one (cards, lines, separators). */
 function bubbleSender(item: TimelineItem): "user" | "bot" | null {
   if (item.kind === "user") return "user";
-  if (item.kind === "bot" && !isChoiceCard(item)) return "bot";
+  // A question with choices is the card alone, or (when the bot wrote more than the question) its
+  // bubble and, under it, the card.
+  if (item.kind === "bot") return isChoiceCard(item) && item.ask?.lead === undefined ? null : "bot";
   return null;
 }
 
 /**
  * The groups of consecutive text bubbles from the same sender, by item key. Anything that is not a
  * text bubble (a card, an action row, a separator — which is also what a long time gap becomes —,
- * a notice, the working indicator) breaks the group and is not in the result. Pure: the component
+ * a notice, the working indicator) breaks the group and is not in the result. A question with
+ * choices is the card alone (not in the result), or, when the bot wrote more than the question, a
+ * bubble followed by the card, so that bubble is the LAST of its group. Pure: the component
  * only reads the position.
  */
 export function bubblePositions(items: readonly TimelineItem[]): Map<string, BubblePosition> {
@@ -270,6 +287,11 @@ export function bubblePositions(items: readonly TimelineItem[]): Map<string, Bub
     if (who === null || who !== sender) close();
     sender = who;
     if (who !== null) run.push(item.key);
+    // The card goes right under the bubble of the bot's words: it ends the group.
+    if (isChoiceCard(item)) {
+      close();
+      sender = null;
+    }
   }
   close();
   return result;

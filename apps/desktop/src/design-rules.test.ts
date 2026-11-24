@@ -526,6 +526,87 @@ describe("chat cards share one chrome and one collapsed row", () => {
     expect(src).not.toMatch(/\bChevron(Down|Up)\b/);
   });
 
+  it("a finished tool row is collapsed: the command and its output open only on a click (§1 'Amigável')", () => {
+    const rows = read(join(SRC, "features", "chat", "ApprovalRows.tsx"));
+    // A call without an approval is open only when the user clicked it; the setting of decided
+    // cards never opens a plain tool row.
+    expect(rows).toContain("? clicked.has(key)");
+    // The key carries the run: a call id repeated by another run never opens this row.
+    expect(rows).toContain("`call-$" + "{item.runId}-$" + "{item.callId}`");
+    expect(read(join(SRC, "data", "actions.ts"))).toContain(
+      "`fold:$" + "{first.runId}:$" + "{first.callId}`",
+    );
+    // Another conversation starts with nothing open.
+    expect(read(join(SRC, "features", "chat", "ChatScreen.tsx"))).toContain(
+      "setExpanded(new Set());",
+    );
+  });
+
+  it("a file the bot handed over is a card apart, under its message: the shared chrome, icon by the declared kind, no MIME, no path", () => {
+    const card = read(join(SRC, "ui", "file-card.tsx"));
+    expect(card).toContain("className={CARD_CHROME}");
+    // The icon and the words come from the kind the server declared, by exact tables.
+    expect(card).toContain("FILE_ICON[file.kind]");
+    expect(card).toContain("FILE_KIND_LABEL[file.kind]");
+    // Nothing technical: the MIME type is never drawn.
+    expect(card).not.toContain("file.mime");
+    // The app opens and saves; the browser only downloads (no "Abrir" without `open`).
+    const rows = read(join(SRC, "features", "chat", "FileRows.tsx"));
+    expect(rows).toContain("canOpen={platform.files.open !== undefined}");
+    expect(read(join(SRC, "lib", "platform.ts"))).toContain(
+      "files: { save: (file) => browserDownload(file) }",
+    );
+    // The chat draws the files in their own row, after the message, never inside the bubble.
+    const list = read(join(SRC, "features", "chat", "MessageList.tsx"));
+    expect(list).toContain('case "files":');
+    expect(read(join(SRC, "features", "chat", "timeline.ts"))).toContain(
+      'items.push({ kind: "files"',
+    );
+  });
+
+  it("a question with options is ALWAYS a card apart whose visible title is the question; never shown twice; titles only", () => {
+    const card = read(join(SRC, "ui", "question-card.tsx"));
+    // HARD RULE (owner, 24/11/2026): the card's title is ALWAYS the question, visible, on every
+    // page; nothing hides it.
+    expect(card).toContain('data-testid="question-text"');
+    expect(card).toContain("{q.question}");
+    expect(card).not.toContain("sr-only");
+    // The card draws the title of an option and never its description.
+    expect(card).not.toContain(".description");
+    // No hard ring on an option at load: the card takes the focus, the option's is a soft fill for the keyboard.
+    expect(card).toContain("focusOnAppearance(ref.current)");
+    expect(card).toContain("focus-visible:outline-none");
+    expect(card).toContain("focus-visible:bg-hover");
+    const list = read(join(SRC, "features", "chat", "MessageList.tsx"));
+    const at = list.indexOf("isChoiceCard(item) && item.ask !== undefined");
+    const branch = list.slice(at, list.indexOf("</Fragment>", at));
+    // A bubble only with what the bot wrote BESIDES the question, as the server declares it
+    // (`question.lead`): the app never compares texts to hide anything.
+    expect(branch).toContain("item.ask.lead !== undefined &&");
+    expect(branch).toContain("text={item.ask.lead}");
+    expect(branch).not.toContain("text={item.text}");
+    expect(branch.indexOf("text={item.ask.lead}")).toBeLessThan(branch.indexOf("<QuestionCard"));
+    const timeline = read(join(SRC, "features", "chat", "timeline.ts"));
+    expect(timeline).toContain("message.question.lead");
+    expect(timeline).not.toContain("questionLead");
+    // The same in Pendências.
+    const pending = read(join(SRC, "features", "pending", "PendingScreen.tsx"));
+    expect(pending).toContain("ask.question.lead !== undefined &&");
+    // The X at the top right: close the card and answer in the chat (only an open card has it).
+    expect(card).toContain('aria-label="Fechar e responder no chat"');
+    expect(card).toContain("!readOnly && onDismiss !== undefined");
+    // Under the card, OUTSIDE it: a plain muted line, not a button nor a link.
+    const hint = list.slice(
+      list.indexOf('data-testid="question-hint"') - 120,
+      list.indexOf("Ou responda no chat abaixo") + 40,
+    );
+    expect(hint).toContain("<p");
+    expect(hint).toContain("text-text-muted");
+    expect(hint).not.toContain("onClick");
+    expect(hint).not.toContain("<button");
+    expect(hint).not.toContain("tabIndex");
+  });
+
   it("the expand chevron is hidden at rest and shown on hover and on keyboard focus", () => {
     const src = read(join(SRC, "ui", "action-card.tsx"));
     const chevron = src.slice(src.indexOf("const CHEVRON ="), src.indexOf("const CHEVRON =") + 220);
@@ -1607,6 +1688,12 @@ describe("o chat não mostra pesquisa na web nem erro cru de ferramenta (docs/DE
     const silent = derive.slice(derive.indexOf("export const SILENT_TOOLS"));
     for (const tool of ["web_search", "web_read", "web_fetch"])
       expect(silent.slice(0, silent.indexOf("]);"))).toContain(`"${tool}"`);
+  });
+
+  it("entregar um arquivo não é linha: o cartão do arquivo embaixo da mensagem é o único (dono, 24/11/2026)", () => {
+    const derive = read(join(SRC, "data", "derive.ts"));
+    const silent = derive.slice(derive.indexOf("export const SILENT_TOOLS"));
+    expect(silent.slice(0, silent.indexOf("]);"))).toContain('"send_file"');
   });
 
   it("uma chamada que falhou diz isso numa frase, nunca o texto de erro da ferramenta", () => {

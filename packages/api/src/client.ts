@@ -378,6 +378,12 @@ export interface SuupClient {
     /** Takes the host away from the bot's own list. */
     remove(botId: string, host: string): Promise<BotNetwork>;
   };
+  files: {
+    /** The address of a file the bot sent (behind the token: `Authorization: Bearer`). */
+    url(fileId: string): string;
+    /** Downloads a file the bot sent (`GET /v1/files/:id`): its exact bytes. */
+    download(fileId: string, signal?: AbortSignal): Promise<Uint8Array>;
+  };
   vault: {
     /** Whether the server has a vault it can write to (the section and the key), and why not. */
     status(): Promise<VaultStatus>;
@@ -477,6 +483,26 @@ export function createClient(options: ClientOptions): SuupClient {
 
   const id = (value: string) => encodeURIComponent(value);
   const noBody = { body: undefined } as const;
+
+  /** A file is bytes, not JSON: the same token and errors as `call`, a longer wait (25 MB). */
+  async function download(path: string, signal?: AbortSignal): Promise<Uint8Array> {
+    let response: Response;
+    try {
+      response = await doFetch(`${baseUrl}${path}`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${options.token}` },
+        ...(signal === undefined ? {} : { signal }),
+      });
+    } catch (error) {
+      if (signal?.aborted)
+        throw new ApiError("aborted", "A requisição foi cancelada.", undefined, { cause: error });
+      throw new ApiError("network", "Não foi possível falar com o servidor.", undefined, {
+        cause: error,
+      });
+    }
+    if (!response.ok) throw await errorOf(response);
+    return new Uint8Array(await response.arrayBuffer());
+  }
 
   return {
     health: () => call("GET", "/health", healthSchema, { auth: false }),
@@ -754,6 +780,10 @@ export function createClient(options: ClientOptions): SuupClient {
         call("PUT", `/v1/bots/${id(botId)}/network/hosts/${id(host)}`, botNetworkSchema, noBody),
       remove: (botId, host) =>
         call("DELETE", `/v1/bots/${id(botId)}/network/hosts/${id(host)}`, botNetworkSchema),
+    },
+    files: {
+      url: (fileId) => `${baseUrl}/v1/files/${id(fileId)}`,
+      download: (fileId, signal) => download(`/v1/files/${id(fileId)}`, signal),
     },
     vault: {
       status: () => call("GET", "/v1/vault", vaultStatusSchema),

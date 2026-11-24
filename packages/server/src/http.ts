@@ -5,10 +5,12 @@ import type { Runtime } from "@suup/runtime";
 import type { z } from "zod";
 import { HttpError, toHttpError } from "./errors.js";
 
-/** What a handler answers: a status (default 200) and a JSON body. */
+/** What a handler answers: a status (default 200) and a JSON body, or a file to download. */
 export interface Reply {
   status?: number;
   body: unknown;
+  /** A file instead of JSON (`GET /v1/files/:id`): always an attachment, never shown inline. */
+  file?: { content: Uint8Array; mime: string; name: string };
 }
 
 /** Everything a handler may read about the request, already checked (auth, CORS, body size). */
@@ -183,6 +185,8 @@ const SECURITY_HEADERS = {
 
 export interface Writer {
   json(status: number, body: unknown, extra?: Record<string, string>, close?: boolean): void;
+  /** A file as a download (see `contentDisposition`); the browser never runs it on this origin. */
+  file(file: NonNullable<Reply["file"]>): void;
   /** `close`: also close the connection once the answer is out (the request body was not read). */
   error(error: HttpError, close?: boolean): void;
 }
@@ -216,6 +220,20 @@ export function writerFor(
   };
   return {
     json,
+    file({ content, mime, name }) {
+      if (res.headersSent || res.writableEnded) return;
+      res.writeHead(200, {
+        ...SECURITY_HEADERS,
+        ...base,
+        "Content-Type": mime,
+        "Content-Length": String(content.length),
+        "Content-Disposition": contentDisposition(name),
+        // Whatever the file is (an HTML page, an SVG), it never runs with this origin's rights.
+        "Content-Security-Policy": "sandbox; default-src 'none'",
+        ...(closeAfter() ? { Connection: "close" } : {}),
+      });
+      res.end(content);
+    },
     error(error, close = false) {
       const extra: Record<string, string> = {};
       if (error.code === "unauthorized") extra["WWW-Authenticate"] = 'Bearer realm="suup"';
@@ -234,3 +252,27 @@ export const httpError = (code: ErrorCode, message: string): HttpError =>
   new HttpError(code, message);
 
 export { toHttpError };
+
+/**
+ * `attachment` with the name twice (RFC 6266): `filename` in plain ASCII (anything else, quotes
+ * and backslashes become "_") and `filename*` with the exact name in UTF-8, percent-encoded
+ * (RFC 8187). Character by character, no pattern.
+ */
+export function contentDisposition(name: string): string {
+  let ascii = "";
+  for (const ch of name) {
+    const code = ch.codePointAt(0) ?? 0;
+    ascii += code < 0x20 || code > 0x7e || ch === '"' || ch === "\\" ? "_" : ch;
+  }
+  let encoded = "";
+  for (const byte of Buffer.from(name, "utf8")) {
+    const ch = String.fromCharCode(byte);
+    const plain =
+      (ch >= "a" && ch <= "z") ||
+      (ch >= "A" && ch <= "Z") ||
+      (ch >= "0" && ch <= "9") ||
+      "!#$&+-.^_`|~".includes(ch);
+    encoded += plain ? ch : `%${byte.toString(16).toUpperCase().padStart(2, "0")}`;
+  }
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`;
+}

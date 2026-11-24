@@ -1,6 +1,7 @@
 import type { Approval, PlanStep, Run, RunEvent } from "@suup/api";
 import {
   type CategoryIcon,
+  lastSegment,
   NETWORK_TOOL,
   parseConnectorTool,
   STATUS_LABEL,
@@ -165,6 +166,15 @@ export function describeAction(
         path === undefined ? "Listar arquivos" : `Listar arquivos em ${path}`,
         path === undefined ? "Listando arquivos" : `Listando arquivos em ${path}`,
       );
+    case "send_file": {
+      // The name the person sees on the card under the message, never the bot's path.
+      const raw = text("name") ?? lastSegment(text("path"));
+      const shown = raw === undefined ? undefined : clip(raw, 60);
+      return files(
+        shown === undefined ? "Entregar um arquivo no chat" : `Entregar ${shown} no chat`,
+        shown === undefined ? "Entregando um arquivo" : `Entregando ${shown}`,
+      );
+    }
     case "search_files": {
       const pattern =
         text("pattern") === undefined ? undefined : clip(text("pattern") as string, 40);
@@ -526,7 +536,7 @@ export function foldActions(
     entries.push(
       group.length === 1
         ? { kind: "action", item: first }
-        : { kind: "fold", key: `fold:${first.callId}`, items: group },
+        : { kind: "fold", key: `fold:${first.runId}:${first.callId}`, items: group },
     );
     group = [];
   };

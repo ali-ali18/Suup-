@@ -42,6 +42,12 @@ export class NetworkedExecutor implements Executor {
   readFile(path: string): Promise<string> {
     return this.#inner.readFile(path);
   }
+  readFileBytes(path: string, maxBytes: number): Promise<Uint8Array> {
+    if (this.#inner.readFileBytes === undefined) {
+      return Promise.reject(new Error("this machine cannot read files as bytes"));
+    }
+    return this.#inner.readFileBytes(path, maxBytes);
+  }
   writeFile(path: string, content: string): Promise<void> {
     return this.#inner.writeFile(path, content);
   }
