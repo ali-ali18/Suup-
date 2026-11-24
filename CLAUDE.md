@@ -7,3 +7,4 @@
 - O app só desenha o que o backend oferece (`docs/FRONTEND.md`): nada inventado.
 - Antes de entregar uma tela: `pnpm lint`, `pnpm typecheck`, `pnpm vitest run`, o Playwright do app, e comparar as capturas com as referências do dono.
 - Nunca colocar segredos, chaves ou dados pessoais em código, testes, capturas ou mensagens de commit.
+- **Modelos dos agentes de apoio (regra do dono).** Ao delegar trabalho a subagentes: **Haiku para pesquisa** (ler documentação, comparar opções, levantar fontes) e **Sonnet para escrever código**. Nunca deixar o subagente herdar o modelo da sessão principal sem escolher. Poucos agentes por vez; o que dá para fazer direto, faça direto.
