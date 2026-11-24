@@ -236,11 +236,11 @@ describe.skipIf(!DATABASE_URL)(
       // The bounds follow the estimate of 2.65 characters per token (it was 4: about 10 400 and
       // 2 600 then, 1.5 times more now). The four routine tools add about 1 700 to both;
       // `create_reminder` and the reminder guidance in the routine and return tools, about 450;
-      // `send_file`, about 250; `create_document`, about 1 000.
+      // `send_file`, about 250 (its check and `force`, about 150 more); `create_document`, about 1 000.
       expect(loaded.request.toolStats.estimatedTokens).toBeGreaterThan(15_700);
       expect(loaded.request.toolStats.estimatedTokens).toBeLessThan(21_000);
       expect(searched.request.toolStats.estimatedTokens).toBeGreaterThan(4_700);
-      expect(searched.request.toolStats.estimatedTokens).toBeLessThan(8_700);
+      expect(searched.request.toolStats.estimatedTokens).toBeLessThan(8_900);
       expect(loaded.catalog.mode).toBe("direct");
       expect(searched.catalog.mode).toBe("meta");
       expect(searched.catalog.connectorTools).toBeGreaterThanOrEqual(60);

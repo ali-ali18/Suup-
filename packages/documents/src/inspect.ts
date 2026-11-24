@@ -29,8 +29,12 @@ export interface PdfInspection {
   title: string | null;
   author: string | null;
   fonts: string[];
+  /** The names the PDF gives its embedded fonts (without the subset tag). */
+  fontNames: string[];
   /** Fonts the PDF uses without carrying them. */
   missingFonts: string[];
+  /** Their names when the PDF gives one (else the reader's own id). */
+  missingFontNames: string[];
   /** The extracted text had the replacement character. */
   brokenText: boolean;
   /** The text of the whole file, line by line (page order). */
@@ -49,6 +53,7 @@ export async function inspectPdf(bytes: Uint8Array): Promise<PdfInspection> {
     data: new Uint8Array(bytes),
     isEvalSupported: false,
     useSystemFonts: false,
+    fontExtraProperties: true,
     verbosity: 0,
   });
   const doc = await task.promise;
@@ -58,6 +63,8 @@ export async function inspectPdf(bytes: Uint8Array): Promise<PdfInspection> {
     const used = new Set<string>();
     const missing = new Set<string>();
     const names = new Set<string>();
+    const realNames = new Set<string>();
+    const missingNames = new Set<string>();
     let allA4 = true;
     let images = 0;
     let pageSize = { width: A4_PT.width, height: A4_PT.height };
@@ -107,8 +114,15 @@ export async function inspectPdf(bytes: Uint8Array): Promise<PdfInspection> {
       lines.push(...[...byY.values()].sort((a, b) => b.y - a.y));
       for (const id of used) {
         const font = page.commonObjs.get(id);
-        if (font === undefined || font.missingFile === true) missing.add(id);
-        else names.add(id);
+        if (font === undefined || font.missingFile === true) {
+          missing.add(id);
+          missingNames.add(font?.name ?? id);
+        } else {
+          names.add(id);
+          // A subset's name starts with six capitals and a plus ("ABCDEF+Geist").
+          const full = font.name ?? id;
+          realNames.add(full[6] === "+" ? full.slice(7) : full);
+        }
       }
     }
     const all = lines.map((l) => l.items.join(" ")).join(" ");
@@ -120,7 +134,9 @@ export async function inspectPdf(bytes: Uint8Array): Promise<PdfInspection> {
       title: typeof title === "string" ? title : null,
       author: typeof author === "string" ? author : null,
       fonts: [...names],
+      fontNames: [...realNames],
       missingFonts: [...missing],
+      missingFontNames: [...missingNames],
       brokenText: all.includes("�"),
       lines,
       flat: squash(all),
@@ -141,6 +157,8 @@ export interface XlsxCell {
   /** 1-based (A is 1). */
   col: number;
   value: string | number | boolean | null;
+  /** The cell holds an error value (`#REF!`, `#DIV/0!`...): its value is the error text. */
+  error: boolean;
   /** The formula without the `=`. */
   formula: string | null;
   /** The number format code in force ("General" when none). */
@@ -267,8 +285,17 @@ export function inspectXlsx(bytes: Uint8Array): XlsxInspection {
         else if (type === "inlineStr") value = characterReferences(tagTexts(inner, "t").join(""));
         else if (type === "str") value = raw === undefined ? null : characterReferences(raw);
         else if (type === "b") value = raw === "1";
+        else if (type === "e") value = raw === undefined ? null : raw;
         else if (raw !== undefined && raw !== "") value = Number(raw);
-        cells.push({ ref, row, col, value, formula, format: formatOf(attrs.s) });
+        cells.push({
+          ref,
+          row,
+          col,
+          value,
+          error: type === "e",
+          formula,
+          format: formatOf(attrs.s),
+        });
       }
       return { name, cells };
     }),

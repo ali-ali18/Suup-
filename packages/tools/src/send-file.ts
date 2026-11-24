@@ -22,6 +22,13 @@ const input = z.object({
     .describe(
       "The name the user sees and saves it as, with its extension. Default: the file's own name.",
     ),
+  force: z
+    .boolean()
+    .optional()
+    .describe(
+      "Deliver despite check problems; only if the user asked for something non-standard (e.g. Letter size). Needs `reason`.",
+    ),
+  reason: z.string().max(300).optional().describe("With `force`: what the user asked for."),
 });
 
 const MB = 1024 * 1024;
@@ -39,6 +46,7 @@ export const sendFileTool = defineTool({
     "Sends a file from your workspace to the user. It appears as a card under your message in the chat (its name, kind and size, to open or save).",
     "Use it whenever you make a file for the user (a PDF, a document, a spreadsheet, an image, a zip): the user cannot reach your machine.",
     'Because the card shows the file, never repeat its name or path in your text: one short line such as "Gerei o PDF." is enough.',
+    "PDF, Word and Excel files are opened and measured first: on problems you get the list and nothing is delivered, so fix the file and send again; on success you get what was measured.",
     `Up to ${MAX_SENT_FILE_BYTES / MB} MB per file; call it once per file.`,
   ].join(" "),
   input,
@@ -46,7 +54,7 @@ export const sendFileTool = defineTool({
   // The result only echoes what the harness did with the bot's own file.
   ownOutput: true,
   describe: ({ path }) => `Send ${path} to the user`,
-  async execute({ path, name }, ctx) {
+  async execute({ path, name, force, reason }, ctx) {
     if (ctx.files === undefined) {
       return {
         isError: true,
@@ -96,12 +104,38 @@ export const sendFileTool = defineTool({
       return { isError: true, content: tooLarge(path, bytes.length) };
     }
     const { mime } = detectFileType(bytes, shown);
+    // A PDF, Word or Excel file is opened again before it is handed over (the same readers the
+    // evaluation uses); the type is the one the signature and the extension table decided.
+    let measured = "";
+    const report = await ctx.documents?.inspect({ bytes, mime });
+    if (report !== undefined && report !== null) {
+      const facts = report.facts.length === 0 ? "" : ` Measured: ${report.facts.join("; ")}.`;
+      if (report.problems.length > 0) {
+        const list = report.problems.map((p) => `- ${p}`).join("\n");
+        if (force !== true) {
+          return {
+            isError: true,
+            content: `The file was not delivered. Fix these and send it again:\n${list}\nIf the user asked for exactly this (for example Letter size), call send_file again with force: true and a reason.${facts}`,
+          };
+        }
+        if (reason === undefined || reason.trim() === "") {
+          return {
+            isError: true,
+            content:
+              "`force` needs a `reason`: say what the user asked for that the check refuses. The file was not delivered.",
+          };
+        }
+        measured = ` Delivered with force (reason: ${JSON.stringify(reason.trim())}); the check had found:\n${list}\n${facts}`;
+      } else if (facts !== "") {
+        measured = facts;
+      }
+    }
     const { id } = await ctx.files.send(
       { name: shown, mime, bytes },
       ctx.callId ?? `${ctx.runId}:${path}`,
     );
     return {
-      content: `Sent ${JSON.stringify(shown)} (${sizeText(bytes.length)}, ${mime}) to the user (file ${id}). It appears as a card under your next message: do not repeat its name or path; one short line is enough.`,
+      content: `Sent ${JSON.stringify(shown)} (${sizeText(bytes.length)}, ${mime}) to the user (file ${id}).${measured} It appears as a card under your next message: do not repeat its name or path; one short line is enough.`,
     };
   },
 });

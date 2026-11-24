@@ -38,9 +38,9 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("send_file in a conversation"), () =>
     const runtime = await open({
       agent: [
         {
-          calls: [call("write_file", { path: "pesquisa/historia.pdf", content: "%PDF-1.4 oi" })],
+          calls: [call("write_file", { path: "pesquisa/historia.txt", content: "Historia oi" })],
         },
-        { calls: [call("send_file", { path: "pesquisa/historia.pdf" })] },
+        { calls: [call("send_file", { path: "pesquisa/historia.txt" })] },
         { text: "Aqui está o PDF da história." },
       ],
     });
@@ -58,16 +58,16 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("send_file in a conversation"), () =>
     const sent = events.find(
       (e) => e.type === "tool_result" && JSON.stringify(e.payload).includes("Sent "),
     );
-    expect(JSON.stringify(sent?.payload)).toContain('Sent \\"historia.pdf\\"');
+    expect(JSON.stringify(sent?.payload)).toContain('Sent \\"historia.txt\\"');
 
     const messages = await listMessages(runtime.db, first.message.conversationId, { limit: 10 });
     const answer = messages.find((m) => m.authorKind === "bot");
     expect(answer?.text).toBe("Aqui está o PDF da história.");
     expect(answer?.attachments).toEqual([
-      { id: expect.any(String), name: "historia.pdf", mime: "application/pdf", size: 11 },
+      { id: expect.any(String), name: "historia.txt", mime: "text/plain", size: 11 },
     ]);
     const stored = await getFile(runtime.db, answer?.attachments?.[0]?.id ?? "");
-    expect(Buffer.from(stored?.content ?? []).toString("utf8")).toBe("%PDF-1.4 oi");
+    expect(Buffer.from(stored?.content ?? []).toString("utf8")).toBe("Historia oi");
     expect(stored?.botId).toBe(bot.id);
     await runtime.close();
   });

@@ -1150,3 +1150,54 @@ Totais por modo (as três tarefas):
 - A lista com marcadores é reconhecida por glifo ou por recuo (a ferramenta desenha o marcador como forma, que a extração de texto não vê).
 - Word (`docx`) não entrou. A imagem do sandbox é a variante `dev-files`; o modo SCRIPT depende de o bot achar reportlab/openpyxl lá.
 - Um modelo pode ter ido bem ou mal por sorte do dia: o ideal é repetir 3 vezes (item A3 de `MELHORIAS.md`).
+
+## Segunda rodada: código livre por padrão, guia curto e conferência na entrega (24/11/2026)
+
+Decisão do dono (24/11/2026): **liberdade por padrão**, como Claude e Grok. O bot faz PDF, Word e Excel com código livre na máquina dele; o prompt traz um guia curto (A4, UTF-8, margens, fontes TrueType embutidas, fórmulas sem erro e formatos de número reais, ABNT); a imagem do sandbox traz o auxiliar opcional `suup_docs` e fontes livres; e o **`send_file` abre o PDF, o Word e o Excel de volta e mede** antes de entregar (se algo falha, o bot recebe a lista e nada vai; `force: true` com `reason` libera um pedido fora do padrão). A `create_document` virou atalho para o documento simples. Mesmas três tarefas e mesmo juiz da primeira rodada; mesmos modelos (CHEAP `claude-haiku-5-5`, MID `claude-sonnet-5-5`, preços da seção "Preparação" acima), uma repetição por célula, sandbox Docker com a imagem nova (`docker/sandbox`, Ubuntu 24.04 como base por causa da rede; com `fonts-liberation2` e `suup_docs`), PostgreSQL 16 descartável, tetos de 30 turnos e US$ 0,20 por execução. Orçamento da sessão: US$ 1 (estimativa antes: cerca de US$ 0,5; a primeira rodada custou US$ 0,43).
+
+**O que mudou no modo `-tool`.** O prompt agora diz que a `create_document` é um atalho, então o modelo escolhe: dos 6 `-tool` desta rodada só 3 usaram a ferramenta (relatório e planilha do MID e relatório do CHEAP); a ABNT e a planilha do CHEAP e a ABNT do MID usaram código livre. Por isso `-tool` e `-script` já não são "só a ferramenta" contra "só o script": são o mesmo bot com o mesmo prompt, e a coluna "Ferramenta" abaixo diz o que cada execução usou.
+
+| Tarefa | Modo | Modelo | Estado | Checagens do arquivo | Usou | Turnos | Entrada / saída (mil) | Cache lido / gravado (mil) | Custo US$ | Tempo | Recusas do `send_file` |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| relatório PDF | TOOL | CHEAP | done | 11/11 | `create_document` | 3 | 33,2 / 2,1 | 15,4 / 17,7 | 0,0034 | 11 s | 0 |
+| relatório PDF | SCRIPT | CHEAP | **waiting_user** | 11/11 | código | 30 | 1023,2 / 18,6 | 954,8 / 68,2 | 0,0274 | 98 s | 3 (fonte) |
+| ABNT PDF | TOOL | CHEAP | done | 14/14 | código | 14 | 329,4 / 9,7 | 289,4 / 39,9 | 0,0128 | 46 s | 1 (fonte) |
+| ABNT PDF | SCRIPT | CHEAP | done | 14/14 | código | 11 | 210,8 / 9,4 | 183,3 / 27,5 | 0,0100 | 43 s | 1 (fonte) |
+| planilha xlsx | TOOL | CHEAP | done | 7/7 | código | 7 | 98,4 / 3,1 | 86,4 / 12,0 | 0,0039 | 17 s | 0 |
+| planilha xlsx | SCRIPT | CHEAP | done | 7/7 | código | 8 | 102,5 / 3,1 | 90,5 / 11,9 | 0,0040 | 16 s | 0 |
+| relatório PDF | TOOL | MID | done | 11/11 | `create_document` | 3 | 32,5 / 1,4 | 17,9 / 14,6 | 0,0407 | 10 s | 0 |
+| relatório PDF | SCRIPT | MID | done | 11/11 | código | 9 | 117,1 / 3,3 | 96,2 / 20,9 | 0,0767 | 26 s | 0 |
+| ABNT PDF | TOOL | MID | done | 14/14 | código | 9 | 184,5 / 5,3 | 126,5 / 58,0 | 0,0904 | 37 s | 0 |
+| ABNT PDF | SCRIPT | MID | **waiting_user** | 14/14 | código | 13 | 217,5 / 9,2 | 187,0 / 30,4 | 0,1344 | 64 s | 0 |
+| planilha xlsx | TOOL | MID | done | 7/7 | `create_document` | 3 | 32,4 / 1,3 | 27,3 / 5,0 | 0,0173 | 9 s | 0 |
+| planilha xlsx | SCRIPT | MID | done | 7/7 | código | 5 | 54,4 / 1,8 | 47,2 / 7,2 | 0,0264 | 15 s | 0 |
+
+**Gasto desta rodada: US$ 0,447** (CHEAP US$ 0,061; MID US$ 0,386), contra o teto de US$ 1. Os `doctor` não entram na conta.
+
+### Contra a primeira rodada
+
+| Medida | 1ª rodada (script livre, sem guia nem conferência) | 2ª rodada (script livre + guia + conferência no `send_file`) |
+|---|---|---|
+| PDFs feitos por código sem a fonte embutida | **3 de 4** | **0 de 6 entregues** (o `send_file` recusou 5 vezes pela fonte; todas as execuções corrigiram e enviaram de novo) |
+| Arquivos que passam em **todas** as checagens do juiz | 6/6 da ferramenta; 3/6 do script | **12/12** (3 feitos pela ferramenta e 9 por código livre) |
+| O bot diz uma medida que o arquivo não tem ("Times 12 pt") | sim, em 3 PDFs | não conferi as 12 mensagens uma a uma; o que mudou é que o resultado do `send_file` traz as fontes, o corpo, as margens e o espaçamento medidos, e o juiz achou os valores certos nos 6 PDFs de ABNT e relatório entregues por código |
+| Defeito do byte NUL derrubando a execução | 1 vez (passada de teste) | não houve (correção no armazenamento do evento, com teste) |
+| Execuções que terminaram `done` | 11 de 12 | 10 de 12 |
+| Custo somado das 3 tarefas, CHEAP | TOOL 0,0121 · SCRIPT 0,0246 | tudo junto 0,0615 (dois dos três `-tool` foram por código) |
+| Custo somado das 3 tarefas, MID | TOOL 0,1306 · SCRIPT 0,2618 | `-tool` 0,1484 · `-script` 0,2375 |
+
+### O que se vê
+
+- **A conferência pegou o defeito que o dono vinha vendo.** As 5 recusas foram todas "a fonte não está embutida" (reportlab com a fonte padrão); em nenhuma o arquivo errado chegou ao chat, e as execuções que tentaram de novo acertaram usando as fontes Liberation da imagem (só 1 execução usou o `suup_docs`; as outras acharam as fontes sozinhas). **Nenhum PDF entregue está sem fonte embutida.**
+- **Duas execuções terminaram `waiting_user`, nenhuma por causa do arquivo (as duas passaram em todas as checagens do juiz).** CHEAP, relatório por código: errou a fonte três vezes seguidas, acertou na quarta e **estourou os 30 turnos**; o revisor ficou sem turnos ("turn limit reached: 30 of 30 model calls used") e o `finish` virou pergunta ao dono. É o custo de um bot barato tentando consertar a fonte às cegas: por isso a mensagem de recusa agora traz o nome da fonte que não vai no arquivo e uma receita de 3 linhas (registrar a fonte TrueType e usá-la em **todos** os estilos, inclusive tabela e negrito), e **não foi retestada** (a rodada acima usou a mensagem anterior, só com a orientação geral). MID, ABNT por código: o revisor rejeitou duas vezes porque o bot pôs a legenda **acima** da figura (a ABNT manda a legenda em cima; o pedido da tarefa pede a fonte logo abaixo) e explicou a escolha no resumo; o dono decide. É divergência de interpretação entre o bot e o revisor, não do arquivo.
+- **Custo.** O código livre deixou de custar muito mais que a ferramenta: no relatório, a ferramenta ficou em 0,003 a 0,04 e o código em 0,03 a 0,08 (de 15 a 17 turnos na primeira rodada para 9 com o MID; o CHEAP é o que ainda gasta turnos). A planilha custou o mesmo nos dois jeitos. O custo da ABNT é o mesmo nos dois (o juiz mede a mesma coisa).
+- **M9 para os dois caminhos.** O resultado do `send_file` e o da `create_document` trazem o que foi medido. Nenhuma das 12 execuções terminou em `waiting_user` por "não medi o arquivo" (que era a falha da primeira rodada na ABNT com a ferramenta); as duas que pararam foram pelos motivos acima. Uma mensagem final do MID na ABNT ainda diz que não conseguiu abrir o PDF para conferir o layout visual: é a conferência por olho, que a medição não substitui.
+- **A medição achou um defeito da própria `create_document`.** Ao medir as margens no PDF de estilo `padrao`, a tabela passava da margem direita (0,97 cm da borda em vez de 2,2): o pdfmake soma o recuo das células à largura das colunas. Corrigido em `packages/documents/src/pdf.ts` (a largura que as colunas dividem desconta o recuo); a tabela do estilo `academico` tinha o mesmo desvio, menor.
+- Dentro da imagem nova, `suup_docs` foi testado (PDF padrão e ABNT, Word ABNT e Excel com moeda): os quatro arquivos passam na conferência sem problemas.
+
+### O que esta rodada NÃO mostra
+
+- Uma repetição por célula: são pontos, não taxas (item A3). Seis `-tool` e seis `-script` são o mesmo bot; a diferença entre eles é o acaso da escolha (ferramenta ou código), não uma comparação limpa.
+- Só PDF e xlsx entram no juiz (Word fica fora: item A8). A conferência de Word e a de xlsx (fórmula com erro, número como texto, formato) têm testes de unidade, mas **não** foram exercitadas por um modelo real.
+- O Excel de verdade não foi aberto; um Word aberto no Word também não. A medição de margens, espaçamento e justificação é por texto do PDF, com as tolerâncias da primeira rodada.
+- A mensagem de recusa nova (nome da fonte e receita) e a medida de tabela corrigida são posteriores à rodada.

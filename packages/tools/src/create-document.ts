@@ -27,7 +27,7 @@ export const createDocumentTool = defineTool({
   name: CREATE_DOCUMENT_TOOL_NAME,
   description: [
     "Creates a well-designed PDF, Word (docx) or Excel (xlsx) file from your content and delivers it to the user: it appears as a card under your message in the chat.",
-    "Use it for every PDF, Word or Excel deliverable. Do NOT build these files with the terminal, Python or any other program, and do not send them with send_file: this is faster and looks better.",
+    "A shortcut for a simple, standard PDF, Word or Excel document: you give only the content and Suup lays it out. For anything more custom, write your own code and use send_file (it checks the file too).",
     "You give only the final content (Markdown for pdf and docx, sheets of rows for xlsx); Suup does the design (A4, embedded fonts, spacing, tables, page numbers), checks the file and only then delivers it.",
     'The card shows the file, so never repeat its name in your text: one short line such as "Pronto, está aí." is enough.',
     `Up to ${MAX_SENT_FILE_BYTES / MB} MB; call it once per file.`,
@@ -136,9 +136,11 @@ export const createDocumentTool = defineTool({
       document.pages === undefined
         ? ""
         : `, ${document.pages} page${document.pages === 1 ? "" : "s"}`;
+    const measured =
+      document.facts.length === 0 ? "" : ` Measured in the file: ${document.facts.join("; ")}.`;
     const notes = document.notes.length === 0 ? "" : ` Notes: ${document.notes.join(" ")}`;
     return {
-      content: `Created and delivered ${JSON.stringify(name)} (${sizeText(document.bytes.length)}${pages}, file ${id}). Checked: ${document.checks.join("; ")}.${notes} It appears as a card under your next message: do not repeat its name; one short line is enough.`,
+      content: `Created and delivered ${JSON.stringify(name)} (${sizeText(document.bytes.length)}${pages}, file ${id}). Checked: ${document.checks.join("; ")}.${measured}${notes} It appears as a card under your next message: do not repeat its name; one short line is enough.`,
     };
   },
 });

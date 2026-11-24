@@ -35,6 +35,7 @@ RUN --mount=type=secret,id=build_ca,required=false,mode=0444 \
         curl \
         file \
         findutils \
+        fonts-liberation2 \
         git \
         jq \
         procps \
@@ -55,6 +56,13 @@ RUN --mount=type=secret,id=build_ca,required=false,mode=0444 \
 # goes through the egress proxy like every other request (pypi.org and files.pythonhosted.org are in
 # the default list, docs/REDE.md).
 RUN printf '[global]\nbreak-system-packages = true\nuser = true\n' > /etc/pip.conf
+
+# suup_docs: an optional helper for PDF, Word and Excel files (A4, embedded fonts, ABNT, number
+# formats). The fonts above are free (Liberation 2, SIL OFL 1.1) and cover
+# Portuguese in full. The bot may ignore the helper and write its own code; `send_file` checks the
+# file either way (docs/pesquisas/geracao-de-documentos.md).
+COPY suup_docs /opt/suup/python/suup_docs
+ENV PYTHONPATH=/opt/suup/python
 
 # Non-root user. /workspace is where the named volume is mounted; creating it here, owned by
 # the user, makes a fresh volume inherit that ownership.

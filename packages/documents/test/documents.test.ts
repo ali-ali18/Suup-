@@ -101,7 +101,8 @@ describe("pdf", () => {
       new Map([["fig/campus.png", PNG_1X1]]),
     );
     const pdf = await readPdf(doc.bytes);
-    expect(pdf.pages[0]).toContain("Figura 1: Fachada do campus. Fonte: Acervo da instituição.");
+    expect(pdf.pages[0]).toContain("Figura 1 \u2013 Fachada do campus");
+    expect(pdf.pages[0]).toContain("Fonte: Acervo da instituição.");
   });
 
   it("an explicit page break starts a new page", async () => {

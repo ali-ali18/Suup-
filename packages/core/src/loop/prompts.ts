@@ -145,6 +145,15 @@ function teamSection(team: readonly Teammate[], supervisor?: SupervisorRole): st
   }`;
 }
 
+/**
+ * The short Suup document skill (docs/pesquisas/geracao-de-documentos.md): free code by default,
+ * with the guardrails `send_file` checks on delivery. It sits in the per-run part of the prompt,
+ * after the shared prefix, so the cached prefix stays the same for every bot.
+ */
+const DOCUMENT_SKILL =
+  '- PDF, Word and Excel files: write your own code on your machine (Python has reportlab, python-docx and openpyxl) and send the result with `send_file`. Guardrails, checked on delivery: A4 pages and UTF-8; margins of at least 1.5 cm at the sides and 1 cm at the top and bottom; PDF fonts are TrueType, registered and embedded (never Helvetica, Times or Courier); xlsx formulas without errors and numbers kept as numbers with a real format (currency, percent), never as text; academic work (ABNT): margins 3/2/2/3 cm (top/right/bottom/left), 12 pt, line spacing 1.5, justified, figure caption "Figura 1 – title" with "Fonte:" on the next line. Optional: `import suup_docs` applies all of this (see `help(suup_docs)`).';
+const DOCUMENT_SKILL_SHORTCUT = " For a simple standard document `create_document` is faster.";
+
 function whatYouHaveSection(input: {
   machine: MachineInfo | undefined;
   connectors: readonly string[] | undefined;
@@ -174,12 +183,15 @@ function whatYouHaveSection(input: {
   }
   if (input.sendFile) {
     lines.push(
-      "- `send_file`: when you make a file for the user (a PDF, a document, a spreadsheet, an image), send it with `send_file`; it appears as a card under your message. Never repeat its name or path in your text: one short line is enough.",
+      "- `send_file`: when you make a file for the user (a PDF, a document, a spreadsheet, an image), send it with `send_file`; it appears as a card under your message. Never repeat its name or path in your text: one short line is enough. A PDF, Word or Excel file is opened and measured first: if something is wrong you get the list and nothing is sent, so fix it and send again; on success you get the measured facts, so quote them instead of claiming. `force: true` with a `reason` only when the user asked for something non-standard (for example Letter size).",
     );
+    if (machine?.terminal === true) {
+      lines.push(DOCUMENT_SKILL + (input.createDocument ? DOCUMENT_SKILL_SHORTCUT : ""));
+    }
   }
   if (input.createDocument) {
     lines.push(
-      "- `create_document`: for a PDF, Word (docx) or Excel (xlsx) file, use `create_document` with the content and the format, not the terminal or Python: Suup does the design and checks the file. It appears as a card under your message; never repeat its name in your text, one short line is enough.",
+      "- `create_document`: a shortcut for a simple, standard PDF, Word (docx) or Excel (xlsx) file: give the content and the format, and Suup does the design and checks the file. It appears as a card under your message; never repeat its name in your text, one short line is enough.",
     );
   }
   if (connectors !== undefined) {

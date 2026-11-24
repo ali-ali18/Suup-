@@ -83,6 +83,8 @@ A máquina dos bots. Cada bot trabalha na própria subpasta `bots/<id do bot>` d
 | `python3-reportlab` | PDF |
 | `python3-docx` | documento do Word (`.docx`) |
 | `python3-openpyxl` | planilha do Excel (`.xlsx`) |
+| `fonts-liberation2` | fontes TrueType livres (SIL OFL 1.1) com cobertura completa do português, para o PDF levar a fonte embutida |
+| `suup_docs` (`docker/sandbox/suup_docs`, no `PYTHONPATH`) | auxiliar **opcional** em Python: PDF e Word em A4 com margens e fonte já ajustadas (inclusive ABNT: 3/2/2/3 cm, 12 pt, 1,5, justificado), tabela, legenda de figura e formatos de número do Excel. O bot pode ignorá-lo e escrever o próprio código; o `send_file` confere o arquivo de qualquer jeito |
 
 O que **não** vem, para a imagem continuar pequena: LaTeX, LibreOffice e `pandoc` (o binário do `pandoc` sozinho tem perto de 190 MB). Quando o bot precisa de outra biblioteca, ele a instala com `pip install <pacote>`: o Python do sistema é "gerenciado externamente" (PEP 668), e o `/etc/pip.conf` da imagem instala na pasta do próprio usuário (`~/.local`, no volume), sem mexer nos pacotes do sistema. O `pip` sai pelo proxy como qualquer comando (as variáveis `HTTP_PROXY`/`HTTPS_PROXY` vêm em cada `docker exec`), e `pypi.org` e `files.pythonhosted.org` estão na lista padrão de hosts; se o dono tirou os dois da lista, o proxy recusa, o resultado do comando diz qual host faltou e o bot pede com `request_network_access` (um cartão, [REDE.md](REDE.md)). Conversões com `pandoc` saem de `pip install pypandoc_binary` (a roda traz o binário). Teste real: `packages/sandbox/test/egress-pip.test.ts` (com `SUUP_DOCKER_TESTS=1`, `SUUP_PIP_TESTS=1` e a imagem em `SUUP_SANDBOX_IMAGE`; numa rede que reassina o TLS, `SUUP_EXTRA_CA_BUNDLE`).
 

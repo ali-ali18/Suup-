@@ -38,6 +38,7 @@ function fakeMaker(result: (r: DocumentRequest) => MakeResult, paths: string[] =
   const seen: ReadonlyMap<string, Uint8Array>[] = [];
   const maker: DocumentMaker = {
     imagePaths: () => paths,
+    inspect: async () => null,
     async make(request, images) {
       requests.push(request);
       seen.push(images);
@@ -49,7 +50,15 @@ function fakeMaker(result: (r: DocumentRequest) => MakeResult, paths: string[] =
 
 const okResult = (bytes = new Uint8Array([1, 2, 3, 4]), mime = DOCUMENT_MIME.pdf): MakeResult => ({
   ok: true,
-  document: { bytes, mime, title: "T", pages: 2, notes: [], checks: ["2 pages", "fonts embedded"] },
+  document: {
+    bytes,
+    mime,
+    title: "T",
+    pages: 2,
+    notes: [],
+    checks: ["2 pages", "fonts embedded"],
+    facts: ["PDF, 2 pages, 210 x 297 mm (A4)", "margins 3/2/2/3 cm"],
+  },
 });
 
 async function setup(
@@ -78,9 +87,9 @@ async function setup(
 }
 
 describe("create_document", () => {
-  it("tells the bot to use it instead of the terminal, and that the card shows the name", () => {
+  it("is a shortcut, not the only way, and that the card shows the name", () => {
     const d = createDocumentTool.description;
-    expect(d).toContain("Do NOT build these files with the terminal, Python");
+    expect(d).toContain("A shortcut for a simple, standard");
     expect(d).toContain("never repeat its name in your text");
     expect(createDocumentTool.risk).toBe("read");
   });
@@ -97,6 +106,10 @@ describe("create_document", () => {
     expect(r.output.content).toContain('"historia.pdf"');
     expect(r.output.content).toContain("2 pages, file file-1");
     expect(r.output.content).toContain("Checked: 2 pages; fonts embedded");
+    // M9: what was measured in the file comes back to the bot, to quote as evidence.
+    expect(r.output.content).toContain(
+      "Measured in the file: PDF, 2 pages, 210 x 297 mm (A4); margins 3/2/2/3 cm.",
+    );
     expect(r.output.content).toContain("do not repeat its name");
     expect(requests[0]).toMatchObject({
       format: "pdf",

@@ -152,3 +152,77 @@ describe("detectFileType: signature first, then the extension, exact tables", ()
     });
   });
 });
+
+describe("send_file: the check before delivery", () => {
+  const report = (problems: string[], facts: string[] = ["PDF, 1 page, 210 x 297 mm (A4)"]) => ({
+    async inspect() {
+      return { problems, facts };
+    },
+    imagePaths: () => [],
+    make: async () => ({ ok: false as const, problems: [] }),
+  });
+
+  async function withDocuments(inspector: NonNullable<ToolContext["documents"]>) {
+    const { ctx, sent } = await setup({ "r.pdf": PDF });
+    return { ctx: { ...ctx, documents: inspector }, sent };
+  }
+
+  it("delivers a good file and returns what was measured", async () => {
+    const { ctx, sent } = await withDocuments(report([]));
+    const r = await registry.invoke("send_file", { path: "r.pdf" }, ctx);
+    expect(r.outcome).toBe("ok");
+    expect(sent).toHaveLength(1);
+    expect(r.output.content).toContain("Measured: PDF, 1 page, 210 x 297 mm (A4).");
+  });
+
+  it("refuses a file with problems, lists them, and delivers nothing", async () => {
+    const { ctx, sent } = await withDocuments(
+      report([
+        "The font is not embedded in the PDF.",
+        "The page is not A4: it measures 216 x 279 mm.",
+      ]),
+    );
+    const r = await registry.invoke("send_file", { path: "r.pdf" }, ctx);
+    expect(r.output.isError).toBe(true);
+    expect(sent).toHaveLength(0);
+    expect(r.output.content).toContain("The file was not delivered");
+    expect(r.output.content).toContain("- The font is not embedded in the PDF.");
+    expect(r.output.content).toContain("- The page is not A4");
+    expect(r.output.content).toContain("force: true");
+  });
+
+  it("force delivers anyway, with a reason, and says what it overrode", async () => {
+    const { ctx, sent } = await withDocuments(
+      report(["The page is not A4: it measures 216 x 279 mm."]),
+    );
+    const r = await registry.invoke(
+      "send_file",
+      { path: "r.pdf", force: true, reason: "o usuário pediu tamanho Carta" },
+      ctx,
+    );
+    expect(r.outcome).toBe("ok");
+    expect(sent).toHaveLength(1);
+    expect(r.output.content).toContain("Delivered with force");
+    expect(r.output.content).toContain("o usuário pediu tamanho Carta");
+    expect(r.output.content).toContain("The page is not A4");
+  });
+
+  it("force without a reason is refused", async () => {
+    const { ctx, sent } = await withDocuments(report(["The page is not A4."]));
+    const r = await registry.invoke("send_file", { path: "r.pdf", force: true }, ctx);
+    expect(r.output.isError).toBe(true);
+    expect(r.output.content).toContain("`force` needs a `reason`");
+    expect(sent).toHaveLength(0);
+  });
+
+  it("a file the checker does not know (null) goes through untouched", async () => {
+    const { ctx, sent } = await withDocuments({
+      inspect: async () => null,
+      imagePaths: () => [],
+      make: async () => ({ ok: false, problems: [] }),
+    });
+    const r = await registry.invoke("send_file", { path: "r.pdf" }, ctx);
+    expect(r.outcome).toBe("ok");
+    expect(sent).toHaveLength(1);
+  });
+});

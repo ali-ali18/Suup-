@@ -54,21 +54,63 @@ describe("the bot is told what the file card shows", () => {
   });
 });
 
-describe("the bot is told to use create_document for PDF, Word and Excel", () => {
-  it("the prompt line: not the terminal or Python, a card, one short line", () => {
+describe("documents: free code by default, create_document as a shortcut", () => {
+  const machine = { terminal: true, files: true, isolated: true } as never;
+  const context = (m: unknown = machine) => ({ rules: [], profile: [], machine: m }) as never;
+
+  it("the prompt line for create_document: a shortcut for a simple document, a card, one short line", () => {
     const prompt = buildSystemPrompt({ name: "A", personality: "" }, undefined, {
       sendFile: true,
       createDocument: true,
     });
-    expect(prompt).toContain("`create_document`");
-    expect(prompt).toContain("not the terminal or Python");
+    expect(prompt).toContain("`create_document`: a shortcut for a simple, standard PDF");
     expect(prompt).toContain("never repeat its name in your text");
+    expect(prompt).not.toContain("not the terminal or Python");
   });
 
-  it("the shared prefix (the cache) is the same with and without the tool", () => {
+  it("with a terminal, the short document skill lists the guardrails and the optional helper", () => {
+    const prompt = buildSystemPrompt({ name: "A", personality: "" }, context(), {
+      sendFile: true,
+      createDocument: true,
+    });
+    for (const text of [
+      "write your own code on your machine",
+      "A4 pages and UTF-8",
+      "registered and embedded (never Helvetica, Times or Courier)",
+      "xlsx formulas without errors",
+      "margins 3/2/2/3 cm",
+      "Figura 1 \u2013 title",
+      "`import suup_docs`",
+      "`create_document` is faster",
+      "`force: true` with a `reason`",
+    ]) {
+      expect(prompt, text).toContain(text);
+    }
+  });
+
+  it("the skill is short and does not mention create_document when the bot lacks it", () => {
+    const prompt = buildSystemPrompt({ name: "A", personality: "" }, context(), { sendFile: true });
+    expect(prompt).toContain("write your own code on your machine");
+    expect(prompt).not.toContain("create_document");
+    const skill = prompt.slice(prompt.indexOf("- PDF, Word and Excel files"));
+    expect(skill.split(" ").length).toBeLessThan(170);
+  });
+
+  it("no terminal, no skill (there is nothing to write code on)", () => {
+    const prompt = buildSystemPrompt(
+      { name: "A", personality: "" },
+      context({ terminal: false, files: true, isolated: true }),
+      {
+        sendFile: true,
+      },
+    );
+    expect(prompt).not.toContain("write your own code");
+  });
+
+  it("the shared prefix (the cache) is the same with and without the tool or the skill", () => {
     const bot = { name: "A", personality: "x" };
     const without = buildSystemPromptParts(bot, undefined, { sendFile: true });
-    const withTool = buildSystemPromptParts(bot, undefined, {
+    const withTool = buildSystemPromptParts(bot, context(), {
       sendFile: true,
       createDocument: true,
     });
@@ -77,5 +119,8 @@ describe("the bot is told to use create_document for PDF, Word and Excel", () =>
       without.text.slice(0, without.stableLength),
     );
     expect(without.text).not.toContain("create_document");
+    // The skill and the tool line come after the shared part.
+    expect(withTool.text.slice(0, withTool.stableLength)).not.toContain("suup_docs");
+    expect(withTool.text.slice(withTool.stableLength)).toContain("suup_docs");
   });
 });

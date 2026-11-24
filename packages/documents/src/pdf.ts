@@ -233,15 +233,16 @@ export async function buildPdf(input: PdfInput): Promise<PdfOutput> {
           figureNumber += 1;
           const key = `img${Object.keys(images).length}`;
           images[key] = bytes;
-          const caption = `Figura ${figureNumber}: ${stripEnd(block.alt)}.${
-            block.source === undefined ? "" : ` Fonte: ${stripEnd(block.source)}.`
-          }`;
+          // ABNT: "Figura 1 – title" (an en dash, as the norm writes it), the source on its own line.
+          const caption = `Figura ${figureNumber} \u2013 ${stripEnd(block.alt)}`;
+          const sourceLine = block.source === undefined ? "" : `Fonte: ${stripEnd(block.source)}.`;
           expected.push(caption);
+          if (sourceLine !== "") expected.push(sourceLine);
           out.push({
             stack: [
               { image: key, fit: [contentWidth, 300], alignment: "center", margin: [0, 6, 0, 4] },
               {
-                text: caption,
+                text: sourceLine === "" ? caption : `${caption}\n${sourceLine}`,
                 fontSize: CAPTION_SIZE,
                 lineHeight: 1.2,
                 alignment: "center",
@@ -365,10 +366,14 @@ function convertTable(
     return Math.min(Math.max(longest, 8), 40);
   });
   const total = weights.reduce((a, b) => a + b, 0);
-  const widths = weights.map((w) => (contentWidth * w) / total);
   const alignOf = (c: number): string => block.align[c] ?? "left";
   const size = look.pageNumber === "footer" ? look.fontSize - 1 : 10;
   const academic = look.pageNumber === "top-right";
+  // pdfmake adds the cell padding to the column widths: take it out of the width the columns
+  // share, or the table runs past the right margin (found by measuring the margins of the file).
+  const padding = academic ? 4 : 7;
+  const room = contentWidth - columns * 2 * padding;
+  const widths = weights.map((w) => (room * w) / total);
   const cell = (inlines: Inline[], c: number, head: boolean): Content =>
     ({
       text: text(inlines, head && !academic ? { color: "#ffffff" } : {}),
@@ -392,6 +397,8 @@ function convertTable(
           // ABNT tables are open at the sides: lines above and below the header and at the end.
           hLineWidth: (i: number) => (i === 0 || i === 1 || i === last ? 0.75 : 0),
           vLineWidth: () => 0,
+          paddingLeft: () => padding,
+          paddingRight: () => padding,
           paddingTop: () => 3,
           paddingBottom: () => 3,
         }

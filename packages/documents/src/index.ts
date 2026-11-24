@@ -7,6 +7,7 @@ import {
   type DocumentRequest,
   type MakeResult,
 } from "@suup/core";
+import { inspectDelivery } from "./deliver.js";
 import { buildDocx } from "./docx.js";
 import { imagePathsOf, parseMarkdown } from "./markdown.js";
 import { plain } from "./model.js";
@@ -16,6 +17,7 @@ import { checkDocx, checkXlsx } from "./verify-office.js";
 import { checkPdf } from "./verify-pdf.js";
 import { buildXlsx } from "./xlsx.js";
 
+export { inspectDelivery } from "./deliver.js";
 export {
   inspectPdf,
   inspectXlsx,
@@ -25,6 +27,7 @@ export {
   type XlsxInspection,
 } from "./inspect.js";
 export { parseMarkdown } from "./markdown.js";
+export { bodyLines, cm, dominantSize, type Layout, measureLayout } from "./measure.js";
 
 export interface DocumentMakerOptions {
   /** The author stored in the file: the bot's name. */
@@ -41,7 +44,11 @@ function titleOf(request: DocumentRequest, firstHeading: string | undefined): st
 
 export function createDocumentMaker(options: DocumentMakerOptions): DocumentMaker {
   const author = options.author.trim() === "" ? "Suup" : options.author.trim();
+  // What the file shows once built, measured by the same code that checks a file the bot made.
+  const measured = async (bytes: Uint8Array, mime: string): Promise<string[]> =>
+    (await inspectDelivery({ bytes, mime }))?.facts ?? [];
   return {
+    inspect: inspectDelivery,
     imagePaths(request) {
       return request.format === "xlsx" ? [] : imagePathsOf(parseMarkdown(request.markdown).blocks);
     },
@@ -60,6 +67,7 @@ export function createDocumentMaker(options: DocumentMakerOptions): DocumentMake
             title,
             notes: built.notes,
             checks: check.checks,
+            facts: await measured(built.bytes, DOCUMENT_MIME.xlsx),
           },
         };
       }
@@ -100,6 +108,7 @@ export function createDocumentMaker(options: DocumentMakerOptions): DocumentMake
             pages: check.pages,
             notes: parsed.notes,
             checks: check.checks,
+            facts: await measured(built.bytes, DOCUMENT_MIME.pdf),
           },
         };
       }
@@ -129,6 +138,7 @@ export function createDocumentMaker(options: DocumentMakerOptions): DocumentMake
           title,
           notes: parsed.notes,
           checks: check.checks,
+          facts: await measured(built.bytes, DOCUMENT_MIME.docx),
         },
       };
     },

@@ -246,10 +246,11 @@ export async function buildDocx(input: DocxInput): Promise<DocxOutput> {
           const maxWidthPx = contentTwips / 15;
           const maxHeightPx = 400;
           const scale = Math.min(1, maxWidthPx / info.width, maxHeightPx / info.height);
-          const caption = `Figura ${figureNumber}: ${stripEnd(block.alt)}.${
-            block.source === undefined ? "" : ` Fonte: ${stripEnd(block.source)}.`
-          }`;
+          // ABNT: "Figura 1 – title" (an en dash, as the norm writes it), the source on its own line.
+          const caption = `Figura ${figureNumber} \u2013 ${stripEnd(block.alt)}`;
+          const sourceLine = block.source === undefined ? "" : `Fonte: ${stripEnd(block.source)}.`;
           expected.push(caption);
+          if (sourceLine !== "") expected.push(sourceLine);
           out.push(
             para({
               alignment: AlignmentType.CENTER,
@@ -269,9 +270,18 @@ export async function buildDocx(input: DocxInput): Promise<DocxOutput> {
             }),
             para({
               alignment: AlignmentType.CENTER,
-              spacing: { after: 240, line: 240 },
+              spacing: { after: sourceLine === "" ? 240 : 0, line: 240 },
               children: [txt({ text: caption, size: pt(CAPTION_SIZE) })],
             }),
+            ...(sourceLine === ""
+              ? []
+              : [
+                  para({
+                    alignment: AlignmentType.CENTER,
+                    spacing: { after: 240, line: 240 },
+                    children: [txt({ text: sourceLine, size: pt(CAPTION_SIZE) })],
+                  }),
+                ]),
           );
           break;
         }

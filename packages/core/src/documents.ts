@@ -174,6 +174,8 @@ export interface MadeDocument {
   title: string;
   /** Pages of a PDF (absent for the other formats: Word and Excel paginate when shown). */
   pages?: number;
+  /** What was measured in the built file (pages, size, fonts, margins...), in English, for the bot. */
+  facts: string[];
   /** What the maker changed, in English, for the model (a sheet name cut, a character missing). */
   notes: string[];
   /** The checks the built file passed before delivery (the tool reports them to the model). */
@@ -188,6 +190,16 @@ export interface MadeDocument {
 export type MakeResult = { ok: true; document: MadeDocument } | { ok: false; problems: string[] };
 
 /**
+ * What opening a finished PDF, Word or Excel file again found: `problems` are what must be fixed
+ * before it goes to the user (the file is not delivered), `facts` are what was measured, for the
+ * bot and the reviewer to quote. In English, for the model.
+ */
+export interface DeliveryReport {
+  problems: string[];
+  facts: string[];
+}
+
+/**
  * Builds a document in the server process, with the author (the bot's name) bound in by whoever
  * provides it (the runtime). Never reaches the network or the disk while building.
  */
@@ -196,4 +208,9 @@ export interface DocumentMaker {
   imagePaths(request: DocumentRequest): string[];
   /** Builds and verifies the file; `images` has the bytes of each path `imagePaths` gave. */
   make(request: DocumentRequest, images: ReadonlyMap<string, Uint8Array>): Promise<MakeResult>;
+  /**
+   * Opens any finished file (made by `create_document` or by the bot's own code) and measures it;
+   * `null` when the type is not one it checks. `mime` is the type `detectFileType` decided.
+   */
+  inspect(file: { bytes: Uint8Array; mime: string }): Promise<DeliveryReport | null>;
 }
