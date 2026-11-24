@@ -532,6 +532,9 @@ describe.skipIf(!DATABASE_URL)(
       expect(connectLinkProblem("https://a.example/x", ["a.example"])).toBeUndefined();
       expect(connectLinkProblem("https://a.example/link/x", ["a.example"], "link")).toBeUndefined();
       expect(connectLinkProblem("https://a.example/x", ["a.example"], "link")).toContain("/link/");
+      expect(connectLinkProblem("https://a.example:8443/link/x", ["a.example"], "link")).toContain(
+        "port",
+      );
       expect(connectLinkProblem("https://b.example/x", ["a.example"])).toContain(
         "not one this connector declares",
       );

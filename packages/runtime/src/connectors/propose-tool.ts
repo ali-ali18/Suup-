@@ -164,6 +164,7 @@ export function connectLinkProblem(
   }
   if (parsed.protocol !== "https:") return "The url must be https.";
   if (parsed.username !== "" || parsed.password !== "") return "The url must not carry a login.";
+  if (parsed.port !== "") return "The url must use the default https port.";
   if (!allowed.includes(parsed.hostname)) {
     return `The host ${parsed.hostname} is not one this connector declares (${allowed.join(", ") || "none"}). Do not put it on a card.`;
   }
