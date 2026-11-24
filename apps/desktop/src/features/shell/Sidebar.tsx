@@ -28,6 +28,7 @@ import { PopupMenu } from "../../ui/popup-menu.js";
 import { Dialog, MutedText, Pill, RoundButton } from "../../ui/primitives.js";
 import { ResizeHandle } from "../../ui/resize-handle.js";
 import { ScrollFade } from "../../ui/scroll-fade.js";
+import { Tip } from "../../ui/tooltip.js";
 
 /** How a bot's entry is laid out: a tile (pinned), a row (a list), or only the face (the rail). */
 const ENTRY_MAIN = {
@@ -55,8 +56,6 @@ interface EntryProps {
   onMenu(bot: Bot, x: number, y: number): void;
   setRef(el: HTMLButtonElement | null): void;
   onKeyDown(e: KeyboardEvent): void;
-  /** The rail only: show (a box) or hide (`null`) the bot's name beside its face. */
-  onTip?(box: DOMRect | null): void;
 }
 
 function BotEntry({
@@ -69,7 +68,6 @@ function BotEntry({
   onMenu,
   setRef,
   onKeyDown,
-  onTip,
 }: EntryProps) {
   const runs = useData((s) => s.runs);
   const conversations = useData((s) => s.conversations);
@@ -105,79 +103,83 @@ function BotEntry({
     e.preventDefault();
     onMenu(bot, e.clientX, e.clientY);
   };
+  const main = (
+    <button
+      ref={setRef}
+      type="button"
+      className={cx(
+        "flex min-w-0 items-center rounded-card border border-transparent bg-transparent text-left hover:bg-hover aria-[current=page]:bg-sidebar-active",
+        ENTRY_MAIN[variant],
+      )}
+      aria-label={label}
+      aria-current={active ? "page" : undefined}
+      data-testid="bot-item"
+      data-bot={bot.name}
+      data-chip={display.chip ?? ""}
+      data-working={working}
+      tabIndex={tabStop ? 0 : -1}
+      onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+          e.preventDefault();
+          const rect = e.currentTarget.getBoundingClientRect();
+          onMenu(bot, rect.left + 24, rect.bottom);
+          return;
+        }
+        onKeyDown(e);
+      }}
+      onContextMenu={openMenu}
+    >
+      <span className="relative inline-flex flex-none">
+        <Avatar
+          avatar={bot.avatar}
+          avatarStyle={bot.avatarStyle}
+          pixel3d={bot.avatarPixel3d}
+          color={bot.color}
+          seed={bot.id}
+          size={size}
+          state={display.avatar}
+          supervisor={bot.isDefault}
+          working={working}
+          unread={unread > 0}
+        />
+        {badge !== undefined && (
+          <BotBadge
+            kind={badge.kind}
+            data-testid="bot-badge"
+            data-kind={badge.kind}
+            aria-hidden="true"
+          >
+            {badge.text}
+          </BotBadge>
+        )}
+      </span>
+      {variant === "tile" && (
+        <span className="max-w-full truncate text-label leading-inherit font-label">
+          {bot.name}
+        </span>
+      )}
+      {variant === "row" && (
+        <span className="flex min-w-0 flex-1 flex-col" data-testid="bot-entry-text">
+          <span className="truncate text-label">
+            <BotTitle name={bot.name} description={bot.description} />
+          </span>
+          <MutedText className="truncate">{preview ?? NO_MESSAGES}</MutedText>
+        </span>
+      )}
+    </button>
+  );
   return (
     <div className="group/entry relative min-w-0">
-      <button
-        ref={setRef}
-        type="button"
-        className={cx(
-          "flex min-w-0 items-center rounded-card border border-transparent bg-transparent text-left hover:bg-hover aria-[current=page]:bg-sidebar-active",
-          ENTRY_MAIN[variant],
-        )}
-        aria-label={label}
-        aria-current={active ? "page" : undefined}
-        data-testid="bot-item"
-        data-bot={bot.name}
-        data-chip={display.chip ?? ""}
-        data-working={working}
-        tabIndex={tabStop ? 0 : -1}
-        onClick={onSelect}
-        onMouseEnter={(e) => onTip?.(e.currentTarget.getBoundingClientRect())}
-        onMouseLeave={() => onTip?.(null)}
-        onFocus={(e) => {
-          if (e.currentTarget.matches(":focus-visible"))
-            onTip?.(e.currentTarget.getBoundingClientRect());
-        }}
-        onBlur={() => onTip?.(null)}
-        onKeyDown={(e) => {
-          if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
-            e.preventDefault();
-            const rect = e.currentTarget.getBoundingClientRect();
-            onMenu(bot, rect.left + 24, rect.bottom);
-            return;
-          }
-          onKeyDown(e);
-        }}
-        onContextMenu={openMenu}
-      >
-        <span className="relative inline-flex flex-none">
-          <Avatar
-            avatar={bot.avatar}
-            avatarStyle={bot.avatarStyle}
-            pixel3d={bot.avatarPixel3d}
-            color={bot.color}
-            seed={bot.id}
-            size={size}
-            state={display.avatar}
-            supervisor={bot.isDefault}
-            working={working}
-            unread={unread > 0}
-          />
-          {badge !== undefined && (
-            <BotBadge
-              kind={badge.kind}
-              data-testid="bot-badge"
-              data-kind={badge.kind}
-              aria-hidden="true"
-            >
-              {badge.text}
-            </BotBadge>
-          )}
-        </span>
-        {variant === "tile" && (
-          <span className="max-w-full truncate text-label leading-inherit font-label">
-            {bot.name}
-          </span>
-        )}
-        {variant === "row" && (
-          <span className="flex min-w-0 flex-1 flex-col" data-testid="bot-entry-text">
-            <span className="truncate text-label">
-              <BotTitle name={bot.name} description={bot.description} />
-            </span>
-            <MutedText className="truncate">{preview ?? NO_MESSAGES}</MutedText>
-          </span>
-        )}
-      </button>
+      {variant === "rail" ? (
+        // The rail: only the bot's name beside its face (owner, 23/11/2026), at once, in a portal
+        // so no scrolling list clips it.
+        <Tip label={bot.name} side="right" delay={0} testId="rail-tip">
+          {main}
+        </Tip>
+      ) : (
+        main
+      )}
       {variant !== "rail" && (
         <button
           type="button"
@@ -214,9 +216,6 @@ export function Sidebar() {
   const selected = useUi((s) => s.selectedBotId);
   const picked = useUi((s) => s.botPicked);
   const ui = useUi.getState;
-  // The name beside a face of the rail: drawn fixed on the page, so no scrolling list clips it.
-  // Only the name: the message preview of a row is unreadable there (owner, 23/11/2026).
-  const [tip, setTip] = useState<{ name: string; x: number; y: number } | null>(null);
   const selectBot = useUi((s) => s.selectBot);
   const go = useUi((s) => s.go);
   const [menu, setMenu] = useState<{ bot: Bot; x: number; y: number } | null>(null);
@@ -295,16 +294,6 @@ export function Sidebar() {
         refs.current[bot.id] = el;
       }}
       onKeyDown={(e) => move(e, bot.id)}
-      {...(variant === "rail"
-        ? {
-            onTip: (box: DOMRect | null) =>
-              setTip(
-                box === null
-                  ? null
-                  : { name: bot.name, x: box.right + 10, y: box.top + box.height / 2 },
-              ),
-          }
-        : {})}
     />
   );
 
@@ -350,7 +339,6 @@ export function Sidebar() {
       onClick={(e) => {
         const rect = e.currentTarget.getBoundingClientRect();
         setOwnerMenu({ x: rect.left, y: rect.top - ownerItems.length * 40 - 16 });
-        setTip(null);
       }}
     >
       <span
@@ -372,16 +360,6 @@ export function Sidebar() {
 
   const popups = (
     <>
-      {collapsed && tip !== null && (
-        <span
-          role="tooltip"
-          className="pointer-events-none fixed z-60 -translate-y-1/2 animate-fade-in rounded-pill border border-border-strong bg-raised px-2.5 py-1 text-small whitespace-nowrap shadow-popover"
-          style={{ left: tip.x, top: tip.y }}
-          data-testid="rail-tip"
-        >
-          {tip.name}
-        </span>
-      )}
       {ownerMenu !== null && (
         <PopupMenu
           x={ownerMenu.x}
@@ -471,7 +449,6 @@ export function Sidebar() {
               className="flex min-h-0 w-full flex-1 animate-fade-in flex-col items-center gap-0.5 overflow-y-auto py-2"
               role="group"
               aria-label="Bots"
-              onScroll={() => setTip(null)}
             >
               {layout.pinned.map((bot) => entry(bot, "rail"))}
               {layout.pinned.length > 0 && flat.length > layout.pinned.length && (

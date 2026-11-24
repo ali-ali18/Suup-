@@ -362,6 +362,24 @@ describe("a base dos componentes: cópias do shadcn base-maia sobre Base UI (doc
     for (const text of [html, app, tokens]) expect(text).not.toContain("fonts.googleapis");
   });
 
+  it("lote 1: o interruptor, a dica e o popover são as cópias sobre o Base UI", () => {
+    const sw = read(join(SRC, "ui", "switch.tsx"));
+    expect(sw).toContain('from "@base-ui/react/switch"');
+    expect(sw).toContain("nativeButton");
+    expect(read(join(SRC, "ui", "primitives.tsx"))).toContain(
+      'export { Toggle } from "./switch.js";',
+    );
+    expect(read(join(SRC, "ui", "tooltip.tsx"))).toContain('from "@base-ui/react/tooltip"');
+    expect(read(join(SRC, "ui", "popover.tsx"))).toContain('from "@base-ui/react/popover"');
+    // the round icon button shows its name as the app's tip, not the native title
+    const primitives = read(join(SRC, "ui", "primitives.tsx"));
+    const round = primitives.slice(primitives.indexOf("export function RoundButton"));
+    const body = round.slice(0, round.indexOf("\n}\n"));
+    expect(body).toContain("<Tip label={label}>");
+    expect(body).not.toContain("title=");
+    expect(read(join(SRC, "main.tsx"))).toContain("<TipProvider>");
+  });
+
   it("a raiz isola o empilhamento, para os popups no body ficarem por cima", () => {
     expect(read(join(SRC, "styles", "base.css"))).toContain("isolation: isolate;");
   });
@@ -1465,8 +1483,8 @@ describe("ajustes do dono de 23/11/2026 (docs/DESIGN.md §2, §4a, §4c, §5, §
 
   it("barra lateral: sem bot marcado sem escolha, só o nome no trilho, 'Sem interação', nada selecionável", () => {
     expect(sidebar).toContain('view === "chat" && picked ? selected : null');
-    expect(sidebar).toContain('data-testid="rail-tip"');
-    expect(sidebar).toContain("{tip.name}");
+    // the name of the rail is the app's tip (ui/tooltip.tsx), with only the bot's name in it
+    expect(sidebar).toContain('<Tip label={bot.name} side="right" delay={0} testId="rail-tip">');
     expect(sidebar).toContain('"Sem interação"');
     expect(sidebar).not.toContain("Sem mensagens");
     expect(sidebar).toContain("select-none");

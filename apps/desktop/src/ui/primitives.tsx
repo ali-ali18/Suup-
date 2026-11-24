@@ -12,6 +12,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { cx } from "../lib/cx.js";
+import { Tip } from "./tooltip.js";
 
 /**
  * `primary` is the white pill, `secondary` and `danger` the neutral ones with a border, `ghost` plain
@@ -105,7 +106,7 @@ export interface RoundButtonProps extends ButtonHTMLAttributes<HTMLButtonElement
   ref?: Ref<HTMLButtonElement>;
 }
 
-/** The round icon button (Figma v2/Botão redondo). */
+/** The round icon button (Figma v2/Botão redondo). Its name shows as a tip on hover (`ui/tooltip.tsx`). */
 export function RoundButton({
   tone = "raised",
   label,
@@ -116,20 +117,21 @@ export function RoundButton({
   ...rest
 }: RoundButtonProps) {
   return (
-    <button
-      type={type ?? "button"}
-      aria-label={label}
-      title={label}
-      className={cx(
-        "inline-flex flex-none items-center justify-center rounded-pill border disabled:opacity-40",
-        ROUND_SIZE[size],
-        ROUND_TONE[tone],
-        className,
-      )}
-      {...rest}
-    >
-      {children}
-    </button>
+    <Tip label={label}>
+      <button
+        type={type ?? "button"}
+        aria-label={label}
+        className={cx(
+          "inline-flex flex-none items-center justify-center rounded-pill border disabled:opacity-40",
+          ROUND_SIZE[size],
+          ROUND_TONE[tone],
+          className,
+        )}
+        {...rest}
+      >
+        {children}
+      </button>
+    </Tip>
   );
 }
 
@@ -550,54 +552,8 @@ export function SearchField({
   );
 }
 
-export function Toggle({
-  checked,
-  onChange,
-  label,
-  disabled,
-  testId,
-  accent,
-}: {
-  checked: boolean;
-  onChange(next: boolean): void;
-  label: string;
-  disabled?: boolean;
-  testId?: string;
-  /** The blue switch (the routines of the panel; owner's decision, 22/11/2026): on is blue, off is light. */
-  accent?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      disabled={disabled}
-      data-testid={testId}
-      className={cx(
-        "relative h-6 w-10 flex-none rounded-pill border p-0 disabled:opacity-40",
-        accent === true
-          ? cx("border-transparent", checked ? "bg-switch-on" : "bg-switch-off")
-          : cx("border-border-strong", checked ? "bg-bg-inverse" : "bg-raised"),
-      )}
-      onClick={() => onChange(!checked)}
-    >
-      <span
-        className={cx(
-          "absolute top-0.5 left-0.5 size-4.5 rounded-pill transition-transform",
-          checked && "translate-x-4",
-          accent === true
-            ? checked
-              ? "bg-switch-knob-on"
-              : "bg-switch-knob-off"
-            : checked
-              ? "bg-text-inverse"
-              : "bg-text-muted",
-        )}
-      />
-    </button>
-  );
-}
+/** The on/off switch lives in its own file (the base-maia copy on Base UI); screens import it from here. */
+export { Toggle } from "./switch.js";
 
 /** The class of a tab (and of the filter buttons that look like one). */
 export function tabClass(active: boolean): string {
