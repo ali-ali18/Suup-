@@ -218,7 +218,107 @@ Custo em dólar salvo indicação. "1000/mês" é o custo aproximado de 1000 bus
 | Bing Web Search | aposentada [resumo] | n/a | n/a | acabou | n/a | n/a | **não** |
 | Mwmbl / Wiby | sem chave | zero | muito fraca [lido] | termos não encontrados | não verificada | JSON simples | só se o dono quiser |
 | Qwant | n/a | n/a | n/a | API não documentada, cabeçalhos de navegador [lido] | n/a | n/a | **não** |
+| **Firecrawl (MCP ou REST)** | 1000 créditos/mês (cerca de 500 buscas), sem cartão [lido] | 1000 buscas = 2000 créditos, fora do grátis; Hobby US$ 16/mês anual (US$ 19 mensal), 5000 créditos [lido] | `country` ISO (padrão US); sem idioma no `/search`; BR e pt **não verificados** [lido/não verificado] | sem cláusula de uso automatizado nos termos lidos; o site prevê agentes [lido] | não verificada | `POST api.firecrawl.dev/v2/search`, `Authorization: Bearer` [lido]; MCP em `mcp.firecrawl.dev/v2/mcp` [lido] | **não passa por padrão**: `auto` escala para proxy enhanced em 401/403/429; só com `proxy: "basic"` (a confirmar) [lido/não verificado] |
 | DuckDuckGo (atual) | sem chave | zero | boa quando responde | **termos lidos não proíbem busca automática**; o bloqueador de robôs e o disfarce de navegador são o problema [lido] | n/a (captcha) | raspagem do HTML | **desligar** |
+
+## Firecrawl (via MCP)
+
+Acesso em **24/11/2026**. Pergunta do dono: o Firecrawl, ligado como conector MCP, serve de busca geral no lugar do DuckDuckGo e da Tavily? Regra do projeto: sem resolver captcha, sem rodízio de IP, sem proxy residencial ou stealth para passar bloqueio, sem `User-Agent` falso, e respeitando `robots.txt`.
+
+### Fontes lidas nesta seção
+
+- Preço e créditos: https://www.firecrawl.dev/pricing (vigência do modelo de créditos: "Effective September 4, 2026").
+- Busca: https://docs.firecrawl.dev/features/search.md e https://docs.firecrawl.dev/api-reference/endpoint/search.md
+- Proxies e modo enhanced: https://docs.firecrawl.dev/features/proxies.md e https://docs.firecrawl.dev/features/enhanced-mode.md
+- Scrape (cache e `location`): https://docs.firecrawl.dev/features/scrape.md
+- MCP: https://docs.firecrawl.dev/mcp-server.md, https://docs.firecrawl.dev/mcp-server/keyless.md, https://docs.firecrawl.dev/mcp-server/local.md e https://docs.firecrawl.dev/mcp-server/tools.md
+- Repositório do MCP, arquivos raw: https://raw.githubusercontent.com/firecrawl/firecrawl-mcp-server/main/README.md e https://raw.githubusercontent.com/firecrawl/firecrawl-mcp-server/main/LICENSE
+- Termos: https://www.firecrawl.dev/terms-of-service
+- Núcleo open source, arquivos raw: https://raw.githubusercontent.com/firecrawl/firecrawl/main/LICENSE e https://raw.githubusercontent.com/firecrawl/firecrawl/main/SELF_HOST.md
+
+**Não lidos:** https://github.com/firecrawl/firecrawl-mcp-server e https://github.com/firecrawl/firecrawl/blob/main/LICENSE (proxy recusou com 403 nas duas tentativas, a segunda após espera de 30 s); https://www.firecrawl.dev/terms-of-use (404); política de uso aceitável (não achada nos links lidos); lista de locais https://firecrawl.dev/search_locations.json.
+
+### Fatos
+
+**1. Preço e cota**
+
+- **[lido]** Plano grátis: "1,000 credits every month, refreshed monthly, no credit card required". É cota mensal renovada, não crédito único. O site a traduz como "500 searches or 1,000 pages scraped", com 2 requisições simultâneas e 10 por minuto em `/scrape`, `/map` e `/search`.
+- **[lido]** Custo por operação: busca = 2 créditos a cada 10 resultados (de 1 a 10 resultados = 2); scrape = 1 crédito por página; map = 1 por chamada; formatos JSON, Question e Highlight em scrape e crawl somam 4 por página. "A scrape that returns no result is not charged"; página que responde 403 ou 404 cobra 1 crédito.
+- **[lido]** Planos (anual / mensal): Hobby US$ 16 / 19 com 5.000 créditos; Standard US$ 83 / 99 com 100.000; Growth US$ 333 / 399 com 500.000; Scale US$ 599 / 749 com 1.000.000. Excedente em plano pago (pay-as-you-go): Hobby, "1,000 extra credits per $5".
+- **[lido, conta]** 1.000 buscas por mês (até 10 resultados cada) = 2.000 créditos, acima do grátis (1.000, que cobre cerca de 500 buscas). 1.000 buscas mais 1.000 páginas lidas = 3.000 créditos, que cabem no Hobby (US$ 16 no anual, US$ 19 no mensal). Acima disso, no Hobby, cada 1.000 buscas extras custam cerca de US$ 10.
+
+**2. Busca (`POST https://api.firecrawl.dev/v2/search`)**
+
+- **[lido]** Sem chave, a busca funciona com limite de taxa. Com chave: `Authorization: Bearer fc-...`.
+- **[lido]** Resposta padrão: `url`, `title`, `description` e `position`. Os **Highlights** (trechos relevantes para a consulta) vêm por padrão; `highlights: false` troca pela descrição. **O conteúdo da página só vem com `scrapeOptions`** (markdown, html, links, screenshot), cobrado como scrape por resultado.
+- **[lido]** País: `country` (código ISO de 2 letras, padrão `US`) e `location` (texto, por exemplo "Germany"). **Não há parâmetro de idioma no `/search`.** `languages` existe só no `location` do `/scrape`, com o padrão "the language of the specified location".
+- **[não verificado]** Se `country: "BR"` é aceito no `/search` (BR consta como país de proxy no `/scrape`). Se `location` "Brazil" muda o idioma dos resultados. Qualidade em português.
+- **[lido]** Motor: "our upstream search provider", sem nome (texto de ZDR). Qual motor e qual índice: **[não verificado]**. Latência: **[não verificado]**.
+- **[lido]** Extras: `sources` (web, news, images), `categories` (research, pdf, developer, gov), `includeDomains` e `excludeDomains`, `timeout`.
+
+**3. Servidor MCP oficial (`firecrawl/firecrawl-mcp-server`)**
+
+- **[lido]** Licença: **MIT** (arquivo LICENSE do próprio repositório). O README cita 34 ferramentas no perfil completo; variáveis como `FIRECRAWL_NO_SEARCH_FEEDBACK=1` reduzem esse número.
+- **[lido]** Ferramentas principais: `firecrawl_search`, `firecrawl_scrape`, `firecrawl_map`, `firecrawl_crawl` (e `firecrawl_check_crawl_status`), `firecrawl_interact` (e `_stop`), `firecrawl_agent` (e `_status`), `firecrawl_parse`, `firecrawl_developer_search`, `firecrawl_gov_search`, quatro `firecrawl_research_*`, `firecrawl_monitor_*`, `firecrawl_credit_usage`, `firecrawl_feedback`, `firecrawl_search_feedback`, `firecrawl_find_tools`, `firecrawl_save_skill`.
+- **[lido]** Autenticação, três caminhos: (a) sem chave, `https://mcp.firecrawl.dev/v2/mcp`, com limite e só `scrape`, `search` e `parse`; (b) login OAuth no navegador, `https://mcp.firecrawl.dev/v2/mcp-oauth`; (c) chave em cabeçalho, `Authorization: Bearer <chave>` em `https://mcp.firecrawl.dev/v2/mcp`. O README diz: "Never put an API key in the server URL."
+- **[lido]** Local ou remoto: local por stdio com `env FIRECRAWL_API_KEY=... npx -y firecrawl-mcp` (a chave vem do ambiente), por imagem Docker `ghcr.io/firecrawl/firecrawl-mcp-server`, ou por HTTP local em `http://localhost:3000/mcp` com `HTTP_STREAMABLE_SERVER=true`. Remoto e hospedado: `https://mcp.firecrawl.dev/v2/mcp`.
+- **[lido]** Endpoint só de busca: `https://mcp.firecrawl.dev/v2/mcp-search`, com 12 ferramentas fixas; o `firecrawl_search` dele não traz conteúdo de página.
+- **[não verificado]** Se as ferramentas MCP aceitam `proxy` e `location` por chamada: a página de ferramentas não mostra o esquema de parâmetros.
+
+**4. Proteção contra bloqueio (a regra)**
+
+- **[lido]** "By default, Firecrawl routes all requests through proxies ... even if you do not specify a proxy type or location." O padrão é `proxy: "auto"`.
+- **[lido]** `auto`: "Firecrawl will automatically retry scraping with enhanced proxies if the basic proxy fails." Se o site responde **401, 403 ou 429**, o Firecrawl repete a mesma URL por proxies enhanced, no máximo uma vez por requisição (enhanced-mode.md). **Isso é troca de proxy para passar por bloqueio, o que a regra do Suup proíbe, e vem ligado por padrão.**
+- **[lido]** `proxy: "basic"` é valor aceito. A documentação diz que a escalada começa no básico e que o padrão é `auto`, mas **não diz que `basic` desliga a escalada**. **[não verificado]**: precisa de teste.
+- **[lido]** O parâmetro `proxy` está **depreciado** ("We recommend `auto`"). Pode mudar ou sumir.
+- **[lido]** A palavra "stealth" não aparece em nenhuma página lida. O modo "enhanced" é descrito como "for scraping complex sites while maintaining privacy", sem dizer se é residencial. **[não verificado]**.
+- **[lido]** Mesmo em `basic`, as requisições passam por proxies. Se proxy comum é aceitável pela regra, é decisão do dono.
+- **[não verificado] robots.txt:** nenhuma página lida menciona `robots.txt` nem oferece opção para obedecê-lo ou forçá-lo. Não dá para garantir que o Firecrawl o respeite.
+- **[não verificado] Motor upstream da busca:** sem nome. Não dá para saber se ele raspa buscadores ou contorna proteções. É o ponto mais fraco da regra.
+- **[lido]** Cache: `maxAge` padrão de 2 dias; `storeInCache: false` desliga o armazenamento; `maxAge: 0` pula o cache. Resultado de cache também cobra 1 crédito por página.
+
+**5. Termos (https://www.firecrawl.dev/terms-of-service)**
+
+- **[lido]** Os termos lidos não proíbem uso automatizado nem por agente. A lista de atividades proibidas (§5.d) trata de uso comercial não autorizado, reprodução de partes dos Serviços, obras derivadas, fraude e temas semelhantes, sem citar rastreamento nem automação.
+- **[lido]** O site diz: "If you are an AI agent, LLM, or automated system, use the Firecrawl ..." e oferece plano sem chave para agentes. Uso por agente é previsto.
+- **[lido]** Nos termos lidos, não há limite de cache ou de armazenamento de resultados nem exigência de atribuição. A retenção fica nas opções da API (`storeInCache`). A retenção zero (ZDR) é só do plano Enterprise, segundo a página de preços.
+- **[lido]** §8.c: o Firecrawl não garante conteúdo de terceiros. §9: dados de terceiros (catálogo Alexandria) seguem termos próprios.
+- **[não verificado]** Política de uso aceitável; data de vigência dos termos; termos próprios do MCP; a página `terms-of-use` (404).
+
+**6. Self-hosting**
+
+- **[lido]** Núcleo `firecrawl/firecrawl`: **AGPL-3.0**. MCP: **MIT**.
+- **[lido]** `SELF_HOST.md`: a raspagem usa Playwright embutido com fallback de fetch básico; um motor separado, como o Fire-engine, só se precisar. Os recursos de IA não têm provedor e exigem OpenAI, endpoint compatível ou Ollama. O painel da fila vem desligado. O guia não menciona proxies gerenciados.
+- **[não verificado]** Se o `/search` funciona no self-host e de onde vem o índice; se o modo `auto` com escalada existe no self-host; latência.
+- **[lido]** O MCP pode apontar para uma API própria com `FIRECRAWL_API_URL`.
+
+### Comparação com Tavily e Brave
+
+| | Firecrawl | Tavily | Brave |
+|---|---|---|---|
+| Grátis | 1000 créditos/mês (cerca de 500 buscas), sem cartão [lido] | 1000 créditos/mês, sem cartão [lido] | US$ 5/mês de crédito [lido] |
+| 1000 buscas/mês | 2000 créditos, fora do grátis. Hobby US$ 16/mês anual (US$ 19 mensal), que cobre também 1000 páginas [lido] | 0 em `basic` (1 crédito por busca) [lido]; `advanced` seria 2000 × US$ 0,008 = US$ 16 [lido] | US$ 5 por 1000, zero com o crédito mensal [lido] |
+| Cota e limite | 10/min em `/search` no grátis; 100/min no Standard [lido] | 1000 créditos/mês; depois US$ 0,008 por crédito [lido] | 50 consultas/s no plano Search [lido, revisão anterior] |
+| Cache | 2 dias por padrão em scrape [lido] | nenhuma cláusula achada nos termos lidos [lido] | só transitório [lido] |
+| Regra do projeto | **Não passa por padrão**: `auto` troca para proxy enhanced em 401/403/429. Passa só com `proxy: "basic"` (a confirmar) e se o motor upstream for limpo (não verificado) | Nas quatro páginas lidas, nenhuma menção a proxy ou escalada; política de uso aceitável não lida [não verificado] | API oficial com chave; termos proíbem contornar limites de taxa [lido]; nenhum mecanismo de proxy na documentação lida |
+
+**MCP ou integração direta.**
+
+- **MCP:** entra como conector pronto, já que o Suup suporta MCP. Dá 34 ferramentas (crawl, interação, agente), e não só busca. Em modo local, a chave vem de variável de ambiente. Pelo que o próprio documento descreve, os motores diretos passam pelo `EgressProxy`, com limite e cache próprios; um conector MCP ficaria fora desse caminho. **[inferência; o código não foi conferido]**.
+- **Integração direta (`POST /v2/search`):** mesmo custo, um só endpoint, chave em cabeçalho, país controlável, sem as ferramentas extras. Exige um adaptador, como os motores diretos atuais.
+
+**Conclusão desta seção.** Pelo padrão, o Firecrawl **viola a regra**, porque troca de proxy quando o site bloqueia. Só serve com `proxy: "basic"` confirmado por teste, desligado por padrão, e com a decisão do dono sobre proxies básicos e sobre o motor upstream. Para 1000 buscas por mês, custa US$ 16 a 19 ao mês; Tavily `basic` e Brave cabem no grátis.
+
+### Não verificado (resumo desta seção)
+
+- Latência; motor e índice do `/search`; qualidade em português.
+- `country: "BR"` e idioma no `/search`.
+- Se `proxy: "basic"` desliga a escalada.
+- Se as ferramentas MCP aceitam `proxy` e `location` por chamada.
+- Menção a robots.txt (não há nas páginas lidas).
+- Política de uso aceitável; vigência dos termos; termos do MCP.
+- Se o `/search` roda no self-host.
+- Se o modo "enhanced" usa IP residencial.
 
 ## Implicação para o Suup
 
