@@ -32,6 +32,12 @@ Só o Principal tem (e uma execução delegada **não** o recebe: profundidade 1
 - Limites: no máximo **3** delegações abertas; recusa bot arquivado, o próprio Principal e um bot que está no meio de uma conversa (já tem execução ativa no chat). A mesma delegação (mesma execução, bot e objetivo) duas vezes é uma só.
 - Se a execução delegada pergunta algo ao usuário, ela fica `waiting_user` no chat do bot de destino e o resultado só volta quando ela termina.
 
+### Quando delegar (M18) e rotinas delegadas
+
+Delegar não é só "a pedido": o Principal também delega quando a **descrição de um bot do time** (a lista em "Your team", nome e descrição, até 200 caracteres cada) cobre claramente o pedido. A combinação é feita pelo modelo, sem regra por nome nem por palavra; se dois bots servem ou nenhum, ele faz ou pergunta. Rotina e lembrete nascem no bot que os executa: o Principal passa o pedido inteiro (o que fazer, com que frequência, o horário se o usuário disse um).
+
+Para isso a execução de origem `delegation` recebe as ferramentas de rotina (`create_routine`, `create_reminder`, `update_routine`, `delete_routine`, `list_routines`) e a lista "Your routines" do bot de destino; o portão de aprovação é o de sempre. Pesquisa: [pesquisas/motor-rotinas-e-delegacao.md](pesquisas/motor-rotinas-e-delegacao.md).
+
 ## O que o modelo é dito (prompt)
 
 Bloco "Your team" do Principal (`SUPERVISOR_PROMPT`): é o supervisor; lê a memória dos outros só para ler (`team_recall`); delega a pedido, com objetivo, critérios e contexto, avisa o usuário e não espera; faz a revisão noturna e pode deixar uma mensagem de manhã. Dos outros bots (`SUPERVISED_PROMPT`): o Principal pode delegar uma tarefa a você (chega como tarefa no chat) e lê seu diário e suas notas à noite, só leitura. O papel entra no `context_loaded` (`supervisor`: `principal` ou `member`), então a repetição é a mesma.

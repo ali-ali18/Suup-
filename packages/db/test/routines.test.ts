@@ -15,6 +15,7 @@ import {
   getRoutine,
   getRoutineFireByRun,
   getUserSettings,
+  listRoutineEvents,
   listRoutineFires,
   listRoutines,
   listRunSources,
@@ -187,17 +188,23 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("routines (migration 0026)"), () => {
   it("pause clears the next fire, resume computes it from now; a new schedule re-anchors", async () => {
     const bot = await newBot();
     const routine = await routineFor(bot.id);
-    const paused = await updateRoutine(ctx.db, routine.id, { paused: true, now: NOW });
+    const paused = await updateRoutine(ctx.db, routine.id, {
+      actor: "owner",
+      paused: true,
+      now: NOW,
+    });
     expect(paused).toMatchObject({ status: "paused", nextRunAt: null });
     expect(await fireDueRoutines(ctx.db, { now: new Date("2026-11-30T12:00:00Z") })).toEqual(
       expect.not.arrayContaining([expect.objectContaining({ routineId: routine.id })]),
     );
     const resumed = await updateRoutine(ctx.db, routine.id, {
+      actor: "owner",
       paused: false,
       now: new Date("2026-11-30T12:00:00Z"),
     });
     expect(resumed.nextRunAt?.toISOString()).toBe("2026-12-01T11:00:00.000Z");
     const moved = await updateRoutine(ctx.db, routine.id, {
+      actor: "owner",
       schedule: { kind: "weekly", days: ["mon"], time: "07:30" },
       name: "Calendário da semana",
       costCapUsd: "0.25",
@@ -207,6 +214,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("routines (migration 0026)"), () => {
     expect(moved.nextRunAt?.toISOString()).toBe("2026-12-07T10:30:00.000Z");
     await expect(
       updateRoutine(ctx.db, routine.id, {
+        actor: "owner",
         schedule: { kind: "once", date: "2026-01-01", time: "08:00" },
       }),
     ).rejects.toMatchObject({ code: "never_fires" });
@@ -260,11 +268,15 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("routines (migration 0026)"), () => {
       ["0.0001", "0.0001"],
       ["999999.9999", "999999.9999"],
     ] as const) {
-      const updated = await updateRoutine(ctx.db, routine.id, { costCapUsd: good, now: NOW });
+      const updated = await updateRoutine(ctx.db, routine.id, {
+        actor: "owner",
+        costCapUsd: good,
+        now: NOW,
+      });
       expect(updated.costCapUsd).toBe(stored);
     }
     await expect(
-      updateRoutine(ctx.db, routine.id, { costCapUsd: "0x10", now: NOW }),
+      updateRoutine(ctx.db, routine.id, { actor: "owner", costCapUsd: "0x10", now: NOW }),
     ).rejects.toMatchObject({ code: "invalid" });
     expect((await getRoutine(ctx.db, routine.id))?.costCapUsd).toBe("999999.9999");
   });
@@ -301,13 +313,14 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("routines (migration 0026)"), () => {
     expect(await listRoutineFires(ctx.db, bad.id)).toEqual([]);
 
     // It can be renamed while paused; resuming without a schedule says why; a new schedule fixes it.
-    expect((await updateRoutine(ctx.db, bad.id, { name: "Consertar", now: later })).name).toBe(
-      "Consertar",
-    );
+    expect(
+      (await updateRoutine(ctx.db, bad.id, { actor: "owner", name: "Consertar", now: later })).name,
+    ).toBe("Consertar");
     await expect(
-      updateRoutine(ctx.db, bad.id, { paused: false, now: later }),
+      updateRoutine(ctx.db, bad.id, { actor: "owner", paused: false, now: later }),
     ).rejects.toMatchObject({ code: "invalid" });
     const fixed = await updateRoutine(ctx.db, bad.id, {
+      actor: "owner",
       schedule: daily8,
       paused: false,
       now: later,
@@ -362,9 +375,67 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("routines (migration 0026)"), () => {
     await ctx.db.sql`update bots set archived_at = now() where id = ${bot.id}`;
     const fired = await fireDueRoutines(ctx.db, { now: new Date("2026-11-23T11:00:01Z") });
     expect(fired.some((f) => f.routineId === routine.id)).toBe(false);
-    expect(await deleteRoutine(ctx.db, routine.id)).toBe(true);
-    expect(await deleteRoutine(ctx.db, routine.id)).toBe(false);
+    expect(await deleteRoutine(ctx.db, routine.id, "owner")).toBe(true);
+    expect(await deleteRoutine(ctx.db, routine.id, "owner")).toBe(false);
     expect(await getRoutine(ctx.db, routine.id)).toBeNull();
+  });
+
+  it("leaves a tombstone of what the owner did, for the bot's context (M14, M15)", async () => {
+    const bot = await newBot("Lápide");
+    const gone = await routineFor(bot.id);
+    const kept = await createRoutine(ctx.db, {
+      botId: bot.id,
+      name: "Resumo",
+      instruction: "x",
+      schedule: daily8,
+      timeZone: SP,
+      createdBy: "bot",
+      now: NOW,
+    });
+    const reminder = await createRoutine(ctx.db, {
+      botId: bot.id,
+      name: "Pagar",
+      instruction: "x",
+      schedule: { kind: "once", date: "2026-11-29", time: "19:00" },
+      timeZone: SP,
+      createdBy: "bot",
+      reminder: true,
+      now: NOW,
+    });
+    await deleteRoutine(ctx.db, gone.id, "owner");
+    await updateRoutine(ctx.db, kept.id, {
+      actor: "owner",
+      schedule: { kind: "daily", time: "09:00" },
+      now: NOW,
+    });
+    await updateRoutine(ctx.db, kept.id, { actor: "owner", paused: true, now: NOW });
+    await updateRoutine(ctx.db, kept.id, { actor: "owner", paused: false, now: NOW });
+    await deleteRoutine(ctx.db, reminder.id, "system", "fired");
+    const events = await listRoutineEvents(ctx.db, bot.id, {
+      since: new Date("2026-01-01T00:00:00Z"),
+      limit: 10,
+    });
+    expect(events.map((e) => `${e.kind}:${e.actor}:${e.routineName}:${e.reminder}`).sort()).toEqual(
+      [
+        `deleted:owner:${gone.name}:false`,
+        "edited:owner:Resumo:false",
+        "fired:system:Pagar:true",
+        "paused:owner:Resumo:false",
+        "resumed:owner:Resumo:false",
+      ].sort(),
+    );
+    expect(events.find((e) => e.kind === "edited")?.detail).toContain("09:00");
+    // another bot sees none of it; a limit and a window cut the list
+    const other = await newBot("Outro");
+    expect(await listRoutineEvents(ctx.db, other.id, { since: new Date(0), limit: 10 })).toEqual(
+      [],
+    );
+    expect(
+      await listRoutineEvents(ctx.db, bot.id, { since: new Date("2999-01-01"), limit: 10 }),
+    ).toEqual([]);
+    expect(await listRoutineEvents(ctx.db, bot.id, { since: new Date(0), limit: 2 })).toHaveLength(
+      2,
+    );
   });
 
   it("the user's time zone: the device fills the blank, the user's choice wins", async () => {
@@ -438,6 +509,7 @@ describe.skipIf(!DATABASE_URL)(
         "0030_files.sql",
         "0031_web_search_usage.sql",
         "0032_secrets_managed_by.sql",
+        "0033_routine_events.sql",
       ]);
       for (const file of held) await rm(join(dir, file));
       await migrate(ctx.db, dir);
@@ -477,6 +549,7 @@ describe.skipIf(!DATABASE_URL)(
         "0030_files.sql",
         "0031_web_search_usage.sql",
         "0032_secrets_managed_by.sql",
+        "0033_routine_events.sql",
       ]);
       for (const file of held) await rm(join(dir, file));
       await migrate(ctx.db, dir);
@@ -521,7 +594,7 @@ describe.skipIf(!DATABASE_URL)(
       insert into messages (conversation_id, seq, author_kind, text, routine_ref) values
       (${conversation.id}, 9, 'system', 'x', ${routine.id})`).rejects.toThrow();
       // the routine goes, the message stays, without the reference
-      await deleteRoutine(ctx.db, routine.id);
+      await deleteRoutine(ctx.db, routine.id, "owner");
       const [after] = await ctx.db.sql<{ text: string; routine_ref: string | null }[]>`
       select text, routine_ref from messages where id = ${mine.id}`;
       expect(after).toEqual({ text: "Editar a rotina “Manhã”: muda pra 7h", routine_ref: null });

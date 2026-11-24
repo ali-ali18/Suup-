@@ -418,7 +418,7 @@ export function delegateTool(db: Db) {
   return defineTool({
     name: DELEGATE_TOOL,
     description:
-      "Hands a task to another bot of the team, in that bot's own chat, when the user asks you to ('tell the Tutor to...'). Give a clear objective, acceptance criteria and all the context: the bot does not see this conversation. It returns immediately; the bot works on its own and its short result comes back to this chat when it ends, so do not wait or poll: tell the user you delegated. The bot keeps its own tools and approvals, and at most 3 delegations can be open at once.",
+      "Hands a task to another bot of the team, in that bot's own chat, when the user asks you to ('tell the Tutor to...') or when that bot's description in your team list clearly covers the request (then delegate instead of doing it yourself; a routine or reminder is created by the bot that will run it, so pass the whole request, with how often and when). Give a clear objective, acceptance criteria and all the context: the bot does not see this conversation. It returns immediately; the bot works on its own and its short result comes back to this chat when it ends, so do not wait or poll: tell the user you delegated. The bot keeps its own tools and approvals, and at most 3 delegations can be open at once.",
     input: delegateInput,
     risk: "write_reversible",
     ownOutput: true,

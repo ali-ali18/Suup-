@@ -1201,3 +1201,31 @@ Decisão do dono (24/11/2026): **liberdade por padrão**, como Claude e Grok. O 
 - Só PDF e xlsx entram no juiz (Word fica fora: item A8). A conferência de Word e a de xlsx (fórmula com erro, número como texto, formato) têm testes de unidade, mas **não** foram exercitadas por um modelo real.
 - O Excel de verdade não foi aberto; um Word aberto no Word também não. A medição de margens, espaçamento e justificação é por texto do PDF, com as tolerâncias da primeira rodada.
 - A mensagem de recusa nova (nome da fonte e receita) e a medida de tabela corrigida são posteriores à rodada.
+
+## Motor de rotinas e delegação (24/11/2026)
+
+Verificação pequena e real das correções M14 a M19 ([MELHORIAS.md](MELHORIAS.md), [pesquisa](pesquisas/motor-rotinas-e-delegacao.md)). Não é uma tarefa do conjunto de `suup eval`: precisa de uma conversa com um time, das ferramentas de rotina e de um banco, então `evals/src/routines/real-check.ts` dirige o runtime como o servidor (`sendMessage` e um worker), cada caso num esquema novo do Postgres, com bots e dados inventados. Rodar: `tsc -b evals && DATABASE_URL=... node evals/dist/routines/main.js [recurring delegation weekday tombstone]`.
+
+| Item | Valor |
+|---|---|
+| Modelo (bots e revisor) | `claude-haiku-5-5`, o CHEAP das avaliações; preços de CHEAP da primeira seção |
+| Fuso do usuário | `America/Sao_Paulo`; data da execução 24/11/2026 (terça) |
+| Gasto total | cerca de US$ 0,02 (cada execução entre US$ 0,0005 e US$ 0,004), muito abaixo do teto de US$ 0,50 |
+
+O que é conferido sozinho é estrutural (linhas no banco, a delegação); o texto do modelo é impresso e foi lido por uma pessoa.
+
+| Caso | Pedido (genérico) | Conferência | Resultado |
+|---|---|---|---|
+| `recurring` | "Liste os feriados nacionais desta semana hoje e, a partir de amanhã, os do dia anterior e os do dia atual." | uma rotina criada ou o cartão `create_routine` | **3 de 3**: uma vez a rotina criada, uma vez o cartão (execução `waiting_approval`), uma vez as duas coisas |
+| `delegation` | time com "Agenda" (descrição: cuida de rotinas e lembretes) e "Código"; "Crie uma rotina que, todo dia às 7h, me lembre de tomar água." | delegação para a Agenda; nenhuma rotina no Principal | **1 de 1**: delegou, a Agenda criou a rotina (07:00, sem duplicata) e o resultado voltou ao chat do Principal |
+| `weekday` | "Que dia da semana é hoje, e em que dia da semana cai o dia 29 deste mês?" | os dois nomes certos (terça e domingo), calculados em código com `Intl` | **1 de 1**: "terça-feira (24/11) ... o dia 29 cai numa domingo" (os nomes certos; a concordância "numa domingo" é do modelo) |
+| `tombstone` | uma rotina "Bom dia" criada e apagada pelo dono; "A rotina Bom dia sumiu. Você errou ao criar?" | a execução termina e a rotina não é recriada; o texto é lido | **1 de 1**: "Não, eu não errei ... foi apagada por você no app, não por falha minha", ofereceu criar de novo em vez de recriar |
+
+A primeira versão do caso `recurring` pedia as "tarefas da semana" sem dar ao bot de onde ler e ele perguntou a fonte (sem rotina): o pedido era inadequado, não a correção; foi trocado por um que o bot consegue atender (feriados). Está dito aqui porque mudou depois de ver o resultado.
+
+### O que isto NÃO mostra
+
+- Não houve rodada **antes** da correção: nenhum caso foi reproduzido com o código anterior (o dono relatou os quatro com o modelo dele). Os passes mostram que o comportamento esperado ocorre agora, não que a correção é a causa. Para o dia da semana a causa não foi confirmada: o relógio já estava certo, e a correção (calendário no prompt) é a defesa contra o cálculo de cabeça.
+- Uma repetição por célula (três em `recurring`): são pontos, não taxas (item A3). Um modelo só (CHEAP).
+- M15 (lembrete já cumprido) não tem caso real; só teste de banco e de prompt.
+- Um dos três passes de `recurring` tinha só o cartão e outro só a rotina (sem cartão); a diferença de portão entre as execuções não foi investigada.
