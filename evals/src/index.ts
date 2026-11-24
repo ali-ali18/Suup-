@@ -12,6 +12,7 @@ export {
   type RunBatteryOptions,
   runBattery,
 } from "./auto-review/index.js";
+export { abntPdf, documentTasks, reportPdf, salesXlsx } from "./documents/index.js";
 export { stamp } from "./fmt.js";
 export { hardTasks } from "./hard/index.js";
 export {
@@ -75,6 +76,7 @@ export {
   planEval,
   type RunEvalOptions,
   runEval,
+  toolsOfferedTo,
 } from "./runner.js";
 export { evalTasks } from "./tasks/index.js";
 export {

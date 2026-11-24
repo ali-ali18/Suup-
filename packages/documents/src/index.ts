@@ -16,6 +16,14 @@ import { checkDocx, checkXlsx } from "./verify-office.js";
 import { checkPdf } from "./verify-pdf.js";
 import { buildXlsx } from "./xlsx.js";
 
+export {
+  inspectPdf,
+  inspectXlsx,
+  type PdfInspection,
+  type PdfLine,
+  type XlsxCell,
+  type XlsxInspection,
+} from "./inspect.js";
 export { parseMarkdown } from "./markdown.js";
 
 export interface DocumentMakerOptions {

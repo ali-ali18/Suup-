@@ -7,28 +7,29 @@ export interface PdfCheck {
   problems: string[];
 }
 
-interface PdfJs {
+export interface PdfJs {
+  OPS?: Record<string, number>;
   getDocument(src: Record<string, unknown>): {
     promise: Promise<PdfDoc>;
     destroy(): Promise<void>;
   };
 }
-interface PdfDoc {
+export interface PdfDoc {
   numPages: number;
   getMetadata(): Promise<{ info: Record<string, unknown> }>;
   getPage(n: number): Promise<PdfPage>;
 }
-interface PdfPage {
+export interface PdfPage {
   view: number[];
   getTextContent(): Promise<{
-    items: { str?: string; fontName?: string; transform?: number[] }[];
+    items: { str?: string; fontName?: string; transform?: number[]; width?: number }[];
   }>;
-  getOperatorList(): Promise<unknown>;
+  getOperatorList(): Promise<{ fnArray: number[] }>;
   commonObjs: { get(id: string): { missingFile?: boolean; name?: string } | undefined };
 }
 
 let loaded: Promise<PdfJs> | undefined;
-async function pdfjs(): Promise<PdfJs> {
+export async function pdfjs(): Promise<PdfJs> {
   loaded ??= (async () => {
     // The worker is imported here (not found by path), so a bundle of the server carries it.
     const worker = await import("pdfjs-dist/legacy/build/pdf.worker.mjs");

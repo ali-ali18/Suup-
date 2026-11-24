@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 import {
   DEFAULT_HISTORY_FILE,
+  documentTasks,
   EVAL_CATEGORIES,
   type EvalReport,
   EvalSetupError,
@@ -99,7 +100,7 @@ function selectTasks(ctx: Ctx): EvalTask[] {
   }
   if (qualify) return [...qualificationTasks];
   if (ids !== undefined) {
-    const all = [...evalTasks, ...qualificationTasks, ...hardTasks];
+    const all = [...evalTasks, ...qualificationTasks, ...hardTasks, ...documentTasks];
     const unknown = ids.filter((id) => !all.some((t) => t.id === id));
     if (unknown.length > 0) {
       throw new UsageError(
@@ -461,6 +462,7 @@ export const evalList: CommandSpec = {
           ...evalTasks.map((t) => ({ set: "main", t })),
           ...qualificationTasks.map((t) => ({ set: "qualification", t })),
           ...hardTasks.map((t) => ({ set: "hard", t })),
+          ...documentTasks.map((t) => ({ set: "documents", t })),
         ].map(({ set, t }) => ({
           id: t.id,
           set,
@@ -495,6 +497,11 @@ export const evalList: CommandSpec = {
       `Conjunto difícil (${hardTasks.length} tarefas longas; use --hard; fora da execução padrão e do histórico dela)`,
     );
     ctx.out.lines(renderTable(header, hardTasks.map(row)));
+    ctx.out.line("");
+    ctx.out.line(
+      `Documentos: a ferramenta contra o script do bot (${documentTasks.length} tarefas; escolha com --tasks; fora da execução padrão)`,
+    );
+    ctx.out.lines(renderTable(header, documentTasks.map(row)));
     const worst = (list: readonly EvalTask[]) => list.reduce((s, t) => s + t.limits.maxCostUsd, 0);
     ctx.out.line("");
     ctx.out.line(

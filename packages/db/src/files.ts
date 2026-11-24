@@ -98,3 +98,16 @@ export async function getFile(db: Db, id: string): Promise<StoredFileWithContent
   if (row === undefined) return null;
   return { ...mapFile(row), content: new Uint8Array(row.content ?? new Uint8Array()) };
 }
+
+/** The files a run sent, with their content, oldest first (an evaluation reads what was delivered). */
+export async function listRunFiles(db: Db, runId: string): Promise<StoredFileWithContent[]> {
+  const parsed = uuid.safeParse(runId);
+  if (!parsed.success) return [];
+  const rows = await db.sql<FileRow[]>`
+    select id, bot_id, run_id, message_id, name, mime, size, created_at, content
+    from files where run_id = ${parsed.data} order by created_at, id`;
+  return rows.map((row) => ({
+    ...mapFile(row),
+    content: new Uint8Array(row.content ?? new Uint8Array()),
+  }));
+}

@@ -1,5 +1,16 @@
 export type { ConnectorToolInfo } from "@suup/connectors";
 export { MEMORY_TOOL_NAMES } from "@suup/core";
+// What an evaluation needs to open a delivered file (the evals depend on the runtime, not on the
+// documents package): the same readers `create_document` checks its own files with.
+export {
+  createDocumentMaker,
+  inspectPdf,
+  inspectXlsx,
+  type PdfInspection,
+  type PdfLine,
+  type XlsxCell,
+  type XlsxInspection,
+} from "@suup/documents";
 export {
   configPath,
   configSchema,

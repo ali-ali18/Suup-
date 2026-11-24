@@ -21,6 +21,7 @@ import {
   recordHistory,
   renderMarkdown,
   runEval,
+  toolsOfferedTo,
 } from "../src/index.js";
 import { DATABASE_URL, dbSuiteName, useIsolatedDb } from "./db.js";
 import { tempDir } from "./logs.js";
@@ -173,6 +174,46 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("the evaluation runner, end to end"),
       limit: 200,
     });
     expect(journal.filter((m) => m.sourceRunId === runId)).toEqual([]);
+  });
+
+  it("offers send_file and create_document to a task that delivers files, and takes one away with withoutTools (prompt included)", async () => {
+    const p = await project({ alpha: solver("alpha-2026-11") });
+    const base = task("simple-question");
+    const requestOf = async (variant: typeof base) => {
+      const report = await evaluate(p, {
+        models: ["alpha-1"],
+        tasks: [variant],
+        budgetUsd: 10,
+      });
+      const found = cell(report, variant.id, "alpha-1");
+      const events = await ctx.db.sql<{ type: string; payload: Record<string, unknown> }[]>`
+        select type, payload from run_events where run_id = ${found.runId as string} order by seq`;
+      const first = events.find((e) => e.type === "model_request");
+      return first?.payload as { system: string; tools: { name: string }[] };
+    };
+
+    const ordinary = await requestOf(base);
+    expect(ordinary.tools.map((t) => t.name)).not.toContain("send_file");
+    expect(ordinary.tools.map((t) => t.name)).not.toContain("create_document");
+
+    const both = await requestOf({ ...base, id: "simple-question-both", deliverFiles: true });
+    expect(both.tools.map((t) => t.name)).toEqual(
+      expect.arrayContaining(["send_file", "create_document"]),
+    );
+    expect(both.system).toContain("`create_document`");
+    expect(both.system).toContain("`send_file`");
+
+    const script = await requestOf({
+      ...base,
+      id: "simple-question-script",
+      deliverFiles: true,
+      withoutTools: ["create_document"],
+    });
+    expect(script.tools.map((t) => t.name)).toContain("send_file");
+    expect(script.tools.map((t) => t.name)).not.toContain("create_document");
+    // The line that tells the bot to use the tool is not in the prompt of a bot that has no tool.
+    expect(script.system).not.toContain("create_document");
+    expect(script.system).toContain("`send_file`");
   });
 
   it("runs a 2 task x 2 model matrix: metrics, failure origins, reports and history", async () => {
@@ -587,5 +628,23 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("the evaluation runner, end to end"),
     expect(summary?.qualification).toEqual({ executed: 4, passed: 0, required: 4 });
     expect(summary && isQualified(summary)).toBe(false);
     expect(renderMarkdown(report)).toContain("REPROVADO");
+  });
+});
+
+describe("toolsOfferedTo", () => {
+  const builtin = ["shell", "read_file"];
+  const base = task("simple-question");
+  it("adds the delivery tools only when the task delivers files, and removes what is named", () => {
+    expect(toolsOfferedTo(base, builtin)).toEqual(["shell", "read_file"]);
+    expect(toolsOfferedTo({ ...base, deliverFiles: true }, builtin)).toEqual([
+      "shell",
+      "read_file",
+      "send_file",
+      "create_document",
+    ]);
+    expect(
+      toolsOfferedTo({ ...base, deliverFiles: true, withoutTools: ["create_document"] }, builtin),
+    ).toEqual(["shell", "read_file", "send_file"]);
+    expect(toolsOfferedTo({ ...base, withoutTools: ["shell"] }, builtin)).toEqual(["read_file"]);
   });
 });

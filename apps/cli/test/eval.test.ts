@@ -46,10 +46,11 @@ describe("suup eval list / history (no configuration needed)", () => {
       limits: { maxTurns: number };
       criteria: string[];
     }[];
-    expect(tasks).toHaveLength(27);
+    expect(tasks).toHaveLength(33);
     expect(tasks.filter((t) => t.set === "main")).toHaveLength(14);
     expect(tasks.filter((t) => t.set === "qualification")).toHaveLength(4);
     expect(tasks.filter((t) => t.set === "hard")).toHaveLength(9);
+    expect(tasks.filter((t) => t.set === "documents")).toHaveLength(6);
     expect(tasks.every((t) => t.criteria.length > 0 && t.limits.maxTurns > 0)).toBe(true);
   });
 

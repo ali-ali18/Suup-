@@ -18,12 +18,21 @@ export interface EvalCheck {
   detail?: string;
 }
 
+/** A file the bot handed to the chat (`send_file` or `create_document`), as it was stored. */
+export interface DeliveredFile {
+  name: string;
+  mime: string;
+  bytes: Uint8Array;
+}
+
 export interface VerifyContext {
   /** The bot's workspace after the run. */
   ws: Executor;
   run: RunRecord;
   /** The event log of the run, in order. */
   events: StoredEvent[];
+  /** The files the run delivered, in order (empty unless the task sets `deliverFiles`). */
+  files?: DeliveredFile[];
 }
 
 export interface VerifyResult {
@@ -72,4 +81,15 @@ export interface EvalTask {
   reference(ws: Executor): Promise<void>;
   /** Eval-only tools the task needs on top of the built-in ones (registered by the runner). */
   tools?: Tool<unknown>[];
+  /**
+   * The bot is offered `send_file` and `create_document`, and what it delivers is kept for the
+   * verifier (`VerifyContext.files`). An ordinary task has no chat to deliver to, so it has neither.
+   */
+  deliverFiles?: boolean;
+  /**
+   * Tools this task takes away from the bot, by name, whatever else offers them (for comparing a
+   * dedicated tool with the bot doing the same job by itself). The system prompt follows: it
+   * describes only the tools the bot is offered.
+   */
+  withoutTools?: string[];
 }

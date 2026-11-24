@@ -200,6 +200,12 @@ export interface BuildDepsOptions {
    * never what a real user once told the system. Default: what the run says (`runs.isolated`).
    */
   isolated?: boolean;
+  /**
+   * An isolated run still keeps the files it hands over (`send_file`, `create_document`) in the
+   * `files` table, so an evaluation can open what was delivered. Memory stays off. Has no effect on
+   * a run that is not isolated (it always keeps them).
+   */
+  deliverFiles?: boolean;
 }
 
 export interface Runtime {
@@ -1085,7 +1091,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
       webFor: () => web.access,
       // The files a run sends wait in the database for the run's next message in the chat. An
       // evaluation (isolated) has no chat: the tool says so.
-      ...(guarded
+      ...(guarded || buildOptions.deliverFiles === true
         ? {
             filesFor: (record: { botId: string; id: string }) => ({
               send: async (file: OutgoingFile, callId: string) => {

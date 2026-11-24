@@ -1054,3 +1054,99 @@ Em relação à rodada pedida para comparação (fase 2, Haiku, `--budget-usd 3`
 5. **Mostrar o uso de `plan`/`finish` e os `review_reprompt` no relatório da avaliação.** Esta seção precisou de consultas ao banco para isso. A coluna REVISOR mostra 0% mesmo com 5 *reprompts* e 1 `unverified`, que no fim levou a uma reprovação.
 6. **Recalibrar o "25 a 60 turnos" do conjunto difícil** (`AVALIACAO.md`). Medido em Docker: média de 10 e 7,6 turnos, máximo 21. Ou o texto passa a dizer o que se mede, ou as tarefas pedem mais passos que não dá para juntar num só comando.
 7. **Prefixo do prompt estável entre bots** (já era o item 2 da seção anterior). No Sonnet as gravações de cache foram 42% do custo desta rodada. No revisor, só 54% da entrada veio do cache.
+
+---
+
+# Documentos: a ferramenta `create_document` contra o bot escrevendo o próprio script (24/11/2026)
+
+Pergunta do dono: a ferramenta dedicada é de fato melhor do que deixar o bot livre para escrever um script (Python na máquina dele) e enviar o arquivo? Esta seção compara as duas formas com modelos reais, com o **mesmo juiz** nas duas. Código no ramo `feat/ajustes-ui`; as tarefas ficam em `evals/src/documents/` e rodam de novo com `suup eval --tasks doc-report-pdf-tool,doc-report-pdf-script,doc-abnt-pdf-tool,doc-abnt-pdf-script,doc-sales-xlsx-tool,doc-sales-xlsx-script` (veja `AVALIACAO.md`).
+
+## Preparação
+
+| Item | Valor |
+|---|---|
+| Modelos | CHEAP `claude-haiku-5-5` e MID `claude-sonnet-5-5`, com os preços da seção "Preparação" do início deste documento (CHEAP 0,10 / 0,50 / 0,01 / 0,125; MID 2 / 10 / 0,10 / 2,50 US$/MTok). O revisor do `finish` é o CHEAP nas duas rodadas |
+| Sandbox | **Docker**, imagem `suup-sandbox:dev-files` (a que traz `python3` com reportlab, python-docx e openpyxl; a imagem `suup-sandbox:dev` antiga **não** tem reportlab e deixaria o modo SCRIPT sem como trabalhar) |
+| Banco | PostgreSQL 16 descartável (porta 5497, socket em `/var/tmp`), removido no fim |
+| Chave | variável `SUUP_ANTHROPIC_KEY`, só pelo nome (`apiKeyEnv`) |
+| Tetos | 30 turnos, US$ 0,40 a 0,45 e 10 minutos por execução; orçamento da sessão US$ 3, parada em US$ 2,5. Estimativa antes de rodar: o CHEAP custa da ordem de 1/20 do MID; esperava-se menos de US$ 1,5 no total |
+| Modos | **TOOL**: o bot tem `create_document` e `send_file`. **SCRIPT**: o mesmo bot **sem** `create_document` (`withoutTools: ["create_document"]` na tarefa); a linha do prompt que manda usá-la **some junto**, porque o prompt descreve só as ferramentas oferecidas (teste em `evals/test/runner.test.ts`). Mesmo objetivo, mesmos critérios, mesmo juiz; o texto do pedido não cita a ferramenta nem Python |
+
+## Como o arquivo é julgado
+
+O juiz olha **o arquivo entregue** (a linha da tabela `files`, o mesmo que o app mostra como cartão), nunca o que o bot diz. Ele abre o PDF com o pdf.js e o xlsx como um ZIP de XML, com os mesmos leitores de `packages/documents` (`inspectPdf` e `inspectXlsx`, novos, na mesma pasta de `checkPdf` e `checkXlsx`). O mesmo código julga os dois modos.
+
+| Tarefa | O que se confere no arquivo |
+|---|---|
+| `doc-report-pdf` (relatório) | abre; A4 em todas as páginas; no máximo 2 páginas; todas as fontes embutidas; sem caractere quebrado; título maior que o texto; as 3 seções; a tabela (cabeçalho e 3 linhas, cada uma numa linha do papel); a lista com os 3 itens, cada um com marcador ou recuo; acentos (`Região`, `Variação`, `operação`, `política`) |
+| `doc-abnt-pdf` (ABNT básico) | o mesmo do relatório (abre, A4, fontes, caracteres) e mais: fonte de 12 pt; margem esquerda 3 cm e direita 2 cm (±0,3 cm, medidas no texto); o texto não invade a margem de cima (3 cm) nem a de baixo (2 cm); espaçamento 1,5 (entre 1,4 e 2,1 vezes o corpo da fonte, medido entre as linhas); texto justificado (≥ 60% das linhas chegam à margem direita); pelo menos 300 palavras; título e as duas seções; a figura no PDF; legenda e fonte da figura |
+| `doc-sales-xlsx` (planilha) | abre; cabeçalho; 5 produtos com nome, quantidade e preço exatos (acentos); a coluna Total é fórmula `=B*C`; linha 7 com `Total` e a soma `SUM(D2:D6)`; formato de moeda com `R$` nos preços e totais |
+
+O juiz foi calibrado antes com arquivos feitos pela própria ferramenta (passam em tudo), por reportlab e openpyxl na imagem do sandbox (passam, menos onde o arquivo de fato não cumpre) e com PDFs errados de propósito (reprovam na medida certa): `evals/test/documents.test.ts`.
+
+## Resultado (uma repetição por célula)
+
+"Checagens" são as do **arquivo** (sem contar o estado final); "estado" é como a execução terminou (`done` = o `finish` foi aceito pelo revisor). Cache é lido/gravado, em milhares de tokens.
+
+| Tarefa | Modo | Modelo | Estado | Checagens | Turnos | Entrada / saída (mil) | Cache lido / gravado (mil) | Custo US$ | Tempo | Repetiu o nome do arquivo no texto |
+|---|---|---|---|---|---|---|---|---|---|---|
+| relatório PDF | TOOL | CHEAP | done | 11/11 | 3 | 32,1 / 1,9 | 27,0 / 5,1 | 0,0019 | 10 s | sim |
+| relatório PDF | SCRIPT | CHEAP | done | 10/11 (fontes não embutidas) | 17 | 405,3 / 14,1 | 367,8 / 37,4 | 0,0154 | 70 s | sim |
+| ABNT PDF | TOOL | CHEAP | done | 14/14 | 10 | 176,8 / 8,1 | 155,8 / 20,9 | 0,0082 | 37 s | sim |
+| ABNT PDF | SCRIPT | CHEAP | done | 13/14 (fontes não embutidas) | 7 | 106,3 / 7,1 | 87,4 / 18,8 | 0,0068 | 33 s | sim |
+| planilha xlsx | TOOL | CHEAP | done | 7/7 | 3 | 32,6 / 2,1 | 27,2 / 5,4 | 0,0020 | 11 s | sim |
+| planilha xlsx | SCRIPT | CHEAP | done | 7/7 | 4 | 49,2 / 2,2 | 42,0 / 7,3 | 0,0024 | 12 s | sim |
+| relatório PDF | TOOL | MID | done | 11/11 | 3 | 31,5 / 1,4 | 17,5 / 14,0 | 0,0404 | 10 s | não |
+| relatório PDF | SCRIPT | MID | done | 11/11 | 15 | 290,6 / 6,1 | 252,8 / 37,7 | 0,1487 | 54 s | não |
+| ABNT PDF | TOOL | MID | **waiting_user** | 14/14 | 7 | 102,4 / 5,7 | 86,4 / 16,0 | 0,0727 | 42 s | (sem mensagem final) |
+| ABNT PDF | SCRIPT | MID | done | 13/14 (fontes não embutidas) | 9 | 133,2 / 5,6 | 115,5 / 17,6 | 0,0870 | 48 s | sim |
+| planilha xlsx | TOOL | MID | done | 7/7 | 3 | 31,8 / 1,4 | 26,9 / 4,8 | 0,0175 | 9 s | sim |
+| planilha xlsx | SCRIPT | MID | done | 7/7 | 4 | 48,1 / 1,5 | 41,6 / 6,4 | 0,0261 | 12 s | sim |
+
+Totais por modo (as três tarefas):
+
+| Modelo | Modo | Turnos | Custo US$ | Tempo | Arquivos que passam em **todas** as checagens |
+|---|---|---|---|---|---|
+| CHEAP | TOOL | 16 | 0,0121 | 58 s | 3 de 3 |
+| CHEAP | SCRIPT | 28 | 0,0246 | 115 s | 1 de 3 |
+| MID | TOOL | 13 | 0,1306 | 61 s | 3 de 3 (mas uma execução não terminou: `waiting_user`) |
+| MID | SCRIPT | 28 | 0,2618 | 114 s | 2 de 3 |
+
+**Gasto.** Rodada oficial: CHEAP US$ 0,0367 e MID US$ 0,3924, soma **US$ 0,43**. Contando duas execuções extras do CHEAP descritas abaixo (US$ 0,0275 e US$ 0,0153), o total medido pelo harness foi de **cerca de US$ 0,47** (teto da sessão: US$ 3). Os `doctor --live` não entram na conta (centavos).
+
+## O que cada modo errou
+
+- **TOOL.** Em todos os seis arquivos: A4, fontes embutidas, acentos, tabela, lista, fórmulas e moeda certos. A única falha é de **processo**, e acontece na ABNT: o arquivo fica no servidor e o bot não consegue abri-lo para **medir** margens, fonte e espaçamento. O revisor do `finish` então devolve `unverified` ("não medidos, só declarados pelo estilo `academico`"), o bot não tem como produzir a prova e a execução termina em `waiting_user`, perguntando ao dono se aceita. Aconteceu no MID e, numa passada anterior com teto de 20 turnos, no CHEAP também (o CHEAP da rodada oficial fez duas chamadas e fechou em `done`). O arquivo entregue passa nas 14 checagens: o que falta é o bot **saber** disso.
+- **SCRIPT.** O layout saiu certo quando o bot sabia o que fazer (margens, 12 pt, 1,5, justificado, tabela, fórmulas, moeda: tudo passou), mas **3 de 4 PDFs saíram sem a fonte embutida** (reportlab com a fonte padrão `Times-Roman`/`Helvetica`, que o PDF não carrega), e o bot disse "Times 12 pt" como se estivesse tudo certo. Custa também mais turnos para chegar ao mesmo lugar: o relatório levou 15 a 17 turnos e 4 a 8 vezes o custo da ferramenta, quase todo em tentativas de abrir o PDF de volta (`pypdf`, `pdftotext`, leitura do fluxo bruto).
+- **Dois incidentes do SCRIPT na passada de teste do CHEAP** (não entram na tabela oficial, que é a segunda rodada completa, com teto de 30 turnos): (1) uma execução do relatório **falhou por um defeito do harness** ("unsupported Unicode escape sequence"): o bot imprimiu no terminal o fluxo descomprimido de um PDF, a saída tinha o byte NUL e o Postgres recusou gravar o evento no JSONB (item M8 de `MELHORIAS.md`); (2) repetida, a mesma tarefa bateu o teto de 20 turnos verificando o próprio PDF. Os dois deram a falha de fontes de novo.
+- **Nenhum modo** impediu o bot de repetir o nome do arquivo no texto, apesar de o `send_file` e a `create_document` dizerem para não repetir: em 9 das 11 mensagens finais o nome aparece.
+- O xlsx foi igual nos dois modos (as duas formas deixam as fórmulas **sem valor em cache**: um visualizador que não recalcula mostra as células vazias até o Excel abrir o arquivo).
+
+## Mensagem final de cada execução
+
+| Execução | Mensagem final |
+|---|---|
+| CHEAP relatório TOOL | "Criei e entreguei o relatorio-vendas.pdf com o título "Relatório Trimestral de Vendas", as três seções pedidas (…), a tabela … e a lista com marcadores com os três itens exatos. … A verificação automática do arquivo confirmou 1 página (limite de 2), A4, metadados com título e autor, fontes embutidas e acentos corretos." |
+| CHEAP relatório SCRIPT | "Gerei o relatório relatorio-vendas.pdf e o enviei a você. … Tem uma página, em A4, com os acentos corretos. … Os marcadores da lista são hifens ("-"), porque o marcador de bolinha "•" não saiu corretamente com a fonte padrão do PDF." |
+| CHEAP ABNT TOOL | "Gerei e entreguei o arquivo trabalho-abnt.pdf (3 páginas, segundo a ferramenta) … Ressalva: a verificação direta do arquivo foi parcial. Não consegui checar margens, espaçamento e tamanho de fonte por inspeção independente …" |
+| CHEAP ABNT SCRIPT | "Gerei o trabalho acadêmico trabalho-abnt.pdf (2 páginas, A4) … Margens 3/2/2/3 cm, Times 12 pt, espaçamento 1,5 (entrelinha de 18 pt) e texto justificado. O arquivo foi enviado a você." |
+| CHEAP xlsx TOOL | "Criei e entreguei a planilha produtos.xlsx (uma aba, "Produtos"). … a coluna D usa as fórmulas =B2*C2 até =B6*C6; … =SUM(D2:D6) … formato de moeda em reais (R$)." |
+| CHEAP xlsx SCRIPT | "Criei a planilha produtos.xlsx e a enviei a você. … Não calculei os valores em reais porque o arquivo grava as fórmulas; o Excel as calcula ao abrir." |
+| MID relatório TOOL | "Gerei e entreguei o relatório em PDF com o título "Relatório Trimestral de Vendas", as três seções pedidas, a tabela e a lista com os três itens. O arquivo tem 1 página, em A4." |
+| MID relatório SCRIPT | "Gerei o relatório em PDF (1 página, A4) com o título, as três seções, a tabela e a lista com marcadores, e o enviei a você. O resumo executivo é um parágrafo de três frases e usa só os números que você deu …" |
+| MID ABNT TOOL | sem mensagem final: `waiting_user`. A pergunta ao dono: "I believe the task is complete, but the automated review could not verify part of it, so I need you to decide." (resumo: "Entreguei o PDF …, mas não consegui medir o arquivo entregue. Por isso não posso confirmar margens, fonte, espaçamento …") |
+| MID ABNT SCRIPT | "Gerei e enviei o trabalho-abnt.pdf (2 páginas, A4) … O texto tem 376 palavras. Não consegui abrir o PDF em um leitor para conferir visualmente, porque a máquina não tem ferramentas de PDF. A conferência foi feita no conteúdo bruto do arquivo." |
+| MID xlsx TOOL | "Entreguei a planilha produtos.xlsx com uma aba, cabeçalho na linha 1 e os cinco produtos nas linhas 2 a 6. … Preços e totais estão no formato de moeda em reais (R$)." |
+| MID xlsx SCRIPT | "Criei e enviei a planilha produtos.xlsx. … Não abri o arquivo no Excel, então os valores calculados não foram conferidos." |
+
+## Conclusão
+
+**Qualidade.** A ferramenta ganha: os seis arquivos feitos por ela passam em todas as checagens do arquivo (inclusive as fontes embutidas, que ela garante e o script quase nunca deixa), contra 3 de 6 do script (a única checagem que ele perdeu foi a das fontes; margens, espaçamento, justificação, fórmulas e moeda ele acertou). **Custo e tempo.** A ferramenta ganha com folga no que é simples e fica empatada no que exige medir: no relatório custou 4 a 8 vezes menos e levou 3 turnos contra 15 a 17; na planilha, 1,2 a 1,5 vez menos; na ABNT, empate (a ferramenta custou um pouco mais com o CHEAP, um pouco menos com o MID). Somando as três tarefas, a ferramenta custou **metade** do script nos dois modelos (US$ 0,012 contra 0,025; US$ 0,131 contra 0,262) e levou metade do tempo (cerca de 1 minuto contra 2). **Onde cada um falha.** O script falha em fontes embutidas, gasta turnos conferindo o próprio arquivo e tropeça num defeito do harness (byte NUL). A ferramenta falha em **fechar a tarefa**: o bot não consegue abrir nem medir o arquivo que ela cria, o revisor não aceita o que não foi medido e o `finish` vira pergunta ao dono (em 2 de 3 tentativas da ABNT com a ferramenta). O remédio é pequeno (item M9 de `MELHORIAS.md`: a ferramenta devolver as medidas do arquivo que ela mesma confere). Com ele, a vantagem da ferramenta deixaria de ter ressalva.
+
+## O que isto NÃO mostra
+
+- **Uma repetição por célula**: são pontos, não taxas. A própria ABNT TOOL do CHEAP deu `waiting_user` na passada de teste e `done` na oficial. Três tarefas só.
+- O juiz **mede** margens, fonte, espaçamento e justificação **no texto do PDF**, com tolerâncias (±0,3 cm; espaçamento de 1,4 a 2,1 vezes o corpo da fonte, porque o "1,5" do Word depende da altura natural da fonte; justificado = 60% das linhas na margem direita). Não foi feita revisão visual dos PDFs por uma pessoa, nem aberto o xlsx no Excel.
+- A lista com marcadores é reconhecida por glifo ou por recuo (a ferramenta desenha o marcador como forma, que a extração de texto não vê).
+- Word (`docx`) não entrou. A imagem do sandbox é a variante `dev-files`; o modo SCRIPT depende de o bot achar reportlab/openpyxl lá.
+- Um modelo pode ter ido bem ou mal por sorte do dia: o ideal é repetir 3 vezes (item A3 de `MELHORIAS.md`).

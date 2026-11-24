@@ -17,6 +17,7 @@ import {
   createBot,
   getRun,
   hasPendingInbox,
+  listRunFiles,
   PgRunQueue,
   PgRunStore,
   postInbox,
@@ -127,6 +128,16 @@ export type EvalProgress =
   | { type: "cell_end"; cell: PlannedCell; total: number; result: CellResult; spentUsd: number }
   | { type: "cell_skipped"; cell: PlannedCell; total: number; spentUsd: number }
   | { type: "warning"; message: string };
+
+/** The tools a task's bot is offered: the built-ins, what the task adds, minus what it removes. */
+export function toolsOfferedTo(task: EvalTask, builtin: readonly string[]): string[] {
+  const removed = new Set(task.withoutTools ?? []);
+  return [
+    ...builtin,
+    ...(task.deliverFiles === true ? [SEND_FILE_TOOL_NAME, CREATE_DOCUMENT_TOOL_NAME] : []),
+    ...(task.tools ?? []).map((t) => t.name),
+  ].filter((name) => !removed.has(name));
+}
 
 const isEvalTool = (name: string) => name.startsWith(EVAL_TOOL_PREFIX);
 /** Memory tools are not part of what an evaluation measures (see `isolated` in `buildDeps`). */
@@ -334,7 +345,10 @@ async function driveRun(
     buildDeps: async (id): Promise<LoopDeps> => {
       claims += 1;
       // Isolated: an evaluation never loads memory (rules, profile, history) from the database.
-      const deps = await runtime.buildDeps(id, workerId, { isolated: true });
+      const deps = await runtime.buildDeps(id, workerId, {
+        isolated: true,
+        ...(task.deliverFiles === true ? { deliverFiles: true } : {}),
+      });
       return {
         ...deps,
         store: new ScriptedInboxStore(
@@ -465,7 +479,7 @@ async function executeCell(
       description: "Bot criado pela avaliação do harness (suup eval).",
       modelProvider: provider.id,
       modelId: model.id,
-      allowedTools: [...builtinTools, ...(task.tools ?? []).map((t) => t.name)],
+      allowedTools: toolsOfferedTo(task, builtinTools),
       limits: {
         maxTurns: task.limits.maxTurns,
         maxCostUsd: limits.maxCostUsd,
@@ -493,6 +507,11 @@ async function executeCell(
     const store = new PgRunStore(runtime.db, { workerId: "eval-reader" });
     const record = await store.getRun(run.id);
     const events = await store.listEvents(run.id);
+    const files = (await listRunFiles(runtime.db, run.id)).map((f) => ({
+      name: f.name,
+      mime: f.mime,
+      bytes: f.content,
+    }));
     const row = await getRun(runtime.db, run.id);
 
     const metrics = eventMetrics(events);
@@ -515,7 +534,7 @@ async function executeCell(
 
     let verdict: VerifyResult;
     try {
-      verdict = await task.verify({ ws, run: record, events });
+      verdict = await task.verify({ ws, run: record, events, files });
     } catch (error) {
       verdict = {
         pass: false,
