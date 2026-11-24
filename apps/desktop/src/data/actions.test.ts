@@ -265,8 +265,8 @@ describe("foldActions: long runs stay readable", () => {
   it("the key of a fold is the first card it holds, so it survives new cards arriving", () => {
     const before = foldActions([1, 2, 3, 4, 5].map((n) => item(n)));
     const after = foldActions([1, 2, 3, 4, 5, 6].map((n) => item(n)));
-    expect(before[0]).toMatchObject({ kind: "fold", key: "fold:c1" });
-    expect(after[0]).toMatchObject({ kind: "fold", key: "fold:c1" });
+    expect(before[0]).toMatchObject({ kind: "fold", key: expect.stringContaining(":c1") });
+    expect(after[0]).toMatchObject({ kind: "fold", key: expect.stringContaining(":c1") });
   });
 });
 

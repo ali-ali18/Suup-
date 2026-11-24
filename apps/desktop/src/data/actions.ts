@@ -526,7 +526,7 @@ export function foldActions(
     entries.push(
       group.length === 1
         ? { kind: "action", item: first }
-        : { kind: "fold", key: `fold:${first.callId}`, items: group },
+        : { kind: "fold", key: `fold:${first.runId}:${first.callId}`, items: group },
     );
     group = [];
   };

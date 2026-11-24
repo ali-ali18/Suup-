@@ -33,15 +33,29 @@ RUN --mount=type=secret,id=build_ca,required=false,mode=0444 \
         ca-certificates \
         coreutils \
         curl \
+        file \
         findutils \
         git \
         jq \
+        pandoc \
         procps \
         python3 \
+        python3-docx \
+        python3-openpyxl \
+        python3-pip \
+        python3-reportlab \
+        python3-venv \
         ripgrep \
         unzip \
         zip \
     && rm -rf /var/lib/apt/lists/* /etc/apt/apt.conf.d/99-build-ca
+
+# pip (docs/CONFIGURACAO.md, "A máquina dos bots"): the system Python is "externally managed"
+# (PEP 668), so a plain `pip install` would refuse. The bot installs as its own user (~/.local, since
+# the system site-packages is not writable), which cannot break the packages above. The download
+# goes through the egress proxy like every other request (pypi.org and files.pythonhosted.org are in
+# the default list, docs/REDE.md).
+RUN printf '[global]\nbreak-system-packages = true\nuser = true\n' > /etc/pip.conf
 
 # Non-root user. /workspace is where the named volume is mounted; creating it here, owned by
 # the user, makes a fresh volume inherit that ownership.

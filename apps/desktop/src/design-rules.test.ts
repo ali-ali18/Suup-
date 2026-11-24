@@ -349,6 +349,22 @@ describe("chat cards share one chrome and one collapsed row", () => {
     expect(src).not.toMatch(/\bChevron(Down|Up)\b/);
   });
 
+  it("a finished tool row is collapsed: the command and its output open only on a click (§1 'Amigável')", () => {
+    const rows = read(join(SRC, "features", "chat", "ApprovalRows.tsx"));
+    // A call without an approval is open only when the user clicked it; the setting of decided
+    // cards never opens a plain tool row.
+    expect(rows).toContain("? clicked.has(key)");
+    // The key carries the run: a call id repeated by another run never opens this row.
+    expect(rows).toContain("`call-$" + "{item.runId}-$" + "{item.callId}`");
+    expect(read(join(SRC, "data", "actions.ts"))).toContain(
+      "`fold:$" + "{first.runId}:$" + "{first.callId}`",
+    );
+    // Another conversation starts with nothing open.
+    expect(read(join(SRC, "features", "chat", "ChatScreen.tsx"))).toContain(
+      "if (convId !== null) setExpanded(new Set());",
+    );
+  });
+
   it("the expand chevron is hidden at rest and shown on hover and on keyboard focus", () => {
     const src = read(join(SRC, "ui", "action-card.tsx"));
     const chevron = src.slice(src.indexOf("const CHEVRON ="), src.indexOf("const CHEVRON =") + 220);

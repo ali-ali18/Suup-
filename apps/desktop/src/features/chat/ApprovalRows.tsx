@@ -76,9 +76,15 @@ export function ApprovalRow({
  * the decision and the execution together and opens to what was approved and what happened; its
  * default (open or closed) follows the setting for decided cards, a click flips it.
  */
-/** The key of a call's row among what is expanded: call ids repeat from run to run, approval ids do not. */
+/**
+ * The key of a call's row among what is expanded. A call id is only unique inside its run (a
+ * provider may number them), so a call without an approval is keyed by its run too: a click on one
+ * row never opens another. Approval ids are unique already.
+ */
 export const callKey = (item: ActionItem): string =>
-  item.approval === undefined ? item.callId : `approval-${item.approval.id}`;
+  item.approval === undefined
+    ? `call-${item.runId}-${item.callId}`
+    : `approval-${item.approval.id}`;
 
 export function CallRow({
   item,
@@ -108,6 +114,8 @@ export function CallRow({
   }, [item.blocked, writtenLoaded, sync]);
   const settings = useSettings((s) => s.settings);
   const key = callKey(item);
+  // A finished call is ONE collapsed line (docs/DESIGN.md §1 "Amigável", §3): the command and its
+  // output open only on the user's click. Only a decided approval follows the user's setting.
   const expanded =
     approval === undefined
       ? clicked.has(key)

@@ -188,7 +188,11 @@ function ChatForBot({ botId }: { botId: string }) {
       ),
     [messages, runs, actions, fold, cards, secretRequests, connectors],
   );
+  // What the user opened, in THIS conversation: another chat starts with every row collapsed.
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  useEffect(() => {
+    if (convId !== null) setExpanded(new Set());
+  }, [convId]);
   const toggle = useCallback(
     (key: string) =>
       setExpanded((current) => {
