@@ -42,6 +42,7 @@ import {
   TextField,
   Toggle,
 } from "../../ui/primitives.js";
+import { RadioChip, RadioGroup } from "../../ui/radio.js";
 import { ConnectorGrants } from "./ConnectorGrants.js";
 import { ConnectorNetwork } from "./ConnectorNetwork.js";
 import {
@@ -222,23 +223,21 @@ function AddConnectorDialog({ onClose, onNewSecret }: { onClose(): void; onNewSe
           <p>{form.kind === "stdio" ? STDIO_WARNING : HTTP_WARNING}</p>
         </Notice>
         <FormRow>
-          <FieldLabel as="span" id="connector-kind">
-            Tipo
-          </FieldLabel>
-          <div className="flex gap-2" role="radiogroup" aria-labelledby="connector-kind">
+          <FieldLabel as="span">Tipo</FieldLabel>
+          <RadioGroup
+            label="Tipo"
+            value={form.kind}
+            onValueChange={(next) => {
+              for (const kind of ["stdio", "http"] as const) if (kind === next) set({ kind });
+            }}
+            className="flex gap-2"
+          >
             {(["stdio", "http"] as const).map((kind) => (
-              <Pill
-                key={kind}
-                tone={form.kind === kind ? "primary" : "secondary"}
-                role="radio"
-                aria-checked={form.kind === kind}
-                data-testid={`connector-kind-${kind}`}
-                onClick={() => set({ kind })}
-              >
+              <RadioChip key={kind} value={kind} size="md" data-testid={`connector-kind-${kind}`}>
                 {KIND_LABEL[kind]}
-              </Pill>
+              </RadioChip>
             ))}
-          </div>
+          </RadioGroup>
         </FormRow>
         <TextField
           label="Nome"

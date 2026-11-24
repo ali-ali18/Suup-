@@ -362,6 +362,28 @@ describe("a base dos componentes: cópias do shadcn base-maia sobre Base UI (doc
     for (const text of [html, app, tokens]) expect(text).not.toContain("fonts.googleapis");
   });
 
+  it("lote 4, rádio: ui/radio.tsx é a cópia sobre o Base UI (botão nativo, label irmão) e nenhuma tela escreve role=radio na mão", () => {
+    const radio = read(join(SRC, "ui", "radio.tsx"));
+    expect(radio).toContain('from "@base-ui/react/radio"');
+    expect(radio).toContain('from "@base-ui/react/radio-group"');
+    expect(radio).toContain("nativeButton");
+    expect(radio).toContain("htmlFor={id}");
+    // the owner's rule: on is filled with the text colour, with the inverted dot (not shadcn's primary)
+    expect(radio).toContain("data-checked:bg-text");
+    expect(radio).toContain("bg-text-inverse");
+    // the old hand-made pieces are gone
+    const choice = read(join(SRC, "ui", "choice.tsx"));
+    for (const name of ["ChoiceGroup", "ChoiceRow", 'type="radio"', "radio = false"])
+      expect(choice, name).not.toContain(name);
+    expect(read(join(SRC, "features", "shell", "GroupDialog.tsx"))).toContain("<RadioRow");
+    // only the question card (its own keys A to F: Option and its group) still draws a radio by hand
+    const handMade = files(SRC, /\.tsx$/)
+      .filter((f) => !f.endsWith(".test.tsx") && read(f).includes('role="radio"'))
+      .map(rel)
+      .sort();
+    expect(handMade).toEqual(["ui/primitives.tsx", "ui/question-card.tsx"]);
+  });
+
   it("lote 1: o interruptor, a dica e o popover são as cópias sobre o Base UI", () => {
     const sw = read(join(SRC, "ui", "switch.tsx"));
     expect(sw).toContain('from "@base-ui/react/switch"');
