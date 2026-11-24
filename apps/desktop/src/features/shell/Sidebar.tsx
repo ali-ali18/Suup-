@@ -37,7 +37,7 @@ import { Tip } from "../../ui/tooltip.js";
 
 /** How a bot's entry is laid out: a tile (pinned), a row (a list), or only the face (the rail). */
 const ENTRY_MAIN = {
-  tile: "w-full flex-col gap-2 px-2 pt-3 pb-2",
+  tile: "w-full flex-col gap-2 px-2 pt-4 pb-2",
   row: "w-full gap-3 py-2 pr-9 pl-2.5",
   rail: "size-rail-tile justify-center p-0",
 } as const;
