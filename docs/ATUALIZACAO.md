@@ -29,7 +29,7 @@ O app baixa o `latest.json` e o instalador **sem login**. Num repositório priva
 
 ## Desligado até o dono pôr a chave
 
-Enquanto `plugins.updater.pubkey` for o marcador `SUBSTITUA-PELA-CHAVE-PUBLICA-DO-SUUP`, o atualizador fica **desligado**: o app não procura nada, não mostra aviso, e a linha de Configurações diz só "As atualizações automáticas ainda não estão ligadas.". Tudo o mais funciona normalmente.
+**Estado (23/11/2026): a chave pública do dono já está no app; o atualizador está ligado.** Enquanto `plugins.updater.pubkey` for o marcador `SUBSTITUA-PELA-CHAVE-PUBLICA-DO-SUUP`, o atualizador fica **desligado**: o app não procura nada, não mostra aviso, e a linha de Configurações diz só "As atualizações automáticas ainda não estão ligadas.". Tudo o mais funciona normalmente.
 
 ## Passo a passo do dono (uma vez)
 

@@ -31,7 +31,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "SUBSTITUA-PELA-CHAVE-PUBLICA-DO-SUUP",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDJGOUQ0MTUwNjA3NjkyMDEKUldRQmtuWmdVRUdkTDJ0eFB4bWR3am1tbm5KbzFrRHRKdlJPY1RUR1psb1FqWU1NUGZQOUZhaVcK",
       "endpoints": ["https://github.com/ali-ali18/suup-/releases/latest/download/latest.json"],
       "requireSignedVersion": true,
       "windows": { "installMode": "passive" }

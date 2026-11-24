@@ -201,10 +201,11 @@ mod tests {
     }
 
     #[test]
-    fn the_config_carries_the_placeholder_until_the_owner_pastes_his_key() {
+    fn the_config_carries_the_owners_public_key() {
+        // O dono colou a chave pública dele (23/11/2026): o atualizador está ligado.
         let config: Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
         let updater = &config["plugins"]["updater"];
-        assert_eq!(updater["pubkey"].as_str(), Some(PLACEHOLDER_PUBKEY));
+        assert!(key_is_real(updater["pubkey"].as_str()));
         assert_eq!(
             updater["endpoints"][0].as_str(),
             Some("https://github.com/ali-ali18/suup-/releases/latest/download/latest.json")

@@ -1323,6 +1323,9 @@ describe("atualização do app: um aviso calmo e uma linha em Geral (docs/DESIGN
     const conf = JSON.parse(read(join(SRC, "..", "src-tauri", "tauri.conf.json"))) as {
       plugins: { updater: { pubkey: string } };
     };
-    expect(rust).toContain(`"${conf.plugins.updater.pubkey}"`);
+    // The owner's public key is in place (23/11/2026): not the marker, so the updater is on.
+    expect(conf.plugins.updater.pubkey).not.toBe("SUBSTITUA-PELA-CHAVE-PUBLICA-DO-SUUP");
+    expect(conf.plugins.updater.pubkey.length).toBeGreaterThan(40);
+    expect(rust).toContain('"SUBSTITUA-PELA-CHAVE-PUBLICA-DO-SUUP"');
   });
 });
