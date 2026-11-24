@@ -81,9 +81,7 @@ test.describe("o vigia de progresso", () => {
     // The question card: its title is the question; the options are the owner's decision.
     const card = page.getByTestId("question-card");
     await expect(card).toHaveAttribute("data-state", "open");
-    await expect(card.getByTestId("question-text")).toHaveText(
-      "Quer que eu continue?",
-    );
+    await expect(card.getByTestId("question-text")).toHaveText("Quer que eu continue?");
     const options = card.getByTestId("question-option");
     await expect(options).toHaveCount(2);
     await expect(options.nth(0)).toContainText("Continuar");
