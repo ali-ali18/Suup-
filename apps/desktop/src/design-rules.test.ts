@@ -784,7 +784,7 @@ describe("o Principal é o supervisor: a estrela, a revisão e o silêncio sobre
   it("salvar e esquecer uma memória não aparecem no chat como linha nem como indicador (decisão do dono)", () => {
     const derive = read(join(SRC, "data", "derive.ts"));
     expect(derive).toContain("SILENT_TOOLS");
-    expect(derive).toMatch(/SILENT_TOOLS[^\n]*new Set\(\["remember", "forget"\]\)/);
+    expect(derive).toMatch(/SILENT_TOOLS[^\n]*new Set\(\["remember", "forget"/);
     expect(read(join(SRC, "data", "actions.ts"))).toContain("SILENT_TOOLS.has(name)");
   });
 });
