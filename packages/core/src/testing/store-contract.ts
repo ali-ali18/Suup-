@@ -6,6 +6,7 @@ import {
   type RunResult,
   type RunStatus,
   type RunStore,
+  type StatusChange,
 } from "../loop/store.js";
 
 /**
@@ -30,6 +31,11 @@ export interface StoreHarness {
   takeLease(runId: string): Promise<void>;
   /** Whether a worker holds the run (false after a requeue or a terminal status). */
   leased(runId: string): Promise<boolean>;
+  /**
+   * The job that wakes parked runs, at the instant `now`: every run in `waiting_timer` that is due
+   * gets its `wait_fired` event and becomes claimable, in one step. Returns how many it woke.
+   */
+  wake(now: Date): Promise<number>;
   /**
    * The user answers an approval card of the run, as the server does: `approvalId` is the one in
    * the run's `approval_requested` event. A run waiting for it becomes claimable again.
@@ -462,6 +468,73 @@ export function describeRunStoreContract(
         });
         await h.post(finished, { kind: "user_message", text: "too late" });
         expect(await h.statusOf(finished)).toBe("done");
+      });
+    });
+
+    describe("returns the run scheduled for itself (waiting_timer)", () => {
+      const AT = "2026-11-19T20:00:00.000Z";
+      const park = async (h: StoreHarness, id: string, extra: Partial<StatusChange> = {}) =>
+        h.store.setStatus(id, {
+          from: ["running"],
+          to: "waiting_timer",
+          wake: { at: AT, note: "check the deploy", count: 2 },
+          ...extra,
+        });
+
+      it("parks the run until its time, and wakes it once, only when it is due", async () => {
+        const h = await make();
+        const id = await h.createRun({ objective: "o" });
+        expect(await park(h, id)).toBe(true);
+        expect(await h.statusOf(id)).toBe("waiting_timer");
+
+        expect(await h.wake(new Date("2026-11-19T19:59:59.000Z"))).toBe(0);
+        expect(await h.statusOf(id)).toBe("waiting_timer");
+
+        expect(await h.wake(new Date("2026-11-19T20:00:05.000Z"))).toBe(1);
+        expect(await h.statusOf(id)).toBe("queued");
+        expect(await h.leased(id)).toBe(false);
+        const fired = (await h.store.listEvents(id)).filter((e) => e.type === "wait_fired");
+        expect(fired).toHaveLength(1);
+        expect(fired[0]?.payload).toMatchObject({
+          at: AT,
+          note: "check the deploy",
+          delayMs: 5000,
+        });
+
+        // Waking again finds nothing: it fired exactly once.
+        expect(await h.wake(new Date("2026-11-19T21:00:00.000Z"))).toBe(0);
+        expect((await h.store.listEvents(id)).filter((e) => e.type === "wait_fired")).toHaveLength(
+          1,
+        );
+      });
+
+      it("a message posted while parked cancels the wait: the run is claimable and never fires", async () => {
+        const h = await make();
+        const id = await h.createRun({ objective: "o" });
+        await park(h, id);
+        await h.post(id, { kind: "user_message", text: "never mind" });
+        expect(await h.statusOf(id)).toBe("queued");
+        expect(await h.leased(id)).toBe(false);
+        expect(await h.wake(new Date("2026-11-19T22:00:00.000Z"))).toBe(0);
+        expect((await h.store.listEvents(id)).filter((e) => e.type === "wait_fired")).toHaveLength(
+          0,
+        );
+      });
+
+      it("a message that was already waiting makes the run claimable instead of parking it for good", async () => {
+        const h = await make();
+        const id = await h.createRun({ objective: "o" });
+        await h.post(id, { kind: "user_message", text: "hello" });
+        expect(await park(h, id, { requeueIfInbox: true })).toBe(true);
+        expect(await h.statusOf(id)).toBe("queued");
+        expect(await h.wake(new Date("2026-11-19T22:00:00.000Z"))).toBe(0);
+      });
+
+      it("a run that is not parked is never woken", async () => {
+        const h = await make();
+        const running = await h.createRun({ objective: "o" });
+        expect(await h.wake(new Date("2030-01-01T00:00:00.000Z"))).toBe(0);
+        expect(await h.statusOf(running)).toBe("running");
       });
     });
 

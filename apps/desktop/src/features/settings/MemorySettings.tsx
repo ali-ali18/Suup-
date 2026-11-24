@@ -17,6 +17,7 @@ import {
   SettingsRow,
   SettingsSelect,
 } from "./parts.js";
+import { SupervisorSettings } from "./SupervisorSettings.js";
 
 /** The settings of the memory that can fail on their own: each has one line for its error. */
 type Field = "enabled" | "maxTurns" | "idleMinutes" | "compaction" | "promptLimit" | "expiry";
@@ -245,8 +246,7 @@ export function MemorySettings({ title, titleId, onClose }: SectionProps) {
                 description={
                   <>
                     <RowLine data-testid="memory-usage">
-                      Regras e perfil de todos os bots: {charsLabel(usage.sharedChars)} de{" "}
-                      {charsLabel(usage.limitChars)} caracteres.
+                      Regras e perfil de todos os bots: {usage.sharedItems} de {usage.limitItems}.
                     </RowLine>
                     {error("promptLimit")}
                   </>
@@ -254,23 +254,23 @@ export function MemorySettings({ title, titleId, onClose }: SectionProps) {
                 control={
                   <NumberField
                     label="Limite do que entra sempre"
-                    value={settings.promptLimitChars}
-                    suffix="caracteres"
+                    value={settings.promptLimitItems}
+                    suffix="memórias"
                     testId="memory-prompt-limit"
                     invalid={errors.promptLimit !== undefined}
                     onInvalid={(m) => fail("promptLimit", m)}
-                    onCommit={(promptLimitChars) => {
-                      const before = settings.promptLimitChars;
+                    onCommit={(promptLimitItems) => {
+                      const before = settings.promptLimitItems;
                       const limit = (s: Settings, value: number): Settings => ({
                         ...s,
-                        promptLimitChars: value,
-                        promptUsage: { ...s.promptUsage, limitChars: value },
+                        promptLimitItems: value,
+                        promptUsage: { ...s.promptUsage, limitItems: value },
                       });
                       run(
                         "promptLimit",
                         {
-                          body: { promptLimitChars },
-                          show: (s) => limit(s, promptLimitChars),
+                          body: { promptLimitItems },
+                          show: (s) => limit(s, promptLimitItems),
                         },
                         (s) => limit(s, before),
                       );
@@ -285,7 +285,11 @@ export function MemorySettings({ title, titleId, onClose }: SectionProps) {
                   title={bot.name}
                   role="note"
                   testId="memory-over-limit"
-                  description={`Usa ${charsLabel(bot.usedChars)} de ${charsLabel(usage.limitChars)} caracteres: o que passa do limite não entra.`}
+                  description={
+                    bot.usedItems > usage.limitItems
+                      ? `Usa ${bot.usedItems} de ${usage.limitItems} memórias: o que passa do limite não entra.`
+                      : `Usa ${charsLabel(bot.usedChars)} de ${charsLabel(usage.ceilingChars)} caracteres (${bot.usedItems} memórias): o que passa do teto não entra.`
+                  }
                   control={
                     <RowAction
                       data-testid="memory-over-limit-open"
@@ -333,6 +337,8 @@ export function MemorySettings({ title, titleId, onClose }: SectionProps) {
                 }
               />
             </SettingsGroup>
+
+            <SupervisorSettings />
           </>
         )}
       </PaneBody>

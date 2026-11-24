@@ -1,0 +1,36 @@
+# Generated from packages/web/src/searx-settings.ts. Do not edit by hand: change the engine list in
+# suup.config.json (web.search.engines) or in the code. See docs/BUSCA.md.
+# No secret here: secret_key comes from the environment variable SEARXNG_SECRET.
+use_default_settings:
+  engines:
+    keep_only:
+      - "duckduckgo"
+general:
+  instance_name: "Suup search"
+  debug: false
+  enable_metrics: false
+search:
+  safe_search: 1
+  autocomplete: ""
+  formats:
+    - html
+    - json
+server:
+  port: 8080
+  bind_address: "0.0.0.0"
+  # Single-user, internal use: nobody reaches this from outside, so there is no bot to stop.
+  limiter: false
+  public_instance: false
+  image_proxy: false
+  method: "GET"
+ui:
+  static_use_hash: false
+outgoing:
+  request_timeout: 6
+  max_request_timeout: 10
+  enable_http2: false
+  useragent_suffix: "Suup"
+engines:
+  - name: "duckduckgo"
+    disabled: false
+    _HTTP_User_Agent: "SuupBot/0.1 (+https://github.com/ali-ali18/suup-)"

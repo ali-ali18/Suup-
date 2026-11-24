@@ -19,6 +19,11 @@ import {
 } from "../src/index.js";
 import { DATABASE_URL, dbSuiteName, useIsolatedDb } from "./helpers.js";
 
+// Runs every migration up to 0013 and then the rest, from scratch: about 1 s here
+// even under CPU load, but it crossed the default 5 s on a loaded CI runner with the whole suite
+// in parallel. The budget is time only; what the test checks is unchanged.
+const HEAVY_DB_TIMEOUT_MS = 30_000;
+
 const connector = (name: string): ConnectorWrite => ({
   name,
   description: "",
@@ -45,25 +50,29 @@ const obs = (tool: string, fingerprint: string) => ({
 describe.skipIf(!DATABASE_URL)(dbSuiteName("migration 0014: grants by tool"), () => {
   const ctx = useIsolatedDb({ migrate: false });
 
-  it("existing whole-connector grants become 'all tools'", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "suup-migrations-"));
-    await cp(MIGRATIONS_DIR, dir, { recursive: true });
-    const held = (await readdir(MIGRATIONS_DIR)).filter((f) => f >= "0014" && f.endsWith(".sql"));
-    for (const file of held) await rm(join(dir, file));
-    await migrate(ctx.db, dir);
+  it(
+    "existing whole-connector grants become 'all tools'",
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), "suup-migrations-"));
+      await cp(MIGRATIONS_DIR, dir, { recursive: true });
+      const held = (await readdir(MIGRATIONS_DIR)).filter((f) => f >= "0014" && f.endsWith(".sql"));
+      for (const file of held) await rm(join(dir, file));
+      await migrate(ctx.db, dir);
 
-    const bot = await createBot(ctx.db, { name: "antigo", modelProvider: "p", modelId: "m" });
-    await ctx.db.sql`
+      const bot = await createBot(ctx.db, { name: "antigo", modelProvider: "p", modelId: "m" });
+      await ctx.db.sql`
       insert into connectors (name, transport, command) values ('legado', 'stdio', 'node')`;
-    await ctx.db.sql`
+      await ctx.db.sql`
       insert into connector_grants (connector_id, bot_id)
       select id, ${bot.id} from connectors where name = 'legado'`;
 
-    expect(await migrate(ctx.db)).toEqual(held);
-    const found = await getConnector(ctx.db, "legado");
-    expect(found?.grants).toEqual([{ botId: bot.id, all: true, tools: [] }]);
-    expect((await listConnectorsForBot(ctx.db, bot.id)).map((c) => c.name)).toEqual(["legado"]);
-  });
+      expect(await migrate(ctx.db)).toEqual(held);
+      const found = await getConnector(ctx.db, "legado");
+      expect(found?.grants).toEqual([{ botId: bot.id, all: true, tools: [] }]);
+      expect((await listConnectorsForBot(ctx.db, bot.id)).map((c) => c.name)).toEqual(["legado"]);
+    },
+    HEAVY_DB_TIMEOUT_MS,
+  );
 });
 
 describe.skipIf(!DATABASE_URL)(dbSuiteName("connector tool grants and pins"), () => {

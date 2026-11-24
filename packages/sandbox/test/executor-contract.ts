@@ -166,7 +166,11 @@ export function describeExecutorContract(name: string, factory: ContractFactory)
       });
 
       it("does not leave a watchdog running after a command that finishes in time", async () => {
-        await ex.exec("echo quick", { timeoutMs: 60_000 });
+        // Several in a row: stopping the watchdog used to race its own start (a quick command
+        // could end before the watchdog had set its trap, leaving its sleep behind).
+        await Promise.all(
+          Array.from({ length: 8 }, () => ex.exec("echo quick", { timeoutMs: 60_000 })),
+        );
         const r = await ex.exec("ps -eo args= | grep -c '[s]leep 60.000' || true");
         expect(Number(r.stdout.trim())).toBe(0);
       });

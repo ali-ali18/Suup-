@@ -11,16 +11,38 @@ afterEach(cleanup);
 
 const settingsOf = (over: Partial<MemorySettings> = {}): MemorySettings => ({
   consolidation: { enabled: true, idleMinutes: 5, maxTurns: 15 },
-  promptLimitChars: 6000,
+  promptLimitItems: 200,
   expiryDays: 90,
   compactionThreshold: 0.8,
   reviewer: { available: true, model: "m", reason: null },
-  promptUsage: { limitChars: 6000, sharedChars: 1200, overLimit: [] },
+  promptUsage: {
+    limitItems: 200,
+    ceilingChars: 25_000,
+    sharedItems: 12,
+    sharedChars: 1200,
+    overLimit: [],
+  },
   ...over,
 });
 
 function setup(initial: MemorySettings, update = vi.fn()) {
-  const api = { memorySettings: { get: async () => initial, update } };
+  const api = {
+    memorySettings: { get: async () => initial, update },
+    supervisor: {
+      settings: {
+        get: async () => ({
+          reviewEnabled: true,
+          reviewTime: "03:00",
+          morningTime: "08:00",
+          costCapUsd: null,
+          timeZone: "America/Sao_Paulo",
+          model: { available: true, id: "m", reason: null },
+        }),
+        update: vi.fn(),
+      },
+      reviews: async () => [],
+    },
+  };
   const store = createDataStore();
   const sync = new Sync({ api: api as unknown as SuupClient, store });
   const services = { api, sync, data: store } as unknown as Services;
@@ -43,8 +65,8 @@ describe("Configurações > Memória", () => {
     expect((await field("memory-max-turns")).value).toBe("15");
     expect((await field("memory-idle-minutes")).value).toBe("5");
     expect((await field("memory-compaction")).value).toBe("80");
-    expect((await field("memory-prompt-limit")).value).toBe("6000");
-    expect(screen.getByTestId("memory-usage").textContent).toContain("de");
+    expect((await field("memory-prompt-limit")).value).toBe("200");
+    expect(screen.getByTestId("memory-usage").textContent).toContain("12 de 200");
     expect(screen.getByTestId("memory-reviewer-unavailable").textContent).toBe(
       "Sem modelo configurado.",
     );
@@ -53,6 +75,8 @@ describe("Configurações > Memória", () => {
       "Consolidação",
       "Contexto",
       "Validade",
+      "Principal",
+      "Revisões da equipe",
     ]);
   });
 
@@ -110,16 +134,24 @@ describe("Configurações > Memória", () => {
     setup(
       settingsOf({
         promptUsage: {
-          limitChars: 6000,
+          limitItems: 200,
+          ceilingChars: 25_000,
+          sharedItems: 12,
           sharedChars: 1200,
           overLimit: [
-            { botId: "00000000-0000-4000-8000-000000000001", name: "Nova", usedChars: 7200 },
+            {
+              botId: "00000000-0000-4000-8000-000000000001",
+              name: "Nova",
+              usedItems: 230,
+              usedChars: 7200,
+            },
           ],
         },
       }),
     );
     const row = await screen.findByTestId("memory-over-limit");
     expect(row.textContent).toContain("Nova");
+    expect(row.textContent).toContain("230 de 200 memórias");
     fireEvent.click(screen.getByTestId("memory-over-limit-open"));
     expect(useUi.getState().view).toBe("memory");
     expect(useUi.getState().memoryBot).toBe("00000000-0000-4000-8000-000000000001");

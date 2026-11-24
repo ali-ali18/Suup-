@@ -230,16 +230,60 @@ test.describe("Auto-review: the mode, the rules you write, and what the chat sho
     await pick(page, page.getByTestId("approval-mode"), "Perguntar tudo");
     await expect(page.getByTestId("approval-mode")).toHaveText("Perguntar tudo");
     await expect(page.getByTestId("rules-allow")).toContainText("não são lidas");
-    expect((await world.api.approvalSettings.get()).mode).toBe("ask_all");
+    // The mode changes on the screen at once and is written after (PermissionsSettings): wait for
+    // the server to hold the final value; it must get there, whatever the machine's speed.
+    await expect.poll(async () => (await world.api.approvalSettings.get()).mode).toBe("ask_all");
     await page.reload();
     await openSettings(page, "Permissões");
     await expect(page.getByTestId("approval-mode")).toHaveText("Perguntar tudo");
     await pick(page, page.getByTestId("approval-mode"), "Auto-review");
     await expect(page.getByTestId("approval-mode")).toHaveText("Auto-review");
-    expect((await world.api.approvalSettings.get()).mode).toBe("auto_review");
+    // The mode changes on the screen at once and is written after (PermissionsSettings): wait for
+    // the server to hold the final value; it must get there, whatever the machine's speed.
+    await expect
+      .poll(async () => (await world.api.approvalSettings.get()).mode)
+      .toBe("auto_review");
     await closeSettings(page);
     for (const rule of await world.api.writtenRules.list())
       await world.api.writtenRules.remove(rule.id);
+  });
+
+  test("Permissões: the limit for a card that waited too long is a Dropdown, kept by the server", async ({
+    page,
+  }) => {
+    await openWithBot(page, world, "Paciente");
+    await openSettings(page, "Permissões");
+    const stale = page.getByTestId("approval-stale");
+    await expect(stale).toHaveText("1 h");
+    await expect(page.locator("select")).toHaveCount(0);
+    await stale.click();
+    await expect(page.getByRole("option")).toHaveText([
+      "15 min",
+      "1 h",
+      "6 h",
+      "1 dia",
+      "1 semana",
+    ]);
+    await page.getByRole("option", { name: "6 h", exact: true }).click();
+    await expect(stale).toHaveText("6 h");
+    await expect
+      .poll(async () => (await world.api.approvalSettings.get()).staleAfterMinutes)
+      .toBe(360);
+    // Still there after a reload (the server's, not the browser's); a value of another origin is added.
+    await page.reload();
+    await openSettings(page, "Permissões");
+    await expect(page.getByTestId("approval-stale")).toHaveText("6 h");
+    await world.api.approvalSettings.update({ staleAfterMinutes: 90 });
+    await page.reload();
+    await openSettings(page, "Permissões");
+    await expect(page.getByTestId("approval-stale")).toHaveText("90 min");
+    await pick(page, page.getByTestId("approval-stale"), "1 h");
+    await expect(page.getByTestId("approval-stale")).toHaveText("1 h");
+    // Written after the screen changes (as above): wait for the server to hold it.
+    await expect
+      .poll(async () => (await world.api.approvalSettings.get()).staleAfterMinutes)
+      .toBe(60);
+    await closeSettings(page);
   });
 
   test("a call a 'Nunca permitir' rule refused is one collapsed row in the chat: no card, the rule's words, and the rule's current text after a reload", async ({

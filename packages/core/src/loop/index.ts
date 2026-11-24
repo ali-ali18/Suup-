@@ -8,9 +8,13 @@ export {
   CONTROL_TOOL_NAMES,
   type ControlToolName,
   controlToolSpecs,
+  DEFAULT_MAX_RETURNS,
   ESCALATE_DESCRIPTION,
   FINISH_DESCRIPTION,
+  MAX_RETURN_MINUTES,
+  MAX_RETURN_NOTE_CHARS,
   PLAN_DESCRIPTION,
+  SCHEDULE_RETURN_DESCRIPTION,
   validateFinish,
   validatePlan,
 } from "./control-tools.js";
@@ -36,6 +40,8 @@ export {
   buildSystemPrompt,
   MEMORY_TOOL_NAMES,
   renderStateReminder,
+  WEB_READ_TOOL_NAME,
+  WEB_SEARCH_TOOL_NAME,
 } from "./prompts.js";
 export {
   type ApprovalRecord,

@@ -75,13 +75,14 @@ Ferramentas de controle, presentes em todo bot:
 | `plan` | Cria e atualiza os passos (pendente, em andamento, feito, descartado com motivo) |
 | `finish` | Encerra com resumo e evidência por critério de pronto |
 | `escalate` | Faz uma pergunta objetiva ao usuário e pausa |
+| `schedule_return` | Marca um retorno do próprio bot, de 1 a 60 minutos, para conferir algo que demora (CI, deploy). A mesma execução fica parada e volta sozinha ([RETORNO.md](RETORNO.md)). Só em conversa do usuário |
 
 Regras:
 
 - Pergunta simples não precisa de plano. A partir do momento em que existe plano, `finish` é a única saída válida.
 - O plano e o objetivo vão sempre no fim do contexto, onde o modelo presta mais atenção.
 - Antes de aceitar `finish` em execução com plano, um **revisor** (outra chamada ao modelo, sem o histórico) recebe objetivo, critérios e evidência, e pode devolver. O resumo que ele recebe é curto: por isso pode **pedir evidência** (resultados inteiros, argumentos de chamadas e arquivos, em até 3 rodadas e com orçamento de caracteres) antes de decidir, e só reprova com ao menos uma divergência concreta e estruturada; o que continua inverificável chega ao dono como "não consegui verificar X", nunca como reprovação.
-- Estados: `queued`, `running`, `waiting_approval`, `waiting_user`, `done`, `failed`, `cancelled`.
+- Estados: `queued`, `running`, `waiting_approval`, `waiting_user`, `waiting_timer`, `done`, `failed`, `cancelled`. `waiting_timer` é a execução parada até um retorno que o próprio bot marcou ([RETORNO.md](RETORNO.md)).
 - Execuções longas rodam em segundo plano; a conversa continua livre.
 - Retomada: o contexto é reconstruído a partir dos eventos. Uma ferramenta interrompida no meio é marcada como "resultado desconhecido" e o modelo decide se confere ou repete.
 
@@ -130,7 +131,7 @@ Cada ferramenta declara: nome, descrição, esquema de entrada (zod), nível de 
 |---|---|---|
 | Controle | `plan`, `finish`, `escalate` | 1 |
 | Máquina | `shell`, `read_file`, `write_file`, `edit_file`, `list_files`, `search_files` | 1 |
-| Web | `web_search`, `web_fetch` | 1 |
+| Web | `web_search`, `web_read`, `web_fetch` | 1; busca e leitura próprias na fase 4 ([BUSCA.md](BUSCA.md); pesquisa [fase-4-busca-na-web.md](pesquisas/fase-4-busca-na-web.md)) |
 | Memória | `remember`, `recall`, `forget`, `search_conversations` | 2 |
 | Bots | `delegate`, `message_bot` | 4 |
 | Rotinas | `create_routine`, `update_routine`, `list_routines` | 4 |
@@ -160,7 +161,7 @@ Cada ferramenta declara: nome, descrição, esquema de entrada (zod), nível de 
 Toda memória tem origem (qual conversa a criou), autor, estado e histórico de mudanças com desfazer, é visível ao usuário e pode ser corrigida ou apagada.
 
 - **Quem escreve.** O usuário escreve o que quiser. O **bot** (`remember`) e uma **consolidação em segundo plano** (um modelo barato lê as mensagens do usuário e as respostas do bot, por conversa, depois de 5 minutos de silêncio, de 15 mensagens ou antes de uma compactação do histórico) **gerenciam a memória sozinhos**: regras, fatos sobre o usuário e notas são gravados **ativos na hora**, sem pedir confirmação (decisão do dono: "não quero ficar gerenciando memória e desfazendo; quero autonomia da parte dele"; antes, regra e perfil nasciam pendentes). A segurança é estrutural, não uma pergunta ao usuário: a consolidação só cita o que o **usuário** disse (a citação é conferida palavra por palavra pelo código) e nunca vê resultado de ferramenta, página, e-mail nem diário; uma execução que leu conteúdo de fora passa o que escreve por um **revisor que decide** (`run` grava; `ask`, `block`, erro ou falta de modelo **não gravam**, e o bot é avisado e a revisão fica registrada); **não duplica** (mesmo texto ou mesmo fato curto, comparação exata, em todo o perfil compartilhado, é atualização e não adição); e toda mudança guarda uma revisão (quem, de onde, o que mudou) no histórico da tela de Memória, que o usuário vê se quiser. Nada no fluxo normal cria memória pendente (o estado e a API de confirmar/recusar ficam por compatibilidade). A busca (`recall`, `search_conversations`) cai para "qualquer palavra" quando "todas" não acha nada, e diz que é uma busca mais ampla (`suup eval memory-recall`: 45% para 100% nos 5 primeiros).
-- **Tamanho e validade.** O que entra em todo prompt tem teto (`promptLimitChars`, 6000): o que não cabe fica de fora na ordem de criação, **sem cortar nada em silêncio**, e o app avisa. Notas e diário sem uso por 90 dias são arquivados (restaurável); regras e perfil nunca expiram. A compactação do histórico acontece a 80% da janela de contexto, configurável.
+- **Tamanho e validade.** O que entra em todo prompt tem limite em memórias (`promptLimitItems`, 200, como as 200 linhas do `MEMORY.md` da Claude Code) e um teto fixo de 25 000 caracteres (o 25KB dela; `docs/pesquisas/memoria-dos-agentes.md`): o que não cabe fica de fora na ordem de criação, **sem cortar nada em silêncio**, e o app avisa. Notas e diário sem uso por 90 dias são arquivados (restaurável); regras e perfil nunca expiram. A compactação do histórico acontece a 80% da janela de contexto, configurável.
 - **Tudo isso é configurável pelo usuário no app** (`GET`/`PATCH /v1/memory-settings`).
 - **Busca: textual por enquanto, e por quê.** Notas e conversas usam a busca textual do PostgreSQL (português, sem acento), não `pgvector`. Embeddings pedem um provedor (a Anthropic não tem modelo de embeddings), mandam texto do usuário para fora e exigem vetores em dia; a pesquisa mostra que a busca por palavras com chaves expandidas por fatos é o primeiro passo e que a busca híbrida (palavras e vetores) é o segundo. Medimos antes de decidir (`suup eval memory-recall`, TESTES-REAIS.md item G): a busca por todas as palavras acerta 45% nos 5 primeiros numa memória inventada, com ou sem o fato curto, e por **qualquer** palavra acerta 100%: o gargalo é o vocabulário, não a falta de vetor. **`pgvector` só entra se a medição falhar depois da correção barata** (cair para "qualquer palavra" quando "todas" não acha nada, ainda não feita).
 
@@ -200,6 +201,8 @@ Cada ação passa por três filtros, em ordem:
 - **Cofre:** segredos cifrados no banco. O modelo vê só um marcador; o valor é injetado no momento da ação. Um formulário seguro no chat grava direto no cofre.
 - Todo resultado de ferramenta com conteúdo externo entra rotulado como dado não confiável.
 - **Modo de aprovação: "Auto-review" ou "Perguntar tudo"** (decisão do dono: "é auto review ou tudo, tem que deixar fácil ao usuário"). No Auto-review, um modelo barato lê as **regras que o usuário escreve em linguagem comum** ("E-mails para minha equipe em acme.com"; "Nunca permitir: apagar a pasta notas"; "Sempre perguntar: qualquer coisa que gaste dinheiro") e, para cada chamada que não é leitura, decide: rodar, perguntar ou bloquear. Ele só vê as mensagens do usuário, as regras e a chamada proposta (nunca resultado de ferramenta nem texto do assistente), responde por uma ferramenta de formato fixo, e qualquer erro vira "perguntar". Por cima dele, no código: regras exatas de negar, pisos fixos (rede, segredo que sai) e as checagens do tipo da regra citada. Pesquisa: [pesquisas/fase-3-auto-review-regras-escritas.md](pesquisas/fase-3-auto-review-regras-escritas.md); como funciona: [APROVACOES.md](APROVACOES.md); medição com modelo real: [TESTES-REAIS.md](TESTES-REAIS.md), "Fase 3".
+
+**Supervisor (feito, fase 4):** o Principal revisa à noite o que os outros bots fizeram (só diário, notas e pendências, nunca saída de ferramenta), anota na própria memória, pode deixar uma mensagem de manhã, lê a memória dos outros somente leitura (`team_recall`) e delega a pedido (`delegate`, profundidade 1, até 3 abertas, aprovações do bot de destino intactas). Veja [SUPERVISOR.md](SUPERVISOR.md). A delegação do contrato da seção 4.9 tem objetivo, critérios de pronto e contexto.
 
 ### 4.9 Rotinas
 
@@ -241,6 +244,18 @@ Requisito de infraestrutura: o servidor na VPS precisa de domínio e HTTPS públ
 - App de desktop em Tauri: interface web na webview do sistema, com casca nativa leve. Mostra conversas, cartões de aprovação, formulário seguro, execuções em andamento e, na fase 5, a tela ao vivo.
 - O agente local é um processo Node à parte, empacotado junto com o app, que o inicia e supervisiona: abre conexão de saída com o servidor e executa comandos aprovados no PC. Assim ele reaproveita os pacotes do projeto e pode continuar rodando com a janela fechada.
 - Comunicação em tempo real por **Server-Sent Events** (decisão da fase 2, no lugar do WebSocket do plano original: o fluxo é só do servidor para o app, passa por qualquer proxy HTTP e se retoma pelo `Last-Event-ID`; as ações do app são requisições HTTP comuns), alimentado por `LISTEN/NOTIFY` do Postgres. Veja [API.md](API.md).
+
+### 4.12b Chamada de voz
+
+Decisão do dono (23/11/2026): um modo **chamada de voz**, como o do Grok Bot. A pessoa conversa por voz, como numa ligação, e o bot **continua agindo** durante a conversa: cria rotinas, consulta a memória, busca, usa conectores. Tudo pelas mesmas ferramentas, com as mesmas regras e cartões.
+
+- **No chat**, a chamada vira um bloco próprio na conversa, uma "subconversa": "Chat de voz · 00:02" com a duração. Dentro dele ficam a **transcrição**, das duas falas, e as **ações** do bot como as linhas de sempre (por exemplo, "Rotina criada"). Ao terminar, o app mostra que a transcrição está sendo salva e ela entra no histórico como mensagens comuns. Assim a memória, a busca nas conversas e o supervisor a enxergam.
+- **Na tela:** botão de chamada no compositor, ao lado do microfone de ditado. Durante a chamada há a tela da ligação (o rosto do bot falando, mudo e desligar). Um cartão que precisar de você aparece na tela e pode ser respondido por voz ("pode", "não") ou tocando.
+- **Aprovações por voz:** um "sim" falado só vale para o cartão que está na tela, nunca para algo que o bot apenas descreveu. A frase dita fica na transcrição. Regras e pisos não mudam.
+- **Aberto e sem prender a provedor** (regra do dono): fala para texto e texto para fala escolhíveis, com opção local e aberta (a pesquisa decide quais: modelos abertos de transcrição e de voz rodando no PC), além de serviços de voz em tempo real dos provedores como opção. A conversa usa o mesmo loop: cada fala é uma mensagem do usuário, e a resposta é falada enquanto é gerada.
+- **Ditado** (o microfone, sem chamada) é a parte simples e pode vir antes: fala vira texto no compositor.
+- **Motor de voz escolhível** (decisão do dono, 23/11/2026), sempre com o loop do Suup como cérebro (mesmas ferramentas, regras e cartões): (1) **leve, sem contêiner**, no app (sherpa-onnx: Whisper e vozes pt-BR), para qualquer PC; (2) **pacote aberto opcional em contêiner** (candidato: speaches, MIT, CPU ou CUDA), instalado só se a pessoa pedir, **depois de conferir a máquina** (memória, CPUs, WSL 2, placa NVIDIA); (3) **serviços pagos** com a chave no cofre: OpenAI (transcrição/voz ou GPT-Live com o Suup como cérebro), Deepgram, Cartesia, ElevenLabs, xAI, Gemini, Azure, conforme a pesquisa confirmar preço e pt-BR. Detalhes e números: [pesquisas/fase-7-chamada-de-voz.md](pesquisas/fase-7-chamada-de-voz.md), "Segunda rodada". **Prioridade** (dono, 23/11/2026: "a maioria vai de pago, é muito difícil ter 16 GB de VRAM"): os motores **pagos** vêm primeiro (OpenAI: transcrição e voz em cadeia, depois o GPT-Live com o Suup como cérebro); o leve local é a opção grátis; o pacote em contêiner fica por último, para quem tiver placa.
+- **Antes de implementar:** pesquisa em `docs/pesquisas/` sobre transcrição e voz abertas (qualidade em pt-BR, latência, CPU/GPU no PC do dono), detecção de fim de fala e interrupção (falar por cima do bot), eco e microfone no Tauri/WebView2, serviços em tempo real dos provedores e custo por minuto.
 
 ### 4.13 Diagnóstico: de quem é o problema
 
@@ -297,6 +312,12 @@ O inspetor e a origem da falha entram na fase 1 (pela CLI). As cinco verificaç�
 ### 4.14 Iniciativa
 
 O bot não espera ser chamado: percebe o que pode resolver, adianta tudo o que não tem risco e deixa para o usuário só a decisão final. Entra na fase 4, porque é construída sobre rotinas e aprovações.
+
+**Recepção do bot (fase 4, feita).** Todo bot recebe o usuário na primeira conversa (perguntas do papel dele, uma de cada vez, puláveis); o Principal faz a recepção geral e propõe uma equipe num cartão em que o usuário marca o que criar. O prompt ganhou quem é, agora, equipe e o que o bot tem. Desenho em [RECEPCAO.md](RECEPCAO.md); pesquisa em [pesquisas/fase-4-recepcao-inicial.md](pesquisas/fase-4-recepcao-inicial.md).
+
+**Busca e leitura de páginas na web (fase 4, feita).** Decisão do dono: "não quero me prender a provedor" e "tem que ser 100% open". `web_search` (contêiner SearXNG fixado, sem modificação, motores de API pública por padrão) e `web_read` (leitor próprio: Readability e Turndown, `robots.txt`, ritmo por host, só páginas públicas; `render` num Chromium separado) são ferramentas embutidas de nível leitura, sem cartão, concedidas por bot. A busca hospedada do provedor não é usada; adaptadores de Brave, Tavily e Exa **não** estão no núcleo (o usuário pode acrescentar um conector MCP de busca). Desenho, rede, licenças (AGPL do SearXNG), motores e o que não impede: [BUSCA.md](BUSCA.md); pesquisa: [pesquisas/fase-4-busca-na-web.md](pesquisas/fase-4-busca-na-web.md). Fica de fora: `web_crawl`/`web_map` (a pesquisa os põe depois), tela de configuração dos motores, ligar o sidecar do app embutido e restringir `web_read` a URLs vistas na conversa (decisão do dono).
+
+**Primeira peça da fase 4, já feita: o bot volta sozinho.** Ele dispara algo que demora (CI, deploy), diz "volto em 20 minutos" na própria mensagem e a mesma execução acorda sozinha na hora, sem rotina e sem marcador na tela (decisão do dono). É a ferramenta `schedule_return` e o estado `waiting_timer`; o desenho, os limites e como parar estão em [RETORNO.md](RETORNO.md), e a pesquisa que o embasa em [pesquisas/fase-4-acordar-sozinho.md](pesquisas/fase-4-acordar-sozinho.md). Fica de fora dela o que é do resto da iniciativa: acordar por evento de conector ou webhook, horário fixo (isso é rotina) e trabalho por iniciativa própria (`proactive`).
 
 **De onde vem o "perceber"**
 
@@ -464,7 +485,7 @@ docs/
 | 4 | Rotinas (horário e webhook), iniciativa, notificações, diário, delegação, sala de grupo | Monitor que avisa só quando a condição é atendida; bot nota um prazo na agenda, prepara o material e deixa um cartão pronto para aceitar; evento assinado dispara a rotina uma única vez, mesmo reenviado; bot principal encaminha e recebe de volta |
 | 5 | Navegador com tela por bot, ao vivo, passagem de controle | Bot navega num site com login, pausa para o usuário entrar e retoma |
 | 6 | Agente local nos PCs | Instala uma ferramenta no PC, com aprovação, e confere que funciona |
-| 7 | Páginas salvas, documentos, imagem, vídeo, voz, agentes de código externos | Gera um documento e uma página compartilhável; abre um PR por agente externo |
+| 7 | Páginas salvas, documentos, imagem, vídeo, voz (ditado e **chamada de voz**, 4.12b), agentes de código externos | Gera um documento e uma página compartilhável; abre um PR por agente externo |
 | 8 | Celular, reuniões, telefone, outros canais | Definido quando a fase 7 terminar |
 
 ## 9. Fase 1 em detalhe

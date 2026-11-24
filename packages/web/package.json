@@ -1,0 +1,34 @@
+{
+  "name": "@suup/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./engines": {
+      "types": "./dist/engines.d.ts",
+      "default": "./dist/engines.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@mozilla/readability": "0.6.0",
+    "@suup/core": "workspace:*",
+    "@suup/sandbox": "workspace:*",
+    "jsdom": "31.0.1",
+    "playwright-core": "1.65.1",
+    "robots-parser": "3.1.1",
+    "turndown": "7.2.5",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@types/turndown": "5.0.6"
+  }
+}

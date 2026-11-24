@@ -23,6 +23,7 @@ import { heartbeatRun } from "./queue.js";
 import {
   addRunUsage,
   getRun,
+  lockConversationOfRun,
   type SetRunStatusInput,
   setRunStatus,
   updateRunPlan,
@@ -35,7 +36,17 @@ export interface PgRunStoreOptions {
    * it. Every write is fenced by it (see `PgRunStore`).
    */
   workerId: string;
+  /**
+   * Runs inside the same transaction that changes the run's status, right after the change, with
+   * the updated run. What a reader must find together with the new status (the bot's message in the
+   * conversation) is written here: whoever sees the status sees it too. It must be idempotent
+   * (the loop repeats the status change after a crash) and a throw rolls the status back.
+   */
+  onStatusSet?: RunStatusHook;
 }
+
+/** See `PgRunStoreOptions.onStatusSet`. */
+export type RunStatusHook = (tx: Db, run: Run) => Promise<void>;
 
 const EVENT_PAGE = 1000;
 
@@ -59,9 +70,11 @@ const EVENT_PAGE = 1000;
 export class PgRunStore implements RunStore {
   readonly workerId: string;
   readonly #db: Db;
+  readonly #onStatusSet: RunStatusHook | undefined;
 
   constructor(db: Db, options: PgRunStoreOptions) {
     this.#db = db;
+    this.#onStatusSet = options.onStatusSet;
     this.workerId = options.workerId;
   }
 
@@ -99,53 +112,60 @@ export class PgRunStore implements RunStore {
   }
 
   async setStatus(runId: string, change: StatusChange): Promise<boolean> {
-    return this.#leased(runId, async (tx) => {
-      const base = {
-        from: change.from,
-        ...(change.result === undefined ? {} : { result: change.result as unknown as JsonValue }),
-      };
-      let input: SetRunStatusInput;
-      if (change.to === "failed") {
-        if (change.failure === undefined) {
-          throw new TypeError("setStatus: `failure` is required when `to` is 'failed'");
+    return this.#leased(
+      runId,
+      { conversationFirst: this.#onStatusSet !== undefined },
+      async (tx) => {
+        const base = {
+          from: change.from,
+          ...(change.result === undefined ? {} : { result: change.result as unknown as JsonValue }),
+          ...(change.wake === undefined ? {} : { wake: change.wake }),
+        };
+        let input: SetRunStatusInput;
+        if (change.to === "failed") {
+          if (change.failure === undefined) {
+            throw new TypeError("setStatus: `failure` is required when `to` is 'failed'");
+          }
+          input = { ...base, to: "failed", failure: change.failure };
+        } else {
+          input = { ...base, to: change.to };
         }
-        input = { ...base, to: "failed", failure: change.failure };
-      } else {
-        input = { ...base, to: change.to };
-      }
-      const updated = await setRunStatus(tx, runId, input);
-      if (updated === null) return false;
-      if (
-        change.requeueIfInbox === true &&
-        change.to === "waiting_user" &&
-        (await hasPendingInbox(tx, runId))
-      ) {
-        // Something was posted while the loop was on its way to waiting (the post saw the run
-        // `running`, so it did not requeue it): requeue now, or the item would wait for ever.
-        await tx.sql`
-          update runs set status = 'queued', locked_by = null, locked_at = null
-          where id = ${runId} and status = 'waiting_user'`;
-      }
-      if (
-        change.requeueIfDecided === true &&
-        change.to === "waiting_approval" &&
-        (await hasUndeliveredDecision(tx, runId))
-      ) {
-        // The user answered while the loop was on its way to waiting: do not sleep on it.
-        await tx.sql`
+        const updated = await setRunStatus(tx, runId, input);
+        if (updated === null) return false;
+        await this.#onStatusSet?.(tx, updated);
+        if (
+          change.requeueIfInbox === true &&
+          (change.to === "waiting_user" || change.to === "waiting_timer") &&
+          (await hasPendingInbox(tx, runId))
+        ) {
+          // Something was posted while the loop was on its way to waiting (the post saw the run
+          // `running`, so it did not requeue it): requeue now, or the item would wait for ever.
+          await tx.sql`
+          update runs set status = 'queued', locked_by = null, locked_at = null,
+            wake_at = null, wake_note = null
+          where id = ${runId} and status in ('waiting_user', 'waiting_timer')`;
+        }
+        if (
+          change.requeueIfDecided === true &&
+          change.to === "waiting_approval" &&
+          (await hasUndeliveredDecision(tx, runId))
+        ) {
+          // The user answered while the loop was on its way to waiting: do not sleep on it.
+          await tx.sql`
           update runs set status = 'queued', locked_by = null, locked_at = null
           where id = ${runId} and status = 'waiting_approval'`;
-      }
-      return true;
-    });
+        }
+        return true;
+      },
+    );
   }
 
   async updatePlan(runId: string, plan: PlanStep[]): Promise<void> {
-    await this.#leased(runId, (tx) => updateRunPlan(tx, runId, plan));
+    await this.#leased(runId, {}, (tx) => updateRunPlan(tx, runId, plan));
   }
 
   async addUsage(runId: string, usage: UsageDelta): Promise<void> {
-    await this.#leased(runId, (tx) => addRunUsage(tx, runId, usage));
+    await this.#leased(runId, {}, (tx) => addRunUsage(tx, runId, usage));
   }
 
   async peekInbox(runId: string): Promise<InboxItem[]> {
@@ -154,7 +174,7 @@ export class PgRunStore implements RunStore {
 
   async ackInbox(runId: string, ids: readonly string[]): Promise<void> {
     if (ids.length === 0) return;
-    await this.#leased(runId, (tx) => ackInboxEntries(tx, runId, ids));
+    await this.#leased(runId, {}, (tx) => ackInboxEntries(tx, runId, ids));
   }
 
   async peekApprovalDecisions(runId: string): Promise<ApprovalDecisionItem[]> {
@@ -163,7 +183,7 @@ export class PgRunStore implements RunStore {
 
   async ackApprovalDecisions(runId: string, ids: readonly string[]): Promise<void> {
     if (ids.length === 0) return;
-    await this.#leased(runId, (tx) => ackApprovalDecisionRows(tx, runId, ids));
+    await this.#leased(runId, {}, (tx) => ackApprovalDecisionRows(tx, runId, ids));
   }
 
   async heartbeat(runId: string): Promise<RunControl> {
@@ -173,8 +193,15 @@ export class PgRunStore implements RunStore {
   }
 
   /** Runs `fn` in a transaction after checking the lease under the run's row lock. */
-  #leased<T>(runId: string, fn: (tx: Db) => Promise<T>): Promise<T> {
+  #leased<T>(
+    runId: string,
+    options: { conversationFirst?: boolean },
+    fn: (tx: Db) => Promise<T>,
+  ): Promise<T> {
     return withTransaction(this.#db, async (tx) => {
+      // The status hook writes to the conversation: lock it before the run (see
+      // `lockConversationOfRun`).
+      if (options.conversationFirst === true) await lockConversationOfRun(tx, runId);
       const [row] = await tx.sql<{ locked_by: string | null }[]>`
         select locked_by from runs where id = ${runId} for no key update`;
       if (row === undefined) throw new RunNotFoundError(runId);

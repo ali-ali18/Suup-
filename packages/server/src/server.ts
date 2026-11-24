@@ -34,6 +34,7 @@ import { memoryRoutes } from "./routes/memories.js";
 import { metaRoutes } from "./routes/meta.js";
 import { networkRoutes } from "./routes/network.js";
 import { runRoutes } from "./routes/runs.js";
+import { supervisorRoutes } from "./routes/supervisor.js";
 import { vaultRoutes } from "./routes/vault.js";
 import { createDbSource, createPgNotifier } from "./stream/db-source.js";
 import {
@@ -143,6 +144,7 @@ export function createServer(runtime: Runtime, options: ServerOptions): SuupServ
     ...runRoutes,
     ...diagnosticsRoutes,
     ...memoryRoutes,
+    ...supervisorRoutes,
     ...approvalRoutes,
     ...networkRoutes,
     ...vaultRoutes,

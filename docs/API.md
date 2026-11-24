@@ -90,7 +90,7 @@ As ferramentas que se pode liberar a um bot. `200 { "items": [ToolInfo], "contro
 | `id`, `name`, `description`, `personality` | texto | |
 | `modelProvider`, `modelId` | texto | O provedor sai do modelo, pela configuração |
 | `allowedTools` | lista de textos | |
-| `limits` | `{ maxTurns?, maxCostUsd?, maxDurationMs? }` | Sem o campo, vale o padrão da configuração |
+| `limits` | `{ maxTurns?, maxCostUsd?, maxDurationMs?, maxReturns? }` | Sem o campo, vale o padrão da configuração |
 | `avatar` | texto ou `null` | Referência opaca que o app interpreta (emoji, id de arquivo...) |
 | `isDefault` | booleano | O bot principal: recebe as mensagens quando nenhum é escolhido |
 | `pinned` | booleano | Fixado no topo da lista do app |
@@ -111,6 +111,10 @@ As ferramentas que se pode liberar a um bot. `200 { "items": [ToolInfo], "contro
 | `POST /v1/bots/{id}/archive` | | `200 Bot` (idempotente); `404` |
 | `POST /v1/bots/{id}/default` | | `200 Bot`; `404`; `409` se estiver arquivado |
 | `POST /v1/bots/{id}/conversation` | | `200 Conversation`: a conversa direta do bot, criada na primeira chamada; `404`; `409` se arquivado |
+| `POST /v1/bots/{id}/reception` | | `200 { conversationId, started, runId }`: começa a recepção do bot se ela é devida (conversa vazia e ainda não feita, ou "refazer"); idempotente, no máximo uma vez; `404`; `409` se arquivado |
+| `POST /v1/bots/{id}/reception/reset` | | `200 { reset: true }`: a próxima abertura recomeça a recepção; `409` com execução ativa |
+| `POST /v1/messages/{id}/team` | `{ create: [{ index, avatar?, color? }] }` ou `{ dismiss: true }` | `200 { message, bots }`: decide o cartão de equipe (cria só os marcados, pelo mesmo caminho do `POST /v1/bots`); `409` se já decidido; `400` para escolha vazia ou repetida |
+| `GET /v1/info` | | `200 { timeZone }`: o fuso dos bots (`defaults.timeZone`, padrão o do servidor) |
 | `POST /v1/bots/draft` | `{ description, modelId? }` | `200 { name, description, personality }`: uma proposta a partir de texto livre; **não cria nada**; `502` se o modelo falhar |
 
 `draft` faz uma chamada ao modelo (`modelId`, ou o do bot principal). Para criar com a proposta, chame `POST /v1/bots` com ela.
@@ -122,6 +126,8 @@ As ferramentas que se pode liberar a um bot. `200 { "items": [ToolInfo], "contro
 `Conversation`: `id`, `kind` (`direct` ou `group`; só a direta recebe mensagens por enquanto), `title`, `createdAt`, `updatedAt`, `lastMessageAt`, `archivedAt`, `members` (`[{ botId, name, avatar, joinedAt }]`), `lastMessage` (a última mensagem, cortada em 200 caracteres: `{ id, seq, authorKind, authorBotId, text, createdAt }` ou `null`), `lastReadSeq`, `unreadCount` e `activeRun` (a execução em primeiro plano, a que trabalha ou espera você, ou `null`).
 
 `Message`: `id`, `conversationId`, `seq` (1, 2, 3... sem buracos), `authorKind` (`user`, `bot`, `system`), `authorBotId`, `text`, `runId` (a execução que a sua mensagem abriu, ou que a do bot produziu), `status` (`sent` ou `delivered`, só em mensagem sua enviada com o bot trabalhando; senão `null`) e `createdAt`.
+
+A mensagem do bot que **propõe uma equipe** traz `team`: `{ items: [{ name, description, personality }], status: pending|created|dismissed, created: [{ index, botId }] }`. `Conversation` traz `reception` (`pending`, `started`, `done`, `redo`) e a origem de execução `reception` existe ([RECEPCAO.md](RECEPCAO.md)).
 
 A mensagem do bot que **é uma pergunta** (o `escalate` do bot, ou o desempate do revisor) traz também `question`, sempre no mesmo formato: `{ questions: [{ question, options?, multiple?, allowOther? }], reason? }`. `questions` tem de 1 a 5 itens (uma pergunta comum é um item só); `options` (`[{ label, description? }]`, de 2 a 6) existe só quando as respostas possíveis são discretas; `multiple` deixa escolher várias; `allowOther` deixa responder com algo fora da lista; `reason` é `"review_tie_break"` só no desempate. `text` é a pergunta (ou a lista numerada delas). O app desenha o cartão só com a mensagem. **A resposta é sempre texto comum**, enviado como qualquer mensagem: com uma pergunta, os rótulos escolhidos separados por `"; "` (ou o texto digitado); com várias, uma linha por pergunta, `1. <pergunta> → <rótulos>` ou `→ (pulou)`. `buildAnswerText` e `parseAnswerText` (no `@suup/api`) montam e leem esse texto, e o modelo o recebe como resultado do `escalate`. **Uma opção respondida só pelo número ou pela letra** (`1`, `2`... como a CLI numera, `A`, `B`... como o cartão do app desenha): quando a resposta inteira é exatamente o índice de uma opção, o laço a troca pelo rótulo antes de o modelo ver, e o resultado nomeia a pergunta (`Answer to your question "..." (option 2): SQLite`). É comparação exata (em `answerForModel`, `@suup/core`): número fora das opções, texto em volta, ou pergunta sem opções chegam como foram escritos; com `multiple`, `1,3` ou `1; 3` valem se todos forem índices; num questionário só o formato `N. <pergunta> → ...` é lido. Vale igual para `suup say`, o chat da CLI e a rota de mensagens, porque está no ponto por onde toda resposta passa. Nas demais mensagens o campo não existe.
 
@@ -173,9 +179,13 @@ O servidor **não roda o loop**: quem trabalha é um worker, que pode ser outro 
 | `pause` | O worker termina a volta em andamento (a chamada ao modelo **e** as ferramentas que ela pediu) e, no próximo ponto seguro, para sem iniciar outra chamada ao modelo | `queued`, `running` | `status: queued`, `paused: true` |
 | `interrupt` | O worker vê o pedido no próximo batimento (`worker.controlPollMs`, padrão 2 s) e **aborta** a chamada ao modelo e a ferramenta em curso; a ferramenta cortada fica registrada como interrompida, com resultado desconhecido | `queued`, `running` | `status: queued`, `paused: true` |
 | `resume` | Tira a pausa; um worker pega a execução e ela continua de onde o log parou | pausada | volta a `queued`/`running` |
-| `cancel` | Posta o pedido de parada, tira a pausa (para um worker poder aplicar) e, se a execução trabalha agora, também interrompe; ela termina `cancelled` e a conversa recebe o aviso | `queued`, `running`, `waiting_user` (o pedido a recoloca na fila), `waiting_approval` | `cancelled` |
+| `cancel` | Posta o pedido de parada, tira a pausa (para um worker poder aplicar) e, se a execução trabalha agora, também interrompe; ela termina `cancelled` e a conversa recebe o aviso | `queued`, `running`, `waiting_user` (o pedido a recoloca na fila), `waiting_approval`, `waiting_timer` (cancelada na hora, sem worker) | `cancelled` |
 
-Erros: `404` se a execução não existe; `409` para `pause` e `interrupt` numa execução que terminou ou espera você ou uma aprovação (`pause` numa já pausada é idempotente, e `interrupt` a endurece); para `resume`, numa execução que não está pausada ou que terminou; para `cancel`, numa que já terminou. **`cancel` e a retomada precisam de um worker vivo** para serem aplicados.
+**Garantia de leitura:** a mensagem do bot de um fim ou de uma pausa (`done`, `failed`, `cancelled`, `waiting_user`, `waiting_timer`) é gravada na mesma transação que muda o estado da `Run`: quem vê o estado já encontra a mensagem em `GET /v1/conversations/{id}/messages`, sem esperar.
+
+Uma execução em `waiting_timer` (o bot marcou um retorno para si, [RETORNO.md](RETORNO.md)) tem `wakeAt` (a hora) e `wakeNote` (o que conferir) na `Run`, e as duas são `null` em qualquer outro estado. Nenhum worker a segura: `cancel` a cancela na hora (o log guarda `wait_cancelled`, motivo `cancelled`), uma mensagem em `POST /v1/conversations/{id}/messages` cancela o retorno (`user_message`) e a execução segue com ela, e `pause`/`interrupt` dão `409`.
+
+Erros: `404` se a execução não existe; `409` para `pause` e `interrupt` numa execução que terminou ou espera você, uma aprovação ou a hora de um retorno (`pause` numa já pausada é idempotente, e `interrupt` a endurece); para `resume`, numa execução que não está pausada ou que terminou; para `cancel`, numa que já terminou. **`cancel` e a retomada precisam de um worker vivo** para serem aplicados.
 
 ---
 
@@ -202,6 +212,18 @@ Erros: `404` se a execução não existe; `409` para `pause` e `interrupt` numa 
 - Uma memória nova, editada ou esquecida vale **a partir da próxima execução**, nunca no meio de uma ([MEMORIA.md](MEMORIA.md)).
 - **Busca**: em português (radicais: "provas" acha "prova") e **sem diferenciar acentos** ("avaliacao" acha "avaliação") onde o PostgreSQL tem a extensão `unaccent` (a imagem Docker tem; `suup doctor` informa). `excerpt` é o trecho em texto puro e `matches`, os trechos achados nele (`start` inclusive, `end` exclusivo, em caracteres). Quando o texto só casou por causa dos acentos, `matches` pode vir vazio. `botId` na busca de memória diz quem busca (vê as compartilhadas e as dele); sem ele, só as compartilhadas.
 
+### Supervisor (o Principal)
+
+Veja [SUPERVISOR.md](SUPERVISOR.md).
+
+| Chamada | Corpo | Resposta |
+|---|---|---|
+| `GET /v1/supervisor/settings` | | `200 SupervisorSettings`: `reviewEnabled`, `reviewTime` (`HH:MM`, padrão `03:00`), `morningTime` (`HH:MM` ou `null`, padrão `08:00`), `costCapUsd` (`null`: sem teto, o padrão), `timeZone`, `model {available, id, reason}` |
+| `PATCH /v1/supervisor/settings` | só as chaves que mudam | `200 SupervisorSettings`; `400` com a mensagem em português (`reviewTime: use o formato HH:MM`); chave desconhecida é recusada |
+| `GET /v1/supervisor/reviews?limit=` | | `200 {items: TeamReview[]}`, mais nova primeiro: `night`, `status` (`done`, `skipped`, `failed`, `running`), `botsRead`, `leftOver`, `capReached`, `costCapUsd`, `noted`, `morningText`, `morningPostedAt`, `model`, tokens, `costUsd`, `error` |
+
+O cliente: `api.supervisor.settings.get/update` e `api.supervisor.reviews`. Uma execução delegada aparece como as demais, com `origin: "delegation"` e `parentRunId` (a execução do Principal).
+
 ### Configurações da memória e consolidação
 
 O que é seu escolher sobre a memória fica no servidor (uma linha só, como o modo de aprovação), vale para o app, a CLI e a API, e muda na hora ([MEMORIA.md](MEMORIA.md)).
@@ -217,11 +239,11 @@ O que é seu escolher sobre a memória fica no servidor (uma linha só, como o m
 ```json
 {
   "consolidation": { "enabled": true, "idleMinutes": 5, "maxTurns": 15 },
-  "promptLimitChars": 6000,
+  "promptLimitItems": 200,
   "expiryDays": 90,
   "compactionThreshold": 0.8,
   "reviewer": { "available": true, "model": "claude-haiku-5-5", "reason": null },
-  "promptUsage": { "limitChars": 6000, "sharedChars": 1450, "overLimit": [] }
+  "promptUsage": { "limitItems": 200, "ceilingChars": 25000, "sharedItems": 12, "sharedChars": 1450, "overLimit": [] }
 }
 ```
 
@@ -230,11 +252,11 @@ O que é seu escolher sobre a memória fica no servidor (uma linha só, como o m
 | `consolidation.enabled` | `true` | verdadeiro ou falso |
 | `consolidation.idleMinutes` | 5 | inteiro de 1 a 120 |
 | `consolidation.maxTurns` | 15 | inteiro de 3 a 100 |
-| `promptLimitChars` | 6000 | inteiro de 1000 a 50000 |
+| `promptLimitItems` | 200 | inteiro de 20 a 1000 (memórias: regras e perfil ativos que entram em todo prompt) |
 | `expiryDays` | 90 | inteiro de 7 a 3650, ou `null` (nunca expira) |
 | `compactionThreshold` | 0.8 | número de 0.5 a 0.95 |
 
-`reviewer` diz se a consolidação (e a revisão do que o bot escreve depois de ler conteúdo de fora) tem um modelo agora: `available`, o `model` configurado e `reason` (em português) quando não tem; é só leitura, como o `reviewer` de `/v1/approval-settings`. `promptUsage` é o aviso do teto: `overLimit` lista os bots (`botId`, `name`, `usedChars`) cujas regras e perfil **ativos** passam de `promptLimitChars`; o app deve pedir que você apague ou encurte memórias, ou aumente o teto (nada é cortado em silêncio, o que não cabe só fica fora do prompt).
+`reviewer` diz se a consolidação (e a revisão do que o bot escreve depois de ler conteúdo de fora) tem um modelo agora: `available`, o `model` configurado e `reason` (em português) quando não tem; é só leitura, como o `reviewer` de `/v1/approval-settings`. `promptUsage` é o aviso do teto: `overLimit` lista os bots (`botId`, `name`, `usedItems`, `usedChars`) cujas regras e perfil **ativos** passam de `promptLimitItems` memórias ou de `ceilingChars` (o teto de segurança de 25000 caracteres, fixo e sem configuração, como o 25KB do `MEMORY.md` da Claude Code; veja [pesquisas/memoria-dos-agentes.md](pesquisas/memoria-dos-agentes.md)); `sharedItems`/`sharedChars` contam o que todos os bots carregam; o app deve pedir que você apague ou encurte memórias, ou aumente o teto (nada é cortado em silêncio, o que não cabe só fica fora do prompt).
 
 `MemoryConsolidation` (uma tentativa da consolidação): `id`, `conversationId`, `botId`, `reason` (`idle`, `max_turns`, `pre_compaction`), `status` (`queued`, `running`, `done`, `skipped`, `failed`), `fromSeq`, `toSeq`, `userTurns`, `model`, `promptVersion`, `inputTokens`, `outputTokens`, `costUsd`, `latencyMs`, `proposed` (o que o modelo disse), `kept` (o que foi gravado: ação, id da memória), `dropped` (o que o código descartou e por quê), `error`, `createdAt`, `finishedAt`.
 
@@ -244,7 +266,7 @@ O que é seu escolher sobre a memória fica no servidor (uma linha só, como o m
 
 Uma chamada de ferramenta que precisa do seu OK vira um **cartão** (`Approval`); a execução fica em `waiting_approval` e libera o worker até você decidir. Como e por quê: [APROVACOES.md](APROVACOES.md).
 
-`Approval`: `id`, `runId`, `botId`, `conversationId` (a da execução, ou `null`), `callId`, `tool`, **`args`** (o conteúdo exato que vai rodar, com segredos como `{{secret:NOME}}`, nunca valores), `level` (`read`, `write_reversible`, `external_irreversible`), `summary` (uma linha: o título do cartão), `secrets` (nomes usados), `source` (`rule`, `reviewer` ou `default`: quem mandou perguntar), `reviewReason` (uma frase em português dizendo por que o cartão existe, quando foi o revisor ou um piso fixo; senão `null`), `writtenRuleId` (a regra escrita em que essa frase se apoia, se citou uma; ela pode ter sido apagada depois), `status` (`pending`, `approved`, `denied`, `cancelled`, `expired`), `reason` (o motivo de uma negação), `outbound` (`null`, ou `{ kind: "message", recipientFields, recipients }`: a ferramenta **declarou** que a chamada é uma mensagem a outra pessoa; `recipients` é o que "Permitir destinatário" fixaria, ou `null` se não dá para dizer exatamente), `ruleId` (a regra criada por "Permitir destinatário"), `expiresAt` (só se a configuração faz cartões expirarem), `decidedAt`, `createdAt`.
+`Approval`: `id`, `runId`, `botId`, `conversationId` (a da execução, ou `null`), `callId`, `tool`, **`args`** (o conteúdo exato que vai rodar, com segredos como `{{secret:NOME}}`, nunca valores), `level` (`read`, `write_reversible`, `external_irreversible`), `summary` (uma linha: o título do cartão), `secrets` (nomes usados), `source` (`rule`, `reviewer` ou `default`: quem mandou perguntar), `reviewReason` (uma frase em português dizendo por que o cartão existe, quando foi o revisor ou um piso fixo; senão `null`), `writtenRuleId` (a regra escrita em que essa frase se apoia, se citou uma; ela pode ter sido apagada depois), `status` (`pending`, `approved`, `denied`, `cancelled`, `expired`), `reason` (o motivo de uma negação), `outbound` (`null`, ou `{ kind: "message", recipientFields, recipients }`: a ferramenta **declarou** que a chamada é uma mensagem a outra pessoa; `recipients` é o que "Permitir destinatário" fixaria, ou `null` se não dá para dizer exatamente), `ruleId` (a regra criada por "Permitir destinatário"), `expiresAt` (só se a configuração faz cartões expirarem), `decidedAt`, `createdAt`, `waitedMs` (quanto o cartão esperou até a decisão, em ms; `null` enquanto pendente) e `stale` (`true` se foi **aprovado** depois de esperar mais que o limite `staleAfterMinutes` que valia na hora: a ação não rodou na hora, o bot foi avisado e a aprovação ficou como permissão de uma vez para a chamada idêntica, nesta execução; veja [APROVACOES.md](APROVACOES.md), "Aprovação depois de muito tempo").
 
 | Método e caminho | Corpo | Resposta |
 |---|---|---|
@@ -277,7 +299,9 @@ Dois modos, guardados **no servidor**: `auto_review` (padrão: um modelo lê as 
 | Método e caminho | Corpo | Resposta |
 |---|---|---|
 | `GET /v1/approval-settings` | | `200 ApprovalSettings` |
-| `PATCH /v1/approval-settings` | `{ mode }` (estrito) | `200 ApprovalSettings`; `400` para um modo que não existe. Vale para as próximas chamadas, também nas execuções em andamento |
+| `PATCH /v1/approval-settings` | `{ mode?, staleAfterMinutes? }` (estrito; pelo menos um) | `200 ApprovalSettings`; `400` para um modo que não existe, ou `staleAfterMinutes` que não é inteiro de 5 a 10080. Vale para as próximas chamadas, também nas execuções em andamento |
+
+`ApprovalSettings`: `mode`, `staleAfterMinutes` (padrão 60, de 5 minutos a 1 semana: aprovar um cartão que esperou mais que isto não executa a ação na hora; cartões **nunca** expiram por causa disto) e `reviewer`. O limite é gravado no cartão na hora em que você decide (`waitedMs` e o limite daquele momento), então mudar o valor depois não reescreve o que já aconteceu.
 
 ### Regras escritas
 
@@ -358,7 +382,7 @@ Os mesmos cálculos de `suup inspect --request`, `replay`, `resend` e `doctor`, 
 | `GET /v1/runs/{id}/requests/{seq}` | | `200 { runId, seq, purpose, turn, request, response }`: o pedido exato ao modelo (sistema, mensagens, ferramentas...) e a resposta gravada (ou `null`); `404`; `409` se o evento não é um `model_request` (a mensagem lista os que a execução tem) |
 | `POST /v1/runs/{id}/replay` | | `200 { runId, identical, finalStatus, firstDivergence, requestDiffs, stoppedBecause, reading }`: reexecuta o loop atual com as respostas gravadas, sem chamar nada de verdade; `reading` é a leitura em português; `409` se não há o que reexecutar |
 | `POST /v1/runs/{id}/resend` | `{ seq, times?, model? }` | `200` com as tentativas e o resumo: reenvia o pedido gravado **como está**, `times` vezes (1 a 20, padrão 1) ou a `model`, outro modelo da configuração. Não altera a execução nem soma custo a ela. `400`, `404`, `409`, `502` |
-| `GET /v1/doctor?live=true` | | `200 { ok, checks: [{ component, ok, detail }] }`: banco e migrações, busca sem acento, fila, máquina dos bots, provedores, ferramentas; com `live`, uma chamada minúscula (alguns tokens) a cada modelo |
+| `GET /v1/doctor?live=true` | | `200 { ok, checks: [{ component, ok, detail }] }`: banco e migrações, busca sem acento, fila, máquina dos bots, rede dos bots, provedores, cofre, memória, **busca e leitura na web** (ligadas ou não e, depois do primeiro uso, o que roda; o doctor nunca inicia os contêineres), ferramentas; com `live`, uma chamada minúscula (alguns tokens) a cada modelo |
 
 Num servidor sem worker (`suup server` sem `--with-worker`, que por desenho não tem o socket do Docker), a linha "Sandbox" diz que **não foi verificada ali**: veja o worker. A linha "Fila de execuções" falha se há execuções esperando há mais de 2 minutos, o sinal de que nenhum worker as está pegando.
 

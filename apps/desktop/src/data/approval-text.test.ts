@@ -133,6 +133,8 @@ describe("the category and the title of a card", () => {
     expect(toolCategory("shell")).toEqual({ label: "Terminal", icon: "terminal" });
     expect(toolCategory("write_file").label).toBe("Arquivo");
     expect(toolCategory("web_fetch").label).toBe("Web");
+    expect(toolCategory("web_search").label).toBe("Web");
+    expect(toolCategory("web_read").label).toBe("Web");
     expect(toolCategory("remember").label).toBe("Memória");
     expect(toolCategory("conn_erp__criar_pedido")).toEqual({ label: "erp", icon: "connector" });
     // The name of a tool never makes it a message: only the declaration does.
@@ -154,6 +156,10 @@ describe("the category and the title of a card", () => {
     );
     expect(approvalTitle("web_fetch", { url: "https://a.b" }, "x")).toBe("Acessar https://a.b");
     expect(approvalTitle("shell", {}, "x")).toBe("Rodar um comando");
+    // A page read that asks is of a new address; the title carries all of it, query string included.
+    const long = `https://novo.example/a/b?token=${"x".repeat(200)}&q=1`;
+    expect(approvalTitle("web_read", { url: long }, "x")).toBe(`Ler uma página nova: ${long}`);
+    expect(approvalTitle("web_read", {}, "x")).toBe("Ler uma página nova");
     expect(
       approvalTitle("conn_fake__write_thing", {}, "x", [
         { name: "fake", tools: [{ name: "conn_fake__write_thing", tool: "write_thing" }] },

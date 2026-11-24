@@ -21,6 +21,12 @@ export interface ApprovalDecisionItem {
   reason?: string | undefined;
   /** The rule an "approve and always allow" created. */
   ruleId?: string | undefined;
+  /**
+   * Only on an approval: the card waited longer than the staleness limit before the user approved
+   * it (numbers the store measured when the user decided). The loop does not run the call; see
+   * `approval_stale`.
+   */
+  stale?: { waitedMs: number; thresholdMs: number } | undefined;
 }
 
 /** The run as the store knows it. The conversation is NOT here: it is rebuilt from events. */
@@ -102,7 +108,8 @@ export interface StatusChange {
   /** Only with `to: "done"`. */
   result?: RunResult;
   /**
-   * Only with `to: "waiting_user"`, set by the loop when it pauses for the user. If an inbox item
+   * Only with `to: "waiting_user"` or `"waiting_timer"`, set by the loop when it pauses for the user
+   * (or parks for a return of its own). If an inbox item
    * is already pending (posted after the loop last looked, so the post did not see a waiting
    * run), the store must not leave the run waiting for ever: it makes the run claimable again
    * (status `queued`, lease cleared) instead. The item and the pause are then serialized by the
@@ -115,6 +122,12 @@ export interface StatusChange {
    * waiting for ever; it makes the run claimable again instead. The change still reports `true`.
    */
   requeueIfDecided?: boolean;
+  /**
+   * Only with `to: "waiting_timer"`: when the run is to be woken (ISO 8601), the note it left
+   * itself and how many returns have fired since the user last wrote. The store keeps them with
+   * the run so the job that wakes runs can find the due ones; they are cleared on leaving the status.
+   */
+  wake?: { at: string; note: string; count: number };
 }
 
 /**

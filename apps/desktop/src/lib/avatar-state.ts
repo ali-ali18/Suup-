@@ -16,6 +16,7 @@ export interface RunFacts {
  * - `queued` e `running`: pensando (`thinking`), ou trabalhando (`working`) enquanto uma
  *   ferramenta roda (`toolRunning`); com `paused`, pausado;
  * - `waiting_user`: perguntando (`asking`); `waiting_approval`: esperando (`waiting`);
+ * - `waiting_timer` (o bot marcou um retorno para si): parado (`idle`), sem marca nenhuma;
  * - `done`: concluído (`done`); `failed`: falhou (`failed`).
  *
  * Quanto tempo o `done` aparece é decisão de quem desenha (o `Mascot` volta a `idle` sozinho).
@@ -32,6 +33,8 @@ export function avatarStateOf(run: RunFacts | null, toolRunning = false): Avatar
       return "asking";
     case "waiting_approval":
       return "waiting";
+    case "waiting_timer":
+      return "idle";
     case "done":
       return "done";
     case "failed":

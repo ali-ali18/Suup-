@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import type { OutboundMessage } from "./outbound.js";
 import type { RiskLevel } from "./risk.js";
+import type { WebAccess, WebUrlSource } from "./web.js";
 
 /** Compatibility name of `RiskLevel` (see `risk.ts`). */
 export type ToolRisk = RiskLevel;
@@ -222,6 +223,14 @@ export interface ToolContext {
   runFacts?: RunFacts;
   /** Present when the bot's machine reaches the internet through the egress proxy. */
   network?: NetworkAccess;
+  /** Present when the runtime wired the web (search and the reader service); see `web.ts`. */
+  web?: WebAccess;
+  /**
+   * The URLs this run has seen (normalized) and where each came from (the user's messages, search
+   * results, links of pages read), as the loop derives them from the log. `web_read` uses it to
+   * say how its address was cleared.
+   */
+  webSeen?: ReadonlyMap<string, WebUrlSource>;
 }
 
 export interface ToolOutput {
@@ -235,11 +244,21 @@ export interface ToolOutput {
    * whole output is external declares `externalOutput` instead.
    */
   untrusted?: boolean;
+  /**
+   * URLs this output put in front of the model (search hits, links of a page), already normalized
+   * (`normalizeWebUrl`). The loop records them in the log, and from then on `web_read` may open
+   * them without a card. A tool declares them; the loop never looks for URLs in the text.
+   */
+  webUrls?: string[];
+  /** `web_read` only: how the address of this read was cleared (`approved`: the user said yes on a card). */
+  urlProvenance?: WebUrlSource | "approved";
 }
 
-/** What `classify` may look at besides the arguments: the machine the call would run on. */
+/** What `classify` may look at besides the arguments: the machine the call would run on, and the URLs the run has seen. */
 export interface ClassifyEnv {
   executor: Executor;
+  /** The URLs the run has seen (normalized) and where each came from; see `ToolContext.webSeen`. */
+  webSeen?: ReadonlyMap<string, WebUrlSource>;
 }
 
 /**
@@ -267,7 +286,7 @@ export interface Tool<I = unknown> {
    */
   classify?(input: I, env: ClassifyEnv): RiskLevel;
   /** One line for the approval card: what exactly this call does. Default: the tool and its arguments. */
-  describe?(input: I): string;
+  describe?(input: I, env: ClassifyEnv): string;
   /**
    * The argument fields that may carry a secret placeholder (`{{secret:NAME}}`), as dotted paths
    * into the input (`command`, `headers.*`: `*` stands for every key or item). The registry puts

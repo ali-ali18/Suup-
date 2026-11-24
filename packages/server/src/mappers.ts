@@ -51,6 +51,8 @@ export function toRunDto(run: RunRow): Run {
     plan: run.plan,
     status: run.status,
     paused: run.pausedAt != null,
+    wakeAt: isoOrNull(run.wakeAt),
+    wakeNote: run.wakeNote ?? null,
     failureOrigin: run.failureOrigin,
     failureDetail: run.failureDetail,
     result: runResultOrNull(run.result),
@@ -113,6 +115,7 @@ export function toMessageDto(message: MessageRow): Message {
     status: message.status,
     createdAt: iso(message.createdAt),
     ...(message.question === undefined ? {} : { question: message.question }),
+    ...(message.team === undefined ? {} : { team: message.team }),
   };
 }
 
@@ -144,6 +147,7 @@ export function toConversationDto(view: ConversationView, activeRun: RunRow | nu
           },
     lastReadSeq: view.lastReadSeq,
     unreadCount: view.unreadCount,
+    reception: view.reception,
     activeRun: activeRun === null ? null : toRunDto(activeRun),
   };
 }
@@ -220,6 +224,8 @@ export function toApprovalDto(approval: ApprovalRow): Approval {
     expiresAt: isoOrNull(approval.expiresAt),
     decidedAt: isoOrNull(approval.decidedAt),
     createdAt: iso(approval.createdAt),
+    waitedMs: approval.waitedMs,
+    stale: approval.stale,
   };
 }
 

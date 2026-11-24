@@ -19,5 +19,29 @@ services:
       timeout: 5s
       retries: 10
 
+  # OPCIONAL (perfil "web"): o SearXNG da busca na web (web_search), para quem roda o worker no host e
+  # quer o serviço de busca fora do Suup. Sem este perfil o worker sobe o contêiner sozinho, numa rede
+  # interna com saída só para os motores (docs/BUSCA.md). Aqui, em desenvolvimento, a saída é a do host:
+  # NÃO use este serviço em produção.
+  #   SEARXNG_SECRET=$(openssl rand -hex 32) docker compose --profile web up -d searxng
+  # e no suup.config.json: "web": { "search": { "url": "http://127.0.0.1:8080" } }
+  searxng:
+    profiles: ["web"]
+    # A versão fica FIXA (nunca `latest`): o settings.yml foi escrito para ela. SearXNG é AGPL v3 e roda SEM
+    # modificação, configurado só por este arquivo (docs/BUSCA.md).
+    image: docker.io/searxng/searxng:2026.3.25-541c6c3cb
+    restart: unless-stopped
+    environment:
+      # Sem valor, o SearXNG se recusa a subir (não existe segredo versionado): defina SEARXNG_SECRET.
+      SEARXNG_SECRET: ${SEARXNG_SECRET:-}
+      FORCE_OWNERSHIP: "false"
+    ports:
+      - "127.0.0.1:${SEARXNG_PORT:-8080}:8080"
+    volumes:
+      - ./docker/searxng/settings.yml:/etc/searxng/settings.yml:ro
+    cap_drop: [ALL]
+    cap_add: [CHOWN, SETGID, SETUID]
+    security_opt: ["no-new-privileges:true"]
+
 volumes:
   pgdata:

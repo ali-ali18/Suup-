@@ -5,7 +5,15 @@ import type {
   WrittenRule,
   WrittenRuleKind,
 } from "@suup/api";
-import { Ban, CircleCheck, CircleHelp, ListChecks, Plug, ShieldCheck } from "lucide-react";
+import {
+  Ban,
+  CircleCheck,
+  CircleHelp,
+  Hourglass,
+  ListChecks,
+  Plug,
+  ShieldCheck,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { useUi } from "../../app/ui-store.js";
@@ -40,6 +48,30 @@ const MODES: readonly { value: ApprovalMode; label: string; description: string 
     description: "Toda ação que não é só leitura pede aprovação.",
   },
 ];
+
+/** The limits offered for "a card that waited too long", in minutes; the current value is added if it is another. */
+const STALE_MINUTES = [15, 60, 360, 1440, 10080] as const;
+
+/** "15 min", "1 h", "6 h", "1 dia", "1 semana": a limit in the owner's words. */
+export function staleLimitLabel(minutes: number): string {
+  if (minutes % 10080 === 0) {
+    const weeks = minutes / 10080;
+    return weeks === 1 ? "1 semana" : `${weeks} semanas`;
+  }
+  if (minutes % 1440 === 0) {
+    const days = minutes / 1440;
+    return days === 1 ? "1 dia" : `${days} dias`;
+  }
+  if (minutes % 60 === 0) return `${minutes / 60} h`;
+  return `${minutes} min`;
+}
+
+const staleOptions = (current: number): readonly (readonly [string, string])[] => {
+  const minutes = (STALE_MINUTES as readonly number[]).includes(current)
+    ? [...STALE_MINUTES]
+    : [...STALE_MINUTES, current].sort((a, b) => a - b);
+  return minutes.map((m) => [String(m), staleLimitLabel(m)] as const);
+};
 
 /** The groups, in the order of the page: what is refused, what always asks, what runs alone. */
 const GROUPS: readonly { kind: WrittenRuleKind; icon: typeof Ban; header: string }[] = [
@@ -253,6 +285,18 @@ export function PermissionsSettings({ title, titleId, onClose }: SectionProps) {
     });
   };
 
+  // Same way: shown at once, back with the server's words if it refuses.
+  const changeStale = (staleAfterMinutes: number) => {
+    if (settings === undefined) return;
+    const before = settings;
+    setModeError(undefined);
+    setSettings({ ...before, staleAfterMinutes });
+    api.approvalSettings.update({ staleAfterMinutes }).then(setSettings, (error: unknown) => {
+      setSettings(before);
+      setModeError(messageOf(error));
+    });
+  };
+
   const mode = MODES.find((m) => m.value === settings?.mode);
   const reviewerNote =
     settings !== undefined && !settings.reviewer.available && settings.mode === "auto_review"
@@ -290,9 +334,24 @@ export function PermissionsSettings({ title, titleId, onClose }: SectionProps) {
               />
             }
           />
+          <SettingsRow
+            icon={Hourglass}
+            title="Cartão que esperou muito"
+            description="Aprovar depois disso não roda a ação na hora: o bot confere se ainda faz sentido e, se fizer, pede de novo (vale uma vez, nesta execução)."
+            control={
+              <SettingsSelect
+                label="Depois de quanto tempo um cartão aprovado não roda na hora"
+                value={settings === undefined ? "" : String(settings.staleAfterMinutes)}
+                testId="approval-stale"
+                options={settings === undefined ? [] : staleOptions(settings.staleAfterMinutes)}
+                onChange={(value) => changeStale(Number(value))}
+                {...(settings === undefined ? { disabled: true, placeholder: "Carregando…" } : {})}
+              />
+            }
+          />
           {modeError !== undefined && (
             <SettingsRow
-              title="Não foi possível mudar o modo"
+              title="Não foi possível mudar a configuração"
               description={modeError}
               role="note"
             />

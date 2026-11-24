@@ -13,7 +13,7 @@ import {
   type ServerResponse,
 } from "node:http";
 import { connect, Socket } from "node:net";
-import { DEFAULT_ALLOWED_PORTS, decideHost } from "@suup/core";
+import { DEFAULT_ALLOWED_PORTS, decideHost, normalizeHost } from "@suup/core";
 import { type Resolver, resolveForConnect, systemResolver } from "./resolve.js";
 import {
   type EgressEvent,
@@ -42,6 +42,18 @@ export interface EgressProxyOptions {
   connectTimeoutMs?: number;
   idleTimeoutMs?: number;
   maxConnections?: number;
+  /**
+   * Any valid public host NAME may be reached, not only the ones on the allowlist. Everything else
+   * stays: no IP literal, only `ports`, and the resolved address must be a public one (checked once;
+   * the connection goes to that address). For the page renderer, whose universe of sites is open
+   * (docs/BUSCA.md); the bots' machines never use it.
+   */
+  openWeb?: boolean;
+  /**
+   * Every connection counts as this subject, with no credentials asked. Only for a proxy that
+   * listens on a network whose one member is the container it serves (the search container).
+   */
+  anonymousSubject?: EgressSubject;
 }
 
 const HOP_BY_HOP = new Set([
@@ -179,11 +191,14 @@ export class EgressProxy implements EgressService {
     | { ok: true; subject: EgressSubject; name: string; address: string }
     | { ok: false; status: 403 | 407; message: string }
   > {
-    const subject = this.#identify(header);
+    const subject = this.#options.anonymousSubject ?? this.#identify(header);
     if (subject === undefined) {
       return { ok: false, status: 407, message: "proxy credentials are missing or wrong" };
     }
-    const allowed = await this.#options.policy.allowedHosts(subject);
+    const allowed =
+      this.#options.openWeb === true
+        ? openSetFor(host)
+        : await this.#options.policy.allowedHosts(subject);
     const verdict = decideHost(
       { host, port },
       allowed,
@@ -324,6 +339,12 @@ export class EgressProxy implements EgressService {
     });
     req.pipe(upstream);
   }
+}
+
+/** For `openWeb`: a set holding just this name, so `decideHost` still does every other check. */
+function openSetFor(host: string): ReadonlySet<string> {
+  const normalized = normalizeHost(host);
+  return normalized.kind === "name" ? new Set([normalized.name]) : new Set();
 }
 
 interface Collector {

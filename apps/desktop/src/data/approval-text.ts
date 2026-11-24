@@ -190,6 +190,7 @@ export type CategoryIcon =
   | "mail"
   | "connector"
   | "network"
+  | "team"
   | "generic";
 
 export interface ToolCategory {
@@ -227,12 +228,17 @@ export function toolCategory(
     case "search_files":
       return { label: "Arquivo", icon: "file" };
     case "web_fetch":
+    case "web_search":
+    case "web_read":
       return { label: "Web", icon: "web" };
     case "remember":
     case "recall":
     case "forget":
     case "search_conversations":
       return { label: "Memória", icon: "memory" };
+    case "delegate":
+    case "team_recall":
+      return { label: "Equipe", icon: "team" };
     default:
       return { label: "Ferramenta", icon: "generic" };
   }
@@ -288,6 +294,16 @@ export function approvalTitle(
       const url = text(args, "url");
       return url === undefined ? "Acessar uma página" : `Acessar ${oneLine(url)}`;
     }
+    case "web_read": {
+      // A read that asks is always of an address that had not appeared in the run (docs/BUSCA.md):
+      // the card says so and shows the WHOLE address, query string included, never cut.
+      const url = text(args, "url");
+      return url === undefined ? "Ler uma página nova" : `Ler uma página nova: ${url}`;
+    }
+    case "web_search": {
+      const query = text(args, "query");
+      return query === undefined ? "Buscar na web" : `Buscar “${oneLine(query)}” na web`;
+    }
     case "remember":
       return "Salvar na memória";
     case "forget":
@@ -307,6 +323,10 @@ function toolVerb(tool: string): string {
       return "editar um arquivo";
     case "web_fetch":
       return "acessar uma página";
+    case "web_read":
+      return "ler uma página";
+    case "web_search":
+      return "buscar na web";
     case "forget":
       return "esquecer uma memória";
     case "remember":

@@ -3,6 +3,11 @@ import { CONVERSATIONS, CORPUS, JOURNAL, NOTES, QUESTIONS } from "../src/memory/
 import { formatRecallReport, runRecallBenchmark } from "../src/memory/recall.js";
 import { DATABASE_URL, dbSuiteName, useIsolatedDb } from "./db.js";
 
+// Seeds the whole benchmark corpus and searches it twice: about 2 s here
+// even under CPU load, but it crossed the default 5 s on a loaded CI runner with the whole suite
+// in parallel. The budget is time only; what the test checks is unchanged.
+const HEAVY_DB_TIMEOUT_MS = 30_000;
+
 describe("the recall benchmark: the made-up memory", () => {
   it("has at least 20 questions, each pointing to an item that exists, with no repeated key", () => {
     expect(QUESTIONS.length).toBeGreaterThanOrEqual(20);
@@ -37,34 +42,40 @@ describe("the recall benchmark: the made-up memory", () => {
 describe.skipIf(!DATABASE_URL)(dbSuiteName("the recall benchmark: the measurement"), () => {
   const ctx = useIsolatedDb();
 
-  it("measures the search with and without the short fact, deterministically", async () => {
-    const first = await runRecallBenchmark(ctx.db);
-    const text = formatRecallReport(first);
-    expect(text).toContain("sem o fato curto");
-    expect(first.questions).toBe(QUESTIONS.length);
-    // The same corpus gives the same numbers in a second run (the search is deterministic).
-    const ctx2 = await runRecallBenchmark(ctx.db);
-    expect(ctx2.with.hitAt5).toBe(first.with.hitAt5);
-    expect(ctx2.without.hitAt5).toBe(first.without.hitAt5);
-    // The short fact is indexed together with the text: it can only add matches, never remove one.
-    expect(first.with.hitAt5).toBeGreaterThanOrEqual(first.without.hitAt5);
-    // Conversations have no short fact: both variants see them the same way.
-    expect(first.with.byKind.conversation).toEqual(first.without.byKind.conversation);
-    // Regression guards, set at the numbers measured the first time this ran (see docs/TESTES-REAIS.md):
-    expect(first.without.hitAt5).toBeGreaterThanOrEqual(MEASURED.allWords.without - 1e-9);
-    expect(first.with.hitAt5).toBeGreaterThanOrEqual(MEASURED.allWords.with - 1e-9);
-    expect(first.anyWord.without.hitAt5).toBeGreaterThanOrEqual(MEASURED.anyWord.without - 1e-9);
-    expect(first.anyWord.with.hitAt5).toBeGreaterThanOrEqual(MEASURED.anyWord.with - 1e-9);
-    // What the bot does now (all the words, and any of them only when those find nothing):
-    expect(first.fallback.without.hitAt5).toBeGreaterThanOrEqual(MEASURED.fallback.without - 1e-9);
-    expect(first.fallback.with.hitAt5).toBeGreaterThanOrEqual(MEASURED.fallback.with - 1e-9);
-    // ...and it never loses what the all-words search already found.
-    expect(first.fallback.with.hitAt5).toBeGreaterThanOrEqual(first.with.hitAt5);
-    expect(first.fallback.without.hitAt5).toBeGreaterThanOrEqual(first.without.hitAt5);
-    // Same words, any of them: the unmatched words stop mattering, and every question is found at
-    // the top. The question as a whole sentence is worse than both (the harness needs key words).
-    expect(first.sentenceAsQuery.hitAt5).toBeLessThan(first.questions);
-  });
+  it(
+    "measures the search with and without the short fact, deterministically",
+    async () => {
+      const first = await runRecallBenchmark(ctx.db);
+      const text = formatRecallReport(first);
+      expect(text).toContain("sem o fato curto");
+      expect(first.questions).toBe(QUESTIONS.length);
+      // The same corpus gives the same numbers in a second run (the search is deterministic).
+      const ctx2 = await runRecallBenchmark(ctx.db);
+      expect(ctx2.with.hitAt5).toBe(first.with.hitAt5);
+      expect(ctx2.without.hitAt5).toBe(first.without.hitAt5);
+      // The short fact is indexed together with the text: it can only add matches, never remove one.
+      expect(first.with.hitAt5).toBeGreaterThanOrEqual(first.without.hitAt5);
+      // Conversations have no short fact: both variants see them the same way.
+      expect(first.with.byKind.conversation).toEqual(first.without.byKind.conversation);
+      // Regression guards, set at the numbers measured the first time this ran (see docs/TESTES-REAIS.md):
+      expect(first.without.hitAt5).toBeGreaterThanOrEqual(MEASURED.allWords.without - 1e-9);
+      expect(first.with.hitAt5).toBeGreaterThanOrEqual(MEASURED.allWords.with - 1e-9);
+      expect(first.anyWord.without.hitAt5).toBeGreaterThanOrEqual(MEASURED.anyWord.without - 1e-9);
+      expect(first.anyWord.with.hitAt5).toBeGreaterThanOrEqual(MEASURED.anyWord.with - 1e-9);
+      // What the bot does now (all the words, and any of them only when those find nothing):
+      expect(first.fallback.without.hitAt5).toBeGreaterThanOrEqual(
+        MEASURED.fallback.without - 1e-9,
+      );
+      expect(first.fallback.with.hitAt5).toBeGreaterThanOrEqual(MEASURED.fallback.with - 1e-9);
+      // ...and it never loses what the all-words search already found.
+      expect(first.fallback.with.hitAt5).toBeGreaterThanOrEqual(first.with.hitAt5);
+      expect(first.fallback.without.hitAt5).toBeGreaterThanOrEqual(first.without.hitAt5);
+      // Same words, any of them: the unmatched words stop mattering, and every question is found at
+      // the top. The question as a whole sentence is worse than both (the harness needs key words).
+      expect(first.sentenceAsQuery.hitAt5).toBeLessThan(first.questions);
+    },
+    HEAVY_DB_TIMEOUT_MS,
+  );
 });
 
 /**

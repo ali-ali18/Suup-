@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { fakeServerCommand } from "@suup/connectors/testing";
 import { generateKeyText } from "@suup/runtime";
 import { describe, expect, it, vi } from "vitest";
+import { isolationWarning } from "../src/commands/connectors.js";
 import { DATABASE_URL, dbSuiteName, type Result, useProject } from "./harness.js";
 
 // Connectors through the real `main`: `suup connectors ...` with the real runtime, the scripted
@@ -13,6 +14,14 @@ vi.setConfig({ testTimeout: 60_000 });
 const VALUE = "cli_conn_9f8e7d6c5b4a3210";
 const KEY = generateKeyText();
 const call = (name: string, args: unknown) => ({ calls: [{ name, args }] });
+
+describe("the warning after adding a local-program connector", () => {
+  it("is not said when the program runs in its own container (Docker sandbox)", () => {
+    expect(isolationWarning("container")).toBeUndefined();
+    expect(isolationWarning("host")).toContain("fora da máquina isolada dos bots");
+    expect(isolationWarning(null)).toContain("fora da máquina isolada dos bots");
+  });
+});
 
 describe.skipIf(!DATABASE_URL)(dbSuiteName("suup connectors, end to end"), () => {
   const p = useProject();

@@ -110,7 +110,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("the evaluation runner, end to end"),
     for (const memoryTool of ["remember", "recall", "forget", "search_conversations"]) {
       expect(tools).not.toContain(memoryTool);
     }
-    // Exactly what a bot had before memory existed: the control tools and the seven built-ins.
+    // Exactly what a bot had before memory existed: the control tools and the built-ins (the web tools are built-ins too; with no web wired they only say so).
     expect(tools).toEqual(
       [
         "plan",
@@ -123,6 +123,8 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("the evaluation runner, end to end"),
         "list_files",
         "search_files",
         "web_fetch",
+        "web_search",
+        "web_read",
       ].sort(),
     );
 
@@ -516,7 +518,10 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("the evaluation runner, end to end"),
     const p = await project({ alpha: stuck });
     const impatient = {
       ...task("simple-question"),
-      limits: { maxTurns: 4, maxCostUsd: 0.05, maxDurationMs: 100 },
+      // Long enough that starting the run never reaches the run's own limit first (a slow machine
+      // took more than 100 ms and the run stopped itself with origin "limit"); far shorter than
+      // the 30 s model call, so the evaluator's deadline is what ends it.
+      limits: { maxTurns: 4, maxCostUsd: 0.05, maxDurationMs: 2_000 },
     };
     const started = Date.now();
     const report = await evaluate(p, {

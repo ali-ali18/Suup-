@@ -136,6 +136,23 @@ describe("ActionRow: what an expanded action says, as plain text", () => {
       );
     });
 
+    it('approved too late, collapsed: "Aprovado depois de N h · <ação>", no buttons beyond the row', () => {
+      const item = merged("approved", "Aviso do sistema");
+      const late = {
+        ...item,
+        approval: {
+          ...(item.approval as NonNullable<typeof item.approval>),
+          stale: true,
+          waitedMs: 5 * 3_600_000,
+        },
+      };
+      render(<ActionRow item={late} expanded={false} onToggle={() => {}} />);
+      expect(screen.getByRole("button").textContent).toBe(
+        "ArquivoAprovado depois de 5 h · Escrever aprovado.txt",
+      );
+      expect(screen.getAllByRole("button")).toHaveLength(1);
+    });
+
     it("opened: what was approved, exactly, and what happened", () => {
       render(<ActionRow item={merged("approved", "escrito")} expanded onToggle={() => {}} />);
       expect(screen.getByTestId("approval-detail").textContent).toContain("Você aprovou");

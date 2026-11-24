@@ -20,7 +20,9 @@ import {
   planToolSearch,
   type Redactor,
   type ReviewerConfig,
+  type RunContextSnapshot,
   type RunEnd,
+  type SupervisorRole,
   ToolRegistry,
   type ToolSearchMode,
   type ToolSearchSetup,
@@ -34,12 +36,16 @@ import {
   type Db,
   getApprovalMode,
   getBot,
+  getDefaultBot,
   getMemorySettings,
   getRun,
+  listBots,
+  listConnectorsForBot,
   PgRunQueue,
   PgRunStore,
   type Run,
   rulesForBot,
+  wakeDueRuns,
   writtenRulesForBot,
 } from "@suup/db";
 import { createProvider, type ProviderConfig } from "@suup/providers";
@@ -63,6 +69,7 @@ import {
   type ProviderEntry,
   type RuntimeConfig,
   resolveDatabaseUrl,
+  resolveTimeZone,
 } from "./config.js";
 import {
   type BotConnectorCandidate,
@@ -78,10 +85,21 @@ import {
 } from "./memory-consolidation.js";
 import { createMemoryService } from "./memory-service.js";
 import { createNetworkService, type NetworkService } from "./network/service.js";
+import { PROPOSE_TEAM_TOOL, proposeTeamTool } from "./reception.js";
 import { DEFAULT_HISTORY_CHARS, loadRunContext } from "./run-context.js";
-import { finishRun } from "./run-end.js";
+import { applyStatusEffects, finishRun } from "./run-end.js";
 import { createScriptedProvider } from "./scripted-provider.js";
+import {
+  delegateTool,
+  type ReviewOutcome,
+  runMorningMessage,
+  runNightlyReview,
+  SUPERVISOR_TOOL_NAMES,
+  teamRecallTool,
+} from "./supervisor.js";
 import { createVault, DEFAULT_VAULT_KEY_ENV, type Vault } from "./vault/service.js";
+import { dbSearchCache } from "./web/search-cache.js";
+import { createWebWiring, type WebWiring } from "./web/wiring.js";
 
 type Env = Record<string, string | undefined>;
 
@@ -122,6 +140,10 @@ export interface CreateWorkerOptions {
    * (`undefined`: every 30 s and every hour). A worker that follows one run never does either.
    */
   memoryEveryMs?: { consolidation?: number; expiry?: number };
+  /** How often the job that wakes the runs parked for a return looks for due ones (ms). Default 5000. */
+  wakeEveryMs?: number;
+  /** How often the jobs of the supervisor (nightly review, morning message) check the clock (ms). Default 60000. */
+  supervisorEveryMs?: number;
   onRunEnd?(end: RunEnd): void;
   onError?(error: unknown, context: string): void;
 }
@@ -215,6 +237,19 @@ export interface Runtime {
     now?: Date;
     log?: (message: string) => void;
   }): Promise<ConsolidationOutcome | null>;
+  /**
+   * One pass of the nightly review of the main bot (docs/SUPERVISOR.md), as the worker does it:
+   * `null` when it is not due, it is off, or the Principal's model cannot be used now.
+   */
+  reviewOnce(options?: {
+    workerId?: string;
+    now?: Date;
+    log?: (message: string) => void;
+  }): Promise<ReviewOutcome | null>;
+  /** One pass of the morning message: whether it posted one. */
+  morningOnce(options?: { now?: Date }): Promise<boolean>;
+  /** The web (search and reading): starts its services if needed and says what is running. */
+  webStatus(): ReturnType<WebWiring["status"]>;
   close(): Promise<void>;
 }
 
@@ -306,6 +341,12 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     defaultHosts: networkConfig?.defaultHosts,
   });
   const networkName = networkConfig?.name ?? DEFAULT_NETWORK_NAME;
+  // Web search and page reading (docs/BUSCA.md): nothing starts until a tool asks for it.
+  const web = createWebWiring(config.web, {
+    ...(dockerPath === undefined ? {} : { dockerPath }),
+    // Identical searches are answered from the database: it outlives a restart and is shared.
+    searchCache: dbSearchCache(() => runtime.db),
+  });
   let egressStarted: Promise<EgressRuntime> | undefined;
   /** The internal network and the proxy: made once, at the first use of the docker sandbox. */
   const startEgress = (): Promise<EgressRuntime> => {
@@ -490,6 +531,8 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     const limits = bot.limits;
     const maxCostUsd = limits.maxCostUsd ?? config.defaults?.maxCostUsd;
     const maxDurationMs = limits.maxDurationMs ?? config.defaults?.maxDurationMs;
+    const maxReturns =
+      typeof limits.maxReturns === "number" ? limits.maxReturns : config.defaults?.maxReturns;
     return {
       id: bot.id,
       name: bot.name,
@@ -505,6 +548,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
         maxTurns: limits.maxTurns ?? config.defaults?.maxTurns ?? DEFAULT_MAX_TURNS,
         ...(maxCostUsd === undefined ? {} : { maxCostUsd }),
         ...(maxDurationMs === undefined ? {} : { maxDurationMs }),
+        ...(maxReturns === undefined ? {} : { maxReturns }),
       },
     };
   };
@@ -730,6 +774,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     let runTools = tools;
     let botCfg = cfg;
     let toolSearch: ToolSearchSetup | undefined;
+    let connectorNames: string[] = [];
     if (guarded) {
       const offered = await connectors.toolsForBot(bot.id);
       if (offered.tools.length > 0) {
@@ -747,12 +792,46 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
         toolSearch = toolSearchSetup(offered.candidates, bot.modelId);
       }
       botCfg = withNetworkTool(botCfg);
+      connectorNames = [
+        ...new Set((await listConnectorsForBot(handle, bot.id)).map((c) => c.name)),
+      ];
     }
+    // The welcome of the main bot may show the user a team to tick: its one extra tool.
+    const receptionKind: "general" | "bot" | undefined =
+      run.origin !== "reception" ? undefined : bot.isDefault ? "general" : "bot";
+    if (guarded && receptionKind === "general") {
+      if (runTools === tools) runTools = newRegistry();
+      runTools.register(proposeTeamTool(runtime));
+      botCfg = { ...botCfg, allowedTools: [...botCfg.allowedTools, PROPOSE_TEAM_TOOL] };
+    }
+    // The place of the bot in the team (docs/SUPERVISOR.md). The Principal gets the supervisor's
+    // two tools in a normal run (not in its welcome, and never in a delegated run: depth 1).
+    const supervisor: SupervisorRole | undefined =
+      !guarded || receptionKind !== undefined
+        ? undefined
+        : bot.isDefault !== true
+          ? "member"
+          : run.origin === "delegation"
+            ? undefined
+            : "principal";
+    if (supervisor === "principal") {
+      if (runTools === tools) runTools = newRegistry();
+      runTools.register(teamRecallTool(handle));
+      runTools.register(delegateTool(handle));
+      botCfg = { ...botCfg, allowedTools: [...botCfg.allowedTools, ...SUPERVISOR_TOOL_NAMES] };
+    }
+    const executor = await runtime.executorFor(bot.id);
     return {
-      store: new PgRunStore(handle, { workerId }),
+      // The bot's message goes in the same transaction as the status that parks or ends the run.
+      store: new PgRunStore(handle, {
+        workerId,
+        onStatusSet: async (tx, run) => {
+          await applyStatusEffects(tx, run);
+        },
+      }),
       provider: getProvider(bot.modelProvider),
       tools: runTools,
-      executor: await runtime.executorFor(bot.id),
+      executor,
       bot: botCfg,
       ...(reviewer === undefined ? {} : { reviewer }),
       // Uma execução isolada (uma avaliação) roda sem ninguém para responder e numa máquina
@@ -760,6 +839,9 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
       // outra execução passa pelo portão.
       ...(toolSearch === undefined ? {} : { toolSearch }),
       gate: guarded ? gateFor(runTools) : allowAllGate(),
+      // The bot may come back by itself (`schedule_return`) in a conversation run; an evaluation
+      // runs alone and without a chat, so it has no return.
+      ...(guarded ? { allowReturns: true } : {}),
       ...(vaultOn ? { secrets: vault.accessFor(bot.id) } : {}),
       // Uma execução isolada não carrega memória: nada do que o usuário contou chega a ela.
       ...(!guarded
@@ -774,14 +856,32 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
                 id,
                 config.defaults?.historyChars ?? DEFAULT_HISTORY_CHARS,
                 {
-                  promptLimitChars: memorySettings.promptLimitChars,
+                  promptLimitItems: memorySettings.promptLimitItems,
                   compactionThreshold: memorySettings.compactionThreshold,
                 },
               );
+              // What is true of THIS run, read once and recorded with the rest: when it started and
+              // the user's time zone, the other bots, what the machine is, the connectors granted.
+              const team = (await listBots(handle))
+                .filter((other) => other.id !== bot.id)
+                .map((other) => ({ name: other.name, description: other.description }));
+              const withFacts: RunContextSnapshot = {
+                ...snapshot,
+                now: { iso: new Date().toISOString(), timeZone: resolveTimeZone(config) },
+                team,
+                machine: {
+                  terminal: botCfg.allowedTools.includes("shell"),
+                  files: FILE_TOOL_NAMES.some((name) => botCfg.allowedTools.includes(name)),
+                  isolated: executor.isolated === true,
+                },
+                connectors: connectorNames,
+                ...(receptionKind === undefined ? {} : { reception: receptionKind }),
+                ...(supervisor === undefined ? {} : { supervisor }),
+              };
               // The model is told which secrets exist (names and purpose), never their values.
               return vault.status().ok
-                ? { ...snapshot, secrets: await vault.infoFor(bot.id) }
-                : snapshot;
+                ? { ...withFacts, secrets: await vault.infoFor(bot.id) }
+                : withFacts;
             },
             memoryFor: (record: { botId: string; id: string }) => {
               const writer = memoryModel();
@@ -813,6 +913,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
               });
             },
           }),
+      webFor: () => web.access,
       ...(sandbox.kind === "docker" && guarded
         ? {
             networkFor: (record: { botId: string; id: string }) => ({
@@ -871,7 +972,11 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
         getProvider(bot.modelProvider).capabilities,
       );
       const sent = [
-        ...controlToolSpecs({ secrets: vault.settings !== undefined, toolSearch: catalog.mode }),
+        ...controlToolSpecs({
+          secrets: vault.settings !== undefined,
+          scheduleReturn: true,
+          toolSearch: catalog.mode,
+        }),
         ...builtin,
         ...(catalog.mode === "direct"
           ? [...connectorSpecs.values()]
@@ -883,7 +988,8 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
       return {
         botId,
         builtinTools:
-          builtin.length + controlToolSpecs({ secrets: vault.settings !== undefined }).length,
+          builtin.length +
+          controlToolSpecs({ secrets: vault.settings !== undefined, scheduleReturn: true }).length,
         connectorTools: connectorSpecs.size,
         withheld: offered.withheld.length,
         mode: catalog.mode,
@@ -943,6 +1049,40 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
         ...(opts.log === undefined ? {} : { log: opts.log }),
       });
     },
+    async reviewOnce(opts = {}) {
+      const principal = await getDefaultBot(runtime.db);
+      if (principal === null) return null;
+      // A main bot whose model the configuration lacks (or whose key is missing) cannot review: quiet.
+      let resolved: ResolvedModel;
+      try {
+        resolved = resolveModel(principal.modelId);
+      } catch {
+        return null;
+      }
+      const { model, provider: providerEntry } = resolved;
+      if (!keyStatus(providerEntry.id).ok) return null;
+      return runNightlyReview({
+        db: runtime.db,
+        workerId: opts.workerId ?? `review-${hostname()}-${process.pid}`,
+        provider: getProvider(providerEntry.id),
+        model: {
+          id: model.id,
+          maxOutputTokens: model.maxOutputTokens,
+          pricing: model.pricing,
+          supportsForcedToolChoice: model.supportsForcedToolChoice,
+        },
+        timeZone: resolveTimeZone(config),
+        ...(opts.now === undefined ? {} : { now: () => opts.now as Date }),
+        ...(opts.log === undefined ? {} : { log: opts.log }),
+      });
+    },
+    async morningOnce(opts = {}) {
+      return runMorningMessage({
+        db: runtime.db,
+        timeZone: resolveTimeZone(config),
+        ...(opts.now === undefined ? {} : { now: () => opts.now as Date }),
+      });
+    },
     async createRun(input) {
       const bot = await getBot(runtime.db, input.botId);
       if (bot === null) {
@@ -979,6 +1119,9 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
           ...(opts.onlyRunId === undefined ? {} : { onlyRunId: opts.onlyRunId }),
           // What crashed the harness may have had a secret in its message: scrub it first.
           redact: (text) => runtime.redactJson(text),
+          onStatusSet: async (tx, run) => {
+            await applyStatusEffects(tx, run);
+          },
         }),
         buildDeps: (runId) => buildDeps(runId, workerId),
         // What must follow a run (the bot's message in the conversation, the journal) is derived
@@ -1013,6 +1156,28 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
                   },
                 },
                 {
+                  // The runs parked for a return that came due are woken here: the event and the
+                  // requeue happen in one transaction, so only one worker wakes each (docs/RETORNO.md).
+                  name: "wake-returns",
+                  everyMs: opts.wakeEveryMs ?? 5_000,
+                  run: async () => {
+                    await wakeDueRuns(runtime.db);
+                  },
+                },
+                {
+                  // The nightly review of the main bot and its morning message: the database
+                  // allows one review per night, so any number of workers can run them.
+                  name: "team-review",
+                  everyMs: opts.supervisorEveryMs ?? 60_000,
+                  run: async () => {
+                    await runtime.reviewOnce({
+                      workerId,
+                      log: (message) => opts.onError?.(new Error(message), "team review"),
+                    });
+                    await runtime.morningOnce();
+                  },
+                },
+                {
                   name: "memory-expiry",
                   everyMs: opts.memoryEveryMs?.expiry ?? 3_600_000,
                   run: async () => {
@@ -1030,7 +1195,9 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
         ...(opts.onError === undefined ? {} : { onError: opts.onError }),
       });
     },
+    webStatus: () => web.status(),
     async close() {
+      await web.close();
       await connectors.close();
       await containerLauncher?.closeAll();
       if (egressStarted !== undefined) {
@@ -1051,6 +1218,9 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
  * API key's environment variable is not set: the run that uses it records the failure (origin
  * `provider`) instead of the whole program refusing to start.
  */
+/** The tools that give a bot files on its machine (the names are declared by the tools). */
+const FILE_TOOL_NAMES = ["read_file", "write_file", "edit_file", "list_files", "search_files"];
+
 function unavailableProvider(id: string, message: string): Provider {
   return {
     id,

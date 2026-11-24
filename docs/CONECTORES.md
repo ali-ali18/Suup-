@@ -150,6 +150,10 @@ Quem suporta o quê é **declarado**, não adivinhado: por modelo, na configura�
 
 Lido em 19/11/2026 em https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-search-tool e https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-use-with-prompt-caching: sem cabeçalho beta; ferramenta de busca `{"type":"tool_search_tool_bm25_20251119","name":"tool_search_tool_bm25"}` (ou `..._regex_20251119` / `tool_search_tool_regex`) na lista `tools`, nunca adiada; as demais com `"defer_loading": true` e **todas** as definições em **todo** pedido; ao menos uma ferramenta não adiada; a resposta traz `server_tool_use` e `tool_search_tool_result` (com `tool_references`), que voltam **sem alteração** na conversa, **sem** `tool_result` para o `srvtoolu_...`; busca do cliente devolve `tool_result` com blocos `{"type":"tool_reference","tool_name":...}`; uma ferramenta adiada não pode ter `cache_control` (o ponto de cache vai na última ferramenta carregada). Modelos listados: Opus 4.5 em diante, Sonnet 4.5 em diante, Haiku 4.5 e os 5.x; **Opus 4.1 e anteriores não suportam**. Quem declara `nativeToolSearch` num modelo é a configuração. Os fixtures em `packages/providers/test/recorded/DOC-DERIVED-*` são **montados a partir da documentação, não capturados de uma chamada real**.
 
+## Busca na web por um conector (opcional)
+
+O Suup traz `web_search` e `web_read` próprios, de código aberto, sem provedor ([BUSCA.md](BUSCA.md)); **nenhum** conector de busca vem pronto nem é padrão. Quem quiser uma busca de um serviço (Brave, Tavily, Exa, Firecrawl...) acrescenta o servidor MCP dele como qualquer conector: `suup connectors add ...` com a chave no cofre (enviada como **cabeçalho**, nunca na URL), os `egressHosts` do serviço (o conector stdio sai só por eles) e a concessão ao bot. As ferramentas dele entram com o nome `conn_<conector>__<ferramenta>` e o nível de risco que **você** marcar. É escolha do usuário, por conta dele; o Suup não depende disso.
+
 ## Conteúdo não confiável e envenenamento de ferramentas
 
 Há **duas** portas por onde texto de um servidor chega ao modelo, e as duas são tratadas como dado, mas só uma delas dá para rotular:

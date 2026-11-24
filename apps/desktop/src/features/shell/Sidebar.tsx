@@ -128,6 +128,7 @@ function BotEntry({
             seed={bot.id}
             size={size}
             state={display.avatar}
+            supervisor={bot.isDefault}
           />
           {badge !== undefined && (
             <BotBadge

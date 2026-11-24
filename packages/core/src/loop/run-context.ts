@@ -2,12 +2,21 @@
 // `RunLoopOptions`, `ToolInvoker`), the `LoopContext` object every loop module receives instead of
 // a long parameter list, and the `Interrupted` signal used to unwind on a hard interruption.
 import type { ToolGate } from "../approvals/gate.js";
-import type { ContextItem, SecretInfo } from "../events.js";
+import type {
+  ContextItem,
+  MachineInfo,
+  ReceptionKind,
+  RunClock,
+  SecretInfo,
+  SupervisorRole,
+  Teammate,
+} from "../events.js";
 import type { Message } from "../messages.js";
 import type { Provider, ToolSpec } from "../provider.js";
 import type { InvokeOptions, ToolInvocation } from "../registry.js";
 import type { SecretAccess } from "../secrets.js";
 import type { Executor, MemoryService, NetworkAccess, ToolContext } from "../tool.js";
+import type { WebAccess } from "../web.js";
 import type { ModelPricing, ReviewerConfig } from "./reviewer.js";
 import type { RunState } from "./state.js";
 import type { RunRecord, RunStore } from "./store.js";
@@ -25,7 +34,7 @@ export interface BotConfig {
   };
   /** Names of registry tools the bot may use. The control tools are always available. */
   allowedTools: string[];
-  limits: { maxTurns: number; maxCostUsd?: number; maxDurationMs?: number };
+  limits: { maxTurns: number; maxCostUsd?: number; maxDurationMs?: number; maxReturns?: number };
 }
 
 /** The part of `ToolRegistry` the loop needs, so a replay invoker can stand in for it. */
@@ -54,10 +63,29 @@ export interface RunContextSnapshot {
   historyNote?: string;
   /** The secrets the bot may use: names and what they are for, never values. */
   secrets?: SecretInfo[];
+  /** When the run started and the user's time zone: taken once, recorded, never recomputed. */
+  now?: RunClock;
+  /** The user's other active bots (name and description). */
+  team?: Teammate[];
+  /** What the bot's machine is in this run (truthful). */
+  machine?: MachineInfo;
+  /** Names of the connectors granted to the bot. */
+  connectors?: string[];
+  /** The run is a reception (the welcome of the bot): which one. */
+  reception?: ReceptionKind;
+  /** The place of the bot in the team (docs/SUPERVISOR.md). */
+  supervisor?: SupervisorRole;
   /** Compact the history past this share of the context window (the user's setting; recorded). */
   compactionThreshold?: number;
   /** Rules and profile facts left out because they did not fit the size cap (recorded). */
-  memoryOmitted?: { count: number; chars: number; limitChars: number };
+  memoryOmitted?: {
+    count: number;
+    chars: number;
+    limitItems?: number;
+    ceilingChars?: number;
+    /** Only in a run recorded before the limit was counted in memories (it was in characters). */
+    limitChars?: number;
+  };
 }
 
 export interface LoopDeps {
@@ -106,6 +134,14 @@ export interface LoopDeps {
   toolSearch?: ToolSearchDeps;
   /** The network access the tools of this run may grant (only after an approved card). */
   networkFor?(run: RunRecord): NetworkAccess;
+  /** The web (search and the reader service) the tools of this run may use; see `web.ts`. */
+  webFor?(run: RunRecord): WebAccess;
+  /**
+   * The run may schedule its own return (`schedule_return`): set for a conversation run of the
+   * user, left out for an evaluation (isolated) run. It is also required that the run's origin is
+   * `user`. The tool is offered, or not, for the whole run.
+   */
+  allowReturns?: boolean;
   now(): Date;
   sleep(ms: number): Promise<void>;
 }

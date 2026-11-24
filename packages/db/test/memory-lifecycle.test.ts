@@ -13,6 +13,7 @@ import {
   getMemorySettings,
   listMemories,
   listMemoryRevisions,
+  MEMORY_PROMPT_CEILING_CHARS,
   MEMORY_SETTING_DEFAULTS,
   memoryContextFor,
   memoryPromptUsage,
@@ -40,7 +41,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("memory lifecycle (migration 0017)"),
       consolidationEnabled: true,
       idleMinutes: 5,
       maxTurns: 15,
-      promptLimitChars: 6000,
+      promptLimitItems: 200,
       expiryDays: 90,
       compactionThreshold: 0.8,
     });
@@ -49,7 +50,14 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("memory lifecycle (migration 0017)"),
     await expect(updateMemorySettings(ctx.db, { idleMinutes: 0 })).rejects.toThrow();
     await expect(updateMemorySettings(ctx.db, { idleMinutes: 121 })).rejects.toThrow();
     await expect(updateMemorySettings(ctx.db, { maxTurns: 2 })).rejects.toThrow();
-    await expect(updateMemorySettings(ctx.db, { promptLimitChars: 999 })).rejects.toThrow();
+    await expect(updateMemorySettings(ctx.db, { promptLimitItems: 19 })).rejects.toThrow();
+    await expect(updateMemorySettings(ctx.db, { promptLimitItems: 1001 })).rejects.toThrow();
+    expect((await updateMemorySettings(ctx.db, { promptLimitItems: 20 })).promptLimitItems).toBe(
+      20,
+    );
+    expect((await updateMemorySettings(ctx.db, { promptLimitItems: 1000 })).promptLimitItems).toBe(
+      1000,
+    );
     await expect(updateMemorySettings(ctx.db, { expiryDays: 6 })).rejects.toThrow();
     await expect(updateMemorySettings(ctx.db, { compactionThreshold: 0.49 })).rejects.toThrow();
     await expect(updateMemorySettings(ctx.db, { compactionThreshold: 0.96 })).rejects.toThrow();
@@ -107,7 +115,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("memory lifecycle (migration 0017)"),
     ).rejects.toThrow();
   });
 
-  it("caps what always enters the prompt, in creation order, and counts what was left out", async () => {
+  it("caps what always enters the prompt by memories, then by the character ceiling, in creation order", async () => {
     const bot = await newBot("capped");
     const made: string[] = [];
     for (const text of ["a".repeat(400), "b".repeat(400), "c".repeat(400), "d".repeat(10)]) {
@@ -118,20 +126,34 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("memory lifecycle (migration 0017)"),
     const before = await memoryContextFor(ctx.db, bot.id);
     const all = before.rules.length;
     expect(before.omitted).toEqual({ count: 0, chars: 0 });
-    const cap = before.totalChars - 400 - 10 + 1; // leaves out the last two of the bot's four
-    const capped = await memoryContextFor(ctx.db, bot.id, { limitChars: cap });
+    // by items: it keeps the first N and counts the rest, never skipping ahead
+    const capped = await memoryContextFor(ctx.db, bot.id, { limitItems: all - 2 });
     expect(capped.rules.length).toBe(all - 2);
     expect(capped.omitted).toEqual({ count: 2, chars: 410 });
     expect(capped.rules.map((m) => m.id)).not.toContain(made[3]);
-    // creation order: it stops at the first that does not fit, never skips ahead
-    const tiny = await memoryContextFor(ctx.db, bot.id, { limitChars: 1000 });
-    const kept = tiny.rules.reduce((n, m) => n + m.text.length, 0);
-    expect(kept).toBeLessThanOrEqual(1000);
+    // by the ceiling: the items still fit, the characters do not
+    const ceiling = before.totalChars - 400 - 10 + 1;
+    const tight = await memoryContextFor(ctx.db, bot.id, {
+      limitItems: 1000,
+      ceilingChars: ceiling,
+    });
+    expect(tight.rules.length).toBe(all - 2);
+    expect(tight.omitted).toEqual({ count: 2, chars: 410 });
+    // the ceiling is applied with the default (25,000) whenever there is an item limit
+    expect(MEMORY_PROMPT_CEILING_CHARS).toBe(25_000);
+    expect((await memoryContextFor(ctx.db, bot.id, { limitItems: 1000 })).omitted.count).toBe(0);
 
-    const usage = await memoryPromptUsage(ctx.db, 1000);
-    expect(usage.overBots.map((b) => b.botId)).toContain(bot.id);
-    const roomy = await memoryPromptUsage(ctx.db, 50_000);
+    const usage = await memoryPromptUsage(ctx.db, all - 1);
+    expect(usage.overBots.find((b) => b.botId === bot.id)).toMatchObject({
+      usedItems: all + before.profile.length,
+      usedChars: before.totalChars,
+    });
+    expect(usage).toMatchObject({ limitItems: all - 1, ceilingChars: 25_000 });
+    const roomy = await memoryPromptUsage(ctx.db, 1000);
     expect(roomy.overBots).toEqual([]);
+    // the ceiling alone also makes a bot "over"
+    const byChars = await memoryPromptUsage(ctx.db, 1000, before.totalChars - 1);
+    expect(byChars.overBots.map((b) => b.botId)).toContain(bot.id);
   });
 
   it("indexes the short fact with the text and ranks a summary hit first", async () => {

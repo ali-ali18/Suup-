@@ -33,6 +33,7 @@ COPY packages/runtime/package.json packages/runtime/
 COPY packages/sandbox/package.json packages/sandbox/
 COPY packages/server/package.json packages/server/
 COPY packages/tools/package.json packages/tools/
+COPY packages/web/package.json packages/web/
 # `build_ca` (opcional) é a CA do proxy de build; o Node só a lê neste RUN. NODE_USE_ENV_PROXY faz o
 # `fetch` do Node (corepack) respeitar HTTPS_PROXY quando ele é passado como build arg.
 RUN --mount=type=secret,id=build_ca,required=false,mode=0444 \

@@ -39,6 +39,10 @@
     "network": { "defaultHosts": ["registry.npmjs.org", "pypi.org", "files.pythonhosted.org"] },
     "connectors": { "image": "suup-connector-runner:dev" }
   },
+  "web": {
+    "search": { "engines": ["wikipedia", "arxiv", "stackoverflow"] },
+    "reader": { "image": "suup-reader:dev" }
+  },
   "worker": { "concurrency": 4, "leaseRenewMs": 10000, "staleAfterMs": 30000 },
   "defaults": { "maxTurns": 50, "maxCostUsd": 2, "maxDurationMs": 1800000 }
 }

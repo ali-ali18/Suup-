@@ -31,6 +31,24 @@ export interface MessageQuestion {
   reason?: "review_tie_break";
 }
 
+/** One bot proposed on a team card: what the draft feature wrote, for the user to tick. */
+export interface TeamProposalItem {
+  name: string;
+  description: string;
+  personality: string;
+}
+
+/**
+ * The team card of a bot message (docs/RECEPCAO.md): the proposals, and what the user decided.
+ * `pending` waits for the user; `created` lists the bots that were made from the ticked proposals
+ * (by index); `dismissed` is "Agora não". Only the user's decision, through the API, creates bots.
+ */
+export interface TeamProposal {
+  items: TeamProposalItem[];
+  status: "pending" | "created" | "dismissed";
+  created: { index: number; botId: string }[];
+}
+
 export interface Message {
   id: string;
   conversationId: string;
@@ -50,6 +68,8 @@ export interface Message {
   createdAt: Date;
   /** Present only on a bot message that asks the user something. */
   question?: MessageQuestion;
+  /** Present only on a bot message that proposes a team of bots. */
+  team?: TeamProposal;
 }
 
 export interface MessageRow {
@@ -63,6 +83,7 @@ export interface MessageRow {
   status: MessageStatus | null;
   created_at: Date;
   question: MessageQuestion | null;
+  team: TeamProposal | null;
 }
 
 export function mapMessage(row: MessageRow): Message {
@@ -78,6 +99,7 @@ export function mapMessage(row: MessageRow): Message {
     status: row.status,
     createdAt: row.created_at,
     ...(row.question === null || row.question === undefined ? {} : { question: row.question }),
+    ...(row.team === null || row.team === undefined ? {} : { team: row.team }),
   };
 }
 
@@ -93,6 +115,7 @@ const MESSAGE_COLUMNS = [
   "status",
   "created_at",
   "question",
+  "team",
 ];
 
 const uuidSchema = z.uuid();
@@ -123,6 +146,12 @@ const questionSchema = z.object({
   reason: z.exactOptional(z.literal("review_tie_break")),
 });
 
+export const teamProposalItemSchema = z.object({
+  name: z.string().trim().min(1).max(60),
+  description: z.string().trim().min(1).max(400),
+  personality: z.string().trim().min(1).max(6000),
+});
+
 const appendSchema = z
   .object({
     conversationId: uuidSchema,
@@ -133,6 +162,7 @@ const appendSchema = z
     status: z.exactOptional(z.enum(MESSAGE_STATUSES)),
     dedupeKey: z.exactOptional(z.string().min(1).max(200)),
     question: z.exactOptional(questionSchema),
+    team: z.exactOptional(z.array(teamProposalItemSchema).min(1).max(5)),
   })
   .superRefine((m, ctx) => {
     if ((m.authorKind === "bot") !== (m.authorBotId !== undefined)) {
@@ -147,6 +177,13 @@ const appendSchema = z
         code: "custom",
         path: ["question"],
         message: "question only applies to bot messages",
+      });
+    }
+    if (m.team !== undefined && m.authorKind !== "bot") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["team"],
+        message: "team only applies to bot messages",
       });
     }
     if (m.status !== undefined && m.authorKind !== "user") {
@@ -175,6 +212,8 @@ export interface AppendMessageInput {
   dedupeKey?: string;
   /** Bot messages only: the structured question (choices) this message asks. */
   question?: MessageQuestion;
+  /** Bot messages only: the bots this message proposes (a pending team card). */
+  team?: TeamProposalItem[];
 }
 
 /**
@@ -221,7 +260,7 @@ export async function appendMessageOnce(
       }
     }
     const [row] = await tx.sql<MessageRow[]>`
-      insert into messages (conversation_id, seq, author_kind, author_bot_id, text, run_id, status, dedupe_key, question, created_at)
+      insert into messages (conversation_id, seq, author_kind, author_bot_id, text, run_id, status, dedupe_key, question, team, created_at)
       values (
         ${m.conversationId},
         (select coalesce(max(seq), 0) + 1 from messages where conversation_id = ${m.conversationId}),
@@ -232,6 +271,7 @@ export async function appendMessageOnce(
         ${m.status ?? null},
         ${m.dedupeKey ?? null},
         ${m.question === undefined ? null : tx.sql.json(m.question)},
+        ${m.team === undefined ? null : tx.sql.json({ items: m.team, status: "pending", created: [] })},
         clock_timestamp()
       )
       returning ${tx.sql(MESSAGE_COLUMNS)}`;

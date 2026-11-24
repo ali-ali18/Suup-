@@ -1,6 +1,13 @@
 import type { Approval, PlanStep, Run, RunEvent } from "@suup/api";
 import { type CategoryIcon, NETWORK_TOOL, STATUS_LABEL, toolCategory } from "./approval-text.js";
-import { CONTROL_TOOLS, currentStep, resolveToolCall, SEARCH_TOOLS, toolLabel } from "./derive.js";
+import {
+  CONTROL_TOOLS,
+  currentStep,
+  resolveToolCall,
+  SEARCH_TOOLS,
+  SILENT_TOOLS,
+  toolLabel,
+} from "./derive.js";
 
 // What the bot DID, as the chat shows it: one card per tool call of a run, built from the run's
 // events (`tool_call` + `tool_result`). A call that had an approval card is still ONE row: the
@@ -167,6 +174,24 @@ export function describeAction(
         doing: where === undefined ? "Acessando uma página" : `Acessando ${where}`,
       };
     }
+    case "web_search": {
+      const query = text("query") === undefined ? undefined : clip(text("query") as string, 50);
+      return {
+        kind: "web",
+        ...label,
+        summary: query === undefined ? "Buscar na web" : `Buscar “${query}” na web`,
+        doing: query === undefined ? "Buscando na web" : `Buscando “${query}” na web`,
+      };
+    }
+    case "web_read": {
+      const where = text("url") === undefined ? undefined : host(text("url") as string);
+      return {
+        kind: "web",
+        ...label,
+        summary: where === undefined ? "Ler uma página" : `Ler ${where}`,
+        doing: where === undefined ? "Lendo uma página" : `Lendo ${where}`,
+      };
+    }
     case NETWORK_TOOL: {
       const where = text("host") === undefined ? undefined : clip(text("host") as string, 60);
       return {
@@ -201,6 +226,24 @@ export function describeAction(
       return memory("Esquecer uma memória", "Esquecendo uma memória");
     case "search_conversations":
       return memory("Buscar nas conversas", "Buscando nas conversas");
+    case "delegate": {
+      const to = text("bot") === undefined ? undefined : clip(text("bot") as string, 40);
+      return {
+        kind: "other",
+        ...label,
+        summary: to === undefined ? "Delegar uma tarefa" : `Delegar uma tarefa para ${to}`,
+        doing: to === undefined ? "Delegando uma tarefa" : `Delegando uma tarefa para ${to}`,
+      };
+    }
+    case "team_recall": {
+      const of = text("bot") === undefined ? undefined : clip(text("bot") as string, 40);
+      return {
+        kind: "other",
+        ...label,
+        summary: of === undefined ? "Consultar a equipe" : `Consultar a memória de ${of}`,
+        doing: of === undefined ? "Consultando a equipe" : `Consultando a memória de ${of}`,
+      };
+    }
     default:
       return {
         kind: "other",
@@ -245,7 +288,7 @@ export function actionsOf(
       if (callId === undefined || logged === undefined) continue;
       // A call through `use_tool` is the REAL tool: its row is that tool's, never the wrapper's.
       const { name, args } = resolveToolCall(logged, event.payload.args);
-      if (CONTROL_TOOLS.has(name)) continue;
+      if (CONTROL_TOOLS.has(name) || SILENT_TOOLS.has(name)) continue;
       if (byCall.has(callId)) continue;
       const item: ActionItem = {
         callId,
@@ -336,6 +379,8 @@ export function mergeApprovals(
       pending.push(approval);
       continue;
     }
+    // A decided approval of a silent tool (saving or forgetting a memory) leaves no row either.
+    if (SILENT_TOOLS.has(approval.tool)) continue;
     const args = asArgs(approval.args);
     calls.push({
       callId: approval.callId,
@@ -354,6 +399,16 @@ export function mergeApprovals(
   return { calls, pending };
 }
 
+/** How long a card waited, in the owner's words: "40 min", "5 h", "3 dias". */
+export function waitedText(ms: number): string {
+  const minutes = Math.max(1, Math.round(ms / 60_000));
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `${hours} h`;
+  const days = Math.round(hours / 24);
+  return `${days} dias`;
+}
+
 /**
  * The muted word before the summary of a call's row, in Portuguese, saying the decision and the
  * execution together ("Aprovado e concluído", "Recusado"). `undefined`: no approval, the row says
@@ -364,6 +419,10 @@ export function callStateLabel(item: ActionItem): string | undefined {
   if (item.blocked !== undefined) return "Bloqueado pela regra";
   if (approval === undefined) return undefined;
   if (approval.status !== "approved") return STATUS_LABEL[approval.status] ?? approval.status;
+  // Approved after waiting too long: the call did not run then (the bot asked again, or dropped it).
+  if (approval.stale && approval.waitedMs !== null) {
+    return `Aprovado depois de ${waitedText(approval.waitedMs)}`;
+  }
   if (item.fromApproval === true) return "Aprovado";
   switch (item.state) {
     case "running":

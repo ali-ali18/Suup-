@@ -1,7 +1,7 @@
 import { FAILURE_ORIGINS, RUN_ORIGINS, runStatusSchema } from "@suup/core";
 import { describeRunStoreContract } from "@suup/core/testing/store-contract";
 import { describe, expect, it } from "vitest";
-import { decideApproval, getRun, PgRunStore, postInbox } from "../src/index.js";
+import { decideApproval, getRun, PgRunStore, postInbox, wakeDueRuns } from "../src/index.js";
 import { DATABASE_URL, dbSuiteName, useIsolatedDb } from "./helpers.js";
 import { makeRun, uniqueWorkerId } from "./kit.js";
 
@@ -30,6 +30,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("PgRunStore"), () => {
         await db.sql`update runs set locked_by = 'someone-else', locked_at = now() where id = ${runId}`;
       },
       leased: async (runId) => (await getRun(db, runId))?.lockedBy != null,
+      wake: async (now) => (await wakeDueRuns(db, { now })).length,
       decideApproval: async (_runId, approvalId, decision) => {
         await decideApproval(db, approvalId, decision);
       },

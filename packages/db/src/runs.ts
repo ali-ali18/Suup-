@@ -39,6 +39,9 @@ export interface RunRow {
   paused_at: Date | null;
   interrupt_requested_at: Date | null;
   isolated: boolean;
+  wake_at: Date | null;
+  wake_note: string | null;
+  wake_count: number;
   created_at: Date;
   updated_at: Date;
   started_at: Date | null;
@@ -71,6 +74,9 @@ export function mapRun(row: RunRow): Run {
     pausedAt: row.paused_at,
     interruptRequestedAt: row.interrupt_requested_at,
     isolated: row.isolated,
+    wakeAt: row.wake_at,
+    wakeNote: row.wake_note,
+    wakeCount: row.wake_count,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     startedAt: row.started_at,
@@ -204,6 +210,11 @@ interface SetRunStatusBase {
   from: RunStatus | readonly RunStatus[];
   /** When given, replaces `result`; when omitted, `result` is left untouched. */
   result?: JsonValue;
+  /**
+   * Only with `to: "waiting_timer"`: when to wake the run, the note it left itself and how many
+   * returns fired in a row. Cleared on any other status (the count stays).
+   */
+  wake?: { at: string; note: string; count: number };
 }
 
 /** `failure` is required exactly when `to` is `"failed"`. */
@@ -234,6 +245,11 @@ export async function setRunStatus(
   );
   if (from.length === 0) throw new TypeError("setRunStatus: `from` must not be empty");
 
+  const wake = input.wake;
+  if (wake !== undefined && to !== "waiting_timer") {
+    throw new TypeError("setRunStatus: `wake` is only allowed when `to` is 'waiting_timer'");
+  }
+
   const failure = input.failure as RunFailure | undefined;
   if (to === "failed") {
     if (!failure) throw new TypeError("setRunStatus: `failure` is required when `to` is 'failed'");
@@ -249,6 +265,12 @@ export async function setRunStatus(
     sql`failure_detail = ${failure?.detail ?? null}`,
     terminal ? sql`finished_at = now()` : sql`finished_at = null`,
   ];
+  // A return only exists while the run is parked for it.
+  sets.push(
+    sql`wake_at = ${wake === undefined ? null : new Date(wake.at)}`,
+    sql`wake_note = ${wake?.note ?? null}`,
+  );
+  if (wake !== undefined) sets.push(sql`wake_count = ${wake.count}`);
   if (terminal) sets.push(sql`locked_by = null`, sql`locked_at = null`);
   // A pause (and a pending interrupt) only make sense while the run is queued or running; any
   // other status (finished, waiting for the user) ends them.
@@ -317,9 +339,22 @@ export async function addRunUsage(
 export async function releaseRun(db: Db, runId: string): Promise<Run | null> {
   const [row] = await db.sql<RunRow[]>`
     update runs set status = 'queued', locked_by = null, locked_at = null,
-      interrupt_requested_at = null,
+      interrupt_requested_at = null, wake_at = null, wake_note = null,
       paused_at = case when status in ('queued', 'running') then paused_at else null end
     where id = ${runId} and status not in ('done', 'failed', 'cancelled')
     returning *`;
   return row ? mapRun(row) : null;
+}
+
+/**
+ * Locks the conversation row of a run (if it has one), BEFORE the run's own row. Every transaction
+ * that changes a run's status and writes the bot's message (`onStatusSet`) takes the locks in this
+ * order, the same order as sending a message (conversation, then the run it posts to): opposite
+ * orders deadlock when the user answers just as the run parks.
+ */
+export async function lockConversationOfRun(tx: Db, runId: string): Promise<void> {
+  await tx.sql`
+    select c.id from conversations c
+    where c.id = (select r.conversation_id from runs r where r.id = ${runId})
+    for no key update`;
 }

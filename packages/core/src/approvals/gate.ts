@@ -7,6 +7,7 @@ import type { OutboundMessage } from "../outbound.js";
 import type { AssessOptions, ToolAssessment } from "../registry.js";
 import type { RiskLevel } from "../risk.js";
 import type { Executor } from "../tool.js";
+import type { WebUrlSource } from "../web.js";
 import {
   decidedBeforeReview,
   decidePolicy,
@@ -52,6 +53,8 @@ export interface GateCall {
    * oldest first. Never the assistant's text or a tool result. Only the loop fills it.
    */
   userMessages?: readonly string[] | undefined;
+  /** The URLs the run has seen and where each came from (the loop derives them from the log). */
+  webSeen?: ReadonlyMap<string, WebUrlSource> | undefined;
   /** The refusals the model reviewer already gave in this run (read from the log). */
   reviewBlocks?: { total: number; consecutive: number } | undefined;
   /** A review of THIS call already in the log (a resumed run): it is used, the model is not asked again. */
@@ -128,6 +131,16 @@ export interface ToolGateOptions {
   now(): Date;
 }
 
+/**
+ * The tools that keep the assistant's OWN memory. The model reviewer is not asked about them (at
+ * the reversible level): the owner's rule is that nothing the assistant writes in its memory waits
+ * for the user (docs/MEMORIA.md), and the memory has its own guards (the write review after the run
+ * read outside content, the history with undo). With the real model the reviewer asked a card for
+ * almost every fact the user mentioned, because the text says "Marina" and it cannot see the first
+ * message where the name was given. A level the user raised (`approvals.levels`) still applies.
+ */
+export const MEMORY_KEEPING_TOOLS: readonly string[] = ["remember", "forget"];
+
 /** A call that always asks, whatever the rules, the mode or the reviewer say (docs/APROVACOES.md). */
 function hardFloor(name: string, level: RiskLevel, assessed: ToolAssessment): string | undefined {
   if (name === NETWORK_ACCESS_TOOL) {
@@ -178,6 +191,7 @@ export function createToolGate(options: ToolGateOptions): ToolGate {
     async check(call) {
       const assessed = options.tools.assess(call.name, call.args, {
         executor: call.executor,
+        ...(call.webSeen === undefined ? {} : { webSeen: call.webSeen }),
         ...(call.allowed === undefined ? {} : { allowed: call.allowed }),
       });
       if (assessed === undefined) return null;
@@ -198,6 +212,7 @@ export function createToolGate(options: ToolGateOptions): ToolGate {
         options.written !== undefined &&
         mode === "auto_review" &&
         level !== "read" &&
+        !(level === "write_reversible" && MEMORY_KEEPING_TOOLS.includes(call.name)) &&
         early === undefined;
 
       let resolved: ReviewResolution | undefined;
@@ -365,6 +380,16 @@ export function createReplayGate(events: readonly { type: string; payload?: unkn
         ...(p.ruleId === undefined ? {} : { ruleId: p.ruleId }),
         ...(p.writtenRuleId === undefined ? {} : { writtenRuleId: p.writtenRuleId }),
         ...(p.reason === undefined ? {} : { reason: p.reason }),
+        summary: "",
+        secrets: [],
+        args: null,
+      });
+    } else if (event.type === "approval_grant_used") {
+      // The gate said "ask" and a late approval's grant stood in for the card: nothing else was logged.
+      verdicts.set(event.payload.callId, {
+        outcome: "ask",
+        source: "default",
+        level: "external_irreversible",
         summary: "",
         secrets: [],
         args: null,

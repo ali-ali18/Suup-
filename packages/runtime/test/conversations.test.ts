@@ -459,7 +459,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("conversation engine"), () => {
       await runtime.close();
     });
 
-    it("a run that ended before the hook ran (the process died) is caught up, once, by reconcile", async () => {
+    it("a run that ended before the hook ran (the process died) has its message already and is caught up, once, by reconcile", async () => {
       const runtime = await open(
         {
           agent: [{ calls: [call("shell", { command: "echo oi" })] }, { text: "Fiz." }],
@@ -470,11 +470,15 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("conversation engine"), () => {
       const bot = await newBot(runtime);
       const sent = await sendMessage(runtime, { botId: bot.id, text: "Faça" });
       const { conversationId } = sent.message;
-      // The loop finishes the run; the worker hook never runs.
+      // The loop finishes the run; the worker hook never runs. The bot's message does not depend on
+      // it: it was written in the transaction that set the status. Only the journal is missing.
       await claimRun(runtime.db, sent.run.id, "worker-x");
       const deps = await runtime.buildDeps(sent.run.id, "worker-x");
       expect(await runLoop(deps, sent.run.id)).toBe("done");
-      expect(await botMessages(runtime, conversationId)).toHaveLength(0);
+      expect((await botMessages(runtime, conversationId)).map((m) => m.text)).toEqual(["Fiz."]);
+      expect(
+        await listMemories(runtime.db, { layer: "journal", botId: bot.id, limit: 10 }),
+      ).toHaveLength(0);
 
       expect(await reconcileRunEffects(runtime.db)).toContain(sent.run.id);
       expect(await reconcileRunEffects(runtime.db)).not.toContain(sent.run.id);

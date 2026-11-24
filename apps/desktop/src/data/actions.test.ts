@@ -56,6 +56,14 @@ describe("describeAction: kind, label, and the two one-line descriptions", () =>
       "Acessando example.com",
     ],
     ["web_fetch", { url: "não é url" }, "Web", "Acessar não é url", "Acessando não é url"],
+    [
+      "web_search",
+      { query: "agentes de IA" },
+      "Web",
+      "Buscar “agentes de IA” na web",
+      "Buscando “agentes de IA” na web",
+    ],
+    ["web_read", { url: "https://exemplo.com/a/b" }, "Web", "Ler exemplo.com", "Lendo exemplo.com"],
     ["remember", {}, "Memória", "Salvar na memória", "Salvando na memória"],
     ["recall", {}, "Memória", "Consultar a memória", "Consultando a memória"],
     ["forget", {}, "Memória", "Esquecer uma memória", "Esquecendo uma memória"],
@@ -85,6 +93,9 @@ describe("actionsOf", () => {
       call(3, "b", "edit_file", { path: "a.ts", old_string: "x", new_string: "y" }),
       call(4, "c", "escalate"),
       call(5, "d", "read_file", { path: "z" }),
+      // The bot's own return has no card: its message is the whole notice.
+      call(8, "r", "schedule_return", { inMinutes: 1, note: "conferir" }),
+      result(9, "r", "Retorno agendado"),
       result(6, "a", "arquivos"),
       result(7, "b", "falhou", true),
     ]);
@@ -260,6 +271,8 @@ describe("one vocabulary: the action row and the decision card name a tool the s
     ["read_file", {}],
     ["write_file", {}],
     ["web_fetch", {}],
+    ["web_search", {}],
+    ["web_read", {}],
     ["remember", {}],
     ["algo_novo", {}],
     ["conn_erp__criar_pedido", {}],
@@ -330,6 +343,19 @@ describe("mergeApprovals: one row per tool call, the link is the call id", () =>
     expect(calls).toHaveLength(1);
     expect(calls[0]).toMatchObject({ callId: "w", state: "running", kindLabel: "Arquivo" });
     expect(callStateLabel(calls[0] as ActionItem)).toBe("Aprovado, rodando");
+  });
+
+  it("approved after waiting too long: the row says how long, whatever happened to the call", () => {
+    const stale = { stale: true, waitedMs: 5 * 3_600_000 };
+    const held = merge([write(), result(2, "w", "Aviso do sistema")], [approvalOf(stale)]);
+    expect(callStateLabel(held.calls[0] as ActionItem)).toBe("Aprovado depois de 5 h");
+    const running = merge([write()], [approvalOf({ stale: true, waitedMs: 40 * 60_000 })]);
+    expect(callStateLabel(running.calls[0] as ActionItem)).toBe("Aprovado depois de 40 min");
+    const days = merge([write()], [approvalOf({ stale: true, waitedMs: 72 * 3_600_000 })]);
+    expect(callStateLabel(days.calls[0] as ActionItem)).toBe("Aprovado depois de 3 dias");
+    // A fresh approval says nothing about time.
+    const fresh = merge([write(), result(2, "w", "ok")], [approvalOf({ waitedMs: 5000 })]);
+    expect(callStateLabel(fresh.calls[0] as ActionItem)).toBe("Aprovado e concluído");
   });
 
   it("approved and done: one row with the result", () => {
@@ -496,5 +522,32 @@ describe("mergeApprovals: one row per tool call, the link is the call id", () =>
     expect(
       entries.map((e) => (e.kind === "fold" ? `fold(${e.items.length})` : e.item.callId)),
     ).toEqual(["fold(2)", "d", "c4", "c5", "c6"]);
+  });
+});
+
+describe("memory housekeeping is not shown in the chat (owner's rule)", () => {
+  it("saving and forgetting a memory leave no row and no 'working' indicator; reading stays", () => {
+    const events = [
+      call(1, "a", "remember", { layer: "note", text: "Prova na sexta." }),
+      result(2, "a"),
+      call(3, "b", "forget", { id: "m1" }),
+      result(4, "b"),
+      call(5, "c", "recall", { query: "prova" }),
+      result(6, "c"),
+      call(7, "d", "search_conversations", { query: "prova" }),
+      result(8, "d"),
+    ];
+    expect(actionsOf("r", events).map((a) => a.name)).toEqual(["recall", "search_conversations"]);
+    // a save that has not returned yet is not "what the bot is doing" either
+    expect(runningTool([call(1, "a", "remember", { layer: "note", text: "x" })])).toBeUndefined();
+    expect(runningTool([call(1, "c", "recall", { query: "x" })])).toBe("recall");
+  });
+
+  it("a decided approval of a memory save leaves no row; a pending one still waits for the user", () => {
+    const decided = makeApproval({ id: "ap1", tool: "remember", status: "approved", callId: "z" });
+    const waiting = makeApproval({ id: "ap2", tool: "forget", status: "pending", callId: "y" });
+    const { calls, pending } = mergeApprovals([], [decided, waiting]);
+    expect(calls).toEqual([]);
+    expect(pending.map((a) => a.id)).toEqual(["ap2"]);
   });
 });

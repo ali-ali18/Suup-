@@ -11,6 +11,7 @@ export {
   DEFAULT_SERVER,
   DEFAULT_WORKER,
   describeIssues,
+  isTimeZone,
   type LoadConfigOptions,
   type LoadedConfig,
   loadConfig,
@@ -19,6 +20,7 @@ export {
   parseConfig,
   type RuntimeConfig,
   resolveDatabaseUrl,
+  resolveTimeZone,
   type SandboxEntry,
   type ServerConfig,
 } from "./config.js";
@@ -92,8 +94,18 @@ export {
   createNetworkService,
   type NetworkService,
 } from "./network/service.js";
+export {
+  PROPOSE_TEAM_TOOL,
+  proposeTeamTool,
+  type ReceptionStart,
+  receptionObjective,
+  resetBotReception,
+  startBotReception,
+  TEAM_CARD_TEXT,
+} from "./reception.js";
 export { DEFAULT_HISTORY_CHARS, loadRunContext } from "./run-context.js";
 export {
+  applyStatusEffects,
   finishRun,
   journalSummary,
   journalText,
@@ -101,6 +113,7 @@ export {
   type RunEffects,
   type RunEndOptions,
   reconcileRunEffects,
+  writeOutcomeMessage,
 } from "./run-end.js";
 export {
   type AutoReviewStatus,
@@ -129,6 +142,20 @@ export {
   pendingSecretRequest,
   type SecretAnswer,
 } from "./secret-request.js";
+export {
+  DELEGATE_TOOL,
+  delegatedObjective,
+  delegateTool,
+  REVIEW_LEASE_MS,
+  type ReviewDeps,
+  type ReviewOutcome,
+  returnDelegatedResult,
+  runMorningMessage,
+  runNightlyReview,
+  SUPERVISOR_TOOL_NAMES,
+  TEAM_RECALL_TOOL,
+  teamRecallTool,
+} from "./supervisor.js";
 export {
   decrypt,
   encrypt,

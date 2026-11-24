@@ -25,7 +25,16 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("migration 0017: memory consolidation
     const dir = await mkdtemp(join(tmpdir(), "suup-migrations-"));
     await cp(MIGRATIONS_DIR, dir, { recursive: true });
     const held = (await readdir(MIGRATIONS_DIR)).filter((f) => f >= "0017" && f.endsWith(".sql"));
-    expect(held).toEqual(["0017_memory_consolidation.sql", "0018_search_any_word.sql"]);
+    expect(held).toEqual([
+      "0017_memory_consolidation.sql",
+      "0018_search_any_word.sql",
+      "0019_waiting_timer.sql",
+      "0020_memory_prompt_limit_items.sql",
+      "0021_stale_approvals.sql",
+      "0022_reception.sql",
+      "0023_supervisor.sql",
+      "0024_web_search_cache.sql",
+    ]);
     for (const file of held) await rm(join(dir, file));
     await migrate(ctx.db, dir);
 
@@ -67,7 +76,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("migration 0017: memory consolidation
       consolidationEnabled: true,
       idleMinutes: 5,
       maxTurns: 15,
-      promptLimitChars: 6000,
+      promptLimitItems: 200,
       expiryDays: 90,
       compactionThreshold: 0.8,
     });

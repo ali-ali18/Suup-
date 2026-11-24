@@ -10,6 +10,38 @@ const local = (h: number, m = 0, d = 18) => new Date(2026, 10, d, h, m, 0).toISO
 const kinds = (items: ReturnType<typeof buildTimeline>) => items.map((i) => i.kind);
 const none: ActionItem[] = [];
 
+describe("buildTimeline: the team card", () => {
+  const conversationId = makeMessage().conversationId;
+
+  it("a bot message that proposes a team is the team card, not a bubble, and it keeps its state", () => {
+    const team = {
+      items: [{ name: "Casa", description: "Rotina.", personality: "Você organiza." }],
+      status: "pending" as const,
+      created: [],
+    };
+    const items = buildTimeline(
+      [
+        makeMessage({
+          conversationId,
+          seq: 1,
+          authorKind: "bot",
+          authorBotId: "b1",
+          text: "Montei uma proposta de equipe para você.",
+          createdAt: local(14, 1),
+          team,
+        }),
+      ],
+      {},
+      none,
+      NOW,
+    );
+    expect(kinds(items)).toEqual(["separator", "team"]);
+    expect(items[1]).toMatchObject({ kind: "team", team });
+    // It is a card: it breaks the groups of bubbles around it.
+    expect(bubblePositions(items).size).toBe(0);
+  });
+});
+
 describe("buildTimeline", () => {
   const conversationId = makeMessage().conversationId;
   const msg = (seq: number, over = {}) =>
@@ -356,6 +388,21 @@ describe("buildTimeline: approval cards and secure forms among the bot's actions
     const card = makeApproval({ runId: run.id, createdAt: local(14, 5) });
     const items = buildTimeline([opener], { [run.id]: run }, none, NOW, 3, { approvals: [card] });
     expect(kinds(items)).toEqual(["separator", "user", "approval"]);
+  });
+
+  it("a run parked for a return of its own has no marker at all: the bot's message is the whole notice", () => {
+    const parked = { ...run, status: "waiting_timer" as const };
+    const said = makeMessage({
+      conversationId,
+      seq: 2,
+      createdAt: local(14, 5),
+      authorKind: "bot",
+      authorBotId: parked.botId,
+      runId: parked.id,
+      text: "Disparei o deploy, volto em 1 minuto.",
+    });
+    const items = buildTimeline([opener, said], { [parked.id]: parked }, none, NOW, 3);
+    expect(kinds(items)).toEqual(["separator", "user", "bot"]);
   });
 
   it("a card of a run no message opened yet still shows at the end", () => {

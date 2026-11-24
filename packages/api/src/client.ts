@@ -34,6 +34,8 @@ import {
   type ListBotsQuery,
   type ModelInfo,
   modelListSchema,
+  type ServerInfo,
+  serverInfoSchema,
   type ToolInfo,
   toolListSchema,
   type UpdateBotBody,
@@ -59,11 +61,16 @@ import {
   type Conversation,
   conversationListSchema,
   conversationSchema,
+  type DecideTeamBody,
+  type DecideTeamResult,
+  decideTeamResultSchema,
   type ListConversationsQuery,
   type ListMessagesQuery,
   type MarkReadBody,
   type Message,
   messagePageSchema,
+  type ReceptionResult,
+  receptionResultSchema,
   type SendMessageResult,
   sendMessageResultSchema,
 } from "./conversations.js";
@@ -110,6 +117,14 @@ import {
 } from "./runs.js";
 import { errorOf, type SubscribeOptions, type Subscription, subscribe } from "./subscribe.js";
 import {
+  type ListTeamReviewsQuery,
+  type SupervisorSettings,
+  supervisorSettingsSchema,
+  type TeamReview,
+  teamReviewListSchema,
+  type UpdateSupervisorSettingsBody,
+} from "./supervisor.js";
+import {
   type AnswerSecretRequestBody,
   type AnswerSecretRequestResult,
   answerSecretRequestResultSchema,
@@ -148,6 +163,7 @@ function queryString(query: Query | undefined): string {
 }
 
 const healthSchema = z.object({ status: z.literal("ok") });
+const resetReceptionSchema = z.object({ reset: z.literal(true) });
 const deletedSchema = z.object({ deleted: z.literal(true) });
 const secretRequestAnswerSchema = z.object({ request: secretRequestSchema.nullable() });
 
@@ -155,6 +171,8 @@ export interface SuupClient {
   /** `GET /health`: no token needed. */
   health(): Promise<{ status: "ok" }>;
   models: { list(): Promise<ModelInfo[]> };
+  /** `GET /v1/info`: the time zone the bots use, from the server's configuration (read-only). */
+  info(): Promise<ServerInfo>;
   tools: { list(): Promise<{ items: ToolInfo[]; control: string[] }> };
   bots: {
     list(query?: ListBotsQuery): Promise<Bot[]>;
@@ -167,6 +185,13 @@ export interface SuupClient {
     openConversation(id: string): Promise<Conversation>;
     /** A proposal (name, description, personality) from a free-text description. Creates nothing. */
     draft(body: DraftBotBody): Promise<BotDraft>;
+    /**
+     * The open of the bot's chat asks for its welcome (docs/RECEPCAO.md). Idempotent: it starts at
+     * most once, however many times, and from however many windows, it is called.
+     */
+    startReception(id: string): Promise<ReceptionResult>;
+    /** "Refazer a recepção": the next open of the chat starts the welcome again. */
+    resetReception(id: string): Promise<void>;
   };
   conversations: {
     list(query?: ListConversationsQuery): Promise<Conversation[]>;
@@ -177,6 +202,8 @@ export interface SuupClient {
     ): Promise<{ items: Message[]; hasMore: boolean }>;
     send(id: string, text: string): Promise<SendMessageResult>;
     markRead(id: string, body?: MarkReadBody): Promise<Conversation>;
+    /** The user's decision on a team card (the message that carries it): create the ticked ones, or "Agora não". */
+    decideTeam(messageId: string, body: DecideTeamBody): Promise<DecideTeamResult>;
   };
   runs: {
     list(query?: ListRunsQuery): Promise<{ items: Run[]; hasMore: boolean }>;
@@ -210,6 +237,15 @@ export interface SuupClient {
     undo(id: string, revisionId: string): Promise<Memory>;
     /** The attempts of the background consolidation, newest first. */
     consolidations(query?: ListMemoryConsolidationsQuery): Promise<MemoryConsolidation[]>;
+  };
+  /** The Principal as the supervisor of the team (docs/SUPERVISOR.md). */
+  supervisor: {
+    settings: {
+      get(): Promise<SupervisorSettings>;
+      update(body: UpdateSupervisorSettingsBody): Promise<SupervisorSettings>;
+    };
+    /** The history of the nightly reviews, newest first. */
+    reviews(query?: ListTeamReviewsQuery): Promise<TeamReview[]>;
   };
   memorySettings: {
     get(): Promise<MemorySettings>;
@@ -385,6 +421,7 @@ export function createClient(options: ClientOptions): SuupClient {
   return {
     health: () => call("GET", "/health", healthSchema, { auth: false }),
     models: { list: async () => (await call("GET", "/v1/models", modelListSchema)).items },
+    info: () => call("GET", "/v1/info", serverInfoSchema),
     tools: { list: () => call("GET", "/v1/tools", toolListSchema) },
     bots: {
       list: async (query) =>
@@ -397,6 +434,11 @@ export function createClient(options: ClientOptions): SuupClient {
       openConversation: (botId) =>
         call("POST", `/v1/bots/${id(botId)}/conversation`, conversationSchema, noBody),
       draft: (body) => call("POST", "/v1/bots/draft", botDraftSchema, { body, timeoutMs: 180_000 }),
+      startReception: (botId) =>
+        call("POST", `/v1/bots/${id(botId)}/reception`, receptionResultSchema, noBody),
+      resetReception: async (botId) => {
+        await call("POST", `/v1/bots/${id(botId)}/reception/reset`, resetReceptionSchema, noBody);
+      },
     },
     conversations: {
       list: async (query) =>
@@ -414,6 +456,11 @@ export function createClient(options: ClientOptions): SuupClient {
       send: (conversationId, text) =>
         call("POST", `/v1/conversations/${id(conversationId)}/messages`, sendMessageResultSchema, {
           body: { text },
+        }),
+      decideTeam: (messageId, body) =>
+        call("POST", `/v1/messages/${id(messageId)}/team`, decideTeamResultSchema, {
+          body,
+          timeoutMs: 60_000,
         }),
       markRead: (conversationId, body = {}) =>
         call("POST", `/v1/conversations/${id(conversationId)}/read`, conversationSchema, { body }),
@@ -471,6 +518,19 @@ export function createClient(options: ClientOptions): SuupClient {
       consolidations: async (query) =>
         (
           await call("GET", "/v1/memory-consolidations", memoryConsolidationListSchema, {
+            query: query as Query | undefined,
+          })
+        ).items,
+    },
+    supervisor: {
+      settings: {
+        get: () => call("GET", "/v1/supervisor/settings", supervisorSettingsSchema),
+        update: (body) =>
+          call("PATCH", "/v1/supervisor/settings", supervisorSettingsSchema, { body }),
+      },
+      reviews: async (query) =>
+        (
+          await call("GET", "/v1/supervisor/reviews", teamReviewListSchema, {
             query: query as Query | undefined,
           })
         ).items,

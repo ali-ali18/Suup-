@@ -89,6 +89,9 @@ export function InspectorScreen() {
         subtitle={
           <>
             Execução {runId.slice(0, 8)} · {run?.status ?? "…"}
+            {run?.status === "waiting_timer" && run.wakeAt != null
+              ? ` (volta às ${new Date(run.wakeAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })})`
+              : ""}
             {run?.objective === undefined ? "" : ` · ${run.objective}`}
           </>
         }

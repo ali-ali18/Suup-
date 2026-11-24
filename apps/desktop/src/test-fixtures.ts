@@ -105,6 +105,7 @@ export function makeConversation(over: Partial<Conversation> = {}): Conversation
     lastReadSeq: 0,
     unreadCount: 0,
     activeRun: null,
+    reception: "done",
     ...over,
   };
 }
@@ -157,6 +158,8 @@ export function makeApproval(over: Partial<Approval> = {}): Approval {
     expiresAt: null,
     decidedAt: null,
     createdAt: iso(),
+    waitedMs: null,
+    stale: false,
     ...over,
   };
 }

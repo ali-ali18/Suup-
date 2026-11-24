@@ -3,7 +3,7 @@
 // guard), and handing tool calls over to execution.
 
 import { EMPTY_RESPONSE_NUDGE, stoppedWithOpenStepsNudge, TRUNCATED_NUDGE } from "./prompts.js";
-import { end, fail, nudge } from "./recording.js";
+import { end, fail, nudge, transition } from "./recording.js";
 import type { LoopContext } from "./run-context.js";
 import { MAX_NO_PROGRESS_TURNS } from "./safe-point.js";
 import type { PendingResponse } from "./state.js";
@@ -39,6 +39,9 @@ async function handleTextOnly(
   } else if (text === "") {
     reason = "empty_response";
     nudgeText = EMPTY_RESPONSE_NUDGE;
+  } else if (state.wait !== null && !state.wait.parked) {
+    // The bot scheduled a return and this is its message to the user: the run is parked for it.
+    return parkForReturn(ctx, text);
   } else if (!state.hasPlan) {
     // A simple question: the text is the answer.
     return end(ctx, "done", { result: { summary: text } });
@@ -62,4 +65,19 @@ function textOf(pending: PendingResponse): string {
     .flatMap((b) => (b.type === "text" ? [b.text] : []))
     .join("\n")
     .trim();
+}
+
+/**
+ * Settles the run into `waiting_timer`: the turn ended with the bot's message to the user (kept in
+ * the status change, which is where the runtime reads the chat message from), and the run waits
+ * for the instant it scheduled. Nothing holds a worker meanwhile.
+ */
+async function parkForReturn(ctx: LoopContext, message: string): Promise<RunStatus> {
+  const wait = ctx.state.wait;
+  if (wait === null) return (await ctx.deps.store.getRun(ctx.runId)).status;
+  const ok = await transition(ctx, "running", "waiting_timer", {
+    wake: { at: wait.at, note: wait.note, count: ctx.state.wakeCount, message },
+    requeueIfInbox: true,
+  });
+  return ok ? "waiting_timer" : (await ctx.deps.store.getRun(ctx.runId)).status;
 }

@@ -3,7 +3,8 @@ import { cancelPendingApprovals } from "./approvals.js";
 import { type Db, withTransaction } from "./client.js";
 import { appendRunEvent } from "./events.js";
 import { postInbox } from "./inbox.js";
-import { mapRun, type RunRow, setRunStatus } from "./runs.js";
+import type { RunStatusHook } from "./pg-store.js";
+import { lockConversationOfRun, mapRun, type RunRow, setRunStatus } from "./runs.js";
 import type { Run } from "./types.js";
 
 export type RunControlErrorCode = "not_found" | "finished" | "not_pausable" | "not_paused";
@@ -58,7 +59,9 @@ export async function pauseRun(
         "not_pausable",
         run.status === "waiting_user"
           ? "A execução está esperando a sua resposta; não há o que pausar."
-          : "A execução está esperando uma aprovação; não há o que pausar.",
+          : run.status === "waiting_timer"
+            ? "A execução está parada até a hora do retorno que ela marcou; não há o que pausar."
+            : "A execução está esperando uma aprovação; não há o que pausar.",
       );
     }
     const interrupt = options.hard === true && run.status === "running";
@@ -99,7 +102,8 @@ export async function resumeRun(db: Db, runId: string): Promise<Run> {
  * at a safe point and the run ends `cancelled`), clears a pause so a worker can take the run to
  * apply it, and, when the run is working right now, also asks for a hard interrupt so it does not
  * go on for a whole turn first. A run waiting for the user is put back in the queue by the post.
- * A run waiting for an approval is cancelled directly (no worker holds it), and so is a run that is
+ * A run waiting for an approval is cancelled directly (no worker holds it), and so is a run parked
+ * for a return of its own (`waiting_timer`; its pending return is cancelled in the log), and so is a run that is
  * still queued and has never started (its log is empty: there is nothing to unwind, and waiting
  * for a worker that may never come would leave it queued forever). A queued run that already has a
  * log (it was requeued after an answer, or a lease expired) still goes through the loop, which
@@ -107,8 +111,14 @@ export async function resumeRun(db: Db, runId: string): Promise<Run> {
  *
  * Applying it otherwise needs a worker alive. Throws `RunControlError`: `not_found`, `finished`.
  */
-export async function cancelRun(db: Db, runId: string): Promise<Run> {
+export async function cancelRun(
+  db: Db,
+  runId: string,
+  options: { onStatusSet?: RunStatusHook } = {},
+): Promise<Run> {
   return withTransaction(db, async (tx) => {
+    // The hook writes to the conversation: lock it before the run (`lockConversationOfRun`).
+    if (options.onStatusSet !== undefined) await lockConversationOfRun(tx, runId);
     const run = await lockRun(tx, runId);
     if (TERMINAL.has(run.status)) {
       throw new RunControlError("finished", "A execução já terminou e não pode ser cancelada.");
@@ -127,7 +137,24 @@ export async function cancelRun(db: Db, runId: string): Promise<Run> {
         to: "cancelled",
       });
       const done = await setRunStatus(tx, run.id, { from: "waiting_approval", to: "cancelled" });
-      if (done !== null) return done;
+      if (done !== null) {
+        await options.onStatusSet?.(tx, done);
+        return done;
+      }
+    }
+    if (run.status === "waiting_timer") {
+      // Parked for a return of its own: nobody holds it, so it ends right here. The return does not
+      // fire any more; the log says why, then the run ends.
+      await appendRunEvent(tx, run.id, "wait_cancelled", { reason: "cancelled" });
+      await appendRunEvent(tx, run.id, "status_changed", {
+        from: "waiting_timer",
+        to: "cancelled",
+      });
+      const done = await setRunStatus(tx, run.id, { from: "waiting_timer", to: "cancelled" });
+      if (done !== null) {
+        await options.onStatusSet?.(tx, done);
+        return done;
+      }
     }
     if (run.status === "queued") {
       const [{ n } = { n: 0 }] = await tx.sql<{ n: number }[]>`
@@ -135,7 +162,10 @@ export async function cancelRun(db: Db, runId: string): Promise<Run> {
       if (n === 0) {
         await appendRunEvent(tx, run.id, "status_changed", { from: "queued", to: "cancelled" });
         const done = await setRunStatus(tx, run.id, { from: "queued", to: "cancelled" });
-        if (done !== null) return done;
+        if (done !== null) {
+          await options.onStatusSet?.(tx, done);
+          return done;
+        }
       }
     }
     // A card of this run may already exist while the run is still `running` (the loop logs the

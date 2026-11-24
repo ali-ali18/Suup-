@@ -125,6 +125,8 @@ export {
   MESSAGE_PREVIEW_LENGTH,
   type MessagePreview,
   markConversationRead,
+  RECEPTION_STATES,
+  type ReceptionState,
   removeMember,
 } from "./conversations.js";
 export {
@@ -220,6 +222,7 @@ export {
 } from "./memory-consolidation.js";
 export {
   getMemorySettings,
+  MEMORY_PROMPT_CEILING_CHARS,
   MEMORY_SETTING_DEFAULTS,
   MEMORY_SETTING_LIMITS,
   type MemorySettings,
@@ -249,6 +252,9 @@ export {
   type SearchMessagesOptions,
   searchMessages,
   searchMessagesBroadening,
+  type TeamProposal,
+  type TeamProposalItem,
+  teamProposalItemSchema,
 } from "./messages.js";
 export {
   MIGRATIONS_DIR,
@@ -270,7 +276,7 @@ export {
   removeBotHost,
 } from "./network.js";
 export { PgRunQueue } from "./pg-queue.js";
-export { PgRunStore, type PgRunStoreOptions } from "./pg-store.js";
+export { PgRunStore, type PgRunStoreOptions, type RunStatusHook } from "./pg-store.js";
 export {
   heartbeatRun,
   type RequeueStaleOptions,
@@ -279,6 +285,12 @@ export {
   renewLease,
   requeueStaleRuns,
 } from "./queue.js";
+export {
+  finishReception,
+  resetReception,
+  type StartReceptionResult,
+  startReception,
+} from "./reception.js";
 export {
   cancelRun,
   pauseRun,
@@ -321,6 +333,57 @@ export {
   SecretNotFoundError,
   type SecretRow,
 } from "./secrets.js";
+export {
+  advanceReviewCursors,
+  type CreateDelegationInput,
+  claimTeamReview,
+  createDelegation,
+  type Delegation,
+  DelegationError,
+  type FinishTeamReviewInput,
+  finishTeamReview,
+  getDelegationByRun,
+  getSupervisorSettings,
+  getTeamReview,
+  hadActivity,
+  listDelegationsFrom,
+  listTeamReviews,
+  lockOwnTeamReview,
+  MAX_OPEN_DELEGATIONS,
+  markDelegationReturned,
+  postMorningMessage,
+  principalNotes,
+  REVIEW_MAX_ATTEMPTS,
+  REVIEW_RETRY_AFTER_MS,
+  type ReviewBotRead,
+  type ReviewLeftOver,
+  type ReviewNoted,
+  readTeamMemory,
+  SUPERVISOR_DEFAULTS,
+  type SupervisorSettings,
+  type SupervisorSettingsPatch,
+  supervisorSettingsPatchSchema,
+  TEAM_REVIEW_STATUSES,
+  type TeamBotActivity,
+  type TeamMemoryEntry,
+  type TeamReview,
+  type TeamReviewStatus,
+  teamActivity,
+  teamBotOverview,
+  updateSupervisorSettings,
+} from "./supervisor.js";
+export {
+  formatClockTime,
+  type LocalClock,
+  localClock,
+  parseClockTime,
+} from "./supervisor-time.js";
+export {
+  decideTeamProposal,
+  type TeamBotDefaults,
+  type TeamPick,
+  TeamProposalError,
+} from "./team-proposals.js";
 export type {
   Bot,
   BotLimits,
@@ -333,16 +396,28 @@ export type {
   RunOrigin,
   RunStatus,
 } from "./types.js";
+export { type WakeDueOptions, type WokenRun, wakeDueRuns } from "./wake.js";
+export {
+  clearWebSearchCache,
+  getWebSearchCache,
+  putWebSearchCache,
+  type WebSearchCacheRow,
+} from "./web-search-cache.js";
 export {
   type CreateWrittenRuleInput,
   createWrittenRule,
+  DEFAULT_STALE_APPROVAL_MINUTES,
   deleteWrittenRule,
   getApprovalMode,
+  getStaleApprovalMinutes,
   getWrittenRule,
   type ListWrittenRulesOptions,
   listWrittenRules,
+  STALE_APPROVAL_MAX_MINUTES,
+  STALE_APPROVAL_MIN_MINUTES,
   type StoredWrittenRule,
   setApprovalMode,
+  setStaleApprovalMinutes,
   type UpdateWrittenRuleInput,
   updateWrittenRule,
   WrittenRuleError,

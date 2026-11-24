@@ -181,19 +181,65 @@ export type UncheckedItem = z.infer<typeof uncheckedItemSchema>;
 export const contextItemSchema = z.object({ id: z.string(), text: z.string() });
 export type ContextItem = z.infer<typeof contextItemSchema>;
 
+/** The moment the run started and the user's time zone (an IANA name), fixed for the whole run. */
+export const runClockSchema = z.object({ iso: z.string(), timeZone: z.string() });
+export type RunClock = z.infer<typeof runClockSchema>;
+
+/** Another active bot of the user, as the bots tell each other apart: name and what it is for. */
+export const teammateSchema = z.object({ name: z.string(), description: z.string() });
+export type Teammate = z.infer<typeof teammateSchema>;
+
+/** What the bot's machine is, truthfully, for this run. */
+export const machineInfoSchema = z.object({
+  /** The bot has a terminal (`shell`). */
+  terminal: z.boolean(),
+  /** The bot has file tools. */
+  files: z.boolean(),
+  /** The machine is isolated from the user's own computer (a container). */
+  isolated: z.boolean(),
+});
+export type MachineInfo = z.infer<typeof machineInfoSchema>;
+
+/**
+ * The welcome of a bot (docs/RECEPCAO.md): `general` is the one of the main bot (a few questions
+ * about the user, then a team proposal); `bot` is the one every other bot has about its own role.
+ */
+export const RECEPTION_KINDS = ["general", "bot"] as const;
+export const receptionKindSchema = z.enum(RECEPTION_KINDS);
+export type ReceptionKind = z.infer<typeof receptionKindSchema>;
+
+/**
+ * The place of the bot in the team, for the prompt (docs/SUPERVISOR.md): `principal` is the main
+ * bot with the supervisor's tools in this run (`team_recall`, `delegate`); `member` is any other bot.
+ * Absent when the run is not told (a reception, an evaluation, an older recording).
+ */
+export const SUPERVISOR_ROLES = ["principal", "member"] as const;
+export const supervisorRoleSchema = z.enum(SUPERVISOR_ROLES);
+export type SupervisorRole = z.infer<typeof supervisorRoleSchema>;
+
+/** Why a pending return was dropped: the user wrote, the run was stopped, a new call replaced it, or the run finished. */
+export const WAIT_CANCEL_REASONS = ["user_message", "cancelled", "replaced", "finished"] as const;
+export type WaitCancelReason = (typeof WAIT_CANCEL_REASONS)[number];
+
 export const runStatusSchema = z.enum([
   "queued",
   "running",
   "waiting_approval",
   "waiting_user",
+  /** Parked by `schedule_return` until `wake_at`: no worker holds it (docs/RETORNO.md). */
+  "waiting_timer",
   "done",
   "failed",
   "cancelled",
 ]);
 export type RunStatus = z.infer<typeof runStatusSchema>;
 
-/** What opened a run (section 4.1 of the plan). */
-export const RUN_ORIGINS = ["user", "routine", "delegation", "proactive"] as const;
+/**
+ * What opened a run (section 4.1 of the plan). `reception` is the welcome of a bot, which starts on
+ * its own the first time the user opens its chat (docs/RECEPCAO.md); like `user`, it is the
+ * foreground run of its conversation.
+ */
+export const RUN_ORIGINS = ["user", "routine", "delegation", "proactive", "reception"] as const;
 export const runOriginSchema = z.enum(RUN_ORIGINS);
 export type RunOrigin = z.infer<typeof runOriginSchema>;
 
@@ -265,6 +311,21 @@ export const runEventSchema = z.discriminatedUnion("type", [
       /** The secrets the bot may use (names and what they are for; never values). */
       secrets: z.exactOptional(z.array(secretInfoSchema)),
       /**
+       * When the run started and the user's time zone. Taken ONCE here (never from the clock again),
+       * so the system prompt is byte-identical on every request and a replay says the same.
+       */
+      now: z.exactOptional(runClockSchema),
+      /** The other active bots of the user, loaded once per run. */
+      team: z.exactOptional(z.array(teammateSchema)),
+      /** What the bot's machine is in this run. */
+      machine: z.exactOptional(machineInfoSchema),
+      /** The names of the connectors granted to the bot (the tools are in the tool index). */
+      connectors: z.exactOptional(z.array(z.string())),
+      /** Set when the run is a reception: which one. */
+      reception: z.exactOptional(receptionKindSchema),
+      /** The place of the bot in the team (docs/SUPERVISOR.md). */
+      supervisor: z.exactOptional(supervisorRoleSchema),
+      /**
        * The share of the context window past which this run compacts its history (the user's
        * setting at the start of the run). Recorded so that a replay compacts at the same point.
        * Absent in a run recorded before it existed: the old default (0.7) applies.
@@ -272,14 +333,18 @@ export const runEventSchema = z.discriminatedUnion("type", [
       compactionThreshold: z.exactOptional(z.number().min(0.1).max(0.99)),
       /**
        * Rules and profile facts that did not fit under the size cap of what always enters the
-       * prompt (`memory.promptLimitChars`) and were left out, in creation order. Nothing is cut
-       * silently: this says how much, so the app can ask the user to trim.
+       * prompt (`promptLimitItems` memories, default 200, or the `ceilingChars` safety ceiling, 25,000
+       * characters) and were left out, in creation order. Nothing is cut silently: this says how
+       * much, so the app can ask the user to trim. A run recorded before the limit was counted in
+       * memories has `limitChars` instead of `limitItems` and `ceilingChars`: it still parses.
        */
       memoryOmitted: z.exactOptional(
         z.object({
           count: z.number().int().nonnegative(),
           chars: z.number().int().nonnegative(),
-          limitChars: z.number().int().positive(),
+          limitItems: z.exactOptional(z.number().int().positive()),
+          ceilingChars: z.exactOptional(z.number().int().positive()),
+          limitChars: z.exactOptional(z.number().int().positive()),
         }),
       ),
     }),
@@ -356,6 +421,16 @@ export const runEventSchema = z.discriminatedUnion("type", [
       inboxIds: z.exactOptional(z.array(z.string())),
       /** Set on the answer to `search_tools` with client-side tool search: the tools it loads. */
       toolReferences: z.exactOptional(z.array(z.string())),
+      /**
+       * The URLs (normalized) this result put in front of the model: the hits of a `web_search`, the
+       * links of a page read with `web_read`. From the next call on `web_read` may open them without
+       * a card (docs/BUSCA.md). Part of the log so a replay clears the same addresses.
+       */
+      webUrls: z.exactOptional(z.array(z.string())),
+      /** `web_read`: how the address was cleared (`approved`: the user said yes on a card). */
+      urlProvenance: z.exactOptional(
+        z.enum(["user_message", "search_result", "page_link", "approved"]),
+      ),
     }),
   }),
   z.object({
@@ -428,6 +503,34 @@ export const runEventSchema = z.discriminatedUnion("type", [
     }),
   }),
   z.object({
+    /**
+     * An approved card waited longer than the staleness limit (`approvals.staleAfterMinutes`, kept
+     * by the server). Written right after the `approval_decided` that approved it, from numbers the
+     * store recorded when the user decided: `waitedMs` and the `thresholdMs` it was measured
+     * against. The call is NOT run: the model is told, and the approval stays as a one-time grant
+     * for the identical call within this run (`approval_grant_used`).
+     */
+    type: z.literal("approval_stale"),
+    payload: z.object({
+      approvalId: z.string(),
+      callId: z.string(),
+      waitedMs: z.number().int().nonnegative(),
+      thresholdMs: z.number().int().nonnegative(),
+    }),
+  }),
+  z.object({
+    /**
+     * A call identical (same tool, same arguments, compared exactly) to one approved late ran
+     * without a new card, consuming that approval's grant. `callId` is the NEW call.
+     */
+    type: z.literal("approval_grant_used"),
+    payload: z.object({
+      approvalId: z.string(),
+      callId: z.string(),
+      tool: z.string(),
+    }),
+  }),
+  z.object({
     /** The bot asks the user for a credential; the answer is only that it is now available. */
     type: z.literal("secret_requested"),
     payload: z.object({
@@ -447,6 +550,12 @@ export const runEventSchema = z.discriminatedUnion("type", [
       text: z.string(),
       /** The inbox item this event delivers. A resumed loop never delivers the same id twice. */
       inboxId: z.exactOptional(z.string()),
+      /**
+       * The card the user had just denied, when this message was delivered after that denial and
+       * before the model's next request (decided by the order of the log, never by the text).
+       * The model reads the message as being about that denied action.
+       */
+      linkedApprovalId: z.exactOptional(z.string()),
     }),
   }),
   z.object({
@@ -619,6 +728,39 @@ export const runEventSchema = z.discriminatedUnion("type", [
       /** Set when the change is a cancellation asked for through the inbox (the `stop` items). */
       inboxIds: z.exactOptional(z.array(z.string())),
     }),
+  }),
+  z.object({
+    /**
+     * The bot asked to come back by itself (`schedule_return`). `at` is the instant, ISO 8601, fixed
+     * when the call was made (so a resumed or replayed run never recomputes it). One pending return
+     * per run: a second call logs `wait_cancelled` (`replaced`) and then a new `wait_scheduled`.
+     */
+    type: z.literal("wait_scheduled"),
+    payload: z.object({
+      at: z.string(),
+      note: z.string(),
+      minutes: z.number().int().positive(),
+      /** The `schedule_return` call that asked for it (a resumed run does not log it twice). */
+      callId: z.exactOptional(z.string()),
+    }),
+  }),
+  z.object({
+    /**
+     * The return came due. Written by the database job that wakes the run, in the same transaction
+     * that makes the run claimable again (so it is written exactly once); the resumed loop reads
+     * it and tells the model. `delayMs` is how late it fired (a worker that was down): it fires once.
+     */
+    type: z.literal("wait_fired"),
+    payload: z.object({
+      at: z.string(),
+      note: z.string(),
+      delayMs: z.exactOptional(z.number().int().nonnegative()),
+    }),
+  }),
+  z.object({
+    /** The pending return will not fire: why. */
+    type: z.literal("wait_cancelled"),
+    payload: z.object({ reason: z.enum(WAIT_CANCEL_REASONS) }),
   }),
   z.object({
     type: z.literal("compacted"),

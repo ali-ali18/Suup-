@@ -2,8 +2,9 @@ import type { FailureOrigin, RunQueue } from "@suup/core";
 import { expireOverdueApprovals } from "./approvals.js";
 import { type Db, withTransaction } from "./client.js";
 import { appendRunEvent } from "./events.js";
+import type { RunStatusHook } from "./pg-store.js";
 import { releaseLeasedRun, requeueStaleRuns } from "./queue.js";
-import { claimNextRun, claimRun, setRunStatus } from "./runs.js";
+import { claimNextRun, claimRun, lockConversationOfRun, setRunStatus } from "./runs.js";
 
 /** Claims remembered per queue object; older ones are forgotten (their runs are long finished). */
 const MAX_REMEMBERED = 10_000;
@@ -21,6 +22,7 @@ export class PgRunQueue implements RunQueue {
   readonly #onlyRunId: string | undefined;
   readonly #claimedBy = new Map<string, string>();
   readonly #redact: ((text: string) => string | Promise<string>) | undefined;
+  readonly #onStatusSet: RunStatusHook | undefined;
 
   /**
    * With `onlyRunId`, the queue only ever hands out that one run (when it is queued). `redact`
@@ -30,8 +32,14 @@ export class PgRunQueue implements RunQueue {
    */
   constructor(
     db: Db,
-    options: { onlyRunId?: string; redact?: (text: string) => string | Promise<string> } = {},
+    options: {
+      onlyRunId?: string;
+      redact?: (text: string) => string | Promise<string>;
+      /** Same hook as `PgRunStoreOptions.onStatusSet`, for the failure `fail` writes. */
+      onStatusSet?: RunStatusHook;
+    } = {},
   ) {
+    this.#onStatusSet = options.onStatusSet;
     this.#db = db;
     this.#onlyRunId = options.onlyRunId;
     this.#redact = options.redact;
@@ -73,6 +81,8 @@ export class PgRunQueue implements RunQueue {
     const detail = this.#redact === undefined ? failure.detail : await this.#redact(failure.detail);
     failure = { origin: failure.origin, detail };
     await withTransaction(this.#db, async (tx) => {
+      // The hook writes to the conversation: lock it before the run (`lockConversationOfRun`).
+      if (this.#onStatusSet !== undefined) await lockConversationOfRun(tx, runId);
       const [row] = await tx.sql<{ status: string; locked_by: string | null }[]>`
         select status, locked_by from runs where id = ${runId} for no key update`;
       if (row === undefined || row.locked_by !== workerId) return;
@@ -84,11 +94,12 @@ export class PgRunQueue implements RunQueue {
         { from: row.status, to: "failed", failure },
         { leaseHolder: workerId },
       );
-      await setRunStatus(tx, runId, {
+      const failed = await setRunStatus(tx, runId, {
         from: row.status as "running",
         to: "failed",
         failure,
       });
+      if (failed !== null) await this.#onStatusSet?.(tx, failed);
     });
   }
 }

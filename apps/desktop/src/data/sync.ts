@@ -290,6 +290,56 @@ export class Sync {
     }
   }
 
+  /**
+   * The user opened the bot's chat: if its welcome is due (the conversation says `pending`, or the
+   * user asked to redo it), ask the server to start it. The server decides, once, whatever the
+   * number of windows (docs/RECEPCAO.md); the run and its messages arrive on the stream.
+   */
+  async startReceptionIfDue(bot: Bot, conversation: Conversation): Promise<void> {
+    if (conversation.reception !== "pending" && conversation.reception !== "redo") return;
+    try {
+      const result = await this.deps.api.bots.startReception(bot.id);
+      if (result.started) await this.refreshConversationRow(conversation.id);
+    } catch (error) {
+      this.fail(error);
+    }
+  }
+
+  /** "Refazer a recepção": the next open of the bot's chat starts the welcome again. */
+  async resetReception(bot: Bot): Promise<{ ok: true } | { ok: false; message: string }> {
+    try {
+      await this.deps.api.bots.resetReception(bot.id);
+      if (bot.conversationId !== null) await this.refreshConversationRow(bot.conversationId);
+      return { ok: true };
+    } catch (error) {
+      return {
+        ok: false,
+        message: error instanceof Error ? error.message : "Não foi possível refazer a recepção.",
+      };
+    }
+  }
+
+  /**
+   * The user's decision on a team card. Nothing is optimistic: the card changes when the server
+   * answers (the bots it created are merged at once; the stream says the same later).
+   */
+  async decideTeam(
+    messageId: string,
+    body: Parameters<SuupClient["conversations"]["decideTeam"]>[1],
+  ): Promise<{ ok: true } | { ok: false; message: string }> {
+    try {
+      const result = await this.deps.api.conversations.decideTeam(messageId, body);
+      update(this.store, (s) => upsertMessage(s, result.message));
+      for (const bot of result.bots) update(this.store, (s) => mergeBot(s, bot));
+      return { ok: true };
+    } catch (error) {
+      return {
+        ok: false,
+        message: error instanceof Error ? error.message : "Não foi possível decidir a proposta.",
+      };
+    }
+  }
+
   /** From now on the conversation is on screen: fetch it and keep it fresh on `resync`. */
   async watchConversation(conversationId: string): Promise<void> {
     this.watched.add(conversationId);

@@ -12,6 +12,7 @@ export const ACTIVE_RUN_STATUSES = [
   "running",
   "waiting_user",
   "waiting_approval",
+  "waiting_timer",
 ] as const;
 
 /** Thrown when the conversation cannot take the message (a group, an archived bot...). */
@@ -29,8 +30,9 @@ export interface SendConversationMessageResult {
 }
 
 /**
- * The foreground run of a conversation: the user-origin run that is not finished, if any. There is
- * at most one (a unique index guarantees it).
+ * The foreground run of a conversation: the run of the user (or the welcome of the bot, which is
+ * the foreground run until it ends) that is not finished, if any. There is at most one (a unique
+ * index guarantees it).
  */
 export async function getActiveConversationRun(
   db: Db,
@@ -39,7 +41,7 @@ export async function getActiveConversationRun(
   const [row] = await db.sql<RunRow[]>`
     select * from runs
     where conversation_id = ${z.uuid().parse(conversationId)}
-      and origin = 'user'
+      and origin in ('user', 'reception', 'delegation')
       and status = any(${ACTIVE_RUN_STATUSES as unknown as string[]}::text[])
     order by created_at, id
     limit 1`;
@@ -90,14 +92,21 @@ async function sendOnce(
   conversationId: string,
   text: string,
 ): Promise<SendConversationMessageResult> {
-  const [conv] = await tx.sql<{ kind: string; archived_at: Date | null }[]>`
-    select kind, archived_at from conversations where id = ${conversationId} for no key update`;
+  const [conv] = await tx.sql<{ kind: string; archived_at: Date | null; reception: string }[]>`
+    select kind, archived_at, reception from conversations where id = ${conversationId} for no key update`;
   if (!conv) throw new ConversationNotFoundError(conversationId);
   if (conv.archived_at !== null) {
     throw new ConversationSendError("Cannot send messages to an archived conversation");
   }
   if (conv.kind !== "direct") {
     throw new ConversationSendError("Group conversations do not take messages yet");
+  }
+
+  // The user speaks first: a welcome that has not started yields to what they wrote (they never
+  // get a welcome on top of their own request). A `redo` is the user's own wish and stays; a welcome
+  // that is already running is the active run below, and its inbox gets the message.
+  if (conv.reception === "pending") {
+    await tx.sql`update conversations set reception = 'done' where id = ${conversationId}`;
   }
 
   const active = await getActiveConversationRun(tx, conversationId);
@@ -198,7 +207,7 @@ export async function listActiveConversationRuns(
   const rows = await db.sql<RunRow[]>`
     select * from runs
     where conversation_id = any(${ids}::uuid[])
-      and origin = 'user'
+      and origin in ('user', 'reception', 'delegation')
       and status = any(${ACTIVE_RUN_STATUSES as unknown as string[]}::text[])`;
   return new Map(rows.map((row) => [row.conversation_id as string, mapRun(row)]));
 }

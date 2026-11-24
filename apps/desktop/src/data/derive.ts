@@ -64,21 +64,39 @@ export const TOOL_LABEL: Record<string, string> = {
   list_files: "Listar arquivos",
   search_files: "Buscar nos arquivos",
   web_fetch: "Acessar página",
+  web_search: "Buscar na web",
+  web_read: "Ler página",
   remember: "Salvar na memória",
   recall: "Consultar memória",
   forget: "Esquecer",
   search_conversations: "Buscar nas conversas",
   request_network_access: "Acesso à rede",
   search_tools: "Procurar ferramentas",
+  delegate: "Delegar",
+  team_recall: "Consultar a equipe",
 };
 
-/** The control tools are not cards: `request_secret` is the secure form, not an "action". */
+/**
+ * The control tools are not cards: `request_secret` is the secure form, not an "action", and
+ * `schedule_return` has no mark of its own (the bot says it in its message; docs/RETORNO.md), and
+ * `propose_team` is the team card (docs/RECEPCAO.md).
+ */
 export const CONTROL_TOOLS: ReadonlySet<string> = new Set([
   "plan",
   "finish",
   "escalate",
   "request_secret",
+  "schedule_return",
+  "propose_team",
 ]);
+
+/**
+ * The tools whose calls the chat never shows as a row or an indicator (docs/DESIGN.md, owner's rule:
+ * "Eu não quero ter que ficar gerenciando memória"): saving and forgetting a memory are the bot's
+ * own housekeeping. Reading (`recall`, `search_conversations`) stays a row, because it explains an
+ * answer. A card that WAITS for the user (an approval) is still shown: only the finished call is quiet.
+ */
+export const SILENT_TOOLS: ReadonlySet<string> = new Set(["remember", "forget"]);
 
 export const toolLabel = (name: string): string => TOOL_LABEL[name] ?? name;
 
@@ -150,7 +168,7 @@ export function runningTool(events: readonly RunEvent[]): string | undefined {
     const logged = str(event.payload.name);
     if (callId === undefined || logged === undefined) continue;
     const { name } = resolveToolCall(logged, event.payload.args);
-    if (CONTROL_TOOLS.has(name)) continue;
+    if (CONTROL_TOOLS.has(name) || SILENT_TOOLS.has(name)) continue;
     if (!resolved.has(callId)) return name;
   }
   return undefined;
@@ -213,6 +231,10 @@ function displayOfRun(
       return display("doubt", "doubt", true);
     case "waiting_approval":
       return display("permission", "permission", true);
+    case "waiting_timer":
+      // The bot parked itself until the time it scheduled (and said so in its own message): no
+      // marker, no activity, nothing to answer. It looks like a bot that is simply there.
+      return display(null, "idle", false);
     case "queued":
       if (run.paused) return display("paused", "paused", true);
       if (run.startedAt !== null) return display("resuming", "thinking", true);

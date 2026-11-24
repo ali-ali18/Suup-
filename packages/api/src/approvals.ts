@@ -74,6 +74,13 @@ export const approvalSchema = z.object({
   expiresAt: isoDate.nullable(),
   decidedAt: isoDate.nullable(),
   createdAt: isoDate,
+  /** How long the card waited until the user decided it, in milliseconds; `null` while it is pending. */
+  waitedMs: z.number().int().nonnegative().nullable(),
+  /**
+   * The card was approved after waiting longer than the staleness limit: the action did NOT run
+   * then; the bot was told and the approval is kept as a one-time grant for the identical call.
+   */
+  stale: z.boolean(),
 });
 export type Approval = z.infer<typeof approvalSchema>;
 
@@ -220,8 +227,16 @@ export type ApprovalMode = z.infer<typeof approvalModeSchema>;
  * reviewer is not available, `auto_review` still works as the table of risk levels does (reads and
  * reversible writes run; what goes out or cannot be undone asks) and `reviewer.reason` says why.
  */
+export const STALE_AFTER_MINUTES_MIN = 5;
+export const STALE_AFTER_MINUTES_MAX = 10080;
+
 export const approvalSettingsSchema = z.object({
   mode: approvalModeSchema,
+  /**
+   * `approvals.staleAfterMinutes`: approving a card that waited longer than this does not run the
+   * action at once (default 60; from 5 minutes to 1 week). Cards still never expire by themselves.
+   */
+  staleAfterMinutes: z.number().int().min(STALE_AFTER_MINUTES_MIN).max(STALE_AFTER_MINUTES_MAX),
   reviewer: z.object({
     available: z.boolean(),
     /** The model that reviews, as configured; `null` when none is. */
@@ -232,7 +247,19 @@ export const approvalSettingsSchema = z.object({
 });
 export type ApprovalSettings = z.infer<typeof approvalSettingsSchema>;
 
-export const updateApprovalSettingsBodySchema = z.strictObject({ mode: approvalModeSchema });
+export const updateApprovalSettingsBodySchema = z
+  .strictObject({
+    mode: approvalModeSchema.optional(),
+    staleAfterMinutes: z
+      .number()
+      .int()
+      .min(STALE_AFTER_MINUTES_MIN)
+      .max(STALE_AFTER_MINUTES_MAX)
+      .optional(),
+  })
+  .refine((b) => b.mode !== undefined || b.staleAfterMinutes !== undefined, {
+    message: "Informe mode ou staleAfterMinutes.",
+  });
 export type UpdateApprovalSettingsBody = z.input<typeof updateApprovalSettingsBodySchema>;
 
 // ---- decision ----------------------------------------------------------------------------

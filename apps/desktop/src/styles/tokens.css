@@ -97,6 +97,8 @@
   --size-avatar-sm: 28px;
   --size-avatar-md: 36px;
   --size-avatar-lg: 48px;
+  --size-star-badge: 14px; /* the star on the main bot's avatar (docs/DESIGN.md §5): small and calm */
+  --size-star-badge-lg: 18px; /* ...on the large avatars (panel, preview) */
   --width-sidebar: 316px; /* owner's layout: expanded sidebar */
   --width-rail: 110px; /* owner's layout: narrow icon rail on the left */
   --width-panel: 450px; /* owner's layout: bot panel on the right */

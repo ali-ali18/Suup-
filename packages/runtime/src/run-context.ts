@@ -4,6 +4,7 @@ import {
   type Db,
   getRun,
   listMessages,
+  MEMORY_PROMPT_CEILING_CHARS,
   memoryContextFor,
 } from "@suup/db";
 
@@ -33,14 +34,14 @@ export async function loadRunContext(
   db: Db,
   runId: string,
   historyChars: number = DEFAULT_HISTORY_CHARS,
-  settings: { promptLimitChars?: number; compactionThreshold?: number } = {},
+  settings: { promptLimitItems?: number; compactionThreshold?: number } = {},
 ): Promise<RunContextSnapshot> {
   const run = await getRun(db, runId);
   if (run === null) throw new Error(`run ${runId} not found`);
   const memory = await memoryContextFor(
     db,
     run.botId,
-    settings.promptLimitChars === undefined ? {} : { limitChars: settings.promptLimitChars },
+    settings.promptLimitItems === undefined ? {} : { limitItems: settings.promptLimitItems },
   );
   const rules = memory.rules.map((m) => ({ id: m.id, text: m.text }));
   const profile = memory.profile.map((m) => ({ id: m.id, text: m.text }));
@@ -49,8 +50,14 @@ export async function loadRunContext(
     ...(settings.compactionThreshold === undefined
       ? {}
       : { compactionThreshold: settings.compactionThreshold }),
-    ...(memory.omitted.count > 0 && settings.promptLimitChars !== undefined
-      ? { memoryOmitted: { ...memory.omitted, limitChars: settings.promptLimitChars } }
+    ...(memory.omitted.count > 0 && settings.promptLimitItems !== undefined
+      ? {
+          memoryOmitted: {
+            ...memory.omitted,
+            limitItems: settings.promptLimitItems,
+            ceilingChars: MEMORY_PROMPT_CEILING_CHARS,
+          },
+        }
       : {}),
   };
   if (run.conversationId === null || run.conversationId === undefined) {

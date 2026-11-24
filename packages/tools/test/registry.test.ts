@@ -13,6 +13,8 @@ describe("builtin tools", () => {
       "list_files",
       "search_files",
       "web_fetch",
+      "web_search",
+      "web_read",
     ]);
     const fresh = registerBuiltinTools(new ToolRegistry());
     expect(fresh.list().length).toBe(builtinTools.length + memoryTools.length);
@@ -43,6 +45,8 @@ describe("builtin tools", () => {
       list_files: "read",
       search_files: "read",
       web_fetch: "read",
+      web_search: "read",
+      web_read: "read",
     });
   });
 
@@ -78,11 +82,14 @@ describe("builtin tools", () => {
     expect(info.shell).toEqual([["command"], false]);
     expect(info.web_fetch).toEqual([["url", "headers.*"], true]);
     expect(info.write_file).toEqual([[], false]);
+    // Search and read carry no secret and bring everything from outside.
+    expect(info.web_search).toEqual([[], true]);
+    expect(info.web_read).toEqual([[], true]);
   });
 
   it("does not include tools that belong elsewhere", () => {
     const names = builtinTools.map((t) => t.name);
-    for (const absent of ["web_search", "plan", "finish", "escalate"]) {
+    for (const absent of ["plan", "finish", "escalate"]) {
       expect(names).not.toContain(absent);
     }
   });

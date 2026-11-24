@@ -4,6 +4,14 @@ import { type Db, withTransaction } from "./client.js";
 export type ConversationKind = "direct" | "group";
 export const CONVERSATION_KINDS = ["direct", "group"] as const;
 
+/**
+ * Where the welcome of a conversation's bot is (docs/RECEPCAO.md): `pending` not started (a new
+ * conversation is born so), `started` its run was opened, `done` over or dismissed, `redo` the user
+ * asked to do it again.
+ */
+export type ReceptionState = "pending" | "started" | "done" | "redo";
+export const RECEPTION_STATES = ["pending", "started", "done", "redo"] as const;
+
 export interface ConversationMember {
   botId: string;
   /** Denormalized from `bots` so a list screen needs no second query. */
@@ -36,6 +44,8 @@ export interface Conversation {
   archivedAt: Date | null;
   /** The user has read the conversation up to this message `seq` (0: nothing read yet). */
   lastReadSeq: number;
+  /** The state of the welcome of the bot of this conversation. */
+  reception: ReceptionState;
 }
 
 /** A conversation with its members, a preview of its last message and its unread count. */
@@ -70,6 +80,7 @@ export interface ConversationRow {
   last_message_at: Date | null;
   archived_at: Date | null;
   last_read_seq: string;
+  reception: ReceptionState;
 }
 
 interface MemberRow {
@@ -100,6 +111,7 @@ function mapConversation(row: ConversationRow): Conversation {
     lastMessageAt: row.last_message_at,
     archivedAt: row.archived_at,
     lastReadSeq: Number(row.last_read_seq),
+    reception: row.reception,
   };
 }
 

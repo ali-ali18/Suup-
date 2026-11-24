@@ -8,12 +8,16 @@ import {
 import {
   addJournalMemory,
   appendMessageOnce,
+  ConversationNotFoundError,
+  ConversationRuleError,
   type Db,
+  finishReception,
   getRun,
   type MessageQuestion,
   type Run,
   rolloverUnreadMessages,
 } from "@suup/db";
+import { returnDelegatedResult } from "./supervisor.js";
 
 /** What a failure origin means, in plain Portuguese, for the message the user reads. */
 export const ORIGIN_TEXT_PT: Record<FailureOrigin, string> = {
@@ -166,6 +170,22 @@ async function outcomeMessage(
         },
       };
     }
+    case "waiting_timer": {
+      // The bot scheduled a return and told the user in its last message of the turn (kept in the
+      // status change that parked the run): that is the chat message. Its position in the log makes
+      // the key, so each parking writes once however often it is observed.
+      const [parked] = await db.sql<{ seq: number; payload: { result?: { summary?: string } } }[]>`
+        select seq, payload from run_events
+        where run_id = ${run.id} and type = 'status_changed' and payload->>'to' = 'waiting_timer'
+        order by seq desc limit 1`;
+      if (parked === undefined) return null;
+      const text = parked.payload.result?.summary?.trim() ?? "";
+      return {
+        authorKind: "bot",
+        text: text === "" ? "Volto daqui a pouco para conferir." : text,
+        key: `run:${run.id}:wait:${parked.seq}`,
+      };
+    }
     case "failed": {
       const origin = (run.failureOrigin ?? "harness") as FailureOrigin;
       return {
@@ -204,6 +224,51 @@ async function scrubbedForJournal(run: Run, options: RunEndOptions): Promise<Run
   return { ...run, ...safe };
 }
 
+/**
+ * Writes the message the user sees for the end (or pause) of a conversation run, with the
+ * transaction that changes the run's status (the hook of `PgRunStore`, `PgRunQueue.fail` and
+ * `cancelRun`): a reader that sees the new status sees the message. Idempotent (same key as
+ * `finishRun`, which writes it too if this never ran). Returns whether it was written now.
+ */
+export async function writeOutcomeMessage(db: Db, run: Run): Promise<boolean> {
+  if (run.conversationId === null || run.conversationId === undefined) return false;
+  const message = await outcomeMessage(db, run);
+  if (message === null) return false;
+  try {
+    const { created } = await appendMessageOnce(db, {
+      conversationId: run.conversationId,
+      authorKind: message.authorKind,
+      ...(message.authorKind === "bot" ? { authorBotId: run.botId } : {}),
+      text: message.text,
+      runId: run.id,
+      dedupeKey: message.key,
+      ...(message.question === undefined ? {} : { question: message.question }),
+    });
+    return created;
+  } catch (error) {
+    // An archived (or removed) conversation takes no more messages. That must never keep the run
+    // from ending: this runs in the transaction that sets its status.
+    if (error instanceof ConversationRuleError || error instanceof ConversationNotFoundError) {
+      return false;
+    }
+    throw error;
+  }
+}
+
+/**
+ * What must be visible together with a run's new status, written in the same transaction
+ * (`onStatusSet`): the bot's message and, when a welcome run ends, the end of the welcome. Whoever
+ * sees the status sees both. Idempotent (`finishRun` repeats it).
+ */
+export async function applyStatusEffects(db: Db, run: Run): Promise<boolean> {
+  const written = await writeOutcomeMessage(db, run);
+  const terminal = run.status === "done" || run.status === "failed" || run.status === "cancelled";
+  if (terminal && run.origin === "reception" && run.conversationId != null) {
+    await finishReception(db, run.conversationId);
+  }
+  return written;
+}
+
 export interface RunEffects {
   /** A bot or system message was written to the conversation now (not already there). */
   messageWritten: boolean;
@@ -224,6 +289,8 @@ export interface RunEffects {
  *   or a system message in Portuguese saying it failed or was cancelled.
  * - `waiting_user`: the question the run asked, as a bot message (key: run + the position of the
  *   `escalated` event, so each question is written once).
+ * - `waiting_timer`: the bot's message of the turn in which it scheduled its return (key: run + the
+ *   position of the status change that parked it). There is no other mark of the return in the chat.
  * - messages posted to a run that ended before reading them become the objective of a new run.
  * - any other status: nothing.
  */
@@ -237,21 +304,8 @@ export async function finishRun(
   if (run === null) return effects;
   const terminal = run.status === "done" || run.status === "failed" || run.status === "cancelled";
 
-  if (run.conversationId !== null && run.conversationId !== undefined) {
-    const message = await outcomeMessage(db, run);
-    if (message !== null) {
-      const { created } = await appendMessageOnce(db, {
-        conversationId: run.conversationId,
-        authorKind: message.authorKind,
-        ...(message.authorKind === "bot" ? { authorBotId: run.botId } : {}),
-        text: message.text,
-        runId: run.id,
-        dedupeKey: message.key,
-        ...(message.question === undefined ? {} : { question: message.question }),
-      });
-      effects.messageWritten = created;
-    }
-  }
+  // The welcome is over, however it ended: it never starts by itself again (only "Refazer").
+  effects.messageWritten = await applyStatusEffects(db, run);
   if (terminal) {
     // Uma execução isolada (avaliação) nunca escreve na memória do usuário: sem diário.
     if (run.isolated !== true && !(await isPlainChat(db, run))) {
@@ -265,6 +319,8 @@ export async function finishRun(
       effects.journalWritten = journal !== null;
     }
     effects.rolledOver = await rolloverUnreadMessages(db, run.id);
+    // A task another bot delegated to this one: its short result goes back to that bot's chat.
+    if (run.origin === "delegation") await returnDelegatedResult(db, run);
   }
   return effects;
 }
@@ -284,7 +340,7 @@ export async function reconcileRunEffects(
   const rows = await db.sql<{ id: string }[]>`
     select r.id from runs r
     where not r.isolated and ((
-      r.status = 'waiting_user' and r.conversation_id is not null
+      r.status in ('waiting_user', 'waiting_timer') and r.conversation_id is not null
     ) or (
       r.status in ('done', 'failed', 'cancelled')
       and r.updated_at > now() - make_interval(days => ${days}::integer)
@@ -310,6 +366,9 @@ export async function reconcileRunEffects(
             where g.conversation_id = r.conversation_id
               and g.dedupe_key = 'run:' || r.id::text || ':' || r.status
           )
+        )
+        or exists (
+          select 1 from delegations d where d.to_run_id = r.id and d.returned_at is null
         )
         or exists (
           select 1 from run_inbox i

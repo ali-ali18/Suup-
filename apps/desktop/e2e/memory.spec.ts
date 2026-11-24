@@ -68,14 +68,21 @@ test.describe("Memória", () => {
     await openWithBot(page, world, "Lembrador");
     await openSettings(page, "Memória");
     const panel = page.getByTestId("settings-panel-memory");
-    await expect(panel.locator("h3")).toHaveText(["Consolidação", "Contexto", "Validade"]);
+    await expect(panel.locator("h3")).toHaveText([
+      "Consolidação",
+      "Contexto",
+      "Validade",
+      "Principal",
+      "Revisões da equipe",
+    ]);
     await expect(page.locator("select")).toHaveCount(0);
     // The server's defaults.
     await expect(page.getByTestId("memory-enabled")).toHaveAttribute("aria-checked", "true");
     await expect(page.getByTestId("memory-max-turns")).toHaveValue("15");
     await expect(page.getByTestId("memory-idle-minutes")).toHaveValue("5");
     await expect(page.getByTestId("memory-compaction")).toHaveValue("80");
-    await expect(page.getByTestId("memory-prompt-limit")).toHaveValue("6000");
+    await expect(page.getByTestId("memory-prompt-limit")).toHaveValue("200");
+    await expect(page.getByTestId("memory-usage")).toContainText("de 200");
     await expect(page.getByTestId("memory-expiry-days")).toHaveText("90 dias");
     // No model for the consolidation in this server: the faded line says why.
     await expect(page.getByTestId("memory-reviewer-unavailable")).toBeVisible();
@@ -88,7 +95,7 @@ test.describe("Memória", () => {
     await page.getByTestId("memory-idle-minutes").blur();
     await page.getByTestId("memory-compaction").fill("70");
     await page.getByTestId("memory-compaction").press("Enter");
-    await page.getByTestId("memory-prompt-limit").fill("2000");
+    await page.getByTestId("memory-prompt-limit").fill("150");
     await page.getByTestId("memory-prompt-limit").press("Enter");
     await page.getByTestId("memory-expiry-days").click();
     await page.getByRole("option", { name: "180 dias", exact: true }).click();
@@ -102,11 +109,11 @@ test.describe("Memória", () => {
         return JSON.stringify([
           settings.consolidation,
           settings.compactionThreshold,
-          settings.promptLimitChars,
+          settings.promptLimitItems,
           settings.expiryDays,
         ]);
       })
-      .toBe(JSON.stringify([{ enabled: false, idleMinutes: 7, maxTurns: 20 }, 0.7, 2000, 180]));
+      .toBe(JSON.stringify([{ enabled: false, idleMinutes: 7, maxTurns: 20 }, 0.7, 150, 180]));
 
     // After a reload (a fresh read) they are still there.
     await page.reload();
@@ -115,7 +122,7 @@ test.describe("Memória", () => {
     await expect(page.getByTestId("memory-max-turns")).toHaveValue("20");
     await expect(page.getByTestId("memory-idle-minutes")).toHaveValue("7");
     await expect(page.getByTestId("memory-compaction")).toHaveValue("70");
-    await expect(page.getByTestId("memory-prompt-limit")).toHaveValue("2000");
+    await expect(page.getByTestId("memory-prompt-limit")).toHaveValue("150");
     await expect(page.getByTestId("memory-expiry-days")).toHaveText("180 dias");
     await expect(page.getByTestId("memory-enabled")).toHaveAttribute("aria-checked", "false");
 
@@ -147,21 +154,26 @@ test.describe("Memória", () => {
   test("a bot over the limit gets a warning row, and 'Ver memórias' opens the memory screen on it", async ({
     page,
   }) => {
-    await world.api.memorySettings.update({ promptLimitChars: 1000 });
-    await world.api.memories.add({ layer: "rule", text: `Regra comprida. ${"x".repeat(1100)}` });
+    // The smallest limit (20 memories) and one more rule than it: every bot is over.
+    await world.api.memorySettings.update({ promptLimitItems: 20 });
+    const rules = [];
+    for (let i = 1; i <= 21; i++) {
+      rules.push(await world.api.memories.add({ layer: "rule", text: `Regra de teste ${i}.` }));
+    }
     await openWithBot(page, world, "Estourado");
     await openSettings(page, "Memória");
     const rows = page.getByTestId("memory-over-limit");
     await expect(rows.first()).toBeVisible();
     await expect(rows.filter({ hasText: "Estourado" })).toHaveCount(1);
-    await expect(page.getByTestId("memory-usage")).toContainText("1.000");
+    await expect(page.getByTestId("memory-usage")).toContainText("de 20");
     await settle(page);
     await page.screenshot({ path: `${SHOTS}/42-config-memoria-limite.png` });
     await rows.filter({ hasText: "Estourado" }).getByTestId("memory-over-limit-open").click();
     await expect(page.getByTestId("settings-screen")).toHaveCount(0);
     await expect(page.getByTestId("memory-screen")).toBeVisible();
     await expect(page.getByLabel("Filtrar por bot")).toContainText("Estourado");
-    await world.api.memorySettings.update({ promptLimitChars: 6000 });
+    await world.api.memorySettings.update({ promptLimitItems: 200 });
+    for (const rule of rules) await world.api.memories.archive(rule.id);
   });
 
   test("the memory screen shows a note's fact line; the history lists who changed what and undoes the latest", async ({

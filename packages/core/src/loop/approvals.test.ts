@@ -608,3 +608,27 @@ describe("request_secret", () => {
     );
   });
 });
+
+describe("approval gate after a return", () => {
+  it("a call that asks still asks when the run comes back by itself", async () => {
+    const s = setup([
+      use(call("r1", "schedule_return", { inMinutes: 5, note: "send the report" })),
+      say("Volto em 5 minutos para enviar o relatório."),
+      use(call("c1", "send", { to: "ana", body: "relatório" })),
+      say("ok"),
+    ]);
+    const extra = { allowReturns: true } as const;
+    expect(await loop(s, extra)).toBe("waiting_timer");
+    s.rig.clock.advance(6 * 60_000);
+    expect(s.rig.store.wakeDue(new Date(s.rig.clock.now))).toEqual([s.rig.runId]);
+    claim(s);
+    const events0 = await s.rig.events();
+    const second = new FakeProvider(
+      s.script.slice(events0.filter((e) => e.type === "model_response").length),
+    );
+    expect(await loop(s, { ...extra, provider: second })).toBe("waiting_approval");
+    const [card] = requested(await s.rig.events());
+    expect(card?.payload).toMatchObject({ tool: "send", callId: "c1" });
+    expect(s.sent).toEqual([]);
+  });
+});

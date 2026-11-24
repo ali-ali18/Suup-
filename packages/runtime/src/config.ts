@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { parseAllowlistHost } from "@suup/core";
+import { DEFAULT_ENGINES, unknownEngines } from "@suup/web/engines";
 import { z } from "zod";
 import { ConfigError } from "./errors.js";
 
@@ -219,15 +220,49 @@ const serverSchema = z.strictObject({
   eventRetentionMinutes: z.exactOptional(positiveInt),
 });
 
+/** True for a name the runtime's time zone database knows (`Intl` is the judge, no pattern). */
+export function isTimeZone(name: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: name });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The user's time zone: `defaults.timeZone` of the configuration, else the one of the computer the
+ * server runs on, else UTC. Read at the start of each run and recorded in its `context_loaded`.
+ */
+export function resolveTimeZone(config: { defaults?: { timeZone?: string } }): string {
+  const configured = config.defaults?.timeZone;
+  if (configured !== undefined && isTimeZone(configured)) return configured;
+  const system = new Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return system !== undefined && system !== "" && isTimeZone(system) ? system : "UTC";
+}
+
 const defaultsSchema = z.strictObject({
   maxTurns: z.exactOptional(positiveInt),
   maxCostUsd: z.exactOptional(z.number().positive()),
   maxDurationMs: z.exactOptional(positiveInt),
   /**
+   * How many returns in a row one run may schedule for itself (`schedule_return`) before the tool
+   * refuses and the bot must finish or ask the user. Default 6. 0 turns the returns off.
+   */
+  maxReturns: z.exactOptional(z.number().int().nonnegative()),
+  /**
    * How many characters of the earlier messages of a conversation a run gets as history (whole
    * messages, newest first). Older ones are found with `search_conversations`.
    */
   historyChars: z.exactOptional(positiveInt),
+  /**
+   * The user's time zone, an IANA name (`America/Sao_Paulo`). It is what "now" means to the bots:
+   * the date and time in their prompt and in the reminder of each turn. Without it, the time zone
+   * of the computer that runs the server (see `resolveTimeZone`).
+   */
+  timeZone: z.exactOptional(
+    z.string().refine(isTimeZone, "não é um fuso horário IANA (por exemplo America/Sao_Paulo)"),
+  ),
 });
 
 const riskLevelEnum = z.enum(["read", "write_reversible", "external_irreversible"]);
@@ -290,6 +325,114 @@ const memoryConfigSchema = z.strictObject({
   ),
 });
 
+/** A language code of a search engine host (`en`, `pt`, `pt-br`): letters, digits and hyphens, no dots. */
+function isLanguageCode(code: string): boolean {
+  if (code.length < 2 || code.length > 10 || code.startsWith("-") || code.endsWith("-"))
+    return false;
+  for (const ch of code) {
+    const ok = (ch >= "a" && ch <= "z") || (ch >= "0" && ch <= "9") || ch === "-";
+    if (!ok) return false;
+  }
+  return true;
+}
+
+/** An absolute http(s) URL (the scheme is compared, not matched). */
+const httpUrl = z.string().refine((text) => {
+  try {
+    const { protocol } = new URL(text);
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
+}, "esperado uma URL http(s) completa");
+
+/**
+ * Search and page reading for the bots, built from open-source parts that Suup runs itself
+ * (docs/BUSCA.md): no provider account, no key. Everything is optional; the defaults are the safe
+ * list of engines and a reader that respects robots.txt.
+ */
+const webSchema = z.strictObject({
+  search: z.exactOptional(
+    z.strictObject({
+      /** `false` turns `web_search` off (the tool then says it is not available). Default `true`. */
+      enabled: z.exactOptional(z.boolean()),
+      /**
+       * The engines, by id (docs/BUSCA.md lists them). Default: the ones with a documented public API
+       * that Suup asks itself, with its honest user agent (`wikipedia`, `arxiv`, `stackoverflow`), plus
+       * `duckduckgo`, the one general web engine turned on by decision of the project owner (asked by
+       * the SearXNG container; low rate, honest user agent; it reads a result page and may answer with
+       * a captcha). Google and Bing do not exist here, and neither do Brave and Startpage (SearXNG would
+       * send its own random browser user agent to them). GitHub is not a web search engine: its
+       * search is the GitHub MCP connector's.
+       */
+      engines: z.exactOptional(z.array(z.string().min(1)).min(1).max(20)),
+      /** Languages whose Wikipedia host the search container may reach. Default `["en", "pt"]`. */
+      languages: z.exactOptional(
+        z
+          .array(
+            z.string().refine(isLanguageCode, "código de idioma inválido (ex.: en, pt, pt-br)"),
+          )
+          .min(1)
+          .max(10),
+      ),
+      /** Use a SearXNG instance you run yourself, at this URL, instead of the container Suup starts. */
+      url: z.exactOptional(httpUrl),
+      /** Most results one search returns (1 to 20). Default 10. */
+      maxResults: z.exactOptional(z.number().int().min(1).max(20)),
+      /**
+       * Suup's own politeness toward the engines (docs/BUSCA.md, "Busca educada"). Searches over the
+       * limit wait a little in a queue, or the tool answers when to try again.
+       */
+      limits: z.exactOptional(
+        z.strictObject({
+          /** Searches in any minute, overall. Default 20. */
+          perMinute: z.exactOptional(z.number().int().min(1).max(600)),
+          /** Searches in any minute to one engine, by id. The default of each engine is in the engine list (DuckDuckGo: 6). */
+          perEngine: z.exactOptional(z.record(z.string().min(1), z.number().int().min(1).max(600))),
+          /** The most a search waits in the queue, in seconds, before it is refused with the time to try again. Default 20. */
+          maxWaitSeconds: z.exactOptional(z.number().int().min(0).max(120)),
+        }),
+      ),
+      /** The cache of searches: an identical search is answered from it, and the answer says so. */
+      cache: z.exactOptional(
+        z.strictObject({
+          /** `false` turns the cache off. Default `true`. */
+          enabled: z.exactOptional(z.boolean()),
+          /** How long a cached search lives, in minutes (1 to 10080). Default 180 (3 hours). */
+          ttlMinutes: z.exactOptional(z.number().int().min(1).max(10_080)),
+        }),
+      ),
+      /** The SearXNG image. Default: the version pinned in the code. */
+      image: z.exactOptional(z.string().min(1)),
+      /** The internal network of the search container. Default `suup-search-net`. */
+      network: z.exactOptional(z.string().min(1)),
+      /** Where the engine proxy listens on that network (needed when the worker runs in a container). */
+      proxy: z.exactOptional(
+        z.strictObject({
+          listenHost: z.exactOptional(z.string().min(1)),
+          advertiseHost: z.exactOptional(z.string().min(1)),
+          port: z.exactOptional(z.number().int().min(1).max(65535)),
+        }),
+      ),
+    }),
+  ),
+  reader: z.exactOptional(
+    z.strictObject({
+      /**
+       * `false`: `web_read` does not use the reader service; it reads with the bot's own machine,
+       * through its allowlist, with the approval cards that means. Default `true`.
+       */
+      enabled: z.exactOptional(z.boolean()),
+      /** Allow `render: true` (a headless browser in the reader container). Default `true`. */
+      render: z.exactOptional(z.boolean()),
+      /** The reader image. Default `suup-reader:dev`. */
+      image: z.exactOptional(z.string().min(1)),
+      /** Where the user agent points (`SuupBot/<version> (+<this>)`). */
+      repositoryUrl: z.exactOptional(httpUrl),
+    }),
+  ),
+});
+
 const toolSearchSchema = z.strictObject({
   /** Defer the connector tools of a bot when it has at least this many (default 10)... */
   minTools: z.exactOptional(positiveInt),
@@ -321,6 +464,8 @@ export const configSchema = z
     memory: z.exactOptional(memoryConfigSchema),
     /** When the connector tools of a bot are searched instead of all loaded (docs/CONFIGURACAO.md). */
     toolSearch: z.exactOptional(toolSearchSchema),
+    /** Web search and page reading (docs/BUSCA.md). */
+    web: z.exactOptional(webSchema),
   })
   .superRefine((config, ctx) => {
     const providerIds = new Set<string>();
@@ -380,6 +525,22 @@ export const configSchema = z
         code: "custom",
         path: ["memory", "consolidation", "model"],
         message: `modelo "${consolidationModel}" não existe em "models" (existentes: ${[...modelIds].join(", ")})`,
+      });
+    }
+    const wrongEngines = unknownEngines(config.web?.search?.engines ?? DEFAULT_ENGINES);
+    if (wrongEngines.length > 0) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["web", "search", "engines"],
+        message: `motor desconhecido: ${wrongEngines.join(", ")} (use os ids de docs/BUSCA.md)`,
+      });
+    }
+    const wrongLimits = unknownEngines(Object.keys(config.web?.search?.limits?.perEngine ?? {}));
+    if (wrongLimits.length > 0) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["web", "search", "limits", "perEngine"],
+        message: `motor desconhecido: ${wrongLimits.join(", ")} (use os ids de docs/BUSCA.md)`,
       });
     }
     const renew = config.worker?.leaseRenewMs ?? DEFAULT_WORKER.leaseRenewMs;

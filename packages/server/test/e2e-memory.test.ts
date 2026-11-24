@@ -95,11 +95,17 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("memory through the API"), { timeout:
       const settings = await api.memorySettings.get();
       expect(settings).toEqual({
         consolidation: { enabled: true, idleMinutes: 5, maxTurns: 15 },
-        promptLimitChars: 6000,
+        promptLimitItems: 200,
         expiryDays: 90,
         compactionThreshold: 0.8,
         reviewer: { available: true, model: "model-x", reason: null },
-        promptUsage: { limitChars: 6000, sharedChars: 0, overLimit: [] },
+        promptUsage: {
+          limitItems: 200,
+          ceilingChars: 25_000,
+          sharedItems: 0,
+          sharedChars: 0,
+          overLimit: [],
+        },
       });
     });
 
@@ -124,9 +130,9 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("memory through the API"), { timeout:
         consolidation: { enabled: true, maxTurns: 15 },
         compactionThreshold: 0.8,
         expiryDays: 90,
-        promptLimitChars: 6000,
+        promptLimitItems: 200,
       });
-      expect(back).toMatchObject({ expiryDays: 90, promptLimitChars: 6000 });
+      expect(back).toMatchObject({ expiryDays: 90, promptLimitItems: 200 });
     });
 
     it("refuses what is out of range, the wrong type or unknown, in Portuguese", async () => {
@@ -144,8 +150,9 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("memory through the API"), { timeout:
           { consolidation: { enabled: "sim" } },
           "consolidation.enabled: esperado verdadeiro ou falso",
         ],
-        [{ promptLimitChars: 999 }, "promptLimitChars"],
-        [{ promptLimitChars: 50_001 }, "promptLimitChars"],
+        [{ promptLimitItems: 19 }, "promptLimitItems: deve ser um número inteiro entre 20 e 1000"],
+        [{ promptLimitItems: 1001 }, "promptLimitItems"],
+        [{ promptLimitChars: 6000 }, "promptLimitChars"],
         [{ expiryDays: 6 }, "expiryDays"],
         [{ expiryDays: 3651 }, "expiryDays"],
         [{ expiryDays: "nunca" }, "expiryDays: esperado número"],
@@ -344,9 +351,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("memory without a model"), { timeout:
     expect(settings.reviewer.available).toBe(false);
     expect(settings.reviewer.model).toBeNull();
     expect(settings.reviewer.reason).toContain("memory.consolidation.model");
-    expect((await api.memorySettings.update({ promptLimitChars: 2000 })).promptLimitChars).toBe(
-      2000,
-    );
+    expect((await api.memorySettings.update({ promptLimitItems: 50 })).promptLimitItems).toBe(50);
     const checks = (await api.diagnostics.doctor()).checks;
     expect(checks.find((c) => c.component === "Memória")?.detail).toContain("sem modelo");
   });
@@ -354,18 +359,20 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("memory without a model"), { timeout:
   it("warns that rules and profile pass the limit, per bot, and nothing is lost", async () => {
     const { api } = w.started;
     const bot = await api.bots.create({ name: "Cheio", modelId: "model-x" });
-    await api.memories.add({ layer: "rule", text: "r".repeat(1200), botId: bot.id });
-    await api.memories.add({ layer: "rule", text: "s".repeat(1200), botId: bot.id });
-    const settings = await api.memorySettings.update({ promptLimitChars: 1500 });
+    for (let i = 10; i < 31; i++) {
+      await api.memories.add({ layer: "rule", text: `Regra ${i}`, botId: bot.id });
+    }
+    const settings = await api.memorySettings.update({ promptLimitItems: 20 });
     expect(settings.promptUsage.overLimit).toEqual([
-      { botId: bot.id, name: "Cheio", usedChars: 2400 },
+      { botId: bot.id, name: "Cheio", usedItems: 21, usedChars: 21 * 8 },
     ]);
+    expect(settings.promptUsage).toMatchObject({ limitItems: 20, ceilingChars: 25_000 });
     // writing still works over the cap
     await api.memories.add({ layer: "rule", text: "t".repeat(300), botId: bot.id });
     const checks = (await api.diagnostics.doctor()).checks;
     expect(checks.find((c) => c.component === "Limite do prompt")).toMatchObject({ ok: false });
     expect(
-      (await api.memorySettings.update({ promptLimitChars: 50_000 })).promptUsage.overLimit,
+      (await api.memorySettings.update({ promptLimitItems: 1000 })).promptUsage.overLimit,
     ).toEqual([]);
   });
 });

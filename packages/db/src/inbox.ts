@@ -45,7 +45,7 @@ export type PostInboxResult = InboxEntry & {
 /**
  * Posts an item to a run's inbox, in one transaction with the run row locked.
  *
- * A run in `waiting_user` is put back in the queue in the same transaction (`status = 'queued'`,
+ * A run in `waiting_user` (or parked for a return of its own, `waiting_timer`) is put back in the queue in the same transaction (`status = 'queued'`,
  * lease cleared): the item is the answer (or the stop) it was waiting for, and a worker claims it
  * like any other queued run. `runLoop` then finds the run `running` while its log says it was
  * waiting, applies the logged status and takes the item from the inbox (the same path it uses to
@@ -71,11 +71,14 @@ export async function postInbox(db: Db, runId: string, item: InboxPost): Promise
       )
       returning id, kind, text, created_at`;
     if (row === undefined) throw new Error("insert into run_inbox returned no row");
-    const requeued = run.status === "waiting_user";
+    // A run parked for a return of its own is woken the same way: the message cancels the return
+    // (the loop logs it) and the run goes on with the message.
+    const requeued = run.status === "waiting_user" || run.status === "waiting_timer";
     if (requeued) {
       await tx`
-        update runs set status = 'queued', locked_by = null, locked_at = null
-        where id = ${runId} and status = 'waiting_user'`;
+        update runs set status = 'queued', locked_by = null, locked_at = null,
+          wake_at = null, wake_note = null
+        where id = ${runId} and status in ('waiting_user', 'waiting_timer')`;
     }
     return { ...mapEntry(row), requeued };
   });

@@ -107,6 +107,8 @@ Limites usados quando o bot não define os próprios (`suup bot create --max-tur
 | `maxTurns` | 50 | Chamadas ao modelo por execução |
 | `maxCostUsd` | sem limite | Custo máximo por execução, em dólares |
 | `maxDurationMs` | sem limite | Duração máxima por execução, em milissegundos |
+| `maxReturns` | 6 | Quantos retornos seguidos o bot pode marcar para si na mesma execução (`schedule_return`); `0` desliga ([RETORNO.md](RETORNO.md)). Também pode ser definido por bot em `limits.maxReturns` |
+| `timeZone` | o do servidor | O fuso do usuário (nome IANA, ex. `America/Sao_Paulo`): a data e a hora que os bots leem no prompt e no lembrete de cada turno. Lido uma vez por execução; `GET /v1/info` o mostra |
 | `historyChars` | 12000 | Quanto da conversa anterior (em caracteres, só mensagens inteiras, das mais novas para as mais antigas) uma execução recebe como histórico. As mais antigas ficam de fora e o bot é avisado de que pode buscá-las com `search_conversations` |
 
 Passar de um limite termina a execução como `failed` com origem `limit`.
@@ -119,6 +121,7 @@ Como as ações dos bots pedem o seu OK ([APROVACOES.md](APROVACOES.md)). Sem es
 |---|---|---|
 | `levels` | nenhum | Fixa o nível de risco de uma ferramenta, por cima do que ela declara: `{ "shell": "external_irreversible" }` faz todo comando perguntar, mesmo na máquina isolada; `{ "shell": "write_reversible" }` libera o shell mesmo na máquina `local`. Valores: `read`, `write_reversible`, `external_irreversible` |
 | `expireAfterMinutes` | nunca | Um cartão que ninguém decidiu em tanto tempo vira `expired`: o bot é avisado e segue. Sem o campo, **nada expira em silêncio** |
+| (não é do arquivo) `staleAfterMinutes` | 60 | **Não fica na configuração**: é uma configuração do servidor, como o modo, em Configurações > Permissões, `suup approvals stale [minutos]` e `PATCH /v1/approval-settings`. De 5 minutos a 1 semana. Aprovar um cartão que esperou mais que isto não executa a ação na hora (o bot a confere e pede de novo); não expira nada. Veja [APROVACOES.md](APROVACOES.md) |
 | `autoReview.model` | o de `reviewer` | O modelo que revisa cada chamada no modo **Auto-review**, lendo as regras que o usuário escreveu ([APROVACOES.md](APROVACOES.md)): um `id` de `models`, de preferência o barato e rápido. **Ausente: o modelo de `reviewer`**; sem nenhum dos dois, o Auto-review só aplica a tabela de níveis e a API (`GET /v1/approval-settings`) e `suup approvals mode` dizem isso. A chave vem do provedor do modelo (`apiKeyEnv`), nunca daqui |
 | `autoReview.enabled` | `true` | `false` desliga o revisor por modelo nesta configuração (o Auto-review volta à tabela de níveis, e a API diz por quê). Serve para testes e para quem não quer uma chamada ao modelo por ação |
 
@@ -134,9 +137,13 @@ O **modo** (`auto_review`, o padrão, ou `ask_all`) **não é desta configuraç�
 
 Com a máquina `local` (sem isolamento) o `shell` pergunta a cada comando; para um uso diário sem Docker, a regra `suup rules add --tool shell --effect allow` (ou `levels`) diz que você aceita o risco.
 
+### O Principal como supervisor
+
+Nada no arquivo de configuração, além do fuso (`defaults.timeZone`, em que ficam a hora da revisão e a da mensagem da manhã) e do modelo do próprio bot principal (a revisão usa esse modelo e precisa da chave dele). O resto é escolha do usuário, guardada no servidor: revisão ligada ou não, hora (padrão 03:00), mensagem da manhã (padrão 08:00, ou desligada), teto de custo por noite (padrão: sem teto): `GET`/`PATCH /v1/supervisor/settings`, Configurações > Memória. O worker roda o job a cada 60 s (`supervisorEveryMs` ao criar o worker). Veja [SUPERVISOR.md](SUPERVISOR.md).
+
 ### `memory` (opcional)
 
-Só o que **não** é do usuário mudar pelo app ([MEMORIA.md](MEMORIA.md)): qual modelo faz a consolidação da memória em segundo plano. O resto (quando roda, o teto do prompt, a expiração, o ponto da compactação) são escolhas do usuário, guardadas no servidor: `suup memory settings`, `GET`/`PATCH /v1/memory-settings`.
+Só o que **não** é do usuário mudar pelo app ([MEMORIA.md](MEMORIA.md)): qual modelo faz a consolidação da memória em segundo plano. O resto (quando roda, o limite de memórias do prompt (padrão 200, mais o teto fixo de 25 000 caracteres), a expiração, o ponto da compactação) são escolhas do usuário, guardadas no servidor: `suup memory settings`, `GET`/`PATCH /v1/memory-settings`.
 
 | Campo | Padrão | Significado |
 |---|---|---|
@@ -179,6 +186,32 @@ Quando as ferramentas de **conectores** de um bot são **buscadas** em vez de ca
 | `maxIndexChars` | `6000` | Um índice maior que isto vira uma linha por conector |
 
 Abaixo dos dois limites, as ferramentas vão direto. Para desligar a busca, ponha valores enormes. As ferramentas embutidas e de controle nunca são adiadas.
+
+### `web` (opcional)
+
+Busca e leitura de páginas, feitas por peças de código aberto que o Suup mesmo roda ([BUSCA.md](BUSCA.md)). Tudo é opcional.
+
+| Campo | Padrão | Significado |
+|---|---|---|
+| `search.enabled` | `true` | `false` desliga `web_search` (a ferramenta diz que está desligada) |
+| `search.engines` | `["wikipedia","arxiv","stackoverflow","duckduckgo"]` | ids dos motores (BUSCA.md lista todos). `wikipedia`, `arxiv` e `stackoverflow` são chamados pelo próprio Suup pelas APIs oficiais, com o nome honesto; `duckduckgo` (SearXNG) é o único motor geral ligado por padrão (decisão do dono; taxa baixa, nome honesto, sem contornar captcha). `brave` e `startpage` foram removidos (o SearXNG mandaria o `User-Agent` sorteado dele) e são recusados como id desconhecido. **`github` não existe** (busca no GitHub é o conector MCP). Sem nenhum motor do SearXNG na lista, o contêiner de busca não é criado. Id desconhecido é recusado |
+| `search.languages` | `["en","pt"]` | idiomas cujo host da Wikipédia a busca alcança (o proxy de saída das APIs diretas libera só esses hosts) (`pt-br` vira `pt-br.wikipedia.org`; só letras, números e hífen) |
+| `search.maxResults` | `10` | no máximo, por busca (1 a 20) |
+| `search.limits.perMinute` | `20` | no máximo, de buscas em qualquer minuto, no geral (1 a 600). Passando disso a busca espera na fila ou o resultado diz quando tentar de novo |
+| `search.limits.perEngine` | o de cada motor (`duckduckgo` 6, `stackoverflow` 10, `arxiv` 15, `wikipedia` 30) | `{ "<id do motor>": n }`: buscas por minuto a um motor. Id desconhecido é recusado |
+| `search.limits.maxWaitSeconds` | `20` | o máximo que uma busca espera na fila (0 a 120); além disso o resultado é "tente em X s" |
+| `search.cache.enabled` | `true` | `false` desliga o cache de buscas idênticas |
+| `search.cache.ttlMinutes` | `180` | quanto vive uma busca no cache (1 a 10080). O cache fica no banco (tabela `web_search_cache`) |
+| `search.url` | (nenhum) | use um SearXNG seu, nesta URL http(s), em vez do contêiner que o Suup sobe (o formato `json` tem de estar ligado nele) |
+| `search.image`, `search.network`, `search.proxy` | imagem fixada, `suup-search-net`, gateway da rede e porta 3129 | avançado: imagem, rede interna e onde o proxy de motores escuta (necessário com o worker em contêiner: `{ "listenHost", "advertiseHost", "port" }`) |
+| `reader.enabled` | `true` | `false`: `web_read` lê pela máquina do bot, pela lista de hosts e com cartões, em vez do serviço leitor |
+| `reader.render` | `true` | permite `render: true` (Chromium no contêiner leitor) |
+| `reader.image` | `suup-reader:dev` | imagem do leitor |
+| `reader.repositoryUrl` | o repositório do projeto | o endereço no user agent `SuupBot/<versão> (+<endereço>)` |
+
+**`web_read` só abre sem cartão um endereço que já apareceu na execução** (mensagem do usuário, resultado de busca ou link de página lida); qualquer outro é um cartão "Ler uma página nova". Não há campo para desligar isto ([BUSCA.md](BUSCA.md), "A leitura só abre o que já apareceu"; [APROVACOES.md](APROVACOES.md)).
+
+`suup doctor` mostra se a busca e o leitor estão ligados e, depois do primeiro uso, o que está rodando. Sem Docker, `web_search` fica indisponível e `web_read` lê no próprio processo, sem `render`. A saída do `web_search` e do `web_read` já chega ao modelo como dado externo (`<<<EXTERNAL_DATA`), sem precisar de `untrustedOutputTools`.
 
 ### Conectores
 

@@ -83,8 +83,22 @@ describe.skipIf(!DATABASE_URL)(
       const { api } = w.started;
       expect(await api.approvalSettings.get()).toEqual({
         mode: "auto_review",
+        staleAfterMinutes: 60,
         reviewer: { available: true, model: "model-x", reason: null },
       });
+      expect(
+        (await api.approvalSettings.update({ staleAfterMinutes: 360 })).staleAfterMinutes,
+      ).toBe(360);
+      expect((await api.approvalSettings.get()).staleAfterMinutes).toBe(360);
+      // The mode is untouched by a change of the limit, and each is validated on its own.
+      expect((await api.approvalSettings.get()).mode).toBe("auto_review");
+      for (const bad of [4, 10081, 90.5, "60"]) {
+        expect(await code(api.approvalSettings.update({ staleAfterMinutes: bad as never }))).toBe(
+          "invalid_request",
+        );
+      }
+      expect(await code(api.approvalSettings.update({} as never))).toBe("invalid_request");
+      await api.approvalSettings.update({ staleAfterMinutes: 60 });
       expect((await api.approvalSettings.update({ mode: "ask_all" })).mode).toBe("ask_all");
       expect((await api.approvalSettings.get()).mode).toBe("ask_all");
       expect(await code(api.approvalSettings.update({ mode: "tudo" as never }))).toBe(
@@ -176,7 +190,7 @@ describe.skipIf(!DATABASE_URL)(
         decision: "run",
         outcome: "allow",
         model: "model-x",
-        promptVersion: "auto-review-v1",
+        promptVersion: "auto-review-v2",
         usage,
       });
       expect(events.find((e) => e.type === "tool_result")?.payload).toMatchObject({
@@ -273,6 +287,7 @@ describe.skipIf(!DATABASE_URL)(
     it("says the truth: the mode exists, the reviewer is not available, and why", async () => {
       expect(await w.started.api.approvalSettings.get()).toEqual({
         mode: "auto_review",
+        staleAfterMinutes: 60,
         reviewer: {
           available: false,
           model: null,

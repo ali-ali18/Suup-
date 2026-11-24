@@ -28,7 +28,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup memory: settings, pending, hist
     const shown = (await json(["memory", "settings"])) as Json;
     expect(shown).toMatchObject({
       consolidation: { enabled: true, idleMinutes: 5, maxTurns: 15 },
-      promptLimitChars: 6000,
+      promptLimitItems: 200,
       expiryDays: 90,
       compactionThreshold: 0.8,
       reviewer: { available: true, model: "model-x" },
@@ -60,7 +60,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup memory: settings, pending, hist
       [["--expiry-days", "3"], "entre 7 e 3650"],
       [["--compaction-threshold", "0.2"], "entre 0.5 e 0.95"],
       [["--consolidation", "talvez"], "on ou off"],
-      [["--prompt-limit", "10"], "entre 1000 e 50000"],
+      [["--prompt-limit", "10"], "entre 20 e 1000"],
     ] as const) {
       const r = await p.suup(["memory", "settings", ...args]);
       expect(r.code, args.join(" ")).toBe(2);
@@ -84,14 +84,15 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup memory: settings, pending, hist
   });
 
   it("warns when the rules and profile pass the limit, and says nothing was lost", async () => {
-    await p.suup(["memory", "add", "rule", "a".repeat(700), "--bot", "ajudante"]);
-    await p.suup(["memory", "add", "rule", "b".repeat(700), "--bot", "ajudante"]);
-    const r = await p.suup(["memory", "settings", "--prompt-limit", "1000"]);
-    expect(r.stdout).toContain("Aviso: regras e perfil ativos passam do limite (1000)");
-    expect(r.stdout).toContain("ajudante (1400)");
+    for (let i = 10; i < 31; i++) {
+      await p.suup(["memory", "add", "rule", `Regra de limite ${i}`, "--bot", "ajudante"]);
+    }
+    const r = await p.suup(["memory", "settings", "--prompt-limit", "20"]);
+    expect(r.stdout).toContain("Aviso: regras e perfil ativos passam do limite (20 memórias");
+    expect(r.stdout).toContain("ajudante (21 memórias");
     const doctor = await p.suup(["doctor", "--json"]);
     expect(doctor.stdout).toContain("Limite do prompt");
-    await p.suup(["memory", "settings", "--prompt-limit", "6000"]);
+    await p.suup(["memory", "settings", "--prompt-limit", "200"]);
   });
 
   it("pending: lists what waits, confirms one (with undo), refuses another", async () => {

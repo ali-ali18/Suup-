@@ -41,7 +41,10 @@ export {
   runResultSchema,
   runStatusSchema,
   type SecretInfo,
+  SUPERVISOR_ROLES,
+  type SupervisorRole,
   secretInfoSchema,
+  supervisorRoleSchema,
   TOOL_SEARCH_MODES,
   type ToolCatalog,
   type ToolSearchMode,
@@ -176,6 +179,7 @@ export {
   secretForms,
   substituteSecrets,
 } from "./secrets.js";
+export * from "./supervisor/index.js";
 export {
   type ClassifyEnv,
   type DirEntry,
@@ -199,6 +203,19 @@ export {
   WorkspaceEscapeError,
 } from "./tool.js";
 export { EXTERNAL_CLOSE, EXTERNAL_OPEN, wrapUntrusted } from "./untrusted.js";
+export {
+  normalizeWebUrl,
+  urlsInText,
+  WEB_URLS_PER_RESULT_MAX,
+  type WebAccess,
+  type WebPage,
+  type WebReadOutcome,
+  type WebReadRequest,
+  type WebSearchHit,
+  type WebSearchOutcome,
+  type WebSearchRequest,
+  type WebUrlSource,
+} from "./web.js";
 export {
   type BackgroundJob,
   type RunEnd,

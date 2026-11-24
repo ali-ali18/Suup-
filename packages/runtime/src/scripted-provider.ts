@@ -14,10 +14,12 @@ import {
   type ProviderEvent,
   REVIEW_TOOL_NAME,
   stopReasonSchema,
+  TEAM_REVIEW_TOOL_NAME,
   usageSchema,
 } from "@suup/core";
 import { FakeProvider, type FakeStep } from "@suup/core/testing";
 import { z } from "zod";
+import { DRAFT_TOOL } from "./conversations.js";
 
 const stepSchema = z.strictObject({
   /** Text of the answer (comes before the calls). */
@@ -60,6 +62,10 @@ const sectionsShape = {
   memory: z.exactOptional(z.array(stepSchema)),
   /** The answers of the review of a memory the bot wrote (the `review_memory_write` tool), in order. */
   memoryReview: z.exactOptional(z.array(stepSchema)),
+  /** The answers of the draft of a bot (the `propose_bot` tool: "Sugerir" and the team card), in order. */
+  draft: z.exactOptional(z.array(stepSchema)),
+  /** The answers of the nightly review of the main bot (the `submit_team_review` tool), in order. */
+  teamReview: z.exactOptional(z.array(stepSchema)),
 };
 
 /** One script per task, chosen by the objective (see `ScriptFile.cases`). */
@@ -114,7 +120,15 @@ export interface ScriptedProviderOptions {
   textChunkSize?: number;
 }
 
-type Section = "agent" | "review" | "compaction" | "autoReview" | "memory" | "memoryReview";
+type Section =
+  | "agent"
+  | "review"
+  | "compaction"
+  | "autoReview"
+  | "memory"
+  | "memoryReview"
+  | "draft"
+  | "teamReview";
 
 /** The text of the whole conversation, to find the case a request belongs to. */
 function conversationText(req: GenerateRequest): string {
@@ -135,6 +149,8 @@ function sectionOf(req: GenerateRequest): Section {
   if (typeof choice === "object" && choice.name === REVIEW_TOOL_NAME) return "autoReview";
   if (typeof choice === "object" && choice.name === CONSOLIDATION_TOOL_NAME) return "memory";
   if (typeof choice === "object" && choice.name === MEMORY_REVIEW_TOOL_NAME) return "memoryReview";
+  if (typeof choice === "object" && choice.name === DRAFT_TOOL) return "draft";
+  if (typeof choice === "object" && choice.name === TEAM_REVIEW_TOOL_NAME) return "teamReview";
   return "agent";
 }
 
@@ -146,7 +162,8 @@ function sectionOf(req: GenerateRequest): Section {
  *   the second turn of a chat starts its script after the first one). It depends only on the request, so a run resumed in another
  *   process (after a pause, an escalation or a crash) goes on from the right step, and re-sending
  *   a recorded request (`suup resend`) gets the same answer again.
- * - `review`, `autoReview` and `compaction`: consumed in order within the process; the last step
+ * - `review`, `autoReview`, `compaction`, `memory`, `memoryReview`, `teamReview` and `draft` (a script with no
+ *   `draft` list gives the draft of a bot from `agent`, as it always did): consumed in order within the process; the last step
  *   repeats when the list runs out.
  *
  * A file with `cases` holds one such script per task: the case whose `whenObjectiveContains` is in
@@ -183,7 +200,14 @@ export function createScriptedProvider(options: ScriptedProviderOptions): Provid
         let key = "";
         let sections: Pick<
           ScriptFile,
-          "agent" | "review" | "compaction" | "autoReview" | "memory" | "memoryReview"
+          | "agent"
+          | "review"
+          | "compaction"
+          | "autoReview"
+          | "memory"
+          | "memoryReview"
+          | "draft"
+          | "teamReview"
         > = file;
         if (file.cases !== undefined) {
           const text = conversationText(req);
@@ -197,6 +221,8 @@ export function createScriptedProvider(options: ScriptedProviderOptions): Provid
           key = `c${found}:`;
           sections = chosen;
         }
+        // A script without a `draft` list answers the draft of a bot from `agent`, as it always did.
+        if (section === "draft" && sections.draft === undefined) section = "agent";
         if (section === "agent") {
           index = req.messages.filter((m) => m.role === "assistant").length;
           step = sections.agent[index];

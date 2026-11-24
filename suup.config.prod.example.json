@@ -31,6 +31,14 @@
     },
     "connectors": { "image": "suup-connector-runner:prod" }
   },
+  "web": {
+    "search": {
+      "engines": ["wikipedia", "arxiv", "stackoverflow", "duckduckgo"],
+      "network": "suup-search-net",
+      "proxy": { "listenHost": "172.29.78.2", "advertiseHost": "172.29.78.2", "port": 3129 }
+    },
+    "reader": { "image": "suup-reader:prod" }
+  },
   "worker": {
     "concurrency": 4,
     "leaseRenewMs": 10000,

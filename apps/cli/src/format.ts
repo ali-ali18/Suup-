@@ -5,6 +5,7 @@ const STATUS_PT: Record<RunStatus, string> = {
   running: "em execução",
   waiting_approval: "aguardando aprovação",
   waiting_user: "aguardando você",
+  waiting_timer: "aguardando o retorno agendado",
   done: "concluída",
   failed: "falhou",
   cancelled: "cancelada",

@@ -1,4 +1,4 @@
-import type { Run } from "@suup/api";
+import type { DecideTeamBody, Run } from "@suup/api";
 import { ArrowDown } from "lucide-react";
 import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useServices } from "../../app/context.js";
@@ -9,6 +9,7 @@ import { EndedLine, WorkingIndicator } from "../../ui/chat-lines.js";
 import { BotMessage, EventLine, UserMessage } from "../../ui/message.js";
 import { Pill, RoundButton } from "../../ui/primitives.js";
 import { QuestionCard } from "../../ui/question-card.js";
+import { TeamCard } from "../../ui/team-card.js";
 import { ApprovalRow, CallRow, callKey, SecretRequestRow } from "./ApprovalRows.js";
 import { bubblePositions, isChoiceCard, type TimelineItem } from "./timeline.js";
 
@@ -28,6 +29,7 @@ export function MessageList({
   hasOlder,
   onLoadOlder,
   onAnswer,
+  onDecideTeam,
   onInspect,
   expanded,
   onToggle,
@@ -42,6 +44,11 @@ export function MessageList({
   onLoadOlder(): Promise<boolean>;
   /** The answer to a question (plain text): it is sent as the user's message. */
   onAnswer(text: string): void;
+  /** The user's decision on a team card. Resolves when the server has answered. */
+  onDecideTeam(
+    messageId: string,
+    body: DecideTeamBody,
+  ): Promise<{ ok: true } | { ok: false; message: string }>;
   onInspect(runId: string): void;
   /** Keys (call ids, fold ids, message ids) of what is expanded. */
   expanded: ReadonlySet<string>;
@@ -173,6 +180,19 @@ export function MessageList({
                     openUrl={platform.openUrl}
                     favicons={favicons}
                   />
+                );
+              case "team":
+                return (
+                  <BotMessage key={item.key}>
+                    <TeamCard
+                      seed={item.messageId}
+                      team={item.team}
+                      botName={botName}
+                      expanded={expanded.has(item.key)}
+                      onToggle={() => onToggle(item.key)}
+                      onDecide={(body) => onDecideTeam(item.messageId, body)}
+                    />
+                  </BotMessage>
                 );
               case "actions":
                 return (

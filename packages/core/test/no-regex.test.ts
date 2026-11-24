@@ -27,6 +27,7 @@ const PROJECTS = [
   "packages/connectors",
   "packages/db",
   "packages/sandbox",
+  "packages/web",
   "packages/runtime",
   "packages/server",
   "evals",

@@ -277,6 +277,22 @@ describe("chat cards share one chrome and one collapsed row", () => {
     expect(ui("action-card.tsx")).toContain('from "./decision-card.js"');
   });
 
+  it("the team card is one decision card on the shared chrome (title, light line, rows, two buttons), decided into one collapsed row", () => {
+    const source = ui("team-card.tsx");
+    expect(source).toContain('from "./decision-card.js"');
+    expect(source).toContain('from "./action-card.js"');
+    expect(source).not.toMatch(/className="ui-action[ "]/);
+    // The footer: "Agora não" as plain text (quiet) and "Criar selecionados" as the pill (primary).
+    expect(source).toContain('tone="quiet"');
+    expect(source).toContain('tone="primary"');
+    expect(source).toContain("Agora não");
+    expect(source).toContain("Criar selecionados");
+    // A tick per proposed bot, the mascot of the bot, and nothing created without a tick.
+    expect(source).toContain("CheckInput");
+    expect(source).toContain("<Avatar");
+    expect(source).toContain("ticked.size === 0");
+  });
+
   it("the tool actions are drawn by the same collapsed row", () => {
     expect(read(join(SRC, "features", "chat", "ActionRow.tsx"))).toContain("ActionCard");
   });
@@ -700,6 +716,74 @@ describe("the settings dialog: a modal with a left nav, groups of simple rows, n
     const primitives = read(join(SRC, "ui", "primitives.tsx"));
     expect(primitives).toContain("createPortal(");
     expect(read(join(SRC, "lib", "focus.ts"))).toContain("topModal");
+  });
+});
+
+describe("o retorno interno do bot não tem marcador próprio na interface (docs/DESIGN.md, Princípios)", () => {
+  it("a chamada de `schedule_return` não vira cartão, e nenhuma tela do chat desenha o estado de espera", () => {
+    expect(read(join(SRC, "data", "derive.ts"))).toContain('"schedule_return"');
+    // O estado `waiting_timer` só é lido onde decide o que NÃO se desenha (avatar calmo, chip vazio, a
+    // execução ainda é a ativa para poder ser cancelada) e no inspetor, que é diagnóstico.
+    const readers = files(SRC, /\.tsx?$/)
+      .filter((f) => read(f).includes("waiting_timer"))
+      .map(rel)
+      .sort();
+    expect(readers).toEqual([
+      "data/derive.ts",
+      "features/chat/ChatScreen.tsx",
+      "features/inspector/InspectorScreen.tsx",
+      "lib/avatar-state.ts",
+    ]);
+  });
+});
+
+describe("o Principal é o supervisor: a estrela, a revisão e o silêncio sobre a memória (docs/DESIGN.md §5 e §3c)", () => {
+  const avatar = read(join(SRC, "ui", "avatar.tsx"));
+
+  it("a estrela é a única marca de um avatar além do rosto, desenhada só por ui/avatar.tsx, por tokens", () => {
+    expect(avatar).toContain("supervisor");
+    expect(avatar).toContain('data-testid="supervisor-star"');
+    expect(avatar).toContain("size-star-badge");
+    const tokens = read(join(SRC, "styles", "tokens.css"));
+    expect(tokens).toContain("--size-star-badge:");
+    expect(tokens).toContain("--size-star-badge-lg:");
+    // nenhuma outra peça desenha um ícone de estrela sobre um avatar
+    const drawers = files(SRC, /\.tsx$/)
+      .filter((f) => /\bStar\b/.test(read(f)) && /from "lucide-react"/.test(read(f)))
+      .map(rel);
+    expect(drawers).toEqual([join("ui", "avatar.tsx")]);
+  });
+
+  it("quem desenha o bot na barra lateral, no cabeçalho do chat, no painel e na paleta diz se é o principal pelo dado do bot", () => {
+    for (const file of [
+      join("features", "shell", "Sidebar.tsx"),
+      join("features", "chat", "ChatScreen.tsx"),
+      join("features", "panel", "Panel.tsx"),
+      join("features", "palette", "CommandPalette.tsx"),
+    ]) {
+      expect(read(join(SRC, file)), file).toContain("supervisor={bot.isDefault}");
+    }
+  });
+
+  it("Configurações > Memória tem o grupo Principal e o das revisões, com as peças de Geral e sem select nativo", () => {
+    const page = read(join(SRC, "features", "settings", "SupervisorSettings.tsx"));
+    expect(page).toContain('from "./parts.js"');
+    expect(page).toContain('<SettingsGroup label="Principal"');
+    expect(page).toContain('<SettingsGroup label="Revisões da equipe"');
+    expect(page).toContain("<SettingsSelect");
+    expect(page).toContain("<Toggle");
+    expect(page).not.toContain("<select");
+    expect(page).not.toContain("<input");
+    expect(read(join(SRC, "features", "settings", "MemorySettings.tsx"))).toContain(
+      "<SupervisorSettings />",
+    );
+  });
+
+  it("salvar e esquecer uma memória não aparecem no chat como linha nem como indicador (decisão do dono)", () => {
+    const derive = read(join(SRC, "data", "derive.ts"));
+    expect(derive).toContain("SILENT_TOOLS");
+    expect(derive).toMatch(/SILENT_TOOLS[^\n]*new Set\(\["remember", "forget"\]\)/);
+    expect(read(join(SRC, "data", "actions.ts"))).toContain("SILENT_TOOLS.has(name)");
   });
 });
 

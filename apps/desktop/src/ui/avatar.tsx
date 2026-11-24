@@ -1,5 +1,6 @@
 import type { BotColor } from "@suup/api";
 import type { AvatarStateId } from "@suup/avatar";
+import { Star } from "lucide-react";
 import { cx } from "../lib/cx.js";
 import { avatarOf, effectiveColor } from "../lib/mascots.js";
 import { Mascot, type MascotSize } from "./mascot.js";
@@ -30,6 +31,17 @@ const MASCOT_OF: Record<AvatarSize, MascotSize> = {
   tile: "tile",
 };
 
+/** The star of the main bot: a small chip on the avatar's lower right corner (not on the 16 px one). */
+const STAR_SIZE: Partial<Record<AvatarSize, string>> = {
+  sm: "size-star-badge",
+  md: "size-star-badge",
+  row: "size-star-badge",
+  lg: "size-star-badge",
+  tile: "size-star-badge",
+  xl: "size-star-badge-lg",
+  preview: "size-star-badge-lg",
+};
+
 export interface AvatarProps {
   /** `bot.avatar` (opaco), `bot.color` e uma semente (o id do bot) para o que o bot não tem. */
   avatar: string | null;
@@ -41,6 +53,12 @@ export interface AvatarProps {
   /** Sempre imagem parada. */
   still?: boolean;
   title?: string;
+  /**
+   * É o bot principal, o supervisor da equipe: uma estrela pequena e calma no canto (a única marca
+   * que um avatar tem além do rosto; docs/DESIGN.md §5). Vale para qualquer estilo de rosto, porque
+   * é desenhada em volta dele, não dentro.
+   */
+  supervisor?: boolean;
 }
 
 /** O rosto do bot: o mascote na cor dele (ou um emoji). */
@@ -52,12 +70,14 @@ export function Avatar({
   state = "idle",
   still = false,
   title,
+  supervisor = false,
 }: AvatarProps) {
   const spec = avatarOf(avatar, seed);
+  const star = supervisor ? STAR_SIZE[size] : undefined;
   return (
     <span
       className={cx(
-        "inline-flex flex-none items-center justify-center rounded-full",
+        "relative inline-flex flex-none items-center justify-center rounded-full",
         AVATAR_SIZE[size],
       )}
       {...(title === undefined ? { "aria-hidden": true } : { role: "img", "aria-label": title })}
@@ -73,6 +93,18 @@ export function Avatar({
         />
       ) : (
         <span className="text-[1.1em] leading-none">{spec.text}</span>
+      )}
+      {star !== undefined && (
+        <span
+          className={cx(
+            "absolute -right-0.5 -bottom-0.5 inline-flex items-center justify-center rounded-pill border-2 border-bg bg-raised text-text",
+            star,
+          )}
+          data-testid="supervisor-star"
+          aria-hidden="true"
+        >
+          <Star className="size-2/3" fill="currentColor" strokeWidth={0} aria-hidden="true" />
+        </span>
       )}
     </span>
   );

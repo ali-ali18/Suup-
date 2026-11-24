@@ -225,6 +225,8 @@ describe("client", () => {
       expiresAt: null,
       decidedAt: "2026-11-18T20:00:00.000Z",
       createdAt: "2026-11-18T20:00:00.000Z",
+      waitedMs: 5000,
+      stale: false,
     };
     const { api, calls } = client(() => Response.json({ approval: card, rule: null }));
     const result = await api.approvals.decide(BOT_ID, {

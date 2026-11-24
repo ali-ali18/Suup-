@@ -7,6 +7,7 @@ import {
   loadConfig,
   parseConfig,
   resolveDatabaseUrl,
+  resolveTimeZone,
 } from "../src/index.js";
 import { rawConfig, tempDir, writeJson } from "./helpers.js";
 
@@ -344,5 +345,116 @@ describe("configuration: the database URL", () => {
 
   it("is undefined when neither is set", () => {
     expect(resolveDatabaseUrl(parseConfig(rawConfig()), {})).toBeUndefined();
+  });
+});
+
+describe("the user's time zone", () => {
+  it("is the one of the configuration when it is a real IANA name", () => {
+    const config = parseConfig(rawConfig({ defaults: { timeZone: "America/Sao_Paulo" } }));
+    expect(config.defaults?.timeZone).toBe("America/Sao_Paulo");
+    expect(resolveTimeZone(config)).toBe("America/Sao_Paulo");
+  });
+
+  it("refuses a name that is not a time zone, saying what is expected", () => {
+    const issues = issuesOf(rawConfig({ defaults: { timeZone: "Marte/Olympus" } }));
+    expect(issues.join("\n")).toContain("fuso horário IANA");
+  });
+
+  it("falls back to the time zone of the computer that runs the server, never to nothing", () => {
+    const system = new Intl.DateTimeFormat().resolvedOptions().timeZone;
+    expect(resolveTimeZone({})).toBe(system === undefined || system === "" ? "UTC" : system);
+    expect(resolveTimeZone({ defaults: {} })).toBe(resolveTimeZone({}));
+  });
+});
+
+describe("configuration: web", () => {
+  it("takes the engines, the languages, a search URL and the reader settings", () => {
+    const config = parseConfig(
+      rawConfig({
+        web: {
+          search: {
+            engines: ["wikipedia", "duckduckgo"],
+            languages: ["en", "pt-br"],
+            maxResults: 5,
+          },
+          reader: { enabled: false },
+        },
+      }),
+      "suup.config.json",
+    );
+    expect(config.web?.search?.engines).toEqual(["wikipedia", "duckduckgo"]);
+    expect(config.web?.reader?.enabled).toBe(false);
+    expect(
+      parseConfig(rawConfig({ web: { search: { url: "http://localhost:8080" } } }), "x").web?.search
+        ?.url,
+    ).toBe("http://localhost:8080");
+  });
+
+  it("refuses an engine that is not in the list (Google is not)", () => {
+    expect(
+      issuesOf(rawConfig({ web: { search: { engines: ["wikipedia", "google"] } } })).join("\n"),
+    ).toContain("motor desconhecido: google");
+  });
+
+  it("refuses github as an engine (GitHub search is the GitHub MCP connector's, not the web search's)", () => {
+    expect(
+      issuesOf(rawConfig({ web: { search: { engines: ["wikipedia", "github"] } } })).join("\n"),
+    ).toContain("motor desconhecido: github");
+    expect(
+      issuesOf(rawConfig({ web: { search: { limits: { perEngine: { github: 3 } } } } })).join("\n"),
+    ).toContain("github");
+  });
+
+  it("refuses brave and startpage as engines (removed: SearXNG would send its random browser user agent)", () => {
+    for (const id of ["brave", "startpage"]) {
+      expect(
+        issuesOf(rawConfig({ web: { search: { engines: ["wikipedia", id] } } })).join("\n"),
+      ).toContain(`motor desconhecido: ${id}`);
+      expect(
+        issuesOf(rawConfig({ web: { search: { limits: { perEngine: { [id]: 3 } } } } })).join("\n"),
+      ).toContain(id);
+    }
+  });
+
+  it("refuses a language that could name another host, and a search URL that is not http(s)", () => {
+    expect(
+      issuesOf(rawConfig({ web: { search: { languages: ["en.evil.com"] } } })).join("\n"),
+    ).toContain("código de idioma inválido");
+    expect(issuesOf(rawConfig({ web: { search: { url: "ftp://x.test" } } })).join("\n")).toContain(
+      "URL http(s)",
+    );
+  });
+
+  it("takes the search limits and the cache, and refuses a limit for an engine that does not exist", () => {
+    const config = parseConfig(
+      rawConfig({
+        web: {
+          search: {
+            limits: { perMinute: 10, perEngine: { duckduckgo: 3 }, maxWaitSeconds: 5 },
+            cache: { enabled: true, ttlMinutes: 60 },
+          },
+        },
+      }),
+      "suup.config.json",
+    );
+    expect(config.web?.search?.limits).toEqual({
+      perMinute: 10,
+      perEngine: { duckduckgo: 3 },
+      maxWaitSeconds: 5,
+    });
+    expect(config.web?.search?.cache).toEqual({ enabled: true, ttlMinutes: 60 });
+    expect(
+      issuesOf(rawConfig({ web: { search: { limits: { perEngine: { google: 3 } } } } })).join("\n"),
+    ).toContain("motor desconhecido: google");
+    expect(
+      issuesOf(rawConfig({ web: { search: { limits: { perMinute: 0 } } } })).length,
+    ).toBeGreaterThan(0);
+    expect(
+      issuesOf(rawConfig({ web: { search: { cache: { ttlMinutes: 0 } } } })).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("refuses a key it does not know", () => {
+    expect(issuesOf(rawConfig({ web: { search: { apiKey: "x" } } })).length).toBeGreaterThan(0);
   });
 });
