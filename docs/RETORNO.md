@@ -14,7 +14,9 @@ schedule_return({ inMinutes: 1..60, note: "até 500 caracteres: o que conferir a
 
 O bot chama, escreve **uma mensagem normal** ao usuário ("Disparei o deploy, volto em 20 minutos para conferir") e a execução fica **parada**, sem worker, sem custo e sem nada na tela. Na hora marcada ela acorda **sozinha**, a **mesma execução** (mesmo plano, mesmo histórico, mesmos orçamentos), recebe a nota que o bot escreveu e continua na mesma conversa.
 
-Não é rotina: não aparece no painel, não tem nome, não se repete e o usuário não a cria. É interno do bot. Horário fixo, outro dia ou repetição são assunto de rotina ([ROTINAS.md](ROTINAS.md)); o prompt diz isso ao bot.
+Não é rotina: não aparece no painel, não tem nome, não se repete e o usuário não a cria. É interno do bot. O que se repete é rotina ([ROTINAS.md](ROTINAS.md)); o prompt diz isso ao bot.
+
+**Também é o lembrete de uma vez** (decisão do dono, 23/11/2026: "lembrete único é interno; rotina é o que se repete"): "me lembra daqui 20 minutos de enviar meu RG" é um `schedule_return` de 20 minutos com a nota do que lembrar, e ao voltar o bot lembra o usuário na própria mensagem. Mais longe que 60 minutos é o `create_reminder` ([ROTINAS.md](ROTINAS.md), "Lembrete de uma vez"), também interno e sem marcador.
 
 ## Sem marcador na interface
 

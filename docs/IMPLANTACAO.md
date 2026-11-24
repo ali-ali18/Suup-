@@ -2,6 +2,8 @@
 
 Como pôr o Suup para rodar de verdade: Postgres, servidor da API, worker e a máquina dos bots numa VPS com Docker, e o app de desktop falando com ele. A API está em [API.md](API.md); a configuração, em [CONFIGURACAO.md](CONFIGURACAO.md).
 
+**VPS gerenciada pelo Dokploy, com outros projetos nela?** Use o [DEPLOY-DOKPLOY.md](DEPLOY-DOKPLOY.md) (`docker-compose.dokploy.yml`): lá o Suup tem um Docker próprio (Docker dentro de Docker) e **não** recebe o socket do Docker do host, que este guia monta no worker e que daria ao Suup o controle dos contêineres dos outros projetos. Este guia continua valendo para uma VPS só do Suup.
+
 ## O que sobe
 
 ```
@@ -116,7 +118,7 @@ O worker comanda a máquina dos bots com `docker exec`, o que exige falar com o 
 
 - O worker é o código do Suup, não o código dos bots: os comandos dos bots rodam **dentro** da máquina dos bots, que **não** recebe o socket e é um contêiner endurecido. O risco real é uma falha no worker, ou nas bibliotecas dele, ser explorada.
 - O **servidor da API não recebe o socket** (é o que fica na frente da rede). É por isso que o `doctor` do servidor não confere a máquina dos bots: peça ao worker.
-- Mantenha a VPS dedicada ao Suup (nada mais de valor nela), com o sistema e o Docker atualizados e as portas fechadas (item acima).
+- Mantenha a VPS dedicada ao Suup (nada mais de valor nela), com o sistema e o Docker atualizados e as portas fechadas (item acima). Numa VPS com outros projetos, use o [DEPLOY-DOKPLOY.md](DEPLOY-DOKPLOY.md), sem o socket do host.
 - Para reduzir ainda mais: Docker em modo *rootless* no host, ou um *proxy de socket* com permissões restritas (só `exec`, `inspect`, `start`, `volume create`, `run`) entre o worker e o daemon. Nenhum dos dois vem pronto aqui.
 
 ## Rede dos bots
@@ -131,15 +133,13 @@ Contêineres criados antes desta versão (na rede padrão, com saída direta) s�
 
 [BUSCA.md](BUSCA.md). No Compose de produção:
 
-- `reader-image` constrói a imagem do leitor e renderizador (`docker/reader/Dockerfile`, base `mcr.microsoft.com/playwright:v1.65.1-noble`, vários GB; a tag é a versão exata do `playwright-core`) e `searxng-image` puxa a imagem do SearXNG **fixada** (`docker.io/searxng/searxng:2026.3.25-541c6c3cb`, nunca `latest`; AGPL v3, usado sem modificação).
-- O **worker** sobe os dois contêineres no primeiro uso (`suup-searxng` e `suup-reader`), pelo socket do Docker. Nada novo escuta em porta alguma.
-- A rede `suup-search-net` (`172.29.78.0/24`, **interna**) é a do SearXNG; o worker entra nela em `172.29.78.2` e o proxy de motores escuta aí (`web.search.proxy` no `suup.config.prod.example.json`). Se mudar a sub-rede, mude os dois, como na rede dos bots.
-- O cache da busca fica no banco (tabela `web_search_cache`, migração 0024, aplicada sozinha pelo `migrate`): sobrevive a reinício. `duckduckgo` está ligado por padrão e sai só por `html.duckduckgo.com` (BUSCA.md).
-- **Nenhum segredo novo no `.env.prod`:** a `secret_key` do SearXNG é gerada na criação do contêiner.
+- `reader-image` constrói a imagem do leitor e renderizador (`docker/reader/Dockerfile`, base `mcr.microsoft.com/playwright:v1.65.1-noble`, vários GB; a tag é a versão exata do `playwright-core`). **A busca não tem imagem nem contêiner** (o SearXNG e a rede `suup-search-net` saíram em 24/11/2026; o worker não entra mais em `172.29.78.2`).
+- O **worker** sobe o contêiner do leitor no primeiro uso (`suup-reader`), pelo socket do Docker. Nada novo escuta em porta alguma.
+- **A busca geral precisa de chaves, uma por motor:** `TAVILY_API_KEY` e `BRAVE_SEARCH_API_KEY` no `.env.prod` (e `environment` do `app-env` do Compose, se for por variável), **ou** pelo app, que as guarda no cofre (Configurações > Busca; o cofre precisa estar configurado, `vault.keyEnv`). Sem nenhuma, a busca geral é pulada e os bots buscam só na Wikipédia, no arXiv e no Stack Overflow (o `suup doctor` mostra "sem chave"). Crie as contas: Tavily (mil créditos por mês grátis, sem cartão) e Brave Search API (US$ 5 de crédito por mês). `web.search.general.order` troca a ordem (padrão Tavily, depois Brave) e `web.search.locale` (`pt-BR`) pede resultados do Brasil e em português.
+- O cache da busca fica no banco (tabela `web_search_cache`, migração 0024) e a contagem de buscas por motor e mês em `web_search_usage` (migração 0031), ambas aplicadas sozinhas pelo `migrate`. Os resultados da Brave **não** vão para o cache (termos dela). A busca sai só para `api.tavily.com`, `api.search.brave.com`, as APIs especializadas e a Wikipédia (BUSCA.md).
+- **Atualizando de uma versão com SearXNG:** tire `search.network`, `search.proxy`, `search.url` e `search.image` do `suup.config.json` (um campo desconhecido é recusado), troque `duckduckgo` por `tavily` e `brave` em `search.engines`, e, se quiser, remova à mão o contêiner `suup-searxng` e a rede `suup-search-net` (`docker rm -f suup-searxng; docker network rm suup-search-net`). O Compose novo já não os cria.
 - Construir a imagem do leitor atrás de um proxy que reassina o TLS: os mesmos argumentos da seção seguinte, com `-f docker/reader/Dockerfile`.
 - Sem o leitor ou sem a busca: `"web": { "reader": { "enabled": false } }` e/ou `"search": { "enabled": false }`.
-- Desenvolvimento: `docker compose --profile web up -d searxng` (com `SEARXNG_SECRET`) sobe só o SearXNG na porta `127.0.0.1:8080`, **com a saída do host** (sem a lista): só para desenvolvimento.
-- **Produção (VPS) não muda:** o proxy de motores fica no worker (`web.search.proxy.mode` omitido = `process`). O modo `container` (`suup-egress-search`, a imagem de `docker/egress`) é o do app de desktop no Windows, onde o worker é um processo do computador e não escuta numa rede do Docker ([BUSCA.md](BUSCA.md), "O app embutido").
 - **A imagem do leitor como o app a constrói** (sem o repositório): `pnpm exec tsc -b && node apps/sidecar/scripts/reader-image.mjs /tmp/reader && docker build -t suup-reader:app-dev /tmp/reader` (receita `docker/reader/app.Dockerfile`; o CI a constrói e confere que o navegador sobe). Atrás de um proxy que reassina o TLS, os mesmos argumentos da seção seguinte (`--network host`, `--build-arg HTTPS_PROXY`, `--secret id=build_ca,...`).
 
 ## Construir atrás de um proxy que reassina o TLS

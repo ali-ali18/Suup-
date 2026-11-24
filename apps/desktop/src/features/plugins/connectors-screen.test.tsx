@@ -4,6 +4,7 @@ import {
   type CatalogStatus,
   catalogEntrySchema,
   type SuupClient,
+  type WebSearchSettings,
 } from "@suup/api";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -22,7 +23,7 @@ import { appearanceOf, CATEGORIES } from "./appearance.js";
 import { ConnectorsScreen } from "./ConnectorsScreen.js";
 
 afterEach(cleanup);
-beforeEach(() => useUi.setState({ view: "connectors", settingsOpen: false }));
+beforeEach(() => useUi.setState({ view: "connectors", settingsOpen: false, plugin: null }));
 
 /** A gallery entry of the server, as the API sends it (the optional fields as `null`). */
 function asApi(e: ServerEntry) {
@@ -37,6 +38,9 @@ function asApi(e: ServerEntry) {
     auth,
     unverifiedReason: e.unverifiedReason ?? null,
     disclosure: e.disclosure ?? null,
+    authHosts: [...(e.authHosts ?? [])],
+    authLinkSegment: e.authLinkSegment ?? null,
+    deniedTools: [...(e.deniedTools ?? [])],
   });
 }
 
@@ -73,6 +77,8 @@ function setup(
     /** Where the server says the browser comes back from a login (`GET /v1/info`). */
     oauthCallback?: "loopback" | "public";
     api?: Record<string, unknown>;
+    /** The web search engines `GET /v1/web-search` answers (default: none). */
+    search?: WebSearchSettings;
   } = {},
 ) {
   let current = options.list ?? fresh();
@@ -86,6 +92,7 @@ function setup(
       oauthCallback: options.oauthCallback ?? "loopback",
     })),
     connectorCatalog: { list, install: vi.fn(), ...(extra.connectorCatalog as object) },
+    webSearch: { get: vi.fn(async () => options.search ?? { enabled: true, providers: [] }) },
     connectors: {
       list: vi.fn(async () => []),
       oauthStart: vi.fn(async (name: string) => ({
@@ -352,13 +359,10 @@ describe("connecting with OAuth in the browser", () => {
     expect(within(page()).getByTestId("connector-main").textContent).toBe("Desconectar");
     // the connectors of Configurações were read again
     expect(t.api.connectors.list).toHaveBeenCalled();
-    // and the page leads to the grants per bot of this connector
-    fireEvent.click(within(page()).getByTestId("connector-open-settings"));
-    expect(useUi.getState()).toMatchObject({
-      settingsOpen: true,
-      settingsTab: "connectors",
-      settingsConnector: "notion",
-    });
+    // and everything about the connector (the bots that use it, its tools, removing it) is on this
+    // same page, in "Gerenciar": nothing sends the person to Settings
+    expect(within(page()).getByRole("region", { name: "Gerenciar" })).toBeTruthy();
+    expect(within(page()).queryByTestId("connector-open-settings")).toBeNull();
   });
 
   it("Cancelar stops waiting, and nothing is asked any more", async () => {

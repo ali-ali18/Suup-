@@ -1,7 +1,12 @@
 import { readFileSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
-import { parseAllowlistHost } from "@suup/core";
-import { DEFAULT_ENGINES, unknownEngines } from "@suup/web/engines";
+import { isSecretName, parseAllowlistHost } from "@suup/core";
+import {
+  DEFAULT_ENGINES,
+  DEFAULT_GENERAL_ORDER,
+  engineById,
+  unknownEngines,
+} from "@suup/web/engines";
 import { z } from "zod";
 import { ConfigError } from "./errors.js";
 
@@ -86,6 +91,11 @@ const pricingSchema = z.strictObject({
 const modelSchema = z.strictObject({
   id: z.string({ error: "esperado o identificador do modelo (texto)" }).min(1),
   provider: z.string({ error: 'esperado o id de um provedor de "providers"' }).min(1),
+  /**
+   * The short name the app shows for this model (a person's name for it, not the provider's id):
+   * declared here, never derived from the id. Absent: the app shows the id.
+   */
+  name: z.exactOptional(z.string({ error: "esperado o nome curto do modelo (texto)" }).min(1)),
   contextWindow: positiveInt,
   maxOutputTokens: positiveInt,
   pricing: z.exactOptional(pricingSchema),
@@ -300,6 +310,58 @@ export function configuredTimeZone(config: {
   return configured !== undefined && isTimeZone(configured) ? configured : undefined;
 }
 
+/**
+ * The progress watchdog (docs/VIGIA.md): what a run does at its step limit and when it repeats
+ * itself. Every field has a default; the thresholds are counts, never patterns of text.
+ */
+const watchdogSchema = z
+  .strictObject({
+    /** Off: the run fails at its limits and at a loop, as it did before the watchdog existed. */
+    enabled: z.exactOptional(z.boolean()),
+    /** Steps one extension grants (the automatic ones and the owner's "Continuar"). Default 25. */
+    extension: z.exactOptional(z.number().int().min(5).max(500)),
+    /** How many times a run extends itself before it always asks. Default 2; 0 never. */
+    maxAutoExtensions: z.exactOptional(z.number().int().min(0).max(10)),
+    /** The share of a slice of steps at which the soft check runs. Default 0.8. */
+    softLimit: z.exactOptional(z.number().min(0.5).max(0.95)),
+    /** The same call with the same result, in a row: nudge at (default 3), ask at (default 5). */
+    repeatNudgeAt: z.exactOptional(z.number().int().min(2).max(50)),
+    repeatAskAt: z.exactOptional(z.number().int().min(3).max(100)),
+    /** The same tool failing the same way, in a row: nudge at (default 3), ask at (default 5). */
+    errorNudgeAt: z.exactOptional(z.number().int().min(2).max(50)),
+    errorAskAt: z.exactOptional(z.number().int().min(3).max(100)),
+    /** Turns in a row without a tool call before the owner is asked. Default 3. */
+    noToolAskAt: z.exactOptional(z.number().int().min(2).max(20)),
+    /** An A-B-A-B run of calls before the owner is asked (the nudge comes at 6). Default 10. */
+    alternationAskAt: z.exactOptional(z.number().int().min(6).max(100)),
+    /** The cheap model that gives a second opinion near the limit. */
+    judge: z.exactOptional(
+      z.strictObject({
+        /** `false`: no judge, the structural signals decide alone. */
+        enabled: z.exactOptional(z.boolean()),
+        /** A model of `models`. Default: the auto-review model, else the one of `reviewer`. */
+        model: z.exactOptional(z.string().min(1)),
+      }),
+    ),
+  })
+  .superRefine((value, ctx) => {
+    const pairs: [keyof typeof value, keyof typeof value, number, number][] = [
+      ["repeatNudgeAt", "repeatAskAt", 3, 5],
+      ["errorNudgeAt", "errorAskAt", 3, 5],
+    ];
+    for (const [nudge, ask, nudgeDefault, askDefault] of pairs) {
+      const nudgeAt = (value[nudge] as number | undefined) ?? nudgeDefault;
+      const askAt = (value[ask] as number | undefined) ?? askDefault;
+      if (askAt <= nudgeAt) {
+        ctx.addIssue({
+          code: "custom",
+          path: [ask],
+          message: `precisa ser maior que ${String(nudge)} (o aviso vem antes da pergunta)`,
+        });
+      }
+    }
+  });
+
 const defaultsSchema = z.strictObject({
   maxTurns: z.exactOptional(positiveInt),
   maxCostUsd: z.exactOptional(z.number().positive()),
@@ -309,6 +371,8 @@ const defaultsSchema = z.strictObject({
    * refuses and the bot must finish or ask the user. Default 6. 0 turns the returns off.
    */
   maxReturns: z.exactOptional(z.number().int().nonnegative()),
+  /** What a run does at its step limit and when it loops: asks you, instead of failing. */
+  watchdog: z.exactOptional(watchdogSchema),
   /**
    * How many characters of the earlier messages of a conversation a run gets as history (whole
    * messages, newest first). Older ones are found with `search_conversations`.
@@ -396,6 +460,21 @@ function isLanguageCode(code: string): boolean {
   return true;
 }
 
+/** A locale (`pt-BR`, `en_US`, `pt`): letters, digits, hyphens and underscores. */
+function isLocale(text: string): boolean {
+  if (text.length < 2 || text.length > 16) return false;
+  for (const ch of text) {
+    const ok =
+      (ch >= "a" && ch <= "z") ||
+      (ch >= "A" && ch <= "Z") ||
+      (ch >= "0" && ch <= "9") ||
+      ch === "-" ||
+      ch === "_";
+    if (!ok) return false;
+  }
+  return true;
+}
+
 /** An absolute http(s) URL (the scheme is compared, not matched). */
 const httpUrl = z.string().refine((text) => {
   try {
@@ -407,9 +486,25 @@ const httpUrl = z.string().refine((text) => {
 }, "esperado uma URL http(s) completa");
 
 /**
- * Search and page reading for the bots, built from open-source parts that Suup runs itself
- * (docs/BUSCA.md): no provider account, no key. Everything is optional; the defaults are the safe
- * list of engines and a reader that respects robots.txt.
+ * A general search engine with a key (docs/BUSCA.md, "A fila da busca geral"). The key itself is
+ * never in the file: `apiKeyEnv` names the environment variable that holds it, and `secret` names
+ * the vault secret that does (the app writes it there). The environment is looked at first, then
+ * the vault. Without either the engine is skipped.
+ */
+const generalEngineSchema = z.strictObject({
+  /** The environment variable with the key. Default: the engine's own (`TAVILY_API_KEY`, `BRAVE_SEARCH_API_KEY`). */
+  apiKeyEnv: z.exactOptional(envName),
+  /** The vault secret with the key. Default: the same name as the variable. */
+  secret: z.exactOptional(
+    z.string().refine(isSecretName, "nome de segredo inválido (maiúsculas, números e sublinhado)"),
+  ),
+});
+
+/**
+ * Search and page reading for the bots (docs/BUSCA.md). Everything is optional; the defaults are the
+ * specialised engines (Wikipedia, arXiv, Stack Overflow, no key), the queue of general engines
+ * (Tavily, then Brave Search; each is used only when it has a key) and a reader that respects
+ * robots.txt.
  */
 const webSchema = z.strictObject({
   search: z.exactOptional(
@@ -418,15 +513,13 @@ const webSchema = z.strictObject({
       enabled: z.exactOptional(z.boolean()),
       /**
        * The engines, by id (docs/BUSCA.md lists them). Default: the ones with a documented public API
-       * that Suup asks itself, with its honest user agent (`wikipedia`, `arxiv`, `stackoverflow`), plus
-       * `duckduckgo`, the one general web engine turned on by decision of the project owner (asked by
-       * the SearXNG container; low rate, honest user agent; it reads a result page and may answer with
-       * a captcha). Google and Bing do not exist here, and neither do Brave and Startpage (SearXNG would
-       * send its own random browser user agent to them). GitHub is not a web search engine: its
-       * search is the GitHub MCP connector's.
+       * that Suup asks itself, with its honest user agent (`wikipedia`, `arxiv`, `stackoverflow`), and
+       * the general engines of the queue (`tavily`, `brave`), which need a key and are skipped without
+       * one. Google and Bing do not exist here. GitHub is not a web search engine: its search is the
+       * GitHub MCP connector's.
        */
       engines: z.exactOptional(z.array(z.string().min(1)).min(1).max(20)),
-      /** Languages whose Wikipedia host the search container may reach. Default `["en", "pt"]`. */
+      /** Languages whose Wikipedia host the search may reach. Default `["en", "pt"]`. */
       languages: z.exactOptional(
         z
           .array(
@@ -435,8 +528,23 @@ const webSchema = z.strictObject({
           .min(1)
           .max(10),
       ),
-      /** Use a SearXNG instance you run yourself, at this URL, instead of the container Suup starts. */
-      url: z.exactOptional(httpUrl),
+      /**
+       * The person's locale (`pt-BR`). The general engines rank for its country and language
+       * (Tavily `country: "brazil"` and `language: "pt"`; Brave `country: "BR"` and
+       * `search_lang: "pt-br"`). Without it they send neither.
+       */
+      locale: z.exactOptional(
+        z.string().refine(isLocale, "locale inválido (ex.: pt-BR, en-US, pt)"),
+      ),
+      /** The queue of general engines: the order they are tried in and where each finds its key. */
+      general: z.exactOptional(
+        z.strictObject({
+          /** The order, first tried first. Default `["tavily", "brave"]`. An engine not listed goes after, in the default order. */
+          order: z.exactOptional(z.array(z.string().min(1)).min(1).max(10)),
+          tavily: z.exactOptional(generalEngineSchema),
+          brave: z.exactOptional(generalEngineSchema),
+        }),
+      ),
       /** Most results one search returns (1 to 20). Default 10. */
       maxResults: z.exactOptional(z.number().int().min(1).max(20)),
       /**
@@ -447,40 +555,22 @@ const webSchema = z.strictObject({
         z.strictObject({
           /** Searches in any minute, overall. Default 20. */
           perMinute: z.exactOptional(z.number().int().min(1).max(600)),
-          /** Searches in any minute to one engine, by id. The default of each engine is in the engine list (DuckDuckGo: 6). */
+          /** Searches in any minute to one engine, by id. The default of each engine is in the engine list. */
           perEngine: z.exactOptional(z.record(z.string().min(1), z.number().int().min(1).max(600))),
           /** The most a search waits in the queue, in seconds, before it is refused with the time to try again. Default 20. */
           maxWaitSeconds: z.exactOptional(z.number().int().min(0).max(120)),
         }),
       ),
-      /** The cache of searches: an identical search is answered from it, and the answer says so. */
+      /**
+       * The cache of searches: an identical search is answered from it, and the answer says so.
+       * Brave's results are never cached, whatever this says (Brave's terms).
+       */
       cache: z.exactOptional(
         z.strictObject({
           /** `false` turns the cache off. Default `true`. */
           enabled: z.exactOptional(z.boolean()),
           /** How long a cached search lives, in minutes (1 to 10080). Default 180 (3 hours). */
           ttlMinutes: z.exactOptional(z.number().int().min(1).max(10_080)),
-        }),
-      ),
-      /** The SearXNG image. Default: the version pinned in the code. */
-      image: z.exactOptional(z.string().min(1)),
-      /** The internal network of the search container. Default `suup-search-net`. */
-      network: z.exactOptional(z.string().min(1)),
-      /** Where the engine proxy runs and listens on that network (needed when the worker runs in a container). */
-      proxy: z.exactOptional(
-        z.strictObject({
-          /**
-           * `process` (default): in this process, on the search network's gateway (a Linux host).
-           * `container`: in its own container (`suup-egress-search`, the image of `docker/egress`),
-           * with its control port published on 127.0.0.1: Docker Desktop (Windows), where this process
-           * cannot listen on a Docker network. The embedded app uses it when the bots' proxy does.
-           */
-          mode: z.exactOptional(z.enum(["process", "container"])),
-          /** `container` mode: the image built from `docker/egress`. */
-          image: z.exactOptional(z.string().min(1)),
-          listenHost: z.exactOptional(z.string().min(1)),
-          advertiseHost: z.exactOptional(z.string().min(1)),
-          port: z.exactOptional(z.number().int().min(1).max(65535)),
         }),
       ),
     }),
@@ -588,6 +678,14 @@ export const configSchema = z
         message: `modelo "${autoReviewModel}" não existe em "models" (existentes: ${[...modelIds].join(", ")})`,
       });
     }
+    const judgeModel = config.defaults?.watchdog?.judge?.model;
+    if (judgeModel !== undefined && !modelIds.has(judgeModel)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["defaults", "watchdog", "judge", "model"],
+        message: `modelo "${judgeModel}" não existe em "models" (existentes: ${[...modelIds].join(", ")})`,
+      });
+    }
     const consolidationModel = config.memory?.consolidation?.model;
     if (consolidationModel !== undefined && !modelIds.has(consolidationModel)) {
       ctx.addIssue({
@@ -602,6 +700,16 @@ export const configSchema = z
         code: "custom",
         path: ["web", "search", "engines"],
         message: `motor desconhecido: ${wrongEngines.join(", ")} (use os ids de docs/BUSCA.md)`,
+      });
+    }
+    const wrongOrder = unknownEngines(config.web?.search?.general?.order ?? []).concat(
+      (config.web?.search?.general?.order ?? []).filter((id) => engineById(id)?.general !== true),
+    );
+    if (wrongOrder.length > 0) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["web", "search", "general", "order"],
+        message: `não é um motor de busca geral: ${[...new Set(wrongOrder)].join(", ")} (use: ${DEFAULT_GENERAL_ORDER.join(", ")})`,
       });
     }
     const wrongLimits = unknownEngines(Object.keys(config.web?.search?.limits?.perEngine ?? {}));

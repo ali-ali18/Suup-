@@ -1,5 +1,22 @@
 export type { ConnectorToolInfo } from "@suup/connectors";
 export { MEMORY_TOOL_NAMES } from "@suup/core";
+// What an evaluation needs to open a delivered file (the evals depend on the runtime, not on the
+// documents package): the same readers `create_document` checks its own files with.
+export {
+  bodyLines,
+  cm,
+  createDocumentMaker,
+  dominantSize,
+  inspectDelivery,
+  inspectPdf,
+  inspectXlsx,
+  type Layout,
+  measureLayout,
+  type PdfInspection,
+  type PdfLine,
+  type XlsxCell,
+  type XlsxInspection,
+} from "@suup/documents";
 export {
   configPath,
   configSchema,
@@ -39,9 +56,12 @@ export {
 } from "./connectors/gallery.js";
 export { oauthSecretNames } from "./connectors/oauth-store.js";
 export {
+  connectLinkProblem,
   PROPOSE_CONNECTOR_TOOL,
   proposalCardLine,
   proposeConnectorTool,
+  SHOW_CONNECT_CARD_TOOL,
+  showConnectCardTool,
 } from "./connectors/propose-tool.js";
 export {
   type BotConnectorCandidate,
@@ -123,8 +143,11 @@ export {
   TEAM_CARD_TEXT,
 } from "./reception.js";
 export {
+  CREATE_REMINDER_TOOL,
   CREATE_ROUTINE_TOOL,
   completeRoutineFire,
+  createReminderCardLine,
+  createReminderTool,
   createRoutineCardLine,
   createRoutineTool,
   DELETE_ROUTINE_TOOL,
@@ -132,6 +155,7 @@ export {
   duplicateRoutineOf,
   LIST_ROUTINES_TOOL,
   listRoutinesTool,
+  MAX_REMINDER_TEXT,
   ownRoutinesFor,
   ROUTINE_RUN_TOOL_NAMES,
   ROUTINE_TOOL_NAMES,

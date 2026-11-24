@@ -22,6 +22,12 @@ import { USE_TOOL_NAME } from "./tool-search.js";
 import { handleSearchTools, resolveUseTool } from "./tool-search-calls.js";
 import { webUrlsSeen } from "./web-seen.js";
 
+/** What the model wrote in a turn, besides its calls: its text blocks, in order. */
+const turnText = (pending: PendingResponse): string =>
+  pending.blocks
+    .flatMap((b) => (b.type === "text" && b.text.trim() !== "" ? [b.text.trim()] : []))
+    .join("\n\n");
+
 export async function executeCalls(
   ctx: LoopContext,
   pending: PendingResponse,
@@ -65,7 +71,7 @@ export async function executeCalls(
         await handleFinish(ctx, call, finishAlone(call.id));
         break;
       case "escalate":
-        await handleEscalate(ctx, call, alone);
+        await handleEscalate(ctx, call, alone, turnText(pending));
         break;
       case "request_secret":
         await handleRequestSecret(ctx, call, alone);
@@ -164,6 +170,8 @@ async function handleTool(
   const memory = ctx.deps.memoryFor?.(ctx.run);
   const network = ctx.deps.networkFor?.(ctx.run);
   const web = ctx.deps.webFor?.(ctx.run);
+  const files = ctx.deps.filesFor?.(ctx.run);
+  const documents = ctx.deps.documentsFor?.(ctx.run);
   const toolCtx: ToolContext = {
     runId: ctx.runId,
     botId: bot.id,
@@ -175,6 +183,9 @@ async function handleTool(
     webSeen: webUrlsSeen(ctx.state),
     ...(network === undefined ? {} : { network }),
     ...(web === undefined ? {} : { web }),
+    ...(files === undefined ? {} : { files }),
+    ...(documents === undefined ? {} : { documents }),
+    callId: call.id,
   };
   let invocation: ToolInvocation;
   try {
@@ -206,6 +217,7 @@ async function handleTool(
       ? {}
       : { urlProvenance: invocation.output.urlProvenance }),
     ...(invocation.output.source === undefined ? {} : { source: invocation.output.source }),
+    ...(invocation.risk === undefined ? {} : { risk: invocation.risk }),
   });
   return false;
 }

@@ -1,5 +1,6 @@
 import type { ComponentType } from "react";
 import {
+  siBrave,
   siFigma,
   siGithub,
   siGmail,
@@ -92,6 +93,7 @@ export interface SolidMark {
 const SOLID: ReadonlyMap<string, SolidMark> = new Map<string, SolidMark>([
   ["stackoverflow", siStackoverflow],
   ["linear", siLinear],
+  ["brave", siBrave],
 ]);
 
 export function solidMarkFor(id: string): SolidMark | undefined {

@@ -140,7 +140,14 @@ describe("Tailwind: classes name tokens, never a colour, a palette or a pixel", 
   it("the theme maps every token of tokens.css, exactly, and empties the default scales", () => {
     for (const reset of ["--color-*", "--radius-*", "--text-*", "--shadow-*", "--font-*"])
       expect(theme, reset).toContain(`${reset}: initial;`);
-    for (const prefix of ["--color-", "--radius-", "--shadow-", "--font-sans", "--font-mono"]) {
+    for (const prefix of [
+      "--color-",
+      "--radius-",
+      "--shadow-",
+      "--font-sans",
+      "--font-heading",
+      "--font-mono",
+    ]) {
       for (const name of defined(tokens, prefix)) {
         // A token is exposed by name, pointing at itself: `--color-bg: var(--color-bg);`.
         expect(theme, name).toContain(`${name}: var(${name});`);
@@ -185,6 +192,64 @@ describe("Tailwind: classes name tokens, never a colour, a palette or a pixel", 
         const isPalette = PALETTE.some((c) => name === c || name.startsWith(`${c}-`));
         if (isPalette || name === "white" || name === "black")
           offenders.push(`${rel(file)}: ${word}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("no shadcn name survives in a copied piece: its classes were rewritten to our theme (docs/DESIGN.md §2a)", () => {
+    // The colours, radii, sizes and shadows of the shadcn styles. None exists in our theme, so a
+    // class with one of them would silently draw nothing.
+    const SHADCN_COLOURS = new Set([
+      "popover",
+      "popover-foreground",
+      "foreground",
+      "background",
+      "accent",
+      "accent-foreground",
+      "primary",
+      "primary-foreground",
+      "secondary",
+      "secondary-foreground",
+      "muted",
+      "muted-foreground",
+      "destructive",
+      "input",
+      "ring",
+      "card",
+      "card-foreground",
+    ]);
+    const SHADCN_SCALE = new Set([
+      "rounded-sm",
+      "rounded-md",
+      "rounded-lg",
+      "rounded-xl",
+      "rounded-2xl",
+      "rounded-3xl",
+      "rounded-4xl",
+      "text-xs",
+      "text-sm",
+      "text-base",
+      "text-lg",
+      "shadow-sm",
+      "shadow-md",
+      "shadow-lg",
+      "shadow-xl",
+      "shadow-2xl",
+      "backdrop-blur",
+      "backdrop-blur-sm",
+    ]);
+    const offenders: string[] = [];
+    for (const file of components) {
+      for (const word of words(read(file))) {
+        let utility = word.slice(word.lastIndexOf(":") + 1);
+        while (utility.startsWith("-") || utility.startsWith("!")) utility = utility.slice(1);
+        if (SHADCN_SCALE.has(utility)) offenders.push(`${rel(file)}: ${word}`);
+        const prefix = COLOUR_PREFIXES.find((p) => utility.startsWith(p));
+        // `shadow-popover` is OUR shadow token: a shadow names a size here, never a colour
+        if (prefix === undefined || prefix === "shadow-") continue;
+        const name = utility.slice(prefix.length).split("/")[0] ?? "";
+        if (SHADCN_COLOURS.has(name)) offenders.push(`${rel(file)}: ${word}`);
       }
     }
     expect(offenders).toEqual([]);
@@ -263,6 +328,184 @@ describe("Tailwind: classes name tokens, never a colour, a palette or a pixel", 
   });
 });
 
+describe("a base dos componentes: cópias do shadcn base-maia sobre Base UI (docs/DESIGN.md §2a, dono 24/11/2026)", () => {
+  const pkg = JSON.parse(read(join(SRC, "..", "package.json"))) as {
+    dependencies: Record<string, string>;
+    devDependencies: Record<string, string>;
+  };
+  const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+
+  it("só o Base UI entra como dependência: nada do shadcn em tempo de execução nem config do CLI", () => {
+    expect(deps["@base-ui/react"]).toBeDefined();
+    for (const name of [
+      "shadcn",
+      "cn",
+      "class-variance-authority",
+      "tailwind-merge",
+      "clsx",
+      "tw-animate-css",
+      "@radix-ui/react-slot",
+    ])
+      expect(deps[name], name).toBeUndefined();
+    expect(existsSync(join(SRC, "..", "components.json"))).toBe(false);
+  });
+
+  it("as fontes vêm embutidas (Outfit no texto, Geist nos títulos) e nunca do Google", () => {
+    const app = read(join(SRC, "styles", "app.css"));
+    expect(app).toContain('@import "@fontsource-variable/outfit"');
+    expect(app).toContain('@import "@fontsource-variable/geist"');
+    const tokens = read(join(SRC, "styles", "tokens.css"));
+    expect(tokens).toContain('"Outfit Variable", ui-sans-serif');
+    expect(tokens).toContain('"Geist Variable", ui-sans-serif');
+    expect(read(join(SRC, "styles", "base.css"))).toContain("font-family: var(--font-heading);");
+    const html = read(join(SRC, "..", "index.html"));
+    for (const text of [html, app, tokens]) expect(text).not.toContain("fonts.googleapis");
+  });
+
+  it("lote 4, rádio: ui/radio.tsx é a cópia sobre o Base UI (botão nativo, label irmão) e nenhuma tela escreve role=radio na mão", () => {
+    const radio = read(join(SRC, "ui", "radio.tsx"));
+    expect(radio).toContain('from "@base-ui/react/radio"');
+    expect(radio).toContain('from "@base-ui/react/radio-group"');
+    expect(radio).toContain("nativeButton");
+    expect(radio).toContain("htmlFor={id}");
+    // the owner's rule: on is filled with the text colour, with the inverted dot (not shadcn's primary)
+    expect(radio).toContain("data-checked:bg-text");
+    expect(radio).toContain("bg-text-inverse");
+    // the old hand-made pieces are gone
+    const choice = read(join(SRC, "ui", "choice.tsx"));
+    for (const name of ["ChoiceGroup", "ChoiceRow", 'type="radio"', "radio = false"])
+      expect(choice, name).not.toContain(name);
+    expect(read(join(SRC, "features", "shell", "GroupDialog.tsx"))).toContain("<RadioRow");
+    // only the question card (its own keys A to F: Option and its group) still draws a radio by hand
+    const handMade = files(SRC, /\.tsx$/)
+      .filter((f) => !f.endsWith(".test.tsx") && read(f).includes('role="radio"'))
+      .map(rel)
+      .sort();
+    expect(handMade).toEqual(["ui/primitives.tsx", "ui/question-card.tsx"]);
+  });
+
+  it("lote 4, campo: Field e Input são as cópias sobre o Base UI; o TextField e o SecretInput os usam e o inválido vem da tela", () => {
+    const field = read(join(SRC, "ui", "field.tsx"));
+    expect(field).toContain('from "@base-ui/react/field"');
+    expect(field).toContain("invalid={invalid === true}");
+    expect(field).toContain('role="alert"');
+    const input = read(join(SRC, "ui", "input.tsx"));
+    expect(input).toContain('from "@base-ui/react/input"');
+    expect(input).toContain("export function fieldControlClass");
+    // the screen decides what is wrong: Base UI's own validation is never switched on
+    for (const file of files(SRC, /\.tsx$/).filter((f) => !f.endsWith(".test.tsx"))) {
+      const source = read(file);
+      expect(source, rel(file)).not.toContain("validationMode");
+      expect(source, rel(file)).not.toContain("pattern=");
+    }
+    const primitives = read(join(SRC, "ui", "primitives.tsx"));
+    const text = primitives.slice(primitives.indexOf("export function TextField"));
+    expect(text.slice(0, text.indexOf("\n}\n"))).toContain("<Field invalid={error !== undefined}");
+    expect(read(join(SRC, "ui", "secret-input.tsx"))).toContain(
+      "<Field invalid={error !== undefined}",
+    );
+    expect(read(join(SRC, "ui", "secret-input.tsx"))).toContain("<Input");
+  });
+
+  it("lote 4, botão: Pill, RoundButton e IconButton desenham pelo Button do Base UI; só o ocupado fica focável", () => {
+    const button = read(join(SRC, "ui", "button.tsx"));
+    expect(button).toContain('from "@base-ui/react/button"');
+    expect(button).toContain("focusableWhenDisabled={busy}");
+    expect(button).not.toContain("cva(");
+    const primitives = read(join(SRC, "ui", "primitives.tsx"));
+    for (const name of ["Pill", "RoundButton", "IconButton"]) {
+      const from = primitives.indexOf(`export function ${name}`);
+      const body = primitives.slice(from, primitives.indexOf("\n}\n", from));
+      expect(body, name).toContain("<Button");
+      expect(body, name).not.toContain("<button");
+    }
+    // the public props stay
+    expect(primitives).toContain("tone?: PillTone;");
+    expect(primitives).toContain("label: string;");
+    // never `focusableWhenDisabled` outside the busy rule: a plain disabled button stays `disabled`
+    for (const file of files(SRC, /\.tsx$/).filter((f) => !f.endsWith(".test.tsx")))
+      if (!file.endsWith("button.tsx"))
+        expect(read(file), rel(file)).not.toContain("focusableWhenDisabled");
+  });
+
+  it("lote 1: o interruptor, a dica e o popover são as cópias sobre o Base UI", () => {
+    const sw = read(join(SRC, "ui", "switch.tsx"));
+    expect(sw).toContain('from "@base-ui/react/switch"');
+    expect(sw).toContain("nativeButton");
+    expect(read(join(SRC, "ui", "primitives.tsx"))).toContain(
+      'export { Toggle } from "./switch.js";',
+    );
+    expect(read(join(SRC, "ui", "tooltip.tsx"))).toContain('from "@base-ui/react/tooltip"');
+    expect(read(join(SRC, "ui", "popover.tsx"))).toContain('from "@base-ui/react/popover"');
+    // the round icon button shows its name as the app's tip, not the native title
+    const primitives = read(join(SRC, "ui", "primitives.tsx"));
+    const round = primitives.slice(primitives.indexOf("export function RoundButton"));
+    const body = round.slice(0, round.indexOf("\n}\n"));
+    expect(body).toContain("<Tip label={label}>");
+    expect(body).not.toContain("title=");
+    expect(read(join(SRC, "main.tsx"))).toContain("<TipProvider>");
+  });
+
+  it("lote 2: os menus e o dropdown são as cópias sobre o Base UI, e o menu da conta é um MenuButton", () => {
+    const menu = read(join(SRC, "ui", "menu.tsx"));
+    expect(menu).toContain('from "@base-ui/react/menu"');
+    expect(menu).toContain("export function MenuButton");
+    expect(menu).toContain("export function PopupMenu");
+    expect(menu).toContain('data-testid="menu-icon"');
+    expect(menu).toContain('data-testid="menu-label"');
+    expect(existsSync(join(SRC, "ui", "popup-menu.tsx"))).toBe(false);
+    // every popup draws the one surface of ui/popover.tsx
+    for (const file of ["menu.tsx", "dropdown.tsx", "popover.tsx"])
+      expect(read(join(SRC, "ui", file)), file).toContain("POPUP_SURFACE");
+    const sidebar = read(join(SRC, "features", "shell", "Sidebar.tsx"));
+    expect(sidebar).toContain('label="Sua conta"');
+    expect(sidebar.indexOf("<MenuButton")).toBeLessThan(
+      sidebar.indexOf('data-testid="owner-menu"'),
+    );
+    // each opening of a menu at a point is a new menu
+    for (const file of [
+      join("features", "shell", "Sidebar.tsx"),
+      join("features", "chat", "ChatScreen.tsx"),
+    ])
+      expect(read(join(SRC, file)), file).toContain("key={menu.key}");
+  });
+
+  it("o menu do dono (24/11/2026): linhas de ícone e rótulo, grupos com Separator e Label, dica e submenu; nome curto do modelo", () => {
+    const menu = read(join(SRC, "ui", "menu.tsx"));
+    for (const part of [
+      "<Menu.Separator",
+      "<Menu.GroupLabel",
+      "<Menu.SubmenuTrigger",
+      "<ChevronRight",
+      'data-testid="menu-hint"',
+      "font-normal",
+    ])
+      expect(menu, part).toContain(part);
+    expect(read(join(SRC, "ui", "separator.tsx"))).toContain('from "@base-ui/react/separator"');
+    // no hand-made divider
+    const hr = files(SRC, /\.tsx$/).filter((f) => read(f).includes("<hr"));
+    expect(hr.map(rel)).toEqual([]);
+    // the model is shown by the short name the server declares, never the id with the provider
+    for (const file of [
+      join("features", "panel", "ActivityTab.tsx"),
+      join("features", "new-bot", "NewBotDialog.tsx"),
+      join("features", "inspector", "InspectorScreen.tsx"),
+    ]) {
+      const source = read(join(SRC, file));
+      expect(source, file).toContain("label: m.name");
+      expect(source, file).not.toContain("m.provider}");
+    }
+    // the account menu: its groups, the pending count as a hint
+    const sidebar = read(join(SRC, "features", "shell", "Sidebar.tsx"));
+    expect(sidebar).toContain("const ownerItems: MenuSection[]");
+    expect(sidebar).toContain("hint: String(pending)");
+  });
+
+  it("a raiz isola o empilhamento, para os popups no body ficarem por cima", () => {
+    expect(read(join(SRC, "styles", "base.css"))).toContain("isolation: isolate;");
+  });
+});
+
 describe("chat cards share one chrome and one collapsed row", () => {
   const ui = (name: string) => read(join(SRC, "ui", name));
 
@@ -293,22 +536,29 @@ describe("chat cards share one chrome and one collapsed row", () => {
     expect(source).toContain("ticked.size === 0");
   });
 
-  it("the tool actions are drawn by the same collapsed row", () => {
-    expect(read(join(SRC, "features", "chat", "ActionRow.tsx"))).toContain("ActionCard");
+  it("the chat shows results only: no tool row, no fold of actions, no steps (owner, 24/11/2026)", () => {
+    // "Por mim nem precisa do panel atividade ou avisar os passos deles, quero o resultado com
+    // excelência e nada mais!" The calls and the steps live in the Inspector.
+    expect(existsSync(join(SRC, "features", "chat", "ActionRow.tsx"))).toBe(false);
+    expect(existsSync(join(SRC, "data", "actions.ts"))).toBe(false);
+    const timeline = read(join(SRC, "features", "chat", "timeline.ts"));
+    expect(timeline).not.toContain('kind: "actions"');
+    expect(timeline).not.toContain("mergeApprovals");
+    const list = read(join(SRC, "features", "chat", "MessageList.tsx"));
+    expect(list).not.toContain('case "actions"');
+    expect(list).not.toContain("ActionFold");
+    expect(list).not.toContain("CallRow");
+    expect(read(join(SRC, "ui", "action-card.tsx"))).not.toContain("ActionFold");
+    // No setting to fold what is no longer there.
+    expect(read(join(SRC, "lib", "settings.ts"))).not.toContain("fold");
+    // Nothing is "silent" any more: there is nothing to be loud about.
+    for (const file of files(SRC, /\.tsx?$/))
+      expect(read(file).includes("SILENT_TOOLS"), rel(file)).toBe(false);
   });
 
-  it("one tool vocabulary: the decision card, the decided approval and the action row read the label and icon from toolCategory", () => {
-    const row = read(join(SRC, "features", "chat", "ActionRow.tsx"));
-    expect(row).toContain("categoryGlyph(item.icon)");
-    expect(row).not.toMatch(/SquareTerminal|FileText|Globe|Brain|Wrench/);
-    expect(read(join(SRC, "data", "actions.ts"))).toContain("toolCategory(name, connectors)");
-    expect(read(join(SRC, "data", "actions.ts"))).not.toMatch(/kindLabel: "/);
+  it("one tool vocabulary: the decision card and the decided approval read the label and icon from toolCategory", () => {
     for (const name of ["approval-card.tsx"])
       expect(ui(name), name).toContain("categoryGlyph(category.icon)");
-  });
-
-  it("one row per tool call: the chat timeline merges the approvals into their calls", () => {
-    expect(read(join(SRC, "features", "chat", "timeline.ts"))).toContain("mergeApprovals(");
   });
 
   it("the chrome of every chat card is the same: 1px border and the card radius", () => {
@@ -347,6 +597,85 @@ describe("chat cards share one chrome and one collapsed row", () => {
     expect(src).toContain("ChevronsUpDown");
     expect(src).toContain("ChevronsDownUp");
     expect(src).not.toMatch(/\bChevron(Down|Up)\b/);
+  });
+
+  it("another conversation starts with nothing open", () => {
+    expect(read(join(SRC, "features", "chat", "ChatScreen.tsx"))).toContain(
+      "setExpanded(new Set());",
+    );
+  });
+
+  it("a file the bot handed over is a card apart, under its message: the shared chrome, icon by the declared kind, no MIME, no path", () => {
+    const card = read(join(SRC, "ui", "file-card.tsx"));
+    expect(card).toContain("className={CARD_CHROME}");
+    // The icon and the words come from the kind the server declared, by exact tables.
+    expect(card).toContain("FILE_ICON[file.kind]");
+    expect(card).toContain("FILE_KIND_LABEL[file.kind]");
+    // Nothing technical: the MIME type is never drawn.
+    expect(card).not.toContain("file.mime");
+    // The app opens and saves; the browser only downloads (no "Abrir" without `open`).
+    const rows = read(join(SRC, "features", "chat", "FileRows.tsx"));
+    expect(rows).toContain("canOpen={platform.files.open !== undefined}");
+    expect(read(join(SRC, "lib", "platform.ts"))).toContain(
+      "files: { save: (file) => browserDownload(file) }",
+    );
+    // The chat draws the files in their own row, after the message, never inside the bubble.
+    const list = read(join(SRC, "features", "chat", "MessageList.tsx"));
+    expect(list).toContain('case "files":');
+    expect(read(join(SRC, "features", "chat", "timeline.ts"))).toContain(
+      'items.push({ kind: "files"',
+    );
+  });
+
+  it("a question with options is ALWAYS a card apart whose visible title is the question; never shown twice; titles only", () => {
+    const card = read(join(SRC, "ui", "question-card.tsx"));
+    // HARD RULE (owner, 24/11/2026): the card's title is ALWAYS the question, visible, on every
+    // page; nothing hides it.
+    expect(card).toContain('data-testid="question-text"');
+    expect(card).toContain("{q.question}");
+    expect(card).not.toContain("sr-only");
+    // The card draws the title of an option and never its description.
+    expect(card).not.toContain(".description");
+    // No hard ring on an option at load: the card takes the focus, the option's is a soft fill for the keyboard.
+    expect(card).toContain("focusOnAppearance(ref.current)");
+    expect(card).toContain("focus-visible:outline-none");
+    expect(card).toContain("focus-visible:bg-hover");
+    const list = read(join(SRC, "features", "chat", "MessageList.tsx"));
+    const at = list.indexOf("isChoiceCard(item) && item.ask !== undefined");
+    const branch = list.slice(at, list.indexOf("</Fragment>", at));
+    // A bubble only with what the bot wrote BESIDES the question, as the server declares it
+    // (`question.lead`): the app never compares texts to hide anything.
+    expect(branch).toContain("item.ask.lead !== undefined &&");
+    expect(branch).toContain("text={item.ask.lead}");
+    expect(branch).not.toContain("text={item.text}");
+    expect(branch.indexOf("text={item.ask.lead}")).toBeLessThan(branch.indexOf("<QuestionCard"));
+    const timeline = read(join(SRC, "features", "chat", "timeline.ts"));
+    expect(timeline).toContain("message.question.lead");
+    expect(timeline).not.toContain("questionLead");
+    // The same in Pendências.
+    const pending = read(join(SRC, "features", "pending", "PendingScreen.tsx"));
+    expect(pending).toContain("ask.question.lead !== undefined &&");
+    // The X at the top right: the card STAYS, locked, with "Não respondido" (owner, 24/11/2026); the
+    // server records it (`question.dismissed`) and tells the run. The chat never hides the card.
+    expect(card).toContain('aria-label="Fechar e responder no chat"');
+    expect(card).toContain("!readOnly && onDismiss !== undefined");
+    expect(card).toContain('data-state="dismissed"');
+    expect(card).toContain("Não respondido");
+    expect(list).toContain("dismissed={item.ask.dismissed}");
+    expect(list).not.toContain("dismissed?.has(");
+    expect(read(join(SRC, "data", "sync.ts"))).toContain(
+      "api.conversations.dismissQuestion(messageId)",
+    );
+    // Under the card, OUTSIDE it: a plain muted line, not a button nor a link.
+    const hint = list.slice(
+      list.indexOf('data-testid="question-hint"') - 120,
+      list.indexOf("Ou responda no chat abaixo") + 40,
+    );
+    expect(hint).toContain("<p");
+    expect(hint).toContain("text-text-muted");
+    expect(hint).not.toContain("onClick");
+    expect(hint).not.toContain("<button");
+    expect(hint).not.toContain("tabIndex");
   });
 
   it("the expand chevron is hidden at rest and shown on hover and on keyboard focus", () => {
@@ -465,18 +794,30 @@ describe("the settings dialog: a modal with a left nav, groups of simple rows, n
 
   it("is a modal dialog with a nav on the left, closed by Escape and the X, with the focus trapped", () => {
     const dialog = settings("SettingsDialog.tsx");
-    expect(dialog).toContain('aria-modal="true"');
-    expect(dialog).toContain('role="dialog"');
+    // the modal of ui/dialog.tsx (Base UI: role="dialog", the focus trapped, Escape, the focus back)
+    expect(dialog).toContain("<Modal");
     expect(dialog).toContain('role="tablist"');
-    expect(dialog).toContain("useModalFocus(");
-    expect(settings("parts.tsx")).toContain('label="Fechar as configurações"');
+    const parts = settings("parts.tsx");
+    expect(parts).toContain('label="Fechar as configurações"');
+    expect(parts).toContain("<DialogClose");
     // It is a dialog over the screen, not a screen of its own.
     expect(read(join(SRC, "app", "ui-store.ts"))).not.toContain('"settings"');
     expect(read(join(SRC, "features", "shell", "Shell.tsx"))).toContain("<SettingsDialog />");
-    // The focus helpers every dialog shares live in one place.
-    const primitives = read(join(SRC, "ui", "primitives.tsx"));
-    expect(primitives).toContain("export function useModalFocus");
-    expect(primitives).toContain('e.key === "Escape"');
+    // Every modal is the one of ui/dialog.tsx: the base-maia copy on Base UI's Dialog, marked
+    // aria-modal for the focus rule of lib/focus.ts; no hand-made scrim or focus trap is left.
+    const modal = read(join(SRC, "ui", "dialog.tsx"));
+    expect(modal).toContain('from "@base-ui/react/dialog"');
+    expect(modal).toContain('aria-modal="true"');
+    expect(modal).toContain("<DialogPrimitive.Backdrop");
+    expect(modal).toContain("MODAL_MOTION");
+    expect(read(join(SRC, "ui", "primitives.tsx"))).toContain(
+      'export { Dialog } from "./dialog.js";',
+    );
+    for (const file of files(SRC, /\.tsx$/)) {
+      const source = read(file);
+      expect(source.includes("useModalFocus"), rel(file)).toBe(false);
+      expect(source.includes("<Scrim"), rel(file)).toBe(false);
+    }
   });
 
   it("has exactly the sections the backend can fill, and no hollow ones", () => {
@@ -515,21 +856,20 @@ describe("the settings dialog: a modal with a left nav, groups of simple rows, n
 
   it("never a native select: every choice is the dropdown of ui/dropdown.tsx", () => {
     const dropdown = read(join(SRC, "ui", "dropdown.tsx"));
-    // The dropdown is the ARIA listbox pattern, with the keys of the menu and no pattern matching.
+    // The dropdown is the base-maia copy on Base UI: the ARIA listbox pattern (its role, keys and
+    // focus are Base UI's, tested by behaviour in ui/dropdown.test.tsx), in a portal, and a long
+    // list is a Combobox whose filter is a substring of the labels: no pattern matching.
     for (const part of [
-      'aria-haspopup="listbox"',
-      'role="listbox"',
-      'role="option"',
-      "aria-selected",
-      "preventScroll",
-      'e.key === "Escape"',
-      'e.key === "ArrowDown"',
-      'e.key === "Home"',
-      'e.key === "End"',
-      'e.key === "Enter"',
-      "createPortal(",
-      ".includes(needle)",
+      'from "@base-ui/react/select"',
+      'from "@base-ui/react/combobox"',
+      "<Select.Portal>",
+      "<Combobox.Portal>",
+      "<Combobox.Input",
+      "aria-label={`Filtrar: ",
+      ".toLowerCase().includes(text.trim().toLowerCase())",
       "DROPDOWN_FILTER_AFTER",
+      "props.options.length > filterAfter",
+      "alignItemWithTrigger={false}",
     ])
       expect(dropdown, part).toContain(part);
     expect(dropdown).not.toContain("RegExp");
@@ -557,7 +897,6 @@ describe("the settings dialog: a modal with a left nav, groups of simple rows, n
     for (const name of [
       "PermissionsSettings",
       "VaultSettings",
-      "ConnectorsSettings",
       "ConnectorGrants",
       "ConnectorNetwork",
     ])
@@ -679,44 +1018,84 @@ describe("the settings dialog: a modal with a left nav, groups of simple rows, n
     expect(vault).not.toContain("RegExp");
   });
 
-  it("Conectores shows the list first; a connector's details open on selecting it", () => {
+  it('Conectores is the "Instalado" list: only what is installed, each row opens the plugin\'s page, nothing is managed inline (owner, 24/11/2026)', () => {
     const connectors = settings("ConnectorsSettings.tsx");
-    expect(connectors).toContain("function ConnectorRow");
-    expect(connectors).toContain("function ConnectorDetail");
-    expect(connectors).toContain("useUi((s) => s.settingsConnector)");
-    // The list row has a switch and "Abrir"; the grants, network and tools are only in the detail.
-    const list = connectors.slice(
-      connectors.indexOf("function ConnectorRow"),
-      connectors.indexOf("function ConnectorDetail"),
-    );
-    expect(list).not.toContain("<ConnectorGrants");
-    expect(list).not.toContain("<ConnectorNetwork");
+    expect(connectors).toContain("function InstalledGrid");
+    expect(connectors).toContain('aria-label="Instalado"');
+    expect(connectors).toContain("grid-cols-2");
+    expect(connectors).toContain("narrow:grid-cols-1");
+    expect(connectors).toContain("installedPlugins({ catalog: items ?? [], search, connectors })");
+    // A row opens the plugin's own page; "Mostrar todos" goes to the whole gallery.
+    expect(connectors).toContain("openPlugin({ kind: p.kind, id: p.id, autoStart: false })");
+    expect(connectors).toContain(`Mostrar todos os \${total} plugins`);
+    expect(connectors).toContain("onClick={() => openPlugin(null)}");
+    // No switch, no "Abrir", no grants, network or tools here: they are on the plugin's page.
+    for (const gone of [
+      "<Toggle",
+      "<ConnectorGrants",
+      "<ConnectorNetwork",
+      "connector-details",
+      "ConnectorDetail",
+      "ConnectorRow",
+      "settingsConnector",
+    ]) {
+      expect(connectors, gone).not.toContain(gone);
+    }
+    const manage = read(join(SRC, "features", "plugins", "ConnectorManage.tsx"));
+    for (const there of ["<ConnectorGrants", "<ConnectorNetwork", "<ToolRow", "connector-delete"])
+      expect(manage, there).toContain(there);
+    // The state of the app: which plugin is open lives in the store, not in the settings.
+    const store = read(join(SRC, "app", "ui-store.ts"));
+    expect(store).toContain("plugin: PluginRef | null;");
+    expect(store).not.toContain("settingsConnector");
   });
 
-  it("there is no back button inside the Settings dialog: the nav item and Esc return to the list", () => {
+  it("Busca is a short pointer: the queue's order read-only, one \"Abrir\" to the plugin's page, and no key control (owner, 24/11/2026)", () => {
+    const search = settings("SearchSettings.tsx");
+    expect(search).toContain('label="Fila da busca geral"');
+    expect(search).toContain('kind: "search"');
+    expect(search).not.toContain("SecretDialog");
+    expect(search).not.toContain("Adicionar chave");
+    // The key, the state and the count are on the plugin's page (Tavily, Brave).
+    const page = read(join(SRC, "features", "plugins", "SearchPlugin.tsx"));
+    expect(page).toContain("<SecretDialog");
+    expect(page).toContain("plugin.keySteps");
+  });
+
+  it("plugins: the page manages everything, the chat card carries one action, and a link is only a checked button (docs/DESIGN.md 5e)", () => {
+    const design = read(join(SRC, "..", "..", "..", "docs", "DESIGN.md"));
+    expect(design).toContain("## 5e. Plugins");
+    const card = read(join(SRC, "features", "chat", "ConnectCard.tsx"));
+    // The link is checked again by the app, drawn only as a button, never as text.
+    expect(card).toContain("linkAllowed(card.url, hosts, item?.entry.authLinkSegment)");
+    expect(card).not.toContain("{card.url}");
+    expect(card).not.toContain("href=");
+    for (const label of ["Liberar para o", "Adicionar chave", "Gerenciar", "Expirou: peça outro"])
+      expect(card, label).toContain(label);
+    expect(card).toContain("sempre pergunta antes de fazer alterações. Desconecte quando quiser.");
+    // The link is never looked for in a text, and an approved proposal is no row of the tool.
+    const cards = read(join(SRC, "data", "connect-cards.ts"));
+    for (const searching of [".match(", ".test(", "RegExp", "http"]) {
+      expect(cards, searching).not.toContain(searching);
+    }
+    expect(read(join(SRC, "features", "chat", "timeline.ts"))).toContain("!isApprovedProposal(a)");
+    // Tavily and Brave are plugins of "Pesquisa na web" that point at the search; no MCP connector.
+    expect(read(join(SRC, "features", "plugins", "appearance.ts"))).toContain('"Pesquisa na web"');
+  });
+
+  it("there is no back button inside the Settings dialog, and Esc closes it (a plugin's page is not in it)", () => {
     for (const name of [...sections, "ConnectorGrants", "ConnectorNetwork", "ToolReview"]) {
       const source = settings(`${name}.tsx`);
       expect(source, name).not.toContain("connectors-back");
       expect(source, name).not.toContain("ChevronLeft");
       expect(source, name).not.toContain('className="sback"');
     }
-    const dialog = settings("SettingsDialog.tsx");
-    // Esc inside a connector goes back to the list first; the second one closes the dialog.
-    expect(dialog).toContain(
-      'tab === "connectors" && connector !== null ? setConnector(null) : close()',
-    );
-    // The store: selecting a section (even the selected one) lands on its first view.
-    const store = read(join(SRC, "app", "ui-store.ts"));
-    expect(store).toContain(
-      "setSettingsTab: (settingsTab) => set({ settingsTab, settingsConnector: null })",
-    );
-    // The pane title is the connector's name while its details are open.
-    expect(settings("ConnectorsSettings.tsx")).toContain("<PaneHead title={connector.name}");
+    expect(settings("SettingsDialog.tsx")).not.toContain("beforeClose");
   });
 
   it("a dialog opened from another is its own modal surface, on top", () => {
-    const primitives = read(join(SRC, "ui", "primitives.tsx"));
-    expect(primitives).toContain("createPortal(");
+    // each dialog has its own portal on the body (Base UI's), the last one on top
+    expect(read(join(SRC, "ui", "dialog.tsx"))).toContain("<DialogPrimitive.Portal>");
     expect(read(join(SRC, "lib", "focus.ts"))).toContain("topModal");
   });
 });
@@ -735,6 +1114,7 @@ describe("o retorno interno do bot não tem marcador próprio na interface (docs
       "features/chat/ChatScreen.tsx",
       "features/inspector/InspectorScreen.tsx",
       "lib/avatar-state.ts",
+      "lib/chat-activity.ts",
     ]);
   });
 });
@@ -749,9 +1129,13 @@ describe("o Principal é o supervisor: a estrela, a revisão e o silêncio sobre
     const tokens = read(join(SRC, "styles", "tokens.css"));
     expect(tokens).toContain("--size-star-badge:");
     expect(tokens).toContain("--size-star-badge-lg:");
-    // nenhuma outra peça desenha um ícone de estrela sobre um avatar
+    // nenhuma outra peça desenha uma estrela sobre um avatar (nem a do lucide)
     const drawers = files(SRC, /\.tsx$/)
-      .filter((f) => /\bStar\b/.test(read(f)) && /from "lucide-react"/.test(read(f)))
+      .filter(
+        (f) =>
+          read(f).includes("STAR_PATH") ||
+          (/\bStar\b/.test(read(f)) && /from "lucide-react"/.test(read(f))),
+      )
       .map(rel);
     expect(drawers).toEqual([join("ui", "avatar.tsx")]);
   });
@@ -781,11 +1165,11 @@ describe("o Principal é o supervisor: a estrela, a revisão e o silêncio sobre
     );
   });
 
-  it("salvar e esquecer uma memória não aparecem no chat como linha nem como indicador (decisão do dono)", () => {
-    const derive = read(join(SRC, "data", "derive.ts"));
-    expect(derive).toContain("SILENT_TOOLS");
-    expect(derive).toMatch(/SILENT_TOOLS[^\n]*new Set\(\["remember", "forget"\]\)/);
-    expect(read(join(SRC, "data", "actions.ts"))).toContain("SILENT_TOOLS.has(name)");
+  it("salvar e esquecer uma memória não aparecem no chat como linha (decisão do dono): nenhuma ferramenta aparece", () => {
+    const list = read(join(SRC, "features", "chat", "MessageList.tsx"));
+    expect(list).not.toContain('case "actions"');
+    // O avatar vivo diz no máximo "Usando a memória", uma frase fixa: nunca o que foi guardado.
+    expect(read(join(SRC, "lib", "chat-activity.ts"))).toContain('memory: "Usando a memória"');
   });
 });
 
@@ -971,7 +1355,15 @@ describe("a janela não tem barra do sistema: os controles são do app (docs/DES
     const app = read(join(SRC, "app", "App.tsx"));
     expect(app).toContain("customFrame && platform?.frame !== undefined");
     const panel = read(join(SRC, "features", "panel", "Panel.tsx"));
-    expect(panel).toContain('customFrame ? "right-37.5" : "right-3"');
+    // the close sits on the strip of the window buttons, just left of them (docs/DESIGN.md §4c)
+    expect(panel).toContain("framed:right-window-controls");
+    expect(panel).toContain('tone="outline"');
+    expect(read(join(SRC, "styles", "theme.css"))).toContain(
+      '@custom-variant framed (:root[data-frame="custom"] &);',
+    );
+    expect(app).toContain('root.dataset.frame = "custom"');
+    // every screen head keeps the corner of the window buttons free
+    expect(read(join(SRC, "ui", "screen.tsx"))).toContain("framed:pr-head-end");
     const controls = read(join(SRC, "ui", "window-controls.tsx"));
     for (const label of ["Minimizar", "Fechar a janela"]) expect(controls).toContain(label);
   });
@@ -1004,8 +1396,12 @@ describe("conectores: o ícone do serviço (docs/DESIGN.md 5c, plug-ins)", () =>
   });
 
   it("a linha do conector usa o glifo da marca ou o plug, e a pesquisa está escrita", () => {
+    // The installed list draws the brand tile of the plug-ins (5d); a connector added by hand, the plug.
     const row = read(join(SRC, "features", "settings", "ConnectorsSettings.tsx"));
-    expect(row).toContain("icon={brandGlyphFor(connector.name) ?? Plug}");
+    expect(row).toContain("<EntryIcon");
+    expect(read(join(SRC, "features", "plugins", "installed.ts"))).toContain(
+      'look: { tone: "neutral", glyph: "plug" }',
+    );
     const root = join(SRC, "..", "..", "..");
     expect(existsSync(join(root, "docs", "pesquisas", "icones-de-marca-dos-conectores.md"))).toBe(
       true,
@@ -1015,7 +1411,7 @@ describe("conectores: o ícone do serviço (docs/DESIGN.md 5c, plug-ins)", () =>
 });
 
 describe("conectores: a tela da vitrine (docs/DESIGN.md 5d)", () => {
-  const screen = read(join(SRC, "features", "plugins", "ConnectorsScreen.tsx"));
+  const screen = `${read(join(SRC, "features", "plugins", "ConnectorsScreen.tsx"))}\n${read(join(SRC, "features", "plugins", "EntryIcon.tsx"))}\n${read(join(SRC, "features", "plugins", "use-plugins.ts"))}\n${read(join(SRC, "features", "plugins", "ExamplesBanner.tsx"))}`;
   const palette = read(join(SRC, "features", "palette", "CommandPalette.tsx"));
   const shell = read(join(SRC, "features", "shell", "Shell.tsx"));
 
@@ -1037,7 +1433,7 @@ describe("conectores: a tela da vitrine (docs/DESIGN.md 5d)", () => {
     expect(screen).toContain("<SearchField");
     // the search and the blocks of the page take the colour of the chat input (bg-raised), not a bordered surface
     expect(read(join(SRC, "ui", "primitives.tsx"))).toContain(
-      "fieldControlClass({ search: true, raised: true })",
+      "look={{ search: true, raised: true }}",
     );
     expect(screen).not.toContain("border border-border bg-surface");
     expect(screen).toContain('className="max-w-search"');
@@ -1254,8 +1650,10 @@ describe('amigável: nada de log para o usuário (dono, 23/11/2026: "a ideia é 
   });
 
   it("o chat não mostra o nome interno de uma ferramenta de conector nem o detalhe cru de uma falha", () => {
-    const actions = read(join(SRC, "data", "actions.ts"));
-    expect(actions).toContain("parseConnectorTool(name, connectors)");
+    // The live avatar's phrase is one of a fixed table: never a tool's name, a command or a path.
+    const activity = read(join(SRC, "lib", "chat-activity.ts"));
+    expect(activity).toContain("ACTIVITY_PHRASE[activity]");
+    expect(activity).not.toContain("${tool");
     const list = read(join(SRC, "features", "chat", "MessageList.tsx"));
     expect(list).not.toContain("failureDetail");
     expect(list).toContain("FRIENDLY_FAILURE[");
@@ -1268,6 +1666,182 @@ describe('amigável: nada de log para o usuário (dono, 23/11/2026: "a ideia é 
     ] as const) {
       expect(read(file).includes(raw), `${rel(file)}: ${raw}`).toBe(false);
     }
+  });
+});
+
+describe("nada seco: nada aparece, some ou corta de repente (docs/DESIGN.md §1, dono 23/11/2026)", () => {
+  const components = files(SRC, /\.tsx$/);
+  /** Every quoted class list of a file (the text between double quotes that has a space). */
+  const classLists = (text: string): string[] =>
+    text
+      .split('"')
+      .filter((_, i) => i % 2 === 1)
+      .filter((chunk) => chunk.includes(" ") || chunk.includes(":"));
+
+  it("as áreas que rolam têm degradê nas bordas", () => {
+    expect(read(join(SRC, "ui", "screen.tsx"))).toContain("<ScrollFade />");
+    expect(read(join(SRC, "features", "chat", "MessageList.tsx"))).toContain("<ScrollFade");
+    expect(read(join(SRC, "features", "chat", "MessageList.tsx"))).toContain(
+      "bg-linear-to-b from-bg",
+    );
+    const sidebar = read(join(SRC, "features", "shell", "Sidebar.tsx"));
+    expect(sidebar.split('<ScrollFade tone="sidebar" />').length - 1).toBe(2);
+  });
+
+  it("nada surge no hover com hidden/block, e o que muda de opacidade no hover tem transição", () => {
+    const offenders: string[] = [];
+    for (const file of components) {
+      const lists = classLists(read(file));
+      // a variant map (a tone) carries the hover; the piece's base class carries the transition
+      const baseFades = lists.some(
+        (l) =>
+          l.includes("transition-all") || (l.includes("transition-[") && l.includes("opacity")),
+      );
+      for (const [index, list] of lists.entries()) {
+        const words = list.split(" ");
+        // the same piece's classes are often split in a few strings of one cx(...) (base + tone)
+        const near = lists
+          .slice(Math.max(0, index - 3), index + 4)
+          .join(" ")
+          .split(" ");
+        const showsOnHover = words.some(
+          (w) =>
+            (w.includes("hover") || w.includes("focus")) &&
+            (w.endsWith(":block") || w.endsWith(":flex") || w.endsWith(":inline-flex")),
+        );
+        const fadesOnHover = words.some(
+          (w) => (w.includes("hover") || w.includes("focus")) && w.includes(":opacity-"),
+        );
+        if (showsOnHover) offenders.push(`${rel(file)}: ${list}`);
+        if (fadesOnHover && !baseFades && !near.some((w) => w.includes("transition")))
+          offenders.push(`${rel(file)}: ${list}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("o que aparece entra esmaecendo e a barra lateral anima a largura (sem transição no arrasto)", () => {
+    expect(read(join(SRC, "styles", "theme.css"))).toContain("@keyframes ui-fade-in");
+    expect(read(join(SRC, "features", "shell", "Sidebar.tsx"))).toContain(
+      "transition-[width] duration-(--duration-base)",
+    );
+    expect(read(join(SRC, "styles", "base.css"))).toContain("transition: none !important;");
+  });
+});
+
+describe("ajustes do dono de 23/11/2026 (docs/DESIGN.md §2, §4a, §4c, §5, §6)", () => {
+  const sidebar = read(join(SRC, "features", "shell", "Sidebar.tsx"));
+
+  it("telas cheias: coluna centralizada de largura máxima, e o cabeçalho guarda o canto dos botões da janela", () => {
+    const screen = read(join(SRC, "ui", "screen.tsx"));
+    expect(screen).toContain("max-w-screen-max");
+    expect(screen).toContain("mx-auto");
+    expect(screen).toContain("framed:pr-head-end");
+    expect(read(join(SRC, "styles", "tokens.css"))).toContain("--width-screen-max:");
+    // a página de um conector usa o mesmo cabeçalho; nenhuma tela desenha <header> próprio
+    const connectors = read(join(SRC, "features", "plugins", "ConnectorsScreen.tsx"));
+    expect(connectors).toContain("<ScreenHeader>");
+    expect(connectors).not.toContain("<header");
+  });
+
+  it("barra lateral: sem bot marcado sem escolha, só o nome no trilho, 'Sem interação', nada selecionável", () => {
+    expect(sidebar).toContain('view === "chat" && picked ? selected : null');
+    // the name of the rail is the app's tip (ui/tooltip.tsx), with only the bot's name in it
+    expect(sidebar).toContain('<Tip label={bot.name} side="right" delay={0} testId="rail-tip">');
+    expect(sidebar).toContain('"Sem interação"');
+    expect(sidebar).not.toContain("Sem mensagens");
+    expect(sidebar).toContain("select-none");
+    // o rodapé tem só a conta; o menu dela tem ícones
+    expect(sidebar).not.toContain("Buscar e ações");
+    for (const icon of ["Inbox", "Brain", "Plug", "Settings", "Keyboard", "LogOut"])
+      expect(sidebar).toContain(`icon: ${icon}`);
+  });
+
+  it("a pílula do chat flutua num degradê e o chevron entra animado", () => {
+    const chat = read(join(SRC, "features", "chat", "ChatScreen.tsx"));
+    expect(chat).toContain("head={");
+    expect(chat).toContain("group-hover/chip:opacity-100");
+    expect(chat).not.toContain("hidden flex-none group-hover");
+  });
+
+  it("criar bot: branco por padrão e contorno discreto do escolhido", () => {
+    const dialog = read(join(SRC, "features", "new-bot", "NewBotDialog.tsx"));
+    expect(dialog).toContain('DEFAULT_NEW_COLOR: BotColor = "branco"');
+    expect(dialog).not.toContain("ring-text");
+    // the mascot grid: no box behind the chosen one or on hover, wide cells (6 columns)
+    expect(dialog).toContain("grid grid-cols-6");
+    expect(dialog).not.toContain('? "bg-raised" : "bg-transparent hover:bg-hover"');
+    expect(dialog).toContain("hover:scale-105");
+    expect(read(join(SRC, "styles", "tokens.css"))).toContain("var(--color-picked-ring)");
+  });
+
+  it("a estrela do Principal é o marcador laranja do desenho do dono, com o rosto recortado em volta", () => {
+    const avatar = read(join(SRC, "ui", "avatar.tsx"));
+    const tokens = read(join(SRC, "styles", "tokens.css"));
+    for (const token of [
+      "--color-star-badge: #ff9800",
+      "--color-star-glyph: #fcfcfc",
+      "--color-status-working: #22c55e",
+      "--color-status-unread: #2496e8",
+    ])
+      expect(tokens).toContain(token);
+    expect(avatar).toContain("bg-star-badge text-star-glyph");
+    expect(avatar).toContain("maskImage: notch");
+    expect(avatar).toContain("FACE_BLEED");
+    // the list of bots never starts under the top fade (the owner: "Ficou cortado!"), pinned tile included
+    const sidebarSource = read(join(SRC, "features", "shell", "Sidebar.tsx"));
+    expect(sidebarSource.match(/overflow-y-auto py-fade/g)?.length).toBe(2);
+    expect(sidebarSource).not.toContain("overflow-y-auto py-2");
+    // the corner: working > unread > the star, and the sidebar feeds the first two
+    expect(avatar).toContain('if (s.working === true) return "working";');
+    const sidebar = read(join(SRC, "features", "shell", "Sidebar.tsx"));
+    expect(sidebar).toContain("working={working}");
+    expect(sidebar).toContain("unread={unread > 0}");
+    expect(avatar).not.toContain("border-2 border-bg");
+  });
+});
+
+describe("o avatar vivo no chat (docs/DESIGN.md §3, dono 24/11/2026)", () => {
+  it("o bot trabalhando é o avatar dele, não os três pontinhos", () => {
+    const lines = read(join(SRC, "ui", "chat-lines.tsx"));
+    expect(lines).not.toContain("dots-dot");
+    expect(lines).not.toContain("animate-dot");
+    expect(read(join(SRC, "styles", "theme.css"))).not.toContain("ui-dot");
+    // A linha leva o rosto que a conversa entrega e é anunciada com calma (role="status").
+    expect(lines).toContain('{ role: "status" }');
+    expect(read(join(SRC, "features", "chat", "MessageList.tsx"))).toContain(
+      "liveFace(ACTIVITY_AVATAR[live.shown.activity])",
+    );
+  });
+
+  it("o rosto é o do bot: o estilo, o 3D e a cor dele, pelo ui/avatar.tsx, vivo", () => {
+    const chat = read(join(SRC, "features", "chat", "ChatScreen.tsx"));
+    const face = chat.slice(chat.indexOf("liveFace={"));
+    const tag = face.slice(0, face.indexOf("/>"));
+    for (const prop of [
+      "avatarStyle={bot.avatarStyle}",
+      "pixel3d={bot.avatarPixel3d}",
+      "color={bot.color}",
+      "state={state}",
+      "lively",
+    ])
+      expect(tag).toContain(prop);
+  });
+
+  it("a expressão vem de uma tabela exata por atividade declarada, nunca do texto", () => {
+    const activity = read(join(SRC, "lib", "chat-activity.ts"));
+    expect(activity).toContain("ACTIVITY_AVATAR: Readonly<Record<ChatActivity, AvatarStateId>>");
+    expect(activity).toContain("toolCategory(tool).icon");
+    expect(activity).not.toContain("RegExp");
+  });
+
+  it("sai com transição, sem pulo, e o movimento reduzido zera a saída", () => {
+    const tokens = read(join(SRC, "styles", "tokens.css"));
+    expect(tokens).toContain("--duration-leave:");
+    expect(tokens.split("--duration-leave: 0ms;").length - 1).toBe(2);
+    const lines = read(join(SRC, "ui", "chat-lines.tsx"));
+    expect(lines).toContain("grid-rows-[0fr]");
+    expect(lines).toContain("duration-(--duration-leave)");
   });
 });
 
@@ -1327,5 +1901,17 @@ describe("atualização do app: um aviso calmo e uma linha em Geral (docs/DESIGN
     expect(conf.plugins.updater.pubkey).not.toBe("SUBSTITUA-PELA-CHAVE-PUBLICA-DO-SUUP");
     expect(conf.plugins.updater.pubkey.length).toBeGreaterThan(40);
     expect(rust).toContain('"SUBSTITUA-PELA-CHAVE-PUBLICA-DO-SUUP"');
+  });
+});
+
+describe("a frase do bot trabalhando brilha (docs/DESIGN.md §3, dono 24/11/2026)", () => {
+  it("a frase usa ui-shimmer só enquanto trabalha, e o brilho some com movimento reduzido", () => {
+    const lines = read(join(SRC, "ui", "chat-lines.tsx"));
+    expect(lines).toContain('going ? "ui-shimmer" : "text-text-muted"');
+    const theme = read(join(SRC, "styles", "theme.css"));
+    const util = theme.slice(theme.indexOf("@utility ui-shimmer"));
+    expect(util).toContain("prefers-reduced-motion: reduce");
+    expect(util).toContain(':root[data-motion="reduce"] &');
+    expect(util).toContain("color: var(--color-text-muted)");
   });
 });

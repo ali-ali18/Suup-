@@ -17,7 +17,7 @@ import type {
   Secret,
   WrittenRule,
 } from "@suup/api";
-import { recipientMatchers } from "@suup/core";
+import { fileKindOf, recipientMatchers } from "@suup/core";
 import type {
   CatalogItem as CatalogItemView,
   ConnectorTestResult,
@@ -124,6 +124,9 @@ export function toMessageDto(message: MessageRow): Message {
     ...(message.team === undefined ? {} : { team: message.team }),
     ...(message.routineId === null ? {} : { routineId: message.routineId }),
     ...(message.routineRef === null ? {} : { routineRef: { id: message.routineRef } }),
+    ...(message.attachments === undefined
+      ? {}
+      : { attachments: message.attachments.map((a) => ({ ...a, kind: fileKindOf(a.mime) })) }),
   };
 }
 
@@ -405,6 +408,9 @@ export function toCatalogItemDto(item: CatalogItemView): CatalogItem {
       transport: e.transport as CatalogItem["entry"]["transport"],
       auth,
       egressHosts: [...e.egressHosts],
+      authHosts: [...(e.authHosts ?? [])],
+      authLinkSegment: e.authLinkSegment ?? null,
+      deniedTools: [...(e.deniedTools ?? [])],
       readTools: [...e.readTools],
       writeTools: [...e.writeTools],
       notes: [...e.notes],

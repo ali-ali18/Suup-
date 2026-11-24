@@ -105,6 +105,67 @@ export const SCRIPTS = {
         ],
       },
       {
+        // The bot makes a document on its machine (with commands whose output is long, so the
+        // collapsed rows are seen) and hands it over: the file card under its answer.
+        whenObjectiveContains: "CASE-FILE",
+        agent: [
+          s({
+            calls: [
+              shell(
+                "mkdir -p pesquisa && printf '%%PDF-1.4\\n%% Historia da biblioteca da cidade\\n%%%%EOF\\n' > pesquisa/historia_biblioteca.pdf && ls -l pesquisa",
+              ),
+            ],
+            delayMs: 300,
+          }),
+          s({
+            calls: [
+              shell(
+                'for i in 1 2 3 4 5 6 7 8 9 10 11 12; do echo "linha $i do relatório de conferência"; done',
+              ),
+            ],
+            delayMs: 300,
+          }),
+          // A tiny stand-in PDF: the delivery check refuses it (no page, no font), so the script hands it
+          // over the way the bot may when the user asked for exactly this, with `force` and the reason.
+          s({
+            calls: [
+              {
+                name: "send_file",
+                args: {
+                  path: "pesquisa/historia_biblioteca.pdf",
+                  force: true,
+                  reason: "o dono pediu um PDF mínimo de teste",
+                },
+              },
+            ],
+          }),
+          s({ text: "Pronto: o PDF com a história da biblioteca da cidade está aqui embaixo." }),
+        ],
+      },
+      {
+        // A question with context: the bot's words (the bubble) and the question (the card's title).
+        whenObjectiveContains: "CASE-ASKCTX",
+        agent: [
+          s({
+            text: "A busca na web está fora do ar agora e a Wikipédia não liberou a leitura. Posso seguir de três jeitos.",
+            calls: [
+              {
+                name: "escalate",
+                args: {
+                  question: "Como você prefere seguir?",
+                  options: [
+                    { label: "Esperar e tentar de novo", description: "Volto em uma hora." },
+                    { label: "Mandar um link da biblioteca" },
+                    { label: "PDF sem fontes" },
+                  ],
+                },
+              },
+            ],
+          }),
+          s({ text: "Combinado." }),
+        ],
+      },
+      {
         whenObjectiveContains: "CASE-OPTIONS",
         agent: [
           s({
@@ -157,7 +218,16 @@ export const SCRIPTS = {
         ],
       },
       {
-        // Several tool calls, one of them slow enough to see it run: cards, folding, the indicator.
+        // The bot's live avatar (docs/DESIGN.md §3): thinking (the model takes a while), a slow
+        // command (the terminal face), then the answer, when the avatar leaves.
+        whenObjectiveContains: "CASE-LIVE",
+        agent: [
+          s({ calls: [shell("sleep 4; echo conferido")], delayMs: 4000 }),
+          s({ text: "Pronto: conferi tudo e está certo.", delayMs: 300 }),
+        ],
+      },
+      {
+        // Several tool calls, one of them slow enough to see it run: the live avatar says what it does.
         whenObjectiveContains: "CASE-ACTIONS",
         agent: [
           s({
@@ -593,6 +663,7 @@ export async function startWorld(
     models: [
       {
         id: "model-x",
+        name: "Roteiro X",
         provider: "roteiro",
         contextWindow: 100_000,
         maxOutputTokens: 4096,

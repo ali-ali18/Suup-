@@ -40,6 +40,7 @@ describe.skipIf(!DATABASE_URL)(
         "stackoverflow",
         "google-workspace",
         "composio",
+        "firecrawl",
       ]);
       const composio = items.find((i) => i.entry.id === "composio");
       expect(composio).toMatchObject({
@@ -125,7 +126,11 @@ describe.skipIf(!DATABASE_URL)(
       ]);
       expect(bodies).not.toContain(access as string);
       for (const refresh of fake.validRefreshTokens()) expect(bodies).not.toContain(refresh);
-      expect(bodies).toContain(oauthSecretNames("oauthfake").access);
+      // The login is the connector's own: the owner's vault does not list it, nor accepts a grant.
+      expect(bodies).not.toContain(oauthSecretNames("oauthfake").access);
+      expect((await api.vault.list()).map((s) => s.name)).toEqual(["GITHUB_TOKEN"]);
+      const bot = await api.bots.create({ name: "concedido", modelId: "model-x" });
+      await expect(api.vault.grant(oauthSecretNames("oauthfake").access, bot.id)).rejects.toThrow();
 
       const off = await api.connectors.oauthDisconnect("oauthfake");
       expect(off.enabled).toBe(false);
@@ -133,9 +138,8 @@ describe.skipIf(!DATABASE_URL)(
       expect(await api.connectors.oauthStatus("oauthfake")).toMatchObject({
         status: "needs_login",
       });
-      expect((await api.vault.list()).map((s) => s.name)).not.toContain(
-        oauthSecretNames("oauthfake").access,
-      );
+      const left = await w.workerRuntime.vault.list({ includeManaged: true });
+      expect(left.map((s) => s.name)).not.toContain(oauthSecretNames("oauthfake").access);
     });
   },
 );

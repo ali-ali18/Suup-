@@ -16,31 +16,6 @@ export function ActionLabel({
   );
 }
 
-/**
- * The text of what a call did (its output, a diff): plain on the card itself, no inner box, no
- * border, no other background. `error` is the colour of a failure (and `data-error`, for tests).
- */
-export function ActionPre({
-  error,
-  className,
-  children,
-  ...rest
-}: { error?: boolean; children?: ReactNode } & HTMLAttributes<HTMLPreElement>) {
-  return (
-    <pre
-      className={cx(
-        "m-0 max-h-60 overflow-auto border-0 bg-transparent p-0 wrap-anywhere whitespace-pre-wrap",
-        error === true ? "text-danger-text" : "text-text",
-        className,
-      )}
-      data-error={error === true}
-      {...rest}
-    >
-      {children}
-    </pre>
-  );
-}
-
 /** The column of collapsed cards in the bot's side of the chat: flat, one under the other. */
 export function ActionList({
   children,
@@ -50,27 +25,6 @@ export function ActionList({
     <div className="flex w-full max-w-reading flex-col gap-1" {...rest}>
       {children}
     </div>
-  );
-}
-
-const DIFF_LINE = {
-  removed: "text-danger-text",
-  added: "text-success-text",
-  context: "text-text-muted",
-} as const;
-
-/** One line of a diff, coloured by what happened to it (the sign in front says it too). */
-export function DiffLine({
-  kind,
-  children,
-}: {
-  kind: keyof typeof DIFF_LINE;
-  children: ReactNode;
-}) {
-  return (
-    <span className={DIFF_LINE[kind]} data-testid={`action-line-${kind}`}>
-      {children}
-    </span>
   );
 }
 
@@ -220,55 +174,6 @@ export function ActionCard({
           className="flex flex-col gap-3 pt-1 pr-4 pb-4 pl-[calc(var(--space-4)+var(--size-icon-box)+var(--space-3))]"
           role="region"
           aria-label={`Detalhes: ${kind}, ${summary}`}
-        >
-          {children}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** The row that stands for older finished cards: "Mais N ações". Expands in place to show them. */
-export function ActionFold({
-  count,
-  expanded,
-  onToggle,
-  children,
-}: {
-  count: number;
-  expanded: boolean;
-  onToggle(): void;
-  children: ReactNode;
-}) {
-  const bodyId = useId();
-  return (
-    <div className={CARD_CHROME} data-testid="action-fold" data-expanded={expanded}>
-      <button
-        type="button"
-        className={cx(ROW, "group hover:bg-hover")}
-        aria-expanded={expanded}
-        aria-controls={bodyId}
-        onClick={onToggle}
-      >
-        <strong className="flex-none text-label font-title" data-testid="action-kind">
-          Mais {count} ações
-        </strong>
-        <span className="min-w-0 flex-1 truncate text-label text-text-muted">Concluídas</span>
-        <span className="inline-flex min-w-icon flex-none text-text-muted" aria-hidden="true">
-          {expanded ? (
-            <ChevronsDownUp size={16} className={CHEVRON} data-testid="action-chevron" />
-          ) : (
-            <ChevronsUpDown size={16} className={CHEVRON} data-testid="action-chevron" />
-          )}
-        </span>
-      </button>
-      {expanded && (
-        <div
-          id={bodyId}
-          // The cards inside the fold lose their chrome: the fold is the card.
-          className="flex flex-col gap-1 px-1 pb-1 [&_.ui-action]:border-transparent [&_.ui-action]:bg-transparent"
-          role="region"
-          aria-label={`${count} ações anteriores`}
         >
           {children}
         </div>

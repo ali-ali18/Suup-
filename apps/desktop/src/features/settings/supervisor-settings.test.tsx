@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { type Services, ServicesProvider } from "../../app/context.js";
 import { createDataStore } from "../../data/store.js";
 import { Sync } from "../../data/sync.js";
+import { pressOption } from "../../test-fixtures.js";
 import {
   nightLabel,
   reviewLines,
@@ -92,13 +93,13 @@ describe("Configurações > Memória > Principal", () => {
     fireEvent.click(await screen.findByTestId("supervisor-enabled"));
     await waitFor(() => expect(update).toHaveBeenCalledWith({ reviewEnabled: false }));
     fireEvent.click(screen.getByTestId("supervisor-review-time"));
-    fireEvent.click(await screen.findByRole("option", { name: "04:00" }));
+    pressOption(await screen.findByRole("option", { name: "04:00" }));
     await waitFor(() => expect(update).toHaveBeenCalledWith({ reviewTime: "04:00" }));
     fireEvent.click(screen.getByTestId("supervisor-morning-time"));
-    fireEvent.click(await screen.findByRole("option", { name: "Desligada" }));
+    pressOption(await screen.findByRole("option", { name: "Desligada" }));
     await waitFor(() => expect(update).toHaveBeenCalledWith({ morningTime: null }));
     fireEvent.click(screen.getByTestId("supervisor-cost-cap"));
-    fireEvent.click(await screen.findByRole("option", { name: "US$ 0,50" }));
+    pressOption(await screen.findByRole("option", { name: "US$ 0,50" }));
     await waitFor(() => expect(update).toHaveBeenCalledWith({ costCapUsd: 0.5 }));
   });
 
@@ -108,7 +109,7 @@ describe("Configurações > Memória > Principal", () => {
     });
     setup(settingsOf(), [], update);
     fireEvent.click(await screen.findByTestId("supervisor-cost-cap"));
-    fireEvent.click(await screen.findByRole("option", { name: "US$ 1,00" }));
+    pressOption(await screen.findByRole("option", { name: "US$ 1,00" }));
     expect((await screen.findByTestId("supervisor-error-cap")).textContent).toContain("entre 0,01");
     expect(screen.getByTestId("supervisor-cost-cap").textContent).toBe("Sem teto");
   });

@@ -5,7 +5,7 @@ import { boolQuery, jsonRecord, uuid } from "./common.js";
 export const modelRequestSchema = z.object({
   runId: uuid,
   seq: z.number().int(),
-  purpose: z.enum(["agent", "review", "compaction"]),
+  purpose: z.enum(["agent", "review", "compaction", "progress"]),
   /** For the agent's own calls: which turn (1, 2, ...). */
   turn: z.number().int().nullable(),
   /** The request exactly as sent: `provider`, `model`, `system`, `messages`, `tools`, ... */
@@ -63,7 +63,7 @@ const attemptSchema = z.union([
 export const resendSchema = z.object({
   runId: uuid,
   requestSeq: z.number().int(),
-  purpose: z.enum(["agent", "review", "compaction"]),
+  purpose: z.enum(["agent", "review", "compaction", "progress"]),
   recordedModel: z.string(),
   sentTo: z.object({ provider: z.string(), model: z.string() }),
   times: z.number().int(),

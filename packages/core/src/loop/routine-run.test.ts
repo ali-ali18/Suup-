@@ -5,6 +5,7 @@ import { buildReviewMessage } from "../approvals/model-reviewer.js";
 import { call, createRig, eventsOfType, say, testTools, use } from "../testing/index.js";
 import { defineTool } from "../tool.js";
 import { ROUTINE_NO_QUESTIONS } from "./control-calls.js";
+import { MAX_RETURN_MINUTES, SCHEDULE_RETURN_DESCRIPTION } from "./control-tools.js";
 import { runLoop } from "./loop.js";
 import { buildSystemPrompt, ROUTINES_HOW } from "./prompts.js";
 import type { RunContextSnapshot } from "./run-context.js";
@@ -141,7 +142,42 @@ describe("a run opened by a routine", () => {
   });
 });
 
+describe("a run opened by a one-time reminder (not a routine)", () => {
+  it("is told to remind the user, never that it is a routine", async () => {
+    const rig = createRig({
+      script: [say("Oi! Lembrete: enviar seu RG para a faculdade.")],
+      origin: "routine",
+      objective: "Lembre o usuário, numa mensagem curta: enviar o RG para a faculdade",
+    });
+    const reminder = { ...ROUTINE, kind: "scheduled" as const, missedCount: 0, reminder: true };
+    await runLoop(
+      rig.deps({ loadRunContext: async () => context({ routine: reminder }) }),
+      rig.runId,
+    );
+    const system = rig.provider.requests[0]?.system ?? "";
+    expect(system).toContain("## This run is a reminder");
+    expect(system).toContain("This message is the only notice they get.");
+    expect(system).not.toContain("## This run is a routine");
+    expect(system).not.toContain("update_routine_state");
+  });
+});
+
 describe("the prompt about routines", () => {
+  it("recurring is a routine; one time is a reminder (a return within the hour, create_reminder later)", () => {
+    expect(ROUTINES_HOW).toContain("Recurring → routine; one time → reminder");
+    expect(ROUTINES_HOW).toContain("me lembra daqui 20 minutos");
+    expect(ROUTINES_HOW).toContain(
+      `within the next ${MAX_RETURN_MINUTES} minutes, use \`schedule_return\``,
+    );
+    expect(ROUTINES_HOW).toContain("use `create_reminder` with the date and time");
+    expect(ROUTINES_HOW).toContain("never a routine");
+    // the return's own description says the same, with the same limit
+    expect(SCHEDULE_RETURN_DESCRIPTION).toContain(
+      `um lembrete único que o usuário pede para daqui a até ${MAX_RETURN_MINUTES} minutos`,
+    );
+    expect(SCHEDULE_RETURN_DESCRIPTION).toContain("`create_reminder`");
+  });
+
   it("tells a bot with create_routine to choose the time itself and say it", async () => {
     const rig = createRig({
       script: [say("ok")],
@@ -248,7 +284,7 @@ describe("a conversation run knows the routines an earlier run created", () => {
   it("lists them in the prompt of every turn, recorded once, and a rebuilt run reads the same", async () => {
     const rig = createRig({
       script: [use(call("c1", "echo", { text: "x" })), say("Seu lembrete já está criado.")],
-      objective: "pesquisa a história da PUC",
+      objective: "pesquisa a história da biblioteca",
     });
     await runLoop(
       rig.deps({ loadRunContext: async () => context({ ownRoutines: OWN }, false) }),

@@ -1,49 +1,32 @@
-// Owns asking our SearXNG container for results and reading its JSON answer into `WebSearchOutcome`.
-// The container is reached through a `SearxBackend` (HTTP to a URL, or `docker exec` into the
-// container), so the parsing and the messages here do not depend on how it is reached.
+// Owns the web search: which engines a search asks, in what way and in what order, and how their
+// answers become one `WebSearchOutcome` (docs/BUSCA.md). Two kinds of engine:
+//  - the specialised ones (Wikipedia, arXiv, Stack Overflow) are asked together, at once;
+//  - the general web engines (Tavily, Brave) are a QUEUE: asked one at a time, in the configured
+//    order, and the next only when the one before had no quota, was unavailable, did not accept its
+//    key or failed. One that answers ends the queue. An engine without a key is skipped.
+// The cache, the governor (Suup's own limits and the memory of who asked to be left alone) and the
+// usage count are applied here. Nothing here writes or logs the query.
 import type { WebSearchHit, WebSearchOutcome, WebSearchRequest } from "@suup/core";
-import { z } from "zod";
-import type { DirectEngine, DirectSearchResult } from "./direct-engines.js";
-import { engineById } from "./engines.js";
-import { cleanUrl, clip, interleave } from "./hit-text.js";
+import type { DirectEngine, DirectSearchResult, FailureKind } from "./direct-engines.js";
+import { engineById, generalQueue } from "./engines.js";
+import { clip, interleave } from "./hit-text.js";
 import { DEFAULT_CACHE_TTL_MS, type SearchCache, searchCacheKey } from "./search-cache.js";
 import type { SearchGovernor } from "./search-governor.js";
+import type { SearchUsage } from "./search-usage.js";
 
 export { clip };
 
 export const SEARCH_MAX_RESULTS = 10;
-const TITLE_MAX = 300;
-const SNIPPET_MAX = 500;
-
-/** Sends one search to the container and returns the JSON text it answered. Throws with a readable message. */
-export interface SearxBackend {
-  query(params: URLSearchParams, signal?: AbortSignal): Promise<string>;
-}
-
-const answerSchema = z.object({
-  results: z
-    .array(
-      z.object({
-        url: z.string().optional(),
-        title: z.string().optional(),
-        content: z.string().optional(),
-        engine: z.string().optional(),
-        engines: z.array(z.string()).optional(),
-      }),
-    )
-    .default([]),
-  unresponsive_engines: z.array(z.tuple([z.string(), z.string()]).rest(z.unknown())).default([]),
-});
 
 export interface SearchOptions {
-  /** The SearXNG container's backend. Absent: the engines that need it are reported as not answering. */
-  backend?: SearxBackend | undefined;
-  /** Why there is no backend (said to the model as the reason those engines did not answer). */
-  backendProblem?: string | undefined;
-  /** The engines Suup asks itself, by official API (direct-engines.ts). An engine with an entry here is never sent to SearXNG. */
-  direct?: readonly DirectEngine[];
+  /** The engines Suup asks, by official API (direct-engines.ts, general-engines.ts). An engine that is on but has no entry here is reported as not available. */
+  direct: readonly DirectEngine[];
   /** The engines that are turned on (what a search asks, unless the limits or a suspension leave some out). */
   engines: readonly string[];
+  /** The order the general engines are tried in. Default: the order they are declared in. */
+  generalOrder?: readonly string[];
+  /** The person's locale (`pt-BR`): the general engines rank for its country and language. */
+  locale?: string | undefined;
   maxResults?: number;
   /** Suup's own rate limits and the memory of suspended engines. Without it every search goes out at once. */
   governor?: SearchGovernor;
@@ -51,10 +34,28 @@ export interface SearchOptions {
   cache?: SearchCache;
   /** How long a cached answer lives. Default 3 hours. */
   cacheTtlMs?: number;
+  /** Counts the searches each general engine answered, per month (never the query). */
+  usage?: SearchUsage;
+  /** Where a failover is told: the engines and the reason, never the query. */
+  log?: (line: string) => void;
   now?: () => number;
 }
 
 type SearchOk = Extract<WebSearchOutcome, { ok: true }>;
+type Refusal = { retryInSeconds: number; scope: "overall" | "engines" };
+
+/** An engine that did not answer, with why and, when known, for how long it is left alone. */
+interface Unresponsive {
+  engine: string;
+  reason: string;
+  windowSeconds?: number;
+  kind?: FailureKind;
+}
+
+/** The log line of a general engine that was passed over. Only engine names and a kind: never the query. */
+export function failoverLogLine(from: string, kind: FailureKind, next: string | undefined): string {
+  return `web_search: failover ${from} (${kind})${next === undefined ? ": no general engine left" : ` -> ${next}`}`;
+}
 
 export function createSearch(
   options: SearchOptions,
@@ -62,6 +63,10 @@ export function createSearch(
   const clock = options.now ?? Date.now;
   const cap = options.maxResults ?? SEARCH_MAX_RESULTS;
   const ttl = options.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS;
+  const directById = new Map(options.direct.map((engine) => [engine.id, engine]));
+  const queue = generalQueue(options.engines, options.generalOrder);
+  const specialised = options.engines.filter((id) => engineById(id)?.general !== true);
+
   return async (request) => {
     const query = request.query.trim();
     if (query === "") return { ok: false, reason: "failed", message: "The search query is empty." };
@@ -97,76 +102,68 @@ export function createSearch(
 
     // 2. Engines Suup already knows to be suspended are not asked.
     const known = options.governor?.suspended() ?? new Map();
-    const skipped = options.engines.filter((engine) => known.has(engine));
-    const candidates = options.engines.filter((engine) => !known.has(engine));
-    const skippedAnswer = skipped.map((engine) => ({
-      engine,
-      reason: `Suspended: ${known.get(engine)?.reason ?? ""}`,
-      retryInSeconds: known.get(engine)?.retryInSeconds ?? 0,
-    }));
-    if (options.governor !== undefined && candidates.length === 0 && options.engines.length > 0) {
+    const skippedAnswer = options.engines
+      .filter((engine) => known.has(engine))
+      .map((engine) => ({
+        engine,
+        reason: known.get(engine)?.reason ?? "",
+        retryInSeconds: known.get(engine)?.retryInSeconds ?? 0,
+      }));
+    const specialisedNow = specialised.filter((engine) => !known.has(engine));
+    const queueNow = queue.filter((engine) => !known.has(engine));
+    if (specialisedNow.length === 0 && queueNow.length === 0 && options.engines.length > 0) {
       return {
         ok: true,
         query,
         hits: [],
         suspended: skippedAnswer,
         engines: [],
-        ...generalState(options.engines, skippedAnswer, []),
+        ...generalState(queue, [], skippedAnswer, [], known, []),
       };
     }
 
-    // 3. Suup's own limits: wait a little, leave out an engine that is over its limit, or say when to come back.
-    let ask = candidates;
-    let throttled: { engine: string; retryInSeconds: number }[] = [];
+    // 3. Suup's own limits for the specialised engines: wait a little, leave out an engine that is
+    //    over its limit, or say when to come back. (The queue is limited engine by engine, below.)
+    let ask = specialisedNow;
+    const throttled: { engine: string; retryInSeconds: number }[] = [];
     let waitedMs = 0;
-    if (options.governor !== undefined) {
-      const grant = await options.governor.acquire(candidates, request.signal);
+    if (options.governor !== undefined && specialisedNow.length > 0) {
+      const grant = await options.governor.acquire(specialisedNow, request.signal);
       if (!grant.ok) {
-        return {
-          ok: false,
-          reason: "rate_limited",
-          retryInSeconds: grant.retryInSeconds,
-          message:
-            grant.scope === "overall"
-              ? `Too many searches in the last minute. Suup limits how often it asks the search engines; try again in about ${grant.retryInSeconds} s.`
-              : `Every engine for this search is at its limit for the minute. Try again in about ${grant.retryInSeconds} s.`,
-        };
+        if (queueNow.length === 0) return rateLimited(grant);
+        ask = [];
+        for (const engine of specialisedNow) {
+          throttled.push({ engine, retryInSeconds: grant.retryInSeconds });
+        }
+      } else {
+        ask = grant.engines;
+        throttled.push(...grant.throttled);
+        waitedMs = grant.waitedMs;
       }
-      ask = grant.engines;
-      throttled = grant.throttled;
-      waitedMs = grant.waitedMs;
     }
 
-    // 4. The search itself: the engines Suup asks itself, and the ones SearXNG asks.
-    const directById = new Map((options.direct ?? []).map((engine) => [engine.id, engine]));
-    const directAsk = ask.filter((engine) => directById.has(engine));
-    const searxAsk = ask.filter((engine) => !directById.has(engine));
-    const useSearx = searxAsk.length > 0 || directAsk.length === 0;
-    const [searx, directs] = await Promise.all([
-      useSearx
-        ? askSearx(
-            options.backend,
-            options.backendProblem,
-            searxAsk,
-            query,
-            request,
-            cap,
-            directAsk.length === 0,
-          )
-        : Promise.resolve<SearxPart>({ ok: true, hits: [], unresponsive: [] }),
+    // 4. The search itself: the specialised engines at once, the general queue one by one.
+    const [parts, general] = await Promise.all([
       Promise.all(
-        directAsk.map(async (id) => ({
+        ask.map(async (id) => ({
           id,
-          result: await askDirect(directById.get(id), query, cap, request),
+          result: await askEngine(directById, id, query, cap, request, options.locale),
         })),
       ),
+      runQueue({ queue: queueNow, directById, query, cap, request, options, throttled }),
     ]);
-    if (!searx.ok) return searx.outcome;
-    const unresponsive: { engine: string; reason: string; windowSeconds?: number }[] = [
-      ...searx.unresponsive,
-    ];
-    const lists: WebSearchHit[][] = [searx.hits];
-    for (const { id, result } of directs) {
+    if (
+      general.refused !== undefined &&
+      ask.length === 0 &&
+      general.asked.length === 0 &&
+      general.noKey.length === 0
+    ) {
+      // Nothing could be asked at all: every engine was over Suup's own limit.
+      return rateLimited(general.refused);
+    }
+    const unresponsive: Unresponsive[] = [...general.passed];
+    const lists: WebSearchHit[][] = [general.hits];
+    for (const { id, result } of parts) {
       if (result.ok) {
         lists.push(result.hits);
         if (result.suspend !== undefined) {
@@ -184,6 +181,7 @@ export function createSearch(
         });
       }
     }
+    if (general.suspendAfterAnswer !== undefined) unresponsive.push(general.suspendAfterAnswer);
     const merged: WebSearchHit[] = [];
     const seen = new Set<string>();
     for (const hit of interleave(lists)) {
@@ -192,31 +190,36 @@ export function createSearch(
       merged.push(hit);
       if (merged.length >= cap) break;
     }
-    const parsed: SearchOk = {
-      ok: true,
-      query,
-      hits: merged,
-      suspended: unresponsive.map(({ engine, reason }) => ({ engine, reason })),
-      engines: [...ask],
-    };
+    const asked = [...ask, ...general.asked];
 
-    // 5. What the answer says about the engines, kept for the next search.
-    const retry = options.governor?.learn(ask, unresponsive) ?? new Map<string, number>();
+    // 5. What the answers say about the engines, kept for the next search.
+    const retry = options.governor?.learn(asked, unresponsive) ?? new Map<string, number>();
     const suspended = [
-      ...parsed.suspended.map((u) => {
-        const seconds = retry.get(u.engine);
-        return seconds === undefined ? u : { ...u, retryInSeconds: seconds };
+      ...unresponsive.map(({ engine, reason }) => {
+        const seconds = retry.get(engine);
+        return seconds === undefined
+          ? { engine, reason }
+          : { engine, reason, retryInSeconds: seconds };
       }),
       ...skippedAnswer,
     ];
     const outcome: SearchOk = {
-      ...parsed,
+      ok: true,
+      query,
+      hits: merged,
       suspended,
+      engines: asked,
+      ...(general.answeredBy === undefined ? {} : { generalEngine: general.answeredBy }),
       ...(throttled.length === 0 ? {} : { throttled }),
       ...(waitedMs >= 1000 ? { waitedSeconds: Math.round(waitedMs / 1000) } : {}),
-      ...generalState(options.engines, suspended, throttled),
+      ...(general.answeredBy === undefined
+        ? generalState(queue, general.noKey, suspended, throttled, known, unresponsive)
+        : {}),
     };
-    if (options.cache !== undefined && key !== undefined && outcome.hits.length > 0) {
+    // Brave's terms forbid keeping its results beyond transient storage: an answer with one of its
+    // hits is never cached. Any other answer is.
+    const cacheable = outcome.hits.every((hit) => engineById(hit.engine)?.cacheable !== false);
+    if (options.cache !== undefined && key !== undefined && outcome.hits.length > 0 && cacheable) {
       await options.cache
         .set(
           key,
@@ -235,173 +238,171 @@ export function createSearch(
   };
 }
 
-type SearxPart =
-  | { ok: true; hits: WebSearchHit[]; unresponsive: { engine: string; reason: string }[] }
-  | { ok: false; outcome: WebSearchOutcome };
-
-/** Asks the SearXNG container for these engines. When nothing else was asked (`alone`), a failure is the search's failure. */
-async function askSearx(
-  backend: SearxBackend | undefined,
-  problem: string | undefined,
-  engines: readonly string[],
-  query: string,
-  request: WebSearchRequest,
-  cap: number,
-  alone: boolean,
-): Promise<SearxPart> {
-  const notAnswering = (reason: string): SearxPart => ({
-    ok: true,
-    hits: [],
-    unresponsive: engines.map((engine) => ({ engine, reason })),
-  });
-  if (backend === undefined) {
-    if (alone) {
-      return {
-        ok: false,
-        outcome: {
-          ok: false,
-          reason: "unavailable",
-          message: `The search service is not running${problem === undefined ? "" : ` (${problem})`}.`,
-        },
-      };
-    }
-    return notAnswering(
-      `the search container is not running${problem === undefined ? "" : ` (${problem})`}`,
-    );
-  }
-  const params = new URLSearchParams({ q: query, format: "json", safesearch: "1" });
-  // The engines are named, not left to the categories: a default query asks only the `general`
-  // ones, and the engines of papers, code and Q&A would never be asked.
-  if (engines.length > 0) params.set("engines", engines.join(","));
-  if (request.language !== undefined && request.language !== "")
-    params.set("language", request.language);
-  if (request.timeRange !== undefined) params.set("time_range", request.timeRange);
-  let text: string;
-  try {
-    text = await backend.query(params, request.signal);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (alone) {
-      return {
-        ok: false,
-        outcome: {
-          ok: false,
-          reason: "unavailable",
-          message: `The search service did not answer: ${message}`,
-        },
-      };
-    }
-    return notAnswering(`the search service did not answer: ${message}`);
-  }
-  const parsed = parseSearxAnswer(text, query, cap, engines);
-  if (!parsed.ok) {
-    return alone ? { ok: false, outcome: parsed } : notAnswering(parsed.message);
-  }
-  return { ok: true, hits: parsed.hits, unresponsive: parsed.suspended };
+function rateLimited(grant: Refusal): WebSearchOutcome {
+  return {
+    ok: false,
+    reason: "rate_limited",
+    retryInSeconds: grant.retryInSeconds,
+    message:
+      grant.scope === "overall"
+        ? `Too many searches in the last minute. Suup limits how often it asks the search engines; try again in about ${grant.retryInSeconds} s.`
+        : `Every engine for this search is at its limit for the minute. Try again in about ${grant.retryInSeconds} s.`,
+  };
 }
 
-async function askDirect(
-  engine: DirectEngine | undefined,
+interface QueueRun {
+  /** The hits of the engine that answered. */
+  hits: WebSearchHit[];
+  answeredBy?: string;
+  /** The engines that were really asked (a service was called). */
+  asked: string[];
+  /** The engines passed over after being asked, with why. */
+  passed: Unresponsive[];
+  /** The engines with no key, left out without being asked. */
+  noKey: string[];
+  /** The engine answered and asked to be left alone from now on (Brave: nothing left this month). */
+  suspendAfterAnswer?: Unresponsive;
+  /** Suup's own limit refused an engine of the queue (the last refusal). */
+  refused?: Refusal;
+}
+
+/** Asks the general engines one at a time until one answers. */
+async function runQueue(input: {
+  queue: readonly string[];
+  directById: ReadonlyMap<string, DirectEngine>;
+  query: string;
+  cap: number;
+  request: WebSearchRequest;
+  options: SearchOptions;
+  throttled: { engine: string; retryInSeconds: number }[];
+}): Promise<QueueRun> {
+  const { queue, directById, query, cap, request, options } = input;
+  const run: QueueRun = { hits: [], asked: [], passed: [], noKey: [] };
+  for (const [index, id] of queue.entries()) {
+    const engine = directById.get(id);
+    if (engine === undefined) {
+      run.passed.push({ engine: id, reason: "the engine is not available", kind: "unavailable" });
+      continue;
+    }
+    // No key: the engine is not asked (and takes no place in Suup's limits).
+    if (engine.configured !== undefined && !(await engine.configured())) {
+      run.noKey.push(id);
+      continue;
+    }
+    if (options.governor !== undefined) {
+      const grant = await options.governor.acquire([id], request.signal);
+      if (!grant.ok) {
+        run.refused = { retryInSeconds: grant.retryInSeconds, scope: grant.scope };
+        input.throttled.push({ engine: id, retryInSeconds: grant.retryInSeconds });
+        continue;
+      }
+    }
+    const result = await askEngine(directById, id, query, cap, request, options.locale);
+    if (!result.ok && result.kind === "no_key") {
+      run.noKey.push(id);
+      continue;
+    }
+    run.asked.push(id);
+    if (result.ok) {
+      run.answeredBy = id;
+      run.hits = result.hits;
+      await options.usage?.record(id, new Date((options.now ?? Date.now)())).catch(() => undefined);
+      if (result.suspend !== undefined) {
+        run.suspendAfterAnswer = {
+          engine: id,
+          reason: result.suspend.reason,
+          windowSeconds: result.suspend.seconds,
+          ...(result.suspend.kind === undefined ? {} : { kind: result.suspend.kind }),
+        };
+      }
+      return run;
+    }
+    const kind = result.kind ?? "other";
+    run.passed.push({
+      engine: id,
+      reason: result.reason,
+      kind,
+      ...(result.suspendSeconds === undefined ? {} : { windowSeconds: result.suspendSeconds }),
+    });
+    const next = queue.slice(index + 1).find((later) => directById.has(later));
+    options.log?.(failoverLogLine(id, kind, next));
+  }
+  return run;
+}
+
+async function askEngine(
+  engines: ReadonlyMap<string, DirectEngine>,
+  id: string,
   query: string,
   limit: number,
   request: WebSearchRequest,
+  locale: string | undefined,
 ): Promise<DirectSearchResult> {
+  const engine = engines.get(id);
   if (engine === undefined) return { ok: false, reason: "the engine is not available" };
   try {
     return await engine.search({
       query,
       limit,
       language: request.language,
+      locale,
+      timeRange: request.timeRange,
       signal: request.signal,
     });
   } catch (error) {
-    return { ok: false, reason: error instanceof Error ? error.message : String(error) };
+    return {
+      ok: false,
+      reason: error instanceof Error ? error.message : String(error),
+      kind: "unavailable",
+    };
   }
 }
 
-/** Whether every general web engine that is turned on is out of reach for now, and until when. */
+/**
+ * Whether every general web engine that is turned on is out of reach for now, why, and until when.
+ * Empty when no general engine is on, or when one of them is not out of reach.
+ */
 function generalState(
-  engines: readonly string[],
+  queue: readonly string[],
+  noKey: readonly string[],
   suspended: readonly { engine: string; retryInSeconds?: number }[],
   throttled: readonly { engine: string; retryInSeconds: number }[],
-): { generalUnavailable?: { retryInSeconds?: number } } {
-  const general = engines.filter((id) => engineById(id)?.general === true);
-  if (general.length === 0) return {};
-  const out: number[] = [];
-  for (const id of general) {
+  known: ReadonlyMap<string, { kind?: string }>,
+  unresponsive: readonly Unresponsive[],
+): { generalUnavailable?: NonNullable<SearchOk["generalUnavailable"]> } {
+  if (queue.length === 0) return {};
+  const kinds: string[] = [];
+  const seconds: number[] = [];
+  for (const id of queue) {
     const s = suspended.find((u) => u.engine === id);
     const t = throttled.find((u) => u.engine === id);
-    if (s === undefined && t === undefined) return {};
-    const seconds = s?.retryInSeconds ?? t?.retryInSeconds;
-    if (seconds !== undefined) out.push(seconds);
+    const failed = unresponsive.find((u) => u.engine === id);
+    if (noKey.includes(id)) {
+      kinds.push("no_key");
+    } else if (t !== undefined && s === undefined) {
+      kinds.push("limit");
+      seconds.push(t.retryInSeconds);
+    } else if (s !== undefined || failed !== undefined) {
+      kinds.push(failed?.kind ?? known.get(id)?.kind ?? "other");
+      if (s?.retryInSeconds !== undefined) seconds.push(s.retryInSeconds);
+    } else {
+      // This engine is neither suspended, limited, without a key nor failed: it is not out of reach.
+      return {};
+    }
   }
-  return { generalUnavailable: out.length === 0 ? {} : { retryInSeconds: Math.min(...out) } };
-}
-
-/** Reads SearXNG's JSON answer. Only http(s) hits are kept; text is cut; the same URL appears once. */
-export function parseSearxAnswer(
-  text: string,
-  query: string,
-  limit: number,
-  engines: readonly string[],
-): WebSearchOutcome {
-  let json: unknown;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    return {
-      ok: false,
-      reason: "failed",
-      message:
-        "The search service answered with something that is not JSON (is `json` enabled in its formats?).",
-    };
-  }
-  const parsed = answerSchema.safeParse(json);
-  if (!parsed.success) {
-    return {
-      ok: false,
-      reason: "failed",
-      message: "The search service answered in a format that was not expected.",
-    };
-  }
-  const hits: WebSearchHit[] = [];
-  const seen = new Set<string>();
-  for (const raw of parsed.data.results) {
-    const url = cleanUrl(raw.url);
-    if (url === undefined || seen.has(url)) continue;
-    seen.add(url);
-    hits.push({
-      title: clip(raw.title ?? "", TITLE_MAX) || url,
-      url,
-      snippet: clip(raw.content ?? "", SNIPPET_MAX),
-      engine: raw.engine ?? raw.engines?.[0] ?? "unknown",
-    });
-    if (hits.length >= limit) break;
-  }
-  const suspended = parsed.data.unresponsive_engines.map(([engine, reason]) => ({
-    engine,
-    reason,
-  }));
-  return { ok: true, query, hits, suspended, engines: [...engines] };
-}
-
-/** A backend that talks HTTP to a SearXNG instance (`format=json` must be enabled there). */
-export function httpSearxBackend(baseUrl: string, timeoutMs = 20_000): SearxBackend {
-  const base = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+  const cause: NonNullable<SearchOk["generalUnavailable"]>["cause"] = kinds.every(
+    (k) => k === "no_key",
+  )
+    ? "no_key"
+    : kinds.includes("quota")
+      ? "quota"
+      : kinds.every((k) => k === "limit")
+        ? "limit"
+        : "unavailable";
   return {
-    async query(params, signal) {
-      const url = new URL("search", base);
-      url.search = params.toString();
-      const timeout = AbortSignal.timeout(timeoutMs);
-      const response = await fetch(url, {
-        headers: { accept: "application/json" },
-        signal: signal === undefined ? timeout : AbortSignal.any([timeout, signal]),
-      });
-      if (response.status === 403) {
-        throw new Error("HTTP 403: the JSON format is not enabled in the search service settings");
-      }
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return await response.text();
+    generalUnavailable: {
+      cause,
+      ...(seconds.length === 0 ? {} : { retryInSeconds: Math.min(...seconds) }),
     },
   };
 }

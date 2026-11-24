@@ -8,6 +8,21 @@ body,
 #root {
   height: 100%;
 }
+/*
+ * The popups of Base UI (menus, lists, tips) are portalled into the body, next to #root: isolating
+ * the root keeps the app's own z-indexes inside it, so a popup is always above the page
+ * (Base UI's quick start; docs/pesquisas/shadcn-base-maia.md).
+ */
+#root {
+  isolation: isolate;
+}
+/* Headings are in the heading font (Geist); the rest of the app in the text font (Outfit). */
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-heading);
+}
 body {
   background: var(--color-bg);
   color: var(--color-text);
@@ -56,6 +71,8 @@ html[data-resizing] {
 html[data-resizing] * {
   cursor: col-resize !important;
   user-select: none !important;
+  /* the pane follows the pointer, no easing behind it */
+  transition: none !important;
 }
 
 @media (prefers-reduced-motion: reduce) {

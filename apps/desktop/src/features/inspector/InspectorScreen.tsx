@@ -299,7 +299,7 @@ export function InspectorScreen() {
                 value={model}
                 options={[
                   { value: "", label: "O mesmo da gravação" },
-                  ...models.map((m) => ({ value: m.id, label: m.id })),
+                  ...models.map((m) => ({ value: m.id, label: m.name })),
                 ]}
                 onChange={setModel}
               />

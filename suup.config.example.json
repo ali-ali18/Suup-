@@ -15,6 +15,7 @@
   "models": [
     {
       "id": "model-x",
+      "name": "Modelo X",
       "provider": "anthropic",
       "contextWindow": 200000,
       "maxOutputTokens": 8192,
@@ -22,6 +23,7 @@
     },
     {
       "id": "model-y",
+      "name": "Modelo Y",
       "provider": "local",
       "contextWindow": 32000,
       "maxOutputTokens": 4096
@@ -40,7 +42,10 @@
     "connectors": { "image": "suup-connector-runner:dev" }
   },
   "web": {
-    "search": { "engines": ["wikipedia", "arxiv", "stackoverflow"] },
+    "search": {
+      "engines": ["wikipedia", "arxiv", "stackoverflow", "tavily", "brave"],
+      "general": { "order": ["tavily", "brave"] }
+    },
     "reader": { "image": "suup-reader:dev" }
   },
   "worker": { "concurrency": 4, "leaseRenewMs": 10000, "staleAfterMs": 30000 },

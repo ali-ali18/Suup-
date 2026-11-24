@@ -116,6 +116,18 @@ function routineHttpError(error: unknown): unknown {
   return error;
 }
 
+/**
+ * A routine the API shows: a one-time reminder of a bot is internal (docs/ROTINAS.md, "Lembrete de
+ * uma vez"), never listed and never reachable by id, so the app cannot draw or change it.
+ */
+async function visibleRoutine(db: Parameters<typeof getRoutine>[0], id: string) {
+  const routine = await getRoutine(db, id);
+  if (routine === null || routine.reminder) {
+    throw new HttpError("not_found", "Rotina não encontrada.");
+  }
+  return routine;
+}
+
 async function guarded<T>(work: () => Promise<T>): Promise<T> {
   try {
     return await work();
@@ -191,8 +203,7 @@ export const routineRoutes: Route[] = [
     method: "GET",
     pattern: "/v1/routines/:id",
     async handler(ctx) {
-      const routine = await getRoutine(ctx.runtime.db, ctx.uuid("id"));
-      if (routine === null) throw new HttpError("not_found", "Rotina não encontrada.");
+      const routine = await visibleRoutine(ctx.runtime.db, ctx.uuid("id"));
       return { body: toRoutineDto(routine) };
     },
   },
@@ -202,8 +213,10 @@ export const routineRoutes: Route[] = [
     async handler(ctx) {
       const id = ctx.uuid("id");
       const body = ctx.body(updateRoutineBodySchema);
+      await visibleRoutine(ctx.runtime.db, id);
       const routine = await guarded(() =>
         updateRoutine(ctx.runtime.db, id, {
+          actor: "owner",
           ...(body.name === undefined ? {} : { name: body.name }),
           ...(body.instruction === undefined ? {} : { instruction: body.instruction }),
           ...(body.schedule === undefined ? {} : { schedule: body.schedule }),
@@ -226,7 +239,9 @@ export const routineRoutes: Route[] = [
     method: "DELETE",
     pattern: "/v1/routines/:id",
     async handler(ctx) {
-      const deleted = await deleteRoutine(ctx.runtime.db, ctx.uuid("id"));
+      const id = ctx.uuid("id");
+      await visibleRoutine(ctx.runtime.db, id);
+      const deleted = await deleteRoutine(ctx.runtime.db, id, "owner");
       if (!deleted) throw new HttpError("not_found", "Rotina não encontrada.");
       return { body: { deleted: true } };
     },
@@ -236,6 +251,7 @@ export const routineRoutes: Route[] = [
     pattern: "/v1/routines/:id/run",
     async handler(ctx) {
       const id = ctx.uuid("id");
+      await visibleRoutine(ctx.runtime.db, id);
       const fired = await guarded(() => runRoutineNow(ctx.runtime.db, id));
       return { status: 202, body: { fire: toRoutineFireDto(fired.fire) } };
     },
@@ -246,9 +262,7 @@ export const routineRoutes: Route[] = [
     async handler(ctx) {
       const id = ctx.uuid("id");
       const query = ctx.query(listRoutineFiresQuerySchema);
-      if ((await getRoutine(ctx.runtime.db, id)) === null) {
-        throw new HttpError("not_found", "Rotina não encontrada.");
-      }
+      await visibleRoutine(ctx.runtime.db, id);
       const fires = await listRoutineFires(
         ctx.runtime.db,
         id,

@@ -2,6 +2,7 @@
 // `RunLoopOptions`, `ToolInvoker`), the `LoopContext` object every loop module receives instead of
 // a long parameter list, and the `Interrupted` signal used to unwind on a hard interruption.
 import type { ToolGate } from "../approvals/gate.js";
+import type { DocumentMaker } from "../documents.js";
 import type {
   ContextItem,
   MachineInfo,
@@ -14,6 +15,7 @@ import type {
   SupervisorRole,
   Teammate,
 } from "../events.js";
+import type { FileSender } from "../files.js";
 import type { Message } from "../messages.js";
 import type { Provider, ToolSpec } from "../provider.js";
 import type { InvokeOptions, ToolInvocation } from "../registry.js";
@@ -24,6 +26,7 @@ import type { ModelPricing, ReviewerConfig } from "./reviewer.js";
 import type { RunState } from "./state.js";
 import type { RunRecord, RunStore } from "./store.js";
 import type { ToolSearchDeps } from "./tool-search.js";
+import type { WatchdogConfig } from "./watchdog.js";
 
 export interface BotConfig {
   id: string;
@@ -106,6 +109,11 @@ export interface LoopDeps {
   /** When absent, `finish` is validated by the harness only. */
   reviewer?: ReviewerConfig;
   /**
+   * The progress watchdog (docs/VIGIA.md): what happens at the step limit and when the run loops.
+   * Absent: the defaults (on, no judge model). `enabled: false` brings back the failures.
+   */
+  watchdog?: Partial<WatchdogConfig>;
+  /**
    * Loads the context of a run that starts (rules, profile, conversation history). Called at most
    * once per run: the result is recorded as the `context_loaded` event right after `run_started`,
    * and a resumed or replayed run reads that event instead of calling this again. Without it the
@@ -145,6 +153,10 @@ export interface LoopDeps {
   networkFor?(run: RunRecord): NetworkAccess;
   /** The web (search and the reader service) the tools of this run may use; see `web.ts`. */
   webFor?(run: RunRecord): WebAccess;
+  /** Where the files this run sends to the user go (`send_file`); without it the tool says so. */
+  filesFor?(run: RunRecord): FileSender;
+  /** Who builds the documents this run makes (`create_document`), with the bot as the author. */
+  documentsFor?(run: RunRecord): DocumentMaker;
   /**
    * The run may schedule its own return (`schedule_return`): set for a conversation run of the
    * user, left out for an evaluation (isolated) run. It is also required that the run's origin is

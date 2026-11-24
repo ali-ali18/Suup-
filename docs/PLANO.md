@@ -65,7 +65,9 @@ enquanto a execução não terminou:
   se só texto, com passos pendentes → harness devolve "faltam X e Y, continue"
   se chamou finish   → valida; recusa se falta passo ou evidência; revisor confere
   se chamou escalate → status waiting_user, pausa
-  checa limites: turnos, custo, tempo, mesma chamada repetida 3 vezes
+  checa limites: custo e tempo (se o dono definiu) terminam a execução; o limite de passos e os laços
+    (mesma chamada repetida, mesmo erro, sem ferramenta, vai e volta) acionam o vigia: aviso, extensão
+    automática com progresso conferível ou pergunta ao dono (em rotina, para com mensagem)
 ```
 
 Ferramentas de controle, presentes em todo bot:
@@ -85,6 +87,7 @@ Regras:
 - O plano e o objetivo vão sempre no fim do contexto, onde o modelo presta mais atenção.
 - Antes de aceitar `finish` em execução com plano, um **revisor** (outra chamada ao modelo, sem o histórico) recebe objetivo, critérios e evidência, e pode devolver. O resumo que ele recebe é curto: por isso pode **pedir evidência** (resultados inteiros, argumentos de chamadas e arquivos, em até 3 rodadas e com orçamento de caracteres) antes de decidir, e só reprova com ao menos uma divergência concreta e estruturada; o que continua inverificável chega ao dono como "não consegui verificar X", nunca como reprovação. Antes disso, quando o que falta é **evidência que o revisor nomeou** (ainda pedia evidência depois das rodadas, ou um `cannot_verify` com o que falta), o primeiro `finish` assim volta **uma vez** ao bot com as notas do revisor ("o revisor pediu: ...; produza a evidência e chame finish de novo"); o segundo vai ao dono como antes (numa rotina, encerra a execução). Dúvida sem lacuna concreta, `reject` sem divergência, limite atingido e revisão que falhou vão direto. Uma revisão que **não aconteceu** nunca é aprovação (falha fechada, 23/11/2026): erro do provedor é tentado mais uma vez; se o revisor ainda falha, ou responde sem um `verdict` utilizável, o resultado é `unverified` com `failed` ("a revisão falhou") e vai ao dono como qualquer `unverified`. Numa execução de **rotina**, onde ninguém responde na hora, um `unverified` (de falha ou não) encerra a execução como não concluída (`failed`, com o motivo em português no chat do bot), sem pergunta parada que pularia os próximos disparos.
 - Estados: `queued`, `running`, `waiting_approval`, `waiting_user`, `waiting_timer`, `done`, `failed`, `cancelled`. `waiting_timer` é a execução parada até um retorno que o próprio bot marcou ([RETORNO.md](RETORNO.md)).
+- **Limite de passos e laços não derrubam a execução** (decisão do dono, 24/11/2026): o **vigia de progresso** avisa o bot uma vez, estende sozinho em 25 passos (até 2 vezes) quando há progresso que dá para conferir e, no resto, pergunta ao dono "Continuar (+25 passos)" ou "Parar por aqui"; numa rotina, ninguém responde, então ela para com uma mensagem amigável. Custo e tempo continuam sem teto por padrão. Desenho: [VIGIA.md](VIGIA.md); pesquisa: [pesquisas/vigia-de-progresso.md](pesquisas/vigia-de-progresso.md).
 - Execuções longas rodam em segundo plano; a conversa continua livre.
 - Retomada: o contexto é reconstruído a partir dos eventos. Uma ferramenta interrompida no meio é marcada como "resultado desconhecido" e o modelo decide se confere ou repete.
 
@@ -263,6 +266,18 @@ Decisão do dono (19/11/2026): "pode ser embutido no app, segue". O app de deskt
 - **Instalador:** `.github/workflows/desktop-installer.yml` (NSIS no Windows, sem assinatura). Guia do dono: [USAR-NO-WINDOWS.md](USAR-NO-WINDOWS.md).
 - **Atualização automática** (aprovada pelo dono, 23/11/2026: "não preciso reinstalar nada, ele só atualiza"): o atualizador oficial do Tauri 2, com Releases do GitHub assinadas (minisign) publicadas como rascunho por `.github/workflows/release.yml`; o servidor embutido para antes do instalador e migra o banco na partida seguinte. Desligado até o dono pôr a chave pública. Base: [pesquisas/atualizador-do-app.md](pesquisas/atualizador-do-app.md); como funciona e o passo a passo do dono: [ATUALIZACAO.md](ATUALIZACAO.md).
 
+### 4.12b Chamada de voz
+
+Decisão do dono (23/11/2026): um modo **chamada de voz**, como o do Grok Bot. A pessoa conversa por voz, como numa ligação, e o bot **continua agindo** durante a conversa: cria rotinas, consulta a memória, busca, usa conectores. Tudo pelas mesmas ferramentas, com as mesmas regras e cartões.
+
+- **No chat**, a chamada vira um bloco próprio na conversa, uma "subconversa": "Chat de voz · 00:02" com a duração. Dentro dele ficam a **transcrição**, das duas falas, e as **ações** do bot como as linhas de sempre (por exemplo, "Rotina criada"). Ao terminar, o app mostra que a transcrição está sendo salva e ela entra no histórico como mensagens comuns. Assim a memória, a busca nas conversas e o supervisor a enxergam.
+- **Na tela:** botão de chamada no compositor, ao lado do microfone de ditado. Durante a chamada há a tela da ligação (o rosto do bot falando, mudo e desligar). Um cartão que precisar de você aparece na tela e pode ser respondido por voz ("pode", "não") ou tocando.
+- **Aprovações por voz:** um "sim" falado só vale para o cartão que está na tela, nunca para algo que o bot apenas descreveu. A frase dita fica na transcrição. Regras e pisos não mudam.
+- **Aberto e sem prender a provedor** (regra do dono): fala para texto e texto para fala escolhíveis, com opção local e aberta (a pesquisa decide quais: modelos abertos de transcrição e de voz rodando no PC), além de serviços de voz em tempo real dos provedores como opção. A conversa usa o mesmo loop: cada fala é uma mensagem do usuário, e a resposta é falada enquanto é gerada.
+- **Ditado** (o microfone, sem chamada) é a parte simples e pode vir antes: fala vira texto no compositor.
+- **Motor de voz escolhível** (decisão do dono, 23/11/2026), sempre com o loop do Suup como cérebro (mesmas ferramentas, regras e cartões): (1) **leve, sem contêiner**, no app (sherpa-onnx: Whisper e vozes pt-BR), para qualquer PC; (2) **pacote aberto opcional em contêiner** (candidato: speaches, MIT, CPU ou CUDA), instalado só se a pessoa pedir, **depois de conferir a máquina** (memória, CPUs, WSL 2, placa NVIDIA); (3) **serviços pagos** com a chave no cofre: OpenAI (transcrição/voz ou GPT-Live com o Suup como cérebro), Deepgram, Cartesia, ElevenLabs, xAI, Gemini, Azure, conforme a pesquisa confirmar preço e pt-BR. Detalhes e números: [pesquisas/fase-7-chamada-de-voz.md](pesquisas/fase-7-chamada-de-voz.md), "Segunda rodada". **Prioridade** (dono, 23/11/2026: "a maioria vai de pago, é muito difícil ter 16 GB de VRAM"): os motores **pagos** vêm primeiro (OpenAI: transcrição e voz em cadeia, depois o GPT-Live com o Suup como cérebro); o leve local é a opção grátis; o pacote em contêiner fica por último, para quem tiver placa.
+- **Antes de implementar:** pesquisa em `docs/pesquisas/` sobre transcrição e voz abertas (qualidade em pt-BR, latência, CPU/GPU no PC do dono), detecção de fim de fala e interrupção (falar por cima do bot), eco e microfone no Tauri/WebView2, serviços em tempo real dos provedores e custo por minuto.
+
 ### 4.13 Diagnóstico: de quem é o problema
 
 Um problema pode estar em cinco lugares: modelo, harness, ferramenta, servidor ou app. O desenho precisa permitir separar os cinco sem adivinhar.
@@ -321,7 +336,7 @@ O bot não espera ser chamado: percebe o que pode resolver, adianta tudo o que n
 
 **Recepção do bot (fase 4, feita).** Todo bot recebe o usuário na primeira conversa (perguntas do papel dele, uma de cada vez, puláveis); o Principal faz a recepção geral e propõe uma equipe num cartão em que o usuário marca o que criar. O prompt ganhou quem é, agora, equipe e o que o bot tem. Desenho em [RECEPCAO.md](RECEPCAO.md); pesquisa em [pesquisas/fase-4-recepcao-inicial.md](pesquisas/fase-4-recepcao-inicial.md).
 
-**Busca e leitura de páginas na web (fase 4, feita).** Decisão do dono: "não quero me prender a provedor" e "tem que ser 100% open". `web_search` (contêiner SearXNG fixado, sem modificação, motores de API pública por padrão) e `web_read` (leitor próprio: Readability e Turndown, `robots.txt`, ritmo por host, só páginas públicas; `render` num Chromium separado) são ferramentas embutidas de nível leitura, sem cartão, concedidas por bot. A busca hospedada do provedor não é usada; adaptadores de Brave, Tavily e Exa **não** estão no núcleo (o usuário pode acrescentar um conector MCP de busca). Desenho, rede, licenças (AGPL do SearXNG), motores e o que não impede: [BUSCA.md](BUSCA.md); pesquisa: [pesquisas/fase-4-busca-na-web.md](pesquisas/fase-4-busca-na-web.md). Fica de fora: `web_crawl`/`web_map` (a pesquisa os põe depois), tela de configuração dos motores, ligar o sidecar do app embutido e restringir `web_read` a URLs vistas na conversa (decisão do dono).
+**Busca e leitura de páginas na web (fase 4, feita).** Decisão do dono: "não quero me prender a provedor" e "tem que ser 100% open". `web_search` (APIs oficiais que o Suup mesmo chama, com o nome honesto: Wikipédia, arXiv e Stack Overflow juntas e, para a web aberta, **uma fila com troca automática: Tavily, depois Brave Search**, cada uma com a chave do próprio usuário; o DuckDuckGo e o SearXNG saíram em 24/11/2026, a busca não usa mais Docker) e `web_read` (leitor próprio: Readability e Turndown, `robots.txt`, ritmo por host, só páginas públicas; `render` num Chromium separado) são ferramentas embutidas de nível leitura, sem cartão, concedidas por bot. A busca hospedada do provedor do modelo não é usada, e o Firecrawl não entra (o proxy dele contorna bloqueios). Configurações > Busca mostra a fila e guarda a chave no cofre. Desenho, rede, termos de cada serviço, motores e o que não impede: [BUSCA.md](BUSCA.md); pesquisas: [pesquisas/fase-4-busca-na-web.md](pesquisas/fase-4-busca-na-web.md), [pesquisas/fase-4-busca-alternativas-ao-ddg.md](pesquisas/fase-4-busca-alternativas-ao-ddg.md). Fica de fora: `web_crawl`/`web_map` (a pesquisa os põe depois) e restringir `web_read` a URLs vistas na conversa (decisão do dono).
 
 **Primeira peça da fase 4, já feita: o bot volta sozinho.** Ele dispara algo que demora (CI, deploy), diz "volto em 20 minutos" na própria mensagem e a mesma execução acorda sozinha na hora, sem rotina e sem marcador na tela (decisão do dono). É a ferramenta `schedule_return` e o estado `waiting_timer`; o desenho, os limites e como parar estão em [RETORNO.md](RETORNO.md), e a pesquisa que o embasa em [pesquisas/fase-4-acordar-sozinho.md](pesquisas/fase-4-acordar-sozinho.md). Fica de fora dela o que é do resto da iniciativa: acordar por evento de conector ou webhook, horário fixo (isso é rotina) e trabalho por iniciativa própria (`proactive`).
 
@@ -469,6 +484,7 @@ packages/
   core/        loop, contexto, revisor, limites, tipos
   providers/   camada de provedores e adaptadores
   tools/       registro e ferramentas
+  documents/   monta PDF, Word e Excel no processo do servidor (create_document)
   db/          esquema, migrações, acesso a dados
   sandbox/     executor da máquina dos bots
   api/         contrato da API (esquemas, cliente, stream) compartilhado com o app
@@ -491,7 +507,7 @@ docs/
 | 4 | Rotinas (horário e webhook), iniciativa, notificações, diário, delegação, sala de grupo | Monitor que avisa só quando a condição é atendida; bot nota um prazo na agenda, prepara o material e deixa um cartão pronto para aceitar; evento assinado dispara a rotina uma única vez, mesmo reenviado; bot principal encaminha e recebe de volta |
 | 5 | Navegador com tela por bot, ao vivo, passagem de controle | Bot navega num site com login, pausa para o usuário entrar e retoma |
 | 6 | Agente local nos PCs | Instala uma ferramenta no PC, com aprovação, e confere que funciona |
-| 7 | Páginas salvas, documentos, imagem, vídeo, voz, agentes de código externos | Gera um documento e uma página compartilhável; abre um PR por agente externo |
+| 7 | Páginas salvas, documentos, imagem, vídeo, voz (ditado e **chamada de voz**, 4.12b), agentes de código externos | Gera um documento e uma página compartilhável; abre um PR por agente externo |
 | 8 | Celular, reuniões, telefone, outros canais | Definido quando a fase 7 terminar |
 
 ## 9. Fase 1 em detalhe

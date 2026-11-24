@@ -290,10 +290,10 @@ describe("schedule_return: parking the run", () => {
     const script: FakeStep[] = [use(schedule("r1", 1, "n")), say("volto"), say("Terminei.")];
     // Two model calls were used before the wake: a limit of two stops the run when it comes back.
     const tight = createRig({ script, bot: { limits: { maxTurns: 2 } } });
-    expect(await drive(tight, script)).toBe("failed");
+    expect(await drive(tight, script)).toBe("waiting_user");
     expect(rebuildState(await tight.events()).wakeCount).toBe(1);
-    const failed = eventsOfType(await tight.events(), "status_changed").at(-1)?.payload;
-    expect(failed?.failure?.detail).toContain("turn limit");
+    const asked = eventsOfType(await tight.events(), "escalated").at(-1)?.payload;
+    expect(asked?.reason).toBe("progress_limit");
 
     const roomy = createRig({ script, bot: { limits: { maxTurns: 3 } } });
     expect(await drive(roomy, script)).toBe("done");

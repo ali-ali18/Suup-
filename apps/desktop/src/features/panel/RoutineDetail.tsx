@@ -5,7 +5,6 @@ import { useServices } from "../../app/context.js";
 import { useSettings } from "../../app/settings-store.js";
 import { useUi } from "../../app/ui-store.js";
 import { messageOf } from "../../data/sync.js";
-import { cx } from "../../lib/cx.js";
 import { Markdown } from "../../lib/markdown.js";
 import { describeSchedule, editDraft } from "../../lib/routines.js";
 import { Dialog, FieldError, MutedText, Pill, RoundButton } from "../../ui/primitives.js";
@@ -79,7 +78,6 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 export function RoutineDetail({ botId, routineId }: { botId: string; routineId: string }) {
   const { api, platform } = useServices();
   const favicons = useSettings((s) => s.settings.favicons === "on");
-  const customFrame = useUi((s) => s.customFrame);
   const toast = useUi((s) => s.toast);
   const openPanelRoutine = useUi((s) => s.openPanelRoutine);
   const editRoutineInChat = useUi((s) => s.editRoutineInChat);
@@ -113,10 +111,7 @@ export function RoutineDetail({ botId, routineId }: { botId: string; routineId: 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="routine-detail">
       <div
-        className={cx(
-          "flex flex-none items-center gap-2 pt-3 pb-2 pl-3",
-          customFrame ? "pr-37.5" : "pr-3",
-        )}
+        className="flex flex-none items-center gap-2 pt-3 pr-3 pb-2 pl-3 framed:pr-window-reserve"
         data-tauri-drag-region
       >
         <RoundButton label="Voltar às rotinas" tone="ghost" onClick={back}>

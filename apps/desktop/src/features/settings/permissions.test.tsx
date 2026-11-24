@@ -6,7 +6,8 @@ import { useUi } from "../../app/ui-store.js";
 import { setBots, setRules, setWrittenRules } from "../../data/reducers.js";
 import { createDataStore, update } from "../../data/store.js";
 import { Sync } from "../../data/sync.js";
-import { makeBot, makeRule, makeWrittenRule } from "../../test-fixtures.js";
+import { makeBot, makeRule, makeWrittenRule, pressOption } from "../../test-fixtures.js";
+import { Modal } from "../../ui/dialog.js";
 import { PermissionsSettings } from "./PermissionsSettings.js";
 
 const settingsOf = (over: Partial<ApprovalSettings> = {}): ApprovalSettings => ({
@@ -30,7 +31,10 @@ function setup(api: Record<string, unknown>, written: WrittenRule[] = []) {
   const services = { api: full, sync, data: store } as unknown as Services;
   render(
     <ServicesProvider services={services}>
-      <PermissionsSettings title="Permissões" titleId="t" onClose={() => {}} />
+      {/* as in the app: a section lives inside the settings dialog (its X closes that dialog) */}
+      <Modal onClose={() => {}} label="Configurações" className="">
+        <PermissionsSettings title="Permissões" titleId="t" />
+      </Modal>
     </ServicesProvider>,
   );
   return { store, bots };
@@ -39,7 +43,7 @@ function setup(api: Record<string, unknown>, written: WrittenRule[] = []) {
 const modeButton = () => screen.getByTestId("approval-mode");
 const pick = async (name: string) => {
   fireEvent.click(modeButton());
-  fireEvent.click(await screen.findByRole("option", { name: new RegExp(name) }));
+  pressOption(await screen.findByRole("option", { name: new RegExp(name) }));
 };
 
 describe("Permissões: the mode", () => {
@@ -60,7 +64,7 @@ describe("Permissões: the mode", () => {
     expect(options[1]?.textContent).toContain(
       "toda ação que não é só leitura pede aprovação".replace("toda", "Toda"),
     );
-    fireEvent.click(options[1] as HTMLElement);
+    pressOption(options[1] as HTMLElement);
     expect(modeButton().textContent).toBe("Perguntar tudo");
     await waitFor(() => expect(update).toHaveBeenCalledWith({ mode: "ask_all" }));
     // In this mode the written rules are not read, and the page says so.
@@ -134,7 +138,7 @@ describe("Permissões: the card that waited too long", () => {
     setup({ approvalSettings: { get: async () => settingsOf(), update } });
     await waitFor(() => expect(staleButton().textContent).toBe("1 h"));
     fireEvent.click(staleButton());
-    fireEvent.click(await screen.findByRole("option", { name: "1 dia" }));
+    pressOption(await screen.findByRole("option", { name: "1 dia" }));
     expect(staleButton().textContent).toBe("1 dia");
     await waitFor(() => expect(update).toHaveBeenCalledWith({ staleAfterMinutes: 1440 }));
   });
@@ -146,7 +150,7 @@ describe("Permissões: the card that waited too long", () => {
     setup({ approvalSettings: { get: async () => settingsOf(), update } });
     await waitFor(() => expect(staleButton().textContent).toBe("1 h"));
     fireEvent.click(staleButton());
-    fireEvent.click(await screen.findByRole("option", { name: "15 min" }));
+    pressOption(await screen.findByRole("option", { name: "15 min" }));
     await waitFor(() => expect(screen.getByRole("note").textContent).toContain("entre 5 minutos"));
     expect(staleButton().textContent).toBe("1 h");
   });
@@ -216,7 +220,7 @@ describe("Permissões: the rules you write", () => {
     fireEvent.change(text, { target: { value: "  Apagar a pasta notas \n" } });
     expect(save.disabled).toBe(false);
     fireEvent.click(screen.getByTestId("written-rule-bot"));
-    fireEvent.click(await screen.findByRole("option", { name: "Cookie" }));
+    pressOption(await screen.findByRole("option", { name: "Cookie" }));
     fireEvent.click(save);
     // The server's own words, and nothing was closed.
     expect((await screen.findByTestId("written-rule-error")).textContent).toBe(
@@ -307,19 +311,17 @@ describe("Permissões: the old exact rules", () => {
   });
 });
 
-describe("the settings dialog's way back", () => {
-  it("selecting a section, even the selected one, lands on its first view; closing forgets the connector", () => {
+describe("opening a plugin's page", () => {
+  it("opening a plugin closes Settings and shows its page in Conectores; going to Conectores shows the gallery", () => {
     const ui = useUi.getState();
     ui.openSettings("connectors");
-    ui.setSettingsConnector("fake");
-    expect(useUi.getState().settingsConnector).toBe("fake");
-    useUi.getState().setSettingsTab("connectors");
-    expect(useUi.getState().settingsConnector).toBeNull();
-    useUi.getState().setSettingsConnector("fake");
-    useUi.getState().closeSettings();
-    expect(useUi.getState().settingsConnector).toBeNull();
-    useUi.getState().openSettings("connectors");
-    expect(useUi.getState().settingsConnector).toBeNull();
-    useUi.getState().closeSettings();
+    useUi.getState().openPlugin({ kind: "catalog", id: "notion", autoStart: false });
+    expect(useUi.getState()).toMatchObject({
+      view: "connectors",
+      settingsOpen: false,
+      plugin: { kind: "catalog", id: "notion" },
+    });
+    useUi.getState().go("connectors");
+    expect(useUi.getState().plugin).toBeNull();
   });
 });

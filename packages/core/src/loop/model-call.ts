@@ -27,7 +27,7 @@ export type CallOutcome =
   | { kind: "error"; error: ProviderError };
 
 export interface CallSpec {
-  purpose: "agent" | "review" | "compaction";
+  purpose: "agent" | "review" | "compaction" | "progress";
   provider: Provider;
   model: { id: string; maxOutputTokens: number; pricing?: ModelPricing };
   system: string;

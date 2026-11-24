@@ -1,11 +1,6 @@
-import type { Approval, Question, Run, TeamProposal } from "@suup/api";
-import {
-  type ActionEntry,
-  type ActionItem,
-  foldActions,
-  mergeApprovals,
-  VISIBLE_ACTIONS,
-} from "../../data/actions.js";
+import type { Approval, MessageAttachment, Question, Run, TeamProposal } from "@suup/api";
+import type { ConnectCardItem } from "../../data/connect-cards.js";
+import { isApprovedProposal } from "../../data/connect-cards.js";
 import { failureLine } from "../../data/derive.js";
 import type { SecretRequestItem } from "../../data/secret-requests.js";
 import type { LocalMessage } from "../../data/state.js";
@@ -25,25 +20,43 @@ export type TimelineItem =
         answer: string | undefined;
         /** The run still waits for the reply. */
         open: boolean;
+        /** The user closed the card with its X (`message.question.dismissed`): locked, "Não respondido". */
+        dismissed: boolean;
         tieBreak: boolean;
+        /**
+         * What the bot wrote besides the question (`message.question.lead`, from the server), for a
+         * bubble above the card; absent when the bot only asked: the card, titled by the question.
+         */
+        lead?: string;
       };
     }
+  /** The files the bot handed over with the message just before (`send_file`): one card each. */
+  | { kind: "files"; key: string; files: readonly MessageAttachment[] }
   /** The main bot's proposal of a team of bots: the card where the user ticks which to create. */
   | { kind: "team"; key: string; messageId: string; text: string; team: TeamProposal }
-  /** The tool calls made between two messages, as cards (older finished ones folded). */
-  | { kind: "actions"; key: string; entries: ActionEntry[] }
-  /** An approval that waits for the user: the decision card (a decided one is part of its call's row). */
+  /** An approval: the decision card while it waits for the user; decided, its one line. */
   | { kind: "approval"; key: string; approval: Approval }
+  /** What the bot handed over to connect something: the card with the one button that fits. */
+  | { kind: "connect"; key: string; card: ConnectCardItem }
   /** The bot asked for a credential: the secure form (or, once answered, one line). */
   | { kind: "secret"; key: string; request: SecretRequestItem }
   /** A run that failed or was cancelled: one line that expands in place. */
   | { kind: "ended"; key: string; runId: string; text: string }
   | { kind: "notice"; key: string; text: string }
-  /** The run is working: the last thing in the chat is the indicator. */
+  /** The run is working (or waits for you): the last thing in the chat is the bot's live avatar. */
   | { kind: "working"; key: string; runId: string };
 
 const GAP_MS = 30 * 60_000;
-const WORKING: ReadonlySet<Run["status"]> = new Set(["queued", "running"]);
+/**
+ * The statuses with the live avatar at the end of the chat: working, and waiting for the user (an
+ * approval, an answer). Never a run parked until the return it scheduled: that has no mark.
+ */
+const LIVE: ReadonlySet<Run["status"]> = new Set([
+  "queued",
+  "running",
+  "waiting_approval",
+  "waiting_user",
+]);
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const timeOf = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -66,51 +79,44 @@ export function dayLabel(date: Date, now: Date): string {
 }
 
 /**
- * What the chat draws, from the messages, the runs they belong to and the tool calls of the runs.
- * Every tool call of the bot is ONE row in its column (its approval, if it had one, merged into it), placed among the messages by the time it was
- * made; a failure or a cancellation is one line (`ended`); a question is a bot message that carries
- * what was asked; a final answer is an ordinary bot message; a working run ends the list with the
- * indicator.
+ * What the chat draws: the RESULTS only (owner, 24/11/2026: "quero o resultado com excelência e nada
+ * mais"). The bot's messages, the files it handed over, its questions, the approval cards and the
+ * secure forms (they need you), a team proposal, one line when a run failed or was cancelled, and,
+ * while a run works, its live avatar at the end. The tool calls and the steps are never rows: they
+ * live in the Inspector.
  */
 export function buildTimeline(
   messages: readonly LocalMessage[],
   runs: Record<string, Run>,
-  actions: readonly ActionItem[],
   now: Date,
-  /** How many of the latest cards stay visible before older finished ones fold (Infinity: never fold). */
-  keep: number = VISIBLE_ACTIONS,
-  /** The approvals of the conversation and the secure forms of the run, among the actions. */
+  /** The approvals of the conversation and the secure forms of the run, placed when they were asked. */
   extras: {
     approvals?: readonly Approval[];
     secrets?: readonly SecretRequestItem[];
-    connectors?: Parameters<typeof mergeApprovals>[2];
+    connectCards?: readonly ConnectCardItem[];
   } = {},
 ): TimelineItem[] {
-  // One row per tool call: a decided approval merges into its call; a waiting one is the decision card.
-  const merged = mergeApprovals(actions, extras.approvals ?? [], extras.connectors);
   const items: TimelineItem[] = [];
   const opened = new Set<string>();
-  // Everything the bot did, in the order it happened: tool calls, approval cards, secure forms.
+  // The cards that need (or needed) you, in the order they were asked.
   type Placed =
-    | { kind: "action"; at: string; runId: string; action: ActionItem }
     | { kind: "approval"; at: string; runId: string; approval: Approval }
-    | { kind: "secret"; at: string; runId: string; request: SecretRequestItem };
+    | { kind: "secret"; at: string; runId: string; request: SecretRequestItem }
+    | { kind: "connect"; at: string; runId: string; card: ConnectCardItem };
   const waiting: Placed[] = [
-    ...merged.calls.map(
-      (action): Placed => ({
-        kind: "action",
-        at: action.startedAt,
-        runId: action.runId,
-        action,
-      }),
-    ),
-    ...merged.pending.map(
-      (approval): Placed => ({
-        kind: "approval",
-        at: approval.createdAt,
-        runId: approval.runId,
-        approval,
-      }),
+    // An approved proposal of a connector is drawn as its card, not as a row of the tool.
+    ...(extras.approvals ?? [])
+      .filter((a) => !isApprovedProposal(a))
+      .map(
+        (approval): Placed => ({
+          kind: "approval",
+          at: approval.createdAt,
+          runId: approval.runId,
+          approval,
+        }),
+      ),
+    ...(extras.connectCards ?? []).map(
+      (card): Placed => ({ kind: "connect", at: card.at, runId: card.runId, card }),
     ),
     ...(extras.secrets ?? []).map(
       (request): Placed => ({
@@ -123,42 +129,28 @@ export function buildTimeline(
   ].sort((a, b) => a.at.localeCompare(b.at));
   let previous: Date | undefined;
 
-  // What is due before `until` (all that remains, when `until` is undefined): the tool calls that
-  // follow each other as one group of cards, and each approval card or form on its own.
+  // The cards due before `until` (all that remains, when `until` is undefined).
   const flush = (until?: string) => {
-    let group: ActionItem[] = [];
-    const closeGroup = () => {
-      if (group.length === 0) return;
-      items.push({
-        kind: "actions",
-        key: `actions-${(group[0] as ActionItem).callId}`,
-        entries: foldActions(group, keep),
-      });
-      group = [];
-    };
     while (waiting.length > 0) {
       const next = waiting[0] as Placed;
       const ready = opened.has(next.runId) || until === undefined;
       if (!ready || (until !== undefined && next.at > until)) break;
       waiting.shift();
-      if (next.kind === "action") group.push(next.action);
-      else {
-        closeGroup();
-        if (next.kind === "approval")
-          items.push({
-            kind: "approval",
-            key: `approval-${next.approval.id}`,
-            approval: next.approval,
-          });
-        else
-          items.push({
-            kind: "secret",
-            key: `secret-${next.request.callId}`,
-            request: next.request,
-          });
-      }
+      if (next.kind === "approval")
+        items.push({
+          kind: "approval",
+          key: `approval-${next.approval.id}`,
+          approval: next.approval,
+        });
+      else if (next.kind === "connect")
+        items.push({ kind: "connect", key: `connect-${next.card.callId}`, card: next.card });
+      else
+        items.push({
+          kind: "secret",
+          key: `secret-${next.request.callId}`,
+          request: next.request,
+        });
     }
-    closeGroup();
   };
 
   messages.forEach((message, index) => {
@@ -217,17 +209,27 @@ export function buildTimeline(
         ask: {
           questions: message.question.questions,
           answer: reply?.text,
-          open: reply === undefined && run?.status === "waiting_user",
+          open:
+            reply === undefined &&
+            run?.status === "waiting_user" &&
+            message.question.dismissed !== true,
+          dismissed: message.question.dismissed === true,
           tieBreak: message.question.reason === "review_tie_break",
+          // What the bot wrote besides the question, as the server declares it (never compared).
+          ...(message.question.lead === undefined ? {} : { lead: message.question.lead }),
         },
       });
+    }
+    // The files of a bot (or system) message: right under it, apart from the bubble.
+    if (message.authorKind !== "user" && message.attachments !== undefined) {
+      items.push({ kind: "files", key: `${message.id}-files`, files: message.attachments });
     }
   });
   // Whatever is left (the run is still working, or no message opened it).
   flush();
 
   const working = Object.values(runs).find(
-    (r) => WORKING.has(r.status) && messages.some((m) => m.runId === r.id),
+    (r) => LIVE.has(r.status) && messages.some((m) => m.runId === r.id),
   );
   if (working !== undefined)
     items.push({ kind: "working", key: `working-${working.id}`, runId: working.id });
@@ -242,14 +244,18 @@ export function isChoiceCard(item: TimelineItem): boolean {
 /** The sender of a text bubble, or null for anything that is not one (cards, lines, separators). */
 function bubbleSender(item: TimelineItem): "user" | "bot" | null {
   if (item.kind === "user") return "user";
-  if (item.kind === "bot" && !isChoiceCard(item)) return "bot";
+  // A question with choices is the card alone, or (when the bot wrote more than the question) its
+  // bubble and, under it, the card.
+  if (item.kind === "bot") return isChoiceCard(item) && item.ask?.lead === undefined ? null : "bot";
   return null;
 }
 
 /**
  * The groups of consecutive text bubbles from the same sender, by item key. Anything that is not a
  * text bubble (a card, an action row, a separator — which is also what a long time gap becomes —,
- * a notice, the working indicator) breaks the group and is not in the result. Pure: the component
+ * a notice, the working indicator) breaks the group and is not in the result. A question with
+ * choices is the card alone (not in the result), or, when the bot wrote more than the question, a
+ * bubble followed by the card, so that bubble is the LAST of its group. Pure: the component
  * only reads the position.
  */
 export function bubblePositions(items: readonly TimelineItem[]): Map<string, BubblePosition> {
@@ -270,6 +276,11 @@ export function bubblePositions(items: readonly TimelineItem[]): Map<string, Bub
     if (who === null || who !== sender) close();
     sender = who;
     if (who !== null) run.push(item.key);
+    // The card goes right under the bubble of the bot's words: it ends the group.
+    if (isChoiceCard(item)) {
+      close();
+      sender = null;
+    }
   }
   close();
   return result;

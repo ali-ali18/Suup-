@@ -19,18 +19,42 @@ Caso real (24/11/2026): o bot criou um lembrete e disse "Combinado, criei…"; n
 - **Duplicata recusada.** `create_routine` recusa uma rotina igual a uma que o bot já tem e que não terminou: mesmo nome (aparado, NFC, minúsculas, comparado por igualdade: `routineNameKey`) **e** mesmo horário no mesmo fuso (campos comparados exatamente, dias da semana como conjunto, intervalo em minutos: `sameSchedule`, `packages/core/src/schedule.ts`). O resultado diz ao modelo que ela já existe, o nome, e que mude com `update_routine`. Sem regex e sem interpretar texto: nome com outras palavras não é duplicata (quem evita isso é a lista no prompt).
 - Não foi feita a nota de "ações desta conversa" no histórico: a lista do estado atual é a fonte certa (uma rotina apagada pelo usuário no painel não aparece como "criada").
 
+### O que aconteceu com elas (M14, M15)
+
+O estado atual não basta: o histórico em texto ainda diz "criei a rotina Bom dia" depois que o dono a apagou no painel, e o bot, sem prova, concluía que tinha errado. Por isso cada apagar, mudar, pausar e retomar (pelo dono, pela API ou por uma ferramenta do bot) e cada lembrete de uma vez que já disparou deixa uma **lápide** em `routine_events` (migração 0033, sem chave estrangeira para a rotina; some só com o bot). `deleteRoutine` e `updateRoutine` exigem o autor (`owner`, `bot`, `system`).
+
+O bot as recebe em "Recent changes to your routines and reminders" (14 dias, até 10, mais recentes primeiro), lidas junto com a lista e gravadas em `context_loaded.ownRoutines.recent` (retomar e reproduzir dão o mesmo; logs antigos não têm o campo). O texto é fato, não ordem: o dono apagou, mudou ou pausou, isso não é erro do bot e não falhou; não recriar a menos que peça; "já disparou" é cumprido, não pendente; só o que está em "Your routines" é pendente; passado só se menciona quando serve ao pedido. Pesquisa: [pesquisas/motor-rotinas-e-delegacao.md](pesquisas/motor-rotinas-e-delegacao.md).
+
+### Pedido que continua daqui para a frente (M17)
+
+"Hoje faça X e, a partir de amanhã, Y" é um pedido de rotina, mesmo trazendo uma parte para agora. O prompt (`ROUTINES_HOW`) e a descrição de `create_routine` mandam fazer a parte de agora **e** criar a rotina no mesmo turno, dizer o horário escolhido ("todo dia às 8h; quer mudar?") e perguntar antes só quando o horário importa e não dá para escolher. Confirmar a regra em palavras sem criar a rotina é falha. Nada classifica o texto do dono: o modelo decide, o cartão da rotina continua sendo o portão.
+
+### A data (M16)
+
+O bloco "Now" traz o relógio e um calendário (ontem, hoje, amanhã e mais 7 dias, cada um com o dia da semana calculado em código no fuso do usuário, `formatCalendar`), e manda não calcular o dia da semana de cabeça. O "hoje" de uma mensagem antiga do histórico é de outro dia.
+
 ### A referência à rotina na mensagem
 
 O id da rotina **nunca aparece no chat**. O "Editar" prende ao rascunho do compositor uma referência estruturada (`routineRef: { id }`); apagar o rascunho, ou trocar de bot, a tira. Ela vai com a mensagem (`POST /v1/conversations/{id}/messages`, `{ text, routineRef }`), o servidor confere que é uma rotina do bot da conversa e a guarda **na mensagem** (`messages.routine_ref`, migração 0027; `null` quando a rotina é apagada), nunca no texto.
 
 O modelo recebe a referência como dado, numa nota do harness no mesmo turno da mensagem (`renderRoutineRef`, `packages/core/src/loop/prompts.ts`): "The user's message is about your routine "Calendário da manhã" (todo dia às 08:00), id …. … To change or delete this routine, pass routine: "…"", com o aviso de não mostrar o id ao usuário. Fica no log, então retomar e reproduzir dão o mesmo: a mensagem que abriu a execução vai em `context_loaded.routineRefs`; a que chegou com a execução andando, em `user_message.routineRef` (a caixa de entrada lê a referência da mensagem). Uma mensagem assim que já está no histórico de uma execução seguinte leva a mesma nota ao lado do texto. O texto que o usuário digitou continua sendo o objetivo e o que o revisor do Auto-review lê como pedido dele. Lacuna: a resposta a uma pergunta do bot (`escalate`) é o resultado da chamada e não leva a nota.
-- `schedule_return` ([RETORNO.md](RETORNO.md)) continua sendo só para voltar **uma vez**, dentro da tarefa atual (um deploy que termina em 20 minutos). O que se repete, ou é para outro dia, é rotina. O prompt diz isso aos dois lados.
+- `schedule_return` ([RETORNO.md](RETORNO.md)) continua sendo para voltar **uma vez**, dentro da tarefa atual (um deploy que termina em 20 minutos), e é também o lembrete de uma vez para daqui a até 60 minutos (abaixo). **Rotina é só o que se repete.** O prompt diz isso aos dois lados.
+
+### Lembrete de uma vez (não é rotina)
+
+Decisão do dono (23/11/2026), depois de "Me lembra daqui 20 minutos de enviar meu RG" ter virado uma rotina no painel: **lembrete único é interno; rotina é para o que se repete.**
+
+- **Até 60 minutos** (`MAX_RETURN_MINUTES`): o bot usa o retorno interno, `schedule_return`, com a nota do que lembrar; ao voltar, lembra o usuário na própria mensagem. Uma mensagem do usuário antes da hora cancela o retorno como sempre; a descrição da ferramenta manda o bot agendar de novo nesse turno se o lembrete ainda vale.
+- **Mais longe** ("lembra dia 29 às 19h"): `create_reminder { text, date, time, timeZone? }`. Por baixo é uma linha de `routines` com `reminder = true` (migração 0029), sempre `once`, que usa o mesmo agendador, o mesmo disparo isolado e a mesma entrega no chat do bot. Diferenças: **não aparece** em `GET /v1/routines` nem por id (`404`), então o painel nunca a desenha; a mensagem do bot não leva `routineId`; o disparo dispara **uma vez** (mesmo atrasado) e a linha é **apagada** logo depois que o resultado é gravado; a execução recebe o bloco "This run is a reminder" (escrever o lembrete ao usuário, curto). Limite próprio de 30 lembretes pendentes por bot, fora da conta das 30 rotinas.
+- `create_routine` **recusa** um horário `once` e manda usar `create_reminder` (ou `schedule_return` dentro de uma hora). `list_routines` mostra os lembretes pendentes marcados como lembrete e `delete_routine` os cancela; `update_routine` não transforma um lembrete em algo que se repete.
+- Aprovação: `create_reminder` é `write_reversible`, como `create_routine` (o revisor do Auto-review vê que o usuário pediu; em "Perguntar tudo", cartão "Criar um lembrete: <o quê> — uma vez, em 29/11/2026 às 19:00", categoria "Lembrete"). Concluída, a chamada **não vira linha no chat** (como o retorno, docs/RETORNO.md "sem marcador"): o aviso é a mensagem do bot.
 
 Ferramentas (só em execução de conversa do usuário, `origin: user`):
 
 | Ferramenta | O que faz | Nível |
 |---|---|---|
-| `create_routine` | `{ name, instruction, schedule, timeZone?, costCapUsd? }` | `write_reversible` (permissão permanente) |
+| `create_routine` | `{ name, instruction, schedule, timeZone?, costCapUsd? }` (nunca `once`) | `write_reversible` (permissão permanente) |
+| `create_reminder` | `{ text, date, time, timeZone? }`: lembrete de uma vez, interno (acima) | `write_reversible` |
 | `update_routine` | `{ routine, name?, instruction?, schedule?, timeZone?, paused?, costCapUsd? }` | `write_reversible`; **só pausar** é `read` (tira poder) |
 | `delete_routine` | `{ routine }` | `read` (tira poder) |
 | `list_routines` | as rotinas do próprio bot | `read` |
@@ -54,6 +78,7 @@ A pesquisa (Claude Code, rotinas): o texto disparado "can't act as approval or c
 - O revisor do Auto-review recebe, num bloco próprio, que a execução foi **iniciada por uma rotina**, que o usuário não está vendo ao vivo e que o disparo não é aprovação; a instrução aparece como "pedida quando o usuário configurou a rotina", **fora** das mensagens do usuário (`ReviewTrigger`, versão `auto-review-v3`).
 - Ninguém responde ao vivo: `escalate` e `request_secret` são **recusados** numa rotina (o bot diz na resposta final o que precisa). Senão a execução ficaria esperando para sempre e todos os próximos disparos seriam pulados.
 - Pelo mesmo motivo, quando o revisor de conclusão não consegue verificar o `finish` (ou a revisão falha, mesmo depois de tentar de novo), a execução da rotina **termina não concluída** (`failed`, motivo em português no chat: "a revisão falhou..." ou "o revisor não conseguiu confirmar...") em vez de passar a decisão ao dono. O próximo disparo roda normalmente.
+- Pelo mesmo motivo, o **vigia de progresso** ([VIGIA.md](VIGIA.md)) **não pergunta** numa rotina. Se o laço continua depois do aviso, ou o limite de passos chega sem progresso conferível, a execução **para** (`failed`, origem `limit`) e deixa no chat do bot uma mensagem amigável: o que houve, o que já foi feito e o que falta, para o dono decidir depois. Nada se gasta enquanto ninguém olha. A rotina se estende sozinha no máximo 2 vezes (as extensões automáticas) e nunca além; o próximo disparo roda normalmente.
 - `schedule_return` não é oferecido a rotinas (só a conversa do usuário volta sozinha), então o teto de 6 retornos seguidos continua valendo sem mudança.
 
 ## Horário: campos, nunca cron

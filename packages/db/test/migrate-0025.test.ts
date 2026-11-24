@@ -19,6 +19,11 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("migration 0025: bot avatar style"), 
       "0026_routines.sql",
       "0027_message_routine_ref.sql",
       "0028_connector_oauth_catalog.sql",
+      "0029_routine_reminders.sql",
+      "0030_files.sql",
+      "0031_web_search_usage.sql",
+      "0032_secrets_managed_by.sql",
+      "0033_routine_events.sql",
     ]);
     for (const file of held) await rm(join(dir, file));
     await migrate(ctx.db, dir);

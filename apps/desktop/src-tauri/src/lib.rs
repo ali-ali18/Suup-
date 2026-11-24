@@ -8,6 +8,7 @@
 //! alcançável, nem por uma falha na página.
 
 use std::collections::HashMap;
+mod files;
 mod local;
 mod update;
 
@@ -27,7 +28,7 @@ const KEYRING_USER: &str = "server-token";
 
 /// O estado de rede: o único servidor permitido e as requisições em andamento.
 pub struct Net {
-    client: reqwest::Client,
+    pub(crate) client: reqwest::Client,
     allowed_origin: Mutex<Option<String>>,
     aborts: Mutex<HashMap<u64, oneshot::Sender<()>>>,
 }
@@ -55,7 +56,7 @@ impl Net {
     }
 
     /// A URL tem de ser do servidor configurado, e só http ou https.
-    fn check(&self, url: &reqwest::Url) -> Result<(), String> {
+    pub(crate) fn check(&self, url: &reqwest::Url) -> Result<(), String> {
         if url.scheme() != "http" && url.scheme() != "https" {
             return Err("esquema não permitido".into());
         }
@@ -327,6 +328,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(update::Updates::default())
         .manage(Net::new())
@@ -348,6 +350,8 @@ pub fn run() {
             http_fetch,
             http_abort,
             open_url,
+            files::file_save,
+            files::file_open,
             local::local_status,
             local::local_select,
             local::local_start,

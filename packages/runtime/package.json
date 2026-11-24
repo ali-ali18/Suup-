@@ -16,6 +16,7 @@
     "@suup/connectors": "workspace:*",
     "@suup/core": "workspace:*",
     "@suup/db": "workspace:*",
+    "@suup/documents": "workspace:*",
     "@suup/providers": "workspace:*",
     "@suup/sandbox": "workspace:*",
     "@suup/tools": "workspace:*",

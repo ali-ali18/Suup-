@@ -5,6 +5,8 @@ import { type Services, ServicesProvider } from "../../app/context.js";
 import { useUi } from "../../app/ui-store.js";
 import { createDataStore } from "../../data/store.js";
 import { Sync } from "../../data/sync.js";
+import { pressOption } from "../../test-fixtures.js";
+import { Modal } from "../../ui/dialog.js";
 import { MemorySettings as Section } from "./MemorySettings.js";
 
 afterEach(cleanup);
@@ -48,7 +50,10 @@ function setup(initial: MemorySettings, update = vi.fn()) {
   const services = { api, sync, data: store } as unknown as Services;
   render(
     <ServicesProvider services={services}>
-      <Section title="Memória" titleId="t" onClose={() => {}} />
+      {/* as in the app: a section lives inside the settings dialog (its X closes that dialog) */}
+      <Modal onClose={() => {}} label="Configurações" className="">
+        <Section title="Memória" titleId="t" />
+      </Modal>
     </ServicesProvider>,
   );
   return update;
@@ -94,7 +99,7 @@ describe("Configurações > Memória", () => {
     fireEvent.click(screen.getByTestId("memory-enabled"));
     await waitFor(() => expect(update).toHaveBeenCalledWith({ consolidation: { enabled: false } }));
     fireEvent.click(screen.getByTestId("memory-expiry-days"));
-    fireEvent.click(await screen.findByRole("option", { name: "Nunca" }));
+    pressOption(await screen.findByRole("option", { name: "Nunca" }));
     await waitFor(() => expect(update).toHaveBeenCalledWith({ expiryDays: null }));
   });
 

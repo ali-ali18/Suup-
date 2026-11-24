@@ -1,0 +1,35 @@
+{
+  "name": "@suup/documents",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "Monta os documentos que o bot entrega (PDF, Word, Excel) no processo do servidor, sem Python nem terminal",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@suup/core": "workspace:*",
+    "docx": "9.15.3",
+    "fflate": "0.8.3",
+    "mdast-util-from-markdown": "2.1.0",
+    "mdast-util-gfm": "3.1.0",
+    "micromark-extension-gfm": "3.0.0",
+    "pdfjs-dist": "6.4.299",
+    "pdfmake": "0.3.14",
+    "write-excel-file": "4.1.1"
+  },
+  "devDependencies": {
+    "@types/mdast": "4.0.4",
+    "@types/pdfmake": "0.3.3"
+  },
+  "scripts": {
+    "fonts": "node scripts/embed-fonts.mjs"
+  }
+}

@@ -1,5 +1,6 @@
 export * from "./answers.js";
 export * from "./approvals/index.js";
+export * from "./documents.js";
 export {
   APPROVAL_DECISIONS,
   type ApprovalDecision,
@@ -19,7 +20,9 @@ export {
   MODEL_CALL_PURPOSES,
   type ModelCallPurpose,
   type OwnRoutine,
+  type OwnRoutineEvent,
   type OwnRoutines,
+  ownRoutineEventSchema,
   ownRoutineSchema,
   ownRoutinesSchema,
   type PlanStep,
@@ -61,6 +64,7 @@ export {
   toolOutcomeSchema,
   toolStatsSchema,
 } from "./events.js";
+export * from "./files.js";
 export * from "./loop/index.js";
 export * from "./memory/index.js";
 export {

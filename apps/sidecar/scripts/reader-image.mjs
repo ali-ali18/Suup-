@@ -63,8 +63,10 @@ export async function bundleReader(folder) {
     platform: "node",
     format: "esm",
     target: "node22",
-    // The browser driver is installed in the image (its own files are read at run time).
-    external: ["playwright-core"],
+    // The browser driver is installed in the image (its own files are read at run time). The
+    // optional native canvas that jsdom tries to load (and does without) is never bundled: it is in
+    // the workspace since pdf.js (create_document) brought it.
+    external: ["playwright-core", "@napi-rs/canvas"],
     legalComments: "none",
     // A few dependencies are CommonJS and call `require`.
     banner: {

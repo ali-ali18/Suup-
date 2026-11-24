@@ -2,6 +2,7 @@ import { type LucideIcon, X } from "lucide-react";
 import type { ComponentProps, HTMLAttributes, ReactNode } from "react";
 import { cx } from "../../lib/cx.js";
 import type { Glyph } from "../../ui/brand-icons.js";
+import { DialogClose } from "../../ui/dialog.js";
 import { Dropdown } from "../../ui/dropdown.js";
 import { IconButton, Pill } from "../../ui/primitives.js";
 
@@ -347,12 +348,10 @@ export function RowAction({
 export function PaneHead({
   title,
   titleId,
-  onClose,
   children,
 }: {
   title: string | undefined;
   titleId: string;
-  onClose(): void;
   children?: ReactNode;
 }) {
   return (
@@ -362,9 +361,14 @@ export function PaneHead({
       </h2>
       <div className="flex items-center gap-2">
         {children}
-        <IconButton label="Fechar as configurações" onClick={onClose}>
-          <X size={18} aria-hidden="true" />
-        </IconButton>
+        {/* The X closes the settings dialog with its exit, like Escape. */}
+        <DialogClose
+          render={
+            <IconButton label="Fechar as configurações">
+              <X size={18} aria-hidden="true" />
+            </IconButton>
+          }
+        />
       </div>
     </div>
   );
@@ -388,5 +392,4 @@ export function PaneBody({
 export interface SectionProps {
   title: string | undefined;
   titleId: string;
-  onClose(): void;
 }

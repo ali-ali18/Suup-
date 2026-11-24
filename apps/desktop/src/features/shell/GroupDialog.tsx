@@ -3,8 +3,8 @@ import { useData, useServices } from "../../app/context.js";
 import { useUi } from "../../app/ui-store.js";
 import { groupNames } from "../../data/botlist.js";
 import { friendlyError } from "../../lib/friendly-error.js";
-import { ChoiceGroup, ChoiceRow } from "../../ui/choice.js";
 import { Dialog, Pill, TextField } from "../../ui/primitives.js";
+import { RadioGroup, RadioRow } from "../../ui/radio.js";
 
 const NEW = "__new__";
 const NONE = "__none__";
@@ -48,20 +48,13 @@ export function GroupDialog() {
         </>
       }
     >
-      <ChoiceGroup legend="Grupo">
+      <RadioGroup label="Grupo" value={choice} onValueChange={setChoice}>
         {names.map((name) => (
-          <ChoiceRow
-            key={name}
-            name="group"
-            checked={choice === name}
-            onChange={() => setChoice(name)}
-          >
+          <RadioRow key={name} value={name}>
             {name}
-          </ChoiceRow>
+          </RadioRow>
         ))}
-        <ChoiceRow name="group" checked={choice === NEW} onChange={() => setChoice(NEW)}>
-          Novo grupo…
-        </ChoiceRow>
+        <RadioRow value={NEW}>Novo grupo…</RadioRow>
         {choice === NEW && (
           <TextField
             label="Nome do grupo"
@@ -71,10 +64,8 @@ export function GroupDialog() {
             onEnter={() => valid && void save()}
           />
         )}
-        <ChoiceRow name="group" checked={choice === NONE} onChange={() => setChoice(NONE)}>
-          Sem grupo (lista “Bots”)
-        </ChoiceRow>
-      </ChoiceGroup>
+        <RadioRow value={NONE}>Sem grupo (lista “Bots”)</RadioRow>
+      </RadioGroup>
     </Dialog>
   );
 }

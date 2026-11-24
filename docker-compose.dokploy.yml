@@ -1,0 +1,249 @@
+# Produção numa VPS gerenciada pelo Dokploy, que também roda OUTROS projetos.
+# Guia passo a passo (painel do Dokploy, Cloudflare, segredos, backup, atualização): docs/DEPLOY-DOKPLOY.md
+# Por que é assim (Docker isolado, redes, Traefik): docs/pesquisas/deploy-vps-dokploy.md
+# Por que as imagens vêm prontas do GitHub: docs/pesquisas/imagens-no-github.md
+#
+# A diferença para o docker-compose.prod.yml: NADA aqui monta o socket do Docker do host. As máquinas dos
+# bots, os conectores e o leitor rodam num Docker próprio do Suup (o serviço `docker`, Docker
+# dentro de Docker), com dados num volume só dele. Quem controla esse Docker não enxerga os contêineres
+# dos outros projetos da VPS.
+#
+# NADA é compilado na VPS: as imagens são construídas pelo GitHub Actions (.github/workflows/images.yml) e
+# publicadas em ghcr.io/ali-ali18/suup-*; aqui elas só são baixadas. SUUP_IMAGE_TAG escolhe a versão: o
+# padrão `main` segue o ramo; o sha completo de um commit fixa (ou volta para) aquela versão.
+#
+#   O Dokploy roda: docker compose -p <app> -f docker-compose.dokploy.yml up -d --build --remove-orphans
+#   (o --build não faz nada aqui: nenhum serviço tem receita de build).
+#   As variáveis vêm da aba Environment do Dokploy (ele grava um .env ao lado deste arquivo).
+#   A configuração vem de um File Mount do Dokploy: ../files/suup.config.json (modelo: suup.config.dokploy.example.json).
+#
+# Não ative "Isolated Deployments" no Dokploy para este compose: ele acrescenta uma rede a TODO serviço, e o
+# `worker` (que usa a rede do serviço `docker`) não pode ter rede própria.
+
+x-app: &app
+  # A imagem do servidor e do worker, construída no GitHub. `always`: a cada implantação o Docker da VPS
+  # confere no registro se a tag aponta para uma imagem nova (com `main`, ela muda a cada push).
+  image: ${SUUP_IMAGE_REGISTRY:-ghcr.io/ali-ali18}/suup-server:${SUUP_IMAGE_TAG:-main}
+  pull_policy: always
+  restart: unless-stopped
+  init: true
+  environment: &app-env
+    DATABASE_URL: postgres://${POSTGRES_USER:-suup}:${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD na aba Environment do Dokploy}@postgres:5432/${POSTGRES_DB:-suup}
+    SUUP_CONFIG: /app/suup.config.json
+    SUUP_SERVER_TOKEN: ${SUUP_SERVER_TOKEN:?defina SUUP_SERVER_TOKEN na aba Environment do Dokploy (gere um com suup server --generate-token)}
+    # A chave mestra do cofre (só vale se o suup.config.json tem "vault"). Gere com: suup vault key generate
+    SUUP_VAULT_KEY: ${SUUP_VAULT_KEY:-}
+    # As chaves dos provedores: uma linha para cada variável que o suup.config.json cita em apiKeyEnv.
+    ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  volumes:
+    # File Mount do Dokploy (Advanced > Mounts). Um arquivo do repositório não serve: o Dokploy apaga a pasta
+    # do código e clona de novo a cada implantação.
+    - ../files/suup.config.json:/app/suup.config.json:ro
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "5"
+
+services:
+  postgres:
+    # A mesma imagem do docker-compose.prod.yml (Postgres 18 com pgvector e unaccent), fixada.
+    image: pgvector/pgvector:0.8.1-pg18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-suup}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD na aba Environment do Dokploy}
+      POSTGRES_DB: ${POSTGRES_DB:-suup}
+    # Sem `ports`: só os serviços da rede interna `backend` alcançam o banco.
+    volumes:
+      - pgdata:/var/lib/postgresql
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # O Docker PRÓPRIO do Suup (imagem oficial docker:dind). Só escuta num socket unix dentro do volume
+  # `dind-sock` (nenhuma porta TCP, nem no loopback); o grupo 1000 é o do usuário `node` da imagem do Suup.
+  # Precisa de `privileged` (exigência do Docker dentro de Docker: veja "Riscos e isolamento" no guia). Com o
+  # Sysbox instalado no host, troque para SUUP_DOCKER_PRIVILEGED=false e SUUP_DOCKER_RUNTIME=sysbox-runc.
+  docker:
+    image: docker:29.10.0-dind
+    restart: unless-stopped
+    privileged: ${SUUP_DOCKER_PRIVILEGED:-true}
+    runtime: ${SUUP_DOCKER_RUNTIME:-runc}
+    command:
+      - dockerd
+      - --host=unix:///var/run/dind/docker.sock
+      - --group=1000
+      - --storage-driver=overlay2
+      # Os logs dos contêineres dos bots também com rodízio, para não encher o disco da VPS.
+      - --log-driver=json-file
+      - --log-opt=max-size=10m
+      - --log-opt=max-file=3
+    environment:
+      # Sem TCP: o socket unix basta, e a TLS entre cliente e daemon só faz sentido numa porta TCP.
+      DOCKER_TLS_CERTDIR: ""
+    volumes:
+      # Imagens, contêineres e volumes dos bots (inclusive o workspace `suup-workspace`): só deste Docker.
+      - dind-data:/var/lib/docker
+      - dind-sock:/var/run/dind
+    # `backend` para o worker (que usa esta rede) chegar ao Postgres; `outbound` é a saída para a internet
+    # (provedores de modelo, imagens, e o proxy de saída dos bots). Fora do dokploy-network.
+    networks: [backend, outbound]
+    healthcheck:
+      test: ["CMD", "docker", "--host", "unix:///var/run/dind/docker.sock", "version"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # Baixa as imagens dos bots (construídas no GitHub) DENTRO do Docker isolado, dá a elas os nomes que a
+  # configuração usa (suup-sandbox:prod, suup-connector-runner:prod, suup-reader:prod) e sai.
+  # Quem baixa é o daemon do Docker isolado, pela rede `outbound` dele: este contêiner não tem rede, só o socket.
+  images:
+    image: docker:29.10.0-cli
+    restart: "no"
+    environment:
+      DOCKER_HOST: unix:///var/run/dind/docker.sock
+      SUUP_IMAGE_REGISTRY: ${SUUP_IMAGE_REGISTRY:-ghcr.io/ali-ali18}
+      SUUP_IMAGE_TAG: ${SUUP_IMAGE_TAG:-main}
+      SUUP_IMAGES: ${SUUP_IMAGES:-sandbox connector-runner reader}
+      SUUP_READER_BROWSER: ${SUUP_READER_BROWSER:-1}
+    volumes:
+      - dind-sock:/var/run/dind
+    network_mode: none
+    entrypoint: ["/bin/sh", "-euc"]
+    # O script vai aqui mesmo (com $$ no lugar de $): nada para construir nem montar do repositório.
+    command:
+      - |
+        echo "suup-images: esperando o Docker isolado ($$DOCKER_HOST)..."
+        tries=0
+        until docker version >/dev/null 2>&1; do
+          tries=$$((tries + 1))
+          if [ "$$tries" -ge 90 ]; then
+            echo "suup-images: o Docker isolado não respondeu em 3 minutos" >&2
+            exit 1
+          fi
+          sleep 2
+        done
+        fetch() {
+          echo "suup-images: baixando $$1"
+          docker pull --quiet "$$1"
+          if [ -n "$${2:-}" ]; then
+            docker tag "$$1" "$$2"
+            echo "suup-images:   pronta como $$2"
+          fi
+        }
+        from="$$SUUP_IMAGE_REGISTRY"; tag="$$SUUP_IMAGE_TAG"
+        for image in $$SUUP_IMAGES; do
+          case "$$image" in
+            sandbox) fetch "$$from/suup-sandbox:$$tag" suup-sandbox:prod ;;
+            connector-runner) fetch "$$from/suup-connector-runner:$$tag" suup-connector-runner:prod ;;
+            reader)
+              if [ "$$SUUP_READER_BROWSER" = "0" ]; then
+                fetch "$$from/suup-reader:$$tag-slim" suup-reader:prod
+              else
+                fetch "$$from/suup-reader:$$tag" suup-reader:prod
+              fi ;;
+            *)
+              echo "suup-images: imagem desconhecida em SUUP_IMAGES: $$image (use sandbox, connector-runner, reader)" >&2
+              exit 1 ;;
+          esac
+        done
+        # As versões anteriores ficam sem nome depois da troca: libera as que nenhum contêiner usa.
+        docker image prune --force >/dev/null
+        echo "suup-images: pronto"
+        docker image ls --format 'suup-images:   {{.Repository}}:{{.Tag}}  {{.Size}}'
+    depends_on:
+      docker:
+        condition: service_healthy
+
+  # Aplica as migrações e sai. O servidor e o worker só sobem depois que ela termina bem.
+  migrate:
+    <<: *app
+    restart: "no"
+    command: ["db", "migrate"]
+    networks: [backend]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+
+  # A API e o tempo real. É o ÚNICO serviço no dokploy-network (o Traefik do Dokploy chega nele pela porta
+  # 8787: é a "Container Port" do domínio). NÃO fala com Docker nenhum.
+  server:
+    <<: *app
+    command: ["server"]
+    expose: ["8787"]
+    read_only: true
+    tmpfs: [/tmp]
+    networks: [backend, dokploy-network]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  # Roda as execuções. Usa a REDE do serviço `docker` (network_mode: service): assim o proxy de saída dos
+  # bots escuta no gateway da rede interna criada lá dentro, como num Linux com o
+  # Docker no próprio host (docs/REDE.md, modo `process`). Fala com o Docker isolado pelo socket do volume
+  # `dind-sock`, nunca com o do host.
+  worker:
+    <<: *app
+    command: ["worker"]
+    environment:
+      <<: *app-env
+      DOCKER_HOST: unix:///var/run/dind/docker.sock
+      # A CLI do docker guarda configuração aqui; o sistema de arquivos do contêiner é só leitura.
+      DOCKER_CONFIG: /tmp/.docker
+    volumes:
+      - ../files/suup.config.json:/app/suup.config.json:ro
+      - dind-sock:/var/run/dind
+    network_mode: service:docker
+    read_only: true
+    tmpfs: [/tmp]
+    healthcheck:
+      disable: true
+    # Dá tempo de o worker devolver as execuções à fila antes de o Docker matá-lo (ele espera 30 s).
+    stop_grace_period: 40s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      docker:
+        condition: service_healthy
+        # Se o `docker` for recriado, o worker também (ele vive na rede daquele contêiner).
+        restart: true
+      images:
+        condition: service_completed_successfully
+
+networks:
+  # Interna (sem rota para fora): Postgres, migrate, servidor e o Docker isolado (pelo worker).
+  backend:
+    internal: true
+  # Saída para a internet do Docker isolado (e do worker, que usa a rede dele).
+  outbound: {}
+  # A rede do Traefik do Dokploy (já existe na VPS). Só o `server` entra nela.
+  dokploy-network:
+    external: true
+
+volumes:
+  pgdata:
+  dind-data:
+  dind-sock:

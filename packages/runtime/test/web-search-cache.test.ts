@@ -1,11 +1,17 @@
-import { createSearch, type SearxBackend, searchCacheKey } from "@suup/web";
+import { createSearch, type DirectEngine, searchCacheKey } from "@suup/web";
 import { describe, expect, it } from "vitest";
 import { dbSearchCache } from "../src/web/search-cache.js";
 import { DATABASE_URL, dbSuiteName, useIsolatedDb } from "./db.js";
 
-const answer = JSON.stringify({
-  results: [{ url: "https://a.example/1", title: "One", content: "c", engine: "wikipedia" }],
-  unresponsive_engines: [],
+const wikipedia = (onAsk: () => void): DirectEngine => ({
+  id: "wikipedia",
+  async search() {
+    onAsk();
+    return {
+      ok: true,
+      hits: [{ url: "https://a.example/1", title: "One", snippet: "c", engine: "wikipedia" }],
+    };
+  },
 });
 
 describe.skipIf(!DATABASE_URL)(dbSuiteName("web search cache in the database"), () => {
@@ -14,15 +20,12 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("web search cache in the database"), 
   it("survives a restart: a new search object over the same database answers from the cache, until it expires", async () => {
     let now = 1_700_000_000_000;
     let asked = 0;
-    const backend: SearxBackend = {
-      async query() {
-        asked++;
-        return answer;
-      },
-    };
+    const engine = wikipedia(() => {
+      asked++;
+    });
     const make = () =>
       createSearch({
-        backend,
+        direct: [engine],
         engines: ["wikipedia"],
         cache: dbSearchCache(() => ctx.db),
         cacheTtlMs: 60_000,

@@ -42,6 +42,7 @@ Opções comuns aos dois adaptadores de rede (as mesmas de `@suup/providers`): `
 |---|---|
 | `id` | Identificador do modelo **como o provedor o conhece**; é o que vai na requisição e o que se passa a `suup bot create --model`. Único no arquivo |
 | `provider` | `id` de um provedor de `providers` |
+| `name` | Opcional. O **nome curto** que o app mostra para o modelo (por exemplo, no "Modelo de chat" do painel e no menu de modelos), em vez do `id`. Declarado aqui, nunca deduzido do `id`; sem ele, o app mostra o `id` |
 | `contextWindow` | Tamanho da janela de contexto, em tokens (inteiro positivo). Dispara a compactação da conversa |
 | `maxOutputTokens` | Limite de tokens de saída por resposta (não pode passar de `contextWindow`) |
 | `pricing` (opcional) | `inputPerMTok`, `outputPerMTok`, `cachedInputPerMTok` (opcional: tokens lidos do cache), `cacheWriteInputPerMTok` (opcional: tokens gravados no cache, que alguns provedores cobram acima do preço normal; padrão `inputPerMTok`): dólares por milhão de tokens. Sem `pricing`, o custo da execução fica em zero |
@@ -72,6 +73,20 @@ A máquina dos bots. Cada bot trabalha na própria subpasta `bots/<id do bot>` d
 | `extraCaBundle` (opcional) | Caminho **absoluto** de um arquivo PEM com uma CA extra, montado **somente leitura** na máquina e nos conectores, para redes que reassinam o TLS. Desligado por padrão; nenhuma CA entra nas imagens. Veja [REDE.md](REDE.md) |
 | `network` (opcional) | A rede dos bots: o contêiner **não tem rede própria** e sai por um proxy do harness, só para os hosts da lista. `name` (rede interna, padrão `suup-sandbox-net`), `defaultHosts` (nomes exatos liberados a todos; padrão `registry.npmjs.org`, `pypi.org`, `files.pythonhosted.org`; `[]` = nenhum), `ports` (padrão `[80, 443]`), `proxy` (`listenHost`, `advertiseHost`, `port`: só se o worker não roda no host; `mode: "container"` e `image` põem o proxy no contêiner `suup-egress`, o caminho do app no Windows). Veja [REDE.md](REDE.md) |
 | `connectors` (opcional) | Onde rodam os conectores stdio: `image` (padrão `suup-connector-runner:dev`, de `docker/connector-runner`), `memory` (padrão 512m), `cpus` (padrão 1). Veja [CONECTORES.md](CONECTORES.md) |
+
+**O que a máquina tem** (`docker/sandbox/Dockerfile`; Debian 12, usuário `bot`, pasta `/workspace`). Para o bot produzir documentos de assistente pessoal sem depender da rede:
+
+| O quê | Para quê |
+|---|---|
+| `bash`, `coreutils`, `findutils`, `procps`, `curl`, `git`, `jq`, `ripgrep`, `zip`, `unzip`, `file` | o terminal de sempre; `file` diz o tipo de um arquivo |
+| `python3`, `python3-pip`, `python3-venv` | scripts; `pip install` e ambientes virtuais |
+| `python3-reportlab` | PDF |
+| `python3-docx` | documento do Word (`.docx`) |
+| `python3-openpyxl` | planilha do Excel (`.xlsx`) |
+| `fonts-liberation2` | fontes TrueType livres (SIL OFL 1.1) com cobertura completa do português, para o PDF levar a fonte embutida |
+| `suup_docs` (`docker/sandbox/suup_docs`, no `PYTHONPATH`) | auxiliar **opcional** em Python: PDF e Word em A4 com margens e fonte já ajustadas (inclusive ABNT: 3/2/2/3 cm, 12 pt, 1,5, justificado), tabela, legenda de figura e formatos de número do Excel. O bot pode ignorá-lo e escrever o próprio código; o `send_file` confere o arquivo de qualquer jeito |
+
+O que **não** vem, para a imagem continuar pequena: LaTeX, LibreOffice e `pandoc` (o binário do `pandoc` sozinho tem perto de 190 MB). Quando o bot precisa de outra biblioteca, ele a instala com `pip install <pacote>`: o Python do sistema é "gerenciado externamente" (PEP 668), e o `/etc/pip.conf` da imagem instala na pasta do próprio usuário (`~/.local`, no volume), sem mexer nos pacotes do sistema. O `pip` sai pelo proxy como qualquer comando (as variáveis `HTTP_PROXY`/`HTTPS_PROXY` vêm em cada `docker exec`), e `pypi.org` e `files.pythonhosted.org` estão na lista padrão de hosts; se o dono tirou os dois da lista, o proxy recusa, o resultado do comando diz qual host faltou e o bot pede com `request_network_access` (um cartão, [REDE.md](REDE.md)). Conversões com `pandoc` saem de `pip install pypandoc_binary` (a roda traz o binário). Teste real: `packages/sandbox/test/egress-pip.test.ts` (com `SUUP_DOCKER_TESTS=1`, `SUUP_PIP_TESTS=1` e a imagem em `SUUP_SANDBOX_IMAGE`; numa rede que reassina o TLS, `SUUP_EXTRA_CA_BUNDLE`).
 
 **`local`** (só para desenvolvimento e testes): `{ "kind": "local", "root": "<pasta>" }`. Os comandos dos bots rodam **diretamente neste computador, sem nenhum isolamento**, dentro de `<root>/bots/<id>`. Toda vez que esse modo está em uso, a CLI imprime um aviso visível (`AVISO: sandbox LOCAL em uso ...`), e `suup doctor` o marca.
 
@@ -105,14 +120,35 @@ Limites usados quando o bot não define os próprios (`suup bot create --max-tur
 
 | Campo | Padrão | Significado |
 |---|---|---|
-| `maxTurns` | 50 | Chamadas ao modelo por execução |
-| `maxCostUsd` | sem limite | Custo máximo por execução, em dólares |
-| `maxDurationMs` | sem limite | Duração máxima por execução, em milissegundos |
+| `maxTurns` | 50 | Chamadas ao modelo por execução. Ao chegar nele a execução **não falha**: o vigia estende (se há progresso) ou pergunta ao dono (veja `watchdog` abaixo) |
+| `maxCostUsd` | sem limite | Custo máximo por execução, em dólares. **Sem padrão, de propósito** (decisão do dono): quem quer um teto define aqui; passar dele termina a execução |
+| `maxDurationMs` | sem limite | Duração máxima por execução, em milissegundos. Também sem padrão |
 | `maxReturns` | 6 | Quantos retornos seguidos o bot pode marcar para si na mesma execução (`schedule_return`); `0` desliga ([RETORNO.md](RETORNO.md)). Também pode ser definido por bot em `limits.maxReturns` |
 | `timeZone` | nenhum | O fuso do usuário (nome IANA, ex. `America/Sao_Paulo`) **quando o app ainda não disse um**: o que o usuário escolhe em Configurações > Geral e o que o app manda do computador ao conectar (guardados no banco) vêm antes. **Nunca** se usa o fuso do processo do servidor ([ROTINAS.md](ROTINAS.md)). É a data e a hora do prompt, das rotinas e da revisão noturna; `GET /v1/info` o mostra |
 | `historyChars` | 12000 | Quanto da conversa anterior (em caracteres, só mensagens inteiras, das mais novas para as mais antigas) uma execução recebe como histórico. As mais antigas ficam de fora e o bot é avisado de que pode buscá-las com `search_conversations` |
 
-Passar de um limite termina a execução como `failed` com origem `limit`.
+Passar de `maxCostUsd` ou `maxDurationMs` termina a execução como `failed` com origem `limit` (e uma frase amigável no chat). **O limite de passos (`maxTurns`) e os laços não terminam a execução:** quem cuida deles é o vigia de progresso (`defaults.watchdog`, abaixo; [VIGIA.md](VIGIA.md)).
+
+#### `defaults.watchdog` (opcional)
+
+O vigia de progresso: o que uma execução faz ao chegar no limite de passos ou ao se repetir. Todos os campos são opcionais; sem a seção valem os padrões. **Não há teto de custo ou tempo aqui**: isso é `maxCostUsd` e `maxDurationMs`, acima.
+
+| Campo | Padrão | Significado |
+|---|---|---|
+| `enabled` | `true` | `false` volta ao comportamento antigo: a execução falha no limite de passos e no laço |
+| `extension` | 25 | Quantos passos dá uma extensão: as automáticas e o "Continuar" do dono (5 a 500) |
+| `maxAutoExtensions` | 2 | Quantas vezes a execução se estende sozinha (com progresso conferível) antes de **sempre** perguntar; `0` nunca estende sozinha. Uma rotina também nunca passa disso |
+| `softLimit` | 0.8 | A parte da fatia de passos em que o vigia olha antes do limite (0,5 a 0,95) |
+| `repeatNudgeAt` / `repeatAskAt` | 3 / 5 | A mesma chamada com o mesmo resultado, em sequência: aviso no primeiro, pergunta no segundo (o segundo tem de ser maior) |
+| `errorNudgeAt` / `errorAskAt` | 3 / 5 | A mesma ferramenta falhando do mesmo jeito, em sequência |
+| `noToolAskAt` | 3 | Turnos seguidos sem ferramenta antes de perguntar |
+| `alternationAskAt` | 10 | Chamadas num vai e volta A-B-A-B antes de perguntar (o aviso vem aos 6) |
+| `judge.enabled` | `true` | `false`: sem juiz, os sinais estruturais decidem sozinhos (e, na dúvida, pergunta) |
+| `judge.model` | o do auto-review, senão o de `reviewer` | O id (de `models`) do modelo barato que dá a segunda opinião perto do limite. Sem modelo ou sem a chave do provedor, não há juiz. O custo dele entra no custo da execução |
+
+```json
+"defaults": { "watchdog": { "extension": 25, "maxAutoExtensions": 2, "judge": { "model": "haiku" } } }
+```
 
 ### `approvals` (opcional)
 
@@ -194,21 +230,22 @@ Abaixo dos dois limites, as ferramentas vão direto. Para desligar a busca, ponh
 
 ### `web` (opcional)
 
-Busca e leitura de páginas, feitas por peças de código aberto que o Suup mesmo roda ([BUSCA.md](BUSCA.md)). Tudo é opcional.
+Busca e leitura de páginas ([BUSCA.md](BUSCA.md)). Tudo é opcional. A busca **não usa Docker**: o Suup chama as APIs oficiais ele mesmo.
 
 | Campo | Padrão | Significado |
 |---|---|---|
 | `search.enabled` | `true` | `false` desliga `web_search` (a ferramenta diz que está desligada) |
-| `search.engines` | `["wikipedia","arxiv","stackoverflow","duckduckgo"]` | ids dos motores (BUSCA.md lista todos). `wikipedia`, `arxiv` e `stackoverflow` são chamados pelo próprio Suup pelas APIs oficiais, com o nome honesto; `duckduckgo` (SearXNG) é o único motor geral ligado por padrão (decisão do dono; taxa baixa, nome honesto, sem contornar captcha). `brave` e `startpage` foram removidos (o SearXNG mandaria o `User-Agent` sorteado dele) e são recusados como id desconhecido. **`github` não existe** (busca no GitHub é o conector MCP). Sem nenhum motor do SearXNG na lista, o contêiner de busca não é criado. Id desconhecido é recusado |
-| `search.languages` | `["en","pt"]` | idiomas cujo host da Wikipédia a busca alcança (o proxy de saída das APIs diretas libera só esses hosts) (`pt-br` vira `pt-br.wikipedia.org`; só letras, números e hífen) |
+| `search.engines` | `["wikipedia","arxiv","stackoverflow","tavily","brave"]` | ids dos motores (BUSCA.md lista todos). `wikipedia`, `arxiv` e `stackoverflow` são especializados e não precisam de chave; `tavily` e `brave` são a **busca geral** (uma fila, abaixo) e **precisam de chave**: sem ela o motor é pulado. **`github`, `duckduckgo`, `google`, `bing` e `firecrawl` não existem** (busca no GitHub é o conector MCP). Id desconhecido é recusado |
+| `search.general.order` | `["tavily","brave"]` | a **ordem da fila** da busca geral: o primeiro é tentado primeiro, e o próximo entra sozinho quando um está sem cota, indisponível ou falhou. Só aceita ids de motores gerais; um que falta na lista vai depois, na ordem padrão |
+| `search.general.tavily`, `search.general.brave` | `{}` | onde cada motor acha a **chave**: `apiKeyEnv` (o **nome** da variável de ambiente; padrão `TAVILY_API_KEY` e `BRAVE_SEARCH_API_KEY`) e `secret` (o nome do segredo do cofre; padrão o mesmo). O ambiente vale primeiro, depois o cofre (o app grava em Configurações > Busca). **A chave nunca fica no arquivo**: um campo `apiKey` é recusado. Lida a cada busca: uma chave adicionada depois vale na hora |
+| `search.locale` | (nenhum) | o locale da pessoa (`pt-BR`): os motores gerais pedem resultados do Brasil e em português (Tavily `country: "brazil"`, `language: "pt"`; Brave `country=BR`, `search_lang=pt-br`). O app embutido manda o idioma do computador |
+| `search.languages` | `["en","pt"]` | idiomas cujo host da Wikipédia a busca alcança (o proxy de saída libera só esses hosts) (`pt-br` vira `pt-br.wikipedia.org`; só letras, números e hífen) |
 | `search.maxResults` | `10` | no máximo, por busca (1 a 20) |
 | `search.limits.perMinute` | `20` | no máximo, de buscas em qualquer minuto, no geral (1 a 600). Passando disso a busca espera na fila ou o resultado diz quando tentar de novo |
-| `search.limits.perEngine` | o de cada motor (`duckduckgo` 6, `stackoverflow` 10, `arxiv` 15, `wikipedia` 30) | `{ "<id do motor>": n }`: buscas por minuto a um motor. Id desconhecido é recusado |
+| `search.limits.perEngine` | o de cada motor (`stackoverflow` 10, `arxiv` 15, `wikipedia` 30, `tavily` 30, `brave` 30) | `{ "<id do motor>": n }`: buscas por minuto a um motor. Id desconhecido é recusado |
 | `search.limits.maxWaitSeconds` | `20` | o máximo que uma busca espera na fila (0 a 120); além disso o resultado é "tente em X s" |
-| `search.cache.enabled` | `true` | `false` desliga o cache de buscas idênticas |
+| `search.cache.enabled` | `true` | `false` desliga o cache de buscas idênticas. **Resultados da Brave nunca são guardados no cache** (termos dela), qualquer que seja este campo |
 | `search.cache.ttlMinutes` | `180` | quanto vive uma busca no cache (1 a 10080). O cache fica no banco (tabela `web_search_cache`) |
-| `search.url` | (nenhum) | use um SearXNG seu, nesta URL http(s), em vez do contêiner que o Suup sobe (o formato `json` tem de estar ligado nele) |
-| `search.image`, `search.network`, `search.proxy` | imagem fixada, `suup-search-net`, gateway da rede e porta 3129 | avançado: imagem, rede interna e onde o proxy de motores escuta (necessário com o worker em contêiner: `{ "listenHost", "advertiseHost", "port" }`) |
 | `reader.enabled` | `true` | `false`: `web_read` lê pela máquina do bot, pela lista de hosts e com cartões, em vez do serviço leitor |
 | `reader.render` | `true` | permite `render: true` (Chromium no contêiner leitor) |
 | `reader.image` | `suup-reader:dev` | imagem do leitor |
@@ -216,7 +253,7 @@ Busca e leitura de páginas, feitas por peças de código aberto que o Suup mesm
 
 **`web_read` só abre sem cartão um endereço que já apareceu na execução** (mensagem do usuário, resultado de busca ou link de página lida); qualquer outro é um cartão "Ler uma página nova". Não há campo para desligar isto ([BUSCA.md](BUSCA.md), "A leitura só abre o que já apareceu"; [APROVACOES.md](APROVACOES.md)).
 
-`suup doctor` mostra se a busca e o leitor estão ligados e, depois do primeiro uso, o que está rodando. Sem Docker, `web_search` fica indisponível e `web_read` lê no próprio processo, sem `render`. A saída do `web_search` e do `web_read` já chega ao modelo como dado externo (`<<<EXTERNAL_DATA`), sem precisar de `untrustedOutputTools`.
+`suup doctor` mostra se a busca e o leitor estão ligados, o estado de cada motor da fila ("pronta", "sem chave", "cota do mês usada") e, depois do primeiro uso, o que está rodando. Sem Docker, `web_search` funciona inteira e `web_read` lê no próprio processo, sem `render`. **Os campos antigos `search.url`, `search.image`, `search.network` e `search.proxy` (do SearXNG) foram removidos**: um arquivo que os traga é recusado como campo desconhecido. A saída do `web_search` e do `web_read` já chega ao modelo como dado externo (`<<<EXTERNAL_DATA`), sem precisar de `untrustedOutputTools`.
 
 ### Conectores
 

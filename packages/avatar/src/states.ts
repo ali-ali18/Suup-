@@ -1,5 +1,6 @@
 // High-level states a host can ask for, mapped onto the engine's own state table.
 // The host never needs to know the engine names: it picks one of `AVATAR_STATES`.
+import { STATE_TABLE } from "./data/states.js";
 import type { AvatarState as EngineState } from "./model/states.js";
 
 export const AVATAR_STATES = [
@@ -13,6 +14,9 @@ export const AVATAR_STATES = [
   "paused",
   "sleeping",
   "celebrating",
+  "pondering",
+  "reading",
+  "coding",
 ] as const;
 
 export type AvatarStateId = (typeof AVATAR_STATES)[number];
@@ -39,6 +43,12 @@ export const STATE_MAP: Readonly<Record<AvatarStateId, EngineState>> = {
   sleeping: "sleeping",
   /** Big celebration (spin). */
   celebrating: "celebrate",
+  /** Working something out WITHOUT the indicator: the face stays, the eyes look up now and then. */
+  pondering: "pondering",
+  /** Reading (files, pages, memory): working clips, calm eyes. */
+  reading: "reading",
+  /** Writing code or running commands: working clips, squinted (focused) eyes. */
+  coding: "coding",
 };
 
 export function isAvatarState(value: unknown): value is AvatarStateId {
@@ -48,3 +58,12 @@ export function isAvatarState(value: unknown): value is AvatarStateId {
 export function engineStateOf(state: AvatarStateId): EngineState {
   return STATE_MAP[state];
 }
+
+/**
+ * The public states whose body turns into an indicator (the thinking dots, the orbit): the face
+ * is gone while they last. A host that must keep the face recognisable at every size (the app's
+ * sidebar) never asks for them.
+ */
+export const BODY_MORPH_STATES: readonly AvatarStateId[] = AVATAR_STATES.filter(
+  (state) => "morph" in STATE_TABLE[STATE_MAP[state] as keyof typeof STATE_TABLE],
+);

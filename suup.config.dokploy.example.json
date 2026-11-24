@@ -1,0 +1,79 @@
+{
+  "providers": [
+    {
+      "id": "anthropic",
+      "kind": "anthropic",
+      "apiKeyEnv": "ANTHROPIC_API_KEY"
+    }
+  ],
+  "models": [
+    {
+      "id": "model-x",
+      "provider": "anthropic",
+      "contextWindow": 200000,
+      "maxOutputTokens": 8192,
+      "pricing": {
+        "inputPerMTok": 3,
+        "outputPerMTok": 15,
+        "cachedInputPerMTok": 0.3
+      }
+    }
+  ],
+  "reviewer": {
+    "model": "model-x"
+  },
+  "memory": {
+    "consolidation": {
+      "model": "model-x"
+    }
+  },
+  "sandbox": {
+    "kind": "docker",
+    "image": "suup-sandbox:prod",
+    "name": "suup-machine",
+    "volume": "suup-workspace",
+    "memory": "2g",
+    "cpus": 2,
+    "network": {
+      "name": "suup-sandbox-net",
+      "defaultHosts": ["registry.npmjs.org", "pypi.org", "files.pythonhosted.org"]
+    },
+    "connectors": {
+      "image": "suup-connector-runner:prod"
+    }
+  },
+  "web": {
+    "search": {
+      "engines": ["wikipedia", "arxiv", "stackoverflow", "tavily", "brave"],
+      "general": {
+        "order": ["tavily", "brave"],
+        "tavily": { "apiKeyEnv": "TAVILY_API_KEY" },
+        "brave": { "apiKeyEnv": "BRAVE_SEARCH_API_KEY" }
+      }
+    },
+    "reader": {
+      "image": "suup-reader:prod"
+    }
+  },
+  "worker": {
+    "concurrency": 4,
+    "leaseRenewMs": 10000,
+    "staleAfterMs": 30000,
+    "controlPollMs": 2000
+  },
+  "defaults": {
+    "maxTurns": 50,
+    "maxCostUsd": 2,
+    "maxDurationMs": 1800000
+  },
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8787,
+    "allowedOrigins": ["tauri://localhost", "http://tauri.localhost", "https://tauri.localhost"],
+    "tokenEnv": "SUUP_SERVER_TOKEN",
+    "publicUrl": "https://agent.kodea.com.br"
+  },
+  "vault": {
+    "keyEnv": "SUUP_VAULT_KEY"
+  }
+}

@@ -18,8 +18,8 @@ import {
 } from "../src/direct-engines.js";
 import { createDirectGet, type DirectGet } from "../src/direct-http.js";
 import { startWebServices } from "../src/docker-services.js";
-import { DEFAULT_ENGINES, directEngineIds, engineHosts } from "../src/engines.js";
-import { createSearch, type SearxBackend } from "../src/search.js";
+import { DEFAULT_ENGINES, engineHosts } from "../src/engines.js";
+import { createSearch } from "../src/search.js";
 import { memorySearchCache } from "../src/search-cache.js";
 import { SearchGovernor } from "../src/search-governor.js";
 import { createWebAccess } from "../src/service.js";
@@ -726,9 +726,11 @@ describe("the way out: createDirectGet", () => {
   });
 
   it("the real egress proxy, with the exact hosts of the direct engines, refuses anything else (GitHub among it)", async () => {
-    const hosts = new Set(engineHosts(directEngineIds(DEFAULT_ENGINES), ["en", "pt"]));
+    const hosts = new Set(engineHosts(DEFAULT_ENGINES, ["en", "pt"]));
     expect([...hosts].sort()).toEqual([
+      "api.search.brave.com",
       "api.stackexchange.com",
+      "api.tavily.com",
       "en.wikipedia.org",
       "export.arxiv.org",
       "pt.wikipedia.org",
@@ -757,7 +759,7 @@ describe("the way out: createDirectGet", () => {
   });
 
   it("a host off the list is said to be off the engines' list, by the proxy's own code", async () => {
-    const hosts = new Set(engineHosts(directEngineIds(DEFAULT_ENGINES), ["en", "pt"]));
+    const hosts = new Set(engineHosts(DEFAULT_ENGINES, ["en", "pt"]));
     const proxy = new EgressProxy({
       policy: { allowedHosts: async () => hosts },
       anonymousSubject: { kind: "harness", id: "search-direct" },
@@ -772,7 +774,7 @@ describe("the way out: createDirectGet", () => {
   });
 
   it("on a computer without DNS, a host ON the list is reported as unresolved, not as off the list", async () => {
-    const hosts = new Set(engineHosts(directEngineIds(DEFAULT_ENGINES), ["en", "pt"]));
+    const hosts = new Set(engineHosts(DEFAULT_ENGINES, ["en", "pt"]));
     expect(hosts.has("pt.wikipedia.org")).toBe(true);
     const refused: { host: string; reason: string | undefined }[] = [];
     const proxy = new EgressProxy({
@@ -920,69 +922,6 @@ describe("the search with the engines Suup asks itself", () => {
     ]);
   });
 
-  it("works without the search container; the engines that need it are reported as not answering", async () => {
-    const wiki = fake("wikipedia", async () => ({ ok: true, hits: [hit("wikipedia", 1)] }));
-    const search = createSearch({ engines: ["wikipedia", "duckduckgo"], direct: [wiki] });
-    const out = await search({ query: "x" });
-    expect(out).toMatchObject({
-      ok: true,
-      suspended: [{ engine: "duckduckgo", reason: "the search container is not running" }],
-    });
-    expect(out.ok && out.hits).toHaveLength(1);
-  });
-
-  it("a failing SearXNG does not take down the direct engines", async () => {
-    const wiki = fake("wikipedia", async () => ({ ok: true, hits: [hit("wikipedia", 1)] }));
-    const backend: SearxBackend = {
-      async query() {
-        throw new Error("boom");
-      },
-    };
-    const out = await createSearch({
-      engines: ["wikipedia", "duckduckgo"],
-      direct: [wiki],
-      backend,
-    })({
-      query: "x",
-    });
-    expect(out).toMatchObject({
-      ok: true,
-      suspended: [{ engine: "duckduckgo", reason: "the search service did not answer: boom" }],
-    });
-  });
-
-  it("SearXNG alone and unreachable is still the search service being unavailable", async () => {
-    const out = await createSearch({ engines: ["duckduckgo"] })({ query: "x" });
-    expect(out).toEqual({
-      ok: false,
-      reason: "unavailable",
-      message: "The search service is not running.",
-    });
-  });
-
-  it("SearXNG hits and direct hits are merged", async () => {
-    const backend: SearxBackend = {
-      async query(params) {
-        expect(params.get("engines")).toBe("duckduckgo");
-        return JSON.stringify({
-          results: [
-            { url: "https://ddg.example/1", title: "d", content: "c", engine: "duckduckgo" },
-          ],
-          unresponsive_engines: [],
-        });
-      },
-    };
-    const wiki = fake("wikipedia", async () => ({ ok: true, hits: [hit("wikipedia", 1)] }));
-    const out = await createSearch({
-      engines: ["wikipedia", "duckduckgo"],
-      direct: [wiki],
-      backend,
-    })({
-      query: "x",
-    });
-    expect(out.ok && out.hits.map((h) => h.engine)).toEqual(["duckduckgo", "wikipedia"]);
-  });
-
   it("an engine that says to stop is left alone for the time it said (the governor remembers)", async () => {
     let now = 1_700_000_000_000;
     const governor = new SearchGovernor({ now: () => now, sleep: async () => undefined });
@@ -1018,7 +957,7 @@ describe("the search with the engines Suup asks itself", () => {
       suspended: [
         {
           engine: "stackoverflow",
-          reason: "Suspended: the API asked callers to wait 30 s (backoff)",
+          reason: "the API asked callers to wait 30 s (backoff)",
           retryInSeconds: 20,
         },
       ],
@@ -1113,23 +1052,37 @@ describe("the search with the engines Suup asks itself", () => {
 describe("the services without Docker", () => {
   const missing = "/nonexistent/suup-docker";
 
-  it("start the direct engines on their own egress proxy, and report only the container as the problem when DuckDuckGo is on", async () => {
+  it("start the engines on their own egress proxy, with no Docker and no container", async () => {
     const services = await startWebServices({
       dockerPath: missing,
       readerEnabled: false,
       languages: ["en", "pt"],
     });
     try {
-      expect(services.direct.map((e) => e.id)).toEqual(["wikipedia", "arxiv", "stackoverflow"]);
-      expect(services.searchProblem).toBe("Docker is not available on this computer");
-      expect(services.searchBackend).toBeUndefined();
+      expect(services.direct.map((e) => e.id)).toEqual([
+        "wikipedia",
+        "arxiv",
+        "stackoverflow",
+        "tavily",
+        "brave",
+      ]);
+      expect(services.searchProblem).toBeUndefined();
       expect(services.directProxy?.host).toBe("127.0.0.1");
+      // The proxy's list is the engines' exact hosts, the general ones included.
+      expect(engineHosts(DEFAULT_ENGINES, ["en", "pt"])).toEqual([
+        "api.search.brave.com",
+        "api.stackexchange.com",
+        "api.tavily.com",
+        "en.wikipedia.org",
+        "export.arxiv.org",
+        "pt.wikipedia.org",
+      ]);
     } finally {
       await services.stop();
     }
   });
 
-  it("with no SearXNG engine on, nothing needs Docker and the search is ready", async () => {
+  it("the search is ready without Docker", async () => {
     const services = await startWebServices({
       dockerPath: missing,
       readerEnabled: false,
@@ -1169,6 +1122,7 @@ describe("the services without Docker", () => {
         /the egress proxy refused api.github.com:443/,
       );
       await expect(get("https://html.duckduckgo.com/html/")).rejects.toThrow(/refused/);
+      await expect(get("https://api.firecrawl.dev/v2/search")).rejects.toThrow(/refused/);
     } finally {
       await services.stop();
     }

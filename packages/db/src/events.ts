@@ -24,6 +24,43 @@ function mapRunEvent(row: RunEventRow): RunEvent {
   };
 }
 
+const NUL = String.fromCharCode(0);
+const REPLACEMENT = "\uFFFD";
+
+/**
+ * Postgres JSONB refuses a NUL character (`\u0000`) in a string or a key. A command's output can
+ * carry one (the bot printed a decompressed PDF stream), and the whole run failed with
+ * "unsupported Unicode escape sequence". Every string and key of an event goes through here before
+ * it is stored: the NUL becomes the replacement character, by splitting on the exact character.
+ * Returns the same object when nothing needs changing.
+ */
+export function withoutNul<T>(value: T): T {
+  if (typeof value === "string") {
+    return (value.includes(NUL) ? value.split(NUL).join(REPLACEMENT) : value) as T;
+  }
+  if (Array.isArray(value)) {
+    let changed = false;
+    const out = value.map((item) => {
+      const next = withoutNul(item);
+      if (next !== item) changed = true;
+      return next;
+    });
+    return (changed ? out : value) as T;
+  }
+  if (typeof value === "object" && value !== null) {
+    let changed = false;
+    const out: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value)) {
+      const cleanKey = withoutNul(key);
+      const next = withoutNul(item);
+      if (cleanKey !== key || next !== item) changed = true;
+      out[cleanKey] = next;
+    }
+    return (changed ? out : value) as T;
+  }
+  return value;
+}
+
 export interface AppendRunEventOptions {
   /**
    * Fencing: append only while the run is leased to this worker; otherwise throw
@@ -54,7 +91,7 @@ export async function appendRunEvent(
   payload: EventPayload = {},
   opts: AppendRunEventOptions = {},
 ): Promise<RunEvent> {
-  const body = eventPayloadSchema.parse(payload);
+  const body = withoutNul(eventPayloadSchema.parse(payload));
   return db.sql.begin(async (tx) => {
     const locked = await tx<{ locked_by: string | null }[]>`
       select locked_by from runs where id = ${runId} for no key update`;

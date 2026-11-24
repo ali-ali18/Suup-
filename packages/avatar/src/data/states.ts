@@ -39,6 +39,8 @@ export const STATE_TABLE = {
   listening: { clips: ["Idle_D"], face: "calm" },
   // conversa
   thinking: { clips: ["Idle_B"], morph: "thinking" },
+  // pensar sem virar indicador: o rosto fica e os olhos procuram para cima (behavior.ts)
+  pondering: { clips: ["Idle_B", "Idle_D"], compactClips: ["Idle_B"] },
   streaming: { clips: ["Streaming_A", "Streaming_B", "Streaming_C"] },
   // trabalho
   searching: { clips: ["Idle_B"], morph: "radar" },

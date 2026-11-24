@@ -13,10 +13,8 @@ export interface Settings {
   /** A largura da coluna de leitura. */
   width: "default" | "wide";
   density: "comfortable" | "compact";
-  /** A frase do indicador de trabalho: o estado real, ou só os três pontos. */
+  /** A frase do avatar vivo: o estado real, ou só o rosto (a frase fica para o leitor de tela). */
   phrase: "real" | "discreet";
-  /** As ações dobradas ("Mais N ações"). */
-  fold: "on" | "off";
   /** O ícone dos sites nos links: busca `https://<host>/favicon.ico`, por isso desligado por padrão. */
   favicons: "off" | "on";
   /** Movimento reduzido: segue o sistema, ou sempre. */
@@ -35,7 +33,6 @@ export const DEFAULT_SETTINGS: Settings = {
   width: "default",
   density: "comfortable",
   phrase: "real",
-  fold: "on",
   favicons: "off",
   motion: "system",
   approvalResolved: "collapsed",
@@ -50,7 +47,6 @@ export const SETTING_OPTIONS = {
   width: ["default", "wide"],
   density: ["comfortable", "compact"],
   phrase: ["real", "discreet"],
-  fold: ["on", "off"],
   favicons: ["off", "on"],
   motion: ["system", "reduce"],
   approvalResolved: ["collapsed", "open"],
@@ -99,7 +95,6 @@ export function settingsAttributes(settings: Settings): Record<string, string> {
     "data-width": settings.width,
     "data-density": settings.density,
     "data-phrase": settings.phrase,
-    "data-fold": settings.fold,
     "data-favicons": settings.favicons,
     "data-motion": settings.motion,
     "data-approval-resolved": settings.approvalResolved,

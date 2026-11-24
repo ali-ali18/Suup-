@@ -49,3 +49,38 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("run events: type filter and the slim
     expect(await listRunEvents(ctx.db, run.id, { types: [] })).toEqual([]);
   });
 });
+
+describe("withoutNul (M8: a NUL byte in a command's output must not fail the run)", () => {
+  it("swaps the NUL in strings, nested values and keys, and leaves clean data as it is", async () => {
+    const { withoutNul } = await import("../src/events.js");
+    const dirty = {
+      a: "x\u0000y",
+      n: [1, "\u0000", { "k\u0000": ["\u0000\u0000"] }],
+      ok: "fine",
+      z: null,
+    };
+    expect(withoutNul(dirty)).toEqual({
+      a: "x�y",
+      n: [1, "�", { "k�": ["��"] }],
+      ok: "fine",
+      z: null,
+    });
+    const clean = { a: "x", n: [1, { b: "c" }] };
+    expect(withoutNul(clean)).toBe(clean);
+  });
+});
+
+describe.skipIf(!DATABASE_URL)(dbSuiteName("run events: NUL in a payload"), () => {
+  const ctx = useIsolatedDb();
+
+  it("stores a tool_result whose output has a NUL byte, with the replacement character", async () => {
+    const run = await makeRun(ctx.db);
+    const event = await appendRunEvent(ctx.db, run.id, "tool_result", {
+      callId: "c1",
+      content: "stream\u0000endstream",
+    });
+    expect(event.payload.content).toBe("stream�endstream");
+    const [stored] = await listRunEvents(ctx.db, run.id);
+    expect(stored?.payload.content).toBe("stream�endstream");
+  });
+});

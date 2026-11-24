@@ -1,5 +1,6 @@
 import type {
   MachineInfo,
+  OwnRoutineEvent,
   OwnRoutines,
   PlanStep,
   ReceptionKind,
@@ -8,6 +9,13 @@ import type {
   SupervisorRole,
   Teammate,
 } from "../events.js";
+
+/**
+ * Largest wait a return (`schedule_return`) may ask for, in minutes; anything longer is a routine
+ * (when it repeats) or a reminder (once). Here, and re-exported by control-tools.ts, so the guidance
+ * below and the tool's schema say the same number.
+ */
+export const MAX_RETURN_MINUTES = 60;
 
 /** Shown to the model for the harness's own messages, so it can tell them from the user's. */
 const NOTICE_PREFIX = "[Harness notice]";
@@ -90,6 +98,58 @@ export function formatClock(date: Date, timeZone: string): string {
   return `${part("weekday")} ${part("year")}-${part("month")}-${part("day")}, ${part("hour")}:${part("minute")} (${zone}, ${part("timeZoneName")})`;
 }
 
+const WEEKDAY_NAMES = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+] as const;
+
+/**
+ * The days around a moment, each with its weekday, computed here with the calendar (never by the
+ * model): `yesterday Monday 2026-11-23; today Tuesday 2026-11-24; tomorrow Wednesday 2026-11-25;
+ * then Thursday 2026-11-26, ...`. A model asked to say or schedule "the 29th" or "next Friday"
+ * otherwise does the weekday arithmetic in its head, and gets it wrong (M16, docs/MELHORIAS.md).
+ */
+export function formatCalendar(date: Date, timeZone: string, daysAhead = 8): string {
+  const zone = knownTimeZone(timeZone);
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: zone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const num = (type: string): number => Number(parts.find((p) => p.type === type)?.value ?? "0");
+  // The local calendar day as a UTC noon: adding whole days never meets a time-zone shift.
+  const base = Date.UTC(num("year"), num("month") - 1, num("day"), 12);
+  const day = (offset: number): string => {
+    const d = new Date(base + offset * 86_400_000);
+    const name = WEEKDAY_NAMES[d.getUTCDay()];
+    return `${name} ${d.toISOString().slice(0, 10)}`;
+  };
+  const labels = new Map<number, string>([
+    [-1, "yesterday"],
+    [0, "today"],
+    [1, "tomorrow"],
+  ]);
+  const out: string[] = [];
+  for (let offset = -1; offset <= daysAhead; offset++) {
+    const label = labels.get(offset);
+    out.push(label === undefined ? day(offset) : `${label} ${day(offset)}`);
+  }
+  return out.join("; ");
+}
+
+const CALENDAR_RULE =
+  'Never work out a weekday yourself: read it from this calendar. Earlier messages in this chat may be from other days, so their "today" or "tomorrow" is not today.';
+
+function calendarLine(now: RunClock): string {
+  return `Calendar: ${formatCalendar(new Date(now.iso), now.timeZone)}. ${CALENDAR_RULE}`;
+}
+
 function knownTimeZone(timeZone: string): string {
   try {
     new Intl.DateTimeFormat("en-US", { timeZone });
@@ -99,15 +159,34 @@ function knownTimeZone(timeZone: string): string {
   }
 }
 
+/**
+ * Whose job is whose (M19, docs/MELHORIAS.md): schedules, routines, reminders and running code
+ * belong to Suup itself; a connector only reaches the user's external apps. A connector's own
+ * remote shell or scheduler is not the way to do Suup's job.
+ */
+export const CONNECTORS_ONLY_FOR_APPS =
+  "Connectors are only for reaching the user's apps and services outside Suup (their mail, calendar, documents). Scheduling, routines, reminders and running code are Suup's own: use `create_routine`, `create_reminder` and your own machine for them, never a connector's remote shell, code runner or scheduler, even when it offers one.";
+
 /** How a bot that can create routines uses them (the owner's decision: created by talking). */
-export const ROUTINES_HOW = `- When the user asks for something recurring or for a later day ("check my calendar every day", "every Monday", "remind me tomorrow at 9"), create a routine with \`create_routine\`. If they did not say when, choose a sensible time yourself; then say in your message, in plain words, what you set up and when, and ask if they want another time (for example: "Combinado, vejo seu calendário todo dia às 8h. Quer outro horário?"). To change it, call \`update_routine\` when they say so. Never create a routine the user did not ask for. Before creating one, look at "Your routines" (or call \`list_routines\`): if one already does what the user asked, change that one with \`update_routine\` instead of creating another. Never say you created or changed a routine unless the tool result of THIS run shows it, or it is in "Your routines". \`schedule_return\` is only for coming back once within the current task (a deploy that ends in 20 minutes); anything that repeats, or is for another day, is a routine.`;
+/**
+ * The rule of handing over the ACTION (owner, 24/11/2026: "eu ter que sair caçando as coisas não ajuda em nada"):
+ * only in the runs where the user talks to the bot (the ones that can show the cards), so the shared
+ * prefix of the other runs stays as it was.
+ */
+export const HAND_OVER_RULE = `When something is missing to do what the user asked (a connector that is not installed, one installed but not connected or not given to you, an app of a connector that is not authorized, a search key), hand over the ACTION in the chat right away, never directions to find it: call \`propose_connector\` with the connector's id, \`show_connect_card\` for a connector that is installed, and \`request_secret\` for a key (a secure form opens in the chat). Whenever you give the user ANY link to connect, authorize or log in (for example a link a connector's tool returned), ALWAYS show it with \`show_connect_card\` (the link goes in \`url\`, exactly as it came) and NEVER paste the link in your message: the card has the button. Never tell the user to go look in Settings or in any menu.`;
+
+export const ROUTINES_HOW = `- Recurring → routine; one time → reminder (the owner's rule). When the user asks for something that REPEATS ("check my calendar every day", "every Monday", "every 2 hours"), create a routine with \`create_routine\`. If they did not say when, choose a sensible time yourself; then say in your message, in plain words, what you set up and when, and ask if they want another time (for example: "Combinado, vejo seu calendário todo dia às 8h. Quer outro horário?"). To change it, call \`update_routine\` when they say so. Never create a routine the user did not ask for.
+- A request that implies "from now on" IS a request for a routine, even when it also asks for something right now: "every day", "every morning", "from tomorrow on", "a partir de amanhã", "toda semana", or a rule that says what to do each day (for example: today do A, and from tomorrow do B for the previous day and the current one). Do the part that is for now, AND create the routine for the repeating part with \`create_routine\` in the same turn (its instruction must be complete and say what to do on each run), then say what you set up and when, with the time you chose ("todo dia às 8h; quer mudar?"). Confirming the rule in words without creating the routine is a failure: the rule would never run. Ask before creating only when the time of day matters and you cannot guess it; otherwise choose it, say it, and offer to change it. If the request is not clear on whether it repeats, ask one short question instead of guessing. Never use a connector's own scheduler or remote shell for this: routines are yours.
+- Something ONE time ("me lembra daqui 20 minutos de enviar meu RG", "lembra dia 29 às 19h") is a reminder, never a routine: within the next ${MAX_RETURN_MINUTES} minutes, use \`schedule_return\` (when you come back, remind the user in your message); later than that, use \`create_reminder\` with the date and time. A reminder is internal: it is not in the user's panel, and your message is the only notice, so say in it, in plain words, what you will remind them of and when.
+- Before creating a routine or a reminder, look at "Your routines" (or call \`list_routines\`): if one already does what the user asked, change that one with \`update_routine\` instead of creating another. Never say you created or changed one unless the tool result of THIS run shows it, or it is in "Your routines".
+- \`schedule_return\` is also how you come back once within the current task (a deploy that ends in 20 minutes).`;
 
 /** What the main bot is told about being the supervisor (docs/SUPERVISOR.md). */
 export const SUPERVISOR_PROMPT = `You are the supervisor of this team. The other bots talk to the user directly and do their own work; you know what they did because you read it:
 - \`team_recall\` reads another bot's notes, its journal and what it has open, read-only. Use it when the user asks what a bot did or learned ("what did I do with the Tutor this week?"). You can never write to another bot's memory: you only read it.
-- \`delegate\` hands a task to another bot when the user asks you to ("tell the Tutor to..."). Give it a clear objective, the acceptance criteria and all the context it needs: it does not see this conversation. Then tell the user you delegated and that the result will come back to this chat; do not wait for it and do not poll. The other bot keeps its own tools and approvals (the user still decides on its cards), and a delegated bot cannot delegate again.
+- \`delegate\` hands a task to another bot: when the user asks you to ("tell the Tutor to..."), AND when a bot of the team clearly covers what the user asked, judging by the description of each bot in the list above (read them every time: a bot made for an area is better at it than you). Do not do such a request yourself: delegate it, instead of doing the other bot's job. If two bots could fit, or none clearly does, do it yourself or ask. A routine or a reminder belongs to the bot that will run it: when the request is about routines or reminders and a bot's description says it takes care of them, delegate it with the full request (what to do, how often, the time if the user said one) so that bot creates it; you do not create a routine for another bot. Give it a clear objective, the acceptance criteria and all the context it needs: it does not see this conversation. Then tell the user you delegated and that the result will come back to this chat; do not wait for it and do not poll. The other bot keeps its own tools and approvals (the user still decides on its cards), and a delegated bot cannot delegate again.
 - Once a night you review what the other bots did (their journal, notes and open items, never what their tools returned) and keep notes about it in your own memory; if something needs the user's attention you leave one short message in this chat in the morning. A note you find about the team is something you wrote from that review.
-Use these only when the user asks or it clearly helps: most of what the user asks you is your own work.`;
+Use these only when the user asks or it clearly helps: what no bot's description covers is your own work.`;
 
 /** What every other bot is told about the supervisor (docs/SUPERVISOR.md). */
 export const SUPERVISED_PROMPT =
@@ -135,6 +214,15 @@ function teamSection(team: readonly Teammate[], supervisor?: SupervisorRole): st
   }`;
 }
 
+/**
+ * The short Suup document skill (docs/pesquisas/geracao-de-documentos.md): free code by default,
+ * with the guardrails `send_file` checks on delivery. It sits in the per-run part of the prompt,
+ * after the shared prefix, so the cached prefix stays the same for every bot.
+ */
+const DOCUMENT_SKILL =
+  '- PDF, Word and Excel files: write your own code on your machine (Python has reportlab, python-docx and openpyxl) and send the result with `send_file`. Guardrails, checked on delivery: A4 pages and UTF-8; margins of at least 1.5 cm at the sides and 1 cm at the top and bottom; PDF fonts are TrueType, registered and embedded (never Helvetica, Times or Courier); xlsx formulas without errors and numbers kept as numbers with a real format (currency, percent), never as text; academic work (ABNT): margins 3/2/2/3 cm (top/right/bottom/left), 12 pt, line spacing 1.5, justified, figure caption "Figura 1 – title" with "Fonte:" on the next line. Optional: `import suup_docs` applies all of this (see `help(suup_docs)`).';
+const DOCUMENT_SKILL_SHORTCUT = " For a simple standard document `create_document` is faster.";
+
 function whatYouHaveSection(input: {
   machine: MachineInfo | undefined;
   connectors: readonly string[] | undefined;
@@ -142,6 +230,8 @@ function whatYouHaveSection(input: {
   routines: boolean;
   memoryTools: boolean;
   web: { search: boolean; read: boolean };
+  sendFile: boolean;
+  createDocument: boolean;
 }): string {
   const lines: string[] = [];
   const { machine, connectors } = input;
@@ -160,11 +250,24 @@ function whatYouHaveSection(input: {
   } else if (machine !== undefined) {
     lines.push("- No terminal and no files: you work only with the tools listed to you.");
   }
+  if (input.sendFile) {
+    lines.push(
+      "- `send_file`: when you make a file for the user (a PDF, a document, a spreadsheet, an image), send it with `send_file`; it appears as a card under your message. Never repeat its name or path in your text: one short line is enough. A PDF, Word or Excel file is opened and measured first: if something is wrong you get the list and nothing is sent, so fix it and send again; on success you get the measured facts, so quote them instead of claiming. `force: true` with a `reason` only when the user asked for something non-standard (for example Letter size).",
+    );
+    if (machine?.terminal === true) {
+      lines.push(DOCUMENT_SKILL + (input.createDocument ? DOCUMENT_SKILL_SHORTCUT : ""));
+    }
+  }
+  if (input.createDocument) {
+    lines.push(
+      "- `create_document`: a shortcut for a simple, standard PDF, Word (docx) or Excel (xlsx) file: give the content and the format, and Suup does the design and checks the file. It appears as a card under your message; never repeat its name in your text, one short line is enough.",
+    );
+  }
   if (connectors !== undefined) {
     lines.push(
       connectors.length === 0
         ? "- No connectors to outside services yet. The user can grant you some in Settings."
-        : `- Connectors the user granted you: ${connectors.join(", ")}. Their tools are found through the tool index.`,
+        : `- Connectors the user granted you: ${connectors.join(", ")}. Their tools are found through the tool index. ${CONNECTORS_ONLY_FOR_APPS}`,
     );
   }
   if (input.returns) {
@@ -174,7 +277,7 @@ function whatYouHaveSection(input: {
   }
   if (input.routines) {
     lines.push(
-      "- Routines: `create_routine` sets up something the user wants done on a schedule (every day, some weekdays, once a month, every few hours, or once at a later date), in the user's time zone; each time, you run the instruction on your own and your answer comes to this chat. `list_routines`, `update_routine` and `delete_routine` manage them; the user also sees them in your panel.",
+      "- Routines: `create_routine` sets up something the user wants done again and again (every day, some weekdays, once a month, every few hours), in the user's time zone; each time, you run the instruction on your own and your answer comes to this chat. `list_routines`, `update_routine` and `delete_routine` manage them; the user also sees them in your panel. `create_reminder` sets a one-time reminder for a later date and time: it is internal (not in the panel), and `list_routines` and `delete_routine` also show and cancel it.",
     );
   }
   if (input.web.search || input.web.read) {
@@ -199,26 +302,69 @@ function whatYouHaveSection(input: {
   return lines.length === 0 ? "" : `## What you have\n\n${lines.join("\n")}`;
 }
 
+/** What a run opened by a one-time reminder is told (docs/ROTINAS.md, "Lembrete de uma vez"). */
+function reminderSection(routine: RoutineRunFacts): string {
+  const when = formatClock(new Date(routine.scheduledFor), routine.timeZone);
+  const late =
+    routine.kind === "catch_up"
+      ? " It starts late (the computer was off at the time): say so briefly."
+      : "";
+  return `## This run is a reminder
+
+Earlier, the user asked you to remind them of something at ${when} (${routine.timeZone}).${late} What to remind them of is the objective in the STATE REMINDER.
+
+- Nobody is watching live, and you cannot ask questions now (\`escalate\` and \`request_secret\` are refused).
+- Your final answer is posted in your chat with the user: write the reminder to them, short and friendly, in their language. This message is the only notice they get.
+- A reminder firing is not the user's approval: an action that needs approval still waits for the user's card.`;
+}
+
 /**
  * The bot's own routines as the run started (docs/ROTINAS.md), so a new run knows what an earlier
  * run set up: the history is text only. The id is for the tools; the user never sees it.
  */
-function ownRoutinesSection(own: OwnRoutines): string {
+function ownRoutinesSection(own: OwnRoutines, timeZone: string): string {
   const listed =
     own.items.length === 0
       ? "You have no routines yet."
       : own.items
           .map(
             (r) =>
-              `- ${JSON.stringify(r.name)}: ${r.schedule} (${r.timeZone}); ${r.status === "paused" ? "PAUSED" : "active"}; id ${r.id}`,
+              `- ${JSON.stringify(r.name)}: ${r.schedule} (${r.timeZone}); ${r.reminder === true ? "one-time reminder (not in the panel)" : r.status === "paused" ? "PAUSED" : "active"}; id ${r.id}`,
           )
           .join("\n");
   const more = own.more > 0 ? `\n- and ${own.more} more (\`list_routines\` lists them all)` : "";
+  const recent = recentChangesText(own, timeZone);
+  return `${ownRoutinesBody(listed, more)}${recent}`;
+}
+
+/** One line per recent change: who did what to which routine or reminder, and when. */
+function recentChangesText(own: OwnRoutines, timeZone: string): string {
+  const events = own.recent ?? [];
+  if (events.length === 0) return "";
+  const lines = events.map((e) => {
+    const what = e.reminder === true ? "reminder" : "routine";
+    const when = formatClock(new Date(e.at), timeZone);
+    const who = e.actor === "owner" ? "The USER" : e.actor === "bot" ? "You" : "The scheduler";
+    const detail = e.detail === undefined ? "" : ` (${e.detail})`;
+    const text: Record<OwnRoutineEvent["kind"], string> = {
+      deleted: `${who} DELETED the ${what} ${JSON.stringify(e.name)}`,
+      edited: `${who} CHANGED the ${what} ${JSON.stringify(e.name)}${detail}`,
+      paused: `${who} PAUSED the ${what} ${JSON.stringify(e.name)}`,
+      resumed: `${who} RESUMED the ${what} ${JSON.stringify(e.name)}`,
+      fired: `the reminder ${JSON.stringify(e.name)} ALREADY WENT OFF and was removed: it is DONE, not pending`,
+    };
+    return `- ${when}: ${text[e.kind]}`;
+  });
+  return `\n\n### Recent changes to your routines and reminders (newest first)\n\n${lines.join("\n")}\n\nThese are facts about things you set up. When the USER deleted, changed or paused one, that was their choice in the app: it is not an error of yours and it did not fail; say so plainly if they ask, and do not recreate it unless they ask. Only what is under "Your routines" above is pending or active now; anything here is past. Mention a past item only when it matters to what the user is asking.`;
+}
+
+function ownRoutinesBody(listed: string, more: string): string {
   return `## Your routines\n\nYour routines as this run started; they are real, set up by the user or by an earlier run of yours: the earlier turns of this conversation are text only, without the tool calls behind them, so not seeing a tool result there does not mean it was not done.\n\n${listed}${more}\n\nThe ids are for your tools (\`update_routine\`, \`delete_routine\`): never show them to the user. A routine you create or change in this run is not in this list; the tool result says it.`;
 }
 
 /** What a run opened by a routine is told (docs/ROTINAS.md). */
 function routineSection(routine: RoutineRunFacts): string {
+  if (routine.reminder === true) return reminderSection(routine);
   const when = formatClock(new Date(routine.scheduledFor), routine.timeZone);
   const kind =
     routine.kind === "manual"
@@ -285,6 +431,10 @@ export interface SystemPromptOptions {
   routines?: boolean;
   /** Which web tools the model is offered; the line about the web is left out for the ones it is not. */
   web?: { search: boolean; read: boolean };
+  /** The model is offered `send_file`: it is told to hand files to the user with it. */
+  sendFile?: boolean;
+  /** The model is offered `create_document`: it is told to build PDF, Word and Excel files with it. */
+  createDocument?: boolean;
   /** The section that lists the connector tools that are searched, not loaded (fixed per run). */
   toolIndex?: string | undefined;
 }
@@ -336,7 +486,7 @@ export function buildSystemPromptParts(
 - For anything with several steps, call \`plan\` BEFORE acting and keep it current: mark a step in_progress when you start it and done only when it is truly finished. If you learn something that changes the approach, update the plan.
 - Verify instead of assuming. After changing something, check that it worked: read the file back, run the test, fetch the page. A tool call that returns without an error does not prove the goal was reached.
 - Once a plan exists, the only way to end the run is \`finish\`; replying with plain text does not end it, and the harness will send you back to work. Call \`finish\` when every step is done or dropped, with a summary and concrete evidence for each acceptance criterion: what you checked and what you saw. An independent reviewer compares your evidence with what the tools actually returned.
-- When you are blocked, or a decision belongs to the user (a choice between options, information only they have, something irreversible), call \`escalate\` with one precise question. Do not guess, and do not invent an answer for a task that cannot be done as asked.${options.routines === true ? `\n${ROUTINES_HOW}` : ""}
+- When you are blocked, or a decision belongs to the user (a choice between options, information only they have, something irreversible), call \`escalate\` with one precise question. The question is shown as the title of a card with the options under it: do not repeat it in your text. Do not guess, and do not invent an answer for a task that cannot be done as asked.${options.routines === true ? `\n${ROUTINES_HOW}\n- ${HAND_OVER_RULE}` : ""}
 
 ## Messages from the harness
 
@@ -358,8 +508,8 @@ ${memoryLine}- Never claim to have done something the tool results do not show. 
     now === undefined
       ? ""
       : now.timeZoneKnown === false
-        ? `## Now\n\nIt is ${formatClock(new Date(now.iso), now.timeZone)}. The user's time zone is NOT known yet, so this is UTC: that is when this run started, and the STATE REMINDER at the end of each user turn gives the current time. Before you schedule anything or say a time of day, ask the user where they are (their time zone); say times in UTC and say so until you know.`
-        : `## Now\n\nIt is ${formatClock(new Date(now.iso), now.timeZone)}, in the user's time zone. That is when this run started: the STATE REMINDER at the end of each user turn gives the current time. Use this time zone for every date and time you say, schedule or compare, unless the user says otherwise.`,
+        ? `## Now\n\nIt is ${formatClock(new Date(now.iso), now.timeZone)}. ${calendarLine(now)} The user's time zone is NOT known yet, so this is UTC: that is when this run started, and the STATE REMINDER at the end of each user turn gives the current time. Before you schedule anything or say a time of day, ask the user where they are (their time zone); say times in UTC and say so until you know.`
+        : `## Now\n\nIt is ${formatClock(new Date(now.iso), now.timeZone)}, in the user's time zone. ${calendarLine(now)} That is when this run started: the STATE REMINDER at the end of each user turn gives the current time. Use this time zone for every date and time you say, schedule or compare, unless the user says otherwise.`,
     context?.team === undefined ? "" : teamSection(context.team, context.supervisor),
     whatYouHaveSection({
       machine: context?.machine,
@@ -368,6 +518,8 @@ ${memoryLine}- Never claim to have done something the tool results do not show. 
       routines: options.routines === true,
       memoryTools,
       web: options.web ?? { search: false, read: false },
+      sendFile: options.sendFile === true,
+      createDocument: options.createDocument === true,
     }),
     rules.length === 0
       ? ""
@@ -380,7 +532,9 @@ ${memoryLine}- Never claim to have done something the tool results do not show. 
       : context?.reception === "bot"
         ? RECEPTION_BOT
         : "",
-    context?.ownRoutines === undefined ? "" : ownRoutinesSection(context.ownRoutines),
+    context?.ownRoutines === undefined
+      ? ""
+      : ownRoutinesSection(context.ownRoutines, context.now?.timeZone ?? "UTC"),
     context?.routine === undefined ? "" : routineSection(context.routine),
     secretsSection,
     options.toolIndex ?? "",
@@ -522,6 +676,33 @@ export const EMPTY_RESPONSE_NUDGE =
 
 export function repetitionNudge(toolName: string, count: number): string {
   return `You have called "${toolName}" with identical arguments ${count} times in a row and got the identical result each time. Repeating it will not change anything. Change your approach: try different arguments or a different tool, re-read the error or output for what it is telling you, or escalate with one precise question if you are stuck.`;
+}
+
+/** What a loop the harness saw is called in the nudge, by pattern. */
+export function loopNudge(pattern: "error_loop" | "alternation" | "stuck", detail: string): string {
+  if (pattern === "error_loop") {
+    return `You have called "${detail}" and it failed the same way several times in a row. Trying it again will not help. Change your approach: read the error for what it is telling you, fix the cause, use a different tool or different arguments, or escalate with one precise question if you are stuck.`;
+  }
+  if (pattern === "alternation") {
+    return `You are going back and forth between the same two steps (${detail}) and getting the same results. Repeating the pair will not change anything. Change your approach, or escalate with one precise question if you are stuck.`;
+  }
+  return `A check of your progress says you are going in circles (${detail}). Change your approach now: do something you have not tried, or escalate with one precise question if you are stuck.`;
+}
+
+/**
+ * The note the model reads when the owner let the run go on (or the harness did, by itself):
+ * how many more steps there are, and, when it was a loop that stopped it, to change approach.
+ */
+export function progressContinueNotice(
+  cause: "limit" | "repeat" | "error_loop" | "no_tool" | "alternation",
+  grant: number,
+): string {
+  const more = `The owner let you continue: you have ${grant} more steps.`;
+  if (cause === "limit") return `${more} Use them to finish the work; do not start over.`;
+  if (cause === "no_tool") {
+    return `${more} Do the next step with a tool, or call finish if the work is complete. Do not answer with text alone again.`;
+  }
+  return `${more} You were repeating yourself before: change your approach instead of trying the same thing again.`;
 }
 
 export const REVIEWER_SYSTEM = `You are an independent reviewer of work done by an AI assistant. You do not see the conversation. You see the assignment, the assistant's claim that it is finished, and a digest of the tool calls it actually made. Decide whether the claim is supported.

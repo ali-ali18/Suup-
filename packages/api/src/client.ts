@@ -79,6 +79,7 @@ import {
   type MarkReadBody,
   type Message,
   messagePageSchema,
+  messageSchema,
   type ReceptionResult,
   receptionResultSchema,
   type SendMessageResult,
@@ -162,6 +163,7 @@ import {
   type VaultStatus,
   vaultStatusSchema,
 } from "./vault.js";
+import { type WebSearchSettings, webSearchSchema } from "./web-search.js";
 
 export interface ClientOptions {
   /** Where the server is, e.g. `http://127.0.0.1:8787`. */
@@ -252,6 +254,8 @@ export interface SuupClient {
     markRead(id: string, body?: MarkReadBody): Promise<Conversation>;
     /** The user's decision on a team card (the message that carries it): create the ticked ones, or "Agora não". */
     decideTeam(messageId: string, body: DecideTeamBody): Promise<DecideTeamResult>;
+    /** The X of a question card: no option will be chosen; the run is told and goes on. */
+    dismissQuestion(messageId: string): Promise<Message>;
   };
   runs: {
     list(query?: ListRunsQuery): Promise<{ items: Run[]; hasMore: boolean }>;
@@ -378,6 +382,16 @@ export interface SuupClient {
     /** Takes the host away from the bot's own list. */
     remove(botId: string, host: string): Promise<BotNetwork>;
   };
+  files: {
+    /** The address of a file the bot sent (behind the token: `Authorization: Bearer`). */
+    url(fileId: string): string;
+    /** Downloads a file the bot sent (`GET /v1/files/:id`): its exact bytes. */
+    download(fileId: string, signal?: AbortSignal): Promise<Uint8Array>;
+  };
+  webSearch: {
+    /** The general search engines in the order they are tried, with where each stands this month. */
+    get(): Promise<WebSearchSettings>;
+  };
   vault: {
     /** Whether the server has a vault it can write to (the section and the key), and why not. */
     status(): Promise<VaultStatus>;
@@ -478,6 +492,26 @@ export function createClient(options: ClientOptions): SuupClient {
   const id = (value: string) => encodeURIComponent(value);
   const noBody = { body: undefined } as const;
 
+  /** A file is bytes, not JSON: the same token and errors as `call`, a longer wait (25 MB). */
+  async function download(path: string, signal?: AbortSignal): Promise<Uint8Array> {
+    let response: Response;
+    try {
+      response = await doFetch(`${baseUrl}${path}`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${options.token}` },
+        ...(signal === undefined ? {} : { signal }),
+      });
+    } catch (error) {
+      if (signal?.aborted)
+        throw new ApiError("aborted", "A requisição foi cancelada.", undefined, { cause: error });
+      throw new ApiError("network", "Não foi possível falar com o servidor.", undefined, {
+        cause: error,
+      });
+    }
+    if (!response.ok) throw await errorOf(response);
+    return new Uint8Array(await response.arrayBuffer());
+  }
+
   return {
     health: () => call("GET", "/health", healthSchema, { auth: false }),
     models: { list: async () => (await call("GET", "/v1/models", modelListSchema)).items },
@@ -548,6 +582,15 @@ export function createClient(options: ClientOptions): SuupClient {
               ? { text }
               : { text, routineRef: { id: options.routineRef.id } },
         }),
+      dismissQuestion: async (messageId) =>
+        (
+          await call(
+            "POST",
+            `/v1/messages/${id(messageId)}/dismiss`,
+            z.object({ message: messageSchema }),
+            noBody,
+          )
+        ).message,
       decideTeam: (messageId, body) =>
         call("POST", `/v1/messages/${id(messageId)}/team`, decideTeamResultSchema, {
           body,
@@ -754,6 +797,13 @@ export function createClient(options: ClientOptions): SuupClient {
         call("PUT", `/v1/bots/${id(botId)}/network/hosts/${id(host)}`, botNetworkSchema, noBody),
       remove: (botId, host) =>
         call("DELETE", `/v1/bots/${id(botId)}/network/hosts/${id(host)}`, botNetworkSchema),
+    },
+    files: {
+      url: (fileId) => `${baseUrl}/v1/files/${id(fileId)}`,
+      download: (fileId, signal) => download(`/v1/files/${id(fileId)}`, signal),
+    },
+    webSearch: {
+      get: () => call("GET", "/v1/web-search", webSearchSchema),
     },
     vault: {
       status: () => call("GET", "/v1/vault", vaultStatusSchema),

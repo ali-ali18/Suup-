@@ -181,7 +181,7 @@ export async function openConnection(
         throw new ConnectorError(
           spec.name,
           "config",
-          `precisa de login: abra Configurações > Conectores e clique em Conectar (${deps.redact(errorText(error))}).`,
+          `precisa de login: mostre ao usuário o cartão do plugin chamando propose_connector com o id dele na galeria (o cartão tem o botão Conectar); não mande o usuário procurar nas configurações (${deps.redact(errorText(error))}).`,
           error,
         );
       }

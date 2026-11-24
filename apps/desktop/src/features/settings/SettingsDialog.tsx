@@ -1,18 +1,19 @@
-import { Brain, KeyRound, Plug, Settings, ShieldCheck } from "lucide-react";
+import { Brain, KeyRound, Plug, Search, Settings, ShieldCheck } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useId, useRef } from "react";
-import { createPortal } from "react-dom";
 import { type SettingsTab, useUi } from "../../app/ui-store.js";
-import { Scrim, useModalFocus } from "../../ui/primitives.js";
+import { Modal } from "../../ui/dialog.js";
 import { ConnectorsSettings } from "./ConnectorsSettings.js";
 import { GeneralSettings } from "./GeneralSettings.js";
 import { MemorySettings } from "./MemorySettings.js";
 import { PermissionsSettings } from "./PermissionsSettings.js";
+import { SearchSettings } from "./SearchSettings.js";
 import { VaultSettings } from "./VaultSettings.js";
 
 const SECTIONS: readonly { id: SettingsTab; label: string; icon: ReactNode }[] = [
   { id: "general", label: "Geral", icon: <Settings size={16} aria-hidden="true" /> },
   { id: "permissions", label: "Permissões", icon: <ShieldCheck size={16} aria-hidden="true" /> },
   { id: "memory", label: "Memória", icon: <Brain size={16} aria-hidden="true" /> },
+  { id: "search", label: "Busca", icon: <Search size={16} aria-hidden="true" /> },
   { id: "vault", label: "Cofre", icon: <KeyRound size={16} aria-hidden="true" /> },
   { id: "connectors", label: "Conectores", icon: <Plug size={16} aria-hidden="true" /> },
 ];
@@ -25,12 +26,6 @@ export function SettingsDialog() {
   const tab = useUi((s) => s.settingsTab);
   const setTab = useUi((s) => s.setSettingsTab);
   const close = useUi((s) => s.closeSettings);
-  const connector = useUi((s) => s.settingsConnector);
-  const setConnector = useUi((s) => s.setSettingsConnector);
-  // Esc goes back one step: a connector's details return to the list; the second Esc closes.
-  const { ref, onKeyDown } = useModalFocus(() =>
-    tab === "connectors" && connector !== null ? setConnector(null) : close(),
-  );
   const titleId = useId();
   const refs = useRef<Record<string, HTMLButtonElement | null>>({});
   const current = SECTIONS.find((s) => s.id === tab) ?? SECTIONS[0];
@@ -48,70 +43,54 @@ export function SettingsDialog() {
     setTab(target.id);
     refs.current[target.id]?.focus();
   };
-  return createPortal(
-    <Scrim onClose={close}>
+  return (
+    <Modal
+      onClose={close}
+      labelledBy={titleId}
+      testId="settings-screen"
+      className="flex h-[min(var(--height-settings),100%)] w-[min(var(--width-settings),100%)] overflow-hidden rounded-card border border-border-strong bg-bg shadow-popover narrow:flex-col"
+    >
       <div
-        ref={ref}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        tabIndex={-1}
-        className="flex h-[min(var(--height-settings),100%)] w-[min(var(--width-settings),100%)] overflow-hidden rounded-card border border-border-strong bg-bg shadow-popover focus-visible:outline-none narrow:flex-col"
-        data-testid="settings-screen"
-        onKeyDown={onKeyDown}
+        role="tablist"
+        aria-orientation="vertical"
+        aria-label="Seções"
+        className="flex w-settings-nav flex-none flex-col gap-1 border-r border-border p-3 narrow:w-auto narrow:flex-row narrow:overflow-x-auto narrow:border-r-0 narrow:border-b"
       >
-        <div
-          role="tablist"
-          aria-orientation="vertical"
-          aria-label="Seções"
-          className="flex w-settings-nav flex-none flex-col gap-1 border-r border-border p-3 narrow:w-auto narrow:flex-row narrow:overflow-x-auto narrow:border-r-0 narrow:border-b"
-        >
-          {SECTIONS.map((section, i) => (
-            <button
-              key={section.id}
-              ref={(el) => {
-                refs.current[section.id] = el;
-              }}
-              type="button"
-              role="tab"
-              id={`settings-tab-${section.id}`}
-              aria-selected={section.id === tab}
-              aria-controls="settings-panel"
-              tabIndex={section.id === tab ? 0 : -1}
-              className="flex min-h-9 items-center gap-3 rounded-inner border-0 bg-transparent px-3 py-0 text-left text-label text-text hover:bg-raised focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus aria-selected:bg-raised narrow:flex-none"
-              onClick={() => setTab(section.id)}
-              onKeyDown={(e) => move(e, i)}
-            >
-              {section.icon}
-              {section.label}
-            </button>
-          ))}
-        </div>
-        <div
-          className="flex min-w-0 flex-1 flex-col"
-          role="tabpanel"
-          id="settings-panel"
-          aria-labelledby={`settings-tab-${tab}`}
-          data-testid={`settings-panel-${tab}`}
-        >
-          {tab === "general" && (
-            <GeneralSettings title={current?.label} titleId={titleId} onClose={close} />
-          )}
-          {tab === "permissions" && (
-            <PermissionsSettings title={current?.label} titleId={titleId} onClose={close} />
-          )}
-          {tab === "memory" && (
-            <MemorySettings title={current?.label} titleId={titleId} onClose={close} />
-          )}
-          {tab === "vault" && (
-            <VaultSettings title={current?.label} titleId={titleId} onClose={close} />
-          )}
-          {tab === "connectors" && (
-            <ConnectorsSettings title={current?.label} titleId={titleId} onClose={close} />
-          )}
-        </div>
+        {SECTIONS.map((section, i) => (
+          <button
+            key={section.id}
+            ref={(el) => {
+              refs.current[section.id] = el;
+            }}
+            type="button"
+            role="tab"
+            id={`settings-tab-${section.id}`}
+            aria-selected={section.id === tab}
+            aria-controls="settings-panel"
+            tabIndex={section.id === tab ? 0 : -1}
+            className="flex min-h-9 items-center gap-3 rounded-inner border-0 bg-transparent px-3 py-0 text-left text-label text-text hover:bg-raised focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus aria-selected:bg-raised narrow:flex-none"
+            onClick={() => setTab(section.id)}
+            onKeyDown={(e) => move(e, i)}
+          >
+            {section.icon}
+            {section.label}
+          </button>
+        ))}
       </div>
-    </Scrim>,
-    document.body,
+      <div
+        className="flex min-w-0 flex-1 flex-col"
+        role="tabpanel"
+        id="settings-panel"
+        aria-labelledby={`settings-tab-${tab}`}
+        data-testid={`settings-panel-${tab}`}
+      >
+        {tab === "general" && <GeneralSettings title={current?.label} titleId={titleId} />}
+        {tab === "permissions" && <PermissionsSettings title={current?.label} titleId={titleId} />}
+        {tab === "memory" && <MemorySettings title={current?.label} titleId={titleId} />}
+        {tab === "search" && <SearchSettings title={current?.label} titleId={titleId} />}
+        {tab === "vault" && <VaultSettings title={current?.label} titleId={titleId} />}
+        {tab === "connectors" && <ConnectorsSettings title={current?.label} titleId={titleId} />}
+      </div>
+    </Modal>
   );
 }

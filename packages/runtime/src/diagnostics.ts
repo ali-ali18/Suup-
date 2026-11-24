@@ -22,11 +22,18 @@ import {
 } from "@suup/core";
 import { type Db, getBot, getRun, listRunEvents, migrationStatus } from "@suup/db";
 import { checkConnectors } from "./connectors/doctor.js";
-import { PROPOSE_CONNECTOR_TOOL, proposeConnectorTool } from "./connectors/propose-tool.js";
+import {
+  installedCatalogIds,
+  PROPOSE_CONNECTOR_TOOL,
+  proposeConnectorTool,
+  SHOW_CONNECT_CARD_TOOL,
+  showConnectCardTool,
+} from "./connectors/propose-tool.js";
 import { RuntimeError } from "./errors.js";
 import { checkMemory } from "./memory-doctor.js";
 import { checkNetwork } from "./network/doctor.js";
 import {
+  createReminderTool,
   createRoutineTool,
   deleteRoutineTool,
   listRoutinesTool,
@@ -37,6 +44,7 @@ import {
 } from "./routines.js";
 import type { Runtime } from "./runtime.js";
 import { loadScript } from "./scripted-provider.js";
+import { withSendFileTool } from "./send-file.js";
 import { checkVaultAndApprovals } from "./vault/doctor.js";
 import { checkWeb } from "./web/doctor.js";
 
@@ -234,6 +242,8 @@ export async function replayRecordedRun(runtime: Runtime, runId: string): Promis
   // tools of a conversation run of the user, and those of a routine's own run (docs/ROTINAS.md).
   let tools: ToolRegistry = runtime.tools;
   let botCfg = runtime.botConfig(bot);
+  // A guarded run offers `send_file` to a bot with a machine (`withSendFileTool`, as `buildDeps`).
+  if (run.isolated !== true) botCfg = withSendFileTool(botCfg);
   if (run.isolated !== true && (run.origin === "user" || run.origin === "routine")) {
     tools = new ToolRegistry();
     for (const tool of runtime.tools.list()) tools.register(tool);
@@ -241,6 +251,7 @@ export async function replayRecordedRun(runtime: Runtime, runId: string): Promis
       run.origin === "user"
         ? [
             createRoutineTool(db, async () => null),
+            createReminderTool(db, async () => null),
             updateRoutineTool(db),
             deleteRoutineTool(db),
             listRoutinesTool(db),
@@ -248,14 +259,21 @@ export async function replayRecordedRun(runtime: Runtime, runId: string): Promis
         : [listRoutinesTool(db), updateRoutineStateTool(db), deleteRoutineTool(db)];
     for (const tool of routineTools) tools.register(tool as never);
     // The gallery proposal of a conversation run (docs/CONECTORES.md), after the routine tools.
-    if (run.origin === "user")
-      tools.register(proposeConnectorTool(() => runtime.connectors.gallery));
+    if (run.origin === "user") {
+      tools.register(
+        proposeConnectorTool(
+          () => runtime.connectors.gallery,
+          await installedCatalogIds(runtime.connectors.gallery),
+        ),
+      );
+      tools.register(showConnectCardTool(() => runtime.connectors.gallery));
+    }
     botCfg = {
       ...botCfg,
       allowedTools: [
         ...botCfg.allowedTools,
         ...(run.origin === "user"
-          ? [...ROUTINE_TOOL_NAMES, PROPOSE_CONNECTOR_TOOL]
+          ? [...ROUTINE_TOOL_NAMES, PROPOSE_CONNECTOR_TOOL, SHOW_CONNECT_CARD_TOOL]
           : ROUTINE_RUN_TOOL_NAMES),
       ],
     };

@@ -78,13 +78,32 @@ function fakeEntry(fake: FakeOAuthServer) {
   };
 }
 
+/**
+ * The GitHub entry pointed at a closed local port: the test never depends on whether the machine it
+ * runs on reaches the internet (on CI it does, here it does not). Connecting with a token then fails
+ * to list the tools the same way everywhere.
+ */
+function offlineGithub(
+  entry: (typeof CONNECTOR_CATALOG)[number],
+): (typeof CONNECTOR_CATALOG)[number] {
+  const transport = entry.transport;
+  if (entry.id !== "github" || transport === null || transport.kind !== "http") return entry;
+  return {
+    ...entry,
+    transport: { ...transport, url: "http://127.0.0.1:9/mcp" },
+    egressHosts: ["127.0.0.1"],
+  };
+}
+
 test.describe("the connectors screen, wired to the server's gallery", () => {
   test.skip(DATABASE_URL === undefined, SKIP_REASON);
   let world: World;
   let fake: FakeOAuthServer;
   test.beforeAll(async () => {
     fake = await startFakeOAuthMcp();
-    world = await startWorld({ connectorCatalog: [...CONNECTOR_CATALOG, fakeEntry(fake)] });
+    world = await startWorld({
+      connectorCatalog: [...CONNECTOR_CATALOG.map(offlineGithub), fakeEntry(fake)],
+    });
   });
   test.afterAll(async () => {
     await world?.stop();
@@ -97,11 +116,14 @@ test.describe("the connectors screen, wired to the server's gallery", () => {
     await openApp(page, world);
     await openConnectors(page);
     const served = (await world.api.connectorCatalog.list()).map((i) => i.entry.id);
-    await expect(page.getByTestId("connector-item")).toHaveCount(served.length);
+    // The search engines of the queue are plugins of the gallery too ("Pesquisa na web").
+    const engines = (await world.api.webSearch.get()).providers.map((p) => p.id);
+    expect(engines).toEqual(["tavily", "brave"]);
+    await expect(page.getByTestId("connector-item")).toHaveCount(served.length + engines.length);
     const drawn = await page
       .getByTestId("connector-item")
       .evaluateAll((els) => els.map((e) => e.getAttribute("data-plugin")));
-    expect([...drawn].sort()).toEqual([...served].sort());
+    expect([...drawn].sort()).toEqual([...served, ...engines].sort());
     // within a section, the server's order
     const dev = await page
       .locator(
@@ -161,6 +183,8 @@ test.describe("the connectors screen, wired to the server's gallery", () => {
     await expect(tab.locator("body")).toContainText("Login feito");
     await tab.close();
     expect((await world.api.connectors.get(FAKE_ID)).enabled).toBe(true);
+    // The login tokens are the connector's own: the Cofre never lists them.
+    expect((await world.api.vault.list()).filter((s) => s.name.includes("OAUTH"))).toEqual([]);
     await page.screenshot({ path: `${SHOTS}/24d-conectores-conectado.png` });
 
     // Desconectar asks first.
@@ -208,10 +232,15 @@ test.describe("the connectors screen, wired to the server's gallery", () => {
     await dialog.getByTestId("secret-input").fill(VALUE);
     await dialog.getByTestId("secret-write").click();
     await expect(dialog).toHaveCount(0);
-    await expect(state(page)).toHaveText("Conectado");
-    await expect(page.getByTestId("connector-main")).toHaveText("Trocar o token");
+    // The token turns it on, and turning it on lists its tools at once. The entry points at a closed
+    // local port (offlineGithub), so the listing fails: the page says so plainly and offers to try again.
+    await expect.poll(async () => (await world.api.connectors.get("github")).enabled).toBe(true);
+    await expect(state(page)).toHaveText("Não conectou");
+    await expect(page.getByTestId("plugin-unlisted")).toContainText(
+      "Ainda não consegui ver as ferramentas",
+    );
+    await expect(page.getByTestId("plugin-retry")).toHaveText("Tentar de novo");
     expect((await world.api.vault.list()).map((s) => s.name)).toContain("GITHUB_TOKEN");
-    expect((await world.api.connectors.get("github")).enabled).toBe(true);
     // the value is nowhere on the page
     expect(await page.content()).not.toContain(VALUE);
     // back to the list: "Meus conectores" shows what is connected

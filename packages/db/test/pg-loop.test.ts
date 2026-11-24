@@ -162,19 +162,22 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("runLoop on PgRunStore"), () => {
     expect(workerId).toBeTruthy();
   });
 
-  it("keeps a failure origin of model in the database", async () => {
+  it("a model that keeps answering with text pauses the run for the owner, in the database", async () => {
     const { runId, store } = await claimed();
-    // The model keeps answering with text and no tool call: the loop fails the run (origin model).
+    // The model keeps answering with text and no tool call: the watchdog asks the owner instead of
+    // failing the run (docs/VIGIA.md), and the question is stored with its reason.
     const provider = new FakeProvider([
       use(planCall("c1", [step("s1", "in_progress")])),
       say("hmm"),
       say("hmm"),
       say("hmm"),
     ]);
-    expect(await runLoop(depsFor(store, provider), runId)).toBe("failed");
+    expect(await runLoop(depsFor(store, provider), runId)).toBe("waiting_user");
     const row = await getRun(ctx.db, runId);
-    expect(row).toMatchObject({ status: "failed", failureOrigin: "model" });
-    expect(row?.failureDetail).toContain("without any tool call");
+    expect(row).toMatchObject({ status: "waiting_user", failureOrigin: null });
+    const events = await ctx.db.sql<{ payload: { reason?: string } }[]>`
+      select payload from run_events where run_id = ${runId} and type = 'escalated'`;
+    expect(events.map((e) => e.payload.reason)).toEqual(["progress_limit"]);
   });
 
   it("resumes after a crash at every possible point, on another worker, from Postgres alone", async () => {

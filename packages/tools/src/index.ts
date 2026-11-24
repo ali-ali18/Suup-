@@ -14,6 +14,7 @@ import { webReadTool } from "./web-read.js";
 import { webSearchTool } from "./web-search.js";
 import { writeFileTool } from "./write-file.js";
 
+export { createDocumentTool } from "./create-document.js";
 export { editFileTool } from "./edit-file.js";
 export { forgetTool } from "./forget.js";
 export { decodeEntities, type HtmlText, htmlToText } from "./html-to-text.js";
@@ -24,6 +25,7 @@ export { rememberTool } from "./remember.js";
 export { requestNetworkAccessTool } from "./request-network-access.js";
 export { searchConversationsTool } from "./search-conversations.js";
 export { buildSearchCommand, searchFilesTool } from "./search-files.js";
+export { sendFileTool } from "./send-file.js";
 export { shellTool } from "./shell.js";
 export { shellJoin, shellQuote } from "./shell-quote.js";
 export { buildCurlCommand, webFetchTool } from "./web-fetch.js";

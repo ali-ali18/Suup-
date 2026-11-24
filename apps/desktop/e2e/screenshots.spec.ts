@@ -9,6 +9,7 @@ import {
   closeSettings,
   connect,
   freshBot,
+  openPluginPage,
   openSettings,
   selectBot,
   send,
@@ -21,6 +22,18 @@ const SIZES = [
   { dir: "1920x1080", viewport: { width: 1920, height: 1080 }, scale: 1 },
   { dir: "1440x900@2x", viewport: { width: 1440, height: 900 }, scale: 2 },
 ] as const;
+
+/**
+ * Waits for the finite animations and transitions on the page (a popup fading in) to end, so a
+ * capture never catches a popup half transparent. The endless ones (the working dots) are skipped.
+ */
+const settled = (page: Page): Promise<void> =>
+  page.evaluate(async () => {
+    const finite = document
+      .getAnimations()
+      .filter((a) => a.effect?.getComputedTiming().iterations !== Number.POSITIVE_INFINITY);
+    await Promise.all(finite.map((a) => a.finished.catch(() => undefined)));
+  });
 
 test.describe("screenshots", () => {
   test.skip(DATABASE_URL === undefined, SKIP_REASON);
@@ -248,7 +261,7 @@ test.describe("screenshots", () => {
       });
       const page = await context.newPage();
       const shot = (name: string) =>
-        page.screenshot({ path: `screenshots/${size.dir}/${name}.png` });
+        settled(page).then(() => page.screenshot({ path: `screenshots/${size.dir}/${name}.png` }));
       const settle = async () => {
         await page.evaluate(() => document.fonts.ready);
         // Past the short transitions of buttons and cards.
@@ -281,22 +294,20 @@ test.describe("screenshots", () => {
       await shot("04b-questionario");
       await page.getByTestId("question-card").getByRole("button", { name: "Avançar" }).click();
 
-      // The bot working: the cards, the indicator, the dots in the sidebar; then an expanded card.
+      // The bot working: the live avatar with its friendly phrase (no tool row); then the answer alone.
       await selectBot(page, "Nova");
       await send(page, "CASE-ACTIONS faça o arquivo ola.txt e confira");
       await expect(page.getByTestId("working-indicator")).toHaveAttribute(
-        "data-phrase",
-        "Rodando o comando sleep 3; echo primeiro",
+        "data-activity",
+        "terminal",
       );
-      await shot("05-trabalhando-cartao-e-indicador");
-      await expect(page.getByTestId("action-card").first()).toHaveAttribute("data-state", "done");
-      await page.getByTestId("action-card").first().getByRole("button").click();
-      await shot("06-cartao-expandido");
+      await expect(page.getByTestId("action-card")).toHaveCount(0);
+      await shot("05-trabalhando-avatar-vivo");
       await expect(
         page.getByTestId("message-bot").filter({ hasText: "Terminei as cinco ações." }),
       ).toBeVisible({ timeout: 90_000 });
-      await page.getByTestId("action-fold").getByRole("button").click();
-      await shot("07-resposta-final-e-acoes-dobradas");
+      await expect(page.getByTestId("action-card")).toHaveCount(0);
+      await shot("07-resposta-final-so-resultados");
 
       // Layout states.
       await page.getByTestId("bot-chip").click();
@@ -373,8 +384,9 @@ test.describe("screenshots", () => {
       await expect(
         page.getByTestId("message-bot").filter({ hasText: "Escrevi o arquivo aprovado." }),
       ).toBeVisible();
-      // One row for the call: the approval merged into it.
-      const approved = page.getByTestId("action-card");
+      // One line for the decision; the call is no row (the chat shows results only).
+      await expect(page.getByTestId("action-card")).toHaveCount(0);
+      const approved = page.getByTestId("approval-card");
       await expect(approved).toHaveCount(1);
       await expect(approved).toHaveAttribute("data-state", "done");
       // Collapsed to one row, chevron hidden at rest; then on hover; then opened.
@@ -402,7 +414,8 @@ test.describe("screenshots", () => {
       await shot("18g-mensagem-menu");
       await page.keyboard.press("Escape");
       await message.getByTestId("approval-deny").click();
-      await expect(page.getByTestId("approval-card")).toHaveCount(0);
+      // Denied: the card is now its one decided line, and nothing waits any more.
+      await expect(page.getByTestId("approval-card")).toHaveAttribute("data-state", "stopped");
       await selectBot(page, "Chaveiro");
       const secret = page.getByTestId("secret-card");
       await expect(secret).toHaveAttribute("data-state", "needs-action");
@@ -479,13 +492,14 @@ test.describe("screenshots", () => {
       await shot("21b-config-novo-segredo");
       await page.getByRole("button", { name: "Cancelar" }).click();
       await page.getByRole("tab", { name: "Conectores" }).click();
-      await expect(page.getByTestId("connector-item").filter({ hasText: "fake" })).toBeVisible();
+      await expect(page.getByTestId("installed-item").filter({ hasText: "fake" })).toBeVisible();
       await settle();
       await shot("22-config-conectores-lista");
       await page
-        .getByTestId("connector-item")
+        .getByTestId("installed-item")
         .filter({ hasText: "fake" })
-        .getByTestId("connector-details")
+        .locator("button")
+        .first()
         .click();
       const connector = page.getByTestId("connector-row").filter({ hasText: "fake" });
       await expect(connector.getByTestId("connector-tools")).toBeVisible();
@@ -512,12 +526,7 @@ test.describe("screenshots", () => {
       await settle();
       await shot("22e-config-conectores-onde-roda");
       // A connector with tools waiting for a review: the calm notice, then the comparison.
-      await page.getByRole("tab", { name: "Conectores" }).click();
-      await page
-        .getByTestId("connector-item")
-        .filter({ hasText: "revisao" })
-        .getByTestId("connector-details")
-        .click();
+      await openPluginPage(page, "revisao");
       const reviewed = page.getByTestId("connector-row").filter({ hasText: "revisao" });
       await expect(reviewed.getByTestId("review-notice")).toContainText("mudou");
       await settle();
@@ -530,7 +539,7 @@ test.describe("screenshots", () => {
       await settle();
       await shot("22h-revisao-mantida-desligada");
       await page.getByTestId("review-close").click();
-      await page.getByRole("tab", { name: "Conectores" }).click();
+      await openSettings(page, "Conectores");
       await page.getByTestId("connector-new").click();
       await settle();
       await shot("23-adicionar-conector");
@@ -589,7 +598,7 @@ test.describe("screenshots", () => {
       });
       const page = await context.newPage();
       const shot = (name: string) =>
-        page.screenshot({ path: `screenshots/${size.dir}/${name}.png` });
+        settled(page).then(() => page.screenshot({ path: `screenshots/${size.dir}/${name}.png` }));
       await connect(page, world);
       await expect(page.getByTestId("sidebar")).toBeVisible();
       await selectBot(page, "Pesquisador");
@@ -633,7 +642,7 @@ test.describe("screenshots", () => {
       });
       const page = await context.newPage();
       const shot = (name: string) =>
-        page.screenshot({ path: `screenshots/${size.dir}/${name}.png` });
+        settled(page).then(() => page.screenshot({ path: `screenshots/${size.dir}/${name}.png` }));
       const settle = async () => {
         await page.evaluate(() => document.fonts.ready);
         await page.waitForTimeout(250);
@@ -650,7 +659,7 @@ test.describe("screenshots", () => {
       await settle();
       await shot("21c-config-cofre-vazio");
       await page.getByRole("tab", { name: "Conectores" }).click();
-      await expect(page.getByTestId("connectors-card")).toContainText("Nenhum conector");
+      await expect(page.getByTestId("connectors-card")).toContainText("Nenhum plugin instalado");
       await settle();
       await shot("22i-config-conectores-vazio");
       // A small window: the nav becomes a strip on top and nothing overflows the page.

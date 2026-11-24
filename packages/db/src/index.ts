@@ -147,6 +147,15 @@ export {
   type RunSources,
 } from "./events.js";
 export {
+  getFile,
+  type InsertFileInput,
+  insertFile,
+  listRunFiles,
+  MAX_FILE_BYTES,
+  type StoredFile,
+  type StoredFileWithContent,
+} from "./files.js";
+export {
   ackInboxEntries,
   hasPendingInbox,
   type InboxEntry,
@@ -252,6 +261,7 @@ export {
   MESSAGE_AUTHOR_KINDS,
   MESSAGE_STATUSES,
   type Message,
+  type MessageAttachment,
   type MessageAuthorKind,
   type MessageQuestion,
   type MessageQuestionItem,
@@ -288,6 +298,11 @@ export {
 export { PgRunQueue } from "./pg-queue.js";
 export { PgRunStore, type PgRunStoreOptions, type RunStatusHook } from "./pg-store.js";
 export {
+  DISMISSED_QUESTION_ANSWER,
+  dismissQuestion,
+  QuestionDismissError,
+} from "./question-dismiss.js";
+export {
   heartbeatRun,
   type RequeueStaleOptions,
   type RunControlState,
@@ -316,12 +331,16 @@ export {
   getRoutine,
   getRoutineFireByRun,
   isCostCapText,
+  listRoutineEvents,
   listRoutineFires,
   listRoutines,
+  MAX_REMINDERS_PER_BOT,
   MAX_ROUTINE_INSTRUCTION,
   MAX_ROUTINE_NAME,
   MAX_ROUTINE_STATE,
   MAX_ROUTINES_PER_BOT,
+  ROUTINE_EVENT_ACTORS,
+  ROUTINE_EVENT_KINDS,
   ROUTINE_FIRE_KINDS,
   ROUTINE_FIRE_STATUSES,
   ROUTINE_STATUSES,
@@ -329,6 +348,9 @@ export {
   type Routine,
   RoutineError,
   type RoutineErrorCode,
+  type RoutineEvent,
+  type RoutineEventActor,
+  type RoutineEventKind,
   type RoutineFire,
   type RoutineFireKind,
   type RoutineFireStatus,
@@ -378,6 +400,7 @@ export {
   putSecret,
   replaceSecretCipher,
   revokeSecret,
+  SecretManagedError,
   type SecretMeta,
   SecretNotFoundError,
   type SecretRow,
@@ -459,6 +482,7 @@ export {
   putWebSearchCache,
   type WebSearchCacheRow,
 } from "./web-search-cache.js";
+export { getWebSearchUsage, recordWebSearchUsage } from "./web-search-usage.js";
 export {
   type CreateWrittenRuleInput,
   createWrittenRule,

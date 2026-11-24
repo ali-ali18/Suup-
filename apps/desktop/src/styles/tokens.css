@@ -57,6 +57,17 @@
   --color-sidebar-active: #1c1c1c; /* the selected bot's tile in the sidebar */
   --color-border: rgba(255, 255, 255, 0.08); /* v2-border  #ffffff14 */
   --color-border-strong: rgba(255, 255, 255, 0.14); /* v2-border-strong  #ffffff24 */
+  --color-star-badge: #ff9800; /* the main bot's star marker (the same in both themes) */
+  --color-star-glyph: #fcfcfc; /* the star on it */
+  --color-status-working: #22c55e; /* the green corner dot: the bot is working */
+  --color-status-unread: #2496e8; /* the blue corner dot: an unread message */
+  --color-mask: #000; /* the opaque part of a mask (the notch around a corner mark): never seen */
+  --color-picked-ring: rgba(
+    255,
+    255,
+    255,
+    0.42
+  ); /* the outline of the chosen mascot and colour: clear, not the text's white */
 
   /* Text */
   --color-text: #ececec; /* v2-text */
@@ -91,7 +102,14 @@
   --radius-hairline: 1px; /* the line of the resize handle */
 
   /* Type: App/v2 Título 16/24 600, Corpo 15/24, Rótulo 14/20 500, Pequeno 13/20, Seção 12/16 500 +0.72px, Prancha 22/28 600, Código 12/18 */
-  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* The fonts are bundled with the app (owner's decision, 24/11/2026: option B of
+     docs/pesquisas/shadcn-base-maia.md): Outfit for the text, Geist for the headings, both from
+     @fontsource-variable (OFL-1.1), imported by app.css and served by the app itself (CSP
+     font-src 'self'; never Google at run time). Switching the font is a change of these tokens. */
+  --font-sans:
+    "Outfit Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-heading:
+    "Geist Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --text-title-size: 16px;
   --text-title-line: 24px;
@@ -134,11 +152,27 @@
   --size-avatar-sm: 28px;
   --size-avatar-md: 36px;
   --size-avatar-lg: 48px;
-  --size-star-badge: 14px; /* the star on the main bot's avatar (docs/DESIGN.md §5): small and calm */
-  --size-star-badge-lg: 18px; /* ...on the large avatars (panel, preview) */
+  /* The star of the main bot (docs/DESIGN.md §5, from the owner's own design in his previous
+     project): a round orange marker in the avatar's lower right corner, FIXED sizes (never a share
+     of the avatar): 12 px with a 6 px star under 44 px, 16 px with an 8 px star from 44 px; the
+     face is notched around it (a gap of 2 / 2.7 px) instead of a ring. */
+  --size-star-badge: 12px;
+  --size-star-badge-lg: 16px;
+  --size-star-glyph: 6px;
+  --size-star-glyph-lg: 8px;
+  --size-star-gap: 2px;
+  --size-star-gap-lg: 2.7px;
+  /* The other corner statuses (the same corner, by precedence: working > unread > the star): a
+     dot whose size follows the avatar (clamp(10, 26 %, 16) px, as in the owner's design), with the
+     face notched 2 px around it. */
+  --size-status-dot-sm: 10px; /* avatars of 28 to 38 px */
+  --size-status-dot-row: 11px; /* the 42 px row */
+  --size-status-dot-lg: 15px; /* 56 px */
+  --size-status-dot-xl: 16px; /* 66 px and up */
+  --size-status-gap: 2px;
   --width-sidebar: 316px; /* owner's layout: expanded sidebar */
   --width-rail: 110px; /* owner's layout: narrow icon rail on the left */
-  --size-rail-tile: 60px; /* a bot's tile in the rail: the face (36 px) inside a box; the tiles sit 2 px apart (a 62 px pitch, measured on the reference) */
+  --size-rail-tile: 68px; /* a bot's tile in the rail: the face (36 px) inside a box; the tiles sit 2 px apart (a 62 px pitch, measured on the reference) */
   --width-panel: 450px; /* owner's layout: bot panel on the right */
   --width-chat-min: 420px; /* the chat column never gets narrower than this */
   --width-reading: 700px; /* the widest a bot bubble gets */
@@ -151,12 +185,27 @@
   --width-menu: 240px;
   --width-menu-wide: 320px;
   --width-dropdown: min(380px, calc(100vw - 16px));
+  --height-dropdown: 320px; /* the tallest the list of a dropdown gets (it scrolls inside) */
   --width-empty-text: 280px;
   --width-input: 260px; /* the field of a settings row */
   --width-connect: min(440px, 100%); /* the card of the connect screen */
   --width-palette: min(640px, 100%); /* the command palette */
   --width-screen-narrow: 760px; /* a block of a narrow screen (Pendências) */
   --width-screen-wide: 980px; /* the body of the inspector */
+  --width-screen-max: 1120px; /* the widest the content of a full screen gets (connectors, Pendências, Memória, Inspetor); centred on a big monitor (owner, 23/11/2026) */
+  --width-window-controls: 138px; /* the three window buttons of a frameless window (3 x 46 px, ui/window-controls.tsx) */
+  --size-window-reserve: calc(
+    var(--width-window-controls) +
+    var(--space-3)
+  ); /* what a head keeps free at its end for those buttons (150 px) */
+  /* The end padding of a screen's head with the app's own window buttons: room for them (plus a gap)
+     until the centred content is far enough from the window's edge, then the normal 24 px. */
+  --space-head-end: max(
+    var(--space-6),
+    calc(var(--size-window-reserve) - (100% - var(--width-screen-max)) / 2)
+  );
+  --size-fade: 24px; /* the fade at a scrolling edge (docs/DESIGN.md §1 "Nada seco") */
+  --size-chat-head: 72px; /* the bot's pill over the chat and the fade behind it */
   --width-memory-list: 860px; /* the list of memories */
   --width-bot-chip: 420px; /* the widest the bot's chip above the chat gets */
   --width-search: 420px; /* the search field of a screen */
@@ -179,16 +228,21 @@
   ); /* between bubbles of one group; between groups it is --chat-gap */
   --color-bubble-neutral: var(--color-raised);
   --shadow-popover: 0 12px 32px rgba(0, 0, 0, 0.45);
+  --shadow-star-badge: inset 0 0 0 0.5px rgba(0, 0, 0, 0.08); /* the hairline inside the star marker */
   /* The mark of the mascot chosen in the new-bot dialog: its shape outlined (a ring of the raised
-     colour, then one of the text colour), instead of a box around it. */
+     colour, then a thin one of --color-picked-ring), instead of a box around it. Clear but
+     discreet: the full white of the text was too strong (owner, 23/11/2026). */
   --filter-mascot-picked: drop-shadow(2px 0 0 var(--color-raised))
     drop-shadow(-2px 0 0 var(--color-raised)) drop-shadow(0 2px 0 var(--color-raised))
-    drop-shadow(0 -2px 0 var(--color-raised)) drop-shadow(1.5px 0 0 var(--color-text))
-    drop-shadow(-1.5px 0 0 var(--color-text)) drop-shadow(0 1.5px 0 var(--color-text))
-    drop-shadow(0 -1.5px 0 var(--color-text));
+    drop-shadow(0 -2px 0 var(--color-raised)) drop-shadow(1px 0 0 var(--color-picked-ring))
+    drop-shadow(-1px 0 0 var(--color-picked-ring)) drop-shadow(0 1px 0 var(--color-picked-ring))
+    drop-shadow(0 -1px 0 var(--color-picked-ring));
   --menu-gap: 6px; /* between a menu button and its menu */
   --duration-fast: 120ms;
   --duration-base: 200ms;
+  /* The bot's live avatar leaving the chat when its answer arrives: a little longer than the
+     base, so the face of "done" is seen while the row fades and closes (docs/DESIGN.md §3). */
+  --duration-leave: 420ms;
 }
 
 :root[data-theme="light"] {
@@ -203,6 +257,7 @@
   --color-sidebar-active: #e0e0de;
   --color-border: rgba(0, 0, 0, 0.08);
   --color-border-strong: rgba(0, 0, 0, 0.16);
+  --color-picked-ring: rgba(0, 0, 0, 0.4);
   --color-text: #161616;
   --color-text-muted: #6b6b6b;
   --color-text-inverse: #ffffff;
@@ -220,6 +275,7 @@
   :root {
     --duration-fast: 0ms;
     --duration-base: 0ms;
+    --duration-leave: 0ms;
   }
 }
 
@@ -236,4 +292,5 @@
 :root[data-motion="reduce"] {
   --duration-fast: 0ms;
   --duration-base: 0ms;
+  --duration-leave: 0ms;
 }

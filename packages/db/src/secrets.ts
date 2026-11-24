@@ -16,6 +16,8 @@ export interface SecretMeta {
   createdAt: Date;
   updatedAt: Date;
   lastUsedAt: Date | null;
+  /** The connector that keeps this secret (its OAuth login), or null for the owner's own. */
+  managedBy: string | null;
 }
 
 /** A stored secret with its ciphertext, for the one module that can decrypt it. */
@@ -38,6 +40,7 @@ interface MetaRow {
   created_at: Date;
   updated_at: Date;
   last_used_at: Date | null;
+  managed_by: string | null;
 }
 
 function mapMeta(row: MetaRow): SecretMeta {
@@ -50,6 +53,7 @@ function mapMeta(row: MetaRow): SecretMeta {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     lastUsedAt: row.last_used_at,
+    managedBy: row.managed_by,
   };
 }
 
@@ -62,6 +66,16 @@ export class SecretNotFoundError extends Error {
   }
 }
 
+/** The secret belongs to a connector's login: the owner's vault cannot touch it. */
+export class SecretManagedError extends Error {
+  override readonly name = "SecretManagedError";
+  constructor(readonly secretName: string) {
+    super(
+      `O segredo ${secretName} é o login de um conector: o Suup cuida dele, e ele não pode ser editado nem concedido a um bot.`,
+    );
+  }
+}
+
 export interface PutSecretInput {
   name: string;
   /** Omitted: keeps the description of an existing secret (empty for a new one). */
@@ -69,10 +83,12 @@ export interface PutSecretInput {
   nonce: Buffer;
   ciphertext: Buffer;
   keyId: string;
+  /** Set only by the connector that keeps the secret (its exact name). */
+  managedBy?: string | undefined;
 }
 
 const META = (db: Db) => db.sql`
-  select s.id, s.name, s.description, s.key_id, s.created_at, s.updated_at, s.last_used_at,
+  select s.id, s.name, s.description, s.key_id, s.created_at, s.updated_at, s.last_used_at, s.managed_by,
          (select coalesce(array_agg(g.bot_id::text order by g.granted_at), '{}')
             from secret_grants g where g.secret_id = s.id) as granted
   from secrets s`;
@@ -80,14 +96,19 @@ const META = (db: Db) => db.sql`
 /** Creates the secret, or replaces its value (grants are kept). Returns the metadata. */
 export async function putSecret(db: Db, input: PutSecretInput): Promise<SecretMeta> {
   const name = nameSchema.parse(input.name);
-  await db.sql`
-    insert into secrets (name, description, nonce, ciphertext, key_id)
-    values (${name}, ${input.description ?? ""}, ${input.nonce}, ${input.ciphertext}, ${input.keyId})
+  const managedBy = input.managedBy ?? null;
+  const rows = await db.sql`
+    insert into secrets (name, description, nonce, ciphertext, key_id, managed_by)
+    values (${name}, ${input.description ?? ""}, ${input.nonce}, ${input.ciphertext}, ${input.keyId}, ${managedBy})
     on conflict (name) do update set
       nonce = excluded.nonce,
       ciphertext = excluded.ciphertext,
       key_id = excluded.key_id,
-      description = case when ${input.description !== undefined} then excluded.description else secrets.description end`;
+      description = case when ${input.description !== undefined} then excluded.description else secrets.description end
+    where secrets.managed_by is not distinct from excluded.managed_by
+    returning id`;
+  // A name kept by a connector is never overwritten by the owner (and the reverse).
+  if (rows.length === 0) throw new SecretManagedError(name);
   const meta = await getSecretMeta(db, name);
   if (meta === null) throw new Error("secret vanished after insert");
   return meta;
@@ -98,13 +119,28 @@ export async function getSecretMeta(db: Db, name: string): Promise<SecretMeta | 
   return row === undefined ? null : mapMeta(row);
 }
 
-export async function listSecrets(db: Db): Promise<SecretMeta[]> {
-  const rows = await db.sql<MetaRow[]>`${META(db)} order by s.name`;
+/** The owner's secrets. The ones a connector keeps (its login) are left out unless asked for. */
+export async function listSecrets(
+  db: Db,
+  options: { includeManaged?: boolean } = {},
+): Promise<SecretMeta[]> {
+  const rows = await db.sql<MetaRow[]>`${META(db)}
+    where ${options.includeManaged === true} or s.managed_by is null order by s.name`;
   return rows.map(mapMeta);
 }
 
-export async function deleteSecret(db: Db, name: string): Promise<boolean> {
-  const rows = await db.sql`delete from secrets where name = ${name} returning id`;
+/**
+ * Deletes a secret. Without `managedBy` only the owner's own secrets go; with it, only the ones
+ * that connector keeps (exact name).
+ */
+export async function deleteSecret(
+  db: Db,
+  name: string,
+  managedBy: string | null = null,
+): Promise<boolean> {
+  const rows = await db.sql`
+    delete from secrets where name = ${name} and managed_by is not distinct from ${managedBy}
+    returning id`;
   return rows.length > 0;
 }
 
@@ -140,7 +176,7 @@ export async function listSecretRowsForBot(db: Db, botId: string): Promise<Secre
   const rows = await db.sql<CipherRow[]>`
     select s.id, s.name, s.description, s.nonce, s.ciphertext, s.key_id, s.updated_at
     from secrets s join secret_grants g on g.secret_id = s.id
-    where g.bot_id = ${botId} order by s.name`;
+    where g.bot_id = ${botId} and s.managed_by is null order by s.name`;
   return rows.map(toRow);
 }
 
@@ -153,7 +189,7 @@ export async function getSecretRowForBot(
   const [row] = await db.sql<CipherRow[]>`
     select s.id, s.name, s.description, s.nonce, s.ciphertext, s.key_id, s.updated_at
     from secrets s join secret_grants g on g.secret_id = s.id
-    where g.bot_id = ${botId} and s.name = ${name}`;
+    where g.bot_id = ${botId} and s.name = ${name} and s.managed_by is null`;
   return row === undefined ? null : toRow(row);
 }
 
@@ -190,10 +226,12 @@ export async function markSecretUsed(db: Db, name: string): Promise<void> {
 export async function grantSecret(db: Db, name: string, botId: string): Promise<void> {
   const rows = await db.sql`
     insert into secret_grants (secret_id, bot_id)
-    select id, ${z.uuid().parse(botId)} from secrets where name = ${name}
+    select id, ${z.uuid().parse(botId)} from secrets where name = ${name} and managed_by is null
     on conflict do nothing returning secret_id`;
-  if (rows.length === 0 && (await getSecretMeta(db, name)) === null) {
-    throw new SecretNotFoundError(name);
+  if (rows.length === 0) {
+    const meta = await getSecretMeta(db, name);
+    if (meta === null) throw new SecretNotFoundError(name);
+    if (meta.managedBy !== null) throw new SecretManagedError(name);
   }
 }
 
@@ -214,5 +252,5 @@ export async function listSecretInfoForBot(
   return db.sql<{ name: string; description: string }[]>`
     select s.name, s.description
     from secrets s join secret_grants g on g.secret_id = s.id
-    where g.bot_id = ${botId} order by s.name`;
+    where g.bot_id = ${botId} and s.managed_by is null order by s.name`;
 }

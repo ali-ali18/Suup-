@@ -600,12 +600,18 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup, end to end"), { timeout: 30_00
     expect(json.failure?.detail).toContain("SUUP_TEST_MISSING_KEY");
   });
 
-  it("a limit failure keeps its origin too", async () => {
+  it("the step limit no longer fails the run: it stops and asks whether to go on", async () => {
     await p.script("roteiro.json", {
-      agent: [
-        { calls: [{ name: "shell", args: { command: "echo 1" } }] },
-        { calls: [{ name: "shell", args: { command: "echo 2" } }] },
-        { text: "nunca chega" },
+      agent: [1, 2, 3, 4, 5].map(() => ({
+        calls: [{ name: "shell", args: { command: "echo 1" } }],
+      })),
+      // The same cheap model that reviews gives the second opinion near the limit.
+      progress: [
+        {
+          calls: [
+            { name: "progress_verdict", args: { verdict: "incerto", reason: "sem certeza" } },
+          ],
+        },
       ],
     });
     await p.suup([
@@ -619,11 +625,13 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup, end to end"), { timeout: 30_00
       "--max-turns",
       "2",
     ]);
-    const r = await p.suup(["run", "Dois turnos só", "--bot", "curto"]);
-    expect(r.code).toBe(1);
+    const r = await p.suup(["run", "Repete tudo", "--bot", "curto"]);
+    expect(r.code, r.stdout + r.stderr).toBe(0);
+    expect(r.stdout).toContain("Continuar");
+    expect(r.stdout).toContain("Esta tarefa está levando mais tempo do que o normal.");
+    expect(r.stdout).toContain("o juiz diz: incerto (sem certeza)");
     const shown = (await p.suup(["show", idOf(r)])).stdout;
-    expect(shown).toContain("ORIGEM: LIMIT");
-    expect(shown).toContain("turn limit reached");
+    expect(shown).not.toContain("ORIGEM: LIMIT");
   });
 
   it("an archived bot cannot start runs, and disappears from the default list", async () => {
@@ -653,7 +661,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup, end to end"), { timeout: 30_00
     const failed = JSON.parse(
       (await p.suup(["runs", "--status", "failed", "--json"])).stdout,
     ) as typeof all;
-    expect(failed.length).toBe(2);
+    expect(failed.length).toBe(1);
     expect(new Set(failed.map((r) => r.status))).toEqual(new Set(["failed"]));
 
     const cancelled = JSON.parse(

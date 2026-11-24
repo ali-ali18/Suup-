@@ -66,7 +66,7 @@ export async function openWithBot(page: Page, world: World, name: string): Promi
   await selectBot(page, name);
 }
 
-export type SettingsSection = "Geral" | "Permissões" | "Memória" | "Cofre" | "Conectores";
+export type SettingsSection = "Geral" | "Permissões" | "Memória" | "Busca" | "Cofre" | "Conectores";
 
 /** Opens the settings dialog on a section (from the owner menu, as a person would). */
 export async function openSettings(page: Page, section: SettingsSection): Promise<void> {
@@ -77,16 +77,26 @@ export async function openSettings(page: Page, section: SettingsSection): Promis
   await expect(page.getByRole("tab", { name: section })).toHaveAttribute("aria-selected", "true");
 }
 
-/** Closes the settings dialog with Escape (twice from a connector's details); the focus goes back to where it was. */
+/** Closes the settings dialog with Escape; the focus goes back to where it was. */
 export async function closeSettings(page: Page): Promise<void> {
-  // Inside a connector's details the first Escape only goes back to the list; the second closes.
-  const inDetails = (await page.getByTestId("connector-panel").count()) > 0;
   await page.keyboard.press("Escape");
-  if (inDetails) {
-    await expect(page.getByTestId("connector-panel")).toHaveCount(0);
-    await page.keyboard.press("Escape");
-  }
   await expect(page.getByTestId("settings-screen")).toHaveCount(0);
+}
+
+/**
+ * Opens the page of an installed plugin, as a person does: Configurações > Conectores (the
+ * "Instalado" list), then its row. Everything about a connector (switch, test, bots, tools, risks,
+ * removing) is on that page, in the Conectores screen; Settings closes.
+ */
+export async function openPluginPage(page: Page, plugin: string): Promise<Locator> {
+  await openSettings(page, "Conectores");
+  const row = page.locator(`[data-testid="installed-item"][data-plugin="${plugin}"]`);
+  await expect(row).toBeVisible();
+  await row.locator("button").first().click();
+  await expect(page.getByTestId("settings-screen")).toHaveCount(0);
+  const connector = page.getByTestId("connector-page");
+  await expect(connector).toBeVisible();
+  return connector;
 }
 
 /** Chooses an option of one of the app's dropdowns (never a native select): open it, click the option. */

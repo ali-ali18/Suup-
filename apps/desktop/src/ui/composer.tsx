@@ -22,6 +22,8 @@ export interface ComposerProps {
   /** Shown just above the field: what the draft is bound to (a routine), with its remove. */
   attachment?: ReactNode;
   autoFocus?: boolean;
+  /** Each new value moves the focus into the field (the X of a question: "answer in the chat"). */
+  focusRequest?: number;
 }
 
 const MAX_HEIGHT = 200;
@@ -43,6 +45,7 @@ export function Composer({
   onTextChange,
   attachment,
   autoFocus,
+  focusRequest,
 }: ComposerProps) {
   const [text, setText] = useState("");
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -52,6 +55,10 @@ export function Composer({
   useEffect(() => {
     if (autoFocus === true && disabled !== true) focusOnAppearance(ref.current);
   }, []);
+
+  useEffect(() => {
+    if (focusRequest !== undefined && focusRequest > 0) focusOnAppearance(ref.current);
+  }, [focusRequest]);
 
   useEffect(() => {
     if (restore !== undefined) setText((current) => (current === "" ? restore.text : current));

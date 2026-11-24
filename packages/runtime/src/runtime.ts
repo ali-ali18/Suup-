@@ -15,6 +15,8 @@ import {
   type Executor,
   type LoopDeps,
   type NativeToolSearch,
+  type OutgoingFile,
+  type ProgressJudge,
   type Provider,
   ProviderError,
   planToolSearch,
@@ -27,6 +29,7 @@ import {
   type ToolSearchMode,
   type ToolSearchSetup,
   toolDefinitionStats,
+  type WatchdogConfig,
   Worker,
 } from "@suup/core";
 import {
@@ -42,6 +45,7 @@ import {
   getMemorySettings,
   getRun,
   getUserSettings,
+  insertFile,
   listBots,
   listConnectorsForBot,
   PgRunQueue,
@@ -51,6 +55,7 @@ import {
   wakeDueRuns,
   writtenRulesForBot,
 } from "@suup/db";
+import { createDocumentMaker } from "@suup/documents";
 import { createProvider, type ProviderConfig } from "@suup/providers";
 import {
   ContainerStdioLauncher,
@@ -64,7 +69,13 @@ import {
   NetworkedExecutor,
   startEgressContainer,
 } from "@suup/sandbox";
-import { networkTools, registerBuiltinTools, requestNetworkAccessTool } from "@suup/tools";
+import {
+  createDocumentTool,
+  networkTools,
+  registerBuiltinTools,
+  requestNetworkAccessTool,
+  sendFileTool,
+} from "@suup/tools";
 import {
   configuredTimeZone,
   DEFAULT_CONNECTOR_IMAGE,
@@ -76,7 +87,13 @@ import {
   type RuntimeConfig,
   resolveDatabaseUrl,
 } from "./config.js";
-import { PROPOSE_CONNECTOR_TOOL, proposeConnectorTool } from "./connectors/propose-tool.js";
+import {
+  installedCatalogIds,
+  PROPOSE_CONNECTOR_TOOL,
+  proposeConnectorTool,
+  SHOW_CONNECT_CARD_TOOL,
+  showConnectCardTool,
+} from "./connectors/propose-tool.js";
 import {
   type BotConnectorCandidate,
   type ConnectorService,
@@ -93,6 +110,7 @@ import { createMemoryService } from "./memory-service.js";
 import { createNetworkService, type NetworkService } from "./network/service.js";
 import { PROPOSE_TEAM_TOOL, proposeTeamTool } from "./reception.js";
 import {
+  createReminderTool,
   createRoutineTool,
   deleteRoutineTool,
   listRoutinesTool,
@@ -107,6 +125,7 @@ import {
 import { DEFAULT_HISTORY_CHARS, loadRunContext } from "./run-context.js";
 import { applyStatusEffects, finishRun } from "./run-end.js";
 import { createScriptedProvider } from "./scripted-provider.js";
+import { FILE_TOOL_NAMES, withSendFileTool } from "./send-file.js";
 import {
   delegateTool,
   type ReviewOutcome,
@@ -117,6 +136,8 @@ import {
 } from "./supervisor.js";
 import { createVault, DEFAULT_VAULT_KEY_ENV, type Vault } from "./vault/service.js";
 import { dbSearchCache } from "./web/search-cache.js";
+import { createSearchKeys } from "./web/search-keys.js";
+import { dbSearchUsage } from "./web/search-usage.js";
 import { createWebWiring, type WebWiring } from "./web/wiring.js";
 
 type Env = Record<string, string | undefined>;
@@ -187,6 +208,12 @@ export interface BuildDepsOptions {
    * never what a real user once told the system. Default: what the run says (`runs.isolated`).
    */
   isolated?: boolean;
+  /**
+   * An isolated run still keeps the files it hands over (`send_file`, `create_document`) in the
+   * `files` table, so an evaluation can open what was delivered. Memory stays off. Has no effect on
+   * a run that is not isolated (it always keeps them).
+   */
+  deliverFiles?: boolean;
 }
 
 export interface Runtime {
@@ -237,6 +264,12 @@ export interface Runtime {
   sandboxRoot(): Promise<Executor>;
   botConfig(bot: Bot): BotConfig;
   reviewerConfig(): ReviewerConfig | undefined;
+  /**
+   * The progress watchdog of a run (docs/VIGIA.md): the settings of `defaults.watchdog` and the
+   * cheap judge model (`defaults.watchdog.judge.model`, else the auto-review model). A run nobody
+   * answers (an evaluation) gets it off: it fails at its limits, as before.
+   */
+  watchdogConfig(options?: { isolated?: boolean }): Partial<WatchdogConfig>;
   /**
    * What "Auto-review" has to work with: the model that reviews calls and whether its provider can
    * be used now. When it cannot, the mode still exists and falls back to the table of risk levels
@@ -289,6 +322,13 @@ export interface Runtime {
   routinesOnce(options?: { now?: Date; log?: (message: string) => void }): Promise<FiredRoutine[]>;
   /** The web (search and reading): starts its services if needed and says what is running. */
   webStatus(): ReturnType<WebWiring["status"]>;
+  /** The general search engines of the queue and where each stands (Settings, `GET /v1/web-search`). */
+  webSearchProviders(): ReturnType<WebWiring["searchProviders"]>;
+  /**
+   * Leaves out of web search the engines whose terms forbid using their results to evaluate AI
+   * (Brave). `runEval` calls it before anything runs; it applies to this runtime from then on.
+   */
+  restrictWebForEvaluation(): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -366,6 +406,8 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
   const newRegistry = (): ToolRegistry => {
     const registry = registerBuiltinTools(new ToolRegistry(registryOptions));
     if (config.sandbox.kind === "docker") for (const tool of networkTools) registry.register(tool);
+    registry.register(sendFileTool);
+    registry.register(createDocumentTool);
     return registry;
   };
   const tools = newRegistry();
@@ -402,6 +444,19 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     ...(options.log === undefined ? {} : { log: options.log }),
     // Identical searches are answered from the database: it outlives a restart and is shared.
     searchCache: dbSearchCache(() => runtime.db),
+    // The keys of the general engines: the environment variable of the configuration, then the vault.
+    searchKeys: createSearchKeys({
+      env,
+      vault,
+      settings: (id) =>
+        id === "tavily"
+          ? config.web?.search?.general?.tavily
+          : id === "brave"
+            ? config.web?.search?.general?.brave
+            : undefined,
+    }),
+    // How many searches each general engine answered this month (a count, never the query).
+    searchUsage: dbSearchUsage(() => runtime.db),
   });
   let egressStarted: Promise<EgressRuntime> | undefined;
   /** The internal network and the proxy: made once, at the first use of the docker sandbox. */
@@ -639,6 +694,32 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     };
   };
 
+  const watchdogConfig = (options: { isolated?: boolean } = {}): Partial<WatchdogConfig> => {
+    const settings = config.defaults?.watchdog;
+    if (options.isolated === true) return { enabled: false };
+    const { judge, ...rest } = settings ?? {};
+    const judgeId = judge?.model ?? autoReviewModelId;
+    let judged: ProgressJudge | undefined;
+    if (judge?.enabled !== false && judgeId !== undefined) {
+      const { model } = resolveModel(judgeId);
+      // Without a key the judge is simply not there: the structural signals decide alone.
+      if (keyStatus(model.provider).ok) {
+        judged = {
+          provider: getProvider(model.provider),
+          model: {
+            id: model.id,
+            maxOutputTokens: Math.min(model.maxOutputTokens, 1024),
+            ...(model.pricing === undefined ? {} : { pricing: model.pricing }),
+            ...(model.supportsForcedToolChoice === undefined
+              ? {}
+              : { supportsForcedToolChoice: model.supportsForcedToolChoice }),
+          },
+        };
+      }
+    }
+    return { ...rest, ...(judged === undefined ? {} : { judge: judged }) };
+  };
+
   /** The model "Auto-review" asks: `approvals.autoReview.model`, else the model of `reviewer`. */
   const autoReviewModelId = config.approvals?.autoReview?.model ?? config.reviewer?.model;
   const autoReviewStatus = (): AutoReviewStatus => {
@@ -828,7 +909,9 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
   const routineToolsFor =
     (handle: Db): ((registry: ToolRegistry) => void) =>
     (registry) => {
-      registry.register(createRoutineTool(handle, async () => (await userTimeZone()).timeZone));
+      const zone = async () => (await userTimeZone()).timeZone;
+      registry.register(createRoutineTool(handle, zone));
+      registry.register(createReminderTool(handle, zone));
       registry.register(updateRoutineTool(handle));
       registry.register(deleteRoutineTool(handle));
       registry.register(listRoutinesTool(handle));
@@ -882,7 +965,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
         botCfg = { ...cfg, allowedTools: [...cfg.allowedTools, ...names] };
         toolSearch = toolSearchSetup(offered.candidates, bot.modelId);
       }
-      botCfg = withNetworkTool(botCfg);
+      botCfg = withSendFileTool(withNetworkTool(botCfg));
       connectorNames = [
         ...new Set((await listConnectorsForBot(handle, bot.id)).map((c) => c.name)),
       ];
@@ -916,11 +999,29 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     if (guarded && run.origin === "user") {
       if (runTools === tools) runTools = copyOfBase();
       routineToolsFor(handle)(runTools);
-      runTools.register(proposeConnectorTool(() => connectors.gallery));
+      runTools.register(
+        proposeConnectorTool(
+          () => connectors.gallery,
+          await installedCatalogIds(connectors.gallery),
+        ),
+      );
+      runTools.register(showConnectCardTool(() => connectors.gallery));
       botCfg = {
         ...botCfg,
-        allowedTools: [...botCfg.allowedTools, ...ROUTINE_TOOL_NAMES, PROPOSE_CONNECTOR_TOOL],
+        allowedTools: [
+          ...botCfg.allowedTools,
+          ...ROUTINE_TOOL_NAMES,
+          PROPOSE_CONNECTOR_TOOL,
+          SHOW_CONNECT_CARD_TOOL,
+        ],
       };
+    } else if (guarded && run.origin === "delegation") {
+      // A task the Principal handed over ("set up this routine"): the routine belongs to the bot
+      // that does the work, so the bot that receives it must be able to create it. The
+      // approval gate is the same as in a conversation (docs/SUPERVISOR.md, "Delegar rotinas").
+      if (runTools === tools) runTools = copyOfBase();
+      routineToolsFor(handle)(runTools);
+      botCfg = { ...botCfg, allowedTools: [...botCfg.allowedTools, ...ROUTINE_TOOL_NAMES] };
     } else if (guarded && run.origin === "routine") {
       if (runTools === tools) runTools = copyOfBase();
       runTools.register(listRoutinesTool(handle));
@@ -954,6 +1055,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
       executor,
       bot: botCfg,
       ...(reviewer === undefined ? {} : { reviewer }),
+      watchdog: watchdogConfig({ isolated }),
       // Uma execução isolada (uma avaliação) roda sem ninguém para responder e numa máquina
       // descartável: nenhum cartão poderia ser respondido, então ela sai da política pelo nome. Toda
       // outra execução passa pelo portão.
@@ -990,7 +1092,9 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
               // The bot's routines, in a run that may create them: a new run knows what an
               // earlier one set up (the history is text only, without the tool calls behind it).
               const ownRoutines =
-                run.origin === "user" ? await ownRoutinesFor(handle, bot.id) : undefined;
+                run.origin === "user" || run.origin === "delegation"
+                  ? await ownRoutinesFor(handle, bot.id)
+                  : undefined;
               const withFacts: RunContextSnapshot = {
                 ...snapshot,
                 // Never the server's own zone: unknown is said as unknown (and is UTC).
@@ -1046,6 +1150,27 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
             },
           }),
       webFor: () => web.access,
+      // The files a run sends wait in the database for the run's next message in the chat. An
+      // evaluation (isolated) has no chat: the tool says so.
+      ...(guarded || buildOptions.deliverFiles === true
+        ? {
+            filesFor: (record: { botId: string; id: string }) => ({
+              send: async (file: OutgoingFile, callId: string) => {
+                const { file: stored } = await insertFile(handle, {
+                  botId: record.botId,
+                  runId: record.id,
+                  callId,
+                  name: file.name,
+                  mime: file.mime,
+                  content: file.bytes,
+                });
+                return { id: stored.id };
+              },
+            }),
+            // The documents a run builds carry the bot's name as their author.
+            documentsFor: () => createDocumentMaker({ author: bot.name }),
+          }
+        : {}),
       ...(sandbox.kind === "docker" && guarded
         ? {
             networkFor: (record: { botId: string; id: string }) => ({
@@ -1080,7 +1205,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     async toolReport(botId) {
       const bot = await getBot(runtime.db, botId);
       if (bot === null) throw new RuntimeError("bot_not_found", `Bot ${botId} não encontrado.`);
-      const cfg = withNetworkTool(botConfig(bot));
+      const cfg = withSendFileTool(withNetworkTool(botConfig(bot)));
       const offered = await connectors.toolsForBot(bot.id);
       const reg = newRegistry();
       const connectorNames = new Set<string>();
@@ -1094,12 +1219,19 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
       }
       // What a conversation run of the user is offered besides: the routine tools (docs/ROTINAS.md).
       routineToolsFor(runtime.db)(reg);
-      reg.register(proposeConnectorTool(() => connectors.gallery));
+      reg.register(
+        proposeConnectorTool(
+          () => connectors.gallery,
+          await installedCatalogIds(connectors.gallery),
+        ),
+      );
+      reg.register(showConnectCardTool(() => connectors.gallery));
       const control = new Set<string>(CONTROL_TOOL_NAMES);
       const specs = reg.specs([
         ...cfg.allowedTools,
         ...ROUTINE_TOOL_NAMES,
         PROPOSE_CONNECTOR_TOOL,
+        SHOW_CONNECT_CARD_TOOL,
         ...connectorNames,
       ]);
       const builtin = specs.filter((s) => !connectorNames.has(s.name) && !control.has(s.name));
@@ -1175,6 +1307,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     },
     botConfig,
     reviewerConfig,
+    watchdogConfig,
     autoReviewStatus,
     memoryReviewerStatus,
     async consolidateOnce(opts = {}) {
@@ -1360,6 +1493,8 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
       });
     },
     webStatus: () => web.status(),
+    webSearchProviders: () => web.searchProviders(),
+    restrictWebForEvaluation: () => web.restrictForEvaluation(),
     async close() {
       await web.close();
       await connectors.close();
@@ -1383,7 +1518,6 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
  * `provider`) instead of the whole program refusing to start.
  */
 /** The tools that give a bot files on its machine (the names are declared by the tools). */
-const FILE_TOOL_NAMES = ["read_file", "write_file", "edit_file", "list_files", "search_files"];
 
 function unavailableProvider(id: string, message: string): Provider {
   return {

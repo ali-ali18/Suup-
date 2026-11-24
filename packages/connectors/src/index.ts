@@ -13,6 +13,9 @@ export {
   CONNECTOR_CATALOG,
   catalogEntry,
   catalogToolOverrides,
+  SEARCH_PLUGIN_CATALOG,
+  type SearchPluginEntry,
+  searchPluginOf,
 } from "./catalog.js";
 export { MAX_TOOLS, type RawTool, type StdioLauncher } from "./connection.js";
 export { ConnectorError, type ConnectorErrorKind } from "./errors.js";

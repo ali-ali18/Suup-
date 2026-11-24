@@ -46,6 +46,14 @@ export class MemoryExecutor implements Executor {
     return content;
   }
 
+  async readFileBytes(path: string, maxBytes: number): Promise<Uint8Array> {
+    const bytes = new TextEncoder().encode(await this.readFile(path));
+    if (bytes.length > maxBytes) {
+      throw new Error(`file too large (${bytes.length} bytes, limit ${maxBytes} bytes): ${path}`);
+    }
+    return bytes;
+  }
+
   async writeFile(path: string, content: string): Promise<void> {
     const abs = resolveWorkspacePath(ROOT, path);
     if (this.failWrites) throw new Error("ENOSPC: simulated write failure");

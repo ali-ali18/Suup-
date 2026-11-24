@@ -5,43 +5,13 @@
 //    first moment it may go, as long as that is no more than `maxWaitMs`; past that it is refused
 //    with "try again in X s", never retried in a loop. A search that finds one engine over its own
 //    limit but others free goes on without that engine and says so.
-//  - When an engine answers with a captcha, "too many requests" or "access denied", the search
-//    service suspends it for a fixed time. The reason text is the one SearXNG itself writes
-//    (`searx/webutils.py`), compared by EXACT equality with the known ones; any other text has no
-//    known window and is only passed on. Until the window ends Suup does not ask that engine again.
+//  - When an engine answers with a refusal that says for how long to leave it alone (too many
+//    requests, no credits left, a key that is not accepted, a `backoff`), the engine is suspended for
+//    that time. The window comes from the engine's own module (`windowSeconds`), never from a text.
+//    Until the window ends Suup does not ask that engine again.
 import { engineById } from "./engines.js";
 
 const WINDOW_MS = 60_000;
-
-/** How long the search service suspends an engine after each kind of refusal (`search.suspended_times`, SearXNG 2026.3.25). */
-export const SUSPENSION_SECONDS: Readonly<Record<string, number>> = {
-  CAPTCHA: 3600,
-  "too many requests": 180,
-  "access denied": 180,
-};
-
-/** The prefix SearXNG puts before the reason of an engine it skipped because it is suspended. */
-const SUSPENDED_MARK = "Suspended";
-
-export interface ParsedReason {
-  /** SearXNG already had the engine suspended (it did not even ask it). */
-  suspendedBefore: boolean;
-  /** The reason without the prefix, as SearXNG wrote it. */
-  kind: string;
-  /** The known suspension window, in seconds. */
-  windowSeconds?: number;
-}
-
-/** Reads the reason SearXNG gave for an engine that did not answer. Exact comparison with the known texts. */
-export function parseReason(text: string): ParsedReason {
-  const colon = text.indexOf(": ");
-  const suspendedBefore = colon !== -1 && text.slice(0, colon) === SUSPENDED_MARK;
-  const kind = suspendedBefore ? text.slice(colon + 2) : text;
-  const windowSeconds = Object.hasOwn(SUSPENSION_SECONDS, kind)
-    ? SUSPENSION_SECONDS[kind]
-    : undefined;
-  return { suspendedBefore, kind, ...(windowSeconds === undefined ? {} : { windowSeconds }) };
-}
 
 export interface SearchLimits {
   /** Searches in any 60 seconds, overall. Default 20. */
@@ -82,7 +52,7 @@ export class SearchGovernor {
   readonly #sleep: (ms: number) => Promise<void>;
   readonly #overall: number[] = [];
   readonly #perEngine = new Map<string, number[]>();
-  readonly #until = new Map<string, { at: number; reason: string }>();
+  readonly #until = new Map<string, { at: number; reason: string; kind?: string }>();
   /** Searches go through here one at a time, in order. */
   #tail: Promise<unknown> = Promise.resolve();
 
@@ -97,9 +67,9 @@ export class SearchGovernor {
   }
 
   /** The engines Suup knows to be suspended right now, with when each may answer again. */
-  suspended(): Map<string, { retryInSeconds: number; reason: string }> {
+  suspended(): Map<string, { retryInSeconds: number; reason: string; kind?: string }> {
     const now = this.#now();
-    const out = new Map<string, { retryInSeconds: number; reason: string }>();
+    const out = new Map<string, { retryInSeconds: number; reason: string; kind?: string }>();
     for (const [engine, entry] of this.#until) {
       if (entry.at <= now) {
         this.#until.delete(engine);
@@ -107,6 +77,7 @@ export class SearchGovernor {
         out.set(engine, {
           retryInSeconds: Math.ceil((entry.at - now) / 1000),
           reason: entry.reason,
+          ...(entry.kind === undefined ? {} : { kind: entry.kind }),
         });
       }
     }
@@ -114,33 +85,28 @@ export class SearchGovernor {
   }
 
   /**
-   * What an answer told us: `unresponsive` are the engines that did not answer, with SearXNG's
-   * reason (or, for an engine Suup asks itself, its own reason and `windowSeconds`); the others of `asked` did, and are forgotten as suspended. Returns each unresponsive
-   * engine's seconds to retry, when a window is known.
+   * What an answer told us: `unresponsive` are the engines that did not answer (or answered and
+   * asked to be left alone), each with its own reason and, when it knows, `windowSeconds`; the
+   * others of `asked` did answer and are forgotten as suspended. Returns each unresponsive engine's
+   * seconds to retry, when a window is known.
    */
   learn(
     asked: readonly string[],
-    unresponsive: readonly { engine: string; reason: string; windowSeconds?: number }[],
+    unresponsive: readonly {
+      engine: string;
+      reason: string;
+      windowSeconds?: number;
+      kind?: string;
+    }[],
   ): Map<string, number> {
     const now = this.#now();
     const retry = new Map<string, number>();
     const failed = new Set(unresponsive.map((u) => u.engine));
     for (const engine of asked) if (!failed.has(engine)) this.#until.delete(engine);
-    for (const { engine, reason, windowSeconds } of unresponsive) {
-      // An engine Suup asks itself says how long (`windowSeconds`); for SearXNG only the text is known.
-      const parsed =
-        windowSeconds === undefined
-          ? parseReason(reason)
-          : { suspendedBefore: false, kind: reason, windowSeconds };
-      if (parsed.windowSeconds === undefined) continue;
-      const known = this.#until.get(engine);
-      // A report that SearXNG had it suspended already is not a new refusal: the window runs from
-      // the first time we saw it (or, when we never did, from now, which is the later bound).
-      const at =
-        parsed.suspendedBefore && known !== undefined && known.at > now
-          ? known.at
-          : now + parsed.windowSeconds * 1000;
-      this.#until.set(engine, { at, reason: parsed.kind });
+    for (const { engine, reason, windowSeconds, kind } of unresponsive) {
+      if (windowSeconds === undefined) continue;
+      const at = now + windowSeconds * 1000;
+      this.#until.set(engine, { at, reason, ...(kind === undefined ? {} : { kind }) });
       retry.set(engine, Math.ceil((at - now) / 1000));
     }
     return retry;

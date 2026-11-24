@@ -1,4 +1,6 @@
 import type { z } from "zod";
+import type { DocumentMaker } from "./documents.js";
+import type { FileSender } from "./files.js";
 import type { OutboundMessage } from "./outbound.js";
 import type { RiskLevel } from "./risk.js";
 import type { WebAccess, WebUrlSource } from "./web.js";
@@ -52,6 +54,12 @@ export interface Executor {
   exec(command: string, opts?: ExecOptions): Promise<ExecResult>;
   /** Reads a UTF-8 text file. Rejects if it does not exist. */
   readFile(path: string): Promise<string>;
+  /**
+   * Reads a file as bytes, with the same workspace checks as `readFile`. Rejects if it does not
+   * exist, is a directory or is larger than `maxBytes`. Optional: a machine without it cannot hand
+   * files over (`send_file` says so).
+   */
+  readFileBytes?(path: string, maxBytes: number): Promise<Uint8Array>;
   /** Writes a UTF-8 text file, creating parent directories and replacing existing content. */
   writeFile(path: string, content: string): Promise<void>;
   /** Lists a directory (non-recursive). Rejects if it is not a directory. */
@@ -225,6 +233,12 @@ export interface ToolContext {
   network?: NetworkAccess;
   /** Present when the runtime wired the web (search and the reader service); see `web.ts`. */
   web?: WebAccess;
+  /** Present when the run can hand files to the user's chat (`send_file`); see `files.ts`. */
+  files?: FileSender;
+  /** Present when the run can build documents (`create_document`); see `documents.ts`. */
+  documents?: DocumentMaker;
+  /** The id of the call being executed (the loop sets it): what makes a tool's effect idempotent. */
+  callId?: string;
   /**
    * The URLs this run has seen (normalized) and where each came from (the user's messages, search
    * results, links of pages read), as the loop derives them from the log. `web_read` uses it to

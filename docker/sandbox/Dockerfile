@@ -33,15 +33,36 @@ RUN --mount=type=secret,id=build_ca,required=false,mode=0444 \
         ca-certificates \
         coreutils \
         curl \
+        file \
         findutils \
+        fonts-liberation2 \
         git \
         jq \
         procps \
         python3 \
+        python3-docx \
+        python3-openpyxl \
+        python3-pip \
+        python3-reportlab \
+        python3-venv \
         ripgrep \
         unzip \
         zip \
     && rm -rf /var/lib/apt/lists/* /etc/apt/apt.conf.d/99-build-ca
+
+# pip (docs/CONFIGURACAO.md, "A máquina dos bots"): the system Python is "externally managed"
+# (PEP 668), so a plain `pip install` would refuse. The bot installs as its own user (~/.local, since
+# the system site-packages is not writable), which cannot break the packages above. The download
+# goes through the egress proxy like every other request (pypi.org and files.pythonhosted.org are in
+# the default list, docs/REDE.md).
+RUN printf '[global]\nbreak-system-packages = true\nuser = true\n' > /etc/pip.conf
+
+# suup_docs: an optional helper for PDF, Word and Excel files (A4, embedded fonts, ABNT, number
+# formats). The fonts above are free (Liberation 2, SIL OFL 1.1) and cover
+# Portuguese in full. The bot may ignore the helper and write its own code; `send_file` checks the
+# file either way (docs/pesquisas/geracao-de-documentos.md).
+COPY suup_docs /opt/suup/python/suup_docs
+ENV PYTHONPATH=/opt/suup/python
 
 # Non-root user. /workspace is where the named volume is mounted; creating it here, owned by
 # the user, makes a fresh volume inherit that ownership.

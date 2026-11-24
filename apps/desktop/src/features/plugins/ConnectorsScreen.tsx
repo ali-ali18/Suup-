@@ -1,12 +1,10 @@
 import type { CatalogItem, CatalogStatus } from "@suup/api";
-import { ArrowRight, ChevronRight, LoaderCircle, Plug, Plus } from "lucide-react";
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useServices } from "../../app/context.js";
+import { ChevronRight, LoaderCircle, Plus } from "lucide-react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { useData, useServices } from "../../app/context.js";
 import { useUi } from "../../app/ui-store.js";
 import { fold } from "../../data/botlist.js";
-import { messageOf } from "../../data/sync.js";
 import { cx } from "../../lib/cx.js";
-import { solidMarkFor } from "../../ui/brand-icons.js";
 import {
   BulletList,
   Dialog,
@@ -16,48 +14,17 @@ import {
   Pill,
   SearchField,
 } from "../../ui/primitives.js";
-import { Screen, ScreenBody, ScreenHead } from "../../ui/screen.js";
+import { Screen, ScreenBody, ScreenHead, ScreenHeader } from "../../ui/screen.js";
 import { SecretDialog } from "../settings/VaultSettings.js";
-import { type Appearance, appearanceOf, type Banner, CATEGORIES, type Tone } from "./appearance.js";
+import { type Appearance, appearanceOf, CATEGORIES } from "./appearance.js";
+import { ConnectorManage } from "./ConnectorManage.js";
+import { EntryIcon, type TILE } from "./EntryIcon.js";
+import { ExamplesBanner } from "./ExamplesBanner.js";
+import { type PluginLook, searchPlugins } from "./installed.js";
+import { ManualPluginPage } from "./ManualPlugin.js";
+import { type SearchEntry, SearchPluginPage, SearchRow } from "./SearchPlugin.js";
 import { type Connect, POLL_MS, useConnect } from "./use-connect.js";
-
-/** The twelve gradients of the banner of a page (the full class names, so Tailwind finds them). */
-const BANNER_BG: Record<Banner, string> = {
-  ink: "from-banner-ink-from to-banner-ink-to",
-  slate: "from-banner-slate-from to-banner-slate-to",
-  navy: "from-banner-navy-from to-banner-navy-to",
-  plum: "from-banner-plum-from to-banner-plum-to",
-  paper: "from-banner-paper-from to-banner-paper-to",
-  sky: "from-banner-sky-from to-banner-sky-to",
-  mint: "from-banner-mint-from to-banner-mint-to",
-  sun: "from-banner-sun-from to-banner-sun-to",
-  coral: "from-banner-coral-from to-banner-coral-to",
-  amber: "from-banner-amber-from to-banner-amber-to",
-  indigo: "from-banner-indigo-from to-banner-indigo-to",
-  lilac: "from-banner-lilac-from to-banner-lilac-to",
-};
-
-/** The three backgrounds of a logo (the full class names, so Tailwind finds them). */
-const TILE_BG: Record<Tone, string> = {
-  neutral: "bg-raised",
-  black: "bg-tile-black",
-  white: "bg-tile-white",
-  solid: "bg-raised",
-};
-
-/** What is drawn without a logo (the plug): the faded text on the grey, white on black, black on white. */
-const PLUG_FG: Record<Tone, string> = {
-  neutral: "text-text-muted",
-  black: "text-tile-white",
-  white: "text-tile-black",
-  solid: "text-text-muted",
-};
-
-/** The rounded square and the logo inside it, per size. */
-const TILE = {
-  sm: { box: "size-avatar-sm rounded-chip ring-2 ring-bg", logo: "size-4" },
-  lg: { box: "size-avatar-lg rounded-row", logo: "size-7" },
-} as const;
+import { usePlugins } from "./use-plugins.js";
 
 /**
  * Where an entry stands, in words (docs/FRONTEND.md, "Galeria de conectores"); the status itself is
@@ -117,51 +84,22 @@ interface Entry {
   look: Appearance;
 }
 
-/**
- * The service's tile, as in the reference the owner gave (23/11/2026). A `solid` brand (its logo is
- * one colour: Linear, Stack Overflow): the brand's OWN primary colour as the background (the `hex`
- * of the package) and its mark in white over it. Any other: the logo in its own colours (an `<img>`
- * of an SVG copied from thesvg, `assets/brand/`) on a neutral background (the project's grey, or the
- * black or white the brand's own icon has). An entry with no look of its own gets the plug.
- */
-function EntryIcon({ entry, size }: { entry: Entry; size: keyof typeof TILE }) {
-  const tile = TILE[size];
-  const id = entry.item.entry.id;
-  const tone = entry.look.tone;
-  const solid = tone === "solid" ? solidMarkFor(id) : undefined;
-  const box = cx(
-    "inline-flex flex-none items-center justify-center border border-border",
-    tile.box,
-  );
-  if (solid !== undefined) {
-    return (
-      <span className={box} style={{ backgroundColor: `#${solid.hex}` }} aria-hidden="true">
-        <svg
-          viewBox="0 0 24 24"
-          fill="currentColor"
-          className={cx("text-tile-white", tile.logo)}
-          data-brand={id}
-        >
-          <title>{entry.item.entry.name}</title>
-          <path d={solid.path} />
-        </svg>
-      </span>
-    );
-  }
+/** The look the tile of a gallery entry is drawn with. */
+const lookOf = (entry: Entry): PluginLook => ({
+  tone: entry.look.tone,
+  logo: entry.look.logo,
+  glyph: "plug",
+});
+
+/** The tile of a gallery entry. */
+function GalleryIcon({ entry, size }: { entry: Entry; size: keyof typeof TILE }) {
   return (
-    <span className={cx(box, TILE_BG[tone])} aria-hidden="true">
-      {entry.look.logo === undefined ? (
-        <Plug className={cx(PLUG_FG[tone], tile.logo)} strokeWidth={1.5} />
-      ) : (
-        <img
-          src={entry.look.logo}
-          alt=""
-          draggable={false}
-          data-logo={id}
-          className={cx("flex-none object-contain", tile.logo)}
-        />
-      )}
-    </span>
+    <EntryIcon
+      id={entry.item.entry.id}
+      name={entry.item.entry.name}
+      look={lookOf(entry)}
+      size={size}
+    />
   );
 }
 
@@ -202,7 +140,7 @@ function MyConnectors({ entries, onOpen }: { entries: Entry[]; onOpen(): void })
   return (
     <button
       type="button"
-      className="inline-flex h-control items-center gap-3 rounded-pill border border-border bg-transparent py-1 pr-1.5 pl-3 text-label text-text hover:bg-hover"
+      className="inline-flex h-control items-center gap-3 rounded-pill border border-border bg-transparent py-1 pr-1.5 pl-4 text-label text-text hover:bg-hover"
       data-testid="connectors-mine"
       onClick={onOpen}
     >
@@ -216,7 +154,7 @@ function MyConnectors({ entries, onOpen }: { entries: Entry[]; onOpen(): void })
               data-testid="connectors-mine-icon"
               data-plugin={entry.item.entry.id}
             >
-              <EntryIcon entry={entry} size="sm" />
+              <GalleryIcon entry={entry} size="sm" />
             </span>
           ))}
         </span>
@@ -251,7 +189,7 @@ function Row({
         className="flex min-w-0 flex-1 items-center gap-4 rounded-card border-0 bg-transparent p-3 text-left text-text"
         onClick={onOpen}
       >
-        <EntryIcon entry={entry} size="lg" />
+        <GalleryIcon entry={entry} size="lg" />
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="truncate text-label font-label">{item.entry.name}</span>
           <span className="truncate text-small text-text-muted">{item.entry.description}</span>
@@ -412,6 +350,22 @@ function MainAction({
   );
 }
 
+/** Why the plugin is not working yet, from the status the server declares (plain words). */
+function manageReason(item: CatalogItem): string | undefined {
+  switch (item.status) {
+    case "needs_login":
+      return `Falta entrar com a sua conta do ${item.entry.name}: use o botão do alto da página.`;
+    case "needs_secret":
+      return `Falta guardar o seu token do ${item.entry.name}: use o botão do alto da página.`;
+    case "off":
+      return "O plugin está desligado: ligue para eu ver as ferramentas.";
+    case "error":
+      return `Não deu para falar com o ${item.entry.name} agora. Tente de novo.`;
+    default:
+      return undefined;
+  }
+}
+
 /**
  * The page of one service, in the same screen in place of the list (owner, 23/11/2026), laid out as
  * the reference he gave: the way back ("Conectores > name"), the head (logo, name, where it stands,
@@ -437,9 +391,10 @@ function ConnectorPage({
   /** Whether the browser login can come back to the server (see `loginBlocked`). */
   canLogIn: boolean;
 }) {
-  const openSettings = useUi((s) => s.openSettings);
-  const setSettingsConnector = useUi((s) => s.setSettingsConnector);
   const { item, look } = entry;
+  const connector = useData((s) =>
+    item.connector === null ? undefined : s.connectors[item.connector],
+  );
   const connect = useConnect(item, reload, pollMs);
   const { flow } = connect;
   const name = item.entry.name;
@@ -458,7 +413,7 @@ function ConnectorPage({
 
   return (
     <Screen data-testid="connector-page" data-plugin={item.entry.id}>
-      <header className="flex flex-none flex-col gap-4 px-6 pt-5 pb-3" data-tauri-drag-region>
+      <ScreenHeader>
         <nav aria-label="Caminho" className="flex items-center gap-1 text-small">
           <button
             type="button"
@@ -475,7 +430,7 @@ function ConnectorPage({
         </nav>
         <div className="flex items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-4">
-            <EntryIcon entry={entry} size="lg" />
+            <GalleryIcon entry={entry} size="lg" />
             <div className="flex min-w-0 flex-col gap-0.5">
               <div className="flex items-center gap-3">
                 <h1 className="text-heading font-title">{name}</h1>
@@ -486,39 +441,16 @@ function ConnectorPage({
           </div>
           <MainAction entry={entry} connect={connect} canLogIn={canLogIn} />
         </div>
-      </header>
+      </ScreenHeader>
       <ScreenBody>
-        {look.examples.length > 0 && (
-          <section
-            className={cx(
-              "flex flex-col gap-2 rounded-card bg-linear-to-br p-4",
-              BANNER_BG[look.banner],
-            )}
-            data-banner={look.banner}
-            aria-label="Exemplos do que você poderá pedir"
-            data-testid="connector-examples"
-          >
-            {look.examples.map((text) => (
-              <div
-                key={text}
-                className="flex items-center gap-3 rounded-row bg-surface px-3 py-2.5 text-body"
-              >
-                <span className="inline-flex flex-none items-center gap-1.5 rounded-chip bg-raised px-2 py-0.5 text-small">
-                  {name}
-                </span>
-                <span className="min-w-0 flex-1">{text}</span>
-                <ArrowRight size={16} className="flex-none text-text-muted" aria-hidden="true" />
-              </div>
-            ))}
-          </section>
-        )}
+        <ExamplesBanner name={name} look={look} />
         <Block title="Conexão">
           <div
             className="flex flex-col gap-3 rounded-card bg-raised p-3"
             data-testid="connector-connection"
           >
             <div className="flex items-center gap-3">
-              <EntryIcon entry={entry} size="lg" />
+              <GalleryIcon entry={entry} size="lg" />
               <div className="flex min-w-0 flex-col gap-0.5">
                 <span className="text-label font-label">{name}</span>
                 <ConnectionText item={item} canLogIn={canLogIn} />
@@ -544,25 +476,21 @@ function ConnectorPage({
                 {connect.error}
               </Notice>
             )}
-            {item.connector !== null && (
-              <div className="flex flex-wrap items-center gap-3">
-                <MutedText>
-                  Cada bot só usa o conector com a sua permissão, por ferramenta.
-                </MutedText>
-                <Pill
-                  size="sm"
-                  onClick={() => {
-                    openSettings("connectors");
-                    setSettingsConnector(item.connector);
-                  }}
-                  data-testid="connector-open-settings"
-                >
-                  Escolher os bots que podem usar
-                </Pill>
-              </div>
-            )}
           </div>
         </Block>
+        {item.connector !== null && (
+          <Block title="Gerenciar">
+            {connector === undefined ? (
+              <MutedText as="p">Carregando…</MutedText>
+            ) : (
+              <ConnectorManage
+                connector={connector}
+                reason={manageReason(item)}
+                onRemoved={onBack}
+              />
+            )}
+          </Block>
+        )}
         {item.entry.notes.length > 0 && (
           <Block title="Bom saber">
             <div className="rounded-card bg-raised p-4 text-body">
@@ -624,23 +552,12 @@ function ConnectorPage({
 export function ConnectorsScreen({ pollMs = POLL_MS }: { pollMs?: number } = {}) {
   const { api, mode } = useServices();
   const openSettings = useUi((s) => s.openSettings);
-  const [items, setItems] = useState<CatalogItem[] | null>(null);
+  const chosen = useUi((s) => s.plugin);
+  const openPlugin = useUi((s) => s.openPlugin);
+  const { items, search, loadError, reload, connectorsByName } = usePlugins();
   const [callback, setCallback] = useState<"loopback" | "public" | undefined>(undefined);
-  const [loadError, setLoadError] = useState<string | undefined>(undefined);
   const [query, setQuery] = useState("");
-  const [chosen, setChosen] = useState<{ id: string; autoStart: boolean } | null>(null);
 
-  const reload = useCallback(async () => {
-    try {
-      setItems(await api.connectorCatalog.list());
-      setLoadError(undefined);
-    } catch (e) {
-      setLoadError(messageOf(e));
-    }
-  }, [api]);
-  useEffect(() => {
-    void reload();
-  }, [reload]);
   // Where the browser comes back from a login: the server on this computer always takes it; a VPS
   // only with its public address (docs/CONECTORES.md, "OAuth do MCP").
   useEffect(() => {
@@ -657,17 +574,18 @@ export function ConnectorsScreen({ pollMs = POLL_MS }: { pollMs?: number } = {})
     if (chosen === null) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && document.querySelector('[aria-modal="true"]') === null) {
-        setChosen(null);
+        openPlugin(null);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [chosen]);
+  }, [chosen, openPlugin]);
 
   const entries = useMemo<Entry[]>(
     () => (items ?? []).map((item) => ({ item, look: appearanceOf(item.entry.id) })),
     [items],
   );
+  const engines = useMemo<SearchEntry[]>(() => searchPlugins(search), [search]);
   const q = fold(query.trim());
   const sections = useMemo(
     () =>
@@ -679,23 +597,53 @@ export function ConnectorsScreen({ pollMs = POLL_MS }: { pollMs?: number } = {})
             (q === "" ||
               fold(`${e.item.entry.name} ${e.item.entry.description} ${category}`).includes(q)),
         ),
-      })).filter((s) => s.entries.length > 0),
-    [entries, q],
+        engines: engines.filter(
+          (e) =>
+            e.plugin.category === category &&
+            (q === "" ||
+              fold(`${e.provider.label} ${e.plugin.description} ${category}`).includes(q)),
+        ),
+      })).filter((s) => s.entries.length + s.engines.length > 0),
+    [entries, engines, q],
   );
+  const back = () => openPlugin(null);
 
-  const page = chosen === null ? undefined : entries.find((e) => e.item.entry.id === chosen.id);
-  if (chosen !== null && page !== undefined) {
-    return (
-      <ConnectorPage
-        key={page.item.entry.id}
-        entry={page}
-        onBack={() => setChosen(null)}
-        reload={reload}
-        autoStart={chosen.autoStart}
-        pollMs={pollMs}
-        canLogIn={canLogIn}
-      />
-    );
+  if (chosen !== null) {
+    if (chosen.kind === "catalog") {
+      const page = entries.find((e) => e.item.entry.id === chosen.id);
+      if (page !== undefined) {
+        return (
+          <ConnectorPage
+            key={page.item.entry.id}
+            entry={page}
+            onBack={back}
+            reload={reload}
+            autoStart={chosen.autoStart}
+            pollMs={pollMs}
+            canLogIn={canLogIn}
+          />
+        );
+      }
+    } else if (chosen.kind === "search") {
+      const page = engines.find((e) => e.plugin.id === chosen.id);
+      if (page !== undefined) {
+        return (
+          <SearchPluginPage
+            key={page.plugin.id}
+            entry={page}
+            all={search?.providers ?? []}
+            onBack={back}
+            reload={reload}
+            autoStart={chosen.autoStart}
+          />
+        );
+      }
+    } else {
+      const connector = connectorsByName[chosen.id];
+      if (connector !== undefined) {
+        return <ManualPluginPage key={connector.name} connector={connector} onBack={back} />;
+      }
+    }
   }
   return (
     <Screen data-testid="connectors-screen">
@@ -750,7 +698,7 @@ export function ConnectorsScreen({ pollMs = POLL_MS }: { pollMs?: number } = {})
             }
           />
         )}
-        {sections.map(({ category, entries: list }) => (
+        {sections.map(({ category, entries: list, engines: found }) => (
           <section
             key={category}
             className="flex flex-col gap-2"
@@ -760,7 +708,9 @@ export function ConnectorsScreen({ pollMs = POLL_MS }: { pollMs?: number } = {})
           >
             <h2 className="flex items-baseline gap-2 px-1 text-label font-title">
               {category}
-              <span className="text-small font-normal text-text-muted">{list.length}</span>
+              <span className="text-small font-normal text-text-muted">
+                {list.length + found.length}
+              </span>
             </h2>
             <ul className="m-0 grid list-none grid-cols-2 gap-x-3 gap-y-1 p-0 narrow:grid-cols-1">
               {list.map((entry) => (
@@ -768,14 +718,26 @@ export function ConnectorsScreen({ pollMs = POLL_MS }: { pollMs?: number } = {})
                   key={entry.item.entry.id}
                   entry={entry}
                   canLogIn={canLogIn}
-                  onOpen={() => setChosen({ id: entry.item.entry.id, autoStart: false })}
+                  onOpen={() =>
+                    openPlugin({ kind: "catalog", id: entry.item.entry.id, autoStart: false })
+                  }
                   // An entry with a third-party notice opens its page first: the notice is read
                   // before connecting (docs/FRONTEND.md).
                   onAction={() =>
-                    setChosen({
+                    openPlugin({
+                      kind: "catalog",
                       id: entry.item.entry.id,
                       autoStart: entry.item.entry.disclosure === null,
                     })
+                  }
+                />
+              ))}
+              {found.map((engine) => (
+                <SearchRow
+                  key={engine.plugin.id}
+                  entry={engine}
+                  onOpen={(autoStart) =>
+                    openPlugin({ kind: "search", id: engine.plugin.id, autoStart })
                   }
                 />
               ))}

@@ -36,7 +36,20 @@ import {
   Tag,
   TextField,
 } from "../../ui/primitives.js";
+import { RadioButton, RadioChip, RadioGroup } from "../../ui/radio.js";
 import { BotNetwork } from "./BotNetwork.js";
+
+/**
+ * One cell of the mascot grid (owner, 24/11/2026): no box behind the chosen one or on hover; the
+ * choice is only the discreet outline that follows the mascot's own shape (`picked`), and the hover
+ * a small scale, eased. The cell is a whole column of the grid (6 per row), wider than
+ * the mascot, so the mascots breathe; the mascot keeps its size (`size-11` inside).
+ */
+const MASCOT_CELL =
+  "flex h-14 w-full items-center justify-center border-0 bg-transparent p-0 *:size-11 transition-[scale] duration-(--duration-base) ease-out";
+
+/** The colour a new bot starts with (shapes style; pixel starts with its own drawing's colours). */
+export const DEFAULT_NEW_COLOR: BotColor = "branco";
 
 const COLOR_NAME: Record<BotColor, string> = {
   laranja: "Laranja",
@@ -49,6 +62,9 @@ const COLOR_NAME: Record<BotColor, string> = {
   grafite: "Grafite",
   branco: "Branco",
 };
+
+/** The value of the radio "Original" of the colours (the pixel drawing keeps its own colours). */
+const ORIGINAL = "original";
 
 const STYLES: readonly { id: AvatarStyle; name: string }[] = [
   { id: "shapes", name: "Formas" },
@@ -119,9 +135,13 @@ export function NewBotDialog() {
 
   // Pixel sem cor escolhida: o mascote fica na cor do desenho (`original`) e o tema, na mais parecida.
   const original = style === "pixel" && color === null;
+  // A new bot starts white (owner, 23/11/2026: "a cor padrão é branco"); an old bot without a colour
+  // keeps the one its id gave it.
   const shownColor = original
     ? PIXEL_THEME_COLOR[pixel]
-    : effectiveColor(color, editing?.id ?? "new");
+    : editing === undefined
+      ? (color ?? DEFAULT_NEW_COLOR)
+      : effectiveColor(color, editing.id);
   const chosen = style === "pixel" ? pixel : mascot;
   const nameOk = name.trim() !== "";
   const usable = useMemo(
@@ -216,7 +236,12 @@ export function NewBotDialog() {
     >
       {step === 1 ? (
         <FormStack data-testid="newbot-step-1" style={colorVars(shownColor) as React.CSSProperties}>
-          <div className="flex justify-center" data-testid="newbot-preview" data-color={shownColor}>
+          {/* Room above and below: the preview breathes (it grows a little) and is never cut. */}
+          <div
+            className="flex justify-center py-3"
+            data-testid="newbot-preview"
+            data-color={shownColor}
+          >
             <Avatar
               avatar={mascotValue(chosen)}
               avatarStyle={style}
@@ -236,19 +261,21 @@ export function NewBotDialog() {
             onEnter={() => nameOk && modelId !== "" && void save()}
           />
           <div className="flex justify-center gap-2">
-            <div role="radiogroup" aria-label="Estilo" className="flex gap-2">
+            <RadioGroup
+              label="Estilo"
+              value={style}
+              onValueChange={(next) => {
+                const picked = STYLES.find((s) => s.id === next);
+                if (picked !== undefined) setStyle(picked.id);
+              }}
+              className="flex gap-2"
+            >
               {STYLES.map((s) => (
-                <ToggleChip
-                  key={s.id}
-                  on={style === s.id}
-                  radio
-                  data-testid={`newbot-style-${s.id}`}
-                  onClick={() => setStyle(s.id)}
-                >
+                <RadioChip key={s.id} value={s.id} data-testid={`newbot-style-${s.id}`}>
                   {s.name}
-                </ToggleChip>
+                </RadioChip>
               ))}
-            </div>
+            </RadioGroup>
             {style === "pixel" && (
               <ToggleChip
                 on={pixel3d}
@@ -260,26 +287,29 @@ export function NewBotDialog() {
               </ToggleChip>
             )}
           </div>
-          <div
-            role="radiogroup"
-            aria-label="Mascote"
+          <RadioGroup
+            label="Mascote"
+            value={style === "pixel" ? pixel : mascot}
+            onValueChange={(next) => {
+              if (style === "pixel") {
+                const picked = PIXELS.find((m) => m.id === next);
+                if (picked !== undefined) setPixel(picked.id);
+              } else {
+                const picked = SHAPES.find((m) => m.id === next);
+                if (picked !== undefined) setMascot(picked.id);
+              }
+            }}
             data-testid="newbot-mascots"
             data-style={style}
-            className="flex flex-wrap justify-center gap-2"
+            className="grid grid-cols-6 justify-items-stretch"
           >
             {style === "pixel"
               ? PIXELS.map((m) => (
-                  <button
+                  <RadioButton
                     key={m.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={pixel === m.id}
+                    value={m.id}
                     aria-label={m.name}
-                    className={cx(
-                      "size-14 rounded-card border-[1.5px] border-transparent p-1.5",
-                      pixel === m.id ? "bg-raised" : "bg-transparent hover:bg-hover",
-                    )}
-                    onClick={() => setPixel(m.id)}
+                    className={cx(MASCOT_CELL, pixel === m.id ? "" : "hover:scale-105")}
                   >
                     <PixelMascot
                       character={m.id}
@@ -288,20 +318,14 @@ export function NewBotDialog() {
                       still
                       picked={pixel === m.id}
                     />
-                  </button>
+                  </RadioButton>
                 ))
               : SHAPES.map((m) => (
-                  <button
+                  <RadioButton
                     key={m.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={mascot === m.id}
+                    value={m.id}
                     aria-label={m.name}
-                    className={cx(
-                      "size-14 rounded-card border-[1.5px] border-transparent p-1.5",
-                      mascot === m.id ? "bg-raised" : "bg-transparent hover:bg-hover",
-                    )}
-                    onClick={() => setMascot(m.id)}
+                    className={cx(MASCOT_CELL, mascot === m.id ? "" : "hover:scale-105")}
                   >
                     <Mascot
                       shape={m.id}
@@ -310,49 +334,54 @@ export function NewBotDialog() {
                       still
                       picked={mascot === m.id}
                     />
-                  </button>
+                  </RadioButton>
                 ))}
-          </div>
-          <div role="radiogroup" aria-label="Cor" className="flex flex-wrap justify-center gap-2">
+          </RadioGroup>
+          <RadioGroup
+            label="Cor"
+            value={original ? ORIGINAL : shownColor}
+            onValueChange={(next) => {
+              if (next === ORIGINAL) setColor(null);
+              else {
+                const picked = BOT_COLORS.find((c) => c === next);
+                if (picked !== undefined) setColor(picked);
+              }
+            }}
+            className="flex flex-wrap justify-center gap-2.5"
+          >
             {style === "pixel" && (
-              <button
-                type="button"
-                role="radio"
-                aria-checked={original}
+              <RadioButton
+                value={ORIGINAL}
                 aria-label="Original"
                 title="Original: a cor do desenho"
                 data-testid="newbot-color-original"
                 className={cx(
                   "size-7 rounded-pill border-2",
                   original
-                    ? "border-bg ring-2 ring-text"
+                    ? "border-bg ring-2 ring-picked-ring"
                     : "border-transparent ring-1 ring-border-strong",
                 )}
                 style={{
                   background: `conic-gradient(${BOT_COLORS.map((c) => BOT_PALETTE[c].fill).join(", ")})`,
                 }}
-                onClick={() => setColor(null)}
               />
             )}
             {BOT_COLORS.map((c) => (
-              <button
+              <RadioButton
                 key={c}
-                type="button"
-                role="radio"
-                aria-checked={!original && shownColor === c}
+                value={c}
                 aria-label={COLOR_NAME[c]}
                 title={COLOR_NAME[c]}
                 className={cx(
                   "size-7 rounded-pill border-2",
                   !original && shownColor === c
-                    ? "border-bg ring-2 ring-text"
+                    ? "border-bg ring-2 ring-picked-ring"
                     : "border-transparent ring-1 ring-border-strong",
                 )}
                 style={{ background: BOT_PALETTE[c].fill }}
-                onClick={() => setColor(c)}
               />
             ))}
-          </div>
+          </RadioGroup>
           <button
             type="button"
             className="self-center border-0 bg-transparent px-1.5 py-px text-small leading-inherit text-text-muted underline hover:text-text"
@@ -379,7 +408,7 @@ export function NewBotDialog() {
               variant="field"
               label="Modelo"
               value={modelId}
-              options={usable.map((m) => ({ value: m.id, label: `${m.id} · ${m.provider}` }))}
+              options={usable.map((m) => ({ value: m.id, label: m.name }))}
               onChange={setModelId}
             />
           </FormRow>

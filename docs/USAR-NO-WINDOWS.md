@@ -44,12 +44,25 @@ Como o app cuida disso:
 
 Os bots buscam na web e leem páginas com as mesmas ferramentas do servidor (`web_search` e `web_read`; [BUSCA.md](BUSCA.md)):
 
-- **Sempre, mesmo sem Docker:** a busca na **Wikipédia, no arXiv e no Stack Overflow** (o Suup pergunta direto às APIs oficiais, saindo só para esses endereços) e a **leitura de páginas públicas** dentro do próprio app (sem rodar o JavaScript da página).
-- **Com o Docker Desktop:** também a **busca geral (DuckDuckGo)**, pelo SearXNG num contêiner sem saída própria, e a leitura **com navegador** (para páginas que só aparecem com JavaScript), num contêiner próprio. A saída do SearXNG passa por um segundo proxy em contêiner (`suup-egress-search`), do mesmo jeito que a dos bots: só para os endereços dos motores, controlado pelo app por uma porta publicada só em `127.0.0.1`.
-- **Sem o Docker,** o bot recebe o motivo quando a busca geral ou a leitura com navegador não estão disponíveis ("precisa do Docker"), e pode dizer isso a você.
-- **Na primeira abertura com o Docker,** junto com as imagens dos bots, o app **constrói a imagem do leitor** (parte da imagem do Playwright, com o navegador: **alguns GB** de download) e **baixa a do SearXNG**. Se uma delas falhar, os bots continuam isolados normalmente; só aquela parte da web fica de fora (o motivo vai para os registros).
+- **Sempre, mesmo sem Docker:** a busca na **Wikipédia, no arXiv e no Stack Overflow** (o Suup pergunta direto às APIs oficiais, saindo só para esses endereços), a **busca geral** (uma fila de duas APIs: **Tavily**, depois **Brave Search**, cada uma com a **chave da sua própria conta**) e a **leitura de páginas públicas** dentro do próprio app (sem rodar o JavaScript da página). **A busca não usa Docker nem contêiner.**
+- **A busca geral precisa de uma chave.** Em **Configurações > Busca** cada motor aparece com o estado em palavras ("Pronto", "Sem chave", "Cota do mês usada") e um botão **"Adicionar chave"**, que guarda a chave no cofre do app. Sem nenhuma chave, o bot busca só na Wikipédia, no arXiv e no Stack Overflow e diz que a busca geral não está configurada. Quando um motor fica sem cota, a busca passa sozinha para o próximo.
+- **Com o Docker Desktop:** também a leitura **com navegador** (para páginas que só aparecem com JavaScript), num contêiner próprio.
+- **Sem o Docker,** o bot recebe o motivo quando a leitura com navegador não está disponível ("precisa do Docker"), e pode dizer isso a você.
+- **Na primeira abertura com o Docker,** junto com as imagens dos bots, o app **constrói a imagem do leitor** (parte da imagem do Playwright, com o navegador: **alguns GB** de download). Se falhar, os bots continuam isolados normalmente; só a leitura com navegador fica de fora (o motivo vai para os registros).
 - **"Não consegui acessar o site agora".** Quando o leitor não alcança um site (o nome não resolve, não há rota, o TLS falha, o tempo acaba), o bot recebe que foi um problema de conexão **deste lado**, não o site recusando, e pode tentar de novo em alguns minutos ou usar outra fonte. Antes (até 24/11/2026) isso aparecia como "pt.wikipedia.org could not be asked for its robots.txt", como se o site tivesse se fechado para robôs: o `robots.txt` é o primeiro pedido a um site, então qualquer falha de rede aparecia ali.
-- **"A busca volta em ~60 min".** É o DuckDuckGo: quando ele responde com um captcha, o Suup para de perguntar a ele por uma hora (o tempo do próprio SearXNG; [BUSCA.md](BUSCA.md), "Busca educada"). A Wikipédia, o arXiv e o Stack Overflow continuam respondendo nesse meio-tempo.
+- **"A busca geral está sem cota agora".** Acabaram os créditos do mês dos dois motores da fila (a Tavily dá mil por mês grátis; a Brave, US$ 5 de crédito por mês). O Suup tenta de novo de hora em hora, e a Wikipédia, o arXiv e o Stack Overflow continuam respondendo; para voltar antes, adicione crédito no painel do serviço ou a chave de outro motor.
+
+### O que procurar nos registros quando uma busca dá erro
+
+No mesmo arquivo do dia, procure linhas que começam com `web_search:`. Elas aparecem quando a busca falha ou quando algum buscador não respondeu, e nunca trazem o que foi pesquisado:
+
+```
+web_search: failover tavily (quota) -> brave
+web_search: 3 results; tavily did not answer (Tavily has no credits left (plan or pay-as-you-go limit), retry_in=3600s)
+web_search: unavailable: The search engines could not be started (the proxy did not start).
+```
+
+`failover tavily (quota) -> brave` é a busca geral passando da Tavily (sem créditos) para a Brave, sozinha; só os motores e o tipo de falha aparecem, nunca a busca nem a chave; `did not answer (... retry_in=3600s)` diz por que um motor ficou de lado e quando o Suup o tenta de novo; `unavailable` quer dizer que os motores não puderam ser iniciados (o motivo vai entre parênteses); `rate_limited` é o limite do próprio Suup.
 
 ### O que procurar nos registros quando uma página não abre
 
@@ -88,11 +101,11 @@ Em **Configurações > Conectores** fica a galeria: GitHub, Notion, Linear, Figm
 | Senhas e chaves (banco, token, cofre, Anthropic) | Gerenciador de Credenciais do Windows, entradas `app.suup.desktop` |
 | Escolha de servidor e aparência | `%APPDATA%\app.suup.desktop\` |
 
-Os registros **não** contêm chaves nem o token. **Avançado:** para trocar os modelos ou os limites, crie `config.override.json` na pasta de dados (cada chave de primeiro nível, como `models` ou `defaults`, substitui a gerada; o formato é o de [CONFIGURACAO.md](CONFIGURACAO.md)). O app começa com `claude-sonnet-5-5` (bot principal) e `claude-haiku-5-5` (revisão e memória).
+Os registros **não** contêm chaves nem o token. **Avançado:** para trocar os modelos ou os limites, crie `config.override.json` na pasta de dados (cada chave de primeiro nível, como `models` ou `defaults`, substitui a gerada; o formato é o de [CONFIGURACAO.md](CONFIGURACAO.md)). O app começa com `claude-sonnet-5-5` (bot principal) e `claude-haiku-5-5` (revisão e memória), que aparecem como "Sonnet 5.5" e "Haiku 5.5". Para dar um nome curto a um modelo seu, ponha `"name": "Meu modelo"` no item dele em `models`: é o que o app mostra no lugar do `id`.
 
 ## 6. Desinstalar e fazer backup
 
-- **Desinstalar:** Configurações do Windows > Aplicativos > Suup > Desinstalar. Isso **não apaga** os dados nem as credenciais: apague à mão a pasta `%LOCALAPPDATA%\app.suup.desktop` e as entradas `app.suup.desktop` do Gerenciador de Credenciais se quiser tudo zerado. Se tinha Docker: `docker rm -f suup-machine suup-searxng suup-reader` e `docker volume rm suup-workspace`.
+- **Desinstalar:** Configurações do Windows > Aplicativos > Suup > Desinstalar. Isso **não apaga** os dados nem as credenciais: apague à mão a pasta `%LOCALAPPDATA%\app.suup.desktop` e as entradas `app.suup.desktop` do Gerenciador de Credenciais se quiser tudo zerado. Se tinha Docker: `docker rm -f suup-machine suup-reader` e `docker volume rm suup-workspace`.
 - **Backup:** feche o app (o banco para com calma ao fechar) e copie a pasta `%LOCALAPPDATA%\app.suup.desktop\local\`. **Guarde também as credenciais:** sem a chave do cofre e a senha do banco, uma cópia restaurada em outro computador não abre. Para um backup que abre em qualquer lugar, use o dump do banco ([IMPLANTACAO.md](IMPLANTACAO.md), "Passar do computador para a VPS").
 
 ## 7. Passar para a VPS
@@ -108,7 +121,7 @@ Isso fica **desligado** até o dono gerar a chave de assinatura no computador de
 ## O que foi e o que não foi verificado
 
 - **Provado num Linux (esta entrega):** o banco PostgreSQL embutido sobe e aplica as migrações (27 nesta versão); o servidor e o worker respondem uma conversa; a parada deixa nenhum processo; um comando de bot roda dentro da máquina Docker, e a saída dele sai pelo proxy em contêiner, com o servidor como processo do computador falando com ele só pela porta publicada em `127.0.0.1` (a topologia do Docker Desktop); o app (no navegador, com o Tauri simulado) faz a primeira abertura, a troca e o aviso de isolamento. O Rust compila (`cargo check`).
-- **Provado num Linux (app completo):** com Docker, uma busca do bot sobe o SearXNG e o proxy de motores em contêiner (`suup-egress-search`), com o servidor como processo do computador; o proxy aceita a credencial do SearXNG e só abre os endereços dos motores; o leitor construído pela receita do app (variante sem navegador, por falta de disco) lê e recusa endereços privados. Sem Docker, a busca pelas APIs diretas roda dentro do pacote do app.
+- **Provado num Linux (app completo):** com Docker, o servidor como processo do computador; o leitor construído pela receita do app (variante sem navegador, por falta de disco) lê e recusa endereços privados. A busca (as APIs oficiais, sem Docker) roda dentro do pacote do app.
 - **Só no CI (primeira execução):** o instalador do Windows e o teste do servidor embutido no Windows (que inclui uma busca pelas APIs diretas, sem Docker); a imagem do leitor **com** navegador, construída pela receita do app (`ci.yml`).
-- **Não verificado em nenhum lugar:** a instalação num Windows real, o aviso do SmartScreen, o Docker Desktop em si (a porta publicada em `127.0.0.1`, o firewall e os dois proxies em contêiner, o dos bots e o da busca; o desenho foi provado num Linux, não no Windows), o Credential Manager do Windows, o PostgreSQL rodando como administrador no Windows, o desempenho e o antivírus.
+- **Não verificado em nenhum lugar:** a instalação num Windows real, o aviso do SmartScreen, o Docker Desktop em si (a porta publicada em `127.0.0.1`, o firewall e o proxy em contêiner dos bots; o desenho foi provado num Linux, não no Windows), o Credential Manager do Windows, o PostgreSQL rodando como administrador no Windows, o desempenho e o antivírus.
 - **Linux:** o CI gera só o pacote `.deb`. O AppImage falhou no `linuxdeploy` do CI e fica como trabalho futuro.

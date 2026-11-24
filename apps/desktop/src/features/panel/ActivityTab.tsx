@@ -221,7 +221,7 @@ function ChatModelRow({ botId }: { botId: string }) {
         value={bot.modelId}
         options={
           usable.length > 0
-            ? usable.map((m) => ({ value: m.id, label: `${m.id} · ${m.provider}` }))
+            ? usable.map((m) => ({ value: m.id, label: m.name }))
             : [{ value: bot.modelId, label: bot.modelId }]
         }
         onChange={change}

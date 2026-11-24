@@ -11,6 +11,7 @@ import {
   type ConnectorOAuthConfig,
   type ConnectorSpec,
   type ConnectorToolInfo,
+  catalogEntry,
   connectionOAuthProvider,
   connectorTag,
   type PinnedDefinition,
@@ -258,6 +259,13 @@ function withOverride(
 }
 
 export function specOf(c: StoredConnector): ConnectorSpec {
+  // The gallery's own list of tools never offered applies to a connector installed from it, whatever
+  // was stored (an entry that gained a denied tool after the install is covered too).
+  const denied = c.catalogId === null ? [] : (catalogEntry(c.catalogId)?.deniedTools ?? []);
+  const tools: Record<string, unknown> = { ...c.toolOverrides };
+  for (const name of denied) {
+    tools[name] = { ...(c.toolOverrides[name] as object | undefined), denied: true };
+  }
   return parseConnectorSpec({
     name: c.name,
     transport:
@@ -277,7 +285,7 @@ export function specOf(c: StoredConnector): ConnectorSpec {
             ...(c.oauth === null ? {} : { oauth: c.oauth }),
           },
     scope: c.scope,
-    tools: c.toolOverrides,
+    tools,
     trustAnnotations: c.trustAnnotations,
     ...(c.timeoutMs === null ? {} : { timeoutMs: c.timeoutMs }),
     // Any change to the stored configuration changes `updated_at`: an older connection is dropped.
@@ -597,6 +605,9 @@ export function createConnectorService(options: {
         }),
       );
       await manager.invalidate(name);
+      // Turned on: look at its tools now (the first listing also pins their definitions), so the
+      // app has them to show and a bot can be given them. A failure is kept as the reason shown.
+      if (patch.enabled === true && !current.enabled) void service.test(name).catch(() => {});
       return view(saved);
     },
     async remove(name) {

@@ -135,7 +135,7 @@ function showRequest(ctx: Ctx, view: ModelRequestView): number {
   }
   const out = ctx.out;
   out.line(
-    `Pedido ao modelo: evento ${seq}${purpose === "agent" ? ` (turno ${turn} do agente)` : ` (${purpose === "review" ? "revisor" : "compactação"})`}`,
+    `Pedido ao modelo: evento ${seq}${purpose === "agent" ? ` (turno ${turn} do agente)` : ` (${purpose === "review" ? "revisor" : purpose === "progress" ? "vigia de progresso" : "compactação"})`}`,
   );
   out.line(
     `Provedor: ${req.provider} · Modelo: ${req.model} · Saída máxima: ${formatInt(req.maxOutputTokens)} tokens · Escolha de ferramenta: ${req.toolChoice === undefined ? "auto" : typeof req.toolChoice === "string" ? req.toolChoice : `obrigatória: ${req.toolChoice.name}`}${req.temperature === undefined ? "" : ` · Temperatura: ${req.temperature}`}`,

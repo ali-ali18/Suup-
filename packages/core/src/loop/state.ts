@@ -5,6 +5,7 @@ import type {
   RunStatus,
   ToolCatalog,
 } from "../events.js";
+import { escalatedQuestions } from "../events.js";
 import type { Block, JsonValue, Message, ToolCallBlock } from "../messages.js";
 import type { GenerateResult, StopReason } from "../provider.js";
 import type { WebUrlSource } from "../web.js";
@@ -12,6 +13,7 @@ import { formatDiscrepancies, isControlTool } from "./control-tools.js";
 import { historyMessages } from "./history.js";
 import {
   isReminderBlock,
+  progressContinueNotice,
   type RunPromptContext,
   renderNotice,
   renderReturnNotice,
@@ -20,6 +22,7 @@ import {
   renderUserMessage,
 } from "./prompts.js";
 import type { FailureOrigin, RunResult, StoredEvent } from "./store.js";
+import { createWatchState, reopenWindow, trackCall, type WatchState } from "./watch-state.js";
 
 /** The question as the history keeps it: the text, then the choices that were offered (if any). */
 function withOptions(question: string, questions: readonly EscalateQuestion[] | undefined): string {
@@ -56,7 +59,15 @@ export type Waiting =
   /** A call waits for the user's decision on the approval card. */
   | { kind: "approval"; callId: string; approvalId: string }
   /** The bot asked the user for a credential. */
-  | { kind: "secret"; callId: string; name: string };
+  | { kind: "secret"; callId: string; name: string }
+  /** The watchdog asked the owner to continue or stop (step limit, or a loop). */
+  | {
+      kind: "progress";
+      question: string;
+      questions: EscalateQuestion[];
+      cause: "limit" | "repeat" | "error_loop" | "no_tool" | "alternation";
+      grant: number;
+    };
 
 /** A return the bot asked for (`wait_scheduled`) that has neither fired nor been cancelled. */
 export interface PendingReturn {
@@ -110,9 +121,9 @@ export interface FinishAttemptRecord {
   handedToUser: boolean;
 }
 
-/** The response of a review or compaction call that no event has used yet. */
+/** The response of a review, compaction or progress call that no event has used yet. */
 export interface SideResponse {
-  purpose: "review" | "compaction";
+  purpose: "review" | "compaction" | "progress";
   /** `seq` of the `model_response` event. It is only reusable while it is the latest event. */
   seq: number;
   result: GenerateResult;
@@ -190,6 +201,8 @@ export interface RunState {
   /** Consecutive turns with no tool call other than a rejected finish/escalate. */
   noProgressStreak: number;
   repeat: { signature: string | null; name: string; count: number; nudged: boolean };
+  /** The progress watchdog's memory of the recent calls and of the steps granted (watch-state.ts). */
+  watch: WatchState;
   toolLog: ToolLogEntry[];
   /** Questions to the user, their answers and their messages, in order. Shown to the reviewer. */
   userLog: UserExchange[];
@@ -304,6 +317,7 @@ export function createRunState(): RunState {
     reviewWaived: false,
     noProgressStreak: 0,
     repeat: { signature: null, name: "", count: 0, nudged: false },
+    watch: createWatchState(),
     toolLog: [],
     userLog: [],
     usageAnchor: null,
@@ -418,7 +432,7 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
 
     case "model_response": {
       const purpose = event.payload.purpose;
-      if (purpose === "review" || purpose === "compaction") {
+      if (purpose === "review" || purpose === "compaction" || purpose === "progress") {
         const { blocks, stopReason, usage, modelVersion } = event.payload;
         state.sideResponse = {
           purpose,
@@ -526,6 +540,13 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
           (call.name === "finish" || call.name === "escalate" || call.name === "request_secret"),
       });
       trackRepeat(state, call, content, isError);
+      if (!isControlTool(call.name)) {
+        trackCall(
+          state.watch,
+          { name: call.name, args: canonicalJson(call.args), isError, outcome, content },
+          event.payload.risk ?? state.policies.get(call.id)?.level,
+        );
+      }
       if ((call.name === "escalate" || call.name === "request_secret") && !isError) {
         logUser(state, "answer", content);
         if (call.name === "escalate") state.userSaid.push(content);
@@ -638,6 +659,7 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
       // New information from the user: the model deserves a fresh start on its counters.
       state.noProgressStreak = 0;
       state.repeat = { signature: null, name: "", count: 0, nudged: false };
+      reopenWindow(state.watch);
       if (state.waiting?.kind === "review_tie_break") {
         state.waiting = null;
         state.reviewWaived = true;
@@ -647,6 +669,7 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
     case "nudge":
       appendUserBlock(state, { type: "text", text: renderNotice(event.payload.text) }, event.seq);
       if (event.payload.reason === "repetition") state.repeat.nudged = true;
+      state.watch.nudged.add(event.payload.reason);
       if (event.payload.reason === "finish_required") state.finishRequested = true;
       if (state.pending !== null && state.pending.toolCalls.length === 0) {
         // The turn had no tool call: the nudge is how the harness answered it.
@@ -706,17 +729,70 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
     case "escalated":
       logUser(state, "question", withOptions(event.payload.question, event.payload.questions));
       state.waiting =
-        event.payload.callId !== undefined
+        event.payload.reason === "progress_limit" && event.payload.progress !== undefined
           ? {
-              kind: "escalate",
-              callId: event.payload.callId,
+              kind: "progress",
               question: event.payload.question,
-              ...(event.payload.questions === undefined
-                ? {}
-                : { questions: event.payload.questions }),
+              questions: escalatedQuestions(event.payload),
+              cause: event.payload.progress.cause,
+              grant: event.payload.progress.grant,
             }
-          : { kind: "review_tie_break", question: event.payload.question };
+          : event.payload.callId !== undefined
+            ? {
+                kind: "escalate",
+                callId: event.payload.callId,
+                question: event.payload.question,
+                ...(event.payload.questions === undefined
+                  ? {}
+                  : { questions: event.payload.questions }),
+              }
+            : { kind: "review_tie_break", question: event.payload.question };
       break;
+
+    case "progress_check": {
+      state.sideResponse = null;
+      const check = event.payload;
+      if (check.trigger === "soft_limit") state.watch.softAt = check.limit;
+      if (check.action === "extend" && check.extension !== undefined) {
+        state.watch.grants.push(check.extension);
+        state.watch.autoExtensions += 1;
+      }
+      break;
+    }
+
+    case "progress_decided": {
+      const { choice, grant, typed, text, inboxIds } = event.payload;
+      for (const id of inboxIds ?? []) state.deliveredInbox.add(id);
+      const asked = state.waiting?.kind === "progress" ? state.waiting : null;
+      if (asked !== null) state.waiting = null;
+      // The decision is the owner's: the model reads it as a note of the harness, and the owner's
+      // own words too when they typed something instead of choosing.
+      logUser(state, "answer", text);
+      if (typed === true) {
+        state.userSaid.push(text);
+        appendUserBlock(state, { type: "text", text: renderUserMessage(text) }, event.seq);
+      }
+      if (choice === "continue") {
+        state.watch.grants.push(grant);
+        state.watch.ownerExtensions += 1;
+        appendUserBlock(
+          state,
+          {
+            type: "text",
+            text: renderNotice(progressContinueNotice(asked?.cause ?? "limit", grant)),
+          },
+          event.seq,
+        );
+      } else {
+        state.watch.stopRequested = true;
+      }
+      // A text-only turn that was waiting for the decision is answered by it.
+      if (state.pending !== null && state.pending.toolCalls.length === 0) state.pending = null;
+      state.noProgressStreak = 0;
+      state.repeat = { signature: null, name: "", count: 0, nudged: false };
+      reopenWindow(state.watch);
+      break;
+    }
 
     case "wait_scheduled":
       state.wait = {

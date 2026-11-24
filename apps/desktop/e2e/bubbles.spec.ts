@@ -37,8 +37,10 @@ test.describe("dynamic bubbles", () => {
     await add("bot", "Terceira, a última do grupo");
     await add("user", "uma só minha");
     await add("bot", "Antes do cartão");
-    await add("bot", "Escolha uma cor", {
+    // The bot's words besides the question (`lead`) are its bubble; the question is the card's title.
+    await add("bot", "Escolha uma cor\n\nQual cor?", {
       questions: [{ question: "Qual cor?", options: [{ label: "Azul" }, { label: "Verde" }] }],
+      lead: "Escolha uma cor",
     });
     await add("bot", "Depois do cartão");
     await add("bot", "Fim");
@@ -81,8 +83,10 @@ test.describe("dynamic bubbles", () => {
     expect(await corners(botBubble(page, "Primeira do grupo"))).toEqual([FULL, FULL, FULL, LINK]);
     expect(await corners(botBubble(page, "Segunda, no meio"))).toEqual([LINK, FULL, FULL, LINK]);
     expect(await corners(botBubble(page, "Terceira, a última"))).toEqual([LINK, FULL, FULL, FULL]);
-    // A lone bubble is fully rounded; so is the one a card cuts off from its neighbours.
-    expect(await corners(botBubble(page, "Antes do cartão"))).toEqual([FULL, FULL, FULL, FULL]);
+    // A question with choices is a bubble that ends its group, and the card of options apart,
+    // under it, cuts it off from what follows.
+    expect(await corners(botBubble(page, "Antes do cartão"))).toEqual([FULL, FULL, FULL, LINK]);
+    expect(await corners(botBubble(page, "Escolha uma cor"))).toEqual([LINK, FULL, FULL, FULL]);
     expect(await corners(botBubble(page, "Depois do cartão"))).toEqual([FULL, FULL, FULL, LINK]);
     expect(await corners(botBubble(page, "Fim"))).toEqual([LINK, FULL, FULL, FULL]);
     expect(await corners(userBubble(page, "oi"))).toEqual([FULL, FULL, FULL, FULL]);

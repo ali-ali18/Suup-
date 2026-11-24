@@ -144,21 +144,53 @@ describe("web_search", () => {
     expect(out.content).toContain("Bad answer.");
   });
 
-  it("says which engines were suspended and until when, and that general search is unavailable, pointing to schedule_return", () => {
+  it("says which engines did not answer and until when, and, with no quota left, that the general search has none, pointing to the other engines", () => {
     const text = formatSearch({
       ok: true,
       query: "q",
       hits: [],
       engines: [],
-      suspended: [{ engine: "duckduckgo", reason: "Suspended: CAPTCHA", retryInSeconds: 3000 }],
-      generalUnavailable: { retryInSeconds: 3000 },
+      suspended: [
+        { engine: "tavily", reason: "no credits", retryInSeconds: 3000 },
+        { engine: "brave", reason: "no credits", retryInSeconds: 3500 },
+      ],
+      generalUnavailable: { retryInSeconds: 3000, cause: "quota" },
     }).content;
-    expect(text).toContain("duckduckgo (Suspended: CAPTCHA; back in about 50 min)");
-    expect(text).toContain(
-      "General web search is unavailable right now: it should be back in about 50 min",
-    );
+    expect(text).toContain("tavily (no credits; back in about 50 min)");
+    expect(text).toContain("A busca geral está sem cota agora.");
+    expect(text).toContain("It should be back in about 50 min.");
+    expect(text).toContain("Wikipedia, arXiv, Stack Exchange");
     expect(text).toContain("schedule_return");
     expect(text).toContain("do not retry now");
+  });
+
+  it("says why the general search is out: no key set up, Suup's own limit, or no answer", () => {
+    const say = (cause: "no_key" | "limit" | "unavailable") =>
+      formatSearch({
+        ok: true,
+        query: "q",
+        hits: [],
+        engines: [],
+        suspended: [],
+        generalUnavailable: { cause },
+      }).content;
+    expect(say("no_key")).toContain("nenhuma chave de busca foi adicionada");
+    expect(say("no_key")).not.toContain("sem cota");
+    expect(say("limit")).toContain("limite de buscas por minuto");
+    expect(say("unavailable")).toContain("A busca geral não respondeu agora.");
+  });
+
+  it("says which general engine answered", () => {
+    const out = formatSearch({
+      ok: true,
+      query: "q",
+      hits: [{ title: "T", url: "https://a.example/1", snippet: "s", engine: "brave" }],
+      engines: ["tavily", "brave"],
+      suspended: [{ engine: "tavily", reason: "no credits", retryInSeconds: 3600 }],
+      generalEngine: "brave",
+    });
+    expect(out.content).toContain("General web search answered by: brave.");
+    expect(out.content).not.toContain("sem cota");
   });
 
   it("says when a cached answer was made, and which engines Suup left out for its own limit", () => {

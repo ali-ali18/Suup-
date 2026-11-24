@@ -62,6 +62,11 @@ export interface ToolOverride {
    * card the message card, and the tool is never `read`.
    */
   outbound?: OutboundMessage | undefined;
+  /**
+   * The gallery says this tool is never offered to a bot (`deniedTools` of its entry): it is listed
+   * as not offered, with the reason, and never registered. Set only from the catalog, by exact name.
+   */
+  denied?: true | undefined;
 }
 
 export interface ConnectorSpec {
@@ -268,8 +273,12 @@ const toolOverridesSchema = z
       .strictObject({
         risk: z.string().refine(isRiskLevel, "nível de risco inválido").optional(),
         outbound: outboundMessageSchema.optional(),
+        denied: z.literal(true).optional(),
       })
-      .refine((o) => o.risk !== undefined || o.outbound !== undefined, "override vazio"),
+      .refine(
+        (o) => o.risk !== undefined || o.outbound !== undefined || o.denied === true,
+        "override vazio",
+      ),
   )
   .default({})
   .refine((o) => Object.keys(o).length <= 200, "overrides demais");

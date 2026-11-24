@@ -32,4 +32,10 @@ export {
   type Target,
   type TickerEnv,
 } from "./runtime/ticker.js";
-export { AVATAR_STATES, type AvatarStateId, isAvatarState, STATE_MAP } from "./states.js";
+export {
+  AVATAR_STATES,
+  type AvatarStateId,
+  BODY_MORPH_STATES,
+  isAvatarState,
+  STATE_MAP,
+} from "./states.js";

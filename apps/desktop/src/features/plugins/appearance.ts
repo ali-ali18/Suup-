@@ -1,8 +1,10 @@
 import composio from "../../assets/brand/composio.svg";
 import figma from "../../assets/brand/figma.svg";
+import firecrawl from "../../assets/brand/firecrawl.svg";
 import github from "../../assets/brand/github.svg";
 import google from "../../assets/brand/google.svg";
 import notion from "../../assets/brand/notion.svg";
+import tavily from "../../assets/brand/tavily.svg";
 
 /**
  * The LOOK of the connectors screen, by the id of an entry of the server's gallery (docs/DESIGN.md
@@ -55,6 +57,7 @@ export const CATEGORIES = [
   "Documentos",
   "Desenvolvimento",
   "Automação e mídia",
+  "Pesquisa na web",
   "Outros",
 ] as const;
 export type Category = (typeof CATEGORIES)[number];
@@ -176,6 +179,49 @@ const BY_ID: ReadonlyMap<string, Appearance> = new Map<string, Appearance>([
         "Liste as ações disponíveis no app que escolhi.",
       ],
       logo: composio,
+    },
+  ],
+  [
+    "firecrawl",
+    {
+      tone: "black",
+      banner: "amber",
+      category: "Pesquisa na web",
+      examples: [
+        "Pesquise as notícias desta semana sobre energia solar.",
+        "Leia esta página e me resuma os pontos principais.",
+        "Liste as páginas do site de documentação deste projeto.",
+      ],
+      logo: firecrawl,
+    },
+  ],
+  // The engines of the search queue are plugins of the same gallery (owner, 24/11/2026): the same
+  // page as the others, band and examples included ("pq o banner dele n tem um bg igual aos outros?").
+  [
+    "tavily",
+    {
+      tone: "neutral",
+      banner: "sky",
+      category: "Pesquisa na web",
+      examples: [
+        "Pesquise o que saiu de novo sobre carros elétricos esta semana.",
+        "Ache três fontes confiáveis sobre o horário de verão no Brasil.",
+        "Compare os preços do plano anual dessas duas ferramentas.",
+      ],
+      logo: tavily,
+    },
+  ],
+  [
+    "brave",
+    {
+      tone: "solid",
+      banner: "coral",
+      category: "Pesquisa na web",
+      examples: [
+        "Pesquise as notícias de hoje sobre o meu time.",
+        "Quais são os eventos de tecnologia em São Paulo este mês?",
+        "Ache a documentação oficial dessa biblioteca.",
+      ],
     },
   ],
 ]);

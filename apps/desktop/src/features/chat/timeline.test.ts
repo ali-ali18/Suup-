@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { type ActionItem, describeAction } from "../../data/actions.js";
 import type { SecretRequestItem } from "../../data/secret-requests.js";
 import { makeApproval, makeMessage, makeRun } from "../../test-fixtures.js";
 import type { BubblePosition } from "../../ui/message.js";
@@ -8,7 +7,6 @@ import { bubblePositions, buildTimeline, dayLabel, type TimelineItem } from "./t
 const NOW = new Date(2026, 10, 18, 15, 0, 0);
 const local = (h: number, m = 0, d = 18) => new Date(2026, 10, d, h, m, 0).toISOString();
 const kinds = (items: ReturnType<typeof buildTimeline>) => items.map((i) => i.kind);
-const none: ActionItem[] = [];
 
 describe("buildTimeline: the team card", () => {
   const conversationId = makeMessage().conversationId;
@@ -32,7 +30,6 @@ describe("buildTimeline: the team card", () => {
         }),
       ],
       {},
-      none,
       NOW,
     );
     expect(kinds(items)).toEqual(["separator", "team"]);
@@ -55,7 +52,6 @@ describe("buildTimeline", () => {
         msg(3, { text: "lida", status: "delivered" }),
       ],
       {},
-      none,
       NOW,
     );
     expect(items[0]).toMatchObject({ kind: "separator", text: "Hoje · 14:01" });
@@ -67,12 +63,7 @@ describe("buildTimeline", () => {
   });
 
   it("a message still being sent is 'sending' and does not open a separator", () => {
-    const items = buildTimeline(
-      [msg(1), { ...msg(2), id: "local:x", local: "sending" }],
-      {},
-      none,
-      NOW,
-    );
+    const items = buildTimeline([msg(1), { ...msg(2), id: "local:x", local: "sending" }], {}, NOW);
     expect(kinds(items)).toEqual(["separator", "user", "user"]);
     expect(items[2]).toMatchObject({ state: "sending" });
   });
@@ -86,7 +77,6 @@ describe("buildTimeline", () => {
         msg(4, { createdAt: local(14, 0, 18) }),
       ],
       {},
-      none,
       NOW,
     );
     expect(
@@ -95,115 +85,48 @@ describe("buildTimeline", () => {
     expect(dayLabel(new Date(2026, 10, 1, 8, 5), NOW)).toBe("1 de nov. · 08:05");
   });
 
-  const card = (
-    n: number,
-    runId: string,
-    at: string,
-    state: ActionItem["state"] = "done",
-  ): ActionItem => ({
-    callId: `c${n}`,
-    runId,
-    name: "shell",
-    ...describeAction("shell", { command: `passo ${n}` }),
-    state,
-    args: {},
-    truncated: false,
-    startedAt: at,
-  });
-
-  it("the tool calls of a run are cards in the bot's column, placed among the messages by time", () => {
-    const run = makeRun({ status: "waiting_user" });
-    const opener = msg(1, { runId: run.id, text: "faça", createdAt: local(14, 0) });
-    const ask = msg(2, {
-      authorKind: "bot",
-      authorBotId: run.botId,
-      runId: run.id,
-      text: "Qual?",
-      question: { questions: [{ question: "Qual?" }] },
-      createdAt: local(14, 10),
-    });
-    const reply = msg(3, { text: "Esta", createdAt: local(14, 11) });
-    const items = buildTimeline(
-      [opener, ask, reply],
-      { [run.id]: { ...run, status: "running" } },
-      [
-        card(1, run.id, local(14, 1)),
-        card(2, run.id, local(14, 2)),
-        card(3, run.id, local(14, 12)),
-      ],
-      NOW,
-    );
-    // before the question: two cards; after the answer: one card, and the run is still working
-    expect(kinds(items)).toEqual([
-      "separator",
-      "user",
-      "actions",
-      "bot",
-      "user",
-      "actions",
-      "working",
-    ]);
-    expect((items[2] as { entries: unknown[] }).entries).toHaveLength(2);
-    expect((items[5] as { entries: unknown[] }).entries).toHaveLength(1);
-  });
-
-  it("a card never lands before the message that opened its run", () => {
-    const run = makeRun({ status: "running" });
-    const early = [card(1, run.id, local(13, 59))];
-    expect(
-      kinds(
-        buildTimeline(
-          [msg(1, { runId: run.id, createdAt: local(14, 0) })],
-          { [run.id]: run },
-          early,
-          NOW,
-        ),
-      ),
-    ).toEqual(["separator", "user", "actions", "working"]);
-  });
-
-  it("more than three consecutive cards: the older finished ones fold into one entry", () => {
+  it("the chat shows results only: a run's tool calls and steps never become rows", () => {
     const run = makeRun({ status: "done" });
-    const cards = [1, 2, 3, 4, 5].map((n) => card(n, run.id, local(14, n)));
     const items = buildTimeline(
-      [msg(1, { runId: run.id, createdAt: local(14, 0) })],
+      [
+        msg(1, { runId: run.id, createdAt: local(14, 0) }),
+        msg(2, {
+          authorKind: "bot",
+          authorBotId: run.botId,
+          runId: run.id,
+          text: "Pronto.",
+          createdAt: local(14, 9),
+        }),
+      ],
       { [run.id]: run },
-      cards,
       NOW,
     );
-    const group = items.find((i) => i.kind === "actions") as Extract<
-      ReturnType<typeof buildTimeline>[number],
-      { kind: "actions" }
-    >;
-    expect(
-      group.entries.map((e) => (e.kind === "fold" ? `fold(${e.items.length})` : e.item.callId)),
-    ).toEqual(["fold(2)", "c3", "c4", "c5"]);
+    expect(kinds(items)).toEqual(["separator", "user", "bot"]);
   });
 
-  it("a working run ends the list with the indicator (also paused); a finished one does not", () => {
+  it("a live run ends the list with the live avatar (also paused or waiting for you); a finished one does not", () => {
     const run = makeRun({ status: "running" });
     const opener = msg(1, { runId: run.id });
-    expect(kinds(buildTimeline([opener], { [run.id]: run }, none, NOW))).toEqual([
+    expect(kinds(buildTimeline([opener], { [run.id]: run }, NOW))).toEqual([
       "separator",
       "user",
       "working",
     ]);
     expect(
-      kinds(
-        buildTimeline(
-          [opener],
-          { [run.id]: { ...run, status: "queued", paused: true } },
-          none,
-          NOW,
-        ),
-      ),
+      kinds(buildTimeline([opener], { [run.id]: { ...run, status: "queued", paused: true } }, NOW)),
     ).toEqual(["separator", "user", "working"]);
-    expect(
-      kinds(buildTimeline([opener], { [run.id]: { ...run, status: "done" } }, none, NOW)),
-    ).toEqual(["separator", "user"]);
-    expect(
-      kinds(buildTimeline([opener], { [run.id]: { ...run, status: "waiting_user" } }, none, NOW)),
-    ).toEqual(["separator", "user"]);
+    expect(kinds(buildTimeline([opener], { [run.id]: { ...run, status: "done" } }, NOW))).toEqual([
+      "separator",
+      "user",
+    ]);
+    // Waiting for you (an answer, an approval) keeps the live avatar, with its asking face.
+    for (const status of ["waiting_user", "waiting_approval"] as const) {
+      expect(kinds(buildTimeline([opener], { [run.id]: { ...run, status } }, NOW))).toEqual([
+        "separator",
+        "user",
+        "working",
+      ]);
+    }
   });
 
   describe("questions", () => {
@@ -229,7 +152,7 @@ describe("buildTimeline", () => {
     const colors = [{ question: "Qual cor?", options: [{ label: "Azul" }, { label: "Verde" }] }];
 
     it("a question carries what was asked and is open while the run waits and nobody replied", () => {
-      const item = botItem(buildTimeline([ask("Qual cor?", colors)], { [run.id]: run }, none, NOW));
+      const item = botItem(buildTimeline([ask("Qual cor?", colors)], { [run.id]: run }, NOW));
       expect(item.ask).toMatchObject({ open: true, answer: undefined, tieBreak: false });
       expect(item.ask?.questions).toEqual(colors);
     });
@@ -239,7 +162,6 @@ describe("buildTimeline", () => {
         buildTimeline(
           [ask("Qual cor?", colors), msg(2, { text: "Azul" })],
           { [run.id]: { ...run, status: "running" } },
-          none,
           NOW,
         ),
       );
@@ -251,7 +173,6 @@ describe("buildTimeline", () => {
             { ...msg(2, { text: "Verde" }), id: "local:x", local: "sending" },
           ],
           { [run.id]: run },
-          none,
           NOW,
         ),
       );
@@ -264,7 +185,6 @@ describe("buildTimeline", () => {
         buildTimeline(
           [ask("Qual cor?", colors), msg(2, { text: "Azul" })],
           { [run.id]: done },
-          none,
           NOW,
         ),
       );
@@ -273,7 +193,6 @@ describe("buildTimeline", () => {
         buildTimeline(
           [ask("Qual cor?", colors)],
           { [run.id]: { ...run, status: "cancelled" } },
-          none,
           NOW,
         ),
       );
@@ -283,8 +202,7 @@ describe("buildTimeline", () => {
     it("a questionnaire and the tie-break keep their shape; an ordinary message has no `ask`", () => {
       const two = [...colors, { question: "Algo mais?" }];
       expect(
-        botItem(buildTimeline([ask("1. a\n2. b", two)], { [run.id]: run }, none, NOW)).ask
-          ?.questions,
+        botItem(buildTimeline([ask("1. a\n2. b", two)], { [run.id]: run }, NOW)).ask?.questions,
       ).toHaveLength(2);
       const tie = msg(1, {
         authorKind: "bot",
@@ -293,7 +211,7 @@ describe("buildTimeline", () => {
         runId: run.id,
         question: { questions: [{ question: "Decida" }], reason: "review_tie_break" },
       });
-      expect(botItem(buildTimeline([tie], { [run.id]: run }, none, NOW)).ask).toMatchObject({
+      expect(botItem(buildTimeline([tie], { [run.id]: run }, NOW)).ask).toMatchObject({
         tieBreak: true,
       });
       expect(
@@ -301,7 +219,6 @@ describe("buildTimeline", () => {
           buildTimeline(
             [msg(1, { authorKind: "bot", authorBotId: run.botId, text: "Oi" })],
             {},
-            none,
             NOW,
           ),
         ).ask,
@@ -314,7 +231,6 @@ describe("buildTimeline", () => {
     const items = buildTimeline(
       [msg(1, { authorKind: "bot", authorBotId: run.botId, text: "Fiz.", runId: run.id })],
       { [run.id]: run },
-      none,
       NOW,
     );
     expect(kinds(items)).toEqual(["separator", "bot"]);
@@ -330,7 +246,6 @@ describe("buildTimeline", () => {
         msg(3, { authorKind: "system", text: "Outro aviso" }),
       ],
       { [failed.id]: failed, [cancelled.id]: cancelled },
-      none,
       NOW,
     );
     expect(items.filter((i) => i.kind === "ended" || i.kind === "notice")).toEqual([
@@ -345,7 +260,7 @@ describe("buildTimeline", () => {
   });
 });
 
-describe("buildTimeline: approval cards and secure forms among the bot's actions", () => {
+describe("buildTimeline: approval cards and secure forms, where they were asked", () => {
   const run = makeRun({ status: "waiting_approval" });
   const conversationId = makeMessage().conversationId;
   const opener = makeMessage({
@@ -354,28 +269,11 @@ describe("buildTimeline: approval cards and secure forms among the bot's actions
     createdAt: local(14, 0),
     runId: run.id,
   });
-  const action = (callId: string, minute: number): ActionItem => ({
-    callId,
-    runId: run.id,
-    name: "shell",
-    ...describeAction("shell", { command: callId }),
-    state: "done",
-    args: {},
-    truncated: false,
-    startedAt: local(14, minute),
-  });
 
-  it("the card sits where it was asked: tool calls before it and after it are separate groups", () => {
+  it("a waiting card sits where it was asked, and the live avatar waits under it", () => {
     const card = makeApproval({ runId: run.id, createdAt: local(14, 5) });
-    const items = buildTimeline(
-      [opener],
-      { [run.id]: run },
-      [action("c1", 2), action("c2", 3), action("c3", 8)],
-      NOW,
-      3,
-      { approvals: [card] },
-    );
-    expect(kinds(items)).toEqual(["separator", "user", "actions", "approval", "actions"]);
+    const items = buildTimeline([opener], { [run.id]: run }, NOW, { approvals: [card] });
+    expect(kinds(items)).toEqual(["separator", "user", "approval", "working"]);
     const approval = items.find((i) => i.kind === "approval") as Extract<
       ReturnType<typeof buildTimeline>[number],
       { kind: "approval" }
@@ -384,10 +282,26 @@ describe("buildTimeline: approval cards and secure forms among the bot's actions
     expect(approval.key).toBe(`approval-${card.id}`);
   });
 
-  it("a run waiting for approval has no working indicator: the card is what it waits for", () => {
-    const card = makeApproval({ runId: run.id, createdAt: local(14, 5) });
-    const items = buildTimeline([opener], { [run.id]: run }, none, NOW, 3, { approvals: [card] });
-    expect(kinds(items)).toEqual(["separator", "user", "approval"]);
+  it("a decided approval stays as its card (its one line): the owner's decision is a result", () => {
+    const done = makeApproval({
+      runId: run.id,
+      status: "approved",
+      createdAt: local(14, 3),
+      decidedAt: local(14, 4),
+    });
+    const said = makeMessage({
+      conversationId,
+      seq: 2,
+      createdAt: local(14, 8),
+      authorKind: "bot",
+      authorBotId: run.botId,
+      runId: run.id,
+      text: "Feito.",
+    });
+    const items = buildTimeline([opener, said], { [run.id]: { ...run, status: "done" } }, NOW, {
+      approvals: [done],
+    });
+    expect(kinds(items)).toEqual(["separator", "user", "approval", "bot"]);
   });
 
   it("a run parked for a return of its own has no marker at all: the bot's message is the whole notice", () => {
@@ -401,17 +315,17 @@ describe("buildTimeline: approval cards and secure forms among the bot's actions
       runId: parked.id,
       text: "Disparei o deploy, volto em 1 minuto.",
     });
-    const items = buildTimeline([opener, said], { [parked.id]: parked }, none, NOW, 3);
+    const items = buildTimeline([opener, said], { [parked.id]: parked }, NOW);
     expect(kinds(items)).toEqual(["separator", "user", "bot"]);
   });
 
   it("a card of a run no message opened yet still shows at the end", () => {
     const card = makeApproval({ runId: "other-run", createdAt: local(14, 5) });
-    const items = buildTimeline([opener], {}, none, NOW, 3, { approvals: [card] });
+    const items = buildTimeline([opener], {}, NOW, { approvals: [card] });
     expect(kinds(items)).toEqual(["separator", "user", "approval"]);
   });
 
-  it("the secure form of a secret request is an item of its own, in order with the actions", () => {
+  it("the secure form of a secret request is an item of its own, in order with the cards", () => {
     const request: SecretRequestItem = {
       callId: "s1",
       runId: run.id,
@@ -420,101 +334,71 @@ describe("buildTimeline: approval cards and secure forms among the bot's actions
       startedAt: local(14, 4),
       state: "open",
     };
-    const items = buildTimeline(
-      [opener],
-      { [run.id]: { ...run, status: "waiting_user" } },
-      [action("c1", 2)],
-      NOW,
-      3,
-      { secrets: [request] },
-    );
-    expect(kinds(items)).toEqual(["separator", "user", "actions", "secret"]);
+    const card = makeApproval({ runId: run.id, createdAt: local(14, 2) });
+    const items = buildTimeline([opener], { [run.id]: { ...run, status: "done" } }, NOW, {
+      approvals: [card],
+      secrets: [request],
+    });
+    expect(kinds(items)).toEqual(["separator", "user", "approval", "secret"]);
   });
+});
 
-  describe("one row per tool call: the approval merges into its call", () => {
-    const rowsOf = (items: ReturnType<typeof buildTimeline>) =>
-      items.flatMap((i) =>
-        i.kind === "actions"
-          ? i.entries.flatMap((e) => (e.kind === "fold" ? e.items : [e.item]))
-          : [],
-      );
+describe("buildTimeline: a question's bubble is only what the bot wrote besides it", () => {
+  const base = {
+    conversationId: "c",
+    authorBotId: "b",
+    runId: null,
+    status: null,
+    createdAt: new Date(2026, 10, 24, 14, 0).toISOString(),
+  };
+  const questions = [{ question: "Qual cor?", options: [{ label: "Azul" }, { label: "Verde" }] }];
+  const ask = (question: object) =>
+    buildTimeline(
+      [{ ...base, id: "q", seq: 1, authorKind: "bot", text: "Qual cor?", question }] as never,
+      {},
+      new Date(2026, 10, 24, 15, 0),
+    ).find((i) => i.kind === "bot");
+  it("no lead from the server: the card alone (its title is the question)", () => {
+    const item = ask({ questions });
+    expect(item?.kind === "bot" && item.ask?.lead).toBe(undefined);
+  });
+  it("closed with the X: not open, dismissed (the card stays, locked)", () => {
+    const item = ask({ questions, dismissed: true });
+    expect(item?.kind === "bot" && item.ask).toMatchObject({ open: false, dismissed: true });
+  });
+  it("the lead the server declares is the bubble", () => {
+    const item = ask({ questions, lead: "A busca está fora do ar." });
+    expect(item?.kind === "bot" && item.ask?.lead).toBe("A busca está fora do ar.");
+  });
+});
 
-    it("a decided approval and its call are one row, in the call's place", () => {
-      const done = makeApproval({
-        runId: run.id,
-        callId: "c2",
-        tool: "shell",
-        status: "approved",
-        createdAt: local(14, 3),
-        decidedAt: local(14, 4),
-      });
-      const items = buildTimeline(
-        [opener],
-        { [run.id]: { ...run, status: "running" } },
-        [action("c1", 2), action("c2", 3), action("c3", 8)],
-        NOW,
-        Number.POSITIVE_INFINITY,
-        { approvals: [done] },
-      );
-      expect(kinds(items)).toEqual(["separator", "user", "actions", "working"]);
-      const rows = rowsOf(items);
-      expect(rows.map((r) => r.callId)).toEqual(["c1", "c2", "c3"]);
-      expect(rows[1]?.approval?.id).toBe(done.id);
-    });
-
-    it("while it waits the decision card shows and the call has no row", () => {
-      const waiting = makeApproval({ runId: run.id, callId: "c2", createdAt: local(14, 3) });
-      const items = buildTimeline(
-        [opener],
-        { [run.id]: run },
-        [action("c1", 2), { ...action("c2", 3), state: "running" }],
-        NOW,
-        3,
-        { approvals: [waiting] },
-      );
-      expect(kinds(items)).toEqual(["separator", "user", "actions", "approval"]);
-      expect(rowsOf(items).map((r) => r.callId)).toEqual(["c1"]);
-    });
-
-    it("the fold counts calls, not rows: approved calls fold with the rest", () => {
-      const approved = ["c1", "c2"].map((callId, n) =>
-        makeApproval({
-          runId: run.id,
-          callId,
-          status: "approved",
-          createdAt: local(14, 2 + n),
-          decidedAt: local(14, 3 + n),
-        }),
-      );
-      const items = buildTimeline(
-        [opener],
-        { [run.id]: { ...run, status: "running" } },
-        [1, 2, 3, 4, 5].map((n) => action(`c${n}`, 1 + n)),
-        NOW,
-        3,
-        { approvals: approved },
-      );
-      const group = items.find((i) => i.kind === "actions") as Extract<
-        ReturnType<typeof buildTimeline>[number],
-        { kind: "actions" }
-      >;
-      expect(group.entries.map((e) => (e.kind === "fold" ? e.items.length : 1))).toEqual([
-        2, 1, 1, 1,
-      ]);
-    });
-
-    it("an approval of a run with no events loaded still gets its one row", () => {
-      const old = makeApproval({
-        runId: "run-antigo",
-        status: "denied",
-        createdAt: local(13, 0),
-        decidedAt: local(13, 1),
-      });
-      const items = buildTimeline([opener], {}, none, NOW, 3, { approvals: [old] });
-      expect(kinds(items)).toEqual(["separator", "user", "actions"]);
-      expect(rowsOf(items)).toHaveLength(1);
-      expect(rowsOf(items)[0]?.state).toBe("stopped");
-    });
+describe("buildTimeline: the files a bot handed over", () => {
+  it("come right under their message, as one card item that breaks the bubbles", () => {
+    const file = {
+      id: "00000000-0000-4000-8000-0000000000f1",
+      name: "a.pdf",
+      mime: "application/pdf",
+      size: 10,
+      kind: "pdf" as const,
+    };
+    const base = {
+      conversationId: "c",
+      authorBotId: "b",
+      runId: null,
+      status: null,
+      createdAt: new Date(2026, 10, 24, 14, 0).toISOString(),
+    };
+    const items = buildTimeline(
+      [
+        { ...base, id: "m1", seq: 1, authorKind: "bot", text: "Aqui está.", attachments: [file] },
+        { ...base, id: "m2", seq: 2, authorKind: "bot", text: "Mais alguma coisa?" },
+      ] as never,
+      {},
+      new Date(2026, 10, 24, 15, 0),
+    ).filter((i) => i.kind !== "separator");
+    expect(items.map((i) => i.kind)).toEqual(["bot", "files", "bot"]);
+    expect(items[1]).toMatchObject({ key: "m1-files", files: [file] });
+    expect(Object.fromEntries(bubblePositions(items))).toEqual({ m1: "single", m2: "single" });
   });
 });
 
@@ -531,6 +415,7 @@ describe("bubblePositions: consecutive text bubbles of one sender form a group",
         questions: [{ question: "Qual?", options: [{ label: "A" }, { label: "B" }] }],
         answer: undefined,
         open: true,
+        dismissed: false,
         tieBreak: false,
       },
     }) as TimelineItem;
@@ -543,10 +428,12 @@ describe("bubblePositions: consecutive text bubbles of one sender form a group",
         questions: [{ question: "E então?" }],
         answer: undefined,
         open: true,
+        dismissed: false,
         tieBreak: false,
       },
     }) as TimelineItem;
-  const card = (key: string) => ({ kind: "actions", key, entries: [] }) as TimelineItem;
+  const card = (key: string) =>
+    ({ kind: "approval", key, approval: makeApproval() }) as TimelineItem;
   const separator = (key: string) =>
     ({ kind: "separator", key, text: "Hoje · 10:00" }) as TimelineItem;
   const of = (items: TimelineItem[]): Record<string, BubblePosition> =>
@@ -593,7 +480,16 @@ describe("bubblePositions: consecutive text bubbles of one sender form a group",
     expect(positions).toEqual({ a: "first", b: "last", c: "first", d: "middle", e: "last" });
     expect(positions).not.toHaveProperty("k");
     // Every kind of card or line breaks it, even a lone bubble around it.
+    // A question with choices whose text is only the question is the card alone: it breaks the group.
     expect(of([bot("a"), choice("q"), bot("b")])).toEqual({ a: "single", b: "single" });
+    // With words of the bot besides the question, they are a bubble that ends its group.
+    const withLead = (key: string) => {
+      const item = choice(key);
+      return item.kind === "bot" && item.ask !== undefined
+        ? ({ ...item, ask: { ...item.ask, lead: "Antes, um aviso." } } as TimelineItem)
+        : item;
+    };
+    expect(of([bot("a"), withLead("q"), bot("b")])).toEqual({ a: "first", q: "last", b: "single" });
     expect(
       of([
         bot("a"),
@@ -649,16 +545,48 @@ describe("bubblePositions: consecutive text bubbles of one sender form a group",
         createdAt: local(14, seq),
         text: `m${seq}`,
       });
-    const two = buildTimeline([message(1, "bot"), message(2, "bot")], {}, [], NOW);
-    const three = buildTimeline(
-      [message(1, "bot"), message(2, "bot"), message(3, "bot")],
-      {},
-      [],
-      NOW,
-    );
+    const two = buildTimeline([message(1, "bot"), message(2, "bot")], {}, NOW);
+    const three = buildTimeline([message(1, "bot"), message(2, "bot"), message(3, "bot")], {}, NOW);
     const before = [...bubblePositions(two).values()];
     const after = [...bubblePositions(three).values()];
     expect(before).toEqual(["first", "last"]);
     expect(after).toEqual(["first", "middle", "last"]);
+  });
+});
+
+describe("buildTimeline: the connector card", () => {
+  it("an approved proposal is drawn as its card, not as a row of the tool; a pending one stays the decision card", () => {
+    const run = makeRun();
+    const approved = makeApproval({
+      runId: run.id,
+      tool: "propose_connector",
+      status: "approved",
+      callId: "p1",
+      args: { connector: "composio" },
+      createdAt: local(10, 1),
+    });
+    const pending = makeApproval({
+      runId: run.id,
+      tool: "propose_connector",
+      status: "pending",
+      callId: "p2",
+      createdAt: local(10, 2),
+    });
+    const card = {
+      callId: "p1",
+      runId: run.id,
+      botId: run.botId,
+      at: local(10, 1),
+      connector: "composio",
+      action: "connect" as const,
+    };
+    const items = buildTimeline([], { [run.id]: run }, NOW, {
+      approvals: [approved, pending],
+      connectCards: [card],
+    });
+    expect(items.map((i) => [i.kind, i.key])).toEqual([
+      ["connect", "connect-p1"],
+      ["approval", `approval-${pending.id}`],
+    ]);
   });
 });

@@ -6,6 +6,7 @@ export {
   type DirectEngine,
   type DirectSearchInput,
   type DirectSearchResult,
+  type FailureKind,
   Pacer,
   parseArxivAnswer,
   stackOverflowEngine,
@@ -16,31 +17,37 @@ export {
   DIRECT_MAX_BYTES,
   DIRECT_TIMEOUT_MS,
   type DirectGet,
+  type DirectGetOptions,
   type DirectGetSettings,
   type DirectResponse,
 } from "./direct-http.js";
 export {
   READER_CONTAINER,
   READER_IMAGE,
-  SEARCH_CONTAINER,
-  SEARCH_NETWORK,
   startWebServices,
   type WebServices,
   type WebServicesOptions,
 } from "./docker-services.js";
 export {
   DEFAULT_ENGINES,
+  DEFAULT_GENERAL_ORDER,
   DEFAULT_LANGUAGES,
-  directEngineIds,
   ENGINES,
   type EngineSpec,
   engineById,
   engineHosts,
-  SEARXNG_IMAGE,
-  searxEngineIds,
+  generalQueue,
   unknownEngines,
 } from "./engines.js";
 export { extractPage, READ_MAX_CHARS, safeLink, tidy } from "./extract.js";
+export {
+  braveEngine,
+  braveQuery,
+  GENERAL_SUSPENSION_SECONDS,
+  localeParts,
+  type SearchKeys,
+  tavilyEngine,
+} from "./general-engines.js";
 export { HostLimiter } from "./rate-limit.js";
 export {
   createReader,
@@ -68,10 +75,9 @@ export {
 export {
   clip,
   createSearch,
-  httpSearxBackend,
-  parseSearxAnswer,
+  failoverLogLine,
   SEARCH_MAX_RESULTS,
-  type SearxBackend,
+  type SearchOptions,
 } from "./search.js";
 export {
   DEFAULT_CACHE_TTL_MS,
@@ -84,17 +90,17 @@ export {
 export {
   DEFAULT_SEARCH_LIMITS,
   type Grant,
-  parseReason,
   SearchGovernor,
   type SearchLimits,
-  SUSPENSION_SECONDS,
 } from "./search-governor.js";
-export { execSearxBackend } from "./searx-exec.js";
-export { renderSearxSettings, type SearxSettingsInput } from "./searx-settings.js";
+export { memorySearchUsage, monthKey, type SearchUsage } from "./search-usage.js";
 export {
   createWebAccess,
+  type ProviderState,
   readFailureLogLine,
+  type SearchProviderStatus,
   type StartedServices,
+  searchProblemLogLine,
   type WebAccessOptions,
   type WebAccessWithStatus,
   type WebStatus,

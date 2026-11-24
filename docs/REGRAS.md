@@ -77,7 +77,6 @@ Total: 191 regex em 76 arquivos (a: 68 · b: 16 · c: 104 · d: 3). Geradas por 
 |---|---|---|
 | `apps/cli/src/commands/resend.ts` (117) | troca `:` e `.` do horário por `-` para formar nome de arquivo | `replaceAll` de texto fixo |
 | `apps/cli/src/format.ts` (90) | achata espaços em branco de uma linha para exibir | dividir por espaço/quebra sem regex |
-| `apps/desktop/src/data/actions.ts` (51) | achata espaços em branco de um texto para a linha de resumo | dividir sem regex |
 | `apps/desktop/src/data/botlist.ts` (58) | `\p{Diacritic}`: tira acentos para comparar nomes na busca (comparação sem acento) | `localeCompare(..., { sensitivity: 'base' })` |
 | `evals/src/tasks/prompt-injection-file.ts` (33) | `\p{Diacritic}`: tira acentos para comparar a resposta | `localeCompare` com sensibilidade base |
 | `packages/avatar/src/avatar.ts` (81) | troca caracteres fora de [a-zA-Z0-9_-] num id gerado | percorrer e substituir caractere a caractere |

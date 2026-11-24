@@ -164,6 +164,51 @@ export interface Platform {
   allowServer?(serverUrl: string): Promise<void>;
   /** Opens a link outside the app (the system browser). Only http(s) and mailto get here. */
   openUrl(url: string): void;
+  /** What this device does with a file the bot handed over (docs/DESIGN.md §3, "Arquivo"). */
+  files: FileDelivery;
+}
+
+/** A file the bot sent, as this device fetches it: its address, the token and its name. */
+export interface DeliveredFile {
+  url: string;
+  token: string;
+  name: string;
+}
+
+/**
+ * Where a file the bot sent goes. The app: "Salvar" is the system's "Salvar como" window and
+ * "Abrir" opens it with the system's own program (both in Rust, `src-tauri/src/files.rs`). The
+ * browser: only a download, and it cannot open the file with another program (`open` is absent;
+ * opening it in a page of this origin would run what the bot wrote).
+ */
+export interface FileDelivery {
+  /** `false`: the person closed the "Salvar como" window. Rejects when the file could not be had. */
+  save(file: DeliveredFile): Promise<boolean>;
+  open?(file: DeliveredFile): Promise<void>;
+}
+
+/** The browser's download: the bytes with the token, then a link with `download` and the name. */
+export async function browserDownload(
+  file: DeliveredFile,
+  doFetch: typeof fetch = fetch,
+): Promise<boolean> {
+  const response = await doFetch(file.url, { headers: { Authorization: `Bearer ${file.token}` } });
+  if (!response.ok) throw new Error(`download failed (${response.status})`);
+  const blob = await response.blob();
+  const href = URL.createObjectURL(blob);
+  try {
+    const link = document.createElement("a");
+    link.href = href;
+    link.download = file.name;
+    link.rel = "noopener";
+    document.body.append(link);
+    link.click();
+    link.remove();
+  } finally {
+    // Give the browser a moment to start the download before the address goes away.
+    setTimeout(() => URL.revokeObjectURL(href), 10_000);
+  }
+  return true;
 }
 
 const KEY = "suup.connection";
@@ -233,6 +278,7 @@ export function browserPlatform(): Platform {
     openUrl(url) {
       window.open(url, "_blank", "noopener,noreferrer");
     },
+    files: { save: (file) => browserDownload(file) },
     async notify({ title, body }) {
       try {
         if (typeof Notification === "undefined") return;

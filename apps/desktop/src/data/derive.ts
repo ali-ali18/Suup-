@@ -75,6 +75,7 @@ export const TOOL_LABEL: Record<string, string> = {
   delegate: "Delegar",
   team_recall: "Consultar a equipe",
   create_routine: "Criar rotina",
+  create_reminder: "Criar lembrete",
   update_routine: "Mudar rotina",
   delete_routine: "Apagar rotina",
   list_routines: "Ver rotinas",
@@ -94,14 +95,6 @@ export const CONTROL_TOOLS: ReadonlySet<string> = new Set([
   "schedule_return",
   "propose_team",
 ]);
-
-/**
- * The tools whose calls the chat never shows as a row or an indicator (docs/DESIGN.md, owner's rule:
- * "Eu não quero ter que ficar gerenciando memória"): saving and forgetting a memory are the bot's
- * own housekeeping. Reading (`recall`, `search_conversations`) stays a row, because it explains an
- * answer. A card that WAITS for the user (an approval) is still shown: only the finished call is quiet.
- */
-export const SILENT_TOOLS: ReadonlySet<string> = new Set(["remember", "forget"]);
 
 export const toolLabel = (name: string): string => TOOL_LABEL[name] ?? name;
 
@@ -157,7 +150,11 @@ function isActivity(event: RunEvent): boolean {
   ].includes(event.type);
 }
 
-/** A tool call whose result has not arrived: the tool is running. */
+/**
+ * The tool running now: the last call whose result has not arrived (the control tools, which are the
+ * bot's message, a card or nothing at all, do not count). The name is the real tool's (`use_tool`
+ * resolved), compared exactly by whoever reads it.
+ */
 export function runningTool(events: readonly RunEvent[]): string | undefined {
   const resolved = new Set<string>();
   for (const event of events) {
@@ -173,7 +170,7 @@ export function runningTool(events: readonly RunEvent[]): string | undefined {
     const logged = str(event.payload.name);
     if (callId === undefined || logged === undefined) continue;
     const { name } = resolveToolCall(logged, event.payload.args);
-    if (CONTROL_TOOLS.has(name) || SILENT_TOOLS.has(name)) continue;
+    if (CONTROL_TOOLS.has(name)) continue;
     if (!resolved.has(callId)) return name;
   }
   return undefined;

@@ -64,6 +64,16 @@ Ferramentas que aceitam marcadores hoje: `shell` (campo `command`) e `web_fetch`
 
 Um conector MCP ([CONECTORES.md](CONECTORES.md)) cita segredos **pelo nome**, em variáveis de ambiente do processo e em cabeçalhos HTTP, e o valor é lido na hora de conectar. Diferente do uso por um bot, **não depende de concessão ao bot**: quem o referenciou foi você, ao configurar o conector, e quem pode usar o conector é a concessão do conector. O valor é ensinado ao filtro de redação antes de ser entregue, então um servidor que o ecoe num resultado o vê trocado por `[REDACTED:NOME]`.
 
+### Segredos que um conector cuida sozinho
+
+O login OAuth de um conector (`SUUP_OAUTH_<CONECTOR>_ACCESS`, `_REFRESH` e `_CLIENT_SECRET`) fica no cofre, cifrado como qualquer valor, mas **não é um segredo seu para os bots** (dono, 24/11/2026: "o token do mcp não deve aparecer… são segredos que o bot precisa usar o cofre, não para os mcp"). Cada um leva a marca `managed_by` com o **nome exato do conector** que o cuida (coluna da migração 0032; os que já existiam foram marcados por comparação exata de nome). Quem decide é essa marca, nunca o começo do nome. Os marcados:
+
+- **não aparecem** em `GET /v1/secrets`, em `suup vault list`, na pesquisa, nas concessões de cada bot nem em contagem do cofre (`Vault.list()` os deixa de fora; só o código do próprio conector pede `includeManaged`);
+- **não podem ser concedidos** a um bot: `PUT /v1/secrets/{nome}/grants/{botId}` responde `400` e a consulta que monta o que o bot pode usar também os ignora; `PUT`/`DELETE /v1/secrets/{nome}` com esse nome não os alteram (`400` ao escrever, `404` ao apagar, `404` ao revogar);
+- são apagados quando o conector é desconectado ou removido; o estado do login (Conectado, Entrar de novo) aparece só no cartão do conector, em Configurações > Conectores.
+
+A segurança não muda: continuam cifrados, o redator os conhece e nenhuma resposta traz o valor. (`suup doctor` ainda os conta em "segredos legíveis", porque confere a integridade de tudo o que está guardado.)
+
 ### Segredo em ação irreversível
 
 Uma chamada que contém um marcador é tratada como `external_irreversible`: **vira cartão**, a menos que você tenha uma regra que libere. O cartão mostra o marcador, nunca o valor. Para tornar o uso rotineiro, crie você mesmo uma regra de igualdade exata (Configurações > Permissões, ou `suup rules add`); o cartão não cria regras. (Veja [APROVACOES.md](APROVACOES.md).)

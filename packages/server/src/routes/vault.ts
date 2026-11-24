@@ -1,5 +1,5 @@
 import { answerSecretRequestBodySchema, secretNameSchema, setSecretBodySchema } from "@suup/api";
-import { getBot, getRun, getSecretMeta } from "@suup/db";
+import { type Db, getBot, getRun, getSecretMeta, type SecretMeta } from "@suup/db";
 import { answerSecretRequest, pendingSecretRequest } from "@suup/runtime";
 import { HttpError } from "../errors.js";
 import type { Route } from "../http.js";
@@ -9,6 +9,15 @@ function nameOf(raw: string): string {
   const parsed = secretNameSchema.safeParse(raw);
   if (!parsed.success) throw new HttpError("not_found", "Segredo não encontrado.");
   return parsed.data;
+}
+
+/** The secret as the owner manages it: one a connector keeps (its login) is as good as absent. */
+async function ownedMeta(db: Db, name: string): Promise<SecretMeta> {
+  const meta = await getSecretMeta(db, name);
+  if (meta === null || meta.managedBy !== null) {
+    throw new HttpError("not_found", "Segredo não encontrado.");
+  }
+  return meta;
 }
 
 export const vaultRoutes: Route[] = [
@@ -46,9 +55,7 @@ export const vaultRoutes: Route[] = [
         ...(body.description === undefined ? {} : { description: body.description }),
       });
       for (const botId of body.grantBotIds ?? []) await vault.grant(name, botId);
-      const meta = await getSecretMeta(db, name);
-      if (meta === null) throw new HttpError("internal_error", "Erro interno do servidor.");
-      return { body: toSecretDto(meta) };
+      return { body: toSecretDto(await ownedMeta(db, name)) };
     },
   },
   {
@@ -70,9 +77,7 @@ export const vaultRoutes: Route[] = [
       if ((await getBot(db, botId)) === null)
         throw new HttpError("not_found", "Bot não encontrado.");
       await vault.grant(name, botId);
-      const meta = await getSecretMeta(db, name);
-      if (meta === null) throw new HttpError("not_found", "Segredo não encontrado.");
-      return { body: toSecretDto(meta) };
+      return { body: toSecretDto(await ownedMeta(db, name)) };
     },
   },
   {
@@ -81,10 +86,9 @@ export const vaultRoutes: Route[] = [
     async handler(ctx) {
       const name = nameOf(ctx.params.name ?? "");
       const { vault, db } = ctx.runtime;
+      await ownedMeta(db, name);
       await vault.revoke(name, ctx.uuid("botId"));
-      const meta = await getSecretMeta(db, name);
-      if (meta === null) throw new HttpError("not_found", "Segredo não encontrado.");
-      return { body: toSecretDto(meta) };
+      return { body: toSecretDto(await ownedMeta(db, name)) };
     },
   },
   {

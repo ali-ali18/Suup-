@@ -92,19 +92,17 @@ describe("config", () => {
     }) as { sandbox: { kind: string; root: string } };
     expect(config.sandbox).toEqual({ kind: "local", root: "/w" });
   });
-  it("gives the web the server's services: the search proxy in a container when the bots' is one", () => {
+  it("gives the web the reader, and no search container or proxy: the search needs no Docker", () => {
     const docker = { mode: "docker", reason: null, detail: null } as const;
     const web = (config: Record<string, unknown>) => config.web;
-    // Windows: the bots' proxy is a container, so the search container's is one too.
+    // Whatever the bots' proxy is (a container on Windows, this process on a Linux host).
     expect(web(buildConfig({ ...base, isolation: docker }))).toEqual({
-      search: { proxy: { mode: "container", image: "e:1" } },
       reader: { image: "r:1" },
     });
-    // A Linux host: the proxy in this process, as on the server.
     expect(web(buildConfig({ ...base, egress: "process", isolation: docker }))).toEqual({
       reader: { image: "r:1" },
     });
-    // No Docker: the engines with a public API, and pages read in this process.
+    // No Docker: the engines with a public API and the queue of general ones, pages read in this process.
     expect(
       web(
         buildConfig({
@@ -114,6 +112,20 @@ describe("config", () => {
         }),
       ),
     ).toEqual({ reader: { image: "r:1" } });
+  });
+  it("sends the computer's locale to the web search, so a Brazilian gets Brazil and Portuguese", () => {
+    expect(
+      (
+        buildConfig({
+          ...base,
+          isolation: { mode: "docker", reason: null, detail: null },
+          locale: "pt-BR",
+        }) as { web: unknown }
+      ).web,
+    ).toEqual({
+      search: { locale: "pt-BR" },
+      reader: { image: "r:1" },
+    });
   });
 });
 

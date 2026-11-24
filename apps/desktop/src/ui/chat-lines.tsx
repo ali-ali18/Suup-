@@ -73,57 +73,69 @@ export function EndedLine({
   );
 }
 
-/** The three dots: the first two fade, the last one is the brightest. */
-const DOTS = ["opacity-40 bg-text-muted", "opacity-70 bg-text-muted", "bg-text"] as const;
-const DOT_DELAY = ["", "[animation-delay:0.2s]", "[animation-delay:0.4s]"] as const;
-
-/** Three dots, the last one brightest. `animated` false (paused) leaves them still. */
-export function Dots({ animated = true, size = "md" }: { animated?: boolean; size?: "md" | "lg" }) {
-  return (
-    <span
-      className={cx("inline-flex items-center", size === "lg" ? "gap-1.5" : "gap-1")}
-      data-animated={animated}
-      aria-hidden="true"
-    >
-      {DOTS.map((tone, i) => (
-        <span
-          // biome-ignore lint/suspicious/noArrayIndexKey: three fixed dots
-          key={i}
-          data-testid="dots-dot"
-          className={cx(
-            "rounded-pill",
-            size === "lg" ? "size-3.25" : "size-2",
-            tone,
-            animated && "animate-dot",
-            animated && DOT_DELAY[i],
-          )}
-        />
-      ))}
-    </span>
-  );
-}
-
 /**
- * The last thing in the chat while the bot works: the dots and a short muted phrase that says what
- * it is doing (from the real state of the run, never flavour text).
+ * The last thing in the chat while the bot works: the bot's LIVE avatar, small, where its next
+ * message will appear, and a short friendly phrase of what it is doing (from the real state of the
+ * run, never flavour text). It replaced the three dots (owner, 24/11/2026). The face (`face`) is
+ * drawn by whoever knows the bot (`ui/avatar.tsx`); this is only the row.
+ *
+ * `leaving`: the run is over and the bot's answer is there; the row fades and closes its height
+ * smoothly (no jump: the grid row goes from its height to zero), and is no longer announced.
+ * Reduced motion makes both instant (the durations are zero in `tokens.css`).
  */
 export function WorkingIndicator({
   phrase,
-  animated = true,
+  activity,
+  face,
+  leaving = false,
+  onLeft,
 }: {
   phrase: string;
-  animated?: boolean;
+  /** The declared activity (`lib/chat-activity.ts`), for tests and styles. */
+  activity: string;
+  face: ReactNode;
+  leaving?: boolean;
+  /** The leaving transition ended. */
+  onLeft?(): void;
 }) {
+  // An activity still going on reads as one ("Pensando…"); a pause or the end does not.
+  const going = !(activity === "paused" || activity === "done" || activity === "failed");
   return (
     <div
-      className="flex min-h-6 items-center gap-3 px-2"
-      role="status"
-      data-testid="working-indicator"
-      data-phrase={phrase}
+      className={cx(
+        "grid transition-[grid-template-rows,opacity] duration-(--duration-leave) ease-out",
+        leaving ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr]",
+      )}
+      data-testid="working-wrap"
+      data-leaving={leaving}
+      onTransitionEnd={(e) => {
+        if (leaving && e.target === e.currentTarget && e.propertyName === "opacity") onLeft?.();
+      }}
     >
-      <Dots animated={animated} />
-      {/* "Discreet" (a setting) keeps the phrase for screen readers only. */}
-      <span className="truncate text-label text-text-muted phrase-discreet:sr-only">{phrase}</span>
+      {/* The collapse needs overflow-hidden; the padding (undone by the negative margin, so the layout
+          is the same) keeps it from cutting the face, which the engine frames a little past its box. */}
+      <div className="-m-3 mr-0 min-h-0 animate-fade-in overflow-hidden p-3 pr-0">
+        <div
+          className="flex min-h-avatar-md items-center gap-3"
+          {...(leaving ? { "aria-hidden": true } : { role: "status" })}
+          data-testid="working-indicator"
+          data-phrase={phrase}
+          data-activity={activity}
+        >
+          {face}
+          {/* "Discreet" (a setting) keeps the phrase for screen readers only. */}
+          <span
+            className={cx(
+              "truncate text-label phrase-discreet:sr-only",
+              going ? "ui-shimmer" : "text-text-muted",
+            )}
+            data-testid="working-phrase"
+            data-shimmer={going}
+          >
+            {going ? `${phrase}…` : phrase}
+          </span>
+        </div>
+      </div>
     </div>
   );
 }

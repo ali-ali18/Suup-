@@ -20,6 +20,21 @@ import {
 import { completeRoutineFire } from "./routines.js";
 import { returnDelegatedResult } from "./supervisor.js";
 
+/**
+ * The sentence for a failed run. A limit (the cost or the time the owner set, or the progress
+ * watchdog stopping a run nobody can answer) is already told in friendly Portuguese by the harness
+ * (`failure.detail`), so that sentence is the whole message; any other failure keeps the origin and
+ * the detail.
+ */
+export function failureSentence(
+  origin: FailureOrigin,
+  detail: string | null,
+  options: { max: number },
+): string {
+  if (origin === "limit" && detail !== null && detail.trim() !== "") return detail.trim();
+  return `${ORIGIN_TEXT_PT[origin] ?? "houve uma falha"} (origem: ${origin}).${detail === null ? "" : ` Detalhe: ${clip(detail, options.max)}`}`;
+}
+
 /** What a failure origin means, in plain Portuguese, for the message the user reads. */
 export const ORIGIN_TEXT_PT: Record<FailureOrigin, string> = {
   provider: "o provedor do modelo falhou ou ficou indisponível",
@@ -141,7 +156,8 @@ async function outcomeMessage(
           payload: {
             question?: string;
             questions?: EscalateQuestion[];
-            reason?: "review_tie_break";
+            reason?: "review_tie_break" | "progress_limit";
+            lead?: string;
           };
         }[]
       >`
@@ -160,14 +176,20 @@ async function outcomeMessage(
       }
       const text = question?.payload.question?.trim();
       if (question === undefined || text === undefined || text === "") return null;
+      // What the bot wrote besides the question (it may write nothing and only ask). The structured
+      // side carries it apart: the app draws it as the bubble and the question as the card's title,
+      // so nothing is drawn twice. `text` keeps both, for whoever reads only the text (the CLI, the
+      // history of later runs, a notification).
+      const lead = question.payload.lead?.trim() ?? "";
       return {
         authorKind: "bot",
-        text,
+        text: lead === "" ? text : `${lead}\n\n${text}`,
         key: `run:${run.id}:question:${question.seq}`,
         // The structured side, so the app draws the card from the message alone.
         question: {
           questions: escalatedQuestions({ question: text, questions: question.payload.questions }),
           ...(question.payload.reason === undefined ? {} : { reason: question.payload.reason }),
+          ...(lead === "" ? {} : { lead }),
         },
       };
     }
@@ -191,7 +213,10 @@ async function outcomeMessage(
       const origin = (run.failureOrigin ?? "harness") as FailureOrigin;
       return {
         authorKind: "system",
-        text: `Não consegui concluir esta tarefa: ${ORIGIN_TEXT_PT[origin] ?? "houve uma falha"} (origem: ${origin}).${run.failureDetail === null ? "" : ` Detalhe: ${clip(run.failureDetail, 300)}`}`,
+        text:
+          origin === "limit" && run.failureDetail !== null && run.failureDetail.trim() !== ""
+            ? failureSentence(origin, run.failureDetail, { max: 600 })
+            : `Não consegui concluir esta tarefa: ${failureSentence(origin, run.failureDetail, { max: 300 })}`,
         key: `run:${run.id}:failed`,
       };
     }
@@ -329,7 +354,7 @@ export async function finishRun(
       const origin = (run.failureOrigin ?? "harness") as FailureOrigin;
       await completeRoutineFire(db, run, {
         done: summary === "" ? "Rotina concluída." : summary,
-        failed: `${ORIGIN_TEXT_PT[origin] ?? "houve uma falha"} (origem: ${origin}).${run.failureDetail === null ? "" : ` Detalhe: ${clip(run.failureDetail, 300)}`}`,
+        failed: failureSentence(origin, run.failureDetail, { max: 300 }),
       });
     }
   }

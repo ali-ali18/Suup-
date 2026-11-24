@@ -42,7 +42,7 @@ export async function modelTurn(ctx: LoopContext): Promise<RunStatus | undefined
       return fail(
         ctx,
         "limit",
-        "the provider reported the context window as exceeded and the conversation cannot be compacted any further",
+        "Parei porque a conversa ficou grande demais para o modelo e não dá para resumi-la mais.",
       );
     }
     return fail(ctx, "provider", `${error.kind}: ${error.message}`);

@@ -1,5 +1,21 @@
 import type { Bot } from "@suup/api";
-import { Ellipsis, LayoutGrid, Plus, Search } from "lucide-react";
+import {
+  Archive,
+  Brain,
+  Ellipsis,
+  FolderInput,
+  Inbox,
+  Keyboard,
+  LayoutGrid,
+  LogOut,
+  Pencil,
+  Pin,
+  PinOff,
+  Plug,
+  Plus,
+  Search,
+  Settings,
+} from "lucide-react";
 import { type KeyboardEvent, useCallback, useMemo, useRef, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { botDisplay, pendingQuestions, unreadOf } from "../../app/selectors.js";
@@ -13,23 +29,24 @@ import { SIDEBAR_SPEC } from "../../lib/pane-size.js";
 import { Avatar } from "../../ui/avatar.js";
 import { type BadgeKind, BotBadge } from "../../ui/bot-badge.js";
 import { BotTitle } from "../../ui/bot-title.js";
-import type { MenuItem } from "../../ui/menu.js";
-import { PopupMenu } from "../../ui/popup-menu.js";
+import { MenuButton, type MenuSection, PopupMenu, popupKey } from "../../ui/menu.js";
 import { Dialog, MutedText, Pill, RoundButton } from "../../ui/primitives.js";
 import { ResizeHandle } from "../../ui/resize-handle.js";
+import { ScrollFade } from "../../ui/scroll-fade.js";
+import { Separator } from "../../ui/separator.js";
+import { Tip } from "../../ui/tooltip.js";
 
 /** How a bot's entry is laid out: a tile (pinned), a row (a list), or only the face (the rail). */
 const ENTRY_MAIN = {
-  tile: "w-full flex-col gap-2 px-2 pt-3 pb-2",
+  tile: "w-full flex-col gap-2 px-2 pt-4 pb-2",
   row: "w-full gap-3 py-2 pr-9 pl-2.5",
   rail: "size-rail-tile justify-center p-0",
 } as const;
 
-/** The name of the bot beside its face in the rail, shown on hover and on keyboard focus. */
-const RAIL_TIP =
-  "relative after:pointer-events-none after:absolute after:top-1/2 after:left-full after:z-30 after:ml-2.5 after:-translate-y-1/2 after:rounded-pill after:border after:border-border-strong after:bg-raised after:px-2.5 after:py-1 after:text-small after:whitespace-nowrap after:content-none hover:after:content-[attr(data-tip)] focus-visible:after:content-[attr(data-tip)]";
-
 /** The "more" button of an entry: shown on hover and on focus, over the end of a row or a tile's corner. */
+/** The line under a bot that has not talked yet (owner, 23/11/2026). */
+export const NO_MESSAGES = "Sem interação";
+
 const ENTRY_MORE = {
   tile: "top-2 right-2",
   row: "top-1/2 right-1.5 -translate-y-1/2",
@@ -73,7 +90,7 @@ function BotEntry({
   else if (display.chip === "doubt" || display.chip === "permission")
     badge = { kind: "question", text: "?" };
   else if (display.chip === "paused") badge = { kind: "paused", text: "" };
-  else if (unread > 0) badge = { kind: "unread", text: unread > 9 ? "9+" : String(unread) };
+  // An unread message is the blue dot in the avatar's corner (`unread` below), not a count.
   else if (display.chip === "failed") badge = { kind: "failed", text: "!" };
   const status = [
     display.label,
@@ -85,84 +102,96 @@ function BotEntry({
     .filter(Boolean)
     .join(", ");
   const label = status === "" ? bot.name : `${bot.name} — ${status}`;
-  // Enquanto o bot trabalha o rosto vira o indicador de pontos (`data-working`, `data-state`).
+  // O bot trabalhando (`data-working`): o rosto continua o rosto (docs/DESIGN.md §6).
   const working = ["working", "thinking", "resuming", "queued"].includes(display.chip ?? "");
-  const size = variant === "tile" ? "tile" : variant === "row" ? "row" : "md";
+  // The rail draws the face at the size of a row (42 px): "lg" filled the whole square (owner, 24/11/2026: "ainda estão gigantes").
+  const size = variant === "tile" ? "tile" : "row";
   const openMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     onMenu(bot, e.clientX, e.clientY);
   };
+  const main = (
+    <button
+      ref={setRef}
+      type="button"
+      className={cx(
+        "flex min-w-0 items-center rounded-card border border-transparent bg-transparent text-left hover:bg-hover aria-[current=page]:bg-sidebar-active",
+        ENTRY_MAIN[variant],
+      )}
+      aria-label={label}
+      aria-current={active ? "page" : undefined}
+      data-testid="bot-item"
+      data-bot={bot.name}
+      data-chip={display.chip ?? ""}
+      data-working={working}
+      tabIndex={tabStop ? 0 : -1}
+      onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+          e.preventDefault();
+          const rect = e.currentTarget.getBoundingClientRect();
+          onMenu(bot, rect.left + 24, rect.bottom);
+          return;
+        }
+        onKeyDown(e);
+      }}
+      onContextMenu={openMenu}
+    >
+      <span className="relative inline-flex flex-none">
+        <Avatar
+          avatar={bot.avatar}
+          avatarStyle={bot.avatarStyle}
+          pixel3d={bot.avatarPixel3d}
+          color={bot.color}
+          seed={bot.id}
+          size={size}
+          state={display.avatar}
+          supervisor={bot.isDefault}
+          working={working}
+          unread={unread > 0}
+        />
+        {badge !== undefined && (
+          <BotBadge
+            kind={badge.kind}
+            data-testid="bot-badge"
+            data-kind={badge.kind}
+            aria-hidden="true"
+          >
+            {badge.text}
+          </BotBadge>
+        )}
+      </span>
+      {variant === "tile" && (
+        <span className="max-w-full truncate text-label leading-inherit font-label">
+          {bot.name}
+        </span>
+      )}
+      {variant === "row" && (
+        <span className="flex min-w-0 flex-1 flex-col" data-testid="bot-entry-text">
+          <span className="truncate text-label">
+            <BotTitle name={bot.name} description={bot.description} />
+          </span>
+          <MutedText className="truncate">{preview ?? NO_MESSAGES}</MutedText>
+        </span>
+      )}
+    </button>
+  );
   return (
     <div className="group/entry relative min-w-0">
-      <button
-        ref={setRef}
-        type="button"
-        className={cx(
-          "flex min-w-0 items-center rounded-card border border-transparent bg-transparent text-left hover:bg-hover aria-[current=page]:bg-sidebar-active",
-          ENTRY_MAIN[variant],
-          variant === "rail" && RAIL_TIP,
-        )}
-        aria-label={label}
-        aria-current={active ? "page" : undefined}
-        data-tip={variant === "rail" ? bot.name : undefined}
-        data-testid="bot-item"
-        data-bot={bot.name}
-        data-chip={display.chip ?? ""}
-        data-working={working}
-        tabIndex={tabStop ? 0 : -1}
-        onClick={onSelect}
-        onKeyDown={(e) => {
-          if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
-            e.preventDefault();
-            const rect = e.currentTarget.getBoundingClientRect();
-            onMenu(bot, rect.left + 24, rect.bottom);
-            return;
-          }
-          onKeyDown(e);
-        }}
-        onContextMenu={openMenu}
-      >
-        <span className="relative inline-flex flex-none">
-          <Avatar
-            avatar={bot.avatar}
-            avatarStyle={bot.avatarStyle}
-            pixel3d={bot.avatarPixel3d}
-            color={bot.color}
-            seed={bot.id}
-            size={size}
-            state={display.avatar}
-            supervisor={bot.isDefault}
-          />
-          {badge !== undefined && (
-            <BotBadge
-              kind={badge.kind}
-              data-testid="bot-badge"
-              data-kind={badge.kind}
-              aria-hidden="true"
-            >
-              {badge.text}
-            </BotBadge>
-          )}
-        </span>
-        {variant === "tile" && (
-          <span className="max-w-full truncate text-label leading-inherit font-label">
-            {bot.name}
-          </span>
-        )}
-        {variant === "row" && (
-          <span className="flex min-w-0 flex-1 flex-col" data-testid="bot-entry-text">
-            <span className="truncate text-label">
-              <BotTitle name={bot.name} description={bot.description} />
-            </span>
-            <MutedText className="truncate">{preview ?? "Sem mensagens"}</MutedText>
-          </span>
-        )}
-      </button>
+      {variant === "rail" ? (
+        // The rail: only the bot's name beside its face (owner, 23/11/2026), at once, in a portal
+        // so no scrolling list clips it.
+        <Tip label={bot.name} side="right" delay={0} testId="rail-tip">
+          {main}
+        </Tip>
+      ) : (
+        main
+      )}
       {variant !== "rail" && (
         <button
           type="button"
           className={cx(
-            "absolute inline-flex size-7 items-center justify-center rounded-pill border-0 bg-transparent text-text-muted opacity-0 group-focus-within/entry:opacity-100 group-hover/entry:opacity-100 hover:bg-raised hover:text-text",
+            "absolute inline-flex size-7 items-center justify-center rounded-pill border-0 bg-transparent text-text-muted opacity-0 transition-opacity group-focus-within/entry:opacity-100 group-hover/entry:opacity-100 hover:bg-raised hover:text-text",
             ENTRY_MORE[variant],
           )}
           aria-label={`Mais opções de ${bot.name}`}
@@ -192,11 +221,11 @@ export function Sidebar() {
   const sidebarWidth = useUi((s) => s.sidebarWidth);
   const view = useUi((s) => s.view);
   const selected = useUi((s) => s.selectedBotId);
+  const picked = useUi((s) => s.botPicked);
   const ui = useUi.getState;
   const selectBot = useUi((s) => s.selectBot);
   const go = useUi((s) => s.go);
-  const [menu, setMenu] = useState<{ bot: Bot; x: number; y: number } | null>(null);
-  const [ownerMenu, setOwnerMenu] = useState<{ x: number; y: number } | null>(null);
+  const [menu, setMenu] = useState<{ bot: Bot; x: number; y: number; key: number } | null>(null);
   const [archiving, setArchiving] = useState<Bot | null>(null);
   const refs = useRef<Record<string, HTMLButtonElement | null>>({});
 
@@ -207,13 +236,14 @@ export function Sidebar() {
     () => pendingQuestions({ runs, bots }).length + pendingApprovals({ approvals, bots }).length,
     [runs, bots, approvals],
   );
-  const activeId = view === "chat" ? selected : null;
+  // Only a bot the person chose is marked; the one the app opened by itself is not.
+  const activeId = view === "chat" && picked ? selected : null;
   const tabStop = flat.some((b) => b.id === activeId) ? activeId : flat[0]?.id;
 
   const previewOf = (bot: Bot): string => {
     const conversation =
       bot.conversationId === null ? undefined : conversations[bot.conversationId];
-    return plainText(conversation?.lastMessage?.text ?? "") || "Sem mensagens";
+    return plainText(conversation?.lastMessage?.text ?? "") || NO_MESSAGES;
   };
 
   const move = (e: KeyboardEvent, id: string) => {
@@ -245,15 +275,37 @@ export function Sidebar() {
     [api, sync],
   );
 
-  const menuItems = (bot: Bot): MenuItem[] => [
+  const menuItems = (bot: Bot): MenuSection[] => [
     {
-      id: "pin",
-      label: bot.pinned ? "Desafixar" : "Fixar",
-      onSelect: () => void patch(bot, { pinned: !bot.pinned }),
+      id: "bot",
+      items: [
+        {
+          id: "pin",
+          label: bot.pinned ? "Desafixar" : "Fixar",
+          icon: bot.pinned ? PinOff : Pin,
+          onSelect: () => void patch(bot, { pinned: !bot.pinned }),
+        },
+        {
+          id: "group",
+          label: "Mover para grupo…",
+          icon: FolderInput,
+          onSelect: () => ui().setGroupBot(bot.id),
+        },
+        { id: "edit", label: "Editar…", icon: Pencil, onSelect: () => ui().openEditBot(bot.id) },
+      ],
     },
-    { id: "group", label: "Mover para grupo…", onSelect: () => ui().setGroupBot(bot.id) },
-    { id: "edit", label: "Editar…", onSelect: () => ui().openEditBot(bot.id) },
-    { id: "archive", label: "Arquivar…", danger: true, onSelect: () => setArchiving(bot) },
+    {
+      id: "archive",
+      items: [
+        {
+          id: "archive",
+          label: "Arquivar…",
+          icon: Archive,
+          danger: true,
+          onSelect: () => setArchiving(bot),
+        },
+      ],
+    },
   ];
 
   const entry = (bot: Bot, variant: EntryProps["variant"]) => (
@@ -265,7 +317,7 @@ export function Sidebar() {
       tabStop={bot.id === tabStop}
       preview={previewOf(bot)}
       onSelect={() => selectBot(bot.id)}
-      onMenu={(b, x, y) => setMenu({ bot: b, x, y })}
+      onMenu={(b, x, y) => setMenu({ bot: b, x, y, key: popupKey() })}
       setRef={(el) => {
         refs.current[bot.id] = el;
       }}
@@ -273,74 +325,103 @@ export function Sidebar() {
     />
   );
 
-  const ownerItems: MenuItem[] = [
-    { id: "memory", label: "Memória", onSelect: () => go("memory") },
+  // Three groups split by a line: the screens, the app, leaving (owner, 24/11/2026).
+  const ownerItems: MenuSection[] = [
     {
-      id: "pending",
-      label: pending > 0 ? `Pendências (${pending})` : "Pendências",
-      onSelect: () => go("pending"),
+      id: "screens",
+      items: [
+        {
+          id: "pending",
+          label: "Pendências",
+          icon: Inbox,
+          ...(pending > 0 ? { hint: String(pending) } : {}),
+          onSelect: () => go("pending"),
+        },
+        { id: "memory", label: "Memória", icon: Brain, onSelect: () => go("memory") },
+        { id: "plugins", label: "Conectores", icon: Plug, onSelect: () => go("connectors") },
+      ],
     },
-    { id: "plugins", label: "Conectores", onSelect: () => go("connectors") },
-    { id: "settings", label: "Configurações", onSelect: () => ui().openSettings() },
-    { id: "shortcuts", label: "Atalhos de teclado", onSelect: () => ui().setShortcuts(true) },
     {
-      id: "disconnect",
-      label: mode === "local" ? "Trocar de servidor" : "Desconectar",
-      danger: true,
-      onSelect: () => void disconnect(),
+      id: "app",
+      items: [
+        {
+          id: "settings",
+          label: "Configurações",
+          icon: Settings,
+          onSelect: () => ui().openSettings(),
+        },
+        {
+          id: "shortcuts",
+          label: "Atalhos de teclado",
+          icon: Keyboard,
+          onSelect: () => ui().setShortcuts(true),
+        },
+      ],
+    },
+    {
+      id: "leave",
+      items: [
+        {
+          id: "disconnect",
+          label: mode === "local" ? "Trocar de servidor" : "Desconectar",
+          icon: LogOut,
+          danger: true,
+          onSelect: () => void disconnect(),
+        },
+      ],
     },
   ];
+  // The account button opens its menu above it, lined up with its start (the menu of sempre).
   const ownerButton = (variant: "bar" | "rail") => (
-    <button
-      type="button"
-      className={cx(
-        "inline-flex items-center rounded-pill border-0 bg-transparent hover:bg-hover",
-        variant === "bar" ? "gap-3 py-1 pr-2.5 pl-1" : "p-1",
+    <MenuButton
+      label="Sua conta"
+      items={ownerItems}
+      placement="above"
+      align="start"
+      width="normal"
+      trigger={(props) => (
+        <button
+          type="button"
+          {...props}
+          className={cx(
+            "inline-flex items-center rounded-row border-0 bg-transparent transition-colors hover:bg-hover aria-expanded:bg-hover",
+            variant === "bar" ? "min-w-0 flex-1 gap-2.5 py-1.5 pr-3 pl-1.5" : "p-1",
+          )}
+          aria-label={
+            pending > 0 ? `Menu da sua conta (${pending} pendências)` : "Menu da sua conta"
+          }
+          data-testid="owner-menu"
+        >
+          <span
+            className={cx(
+              "relative inline-flex flex-none items-center justify-center rounded-pill border border-border-strong bg-raised font-label",
+              variant === "rail" ? "size-11 text-label" : "size-avatar-sm text-small",
+            )}
+            aria-hidden="true"
+          >
+            V
+            {pending > 0 && (
+              <BotBadge kind="question" data-testid="pending-counter">
+                {pending}
+              </BotBadge>
+            )}
+          </span>
+          {variant === "bar" && <span className="truncate text-label font-label">Você</span>}
+        </button>
       )}
-      aria-haspopup="menu"
-      aria-label={pending > 0 ? `Menu da sua conta (${pending} pendências)` : "Menu da sua conta"}
-      data-testid="owner-menu"
-      onClick={(e) => {
-        const rect = e.currentTarget.getBoundingClientRect();
-        setOwnerMenu({ x: rect.left, y: rect.top - ownerItems.length * 40 - 16 });
-      }}
-    >
-      <span
-        className={cx(
-          "relative inline-flex flex-none items-center justify-center rounded-pill border border-border-strong bg-raised font-label",
-          variant === "bar" ? "size-control" : "size-avatar-md",
-        )}
-        aria-hidden="true"
-      >
-        V
-        {pending > 0 && (
-          <BotBadge kind="question" data-testid="pending-counter">
-            {pending}
-          </BotBadge>
-        )}
-      </span>
-      {variant === "bar" && <span className="text-label font-label">Você</span>}
-    </button>
+    />
   );
 
   const popups = (
     <>
-      {ownerMenu !== null && (
-        <PopupMenu
-          x={ownerMenu.x}
-          y={ownerMenu.y}
-          label="Sua conta"
-          items={ownerItems}
-          onClose={() => setOwnerMenu(null)}
-        />
-      )}
       {menu !== null && (
         <PopupMenu
+          key={menu.key}
           x={menu.x}
           y={menu.y}
           label={`Opções de ${menu.bot.name}`}
           items={menuItems(menu.bot)}
-          onClose={() => setMenu(null)}
+          onClose={() => setMenu((m) => (m?.key === menu.key ? null : m))}
         />
       )}
       {archiving !== null && (
@@ -379,7 +460,9 @@ export function Sidebar() {
   return (
     <nav
       className={cx(
-        "relative flex min-h-0 flex-none flex-col bg-sidebar",
+        // Nothing to select in it (owner, 23/11/2026); the width eases between the rail and the bar
+        // instead of jumping (docs/DESIGN.md §1 "Nada seco").
+        "relative flex min-h-0 flex-none flex-col bg-sidebar transition-[width] duration-(--duration-base) ease-out select-none",
         collapsed
           ? "w-rail items-center gap-2 px-0 py-3.5"
           : "w-[var(--sidebar-w,var(--width-sidebar))] gap-2 border-r border-border p-3",
@@ -391,30 +474,51 @@ export function Sidebar() {
     >
       {collapsed ? (
         <>
-          <div
-            className="flex min-h-0 w-full flex-1 flex-col items-center gap-0.5 overflow-y-auto py-2"
-            role="group"
-            aria-label="Bots"
-          >
-            {layout.pinned.map((bot) => entry(bot, "rail"))}
-            {layout.pinned.length > 0 && flat.length > layout.pinned.length && (
-              <hr className="my-0.5 w-6 border-0 border-t border-border-strong" />
-            )}
-            {flat.filter((b) => !b.pinned).map((bot) => entry(bot, "rail"))}
+          {/* The rail of the owner's reference (24/11/2026): the bots at the top, each in its rounded
+              square; a line between the pinned and the rest; at the bottom "+", the plugins and the
+              account. Search stays on Ctrl+K and in the open bar. */}
+          <div className="h-6 flex-none" data-tauri-drag-region />
+          <div className="relative flex min-h-0 w-full flex-1 flex-col">
+            <div
+              className="flex min-h-0 w-full flex-1 animate-fade-in flex-col items-center gap-0.5 overflow-y-auto py-fade"
+              role="group"
+              aria-label="Bots"
+            >
+              {/* One block per section of the open bar (the pinned, each group, the rest), a line
+                  between each two (owner, 24/11/2026: "cada um ganha uma separação"). */}
+              {[
+                { key: "pinned", bots: layout.pinned },
+                ...layout.groups.map((g) => ({ key: `group:${g.name}`, bots: g.bots })),
+                { key: "rest", bots: layout.rest },
+              ]
+                .filter((section) => section.bots.length > 0)
+                .map((section, i) => (
+                  <div
+                    key={section.key}
+                    className="flex flex-col items-center gap-0.5"
+                    data-testid="rail-section"
+                  >
+                    {i > 0 && <Separator tone="strong" className="my-1.5 w-rail-tile" />}
+                    {section.bots.map((bot) => entry(bot, "rail"))}
+                  </div>
+                ))}
+            </div>
+            <ScrollFade tone="sidebar" />
           </div>
           <div className="relative flex w-full flex-none flex-col items-center gap-1 pt-2">
             <RoundButton label="Novo bot" tone="ghost" size="circle" onClick={ui().openNewBot}>
-              <Plus size={20} aria-hidden="true" />
+              <Plus size={22} aria-hidden="true" />
             </RoundButton>
             <RoundButton
-              label="Buscar e ações"
-              tone="raised"
+              label="Conectores"
+              tone="ghost"
               size="circle"
-              onClick={() => ui().setPalette(true)}
+              onClick={() => go("connectors")}
+              data-testid="rail-plugins"
             >
               <LayoutGrid size={18} aria-hidden="true" />
             </RoundButton>
-            {ownerButton("rail")}
+            <div className="pt-1">{ownerButton("rail")}</div>
           </div>
         </>
       ) : (
@@ -428,46 +532,43 @@ export function Sidebar() {
               <Plus size={20} aria-hidden="true" />
             </RoundButton>
           </div>
-          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto py-2">
-            {layout.pinned.length > 0 && (
-              <section aria-label="Fixados" data-testid="pinned-section">
-                <div
-                  className="grid grid-cols-[repeat(auto-fill,var(--width-tile))] justify-center gap-1"
-                  data-testid="pinned-tiles"
+          <div className="relative flex min-h-0 flex-1 flex-col">
+            <div className="flex min-h-0 flex-1 animate-fade-in flex-col gap-4 overflow-y-auto py-fade">
+              {layout.pinned.length > 0 && (
+                <section aria-label="Fixados" data-testid="pinned-section">
+                  <div
+                    className="grid grid-cols-[repeat(auto-fill,var(--width-tile))] justify-center gap-1"
+                    data-testid="pinned-tiles"
+                  >
+                    {layout.pinned.map((b) => entry(b, "tile"))}
+                  </div>
+                </section>
+              )}
+              {layout.groups.map((group) => (
+                <section
+                  key={group.name}
+                  aria-label={`Grupo ${group.name}`}
+                  data-testid="group-section"
+                  data-group={group.name}
                 >
-                  {layout.pinned.map((b) => entry(b, "tile"))}
-                </div>
-              </section>
-            )}
-            {layout.groups.map((group) => (
-              <section
-                key={group.name}
-                aria-label={`Grupo ${group.name}`}
-                data-testid="group-section"
-                data-group={group.name}
-              >
-                <SidebarLabel>{group.name}</SidebarLabel>
-                <div className="flex flex-col gap-0.5">
-                  {group.bots.map((b) => entry(b, "row"))}
-                </div>
-              </section>
-            ))}
-            {layout.rest.length > 0 && (
-              <section aria-label="Bots" data-testid="rest-section">
-                <SidebarLabel>Bots</SidebarLabel>
-                <div className="flex flex-col gap-0.5">
-                  {layout.rest.map((b) => entry(b, "row"))}
-                </div>
-              </section>
-            )}
+                  <SidebarLabel>{group.name}</SidebarLabel>
+                  <div className="flex flex-col gap-0.5">
+                    {group.bots.map((b) => entry(b, "row"))}
+                  </div>
+                </section>
+              ))}
+              {layout.rest.length > 0 && (
+                <section aria-label="Bots" data-testid="rest-section">
+                  <SidebarLabel>Bots</SidebarLabel>
+                  <div className="flex flex-col gap-0.5">
+                    {layout.rest.map((b) => entry(b, "row"))}
+                  </div>
+                </section>
+              )}
+            </div>
+            <ScrollFade tone="sidebar" />
           </div>
-          <div className="relative flex flex-none items-center gap-1 pt-2">
-            {ownerButton("bar")}
-            <span className="flex-1" />
-            <RoundButton label="Buscar e ações" tone="raised" onClick={() => ui().setPalette(true)}>
-              <LayoutGrid size={18} aria-hidden="true" />
-            </RoundButton>
-          </div>
+          <div className="relative flex flex-none items-center pt-2">{ownerButton("bar")}</div>
         </>
       )}
       {resizer}

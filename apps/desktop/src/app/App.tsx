@@ -30,6 +30,13 @@ export function App() {
   const customFrame = useUi((s) => s.customFrame);
   const toasts = useUi((s) => s.toasts);
   const dismissToast = useUi((s) => s.dismissToast);
+  // The window draws its own buttons: the root says so, and every screen head keeps their corner
+  // free (`framed:` in theme.css; docs/DESIGN.md §4c).
+  useEffect(() => {
+    const root = document.documentElement;
+    if (customFrame) root.dataset.frame = "custom";
+    else delete root.dataset.frame;
+  }, [customFrame]);
 
   /** Leaves the current server for the first-run choice (the data stays where it is). */
   const switchServer = useCallback(async () => {

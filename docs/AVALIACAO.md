@@ -219,3 +219,11 @@ Para provar o avaliador sem modelo, o provedor `scripted` aceita, além de `agen
 - Algumas tarefas difíceis dependem do ritmo do bot: a mensagem de `resume-after-interrupt` só chega se ele seguir "uma etapa por comando"; um bot que fizesse as 12 etapas num único comando terminaria antes dela e reprovaria na verificação "a mensagem chegou", com a causa dita no relatório.
 - Os verificadores de código dependem de `python3` e de utilitários do sistema (`grep`, `find`, `sha256`): estão na imagem do sandbox.
 - O tempo das execuções varia com a latência do provedor; o limite de duração das tarefas é generoso, e o avaliador desiste de uma execução que passe dele por mais de um minuto.
+
+## O conjunto de documentos (`doc-*`)
+
+Compara a ferramenta `create_document` com o bot escrevendo o próprio script. São três tarefas, cada uma em dois modos (`-tool` e `-script`), fora da execução padrão: escolha-as com `--tasks` (`doc-report-pdf-tool`, `doc-report-pdf-script`, `doc-abnt-pdf-tool`, `doc-abnt-pdf-script`, `doc-sales-xlsx-tool`, `doc-sales-xlsx-script`) e use o sandbox Docker com uma imagem que tenha reportlab, python-docx e openpyxl (`docker/sandbox`). Desde 24/11/2026 o modo `-script` é o caminho **padrão** do produto (código livre, guia curto no prompt e conferência no `send_file`); o `-tool` é o atalho.
+
+- Uma tarefa pode declarar `deliverFiles: true` (o bot recebe `send_file` e `create_document`, e o que ele entrega fica guardado, mesmo na execução isolada, para o verificador: `VerifyContext.files`) e `withoutTools: ["create_document"]` (tira uma ferramenta do bot; o prompt do sistema segue as ferramentas oferecidas, então a linha que manda usar a ferramenta some junto). Os dois modos de uma tarefa têm o mesmo objetivo, os mesmos critérios e o mesmo juiz.
+- O verificador abre **o arquivo entregue** com `inspectPdf` e `inspectXlsx` (`@suup/documents`) e confere: abre, A4, número de páginas, fontes embutidas, acentos, e, na ABNT, margens, corpo da fonte, espaçamento, justificação, figura e legenda; na planilha, cabeçalho, valores, fórmulas e formato de moeda. Nada vem do que o bot diz; o relatório registra à parte o texto final, se o bot repetiu o nome do arquivo e o uso de cache.
+- Resultado da primeira comparação com modelos reais: `TESTES-REAIS.md`, "Documentos".

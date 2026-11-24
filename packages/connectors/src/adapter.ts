@@ -94,6 +94,10 @@ export function adaptConnector(
       );
       continue;
     }
+    if (spec.tools[raw.name]?.denied === true) {
+      skip("o Suup não oferece esta ferramenta aos bots (a galeria a bloqueia)");
+      continue;
+    }
     if (raw.taskRequired) {
       skip("a ferramenta só roda como tarefa de longa duração, que este cliente não suporta");
       continue;

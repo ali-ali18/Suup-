@@ -242,6 +242,8 @@ export const routineRunFactsSchema = z.object({
   kind: z.enum(["scheduled", "catch_up", "manual"]),
   missedCount: z.number().int().nonnegative(),
   state: z.string(),
+  /** A one-time reminder the user asked for (not a routine: docs/ROTINAS.md, "Lembrete de uma vez"). */
+  reminder: z.exactOptional(z.boolean()),
 });
 export type RoutineRunFacts = z.infer<typeof routineRunFactsSchema>;
 
@@ -273,10 +275,31 @@ export const ownRoutineSchema = z.object({
   schedule: z.string(),
   timeZone: z.string(),
   status: z.enum(["active", "paused"]),
+  /** A one-time reminder (internal, not in the panel), not a routine (docs/ROTINAS.md). */
+  reminder: z.exactOptional(z.boolean()),
 });
 export type OwnRoutine = z.infer<typeof ownRoutineSchema>;
+/**
+ * Something that happened to one of the bot's routines or reminders after the bot set it up
+ * (docs/ROTINAS.md, "O que aconteceu com elas"): the owner deleted, changed, paused or resumed it,
+ * or a one-time reminder already went off. A routine deleted in the panel leaves no row, so
+ * without this the bot would think its own creation had failed.
+ */
+export const ownRoutineEventSchema = z.object({
+  kind: z.enum(["deleted", "edited", "paused", "resumed", "fired"]),
+  actor: z.enum(["owner", "bot", "system"]),
+  name: z.string(),
+  reminder: z.exactOptional(z.boolean()),
+  /** When it happened (ISO 8601). */
+  at: z.string(),
+  /** What changed, in short words (the new schedule). */
+  detail: z.exactOptional(z.string()),
+});
+export type OwnRoutineEvent = z.infer<typeof ownRoutineEventSchema>;
 export const ownRoutinesSchema = z.object({
   items: z.array(ownRoutineSchema),
+  /** Recent changes by the owner (and the bot's own deletes), newest first; absent in old logs. */
+  recent: z.exactOptional(z.array(ownRoutineEventSchema)),
   /** How many more routines exist beyond the ones listed (the list is capped). */
   more: z.number().int().nonnegative(),
 });
@@ -335,14 +358,54 @@ export type RunResult = z.infer<typeof runResultSchema>;
 
 /**
  * Which call a model event belongs to. The agent's own turns (the default) build the
- * conversation; `review` and `compaction` calls are recorded in full for auditing but never
- * become part of it.
+ * conversation; `review`, `compaction` and `progress` (the progress watchdog's judge) calls are
+ * recorded in full for auditing but never become part of it.
  */
-export const MODEL_CALL_PURPOSES = ["agent", "review", "compaction"] as const;
+export const MODEL_CALL_PURPOSES = ["agent", "review", "compaction", "progress"] as const;
 export const modelCallPurposeSchema = z.enum(MODEL_CALL_PURPOSES);
 export type ModelCallPurpose = z.infer<typeof modelCallPurposeSchema>;
 
 export const toolOutcomeSchema = z.enum(TOOL_OUTCOMES);
+
+/** What the progress watchdog saw and decided at one check (docs/VIGIA.md). */
+export const progressCheckSchema = z.object({
+  /** What brought the check: the soft limit (80 %), the step limit, or a pattern in the calls. */
+  trigger: z.enum([
+    "soft_limit",
+    "limit",
+    "repeat",
+    "error_loop",
+    "no_tool",
+    "alternation",
+    "near_repeat",
+  ]),
+  /** The structural signals, counted by exact comparison (never by reading text). */
+  signals: z.object({
+    exactRepeat: z.number().int().nonnegative(),
+    nearRepeat: z.number().int().nonnegative(),
+    errorRun: z.number().int().nonnegative(),
+    noToolTurns: z.number().int().nonnegative(),
+    /** Length of the A-B-A-B run at the end of the calls (0 when there is none, or under 6). */
+    alternation: z.number().int().nonnegative(),
+    changes: z.number().int().nonnegative(),
+    newCalls: z.number().int().nonnegative(),
+    newEvidence: z.number().int().nonnegative(),
+  }),
+  /** The structural progress showed (a change, or new evidence, in the last calls). */
+  progress: z.boolean(),
+  /** What the judge said, when it was asked. */
+  verdict: z.exactOptional(z.enum(["avanca", "circulo", "incerto"])),
+  reason: z.exactOptional(z.string()),
+  /** The judge was asked (false: decided on the structural signals alone). */
+  judged: z.boolean(),
+  /** What the harness did. */
+  action: z.enum(["continue", "nudge", "extend", "ask", "stop"]),
+  /** The steps granted (only with `extend`). */
+  extension: z.exactOptional(z.number().int().positive()),
+  turns: z.number().int().nonnegative(),
+  limit: z.number().int().positive(),
+});
+export type ProgressCheck = z.infer<typeof progressCheckSchema>;
 
 /**
  * The `type` + `payload` stored in `run_events`. Every model request and response is recorded in
@@ -507,6 +570,11 @@ export const runEventSchema = z.discriminatedUnion("type", [
       ),
       /** The page this result is, as the tool declared it (`web_read`): a source of the run. */
       source: z.exactOptional(z.object({ url: z.string(), title: z.exactOptional(z.string()) })),
+      /**
+       * The level of the call as the registry assessed it before it ran (`read` or a kind of
+       * change). The progress watchdog counts a successful call that is not a read as a change.
+       */
+      risk: z.exactOptional(riskLevelSchema),
     }),
   }),
   z.object({
@@ -640,6 +708,32 @@ export const runEventSchema = z.discriminatedUnion("type", [
     /** The harness telling the model to keep going (e.g. pending plan steps remain). */
     type: z.literal("nudge"),
     payload: z.object({ reason: z.string(), text: z.string() }),
+  }),
+  z.object({
+    /**
+     * The progress watchdog looked at the run (docs/VIGIA.md): the structural signals, the verdict
+     * of the cheap judge when it was asked, and what the harness did about it. Visible in the
+     * Inspector; the chat only shows the question card or the friendly final message.
+     */
+    type: z.literal("progress_check"),
+    payload: progressCheckSchema,
+  }),
+  z.object({
+    /**
+     * The owner answered the progress question (or the run was extended by itself, see
+     * `progress_check.action`). `continue` grants `grant` more steps and reopens the detection
+     * window; `stop` ends the run cleanly. `text` is what the owner wrote; `inboxIds` the inbox
+     * items it delivers (one atomic event, so a crash never loses the answer).
+     */
+    type: z.literal("progress_decided"),
+    payload: z.object({
+      choice: z.enum(["continue", "stop"]),
+      grant: z.number().int().nonnegative(),
+      /** The answer was free text, not one of the two options: the model reads it too. */
+      typed: z.exactOptional(z.boolean()),
+      text: z.string(),
+      inboxIds: z.exactOptional(z.array(z.string())),
+    }),
   }),
   z.object({
     type: z.literal("finish_attempt"),
@@ -799,14 +893,35 @@ export const runEventSchema = z.discriminatedUnion("type", [
       questions: z.exactOptional(z.array(escalateQuestionSchema).min(1).max(5)),
       /** The `escalate` call this question came from. Absent for a review tie-break. */
       callId: z.exactOptional(z.string()),
-      /** `review_tie_break`: the reviewer rejected too often and a human must decide. */
-      reason: z.exactOptional(z.enum(["review_tie_break"])),
+      /**
+       * What the bot wrote in the same turn, besides the question (context, a short reason). The
+       * chat shows it as the bot's message above the card; the question is the card's title.
+       * Absent when the bot only called the tool.
+       */
+      lead: z.exactOptional(z.string()),
+      /**
+       * `review_tie_break`: the reviewer rejected too often and a human must decide.
+       * `progress_limit`: the progress watchdog stopped the run (step limit, or a loop) and asks
+       * the owner to continue or stop (docs/VIGIA.md).
+       */
+      reason: z.exactOptional(z.enum(["review_tie_break", "progress_limit"])),
       /**
        * With `review_tie_break`: why the review sent it to the user. `reject`: the bot and the
        * reviewer disagree. `unverified`: the reviewer could not verify part of the work. Absent in
        * older logs (read as `reject`).
        */
       reviewVerdict: z.exactOptional(z.enum(["reject", "unverified"])),
+      /**
+       * With `progress_limit`: why the watchdog asks (`limit`: the step limit; the others are a
+       * loop it saw) and how many steps "Continuar" grants. The labels of the two options are in
+       * `questions`; the loop reads the answer by exact comparison with them.
+       */
+      progress: z.exactOptional(
+        z.object({
+          cause: z.enum(["limit", "repeat", "error_loop", "no_tool", "alternation"]),
+          grant: z.number().int().positive(),
+        }),
+      ),
     }),
   }),
   z.object({

@@ -106,14 +106,6 @@ export const REGEX_ALLOWLIST: readonly RegexAllowance[] = [
     pending: false,
   },
   {
-    file: "apps/desktop/src/data/actions.ts",
-    count: 1,
-    group: "b",
-    why: "achata espaços em branco de um texto para a linha de resumo",
-    instead: "dividir sem regex",
-    pending: true,
-  },
-  {
     file: "apps/desktop/src/data/botlist.ts",
     count: 1,
     group: "b",

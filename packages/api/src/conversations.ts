@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { botColorSchema, botSchema } from "./bots.js";
 import { boolQuery, intQuery, isoDate, list, uuid } from "./common.js";
+import { FILE_KINDS } from "./files.js";
 import { runSchema } from "./runs.js";
 
 /** A choice offered with a question. The answer is still plain text: the label, or free text. */
@@ -26,8 +27,22 @@ export type Question = z.infer<typeof questionSchema>;
 export const messageQuestionSchema = z.object({
   /** What was asked: one question (the usual case) or a questionnaire of up to 5. */
   questions: z.array(questionSchema).min(1),
-  /** `review_tie_break`: the reviewer rejected too often and the user must decide. */
-  reason: z.exactOptional(z.literal("review_tie_break")),
+  /**
+   * `review_tie_break`: the reviewer rejected too often and the user must decide.
+   * `progress_limit`: the run reached its step limit or started to repeat itself and asks whether
+   * to continue (docs/VIGIA.md).
+   */
+  reason: z.exactOptional(z.enum(["review_tie_break", "progress_limit"])),
+  /**
+   * What the bot wrote besides the question, in the same turn: the chat draws it as the bot's
+   * bubble above the card. Absent when the bot only asked (the card's title is the question).
+   */
+  lead: z.exactOptional(z.string()),
+  /**
+   * The user closed the card with its X (`POST /v1/messages/{id}/dismiss`): no option will be
+   * chosen. The app draws the card locked, "Não respondido"; the run was told and went on.
+   */
+  dismissed: z.exactOptional(z.boolean()),
 });
 export type MessageQuestion = z.infer<typeof messageQuestionSchema>;
 
@@ -50,6 +65,20 @@ export const teamProposalSchema = z.object({
   created: z.array(z.object({ index: z.number().int().min(0), botId: uuid })),
 });
 export type TeamProposal = z.infer<typeof teamProposalSchema>;
+
+/**
+ * A file a bot message carries (`send_file`): what the chat draws (`kind` picks the icon, from the
+ * MIME type by an exact table) and what `GET /v1/files/:id` downloads.
+ */
+export const messageAttachmentSchema = z.object({
+  id: uuid,
+  name: z.string(),
+  mime: z.string(),
+  /** Bytes. */
+  size: z.number().int().nonnegative(),
+  kind: z.enum(FILE_KINDS),
+});
+export type MessageAttachment = z.infer<typeof messageAttachmentSchema>;
 
 export const messageSchema = z.object({
   id: uuid,
@@ -78,6 +107,8 @@ export const messageSchema = z.object({
    * of the message, never part of `text`; the bot is told which routine it is.
    */
   routineRef: z.exactOptional(z.object({ id: uuid })),
+  /** Only on a bot (or system) message whose run sent files: the files, oldest first. */
+  attachments: z.exactOptional(z.array(messageAttachmentSchema)),
 });
 export type Message = z.infer<typeof messageSchema>;
 
