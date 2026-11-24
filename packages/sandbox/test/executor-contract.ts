@@ -305,6 +305,20 @@ export function describeExecutorContract(name: string, factory: ContractFactory)
         expect((await ex.exec("cat api.txt")).stdout).toBe("made-by-api");
       });
 
+      it("reads bytes exactly (binary, NUL included) and refuses over the limit, a directory or nothing", async () => {
+        await ex.exec("printf '%%PDF-\\000\\377\\001' > bin.pdf");
+        const bytes = await (ex.readFileBytes as NonNullable<typeof ex.readFileBytes>)(
+          "bin.pdf",
+          1024,
+        );
+        expect([...bytes]).toEqual([0x25, 0x50, 0x44, 0x46, 0x2d, 0x00, 0xff, 0x01]);
+        const read = ex.readFileBytes?.bind(ex) as NonNullable<typeof ex.readFileBytes>;
+        await expect(read("bin.pdf", 4)).rejects.toThrow(/too large/);
+        await ex.exec("mkdir -p somedir");
+        await expect(read("somedir", 1024)).rejects.toThrow();
+        await expect(read("missing.bin", 1024)).rejects.toThrow();
+      });
+
       it("follows a symlink that stays inside the workspace", async () => {
         await ex.writeFile("real/target.txt", "inside");
         await ex.exec("ln -sfn real alias");
@@ -331,6 +345,7 @@ export function describeExecutorContract(name: string, factory: ContractFactory)
           await expect(ex.writeFile(path, "x")).rejects.toBeInstanceOf(WorkspaceEscapeError);
           await expect(ex.listDir(path)).rejects.toBeInstanceOf(WorkspaceEscapeError);
           await expect(ex.stat(path)).rejects.toBeInstanceOf(WorkspaceEscapeError);
+          await expect(ex.readFileBytes?.(path, 1024)).rejects.toBeInstanceOf(WorkspaceEscapeError);
         });
       }
 
@@ -352,6 +367,9 @@ export function describeExecutorContract(name: string, factory: ContractFactory)
 
         it("refuses to read through a file symlink", async () => {
           await expect(ex.readFile("link-file")).rejects.toBeInstanceOf(WorkspaceEscapeError);
+          await expect(ex.readFileBytes?.("link-file", 1024)).rejects.toBeInstanceOf(
+            WorkspaceEscapeError,
+          );
         });
 
         it("refuses to read through a directory symlink", async () => {

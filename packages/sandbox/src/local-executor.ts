@@ -23,6 +23,7 @@ import {
   DEFAULT_EXEC_TIMEOUT_MS,
   DEFAULT_MAX_FILE_BYTES,
   DEFAULT_MAX_OUTPUT_BYTES,
+  FileTooLargeError,
 } from "./limits.js";
 import { decodeCaptured, runProcess } from "./run-process.js";
 
@@ -125,6 +126,17 @@ export class LocalExecutor implements Executor {
       );
     }
     return readFile(real, "utf8");
+  }
+
+  async readFileBytes(path: string, maxBytes: number): Promise<Uint8Array> {
+    const real = await this.#resolve(path);
+    const info = await stat(real);
+    if (info.isDirectory()) throw new Error(`EISDIR: is a directory: ${path}`);
+    const limit = Math.min(maxBytes, this.#maxFileBytes);
+    if (info.size > limit) {
+      throw new FileTooLargeError(path, info.size, limit);
+    }
+    return new Uint8Array(await readFile(real));
   }
 
   async writeFile(path: string, content: string): Promise<void> {

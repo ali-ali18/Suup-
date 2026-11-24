@@ -152,6 +152,7 @@ function whatYouHaveSection(input: {
   routines: boolean;
   memoryTools: boolean;
   web: { search: boolean; read: boolean };
+  sendFile: boolean;
 }): string {
   const lines: string[] = [];
   const { machine, connectors } = input;
@@ -169,6 +170,11 @@ function whatYouHaveSection(input: {
     );
   } else if (machine !== undefined) {
     lines.push("- No terminal and no files: you work only with the tools listed to you.");
+  }
+  if (input.sendFile) {
+    lines.push(
+      "- `send_file`: when you make a file for the user (a PDF, a document, a spreadsheet, an image), send it with `send_file`; it appears under your message for them to open or save. Do not just write its path: the user cannot reach your machine. Say in one line what the file is.",
+    );
   }
   if (connectors !== undefined) {
     lines.push(
@@ -312,6 +318,8 @@ export interface SystemPromptOptions {
   routines?: boolean;
   /** Which web tools the model is offered; the line about the web is left out for the ones it is not. */
   web?: { search: boolean; read: boolean };
+  /** The model is offered `send_file`: it is told to hand files to the user with it. */
+  sendFile?: boolean;
   /** The section that lists the connector tools that are searched, not loaded (fixed per run). */
   toolIndex?: string | undefined;
 }
@@ -395,6 +403,7 @@ ${memoryLine}- Never claim to have done something the tool results do not show. 
       routines: options.routines === true,
       memoryTools,
       web: options.web ?? { search: false, read: false },
+      sendFile: options.sendFile === true,
     }),
     rules.length === 0
       ? ""

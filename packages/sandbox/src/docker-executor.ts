@@ -28,6 +28,7 @@ import {
   DEFAULT_EXEC_TIMEOUT_MS,
   DEFAULT_MAX_FILE_BYTES,
   DEFAULT_MAX_OUTPUT_BYTES,
+  FileTooLargeError,
 } from "./limits.js";
 import { decodeCaptured, runProcess } from "./run-process.js";
 
@@ -166,6 +167,13 @@ export class DockerExecutor implements Executor {
     if (run.truncated)
       throw new Error(`file too large to read (limit ${this.#maxFileBytes} bytes): ${path}`);
     return run.stdout.toString("utf8");
+  }
+
+  async readFileBytes(path: string, maxBytes: number): Promise<Uint8Array> {
+    const limit = Math.min(maxBytes, this.#maxFileBytes);
+    const run = await this.#fileOp(READ_SCRIPT, path, undefined, limit);
+    if (run.truncated) throw new FileTooLargeError(path, null, limit);
+    return new Uint8Array(run.stdout);
   }
 
   async writeFile(path: string, content: string): Promise<void> {

@@ -1,6 +1,7 @@
 // Owns assembling the agent request: the fixed parts (system prompt and tool specs) and the
 // conversation rebuilt from the log with the current STATE REMINDER appended to its tail.
 
+import { SEND_FILE_TOOL_NAME } from "../files.js";
 import type { Message } from "../messages.js";
 import { validateConversation } from "../messages.js";
 import type { ToolSpec } from "../provider.js";
@@ -61,6 +62,7 @@ export function fixedParts(ctx: LoopContext): {
     },
     returns: canScheduleReturn(ctx),
     routines: offered.some((spec) => spec.name === CREATE_ROUTINE_TOOL_NAME),
+    sendFile: offered.some((spec) => spec.name === SEND_FILE_TOOL_NAME),
     secrets: ctx.deps.secrets !== undefined,
     approvals: ctx.deps.gate.allowsEverything !== true,
     toolIndex: catalog?.index,

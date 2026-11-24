@@ -164,6 +164,7 @@ async function handleTool(
   const memory = ctx.deps.memoryFor?.(ctx.run);
   const network = ctx.deps.networkFor?.(ctx.run);
   const web = ctx.deps.webFor?.(ctx.run);
+  const files = ctx.deps.filesFor?.(ctx.run);
   const toolCtx: ToolContext = {
     runId: ctx.runId,
     botId: bot.id,
@@ -175,6 +176,8 @@ async function handleTool(
     webSeen: webUrlsSeen(ctx.state),
     ...(network === undefined ? {} : { network }),
     ...(web === undefined ? {} : { web }),
+    ...(files === undefined ? {} : { files }),
+    callId: call.id,
   };
   let invocation: ToolInvocation;
   try {
