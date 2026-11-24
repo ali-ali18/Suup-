@@ -83,7 +83,7 @@ Os motores **especializados** (Wikipédia, arXiv, Stack Overflow) são perguntad
 | Fora do ar | HTTP `5xx`, tempo esgotado, falha de conexão | `INTERNAL`, `5xx`, tempo esgotado | 60 s |
 | Pedido que o Suup fez errado | `400`, `422`, resposta de outra forma | `422` sem código conhecido, resposta de outra forma | não suspende (falha só esta busca) |
 
-O estado da suspensão fica na **memória do processo**: depois de um reinício o Suup descobre de novo, com uma tentativa que não é cobrada. **A contagem do mês fica no banco** (tabela `web_search_usage`, migração 0030): só motor, mês (UTC) e um número; o texto de uma busca nunca é guardado.
+O estado da suspensão fica na **memória do processo**: depois de um reinício o Suup descobre de novo, com uma tentativa que não é cobrada. **A contagem do mês fica no banco** (tabela `web_search_usage`, migração 0031): só motor, mês (UTC) e um número; o texto de uma busca nunca é guardado.
 
 **A chave** de cada motor da fila vem, nesta ordem, da **variável de ambiente** que a configuração nomeia (`web.search.general.<id>.apiKeyEnv`; por padrão `TAVILY_API_KEY` e `BRAVE_SEARCH_API_KEY`) e do **segredo do cofre** (`web.search.general.<id>.secret`; por padrão o mesmo nome), o que o app escreve em Configurações > Busca. É lida **a cada busca**, então uma chave adicionada com o Suup rodando vale na hora. **Nunca no `suup.config.json`** (uma chave ali é recusada), nunca num log, nunca na URL: vai num cabeçalho (`Authorization: Bearer` para a Tavily, `X-Subscription-Token` para a Brave).
 
