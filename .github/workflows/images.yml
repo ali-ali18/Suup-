@@ -1,0 +1,184 @@
+# Builds the production images on GitHub and pushes them to the GitHub Container Registry, so the VPS
+# (docker-compose.dokploy.yml) only pulls: nothing is compiled there. Guide: docs/DEPLOY-DOKPLOY.md.
+# Research behind each choice: docs/pesquisas/imagens-no-github.md.
+#
+#   ghcr.io/<owner>/suup-server            the API and the worker (docker/server/Dockerfile)
+#   ghcr.io/<owner>/suup-sandbox           the bot machine (docker/sandbox)
+#   ghcr.io/<owner>/suup-connector-runner  stdio MCP servers in containers (docker/connector-runner)
+#   ghcr.io/<owner>/suup-reader            the page reader with Chromium (docker/reader/Dockerfile);
+#                                          the "-slim" tags are the same reader without the browser
+#
+# Tags: the full commit sha (fixed: use it to pin or roll back) and, only after EVERY image of that commit
+# was pushed, a moving tag: the branch name (`main`) or the git tag (`v1.2.3`). The VPS follows the moving
+# tag by default (SUUP_IMAGE_TAG). amd64 only: the VPS is amd64.
+#
+# Optional: the repository secret DOKPLOY_WEBHOOK_URL (the compose's "Webhook URL" from Dokploy's
+# Deployments tab) makes a branch run ask Dokploy to redeploy once the images are ready.
+name: Images
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+    # A branch push runs only when something that goes into an image (or the VPS compose) changed. Every
+    # run builds all the images, so each commit sha that ran has the full set; unchanged ones come from the
+    # cache in seconds. (GitHub does not evaluate path filters for tag pushes: tags always run.)
+    paths:
+      - "apps/**"
+      - "packages/**"
+      - "evals/**"
+      - "docker/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "tsconfig*.json"
+      - ".dockerignore"
+      - "docker-compose.dokploy.yml"
+      - ".github/workflows/images.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One run per ref at a time, queued (never cancelled halfway, which could leave the set half promoted).
+concurrency:
+  group: images-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - name: server
+            image: suup-server
+            context: .
+            file: docker/server/Dockerfile
+            suffix: ""
+            build-args: ""
+            cache-mode: max
+            description: Suup server and worker (one image; the command picks the role)
+          - name: sandbox
+            image: suup-sandbox
+            context: docker/sandbox
+            file: docker/sandbox/Dockerfile
+            suffix: ""
+            build-args: ""
+            cache-mode: max
+            description: Suup bot machine
+          - name: connector-runner
+            image: suup-connector-runner
+            context: docker/connector-runner
+            file: docker/connector-runner/Dockerfile
+            suffix: ""
+            build-args: ""
+            cache-mode: max
+            description: Suup connector runner (stdio MCP servers in containers)
+          # The browser base image is about 1 GB compressed: only the final layers go to the cache (the
+          # repository's Actions cache is 10 GB, shared with the other workflows).
+          - name: reader
+            image: suup-reader
+            context: .
+            file: docker/reader/Dockerfile
+            suffix: ""
+            build-args: ""
+            cache-mode: min
+            description: Suup page reader and renderer (with Chromium)
+          - name: reader-slim
+            image: suup-reader
+            context: .
+            file: docker/reader/Dockerfile
+            suffix: "-slim"
+            build-args: |
+              PLAYWRIGHT_IMAGE=node:22-bookworm-slim
+              RUN_USER=node
+            cache-mode: max
+            description: Suup page reader without the browser (render unavailable)
+    steps:
+      - uses: actions/checkout@v7.0.1
+      # Registry paths must be lowercase; the owner name may not be.
+      - name: Registry name
+        run: echo "REGISTRY=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
+      - uses: docker/setup-buildx-action@v4.4.1
+      - uses: docker/login-action@v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v7.4.0
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          platforms: linux/amd64
+          build-args: ${{ matrix.build-args }}
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ matrix.image }}:${{ github.sha }}${{ matrix.suffix }}
+          # The source label links the package to this repository (and its access) on the first push.
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.description=${{ matrix.description }}
+            org.opencontainers.image.licenses=MIT
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,scope=${{ matrix.name }},mode=${{ matrix.cache-mode }}
+
+  promote:
+    name: Move the tag and redeploy
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    env:
+      DOKPLOY_WEBHOOK_URL: ${{ secrets.DOKPLOY_WEBHOOK_URL }}
+    steps:
+      - name: Registry name and moving tag
+        run: |
+          echo "REGISTRY=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
+          # A branch like feat/x becomes feat-x (a tag cannot hold a slash).
+          echo "MOVING_TAG=${GITHUB_REF_NAME//\//-}" >> "$GITHUB_ENV"
+      - uses: docker/setup-buildx-action@v4.4.1
+      - uses: docker/login-action@v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # Copies the manifest in the registry (no layer is downloaded or built again).
+      - name: Tag the images of this commit with ${{ github.ref_name }}
+        run: |
+          for pair in suup-server: suup-sandbox: suup-connector-runner: suup-reader: suup-reader:-slim; do
+            image="${pair%%:*}"; suffix="${pair#*:}"
+            docker buildx imagetools create \
+              --tag "$REGISTRY/$image:$MOVING_TAG$suffix" \
+              "$REGISTRY/$image:$GITHUB_SHA$suffix"
+            echo "$REGISTRY/$image:$MOVING_TAG$suffix -> $GITHUB_SHA$suffix" >> "$GITHUB_STEP_SUMMARY"
+          done
+      # Dokploy's compose webhook reads a GitHub push body: it checks the branch against the compose's
+      # branch and the changed paths against its Watch Paths (an empty list deploys). Only for branches.
+      - name: Ask Dokploy to redeploy
+        if: github.ref_type == 'branch' && env.DOKPLOY_WEBHOOK_URL != ''
+        run: |
+          body=$(jq -cn --arg ref "refs/heads/$GITHUB_REF_NAME" --arg sha "$GITHUB_SHA" \
+            '{ref: $ref, commits: [], head_commit: {id: $sha, message: "Imagens prontas no GHCR"}}')
+          code=$(curl -sS -o response.txt -w '%{http_code}' --max-time 60 -X POST \
+            -H 'Content-Type: application/json' -H 'X-GitHub-Event: push' \
+            --data "$body" "$DOKPLOY_WEBHOOK_URL")
+          cat response.txt; echo
+          if [ "$code" = "301" ]; then
+            # "Branch Not Match" / "Watch Paths Not Match": this branch is not the one Dokploy deploys.
+            echo "::warning::Dokploy did not redeploy (HTTP 301): the compose there follows another branch or Watch Paths"
+            exit 0
+          fi
+          if [ "$code" != "200" ]; then
+            echo "::error::Dokploy answered HTTP $code (see the message above; docs/DEPLOY-DOKPLOY.md, 'Implantar sozinho')"
+            exit 1
+          fi
+          echo "Dokploy: redeploy requested" >> "$GITHUB_STEP_SUMMARY"

@@ -2,6 +2,13 @@
 
 Passo a passo para pôr o Suup na sua VPS da Hostinger, que o **Dokploy** gerencia e onde já rodam outros projetos seus, no endereço **`https://agent.kodea.com.br`** (DNS no Cloudflare, com o proxy laranja). O arquivo usado é o [`docker-compose.dokploy.yml`](../docker-compose.dokploy.yml); a pesquisa por trás de cada escolha está em [pesquisas/deploy-vps-dokploy.md](pesquisas/deploy-vps-dokploy.md). Para uma VPS **só do Suup**, sem Dokploy, o caminho é o de [IMPLANTACAO.md](IMPLANTACAO.md).
 
+**Nada é compilado na VPS.** O GitHub constrói as imagens (o workflow [`images.yml`](../.github/workflows/images.yml)) e as guarda no GitHub Container Registry, em `ghcr.io/ali-ali18/suup-*`; a VPS só as baixa. Por que e como: [pesquisas/imagens-no-github.md](pesquisas/imagens-no-github.md).
+
+```
+ push no main ──► GitHub Actions constrói as imagens ──► ghcr.io/ali-ali18/suup-*  (tag do commit e "main")
+                                     └──► avisa o Dokploy ──► a VPS baixa e reinicia o Suup
+```
+
 ## O que sobe
 
 ```
@@ -18,7 +25,7 @@ Passo a passo para pôr o Suup na sua VPS da Hostinger, que o **Dokploy** gerenc
 | `server` | API e tempo real. Não fala com Docker nenhum | `backend` e `dokploy-network` (o único que o Traefik enxerga) |
 | `worker` | Roda as execuções; comanda o Docker do Suup | a do contêiner `docker` |
 | `docker` | Docker dentro de Docker: onde vivem as máquinas dos bots | `backend` e `outbound` (saída para a internet) |
-| `images` | Constrói as imagens dos bots **dentro** do `docker` e sai | nenhuma |
+| `images` | Baixa as imagens dos bots (prontas no GitHub) **dentro** do `docker` e sai | nenhuma (quem baixa é o `docker`) |
 | `migrate` | Aplica as migrações do banco e sai | `backend` |
 | `postgres` | O banco (pgvector), sem porta publicada | `backend` (interna) |
 
@@ -30,6 +37,21 @@ Nada aqui monta o `/var/run/docker.sock` da VPS: veja "Riscos e isolamento", no 
 - O registro `agent.kodea.com.br` no Cloudflare. **Já existe e foi conferido em 24/11/2026:** registro `A` para o IP da sua VPS, com o proxy ligado (nuvem laranja), e a zona `kodea.com.br` no modo de SSL/TLS **Full**. Não precisa mexer.
 - Folga na VPS para o Suup: **15 GB de disco livre** e **4 GB de RAM livres** (detalhes em "Recursos").
 - No seu computador, um lugar para gerar e guardar os segredos (um gerenciador de senhas). **Nunca** cole segredo em chat, e-mail ou arquivo do repositório.
+
+## 0. As imagens no GitHub (uma vez)
+
+Dá para fazer tudo pelo navegador do celular (use o site do GitHub; o app pode não mostrar as configurações de pacotes).
+
+1. **Espere o primeiro build.** Quando este código chegar ao `main`, o GitHub roda sozinho o workflow **Images**: no repositório `ali-ali18/Suup-`, aba **Actions** > **Images**. Para rodar à mão: **Run workflow** > ramo `main` > **Run workflow**. Espere os dois passos ficarem verdes ("Build ..." das cinco imagens e "Move the tag and redeploy"). A primeira vez é a mais lenta (o leitor parte de uma imagem de ~1 GB); as seguintes reaproveitam o cache.
+2. **Deixe os pacotes públicos.** No GitHub: sua foto > **Your profile** > aba **Packages**. Devem aparecer quatro: `suup-server`, `suup-sandbox`, `suup-connector-runner` e `suup-reader`. Para **cada um**:
+   1. Toque no nome do pacote > **Package settings** (à direita, ou no fim da página no celular).
+   2. Lá embaixo, em **Danger Zone**: **Change visibility** > **Public**.
+   3. Digite o nome do pacote e toque em **I understand the consequences, change package visibility**.
+
+   Se o pacote já aparece como **Public**, pule. Um pacote público não volta a ser privado; tudo bem: o código já é público (MIT) e as imagens não levam segredo nenhum. Público, a VPS baixa sem login e sem token guardado nela.
+3. **Confira** que a página de cada pacote mostra a tag `main` e uma tag longa (o sha do commit).
+
+Se preferir manter os pacotes privados: a VPS precisaria de um token (*classic*, só `read:packages`) em dois lugares, no Registry do Dokploy e dentro do Docker do Suup, e este compose não faz isso hoje. Peça-me se quiser.
 
 ## 1. Gerar os segredos (no seu computador)
 
@@ -52,8 +74,10 @@ A chave da Anthropic (`ANTHROPIC_API_KEY`) é a sua, do console da Anthropic.
 ## 2. Criar o serviço no Dokploy
 
 1. **Projects** > o projeto onde quer o Suup (ou **Create Project**, por exemplo "Suup").
-2. **Create Service** > **Compose**. Nome: `suup`. Tipo: **Docker Compose** (não "Stack": o Stack não constrói imagens).
-3. Na aba **General**, em **Provider**: **GitHub**; repositório **`ali-ali18/Suup-`**; **Branch**: o ramo que você quer em produção (por exemplo `main`); **Compose Path**: `./docker-compose.dokploy.yml`. **Save**.
+2. **Create Service** > **Compose**. Nome: `suup`. Tipo: **Docker Compose** (não "Stack": é outro modo, que não aceita todo o Compose).
+3. Na aba **General**, em **Provider**: **GitHub**; repositório **`ali-ali18/Suup-`**; **Branch**: **`main`** (é o ramo cujas imagens o GitHub constrói); **Compose Path**: `./docker-compose.dokploy.yml`; **Trigger Type**: **On Tag**. **Save**.
+   - Por que **On Tag**: com "On Push", o Dokploy implantaria no instante do push, **antes** de o GitHub terminar as imagens novas. Com "On Tag", quem avisa o Dokploy de um push no `main` é o próprio workflow, quando as imagens estão prontas (passo 11, "Implantar sozinho").
+   - **Auto Deploy** fica **ligado** (é o padrão): o aviso do workflow só funciona com ele ligado.
 4. Confira que **Isolated Deployments** está **desligado** (é o padrão de um Compose novo; fica nas opções do Compose, na aba Advanced). Ligado, o Dokploy dá uma rede a cada serviço e o `worker` (que usa a rede do `docker`) não sobe.
 
 ## 3. A configuração (File Mount)
@@ -86,8 +110,10 @@ Opcionais:
 
 | Variável | Padrão | Quando mexer |
 |---|---|---|
-| `SUUP_READER_BROWSER` | `1` | `0` constrói o leitor de páginas **sem** o Chromium (economiza alguns GB; `web_read` com `render` fica indisponível) |
-| `SUUP_IMAGES` | `sandbox connector-runner reader searxng` | quais imagens dos bots o serviço `images` prepara |
+| `SUUP_IMAGE_TAG` | `main` | a versão das imagens: `main` segue o ramo; o **sha completo** de um commit fixa aquela versão (para voltar atrás: passo 11); `v1.2.3` usa a de uma versão marcada |
+| `SUUP_READER_BROWSER` | `1` | `0` baixa o leitor de páginas **sem** o Chromium (economiza alguns GB; `web_read` com `render` fica indisponível) |
+| `SUUP_IMAGES` | `sandbox connector-runner reader searxng` | quais imagens dos bots o serviço `images` baixa |
+| `SUUP_IMAGE_REGISTRY` | `ghcr.io/ali-ali18` | de onde baixar; só muda se as imagens forem para outra conta |
 | `SUUP_DOCKER_PRIVILEGED` / `SUUP_DOCKER_RUNTIME` | `true` / `runc` | só com o Sysbox instalado na VPS: `false` / `sysbox-runc` (veja "Riscos e isolamento") |
 
 Outro provedor de modelo: acrescente a variável aqui **e** uma linha em `environment` no `docker-compose.dokploy.yml` (é como o Compose passa variáveis para dentro do contêiner).
@@ -121,11 +147,19 @@ Ainda mais (não obrigatório): **Authenticated Origin Pulls** (a VPS só aceita
 
 ## 6. Implantar
 
-1. Aba **General** > **Deploy**. Acompanhe em **Deployments** (o registro ao vivo).
-2. A **primeira** implantação demora (dezenas de minutos numa VPS pequena): o Dokploy constrói a imagem do Suup e o serviço `images` constrói, **dentro** do Docker do Suup, a máquina dos bots, o runner dos conectores e o leitor (que parte de uma imagem de ~1 GB comprimido) e baixa o SearXNG. As seguintes reaproveitam o cache e levam poucos minutos.
-3. Na aba **Logs**: `migrate` termina com a lista das migrações; `server` diz "Servidor no ar em http://0.0.0.0:8787" (o aviso de "HTTP puro" é esperado: o TLS está no Traefik e no Cloudflare; a porta 8787 não está aberta para a internet); `worker` diz "Worker ... pronto"; `images` termina com "suup-images: pronto".
+1. Confira que o passo 0 terminou (workflow **Images** verde e os quatro pacotes públicos).
+2. Aba **General** > **Deploy**. Acompanhe em **Deployments** (o registro ao vivo).
+3. A VPS **não compila nada**: ela baixa a imagem do Suup e o serviço `images` baixa, **dentro** do Docker do Suup, a máquina dos bots, o runner dos conectores, o leitor (perto de 1 GB comprimido) e o SearXNG. A primeira vez é o download inteiro; as seguintes só baixam as camadas que mudaram.
+4. Na aba **Logs**: `migrate` termina com a lista das migrações; `server` diz "Servidor no ar em http://0.0.0.0:8787" (o aviso de "HTTP puro" é esperado: o TLS está no Traefik e no Cloudflare; a porta 8787 não está aberta para a internet); `worker` diz "Worker ... pronto"; `images` termina com "suup-images: pronto".
 
-Se o `images` falhar, o `worker` não sobe (de propósito): o log do `images` diz qual imagem e por quê. Corrija e faça **Redeploy**.
+Se o `images` falhar, o `worker` não sobe (de propósito): o log do `images` diz qual imagem e por quê ("Problemas comuns", no fim). Corrija e faça **Redeploy**.
+
+**Já tinha implantado o Suup antes, quando a VPS construía as imagens?** Sobrou o cache de build (alguns GB). Para liberar, uma vez, pelo SSH da VPS:
+
+```sh
+docker exec <nome-do-contêiner-docker> docker -H unix:///var/run/dind/docker.sock builder prune --all --force
+docker image rm suup:dokploy suup-images:dokploy     # as imagens antigas, construídas na VPS
+```
 
 ## 7. Conferir
 
@@ -196,19 +230,44 @@ O que importa está em dois volumes: o banco (`postgres`) e o workspace dos bots
   docker exec <nome-do-contêiner-docker> sh -c 'tar czf - -C /var/lib/docker/volumes/suup-workspace/_data .' > workspace-$(date +%F).tgz
   ```
 
-- **Volume Backups** do Dokploy (aba Volume Backups) também copiam volumes nomeados para o S3; para o `dind-data` use "Container OFF" (ele guarda imagens e cache, é grande e se reconstrói sozinho: o que vale salvar dele é só o workspace, acima).
+- **Volume Backups** do Dokploy (aba Volume Backups) também copiam volumes nomeados para o S3; para o `dind-data` use "Container OFF" (ele guarda as imagens dos bots, é grande e se baixa de novo sozinho: o que vale salvar dele é só o workspace, acima).
 
 **Restaurar** o banco é o passo 3 da seção 9. **As migrações não têm volta:** faça um backup antes de atualizar.
 
 ## 11. Atualizar
 
-- **Automático:** com o GitHub ligado pelo app do Dokploy, cada `push` no ramo escolhido implanta sozinho. O Dokploy reconstrói o Suup, o `images` refaz o que mudou nas receitas, o `migrate` aplica o que for novo e o servidor e o worker são recriados. O worker devolve as execuções em andamento à fila (espera até 30 s) e o novo as retoma.
-- **Manual:** desligue **Auto Deploy** na aba General e use **Deploy** quando quiser. É o mais seguro para um banco com migrações sem volta: backup, depois Deploy.
+O caminho de uma mudança: `push` no `main` > o GitHub constrói as imagens (aba **Actions** > **Images**) > move a tag `main` > avisa o Dokploy > a VPS baixa as imagens novas, o `migrate` aplica o que for novo e o servidor e o worker são recriados. O worker devolve as execuções em andamento à fila (espera até 30 s) e o novo as retoma. Um push que só mexe na documentação não roda o workflow nem implanta.
+
+### Implantar sozinho (uma vez)
+
+1. **Dokploy** > o serviço `suup` > aba **Deployments** > copie a **Webhook URL** (botão de copiar). Ela é um segredo: quem a tem pode mandar reimplantar.
+2. **GitHub** > repositório `ali-ali18/Suup-` > **Settings** > **Secrets and variables** > **Actions** > **New repository secret**. **Name**: `DOKPLOY_WEBHOOK_URL`. **Secret**: cole a URL. **Add secret**.
+3. No próximo push no `main`, o último passo do workflow ("Ask Dokploy to redeploy") deve terminar verde, e uma implantação nova aparece em **Deployments**.
+
+O painel do Dokploy precisa ser alcançável pela internet (o GitHub chama a URL de fora). Se a URL vazar, gere outra no mesmo lugar (botão ao lado dela) e troque o segredo.
+
+**Sem o segredo**, nada quebra: o workflow só não avisa. Espere o **Images** ficar verde e toque em **Deploy** no Dokploy.
+
+### Voltar para uma versão anterior
+
+Cada commit que rodou o **Images** tem as imagens guardadas com o sha completo dele (40 letras e números).
+
+1. Ache o sha: GitHub > aba **Actions** > **Images** > o run verde da versão que funcionava > o sha aparece no topo (ou em **Commits**, abra o commit e copie o sha inteiro). Ele também aparece como tag na página de cada pacote.
+2. **Dokploy** > aba **Environment**: acrescente `SUUP_IMAGE_TAG=<o sha completo>` > **Save** > **Redeploy**.
+3. Para voltar a seguir o `main`: apague a linha `SUUP_IMAGE_TAG` > **Save** > **Redeploy**.
+
+Cuidado: **as migrações do banco não têm volta.** Se a versão nova já migrou o banco, a antiga pode não funcionar com ele: restaure o backup de antes da atualização (seção 10) junto com a volta.
+
+Uma versão marcada (`git tag v1.2.3` + push) também ganha imagens com a tag `v1.2.3`: use `SUUP_IMAGE_TAG=v1.2.3`.
+
+### Outras formas
+
+- **Manual:** desligue **Auto Deploy** na aba General e use **Deploy** quando quiser (depois que o **Images** estiver verde). É o mais seguro para um banco com migrações sem volta: backup, depois Deploy. Sem Auto Deploy, o aviso do workflow é recusado (o passo dele fica vermelho; é esperado).
 - Mudou só a configuração (File Mount) ou uma variável: **Redeploy**.
 
 ## Recursos
 
-Medido em 24/11/2026 (pesquisa, "Verificação local"): em repouso, servidor, worker, Postgres e o Docker do Suup somam perto de **200 MB** de RAM. Com uso, cresce até os limites da configuração: a máquina dos bots até `sandbox.memory` (**2 GB** no exemplo), cada conector até 512 MB, o SearXNG até 512 MB e o Chromium do leitor quando renderiza uma página. Disco: perto de 2 GB de imagens na VPS (Suup, dind, Postgres, o auxiliar das imagens) mais, **dentro** do Docker do Suup, as imagens dos bots e o cache de build (de 5 a 8 GB com o leitor completo; estimativa), o banco e o workspace.
+Medido em 24/11/2026 (pesquisa, "Verificação local"): em repouso, servidor, worker, Postgres e o Docker do Suup somam perto de **200 MB** de RAM. Com uso, cresce até os limites da configuração: a máquina dos bots até `sandbox.memory` (**2 GB** no exemplo), cada conector até 512 MB, o SearXNG até 512 MB e o Chromium do leitor quando renderiza uma página. Disco: perto de 2 GB de imagens na VPS (Suup, dind, Postgres, a CLI do Docker do serviço `images`) mais, **dentro** do Docker do Suup, as imagens dos bots (perto de 4 GB com o leitor completo; estimativa; sem cache de build, que agora fica no GitHub), o banco e o workspace. A cada atualização, o `images` apaga as versões antigas que nenhum contêiner usa.
 
 Recomendação para o Suup numa VPS que já roda outros projetos: **4 GB de RAM livres** e **15 GB de disco livres**. Com menos, ponha `"memory": "1g"` em `sandbox` na configuração e `SUUP_READER_BROWSER=0`. Para ver o uso: aba **Monitoring** do Dokploy, ou `docker system df` dentro do contêiner `docker` (`docker exec <nome-do-contêiner-docker> docker -H unix:///var/run/dind/docker.sock system df`).
 
@@ -222,6 +281,11 @@ Recomendação para o Suup numa VPS que já roda outros projetos: **4 GB de RAM 
 | `https://agent.kodea.com.br` dá 404 do Traefik | Domínio com HTTPS desligado (passo 5) ou Service Name diferente de `server` |
 | Erro 525/526 do Cloudflare | 525: nada respondeu em TLS na 443 (HTTPS desligado). 526: modo Strict sem o certificado da Origin CA (passo 5, opcional) |
 | `worker` não sobe | O `images` falhou (veja o log dele) |
+| `images` (ou o deploy, para o `server`) diz "denied" ou "unauthorized" ao baixar de `ghcr.io` | O pacote ainda está privado (passo 0.2) |
+| "manifest unknown" ou "not found" ao baixar de `ghcr.io` | A tag não existe: o **Images** ainda não terminou, o sha está incompleto ou é de um commit que só mexeu na documentação (passo 11, "Voltar") |
+| `images` diz "lookup ghcr.io ... no such host" ou "i/o timeout" | O Docker do Suup não resolve nomes. Teste: `docker exec <nome-do-contêiner-docker> nslookup ghcr.io`. Se falhar e o da VPS (`nslookup ghcr.io`) funcionar, peça-me para pôr `dns:` (por exemplo `1.1.1.1` e `8.8.8.8`) no serviço `docker` do compose |
+| Workflow **Images** verde, mas o passo "Ask Dokploy to redeploy" vermelho | 400: **Auto Deploy** desligado; 404: a Webhook URL mudou (copie de novo para o segredo); sem resposta: o painel do Dokploy não é alcançável pela internet. Um aviso amarelo "HTTP 301": o Dokploy segue outro ramo |
+| Implantou antes de as imagens ficarem prontas | **Trigger Type** em "On Push" (passo 2.3): troque para **On Tag** |
 | Depois de reiniciar a VPS o `worker` parou | Ele vive na rede do contêiner `docker`; um **Redeploy** (ou `docker start` no worker) resolve |
 
 ## Riscos e isolamento
