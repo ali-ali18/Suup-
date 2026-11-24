@@ -465,7 +465,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("the evaluation runner, end to end"),
     });
     const spent = cell(report, "write-and-verify", "gamma-1");
     expect(spent).toMatchObject({ finalStatus: "failed", failureOrigin: "limit", turns: 1 });
-    expect(spent.failureDetail).toMatch(/cost limit reached/);
+    expect(spent.failureDetail).toContain("gasto desta tarefa chegou ao limite");
     expect(report.maxCostPerRunUsd).toBe(0.02);
     // The cap is on the bot: 0.02 even though the task allows 0.30.
     const bots = await ctx.db.sql`select limits from bots where id = ${spent.botId as string}`;

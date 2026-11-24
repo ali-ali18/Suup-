@@ -120,14 +120,35 @@ Limites usados quando o bot não define os próprios (`suup bot create --max-tur
 
 | Campo | Padrão | Significado |
 |---|---|---|
-| `maxTurns` | 50 | Chamadas ao modelo por execução |
-| `maxCostUsd` | sem limite | Custo máximo por execução, em dólares |
-| `maxDurationMs` | sem limite | Duração máxima por execução, em milissegundos |
+| `maxTurns` | 50 | Chamadas ao modelo por execução. Ao chegar nele a execução **não falha**: o vigia estende (se há progresso) ou pergunta ao dono (veja `watchdog` abaixo) |
+| `maxCostUsd` | sem limite | Custo máximo por execução, em dólares. **Sem padrão, de propósito** (decisão do dono): quem quer um teto define aqui; passar dele termina a execução |
+| `maxDurationMs` | sem limite | Duração máxima por execução, em milissegundos. Também sem padrão |
 | `maxReturns` | 6 | Quantos retornos seguidos o bot pode marcar para si na mesma execução (`schedule_return`); `0` desliga ([RETORNO.md](RETORNO.md)). Também pode ser definido por bot em `limits.maxReturns` |
 | `timeZone` | nenhum | O fuso do usuário (nome IANA, ex. `America/Sao_Paulo`) **quando o app ainda não disse um**: o que o usuário escolhe em Configurações > Geral e o que o app manda do computador ao conectar (guardados no banco) vêm antes. **Nunca** se usa o fuso do processo do servidor ([ROTINAS.md](ROTINAS.md)). É a data e a hora do prompt, das rotinas e da revisão noturna; `GET /v1/info` o mostra |
 | `historyChars` | 12000 | Quanto da conversa anterior (em caracteres, só mensagens inteiras, das mais novas para as mais antigas) uma execução recebe como histórico. As mais antigas ficam de fora e o bot é avisado de que pode buscá-las com `search_conversations` |
 
-Passar de um limite termina a execução como `failed` com origem `limit`.
+Passar de `maxCostUsd` ou `maxDurationMs` termina a execução como `failed` com origem `limit` (e uma frase amigável no chat). **O limite de passos (`maxTurns`) e os laços não terminam a execução:** quem cuida deles é o vigia de progresso (`defaults.watchdog`, abaixo; [VIGIA.md](VIGIA.md)).
+
+#### `defaults.watchdog` (opcional)
+
+O vigia de progresso: o que uma execução faz ao chegar no limite de passos ou ao se repetir. Todos os campos são opcionais; sem a seção valem os padrões. **Não há teto de custo ou tempo aqui**: isso é `maxCostUsd` e `maxDurationMs`, acima.
+
+| Campo | Padrão | Significado |
+|---|---|---|
+| `enabled` | `true` | `false` volta ao comportamento antigo: a execução falha no limite de passos e no laço |
+| `extension` | 25 | Quantos passos dá uma extensão: as automáticas e o "Continuar" do dono (5 a 500) |
+| `maxAutoExtensions` | 2 | Quantas vezes a execução se estende sozinha (com progresso conferível) antes de **sempre** perguntar; `0` nunca estende sozinha. Uma rotina também nunca passa disso |
+| `softLimit` | 0.8 | A parte da fatia de passos em que o vigia olha antes do limite (0,5 a 0,95) |
+| `repeatNudgeAt` / `repeatAskAt` | 3 / 5 | A mesma chamada com o mesmo resultado, em sequência: aviso no primeiro, pergunta no segundo (o segundo tem de ser maior) |
+| `errorNudgeAt` / `errorAskAt` | 3 / 5 | A mesma ferramenta falhando do mesmo jeito, em sequência |
+| `noToolAskAt` | 3 | Turnos seguidos sem ferramenta antes de perguntar |
+| `alternationAskAt` | 10 | Chamadas num vai e volta A-B-A-B antes de perguntar (o aviso vem aos 6) |
+| `judge.enabled` | `true` | `false`: sem juiz, os sinais estruturais decidem sozinhos (e, na dúvida, pergunta) |
+| `judge.model` | o do auto-review, senão o de `reviewer` | O id (de `models`) do modelo barato que dá a segunda opinião perto do limite. Sem modelo ou sem a chave do provedor, não há juiz. O custo dele entra no custo da execução |
+
+```json
+"defaults": { "watchdog": { "extension": 25, "maxAutoExtensions": 2, "judge": { "model": "haiku" } } }
+```
 
 ### `approvals` (opcional)
 

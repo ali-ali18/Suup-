@@ -1,7 +1,7 @@
 // Owns starting and resuming a run: the terminal/approval gate, logging `run_started`, reconciling
 // a status the log announced but the store never applied, and picking a `waiting_user` run back up
 // from the inbox (an answer, extra messages, or a stop).
-import { answerForModel } from "../answers.js";
+import { answerForModel, DISMISSED_QUESTION_ANSWER, resolveOptionAnswer } from "../answers.js";
 import { escalatedQuestions } from "../events.js";
 import { deliverApprovalDecisions } from "./approval-flow.js";
 import { freshInbox, recordUserMessage } from "./inbox.js";
@@ -123,7 +123,30 @@ async function resumeFromWaiting(ctx: LoopContext): Promise<RunStatus | undefine
       return ok ? "cancelled" : (await store.getRun(ctx.runId)).status;
     }
     if (messages.length === 0) return "waiting_user";
-    if (waiting.kind === "escalate" || waiting.kind === "secret") {
+    if (waiting.kind === "progress") {
+      // The owner's answer to the watchdog's card: one of the two options (compared exactly with
+      // the labels the card offered), the X, or something typed (then the run goes on and the
+      // model reads it). The decision and the delivery of the inbox items are one event.
+      const typed = messages
+        .map((i) => (i.kind === "user_message" ? i.text : ""))
+        .join("\n\n")
+        .trim();
+      const options = waiting.questions[0]?.options ?? [];
+      const first = waiting.questions[0];
+      const answer = first === undefined ? typed : resolveOptionAnswer(first, typed);
+      const chosen = answer === options[0]?.label;
+      const stopped = answer === options[1]?.label || typed === DISMISSED_QUESTION_ANSWER;
+      await record(ctx, {
+        type: "progress_decided",
+        payload: {
+          choice: stopped ? "stop" : "continue",
+          grant: stopped ? 0 : waiting.grant,
+          ...(chosen || stopped ? {} : { typed: true }),
+          text: typed,
+          inboxIds: messages.map((i) => i.id),
+        },
+      });
+    } else if (waiting.kind === "escalate" || waiting.kind === "secret") {
       // The answer is the result of the pending escalate (or request_secret) call. For a question
       // the model also reads which question it is, and an option typed by its number or letter is
       // already its label (the one place every surface's answer passes through: `suup say`, the

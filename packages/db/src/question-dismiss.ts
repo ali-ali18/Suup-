@@ -1,6 +1,7 @@
 // Owns the X of a question card (docs/API.md, "Fechar a pergunta"): the user will not pick an
 // option. The card stays in the chat, locked ("Não respondido"); the run is told, so it goes on
 // (it never waits forever for a choice that will not come); the user may still answer by typing.
+import { DISMISSED_QUESTION_ANSWER } from "@suup/core";
 import { type Db, withTransaction } from "./client.js";
 import { postInbox } from "./inbox.js";
 import { getMessage, type Message, type MessageQuestion } from "./messages.js";
@@ -15,13 +16,6 @@ export class QuestionDismissError extends Error {
     this.name = "QuestionDismissError";
   }
 }
-
-/**
- * What the run receives as the answer to its question when the user closes the card: written by the
- * harness, for the model (never shown in the chat as the user's words).
- */
-export const DISMISSED_QUESTION_ANSWER =
-  "(The user closed this question without choosing an option. They may still answer in the chat. Do not ask the same question again now: go on with what you can do without it, or end your turn and wait for their message.)";
 
 /**
  * Closes the open question of a bot message: marks it `dismissed` (structured, on the message) and
@@ -80,3 +74,5 @@ export async function dismissQuestion(
   if (message === null) throw new QuestionDismissError("not_found", "Pergunta não encontrada.");
   return { message, dismissed: result };
 }
+
+export { DISMISSED_QUESTION_ANSWER };

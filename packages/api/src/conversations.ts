@@ -27,8 +27,12 @@ export type Question = z.infer<typeof questionSchema>;
 export const messageQuestionSchema = z.object({
   /** What was asked: one question (the usual case) or a questionnaire of up to 5. */
   questions: z.array(questionSchema).min(1),
-  /** `review_tie_break`: the reviewer rejected too often and the user must decide. */
-  reason: z.exactOptional(z.literal("review_tie_break")),
+  /**
+   * `review_tie_break`: the reviewer rejected too often and the user must decide.
+   * `progress_limit`: the run reached its step limit or started to repeat itself and asks whether
+   * to continue (docs/VIGIA.md).
+   */
+  reason: z.exactOptional(z.enum(["review_tie_break", "progress_limit"])),
   /**
    * What the bot wrote besides the question, in the same turn: the chat draws it as the bot's
    * bubble above the card. Absent when the bot only asked (the card's title is the question).

@@ -87,3 +87,10 @@ export {
   USE_TOOL_NAME,
   wordsOf,
 } from "./tool-search.js";
+export {
+  DEFAULT_WATCHDOG,
+  type ProgressJudge,
+  resolveWatchdog,
+  type WatchdogConfig,
+} from "./watchdog.js";
+export { PROGRESS_JUDGE_TOOL } from "./watchdog-text.js";

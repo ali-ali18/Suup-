@@ -82,7 +82,9 @@ export const replayCommand: CommandSpec = {
             ? "agente"
             : diff.purpose === "review"
               ? "revisor"
-              : "compactação";
+              : diff.purpose === "progress"
+                ? "vigia de progresso"
+                : "compactação";
         out.line(
           `  evento seq ${seqOf(diff.index) ?? "?"} (${purpose}): ${diff.changes.map(describeChange).join("; ")}`,
         );

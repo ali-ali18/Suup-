@@ -218,18 +218,17 @@ describe("runLoop: finishing", () => {
     expect(nudge?.payload.text).toContain("All steps are closed");
   });
 
-  it("fails with origin model after three stops without finishing", async () => {
+  it("asks the owner after three stops without finishing (it no longer fails)", async () => {
     const rig = createRig({
       script: [use(planCall("c1", [s("s1", "in_progress")])), say("a"), say("b"), say("c")],
     });
-    expect(await rig.run()).toBe("failed");
+    expect(await rig.run()).toBe("waiting_user");
     const events = await rig.events();
     expect(eventsOfType(events, "nudge")).toHaveLength(2);
-    const status = lastStatus(events);
-    expect(status?.to).toBe("failed");
-    expect(status?.failure?.origin).toBe("model");
-    expect(status?.failure?.detail).toContain("3 consecutive turns without any tool call");
-    expect(rig.store.outcome(rig.runId).failure?.origin).toBe("model");
+    const [asked] = eventsOfType(events, "escalated");
+    expect(asked?.payload.reason).toBe("progress_limit");
+    expect(asked?.payload.progress).toEqual({ cause: "no_tool", grant: 25 });
+    expect(lastStatus(events)?.to).toBe("waiting_user");
     expect(rig.provider.calls).toBe(4);
   });
 
@@ -401,13 +400,13 @@ describe("runLoop: finish validation", () => {
     expect(first?.[0]).toContain("call finish alone");
   });
 
-  it("fails with origin model after three rejected finishes in a row", async () => {
+  it("asks the owner after three rejected finishes in a row (it no longer fails)", async () => {
     const rig = createRig({
       script: [use(finishCall("c1", "")), use(finishCall("c2", " ")), use(finishCall("c3", ""))],
     });
-    expect(await rig.run()).toBe("failed");
-    const status = lastStatus(await rig.events());
-    expect(status?.failure?.origin).toBe("model");
+    expect(await rig.run()).toBe("waiting_user");
+    const [asked] = eventsOfType(await rig.events(), "escalated");
+    expect(asked?.payload.progress?.cause).toBe("no_tool");
     expect(rig.provider.calls).toBe(3);
   });
 
@@ -935,16 +934,21 @@ describe("runLoop: tools", () => {
 describe("runLoop: limits", () => {
   const turns = (n: number) => Array.from({ length: n }, (_, i) => use(call(`c${i}`, "counter")));
 
-  it("fails with origin limit when the turn limit is reached", async () => {
-    const rig = createRig({ bot: { limits: { maxTurns: 2 } }, script: turns(5) });
-    expect(await rig.run()).toBe("failed");
-    const status = lastStatus(await rig.events());
-    expect(status?.failure?.origin).toBe("limit");
-    expect(status?.failure?.detail).toContain("turn limit");
-    expect(rig.provider.calls).toBe(2);
+  it("asks the owner when the turn limit is reached (it no longer fails)", async () => {
+    const distinct = Array.from({ length: 100 }, (_, i) =>
+      use(call(`d${i}`, "echo", { text: `step ${i}` })),
+    );
+    const rig = createRig({ bot: { limits: { maxTurns: 2 } }, script: distinct });
+    // The default watchdog extends by itself while the progress shows, up to twice, and then asks.
+    expect(await rig.run()).toBe("waiting_user");
+    const events = await rig.events();
+    const [asked] = eventsOfType(events, "escalated");
+    expect(asked?.payload.reason).toBe("progress_limit");
+    expect(asked?.payload.progress).toEqual({ cause: "limit", grant: 25 });
+    expect(rig.provider.calls).toBe(2 + 25 + 25);
   });
 
-  it("fails with origin limit when the cost limit is reached", async () => {
+  it("still fails with origin limit when the cost limit the owner set is reached", async () => {
     const rig = createRig({
       bot: {
         limits: { maxTurns: 50, maxCostUsd: 15 },
@@ -961,12 +965,13 @@ describe("runLoop: limits", () => {
     expect(await rig.run()).toBe("failed");
     const status = lastStatus(await rig.events());
     expect(status?.failure?.origin).toBe("limit");
-    expect(status?.failure?.detail).toContain("cost limit");
+    expect(status?.failure?.detail).toContain("limite");
+    expect(status?.failure?.detail).toContain("gasto");
     expect(rig.provider.calls).toBe(2);
     expect((await rig.record()).costUsd).toBeCloseTo(20);
   });
 
-  it("fails with origin limit when the duration limit is reached", async () => {
+  it("still fails with origin limit when the duration limit the owner set is reached", async () => {
     const holder: { rig?: Rig } = {};
     const slow = (id: string) => () => {
       holder.rig?.clock.advance(60_000);
@@ -980,7 +985,7 @@ describe("runLoop: limits", () => {
     expect(await rig.run()).toBe("failed");
     const status = lastStatus(await rig.events());
     expect(status?.failure?.origin).toBe("limit");
-    expect(status?.failure?.detail).toContain("duration limit");
+    expect(status?.failure?.detail).toContain("tempo máximo");
     expect(rig.provider.calls).toBe(2);
   });
 
@@ -1230,17 +1235,17 @@ describe("runLoop: soft stop (pauseSignal)", () => {
 describe("runLoop: repetition guard", () => {
   const same = (n: number) => Array.from({ length: n }, (_, i) => use(call(`c${i}`, "fixed")));
 
-  it("nudges at the third identical call and fails at the fifth", async () => {
+  it("nudges at the third identical call and asks the owner at the fifth", async () => {
     const rig = createRig({ script: same(8) });
-    expect(await rig.run()).toBe("failed");
+    expect(await rig.run()).toBe("waiting_user");
     const events = await rig.events();
     const nudges = eventsOfType(events, "nudge");
     expect(nudges).toHaveLength(1);
     expect(nudges[0]?.payload.reason).toBe("repetition");
     expect(nudges[0]?.payload.text).toContain('"fixed"');
-    const status = lastStatus(events);
-    expect(status?.failure?.origin).toBe("model");
-    expect(status?.failure?.detail).toContain("5 times in a row");
+    const [asked] = eventsOfType(events, "escalated");
+    expect(asked?.payload.progress?.cause).toBe("repeat");
+    expect(asked?.payload.lead).toContain("Estou repetindo a mesma coisa.");
     expect(rig.provider.calls).toBe(5);
     // The nudge rides in the same user message as the third result.
     const fourth = rig.provider.requests[3]?.messages.at(-1);

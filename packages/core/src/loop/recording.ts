@@ -3,6 +3,7 @@
 // nudges, and recording tool calls and results.
 import type { RunEventData } from "../events.js";
 import type { ToolInvocation } from "../registry.js";
+import type { RiskLevel } from "../risk.js";
 import type { LoopContext } from "./run-context.js";
 import { applyEvent } from "./state.js";
 import type { FailureOrigin, RunResult, RunStatus, StoredEvent } from "./store.js";
@@ -156,6 +157,7 @@ export async function recordResult(
     webUrls?: string[];
     urlProvenance?: "user_message" | "search_result" | "page_link" | "approved";
     source?: { url: string; title?: string };
+    risk?: RiskLevel;
   },
 ): Promise<void> {
   await record(ctx, {
@@ -171,6 +173,7 @@ export async function recordResult(
       ...(r.webUrls === undefined ? {} : { webUrls: r.webUrls }),
       ...(r.urlProvenance === undefined ? {} : { urlProvenance: r.urlProvenance }),
       ...(r.source === undefined ? {} : { source: r.source }),
+      ...(r.risk === undefined ? {} : { risk: r.risk }),
     },
   });
 }

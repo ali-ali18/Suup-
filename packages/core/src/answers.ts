@@ -17,6 +17,15 @@ export interface QuestionAnswer {
 
 export const SKIPPED = "(pulou)";
 
+/**
+ * What the run receives as the answer to its question when the user closes the card with the X:
+ * written by the harness, for the model (never shown in the chat as the user's words). It lives
+ * here, with the other answers, so the loop can tell a closed card from a typed answer by exact
+ * comparison.
+ */
+export const DISMISSED_QUESTION_ANSWER =
+  "(The user closed this question without choosing an option. They may still answer in the chat. Do not ask the same question again now: go on with what you can do without it, or end your turn and wait for their message.)";
+
 /** Flattens runs of white space (including line breaks) into single spaces, without a pattern. */
 export function oneLine(text: string): string {
   const words: string[] = [];

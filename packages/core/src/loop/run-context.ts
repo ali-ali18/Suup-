@@ -26,6 +26,7 @@ import type { ModelPricing, ReviewerConfig } from "./reviewer.js";
 import type { RunState } from "./state.js";
 import type { RunRecord, RunStore } from "./store.js";
 import type { ToolSearchDeps } from "./tool-search.js";
+import type { WatchdogConfig } from "./watchdog.js";
 
 export interface BotConfig {
   id: string;
@@ -107,6 +108,11 @@ export interface LoopDeps {
   bot: BotConfig;
   /** When absent, `finish` is validated by the harness only. */
   reviewer?: ReviewerConfig;
+  /**
+   * The progress watchdog (docs/VIGIA.md): what happens at the step limit and when the run loops.
+   * Absent: the defaults (on, no judge model). `enabled: false` brings back the failures.
+   */
+  watchdog?: Partial<WatchdogConfig>;
   /**
    * Loads the context of a run that starts (rules, profile, conversation history). Called at most
    * once per run: the result is recorded as the `context_loaded` event right after `run_started`,

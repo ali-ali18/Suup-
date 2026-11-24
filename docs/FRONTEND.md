@@ -128,6 +128,8 @@ Cada execução tem um log de eventos numerados (`seq`), só de acréscimo. É a
 | `wait_scheduled` | `at`, `note`, `minutes`, `callId?` | Só no inspetor: o bot marcou um retorno. A chamada de `schedule_return` não vira cartão |
 | `wait_fired` | `at`, `note`, `delayMs?` | Só no inspetor: a hora do retorno chegou (gravado pelo job que acorda as execuções) |
 | `wait_cancelled` | `reason` (`user_message`, `cancelled`, `replaced`, `finished`) | Só no inspetor: o retorno não vai disparar |
+| `progress_check` | `trigger`, `signals`, `progress`, `verdict?`, `reason?`, `judged`, `action`, `extension?`, `turns`, `limit` | Só no inspetor: o vigia de progresso olhou a execução (sinais, juiz, o que fez: seguiu, avisou, estendeu, perguntou, parou). No chat nada aparece além do cartão ou da mensagem final |
+| `progress_decided` | `choice` (`continue`, `stop`), `grant`, `typed?`, `text`, `inboxIds?` | Só no inspetor: a resposta do dono ao cartão do vigia |
 | `secret_requested` | `callId`, `name`, `reason?` | O bot pede um segredo: abre o formulário seguro (seção 8, fase 3). A execução fica em `waiting_user` |
 
 Observações:
@@ -136,8 +138,9 @@ Observações:
 - Uma chamada **negada** (por você, por regra ou pelo revisor) tem `tool_result` com `outcome: "denied"` e `isError: true`, e as chamadas que vinham depois dela no mesmo turno ganham um `denied` "não foi executada". Uma chamada que espera cartão ainda **não tem `tool_call`**: ele só entra depois da aprovação (o cartão é o `approval_requested`).
 - O conteúdo de um evento nunca tem o valor de um segredo: o que o app vê é `{{secret:NOME}}` ou `[REDACTED:NOME]`.
 - Em `GET /v1/runs/{id}/events?view=chat` (e no stream), o `payload` de `model_request` vem **resumido** (`omitted: true`, `provider`, `model`, `purpose`, `messageCount`, `toolCount` e `toolStats`, só números): o pedido inteiro pode ter megabytes e só o Inspetor o desenha (`GET /v1/runs/{id}/requests/{seq}`). Todos os outros tipos desta tabela vêm inteiros.
-- `model_response`, `model_request` e `model_error` têm `purpose`: `agent` (o bot), `review` (o revisor) ou `compaction` (resumo do histórico). Na conversa, só `agent` aparece.
+- `model_response`, `model_request` e `model_error` têm `purpose`: `agent` (o bot), `review` (o revisor), `compaction` (resumo do histórico) ou `progress` (o juiz do vigia). Na conversa, só `agent` aparece.
 - O texto do bot chega **por turno**, inteiro, e não letra por letra.
+- `escalated` com `reason: "progress_limit"` é a pergunta do vigia (limite de passos ou laço): o balão é `lead` (a frase amigável e o resumo do que foi feito e falta), o cartão é o de pergunta de sempre com "Continuar (+25 passos)" e "Parar por aqui"; a resposta é texto comum, como em qualquer pergunta ([VIGIA.md](VIGIA.md)).
 - `escalated` com `reason: "review_tie_break"` é o caso em que o revisor recusou duas vezes (ou não conseguiu verificar, `review` com `unverified`, o que inclui reprovar duas vezes sem apontar divergência) e o Suup pede que você decida; o texto da pergunta diz qual dos dois foi.
 - Resultado de ferramenta pode ser grande ou cortado (`truncated`); mostrar recolhido por padrão.
 

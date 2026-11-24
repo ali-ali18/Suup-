@@ -19,6 +19,7 @@ import type {
   StatusChange,
   UsageDelta,
 } from "./loop/store.js";
+import type { ProgressJudge } from "./loop/watchdog.js";
 import {
   type GenerateRequest,
   type Provider,
@@ -39,7 +40,7 @@ import type { Executor, FileStat, ToolContext } from "./tool.js";
 /** A recorded event. `createdAt` is used (when present) to give the replay the recording's time. */
 export type RecordedEvent = RunEventData & { seq?: number; createdAt?: Date };
 
-type CallPurpose = "agent" | "review" | "compaction";
+type CallPurpose = "agent" | "review" | "compaction" | "progress";
 
 /** What the recording does not have, that the replay asked for. */
 export interface ReplayMissing {
@@ -96,8 +97,18 @@ export class ReplayProvider implements Provider {
   };
   /** Every request received, in order (the abort signal is not kept). */
   readonly requests: Omit<GenerateRequest, "signal">[] = [];
-  readonly #queues: Record<CallPurpose, Outcome[]> = { agent: [], review: [], compaction: [] };
-  readonly #served: Record<CallPurpose, number> = { agent: 0, review: 0, compaction: 0 };
+  readonly #queues: Record<CallPurpose, Outcome[]> = {
+    agent: [],
+    review: [],
+    compaction: [],
+    progress: [],
+  };
+  readonly #served: Record<CallPurpose, number> = {
+    agent: 0,
+    review: 0,
+    compaction: 0,
+    progress: 0,
+  };
   readonly #purpose: CallPurpose | undefined;
   readonly #onMissing: ((missing: ReplayMissing) => void) | undefined;
 
@@ -128,7 +139,7 @@ export class ReplayProvider implements Provider {
 
   /** Answers not served yet, over all purposes. */
   get remaining(): number {
-    return (["agent", "review", "compaction"] as const).reduce(
+    return (["agent", "review", "compaction", "progress"] as const).reduce(
       (sum, p) => sum + this.#queues[p].length - this.#served[p],
       0,
     );
@@ -281,6 +292,7 @@ export class ReplayInvoker implements ToolInvoker {
       durationMs: recorded.durationMs,
       outcome: recorded.outcome,
       truncated: recorded.truncated,
+      ...(recorded.risk === undefined ? {} : { risk: recorded.risk }),
     };
   }
 }
@@ -504,6 +516,20 @@ export async function replayRun(
         : { maxRejections: options.reviewer.maxRejections }),
     };
   }
+  // The progress judge answered during the recording: it answers again, from the recording.
+  const progressRequest = recorded.find(
+    (e) => e.type === "model_request" && e.payload.purpose === "progress",
+  );
+  const judge: ProgressJudge | undefined =
+    progressRequest?.type === "model_request"
+      ? {
+          provider: new ReplayProvider(recorded, { purpose: "progress", onMissing }),
+          model: {
+            id: progressRequest.payload.model,
+            maxOutputTokens: progressRequest.payload.maxOutputTokens,
+          },
+        }
+      : undefined;
   const tools = new ReplayInvoker(recorded, {
     onMissing,
     ...(options.tools === undefined ? {} : { specs: options.tools }),
@@ -544,6 +570,7 @@ export async function replayRun(
     executor: new NoMachine(recorded),
     bot: options.bot,
     ...(reviewer === undefined ? {} : { reviewer }),
+    ...(judge === undefined ? {} : { watchdog: { judge } }),
     ...(loadRunContext === undefined ? {} : { loadRunContext }),
     // A run recorded without approvals is replayed without them (nothing was gated then).
     gate: gated ? createReplayGate(recorded) : allowAllGate(),
@@ -741,11 +768,15 @@ class ReplayStore implements RunStore {
       items.push(...stopsOf(this.#recorded[i]));
       return items;
     }
-    if (next.type === "tool_result" && (next.payload.inboxIds?.length ?? 0) > 0) {
+    if (
+      (next.type === "tool_result" || next.type === "progress_decided") &&
+      (next.payload.inboxIds?.length ?? 0) > 0
+    ) {
       const ids = next.payload.inboxIds ?? [];
       // The loop joined the messages with a blank line. Splitting there and giving the last item
       // whatever remains reproduces the recorded text exactly, whatever the messages contained.
-      const parts = next.payload.content.split("\n\n");
+      const text = next.type === "tool_result" ? next.payload.content : next.payload.text;
+      const parts = text.split("\n\n");
       return ids.map((id, n) => ({
         id,
         kind: "user_message" as const,

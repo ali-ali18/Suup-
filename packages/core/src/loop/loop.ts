@@ -13,9 +13,10 @@ import {
   type LoopDeps,
   type RunLoopOptions,
 } from "./run-context.js";
-import { checkGuards, checkLimits, settle } from "./safe-point.js";
+import { hardLimit, settle } from "./safe-point.js";
 import { rebuildState } from "./state.js";
 import { LeaseLostError, type RunStatus } from "./store.js";
+import { watchdog } from "./watchdog.js";
 
 export { computeCost, MAX_MODEL_RETRIES } from "./model-call.js";
 export { INTERRUPTED_RESULT } from "./recording.js";
@@ -95,11 +96,12 @@ async function loop(ctx: LoopContext): Promise<RunStatus> {
     if (inbox !== undefined) return inbox;
 
     ctx.run = await store.getRun(ctx.runId);
-    const limit = checkLimits(ctx);
-    if (limit !== undefined) return fail(ctx, "limit", limit);
+    const limit = hardLimit(ctx);
+    if (limit !== undefined) return fail(ctx, "limit", limit.detail);
 
-    const guard = await checkGuards(ctx);
-    if (guard !== undefined) return guard;
+    // The step limit and the loops: extend, nudge, or ask the owner (never a failure by itself).
+    const watched = await watchdog(ctx);
+    if (watched !== undefined) return watched;
 
     await compactIfNeeded(ctx);
 

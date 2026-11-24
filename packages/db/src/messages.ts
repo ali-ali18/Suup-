@@ -28,7 +28,7 @@ export interface MessageQuestionItem {
  */
 export interface MessageQuestion {
   questions: MessageQuestionItem[];
-  reason?: "review_tie_break";
+  reason?: "review_tie_break" | "progress_limit";
   /**
    * What the bot wrote besides the question, in the same turn (the chat's bubble above the card).
    * Absent when it only asked: the card, whose title is the question, is then all there is.
@@ -178,7 +178,7 @@ const questionSchema = z.object({
     )
     .min(1)
     .max(5),
-  reason: z.exactOptional(z.literal("review_tie_break")),
+  reason: z.exactOptional(z.enum(["review_tie_break", "progress_limit"])),
   lead: z.exactOptional(z.string().min(1)),
   dismissed: z.exactOptional(z.boolean()),
 });

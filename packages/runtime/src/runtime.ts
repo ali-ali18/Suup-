@@ -16,6 +16,7 @@ import {
   type LoopDeps,
   type NativeToolSearch,
   type OutgoingFile,
+  type ProgressJudge,
   type Provider,
   ProviderError,
   planToolSearch,
@@ -28,6 +29,7 @@ import {
   type ToolSearchMode,
   type ToolSearchSetup,
   toolDefinitionStats,
+  type WatchdogConfig,
   Worker,
 } from "@suup/core";
 import {
@@ -256,6 +258,12 @@ export interface Runtime {
   sandboxRoot(): Promise<Executor>;
   botConfig(bot: Bot): BotConfig;
   reviewerConfig(): ReviewerConfig | undefined;
+  /**
+   * The progress watchdog of a run (docs/VIGIA.md): the settings of `defaults.watchdog` and the
+   * cheap judge model (`defaults.watchdog.judge.model`, else the auto-review model). A run nobody
+   * answers (an evaluation) gets it off: it fails at its limits, as before.
+   */
+  watchdogConfig(options?: { isolated?: boolean }): Partial<WatchdogConfig>;
   /**
    * What "Auto-review" has to work with: the model that reviews calls and whether its provider can
    * be used now. When it cannot, the mode still exists and falls back to the table of risk levels
@@ -680,6 +688,32 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     };
   };
 
+  const watchdogConfig = (options: { isolated?: boolean } = {}): Partial<WatchdogConfig> => {
+    const settings = config.defaults?.watchdog;
+    if (options.isolated === true) return { enabled: false };
+    const { judge, ...rest } = settings ?? {};
+    const judgeId = judge?.model ?? autoReviewModelId;
+    let judged: ProgressJudge | undefined;
+    if (judge?.enabled !== false && judgeId !== undefined) {
+      const { model } = resolveModel(judgeId);
+      // Without a key the judge is simply not there: the structural signals decide alone.
+      if (keyStatus(model.provider).ok) {
+        judged = {
+          provider: getProvider(model.provider),
+          model: {
+            id: model.id,
+            maxOutputTokens: Math.min(model.maxOutputTokens, 1024),
+            ...(model.pricing === undefined ? {} : { pricing: model.pricing }),
+            ...(model.supportsForcedToolChoice === undefined
+              ? {}
+              : { supportsForcedToolChoice: model.supportsForcedToolChoice }),
+          },
+        };
+      }
+    }
+    return { ...rest, ...(judged === undefined ? {} : { judge: judged }) };
+  };
+
   /** The model "Auto-review" asks: `approvals.autoReview.model`, else the model of `reviewer`. */
   const autoReviewModelId = config.approvals?.autoReview?.model ?? config.reviewer?.model;
   const autoReviewStatus = (): AutoReviewStatus => {
@@ -997,6 +1031,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
       executor,
       bot: botCfg,
       ...(reviewer === undefined ? {} : { reviewer }),
+      watchdog: watchdogConfig({ isolated }),
       // Uma execução isolada (uma avaliação) roda sem ninguém para responder e numa máquina
       // descartável: nenhum cartão poderia ser respondido, então ela sai da política pelo nome. Toda
       // outra execução passa pelo portão.
@@ -1239,6 +1274,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     },
     botConfig,
     reviewerConfig,
+    watchdogConfig,
     autoReviewStatus,
     memoryReviewerStatus,
     async consolidateOnce(opts = {}) {

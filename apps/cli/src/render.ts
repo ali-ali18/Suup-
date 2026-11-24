@@ -169,7 +169,30 @@ const NUDGE_PT: Record<string, string> = {
   empty_response: "resposta vazia",
   output_truncated: "resposta cortada pelo limite de saída",
   stopped_without_finish: "parou sem concluir",
+  error_loop: "mesmo erro várias vezes",
+  alternation: "vai e volta entre duas chamadas",
+  stuck: "sem sair do lugar",
 };
+
+const CHECK_ACTION_PT = {
+  continue: "segue",
+  nudge: "avisou o bot",
+  extend: "estendeu o limite",
+  ask: "perguntou ao dono",
+  stop: "parou a execução",
+} as const;
+
+const CHECK_TRIGGER_PT = {
+  soft_limit: "perto do limite",
+  limit: "limite de passos",
+  repeat: "chamada repetida",
+  error_loop: "mesmo erro",
+  no_tool: "sem ferramenta",
+  alternation: "vai e volta",
+  near_repeat: "quase repetição",
+} as const;
+
+const CHECK_VERDICT_PT = { avanca: "avança", circulo: "em círculo", incerto: "incerto" } as const;
 
 /**
  * The lines the live view prints for one event (possibly none). Pure apart from `state`, which it
@@ -308,12 +331,28 @@ export function renderEvent(event: RawEvent, state: RenderState): string[] {
       ];
     case "escalated":
       return [
-        e.payload.reason !== "review_tie_break"
-          ? "? O bot precisa de você:"
-          : e.payload.reviewVerdict === "unverified"
-            ? "? O revisor não conseguiu verificar parte do trabalho e precisa da sua decisão:"
-            : "? O bot e o revisor não chegaram a um acordo e precisam da sua decisão:",
+        e.payload.reason === "progress_limit"
+          ? "? O bot parou e pergunta se deve continuar:"
+          : e.payload.reason !== "review_tie_break"
+            ? "? O bot precisa de você:"
+            : e.payload.reviewVerdict === "unverified"
+              ? "? O revisor não conseguiu verificar parte do trabalho e precisa da sua decisão:"
+              : "? O bot e o revisor não chegaram a um acordo e precisam da sua decisão:",
+        // The watchdog's own words (no model wrote them): what happened, what is done and left.
+        ...(e.payload.reason === "progress_limit" && e.payload.lead !== undefined
+          ? indent(e.payload.lead, "  ")
+          : []),
         ...renderQuestions(escalatedQuestions(e.payload)),
+      ];
+    case "progress_check":
+      return [
+        `· vigia (${CHECK_TRIGGER_PT[e.payload.trigger]}): ${CHECK_ACTION_PT[e.payload.action]}${e.payload.verdict === undefined ? "" : `; o juiz diz: ${CHECK_VERDICT_PT[e.payload.verdict]}${e.payload.reason === undefined ? "" : ` (${oneLine(e.payload.reason, 100)})`}`}`,
+      ];
+    case "progress_decided":
+      return [
+        e.payload.choice === "continue"
+          ? `· você deixou seguir por mais ${e.payload.grant} passos`
+          : "· você pediu para parar por aqui",
       ];
     case "status_changed": {
       const { to, failure, result } = e.payload;
@@ -437,6 +476,10 @@ export function summarizeEvent(event: RawEvent): string {
       return `${e.payload.linkedApprovalId === undefined ? "" : `[ligada à aprovação ${e.payload.linkedApprovalId.slice(0, 8)}] `}${JSON.stringify(oneLine(e.payload.text, 90))}`;
     case "nudge":
       return `${e.payload.reason}: ${oneLine(e.payload.text, 80)}`;
+    case "progress_check":
+      return `${e.payload.trigger} → ${e.payload.action}${e.payload.verdict === undefined ? "" : ` (${e.payload.verdict})`} · passos ${e.payload.turns}/${e.payload.limit}`;
+    case "progress_decided":
+      return `${e.payload.choice}${e.payload.grant > 0 ? ` +${e.payload.grant}` : ""}`;
     case "finish_attempt":
       return e.payload.accepted
         ? `aceita: ${JSON.stringify(oneLine(e.payload.summary, 80))}`

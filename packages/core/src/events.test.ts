@@ -115,6 +115,49 @@ const samples: RunEventData[] = [
   },
   { type: "wait_cancelled", payload: { reason: "user_message" } },
   {
+    type: "progress_check",
+    payload: {
+      trigger: "limit",
+      signals: {
+        exactRepeat: 1,
+        nearRepeat: 2,
+        errorRun: 0,
+        noToolTurns: 0,
+        alternation: 0,
+        changes: 1,
+        newCalls: 3,
+        newEvidence: 3,
+      },
+      progress: true,
+      verdict: "avanca",
+      reason: "new files keep being written",
+      judged: true,
+      action: "extend",
+      extension: 25,
+      turns: 50,
+      limit: 50,
+    },
+  },
+  {
+    type: "progress_decided",
+    payload: { choice: "continue", grant: 25, text: "Continuar (+25 passos)", inboxIds: ["i1"] },
+  },
+  {
+    type: "escalated",
+    payload: {
+      question: "Quer que eu continue por mais 25 passos?",
+      questions: [
+        {
+          question: "Quer que eu continue por mais 25 passos?",
+          options: [{ label: "Continuar (+25 passos)" }, { label: "Parar por aqui" }],
+        },
+      ],
+      lead: "Cheguei no limite de passos desta tarefa.",
+      reason: "progress_limit",
+      progress: { cause: "limit", grant: 25 },
+    },
+  },
+  {
     type: "policy_checked",
     payload: {
       callId: "1",

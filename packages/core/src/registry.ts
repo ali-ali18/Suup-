@@ -41,6 +41,11 @@ export interface ToolInvocation {
   truncated: boolean;
   /** Workspace path of the full output when it was truncated and saved. */
   savedTo?: string;
+  /**
+   * The level of the call (a read, or a kind of change), as the tool declared it. Set when the tool
+   * ran; the progress watchdog counts a successful call that is not a read as a change.
+   */
+  risk?: RiskLevel;
 }
 
 export type BeforeExecuteResult = { allow: true } | { allow: false; reason: string };
@@ -330,11 +335,19 @@ export class ToolRegistry {
     if (raw.urlProvenance !== undefined) output.urlProvenance = raw.urlProvenance;
     const source = sourceOf(raw.source);
     if (source !== undefined) output.source = source;
-    return finish(raw.isError === true ? "tool_error" : "ok", content, {
-      output,
-      truncated: clipped.truncated,
-      ...(clipped.savedTo === undefined ? {} : { savedTo: clipped.savedTo }),
-    });
+    const risk = this.assess(name, rawArgs, {
+      ...(opts.allowed === undefined ? {} : { allowed: opts.allowed }),
+      executor: ctx.executor,
+      ...(ctx.webSeen === undefined ? {} : { webSeen: ctx.webSeen }),
+    })?.level;
+    return {
+      ...finish(raw.isError === true ? "tool_error" : "ok", content, {
+        output,
+        truncated: clipped.truncated,
+        ...(clipped.savedTo === undefined ? {} : { savedTo: clipped.savedTo }),
+      }),
+      ...(risk === undefined ? {} : { risk }),
+    };
   }
 
   async #truncate(

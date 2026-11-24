@@ -581,6 +581,33 @@ export function repetitionNudge(toolName: string, count: number): string {
   return `You have called "${toolName}" with identical arguments ${count} times in a row and got the identical result each time. Repeating it will not change anything. Change your approach: try different arguments or a different tool, re-read the error or output for what it is telling you, or escalate with one precise question if you are stuck.`;
 }
 
+/** What a loop the harness saw is called in the nudge, by pattern. */
+export function loopNudge(pattern: "error_loop" | "alternation" | "stuck", detail: string): string {
+  if (pattern === "error_loop") {
+    return `You have called "${detail}" and it failed the same way several times in a row. Trying it again will not help. Change your approach: read the error for what it is telling you, fix the cause, use a different tool or different arguments, or escalate with one precise question if you are stuck.`;
+  }
+  if (pattern === "alternation") {
+    return `You are going back and forth between the same two steps (${detail}) and getting the same results. Repeating the pair will not change anything. Change your approach, or escalate with one precise question if you are stuck.`;
+  }
+  return `A check of your progress says you are going in circles (${detail}). Change your approach now: do something you have not tried, or escalate with one precise question if you are stuck.`;
+}
+
+/**
+ * The note the model reads when the owner let the run go on (or the harness did, by itself):
+ * how many more steps there are, and, when it was a loop that stopped it, to change approach.
+ */
+export function progressContinueNotice(
+  cause: "limit" | "repeat" | "error_loop" | "no_tool" | "alternation",
+  grant: number,
+): string {
+  const more = `The owner let you continue: you have ${grant} more steps.`;
+  if (cause === "limit") return `${more} Use them to finish the work; do not start over.`;
+  if (cause === "no_tool") {
+    return `${more} Do the next step with a tool, or call finish if the work is complete. Do not answer with text alone again.`;
+  }
+  return `${more} You were repeating yourself before: change your approach instead of trying the same thing again.`;
+}
+
 export const REVIEWER_SYSTEM = `You are an independent reviewer of work done by an AI assistant. You do not see the conversation. You see the assignment, the assistant's claim that it is finished, and a digest of the tool calls it actually made. Decide whether the claim is supported.
 
 The "Exchanges with the user" section is recorded by the harness, not claimed by the assistant: what the user answered or wrote there is a real instruction or decision, and an answer from the user settles any ambiguity in the assignment. Approve only if all of these hold: every acceptance criterion is met according to its evidence; the evidence is concrete and consistent with what the tools returned (nothing is claimed that the tool results do not show); no plan step that mattered was skipped; the summary does not overstate what was done. If no acceptance criteria were given, judge whether the objective itself was achieved.

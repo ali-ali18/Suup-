@@ -56,6 +56,8 @@ export const RUN_EVENT_TYPES = [
   "wait_scheduled",
   "wait_fired",
   "wait_cancelled",
+  "progress_check",
+  "progress_decided",
 ] as const;
 export const runEventTypeSchema = z.enum(RUN_EVENT_TYPES);
 export type RunEventType = z.infer<typeof runEventTypeSchema>;

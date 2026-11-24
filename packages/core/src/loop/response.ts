@@ -10,10 +10,10 @@ import {
 } from "./prompts.js";
 import { end, fail, nudge, transition } from "./recording.js";
 import type { LoopContext } from "./run-context.js";
-import { MAX_NO_PROGRESS_TURNS } from "./safe-point.js";
 import type { PendingResponse } from "./state.js";
 import type { RunStatus } from "./store.js";
 import { executeCalls } from "./tool-execution.js";
+import { noToolLimit, stopForNoTool } from "./watchdog.js";
 
 /** Work left from a response already recorded (this process's, or a dead one's). */
 export async function processPending(ctx: LoopContext): Promise<RunStatus | undefined> {
@@ -59,13 +59,8 @@ async function handleTextOnly(
     reason = "stopped_without_finish";
     nudgeText = stoppedWithOpenStepsNudge(state.plan);
   }
-  if (state.noProgressStreak + 1 >= MAX_NO_PROGRESS_TURNS) {
-    return fail(
-      ctx,
-      "model",
-      `the model made ${state.noProgressStreak + 1} consecutive turns without any tool call (${reason}) instead of working or calling finish`,
-    );
-  }
+  // The third turn in a row without a tool: the owner is asked (a routine stops), no failure.
+  if (state.noProgressStreak + 1 >= noToolLimit(ctx)) return stopForNoTool(ctx, reason);
   await nudge(ctx, reason, nudgeText);
   return undefined;
 }

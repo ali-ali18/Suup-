@@ -65,7 +65,9 @@ enquanto a execução não terminou:
   se só texto, com passos pendentes → harness devolve "faltam X e Y, continue"
   se chamou finish   → valida; recusa se falta passo ou evidência; revisor confere
   se chamou escalate → status waiting_user, pausa
-  checa limites: turnos, custo, tempo, mesma chamada repetida 3 vezes
+  checa limites: custo e tempo (se o dono definiu) terminam a execução; o limite de passos e os laços
+    (mesma chamada repetida, mesmo erro, sem ferramenta, vai e volta) acionam o vigia: aviso, extensão
+    automática com progresso conferível ou pergunta ao dono (em rotina, para com mensagem)
 ```
 
 Ferramentas de controle, presentes em todo bot:
@@ -85,6 +87,7 @@ Regras:
 - O plano e o objetivo vão sempre no fim do contexto, onde o modelo presta mais atenção.
 - Antes de aceitar `finish` em execução com plano, um **revisor** (outra chamada ao modelo, sem o histórico) recebe objetivo, critérios e evidência, e pode devolver. O resumo que ele recebe é curto: por isso pode **pedir evidência** (resultados inteiros, argumentos de chamadas e arquivos, em até 3 rodadas e com orçamento de caracteres) antes de decidir, e só reprova com ao menos uma divergência concreta e estruturada; o que continua inverificável chega ao dono como "não consegui verificar X", nunca como reprovação. Antes disso, quando o que falta é **evidência que o revisor nomeou** (ainda pedia evidência depois das rodadas, ou um `cannot_verify` com o que falta), o primeiro `finish` assim volta **uma vez** ao bot com as notas do revisor ("o revisor pediu: ...; produza a evidência e chame finish de novo"); o segundo vai ao dono como antes (numa rotina, encerra a execução). Dúvida sem lacuna concreta, `reject` sem divergência, limite atingido e revisão que falhou vão direto. Uma revisão que **não aconteceu** nunca é aprovação (falha fechada, 23/11/2026): erro do provedor é tentado mais uma vez; se o revisor ainda falha, ou responde sem um `verdict` utilizável, o resultado é `unverified` com `failed` ("a revisão falhou") e vai ao dono como qualquer `unverified`. Numa execução de **rotina**, onde ninguém responde na hora, um `unverified` (de falha ou não) encerra a execução como não concluída (`failed`, com o motivo em português no chat do bot), sem pergunta parada que pularia os próximos disparos.
 - Estados: `queued`, `running`, `waiting_approval`, `waiting_user`, `waiting_timer`, `done`, `failed`, `cancelled`. `waiting_timer` é a execução parada até um retorno que o próprio bot marcou ([RETORNO.md](RETORNO.md)).
+- **Limite de passos e laços não derrubam a execução** (decisão do dono, 24/11/2026): o **vigia de progresso** avisa o bot uma vez, estende sozinho em 25 passos (até 2 vezes) quando há progresso que dá para conferir e, no resto, pergunta ao dono "Continuar (+25 passos)" ou "Parar por aqui"; numa rotina, ninguém responde, então ela para com uma mensagem amigável. Custo e tempo continuam sem teto por padrão. Desenho: [VIGIA.md](VIGIA.md); pesquisa: [pesquisas/vigia-de-progresso.md](pesquisas/vigia-de-progresso.md).
 - Execuções longas rodam em segundo plano; a conversa continua livre.
 - Retomada: o contexto é reconstruído a partir dos eventos. Uma ferramenta interrompida no meio é marcada como "resultado desconhecido" e o modelo decide se confere ou repete.
 

@@ -1,17 +1,17 @@
 // Owns the checks made at the safe point (every result recorded, no model call in flight) that
-// can end or pause the run: acting on decisions the log already holds, the turn/cost/duration
-// limits, and the no-progress and repetition guards.
+// can end or pause the run: acting on decisions the log already holds and the cost/duration
+// limits. The step limit and the loop guards are the progress watchdog's (watchdog.ts).
 import { deliverApprovalDecisions } from "./approval-flow.js";
-import { repetitionNudge } from "./prompts.js";
-import { end, fail, nudge, record, transition } from "./recording.js";
+import { end, fail, record, transition } from "./recording.js";
 import type { LoopContext } from "./run-context.js";
 import type { RunStatus } from "./store.js";
+import { effectiveMaxTurns, endByOwner } from "./watchdog.js";
 
-/** Consecutive turns without a tool call (other than a rejected finish) before the run fails. */
+/** Consecutive turns without a tool call (other than a rejected finish) before the owner is asked. */
 export const MAX_NO_PROGRESS_TURNS = 3;
 /** The same call with the same result this many times in a row triggers a nudge. */
 export const REPEAT_NUDGE_AT = 3;
-/** ... and this many fails the run. */
+/** ... and this many asks the owner (or stops a routine). */
 export const REPEAT_FAIL_AT = 5;
 
 /**
@@ -26,6 +26,10 @@ export async function settle(ctx: LoopContext): Promise<RunStatus | "again" | un
       await record(ctx, { type: "wait_cancelled", payload: { reason: "finished" } });
     }
     return fail(ctx, state.failedFinish.origin, state.failedFinish.detail);
+  }
+  if (state.watch.stopRequested) {
+    // The owner chose "Parar por aqui" on the watchdog's card: the run ends cleanly, not as an error.
+    return endByOwner(ctx);
   }
   if (state.acceptedFinish !== null) {
     // A return still pending is moot now that the work is finished.
@@ -48,44 +52,38 @@ export async function settle(ctx: LoopContext): Promise<RunStatus | "again" | un
   return undefined;
 }
 
-/** The failure detail when a limit is hit, otherwise `undefined`. */
+/** The failure detail when a limit is hit, otherwise `undefined` (a technical text for the log). */
 export function checkLimits(ctx: LoopContext): string | undefined {
+  const run = ctx.run;
+  const maxTurns = effectiveMaxTurns(ctx);
+  if (run.turns >= maxTurns) {
+    return `turn limit reached: ${run.turns} of ${maxTurns} model calls used`;
+  }
+  return hardLimit(ctx)?.technical;
+}
+
+/**
+ * The limits the owner configured for cost and time: they end the run (the step limit does not:
+ * the watchdog decides what to do about it). `detail` is the sentence the owner reads.
+ */
+export function hardLimit(ctx: LoopContext): { technical: string; detail: string } | undefined {
   const { limits } = ctx.deps.bot;
   const run = ctx.run;
-  if (run.turns >= limits.maxTurns) {
-    return `turn limit reached: ${run.turns} of ${limits.maxTurns} model calls used`;
-  }
   if (limits.maxCostUsd !== undefined && run.costUsd >= limits.maxCostUsd) {
-    return `cost limit reached: $${run.costUsd.toFixed(4)} spent of $${limits.maxCostUsd} allowed`;
+    return {
+      technical: `cost limit reached: $${run.costUsd.toFixed(4)} spent of $${limits.maxCostUsd} allowed`,
+      detail: `Parei porque o gasto desta tarefa chegou ao limite que você configurou (US$ ${run.costUsd.toFixed(2)} de US$ ${limits.maxCostUsd}).`,
+    };
   }
   if (limits.maxDurationMs !== undefined) {
     // The time parked for a return is not work: it does not count against the duration limit.
     const elapsed = ctx.deps.now().getTime() - run.startedAt.getTime() - ctx.state.waitedMs;
     if (elapsed >= limits.maxDurationMs) {
-      return `duration limit reached: ${Math.round(elapsed / 1000)}s elapsed of ${Math.round(limits.maxDurationMs / 1000)}s allowed`;
+      return {
+        technical: `duration limit reached: ${Math.round(elapsed / 1000)}s elapsed of ${Math.round(limits.maxDurationMs / 1000)}s allowed`,
+        detail: `Parei porque a tarefa passou do tempo máximo que você configurou (${Math.round(elapsed / 1000)} s de ${Math.round(limits.maxDurationMs / 1000)} s).`,
+      };
     }
-  }
-  return undefined;
-}
-
-export async function checkGuards(ctx: LoopContext): Promise<RunStatus | undefined> {
-  const { noProgressStreak, repeat } = ctx.state;
-  if (noProgressStreak >= MAX_NO_PROGRESS_TURNS) {
-    return fail(
-      ctx,
-      "model",
-      `the model made ${noProgressStreak} consecutive turns without a tool call other than a rejected finish, instead of working or finishing properly`,
-    );
-  }
-  if (repeat.count >= REPEAT_FAIL_AT) {
-    return fail(
-      ctx,
-      "model",
-      `the model repeated the same "${repeat.name}" call with identical arguments and an identical result ${repeat.count} times in a row`,
-    );
-  }
-  if (repeat.count >= REPEAT_NUDGE_AT && !repeat.nudged) {
-    await nudge(ctx, "repetition", repetitionNudge(repeat.name, repeat.count));
   }
   return undefined;
 }

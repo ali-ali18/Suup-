@@ -94,7 +94,7 @@ export const resendCommand: CommandSpec = {
     try {
       const target = otherModel ?? request.request.model;
       ctx.out.line(
-        `Reenviando o pedido do evento ${seq} (${purpose === "agent" ? "agente" : purpose === "review" ? "revisor" : "compactação"}) da execução ${run.id.slice(0, 8)}: ${times} vez${times === 1 ? "" : "es"} para ${target}${target === request.request.model ? "" : ` (o original usou ${request.request.model})`}`,
+        `Reenviando o pedido do evento ${seq} (${purpose === "agent" ? "agente" : purpose === "review" ? "revisor" : purpose === "progress" ? "vigia de progresso" : "compactação"}) da execução ${run.id.slice(0, 8)}: ${times} vez${times === 1 ? "" : "es"} para ${target}${target === request.request.model ? "" : ` (o original usou ${request.request.model})`}`,
       );
       doc = await resendRecordedRequest(runtime, {
         runId: run.id,

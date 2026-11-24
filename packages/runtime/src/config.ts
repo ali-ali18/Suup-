@@ -310,6 +310,58 @@ export function configuredTimeZone(config: {
   return configured !== undefined && isTimeZone(configured) ? configured : undefined;
 }
 
+/**
+ * The progress watchdog (docs/VIGIA.md): what a run does at its step limit and when it repeats
+ * itself. Every field has a default; the thresholds are counts, never patterns of text.
+ */
+const watchdogSchema = z
+  .strictObject({
+    /** Off: the run fails at its limits and at a loop, as it did before the watchdog existed. */
+    enabled: z.exactOptional(z.boolean()),
+    /** Steps one extension grants (the automatic ones and the owner's "Continuar"). Default 25. */
+    extension: z.exactOptional(z.number().int().min(5).max(500)),
+    /** How many times a run extends itself before it always asks. Default 2; 0 never. */
+    maxAutoExtensions: z.exactOptional(z.number().int().min(0).max(10)),
+    /** The share of a slice of steps at which the soft check runs. Default 0.8. */
+    softLimit: z.exactOptional(z.number().min(0.5).max(0.95)),
+    /** The same call with the same result, in a row: nudge at (default 3), ask at (default 5). */
+    repeatNudgeAt: z.exactOptional(z.number().int().min(2).max(50)),
+    repeatAskAt: z.exactOptional(z.number().int().min(3).max(100)),
+    /** The same tool failing the same way, in a row: nudge at (default 3), ask at (default 5). */
+    errorNudgeAt: z.exactOptional(z.number().int().min(2).max(50)),
+    errorAskAt: z.exactOptional(z.number().int().min(3).max(100)),
+    /** Turns in a row without a tool call before the owner is asked. Default 3. */
+    noToolAskAt: z.exactOptional(z.number().int().min(2).max(20)),
+    /** An A-B-A-B run of calls before the owner is asked (the nudge comes at 6). Default 10. */
+    alternationAskAt: z.exactOptional(z.number().int().min(6).max(100)),
+    /** The cheap model that gives a second opinion near the limit. */
+    judge: z.exactOptional(
+      z.strictObject({
+        /** `false`: no judge, the structural signals decide alone. */
+        enabled: z.exactOptional(z.boolean()),
+        /** A model of `models`. Default: the auto-review model, else the one of `reviewer`. */
+        model: z.exactOptional(z.string().min(1)),
+      }),
+    ),
+  })
+  .superRefine((value, ctx) => {
+    const pairs: [keyof typeof value, keyof typeof value, number, number][] = [
+      ["repeatNudgeAt", "repeatAskAt", 3, 5],
+      ["errorNudgeAt", "errorAskAt", 3, 5],
+    ];
+    for (const [nudge, ask, nudgeDefault, askDefault] of pairs) {
+      const nudgeAt = (value[nudge] as number | undefined) ?? nudgeDefault;
+      const askAt = (value[ask] as number | undefined) ?? askDefault;
+      if (askAt <= nudgeAt) {
+        ctx.addIssue({
+          code: "custom",
+          path: [ask],
+          message: `precisa ser maior que ${String(nudge)} (o aviso vem antes da pergunta)`,
+        });
+      }
+    }
+  });
+
 const defaultsSchema = z.strictObject({
   maxTurns: z.exactOptional(positiveInt),
   maxCostUsd: z.exactOptional(z.number().positive()),
@@ -319,6 +371,8 @@ const defaultsSchema = z.strictObject({
    * refuses and the bot must finish or ask the user. Default 6. 0 turns the returns off.
    */
   maxReturns: z.exactOptional(z.number().int().nonnegative()),
+  /** What a run does at its step limit and when it loops: asks you, instead of failing. */
+  watchdog: z.exactOptional(watchdogSchema),
   /**
    * How many characters of the earlier messages of a conversation a run gets as history (whole
    * messages, newest first). Older ones are found with `search_conversations`.
@@ -622,6 +676,14 @@ export const configSchema = z
         code: "custom",
         path: ["approvals", "autoReview", "model"],
         message: `modelo "${autoReviewModel}" não existe em "models" (existentes: ${[...modelIds].join(", ")})`,
+      });
+    }
+    const judgeModel = config.defaults?.watchdog?.judge?.model;
+    if (judgeModel !== undefined && !modelIds.has(judgeModel)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["defaults", "watchdog", "judge", "model"],
+        message: `modelo "${judgeModel}" não existe em "models" (existentes: ${[...modelIds].join(", ")})`,
       });
     }
     const consolidationModel = config.memory?.consolidation?.model;
