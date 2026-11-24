@@ -92,6 +92,18 @@ export interface ConnectorGallery {
    * approved card; it stays off until the person logs in.
    */
   install(id: string, options?: { origin?: "user" | "proposal" }): Promise<InstallResult>;
+  /** Gives a bot every tool the connector offers (the card the person approved said so). */
+  grantAll(connector: string, botId: string): Promise<void>;
+  /**
+   * The hosts a link on this connector's card may point to (exact names): its gallery entry's
+   * `egressHosts` and `authHosts`, the host of its HTTP address, its declared hosts. `undefined`:
+   * there is no such connector.
+   */
+  connectCardInfo(
+    connector: string,
+  ): Promise<{ hosts: string[]; firstSegment?: string | undefined } | undefined>;
+  /** Whether the bot has any access to the connector. */
+  hasAccess(connector: string, botId: string): Promise<boolean>;
   oauthStart(connector: string): Promise<OAuthStartResult>;
   oauthStatus(connector: string): Promise<OAuthStatusView>;
   /**
@@ -450,6 +462,8 @@ export function createGallery(deps: {
           },
           { origin, catalogId: entry.id, allowMissingSecrets: true },
         );
+        // On at once (its token was already there): list its tools now, as turning it on does.
+        if (origin === "user" && hasSecret) void service.test(entry.id).catch(() => {});
       } else if (origin === "user" && hasSecret && !existing.enabled) {
         // The token arrived after the install (the secure form): now it can be on.
         await service.update(entry.id, { enabled: true });
@@ -463,6 +477,22 @@ export function createGallery(deps: {
             ? "secret"
             : "none";
       return { item, next };
+    },
+    async grantAll(connector, botId) {
+      await service.grant(connector, botId, "all");
+    },
+    async connectCardInfo(connector) {
+      const view = await service.get(connector);
+      if (view === null) return undefined;
+      const entry = view.catalogId === null ? undefined : catalogEntry(view.catalogId);
+      const hosts = new Set<string>([...(entry?.egressHosts ?? []), ...(entry?.authHosts ?? [])]);
+      if (view.transport.kind === "http") hosts.add(new URL(view.transport.url).hostname);
+      else for (const host of view.transport.egressHosts ?? []) hosts.add(host);
+      return { hosts: [...hosts], firstSegment: entry?.authLinkSegment };
+    },
+    async hasAccess(connector, botId) {
+      const view = await service.get(connector);
+      return view?.grants.some((g) => g.botId === botId && (g.all || g.tools.length > 0)) ?? false;
     },
     async oauthStart(connector) {
       const { url, oauth } = await oauthConfigOf(connector);

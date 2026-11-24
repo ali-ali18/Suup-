@@ -9,6 +9,7 @@ import {
   closeSettings,
   connect,
   freshBot,
+  openPluginPage,
   openSettings,
   selectBot,
   send,
@@ -491,13 +492,14 @@ test.describe("screenshots", () => {
       await shot("21b-config-novo-segredo");
       await page.getByRole("button", { name: "Cancelar" }).click();
       await page.getByRole("tab", { name: "Conectores" }).click();
-      await expect(page.getByTestId("connector-item").filter({ hasText: "fake" })).toBeVisible();
+      await expect(page.getByTestId("installed-item").filter({ hasText: "fake" })).toBeVisible();
       await settle();
       await shot("22-config-conectores-lista");
       await page
-        .getByTestId("connector-item")
+        .getByTestId("installed-item")
         .filter({ hasText: "fake" })
-        .getByTestId("connector-details")
+        .locator("button")
+        .first()
         .click();
       const connector = page.getByTestId("connector-row").filter({ hasText: "fake" });
       await expect(connector.getByTestId("connector-tools")).toBeVisible();
@@ -524,12 +526,7 @@ test.describe("screenshots", () => {
       await settle();
       await shot("22e-config-conectores-onde-roda");
       // A connector with tools waiting for a review: the calm notice, then the comparison.
-      await page.getByRole("tab", { name: "Conectores" }).click();
-      await page
-        .getByTestId("connector-item")
-        .filter({ hasText: "revisao" })
-        .getByTestId("connector-details")
-        .click();
+      await openPluginPage(page, "revisao");
       const reviewed = page.getByTestId("connector-row").filter({ hasText: "revisao" });
       await expect(reviewed.getByTestId("review-notice")).toContainText("mudou");
       await settle();
@@ -542,7 +539,7 @@ test.describe("screenshots", () => {
       await settle();
       await shot("22h-revisao-mantida-desligada");
       await page.getByTestId("review-close").click();
-      await page.getByRole("tab", { name: "Conectores" }).click();
+      await openSettings(page, "Conectores");
       await page.getByTestId("connector-new").click();
       await settle();
       await shot("23-adicionar-conector");
@@ -662,7 +659,7 @@ test.describe("screenshots", () => {
       await settle();
       await shot("21c-config-cofre-vazio");
       await page.getByRole("tab", { name: "Conectores" }).click();
-      await expect(page.getByTestId("connectors-card")).toContainText("Nenhum conector");
+      await expect(page.getByTestId("connectors-card")).toContainText("Nenhum plugin instalado");
       await settle();
       await shot("22i-config-conectores-vazio");
       // A small window: the nav becomes a strip on top and nothing overflows the page.

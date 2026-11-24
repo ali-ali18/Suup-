@@ -2,8 +2,9 @@ import { expect, test } from "@playwright/test";
 import { DATABASE_URL, SKIP_REASON, startWorld, type World } from "./harness.js";
 import { freshBot, openApp, openSettings } from "./helpers.js";
 
-// Configurações > Busca, with a real server: the general search engines in their order, each with
-// its state in plain words, and a key added through the vault (never shown, never in the screen).
+// Configurações > Busca, with a real server: a short pointer. The general search engines in their
+// order, each with its state in plain words and an "Abrir" to the plugin's page, where the key is
+// added through the vault (never shown, never in the screen).
 
 const KEY = "tvly-E2E-made-up-key-0000000000";
 
@@ -37,7 +38,11 @@ test.describe("settings: web search", () => {
       await expect(screen).not.toContainText(technical);
     }
 
-    await page.getByTestId("search-key-tavily").click();
+    // No key control here: "Abrir" goes to the plugin's page, where the key is added.
+    await expect(page.getByTestId("search-key-tavily")).toHaveCount(0);
+    await page.getByTestId("search-open-tavily").click();
+    await expect(page.getByTestId("settings-screen")).toHaveCount(0);
+    await page.getByTestId("search-key").click();
     const dialog = page.getByRole("dialog", { name: "Chave do Tavily" });
     await expect(dialog.getByTestId("secret-steps")).toContainText("mil buscas");
     await expect(dialog).not.toContainText("TAVILY_API_KEY");
@@ -46,11 +51,12 @@ test.describe("settings: web search", () => {
     await input.fill(KEY);
     await dialog.getByTestId("secret-write").click();
     await expect(dialog).toHaveCount(0);
+    await openSettings(page, "Busca");
 
     // The server read the key from the vault: ready, and the second engine is still without one.
     await expect(page.getByTestId("search-state-tavily")).toHaveText("Pronto");
     await expect(page.getByTestId("search-state-brave")).toHaveText("Sem chave");
-    await expect(page.getByTestId("search-key-tavily")).toHaveText("Trocar a chave");
+    await expect(page.getByTestId("search-key-tavily")).toHaveCount(0);
     await expect(page.getByTestId("search-none-ready")).toHaveCount(0);
     await expect(screen).not.toContainText(KEY);
     const providers = await world.api.webSearch.get();

@@ -26,8 +26,6 @@ export function SettingsDialog() {
   const tab = useUi((s) => s.settingsTab);
   const setTab = useUi((s) => s.setSettingsTab);
   const close = useUi((s) => s.closeSettings);
-  const connector = useUi((s) => s.settingsConnector);
-  const setConnector = useUi((s) => s.setSettingsConnector);
   const titleId = useId();
   const refs = useRef<Record<string, HTMLButtonElement | null>>({});
   const current = SECTIONS.find((s) => s.id === tab) ?? SECTIONS[0];
@@ -48,12 +46,6 @@ export function SettingsDialog() {
   return (
     <Modal
       onClose={close}
-      // Esc goes back one step: a connector's details return to the list; the second Esc closes.
-      beforeClose={(reason) => {
-        if (reason !== "escape" || tab !== "connectors" || connector === null) return true;
-        setConnector(null);
-        return false;
-      }}
       labelledBy={titleId}
       testId="settings-screen"
       className="flex h-[min(var(--height-settings),100%)] w-[min(var(--width-settings),100%)] overflow-hidden rounded-card border border-border-strong bg-bg shadow-popover narrow:flex-col"

@@ -4,6 +4,7 @@ import { type FakeOAuthServer, startFakeOAuthMcp } from "@suup/connectors/testin
 import { createBot, type Db, decideApproval, listApprovals, listRunEvents } from "@suup/db";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  connectLinkProblem,
   createConnectorService,
   createRuntime,
   generateKeyText,
@@ -12,6 +13,7 @@ import {
   parseConfig,
   proposeConnectorTool,
   type Runtime,
+  showConnectCardTool,
 } from "../src/index.js";
 import { DATABASE_URL, dbSuiteName, useIsolatedDb } from "./db.js";
 import { rawConfig, tempDir, writeJson } from "./helpers.js";
@@ -411,7 +413,8 @@ describe.skipIf(!DATABASE_URL)(
       const [card] = await listApprovals(rt.db, { runId: refused.id, status: "pending", limit: 5 });
       expect(card).toMatchObject({ tool: PROPOSE_CONNECTOR_TOOL, level: "external_irreversible" });
       expect(card?.summary).toContain("Instalar o conector Notion da galeria");
-      expect(card?.summary).toContain("https://mcp.notion.com/mcp");
+      // A sentence for the owner: no address, no link (docs/DESIGN.md, "Amigável").
+      expect(card?.summary).not.toContain("https://");
       expect(card?.summary).toContain("login no navegador (OAuth)");
       await decideApproval(rt.db, card?.id as string, { decision: "denied" });
       await work(refused.id);
@@ -427,17 +430,20 @@ describe.skipIf(!DATABASE_URL)(
       });
       await decideApproval(rt.db, card2?.id as string, { decision: "approved" });
       expect(await work(approved.id)).toBe("done");
-      expect(await rt.connectors.get("notion")).toMatchObject({
+      const installed = await rt.connectors.get("notion");
+      expect(installed).toMatchObject({
         enabled: false,
         origin: "proposal",
         catalogId: "notion",
       });
+      // The owner approved the card: the bot that proposed it was given the connector (owner, 24/11/2026).
+      expect(installed?.grants).toEqual([{ botId: bot.id, all: true, tools: [] }]);
       const events = await listRunEvents(rt.db, approved.id, { limit: 1000 });
       const result = events.find(
         (e) => e.type === "tool_result" && (e.payload as { callId?: string }).callId === "p1",
       );
       expect(String((result?.payload as { content?: unknown } | undefined)?.content)).toContain(
-        "Settings > Connectors",
+        "Gerenciar",
       );
     });
 
@@ -453,6 +459,82 @@ describe.skipIf(!DATABASE_URL)(
       );
       expect(unverified.isError).toBe(true);
       expect(await rt.connectors.list()).toEqual([]);
+    });
+
+    it("propose_connector does not propose what is installed: no card (read), and the result says what is missing", async () => {
+      const rt = await open();
+      const tool = proposeConnectorTool(() => rt.connectors.gallery, new Set(["notion"]));
+      expect(tool.classify?.({ connector: "notion", reason: "x" }, {} as never)).toBe("read");
+      expect(tool.classify?.({ connector: "github", reason: "x" }, {} as never)).toBe(
+        "external_irreversible",
+      );
+      const bot = await createBot(rt.db, {
+        name: "ana",
+        modelProvider: "script",
+        modelId: "model-s",
+      });
+      const ctx = { botId: bot.id } as Parameters<typeof tool.execute>[1];
+      // Installed (off, as a proposal) and not connected: the bot is told to show the card.
+      await rt.connectors.gallery.install("notion", { origin: "proposal" });
+      const notConnected = await tool.execute({ connector: "notion", reason: "agenda" }, ctx);
+      expect(notConnected.isError).not.toBe(true);
+      expect(String(notConnected.content)).toContain("Já instalado");
+      expect(String(notConnected.content)).toContain("not connected yet");
+      expect(String(notConnected.content)).toContain("Gerenciar");
+      expect(await rt.connectors.get("notion")).toMatchObject({ enabled: false, grants: [] });
+      // A connector that was removed after the run began is not installed behind the user's back.
+      const gone = proposeConnectorTool(() => rt.connectors.gallery, new Set(["github"]));
+      const out = await gone.execute({ connector: "github", reason: "x" }, ctx);
+      expect(out.isError).toBe(true);
+      expect(await rt.connectors.get("github")).toBeNull();
+    });
+
+    it("show_connect_card only takes a link of a host the connector declares, https, no login", async () => {
+      const rt = await open();
+      const tool = showConnectCardTool(() => rt.connectors.gallery);
+      const ctx = {} as Parameters<typeof tool.execute>[1];
+      await rt.connectors.gallery.install("composio", { origin: "proposal" });
+      const ok = await tool.execute(
+        {
+          connector: "composio",
+          app: "Google Agenda",
+          url: "https://connect.composio.dev/link/lk_abc?x=1",
+          action: "authorize_app",
+        },
+        ctx,
+      );
+      expect(ok.isError).not.toBe(true);
+      expect(String(ok.content)).toContain("card is shown");
+      for (const url of [
+        "http://connect.composio.dev/link/abc",
+        "https://connect.composio.dev.evil.example/link/abc",
+        "https://evil.example/connect.composio.dev/link/x",
+        "https://user:pw@connect.composio.dev/link/s",
+        "https://accounts.google.com/o/oauth2/v2/auth?client_id=x",
+        "https://connect.composio.dev/mcp",
+        "not a url",
+      ]) {
+        const bad = await tool.execute({ connector: "composio", url, action: "connect" }, ctx);
+        expect(bad.isError, url).toBe(true);
+      }
+      // Only the /link/ path of the host (the first path segment compared exactly).
+      const own = await tool.execute(
+        { connector: "composio", url: "https://connect.composio.dev/link/lk_1", action: "connect" },
+        ctx,
+      );
+      expect(own.isError).not.toBe(true);
+      const noUrl = await tool.execute({ connector: "composio", action: "authorize_app" }, ctx);
+      expect(noUrl.isError).toBe(true);
+      const nothing = await tool.execute({ connector: "nao-existe", action: "manage" }, ctx);
+      expect(nothing.isError).toBe(true);
+      expect(String(nothing.content)).toContain("propose_connector");
+      // Pure check, by exact host.
+      expect(connectLinkProblem("https://a.example/x", ["a.example"])).toBeUndefined();
+      expect(connectLinkProblem("https://a.example/link/x", ["a.example"], "link")).toBeUndefined();
+      expect(connectLinkProblem("https://a.example/x", ["a.example"], "link")).toContain("/link/");
+      expect(connectLinkProblem("https://b.example/x", ["a.example"])).toContain(
+        "not one this connector declares",
+      );
     });
   },
 );

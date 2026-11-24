@@ -1,8 +1,10 @@
-import type { SearchProvider, WebSearchSettings } from "@suup/api";
+import type { WebSearchSettings } from "@suup/api";
 import { Search } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useServices } from "../../app/context.js";
+import { useUi } from "../../app/ui-store.js";
 import { friendlyError } from "../../lib/friendly-error.js";
+import { PROVIDER_STATE_WORDS, usageWords } from "../plugins/installed.js";
 import {
   PaneBody,
   PaneHead,
@@ -12,50 +14,19 @@ import {
   SettingsHint,
   SettingsRow,
 } from "./parts.js";
-import { SecretDialog } from "./VaultSettings.js";
-
-/** How each state is said (docs/DESIGN.md, "Amigável": plain words, never a code). */
-export const PROVIDER_STATE_WORDS: Readonly<Record<SearchProvider["state"], string>> = {
-  ready: "Pronto",
-  no_key: "Sem chave",
-  quota: "Cota do mês usada",
-  key_rejected: "Chave não aceita",
-  unavailable: "Não respondeu agora",
-  off: "Desligado",
-};
-
-/** "1 busca este mês", "12 buscas este mês". */
-export function usageWords(count: number): string {
-  return count === 1 ? "1 busca este mês" : `${count} buscas este mês`;
-}
 
 /**
- * What the person does to get a key, per engine: the steps shown above the field. The name the key
- * is kept under is the server's (`keyNames.secret`) and is never shown.
- */
-const KEY_STEPS: Readonly<Record<string, readonly string[]>> = {
-  tavily: [
-    "Crie uma conta grátis no site do Tavily (mil buscas por mês, sem cartão).",
-    "Copie a chave de API que ele mostra e cole aqui.",
-  ],
-  brave: [
-    "Crie uma conta no painel da Brave Search API e ative o plano de busca.",
-    "O plano traz US$ 5 de crédito por mês, cerca de mil buscas.",
-    "Copie a chave de API e cole aqui.",
-  ],
-};
-
-/**
- * Configurações > Busca (docs/DESIGN.md §3c): the general web search engines in the order they are
- * tried, each with where it stands (ready, no key, month's quota used) and a way to add its key,
- * which goes straight to the vault. Only what the server offers (`GET /v1/web-search`): the order
- * is the server configuration's, so there is no control for it here.
+ * Configurações > Busca (docs/DESIGN.md §3c; owner, 24/11/2026): a short pointer. Tavily and Brave
+ * are plugins now, and each one's page has its key, its state and this month's searches, so this
+ * section keeps only what is not there: the ORDER of the queue, read-only, with where each engine
+ * stands in words and one "Abrir" that goes to its plugin page. No control is repeated here (the key
+ * is added on the plugin's page). The order is the server configuration's (`GET /v1/web-search`).
  */
 export function SearchSettings({ title, titleId }: SectionProps) {
   const { api } = useServices();
+  const openPlugin = useUi((s) => s.openPlugin);
   const [settings, setSettings] = useState<WebSearchSettings | undefined>(undefined);
   const [failed, setFailed] = useState<string | undefined>(undefined);
-  const [adding, setAdding] = useState<SearchProvider | null>(null);
 
   const load = useCallback(() => {
     api.webSearch.get().then(
@@ -91,15 +62,15 @@ export function SearchSettings({ title, titleId }: SectionProps) {
           </SettingsGroup>
         ) : (
           <SettingsGroup
-            label="Busca geral"
+            label="Fila da busca geral"
             testId="search-providers"
-            hint="A busca usa o primeiro que estiver pronto; se a cota acabar, passa para o próximo."
+            hint="A busca usa o primeiro que estiver pronto; se a cota acabar, passa para o próximo. A chave de cada um se adiciona na página do plugin."
           >
             {providers.map((p) => (
               <SettingsRow
                 key={p.id}
                 icon={Search}
-                title={p.label}
+                title={`${p.position}. ${p.label}`}
                 testId={`search-provider-${p.id}`}
                 description={
                   <>
@@ -115,13 +86,17 @@ export function SearchSettings({ title, titleId }: SectionProps) {
                   </>
                 }
                 control={
-                  p.keyNames === undefined || p.state === "off" ? undefined : (
+                  p.plugin === null ? undefined : (
                     <RowAction
-                      data-testid={`search-key-${p.id}`}
-                      aria-label={`${p.state === "no_key" ? "Adicionar a chave" : "Trocar a chave"} do ${p.label}`}
-                      onClick={() => setAdding(p)}
+                      data-testid={`search-open-${p.id}`}
+                      aria-label={`Abrir a página do ${p.label}`}
+                      onClick={() =>
+                        p.plugin === null
+                          ? undefined
+                          : openPlugin({ kind: "search", id: p.plugin.id, autoStart: false })
+                      }
                     >
-                      {p.state === "no_key" ? "Adicionar chave" : "Trocar a chave"}
+                      Abrir
                     </RowAction>
                   )
                 }
@@ -135,18 +110,6 @@ export function SearchSettings({ title, titleId }: SectionProps) {
           </SettingsHint>
         )}
       </PaneBody>
-      {adding?.keyNames !== undefined && (
-        <SecretDialog
-          existing={undefined}
-          preset={{
-            name: adding.keyNames.secret,
-            title: `Chave do ${adding.label}`,
-            steps: KEY_STEPS[adding.id] ?? ["Cole a chave de API do serviço."],
-          }}
-          onSaved={load}
-          onClose={() => setAdding(null)}
-        />
-      )}
     </>
   );
 }

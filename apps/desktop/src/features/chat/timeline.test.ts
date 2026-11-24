@@ -553,3 +553,40 @@ describe("bubblePositions: consecutive text bubbles of one sender form a group",
     expect(after).toEqual(["first", "middle", "last"]);
   });
 });
+
+describe("buildTimeline: the connector card", () => {
+  it("an approved proposal is drawn as its card, not as a row of the tool; a pending one stays the decision card", () => {
+    const run = makeRun();
+    const approved = makeApproval({
+      runId: run.id,
+      tool: "propose_connector",
+      status: "approved",
+      callId: "p1",
+      args: { connector: "composio" },
+      createdAt: local(10, 1),
+    });
+    const pending = makeApproval({
+      runId: run.id,
+      tool: "propose_connector",
+      status: "pending",
+      callId: "p2",
+      createdAt: local(10, 2),
+    });
+    const card = {
+      callId: "p1",
+      runId: run.id,
+      botId: run.botId,
+      at: local(10, 1),
+      connector: "composio",
+      action: "connect" as const,
+    };
+    const items = buildTimeline([], { [run.id]: run }, NOW, {
+      approvals: [approved, pending],
+      connectCards: [card],
+    });
+    expect(items.map((i) => [i.kind, i.key])).toEqual([
+      ["connect", "connect-p1"],
+      ["approval", `approval-${pending.id}`],
+    ]);
+  });
+});

@@ -14,6 +14,25 @@ export const SEARCH_PROVIDER_STATES = [
   "off",
 ] as const;
 
+/**
+ * How the gallery presents an engine as a plugin (the category "Pesquisa na web"), declared in
+ * `packages/connectors/src/catalog.ts` (`SEARCH_PLUGIN_CATALOG`) and pointing at the engine by its
+ * exact id. Not a connector: the engine stays a built-in one.
+ */
+export const searchPluginSchema = z.object({
+  /** The plugin's id in the gallery. */
+  id: z.string(),
+  /** The gallery section ("Pesquisa na web"). */
+  category: z.string(),
+  /** One line, pt-BR. */
+  description: z.string(),
+  /** Plain facts to show on its page, one friendly sentence each (pt-BR). */
+  notes: z.array(z.string()),
+  /** Where the person creates the key, step by step (pt-BR): shown in the secure form. */
+  keySteps: z.array(z.string()),
+});
+export type SearchPlugin = z.infer<typeof searchPluginSchema>;
+
 export const searchProviderSchema = z.object({
   id: z.string(),
   /** The name the person sees ("Tavily", "Brave Search"). */
@@ -35,6 +54,8 @@ export const searchProviderSchema = z.object({
    * environment variable the server also reads. Absent for an engine that needs no key.
    */
   keyNames: z.object({ secret: z.string(), env: z.string() }).optional(),
+  /** How the gallery shows this engine as a plugin; `null` for an engine with no gallery entry. */
+  plugin: searchPluginSchema.nullable(),
 });
 export type SearchProvider = z.infer<typeof searchProviderSchema>;
 

@@ -3,9 +3,9 @@ import { DATABASE_URL, fakeMcpCommand, SKIP_REASON, startWorld, type World } fro
 import {
   botItem,
   choose,
-  closeSettings,
   freshBot,
   openApp,
+  openPluginPage,
   openSettings,
   openWithBot,
   selectBot,
@@ -242,7 +242,7 @@ test.describe("connectors", () => {
   }) => {
     await openWithBot(page, world, "Conectado");
     await openSettings(page, "Conectores");
-    await expect(page.getByTestId("connectors-card")).toContainText("Nenhum conector");
+    await expect(page.getByTestId("connectors-card")).toContainText("Nenhum plugin instalado");
     // The form says, in plain words, what a local program is.
     await page.getByTestId("connector-new").click();
     const dialog = page.getByRole("dialog", { name: "Adicionar conector" });
@@ -269,15 +269,25 @@ test.describe("connectors", () => {
     await expect(dialog.getByTestId("connector-grant-hint")).toContainText("Nenhum bot recebe");
     await expect(dialog.getByRole("checkbox", { name: "Conectado" })).toHaveCount(0);
     await dialog.getByTestId("connector-create").click();
-    // The list first: one calm row, with a line of state.
-    const item = page.getByTestId("connector-item").filter({ hasText: "fake" });
+    // The installed list: one calm row, its own name, a line in plain words and where it stands.
+    const item = page.getByTestId("installed-item").filter({ hasText: "fake" });
     await expect(item).toBeVisible();
-    await expect(item).toContainText("Programa neste computador");
+    await expect(item).toContainText("Ferramentas ainda não listadas");
     await expect(item).toContainText("nenhum bot");
+    await expect(item.getByTestId("installed-state")).toHaveText("Conectado");
     await expect(page.getByTestId("connector-panel")).toHaveCount(0);
-    // Its details open on selecting it, not all expanded at once.
-    await item.getByTestId("connector-details").click();
+    // Nothing is managed in the list: a click opens the plugin's own page, and Settings closes.
+    await item.locator("button").first().click();
+    await expect(page.getByTestId("settings-screen")).toHaveCount(0);
+    await expect(page.getByTestId("connector-page")).toHaveAttribute("data-kind", "manual");
     const row = page.getByTestId("connector-row").filter({ hasText: "fake" });
+    // Two states said plainly, each with its action.
+    await expect(row.getByTestId("plugin-no-bots")).toContainText(
+      "Nenhum bot usa este plugin ainda",
+    );
+    await expect(row.getByTestId("plugin-unlisted")).toContainText(
+      "Ainda não consegui ver as ferramentas",
+    );
     await expect(row.getByTestId("connector-panel")).toBeVisible();
     await expect(row.getByTestId("connector-health")).toHaveText("Teste para ver as ferramentas.");
     // Test: it really starts the server, lists its tools and shows the result.
@@ -361,7 +371,6 @@ test.describe("connectors", () => {
     await expect(enabled).toHaveAttribute("aria-checked", "true");
 
     // Now the bot: its write tool asks for approval, showing the connector and the tool apart.
-    await closeSettings(page);
     await selectBot(page, "Conectado");
     await send(page, "CASE-CONNECTOR crie uma coisa");
     const card = page.getByTestId("approval-card");
@@ -386,12 +395,7 @@ test.describe("connectors", () => {
     await expect(decided).toContainText("Aprovado");
     await expect(decided).not.toContainText("conn_fake__write_thing");
     // Removing it asks first; the bot loses the tools.
-    await openSettings(page, "Conectores");
-    await page
-      .getByTestId("connector-item")
-      .filter({ hasText: "fake" })
-      .getByTestId("connector-details")
-      .click();
+    await openPluginPage(page, "fake");
     await page
       .getByTestId("connector-row")
       .filter({ hasText: "fake" })
@@ -399,7 +403,8 @@ test.describe("connectors", () => {
       .click();
     await page.getByTestId("connector-delete-confirm").click();
     await expect(page.getByTestId("connector-row")).toHaveCount(0);
-    await expect(page.getByTestId("connector-item")).toHaveCount(0);
+    await openSettings(page, "Conectores");
+    await expect(page.getByTestId("installed-item")).toHaveCount(0);
     expect(await world.api.connectors.list()).toHaveLength(0);
   });
 
@@ -433,12 +438,7 @@ test.describe("connectors", () => {
     await expect(botMessage(page, "E-mail normal enviado.")).toBeVisible();
 
     // 2. The user marks the tool in the connector's settings and names the recipient field.
-    await openSettings(page, "Conectores");
-    await page
-      .getByTestId("connector-item")
-      .filter({ hasText: "fake" })
-      .getByTestId("connector-details")
-      .click();
+    await openPluginPage(page, "fake");
     const row = page.getByTestId("connector-row").filter({ hasText: "fake" });
     const tool = row
       .getByTestId("connector-panel")
@@ -453,7 +453,6 @@ test.describe("connectors", () => {
       .toEqual({ outbound: { kind: "message", recipientFields: ["to"] } });
     // The server's other tools are untouched.
     expect((await world.api.connectors.get("fake")).toolOverrides.write_thing).toBeUndefined();
-    await closeSettings(page);
 
     // 3. Now its card is the message card: Descartar and the split button Enviar.
     await selectBot(page, "Postal");
@@ -519,9 +518,10 @@ test.describe("connectors", () => {
     await dialog.getByLabel("Programa").fill("/caminho/que/nao/existe");
     await dialog.getByTestId("connector-create").click();
     await page
-      .getByTestId("connector-item")
+      .getByTestId("installed-item")
       .filter({ hasText: "quebrado" })
-      .getByTestId("connector-details")
+      .locator("button")
+      .first()
       .click();
     const row = page.getByTestId("connector-row").filter({ hasText: "quebrado" });
     await expect(row).toBeVisible();
@@ -554,8 +554,8 @@ test.describe("connectors", () => {
     await dialog.getByRole("button", { name: "Authorization: Bearer (segredo)" }).click();
     await expect(dialog.getByLabel("Segredo")).toContainText("HTTP_TOKEN");
     await dialog.getByTestId("connector-create").click();
-    const row = page.getByTestId("connector-item").filter({ hasText: "remoto" });
-    await expect(row).toContainText("Servidor HTTP");
+    const row = page.getByTestId("installed-item").filter({ hasText: "remoto" });
+    await expect(row).toContainText("Ferramentas ainda não listadas");
     const saved = await world.api.connectors.get("remoto");
     expect(saved.transport).toMatchObject({
       kind: "http",
@@ -566,7 +566,7 @@ test.describe("connectors", () => {
     await world.api.vault.remove("HTTP_TOKEN");
   });
 
-  test("a connector's details have no back button: the nav item and Esc return to the list; separators run edge to edge and rows carry an icon", async ({
+  test("a plugin's page is not in Settings: Esc closes the dialog, and the page has its own way back; separators run edge to edge and rows carry an icon", async ({
     page,
   }) => {
     await world.api.connectors.create({
@@ -577,20 +577,22 @@ test.describe("connectors", () => {
     });
     await openApp(page, world);
     await openSettings(page, "Conectores");
-    const item = page.getByTestId("connector-item").filter({ hasText: "navega" });
+    const item = page.getByTestId("installed-item").filter({ hasText: "navega" });
     await expect(item).toBeVisible();
-    // The connector row has the plug icon in the one icon slot.
-    await expect(item.locator('span[aria-hidden="true"] > svg')).toHaveCount(1);
-    await item.getByTestId("connector-details").click();
+    // The row has the generic plug in the one icon slot (a connector added by hand).
+    await expect(item.locator("svg.lucide-plug")).toHaveCount(1);
     const dialog = page.getByTestId("settings-screen");
-    // Detail: the pane title is the connector's name; there is no back pill (nothing says "Conectores" as a button).
-    await expect(dialog.locator("h2")).toHaveText("navega");
-    await expect(page.getByTestId("connector-panel")).toBeVisible();
-    await expect(page.getByTestId("connectors-back")).toHaveCount(0);
     await expect(dialog.getByRole("button", { name: "Conectores", exact: true })).toHaveCount(0);
-    // The detail's groups have their icons (Quem pode usar, Ajustes, Ferramentas, Histórico...).
+    await item.locator("button").first().click();
+    await expect(dialog).toHaveCount(0);
+    const pluginPage = page.getByTestId("connector-page");
+    await expect(pluginPage.locator("h1")).toHaveText("navega");
+    await expect(page.getByTestId("connector-panel")).toBeVisible();
+    // The page's groups have their icons (Quem pode usar, Ajustes, Histórico...).
     for (const label of ["Quem pode usar", "Ajustes", "Histórico"]) {
-      await expect(dialog.locator("h3", { hasText: label }).locator("svg")).toHaveCount(1);
+      await expect(
+        pluginPage.locator("h3", { hasText: new RegExp(`^${label}$`) }).locator("svg"),
+      ).toHaveCount(1);
     }
     await page.evaluate(() => document.fonts.ready);
     await page.screenshot({
@@ -599,7 +601,7 @@ test.describe("connectors", () => {
     // Separators: the line between rows starts at the card's left edge and ends at its right edge.
     const card = page
       .getByTestId("connector-panel")
-      .locator("section", { has: page.locator("h3", { hasText: "Ajustes" }) })
+      .locator("section", { has: page.locator("h3", { hasText: /^Ajustes$/ }) })
       .locator(":scope > div");
     const second = card.locator(":scope > * + *").first();
     const edges = await second.evaluate((el) => {
@@ -615,20 +617,9 @@ test.describe("connectors", () => {
     });
     expect(Math.abs(edges.left - edges.cardLeft)).toBeLessThanOrEqual(2);
     expect(Math.abs(edges.right - edges.cardRight)).toBeLessThanOrEqual(2);
-    // Esc goes back to the list first; the second Esc closes the dialog.
-    await page.keyboard.press("Escape");
-    await expect(page.getByTestId("connector-panel")).toHaveCount(0);
-    await expect(page.getByTestId("connector-item").filter({ hasText: "navega" })).toBeVisible();
-    await expect(dialog).toBeVisible();
-    await expect(dialog.locator("h2")).toHaveText("Conectores");
-    // Clicking "Conectores" in the nav, even when it is the selected one, also returns to the list.
-    await item.getByTestId("connector-details").click();
-    await expect(page.getByTestId("connector-panel")).toBeVisible();
-    await page.getByRole("tab", { name: "Conectores" }).click();
-    await expect(page.getByTestId("connector-panel")).toHaveCount(0);
-    await expect(item).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(dialog).toHaveCount(0);
+    // The way back is the path ("Conectores"), and Esc, to the gallery.
+    await page.getByTestId("connector-back").click();
+    await expect(page.getByTestId("connectors-screen")).toBeVisible();
     await world.api.connectors.remove("navega");
   });
 });

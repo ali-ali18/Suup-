@@ -121,7 +121,7 @@ export function formatSearch(outcome: WebSearchOutcome): ToolOutput {
       cause === "quota"
         ? "A busca geral está sem cota agora."
         : cause === "no_key"
-          ? "A busca geral não está configurada: nenhuma chave de busca foi adicionada (o usuário pode adicioná-la nos Ajustes)."
+          ? "A busca geral não está configurada: nenhuma chave de busca foi adicionada. Peça a chave agora com `request_secret` (name TAVILY_API_KEY, e BRAVE_SEARCH_API_KEY como segunda opção): o formulário seguro abre no chat. Não mande o usuário procurar nos Ajustes."
           : cause === "limit"
             ? "A busca geral está no limite de buscas por minuto do Suup."
             : "A busca geral não respondeu agora.";

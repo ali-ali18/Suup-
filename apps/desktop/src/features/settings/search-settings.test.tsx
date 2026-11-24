@@ -1,12 +1,14 @@
 import { ApiError, type SearchProvider, type SuupClient, type WebSearchSettings } from "@suup/api";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type Services, ServicesProvider } from "../../app/context.js";
+import { useUi } from "../../app/ui-store.js";
 import { createDataStore } from "../../data/store.js";
 import { Sync } from "../../data/sync.js";
 import { makeSecret } from "../../test-fixtures.js";
 import { Modal } from "../../ui/dialog.js";
-import { SearchSettings as Section, usageWords } from "./SearchSettings.js";
+import { usageWords } from "../plugins/installed.js";
+import { SearchSettings as Section } from "./SearchSettings.js";
 
 afterEach(cleanup);
 
@@ -18,6 +20,16 @@ const provider = (over: Partial<SearchProvider> & { id: string }): SearchProvide
   keyNames: {
     secret: over.id === "tavily" ? "TAVILY_API_KEY" : "BRAVE_SEARCH_API_KEY",
     env: over.id === "tavily" ? "TAVILY_API_KEY" : "BRAVE_SEARCH_API_KEY",
+  },
+  plugin: {
+    id: over.id,
+    category: "Pesquisa na web",
+    description: "Pesquisa na web.",
+    notes: [],
+    keySteps: [
+      "Crie uma conta grátis no site do Tavily (mil buscas por mês, sem cartão).",
+      "Copie a chave de API que ele mostra e cole aqui.",
+    ],
   },
   ...over,
 });
@@ -88,34 +100,22 @@ describe("Configurações > Busca", () => {
     expect(screen.getByTestId("search-none-ready").textContent).toContain("Wikipédia");
   });
 
-  it("adds a key through the vault: the steps, a secure field, the name kept out of sight, and the list is read again", async () => {
-    const api = setup(
-      { enabled: true, providers: [provider({ id: "tavily", state: "no_key" })] },
-      {
-        enabled: true,
-        providers: [provider({ id: "tavily", state: "ready", searchesThisMonth: 0 })],
-      },
-    );
-    fireEvent.click(await screen.findByTestId("search-key-tavily"));
-    const dialog = await screen.findByRole("dialog", { name: "Chave do Tavily" });
-    expect(within(dialog).getByTestId("secret-steps").textContent).toContain("mil buscas");
-    expect(dialog.textContent).not.toContain("TAVILY_API_KEY");
-    const field = within(dialog).getByTestId("secret-input") as HTMLInputElement;
-    expect(field.type).toBe("password");
-    fireEvent.change(field, { target: { value: "tvly-made-up-key-for-the-test" } });
-    fireEvent.click(within(dialog).getByTestId("secret-write"));
-    await waitFor(() =>
-      expect(api.vault.set).toHaveBeenCalledWith("TAVILY_API_KEY", {
-        value: "tvly-made-up-key-for-the-test",
-      }),
-    );
-    await waitFor(() =>
-      expect(screen.getByTestId("search-state-tavily").textContent).toBe("Pronto"),
-    );
-    expect(api.webSearch.get).toHaveBeenCalledTimes(2);
-    expect(screen.getByTestId("search-key-tavily").textContent).toBe("Trocar a chave");
-    // The key is gone from the screen once it was sent.
-    expect(document.body.textContent).not.toContain("tvly-made-up-key-for-the-test");
+  it("has no key control (it is on the plugin's page): 'Abrir' goes there, and the order stays read-only", async () => {
+    setup({
+      enabled: true,
+      providers: [
+        provider({ id: "tavily", state: "no_key" }),
+        provider({ id: "brave", position: 2, state: "ready" }),
+      ],
+    });
+    await screen.findByTestId("search-providers");
+    expect(screen.queryByTestId("search-key-tavily")).toBeNull();
+    expect(screen.queryByText("Adicionar chave")).toBeNull();
+    fireEvent.click(screen.getByTestId("search-open-brave"));
+    expect(useUi.getState()).toMatchObject({
+      view: "connectors",
+      plugin: { kind: "search", id: "brave" },
+    });
   });
 
   it("an engine that is off has no button; with the search off there is one calm line", async () => {
@@ -124,7 +124,6 @@ describe("Configurações > Busca", () => {
       providers: [provider({ id: "tavily", state: "off" })],
     });
     await screen.findByTestId("search-providers");
-    expect(screen.queryByTestId("search-key-tavily")).toBeNull();
     expect(screen.getByTestId("search-state-tavily").textContent).toBe("Desligado");
     cleanup();
     setup({ enabled: false, providers: [] });

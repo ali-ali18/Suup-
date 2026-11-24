@@ -37,6 +37,12 @@ describe.skipIf(!DATABASE_URL)(
           { id: "tavily", label: "Tavily", position: 2, state: "no_key", searchesThisMonth: 0 },
         ],
       });
+      // How the gallery shows each engine, from the declared catalog (never a connector).
+      expect(first.providers.map((p) => [p.id, p.plugin?.category])).toEqual([
+        ["brave", "Pesquisa na web"],
+        ["tavily", "Pesquisa na web"],
+      ]);
+      expect(first.providers[1]?.plugin?.keySteps[0]).toContain("Tavily");
       expect(first.providers[1]?.keyNames).toEqual({
         secret: "TAVILY_API_KEY",
         env: "TAVILY_API_KEY",

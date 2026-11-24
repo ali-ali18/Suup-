@@ -56,9 +56,12 @@ export {
 } from "./connectors/gallery.js";
 export { oauthSecretNames } from "./connectors/oauth-store.js";
 export {
+  connectLinkProblem,
   PROPOSE_CONNECTOR_TOOL,
   proposalCardLine,
   proposeConnectorTool,
+  SHOW_CONNECT_CARD_TOOL,
+  showConnectCardTool,
 } from "./connectors/propose-tool.js";
 export {
   type BotConnectorCandidate,

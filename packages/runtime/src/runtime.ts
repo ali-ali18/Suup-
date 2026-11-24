@@ -87,7 +87,13 @@ import {
   type RuntimeConfig,
   resolveDatabaseUrl,
 } from "./config.js";
-import { PROPOSE_CONNECTOR_TOOL, proposeConnectorTool } from "./connectors/propose-tool.js";
+import {
+  installedCatalogIds,
+  PROPOSE_CONNECTOR_TOOL,
+  proposeConnectorTool,
+  SHOW_CONNECT_CARD_TOOL,
+  showConnectCardTool,
+} from "./connectors/propose-tool.js";
 import {
   type BotConnectorCandidate,
   type ConnectorService,
@@ -993,10 +999,21 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     if (guarded && run.origin === "user") {
       if (runTools === tools) runTools = copyOfBase();
       routineToolsFor(handle)(runTools);
-      runTools.register(proposeConnectorTool(() => connectors.gallery));
+      runTools.register(
+        proposeConnectorTool(
+          () => connectors.gallery,
+          await installedCatalogIds(connectors.gallery),
+        ),
+      );
+      runTools.register(showConnectCardTool(() => connectors.gallery));
       botCfg = {
         ...botCfg,
-        allowedTools: [...botCfg.allowedTools, ...ROUTINE_TOOL_NAMES, PROPOSE_CONNECTOR_TOOL],
+        allowedTools: [
+          ...botCfg.allowedTools,
+          ...ROUTINE_TOOL_NAMES,
+          PROPOSE_CONNECTOR_TOOL,
+          SHOW_CONNECT_CARD_TOOL,
+        ],
       };
     } else if (guarded && run.origin === "routine") {
       if (runTools === tools) runTools = copyOfBase();
@@ -1193,12 +1210,19 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
       }
       // What a conversation run of the user is offered besides: the routine tools (docs/ROTINAS.md).
       routineToolsFor(runtime.db)(reg);
-      reg.register(proposeConnectorTool(() => connectors.gallery));
+      reg.register(
+        proposeConnectorTool(
+          () => connectors.gallery,
+          await installedCatalogIds(connectors.gallery),
+        ),
+      );
+      reg.register(showConnectCardTool(() => connectors.gallery));
       const control = new Set<string>(CONTROL_TOOL_NAMES);
       const specs = reg.specs([
         ...cfg.allowedTools,
         ...ROUTINE_TOOL_NAMES,
         PROPOSE_CONNECTOR_TOOL,
+        SHOW_CONNECT_CARD_TOOL,
         ...connectorNames,
       ]);
       const builtin = specs.filter((s) => !connectorNames.has(s.name) && !control.has(s.name));

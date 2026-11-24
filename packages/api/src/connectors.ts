@@ -61,8 +61,13 @@ export const toolOverrideSchema = z
   .strictObject({
     risk: riskLevelSchema.optional(),
     outbound: outboundMessageSchema.optional(),
+    /** The gallery never offers this tool to a bot (`deniedTools` of its entry). */
+    denied: z.literal(true).optional(),
   })
-  .refine((o) => o.risk !== undefined || o.outbound !== undefined, "override vazio");
+  .refine(
+    (o) => o.risk !== undefined || o.outbound !== undefined || o.denied === true,
+    "override vazio",
+  );
 export const toolOverridesSchema = z
   .record(z.string().min(1).max(128), toolOverrideSchema)
   .refine((o) => Object.keys(o).length <= 200, "overrides demais");

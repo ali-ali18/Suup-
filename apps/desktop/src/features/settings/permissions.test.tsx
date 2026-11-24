@@ -311,19 +311,17 @@ describe("Permissões: the old exact rules", () => {
   });
 });
 
-describe("the settings dialog's way back", () => {
-  it("selecting a section, even the selected one, lands on its first view; closing forgets the connector", () => {
+describe("opening a plugin's page", () => {
+  it("opening a plugin closes Settings and shows its page in Conectores; going to Conectores shows the gallery", () => {
     const ui = useUi.getState();
     ui.openSettings("connectors");
-    ui.setSettingsConnector("fake");
-    expect(useUi.getState().settingsConnector).toBe("fake");
-    useUi.getState().setSettingsTab("connectors");
-    expect(useUi.getState().settingsConnector).toBeNull();
-    useUi.getState().setSettingsConnector("fake");
-    useUi.getState().closeSettings();
-    expect(useUi.getState().settingsConnector).toBeNull();
-    useUi.getState().openSettings("connectors");
-    expect(useUi.getState().settingsConnector).toBeNull();
-    useUi.getState().closeSettings();
+    useUi.getState().openPlugin({ kind: "catalog", id: "notion", autoStart: false });
+    expect(useUi.getState()).toMatchObject({
+      view: "connectors",
+      settingsOpen: false,
+      plugin: { kind: "catalog", id: "notion" },
+    });
+    useUi.getState().go("connectors");
+    expect(useUi.getState().plugin).toBeNull();
   });
 });

@@ -25,6 +25,20 @@ function ctx(signal: AbortSignal = new AbortController().signal): ToolContext {
   };
 }
 
+describe("tools the gallery denies", () => {
+  it("a tool marked denied is never registered, whatever else the connector says, and is listed as not offered", async () => {
+    const spec = fakeSpec();
+    spec.tools = { ...spec.tools, echo: { risk: "read", denied: true } };
+    const { names, info } = await registryFor(manager(), spec);
+    expect(names).not.toContain("conn_fake__echo");
+    const echo = info.find((i) => i.tool === "echo");
+    expect(echo?.available).toBe(false);
+    expect(echo?.reason).toContain("galeria");
+    // The others are untouched.
+    expect(names).toContain("conn_fake__write_thing");
+  });
+});
+
 describe("discovery and namespacing", () => {
   it("registers each usable tool as conn_<connector>__<tool> with a valid name", async () => {
     const { registry, names, info } = await registryFor(manager(), fakeSpec());

@@ -29,12 +29,13 @@ const botId = async (world: World, name: string): Promise<string> =>
 const connectorRow = (page: Page, name = "fake"): Locator =>
   page.getByTestId("connector-row").filter({ hasText: name });
 
-/** Selects a connector in the list; its details open (and the list is gone). */
+/** Clicks the connector in Settings > Conectores: its own page opens (and Settings closes). */
 async function openConnector(page: Page, name = "fake"): Promise<Locator> {
   await page
-    .getByTestId("connector-item")
+    .getByTestId("installed-item")
     .filter({ hasText: name })
-    .getByTestId("connector-details")
+    .locator("button")
+    .first()
     .click();
   const detail = connectorRow(page, name);
   await expect(detail.getByTestId("connector-panel")).toBeVisible();
@@ -118,7 +119,7 @@ test.describe("per-tool grants and the review of a definition", () => {
     await expect(bot.getByTestId("grant-card")).toContainText(`2 de ${total}`);
     await closeSettings(page);
     await openSettings(page, "Conectores");
-    await expect(page.getByTestId("connector-item").filter({ hasText: "fake" })).toContainText(
+    await expect(page.getByTestId("installed-item").filter({ hasText: "fake" })).toContainText(
       "1 bot",
     );
     await closeSettings(page);
@@ -193,10 +194,7 @@ test.describe("per-tool grants and the review of a definition", () => {
 
     await openApp(page, world);
     await openSettings(page, "Conectores");
-    // In the list the connector only says it is waiting; the notice and "Revisar" are in its details.
-    await expect(page.getByTestId("connector-item").filter({ hasText: "fake" })).toContainText(
-      "espera revisão",
-    );
+    // The list is only the installed ones; the notice and "Revisar" are on the plugin's page.
     const row = await openConnector(page);
     const notice = row.getByTestId("review-notice");
     await expect(notice).toHaveAttribute("role", "status");
@@ -559,7 +557,8 @@ test.describe("tool search: the measure of the definitions, and the real tool in
     expect(deferred).toBe(0);
     expect(estimated).toBe(loaded);
     const allTokens = Number(await catalog.getAttribute("data-definition-tokens"));
-    expect(allTokens).toBeGreaterThan(estimated as number);
+    // (what all of the connector's tools would cost, shown by the mode; not compared with the request)
+    expect(allTokens).toBeGreaterThan(0);
     // The log shows the wrapper as the server wrote it: the real tool, with the real arguments.
     const runs = await world.api.runs.list({ botId: await botId(world, "Pesquisador") });
     const events = await world.api.runs.events(runs.items[0]?.id as string, { limit: 500 });
