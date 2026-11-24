@@ -24,7 +24,8 @@ import { cx } from "../../lib/cx.js";
 import { plainText } from "../../lib/markdown.js";
 import { Avatar } from "../../ui/avatar.js";
 import { BotTitle } from "../../ui/bot-title.js";
-import { Dialog, MutedText, Pill, Scrim, SectionLabel } from "../../ui/primitives.js";
+import { Modal } from "../../ui/dialog.js";
+import { Dialog, MutedText, Pill, SectionLabel } from "../../ui/primitives.js";
 import { Kbd } from "../../ui/text.js";
 
 interface Entry {
@@ -277,117 +278,112 @@ export function CommandPalette() {
 
   const sections = ["Bots", "Conversas", "Ações"] as const;
   return (
-    <Scrim top onClose={close}>
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Busca e ações"
-        className="flex max-h-[70vh] w-palette flex-col overflow-hidden rounded-card border border-border-strong bg-surface shadow-popover"
-        data-testid="palette"
-        // A modal surface keeps the focus: if something else takes it while the palette is open,
-        // the field gets it back.
-        onBlur={(e) => {
-          if (e.relatedTarget instanceof Node && !e.currentTarget.contains(e.relatedTarget))
-            inputRef.current?.focus();
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Escape") {
-            e.stopPropagation();
-            close();
-          } else if (e.key === "ArrowDown") {
-            e.preventDefault();
-            setActive((i) => (entries.length === 0 ? 0 : (i + 1) % entries.length));
-          } else if (e.key === "ArrowUp") {
-            e.preventDefault();
-            setActive((i) =>
-              entries.length === 0 ? 0 : (i - 1 + entries.length) % entries.length,
-            );
-          } else if (e.key === "Enter") {
-            e.preventDefault();
-            choose(entries[active]);
-          } else if (e.key === "Tab") {
-            // the focus trap: the field is the only stop
-            e.preventDefault();
-            inputRef.current?.focus();
+    <Modal
+      place="top"
+      onClose={close}
+      label="Busca e ações"
+      initialFocus={inputRef}
+      className="flex max-h-[70vh] w-palette flex-col overflow-hidden rounded-card border border-border-strong bg-surface shadow-popover"
+      testId="palette"
+      // A modal surface keeps the focus: if something else takes it while the palette is open,
+      // the field gets it back.
+      onBlur={(e) => {
+        if (e.relatedTarget instanceof Node && !e.currentTarget.contains(e.relatedTarget))
+          inputRef.current?.focus();
+      }}
+      onKeyDown={(e) => {
+        // Escape is the dialog's own (Base UI): it closes the palette with its exit.
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          setActive((i) => (entries.length === 0 ? 0 : (i + 1) % entries.length));
+        } else if (e.key === "ArrowUp") {
+          e.preventDefault();
+          setActive((i) => (entries.length === 0 ? 0 : (i - 1 + entries.length) % entries.length));
+        } else if (e.key === "Enter") {
+          e.preventDefault();
+          choose(entries[active]);
+        } else if (e.key === "Tab") {
+          // the focus trap: the field is the only stop
+          e.preventDefault();
+          inputRef.current?.focus();
+        }
+      }}
+    >
+      <div className="flex items-center gap-3 border-b border-border px-4 py-3">
+        <Search size={16} className="text-text-muted" aria-hidden="true" />
+        <input
+          ref={inputRef}
+          autoFocus
+          role="combobox"
+          aria-expanded="true"
+          aria-controls={listId}
+          aria-activedescendant={
+            entries[active] === undefined ? undefined : `${listId}-${entries[active]?.id}`
           }
-        }}
-      >
-        <div className="flex items-center gap-3 border-b border-border px-4 py-3">
-          <Search size={16} className="text-text-muted" aria-hidden="true" />
-          <input
-            ref={inputRef}
-            autoFocus
-            role="combobox"
-            aria-expanded="true"
-            aria-controls={listId}
-            aria-activedescendant={
-              entries[active] === undefined ? undefined : `${listId}-${entries[active]?.id}`
-            }
-            aria-autocomplete="list"
-            aria-label="Buscar Bots, chats, configurações"
-            className="min-w-0 flex-1 border-0 bg-transparent py-px text-body outline-0"
-            placeholder="Buscar Bots, chats, configurações…"
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setActive(0);
-            }}
-          />
-        </div>
-        <div
-          ref={listRef}
-          id={listId}
-          role="listbox"
-          aria-label="Resultados"
-          className="overflow-y-auto p-2"
-        >
-          {sections.map((section) => {
-            const items = entries.filter((e) => e.section === section);
-            if (items.length === 0) return null;
-            return (
-              <div key={section} role="group" aria-label={section}>
-                <SectionLabel className="px-3 pt-3 pb-1">{section}</SectionLabel>
-                {items.map((entry) => {
-                  const index = entries.indexOf(entry);
-                  return (
-                    <div
-                      key={entry.id}
-                      id={`${listId}-${entry.id}`}
-                      role="option"
-                      tabIndex={-1}
-                      aria-selected={index === active}
-                      className={cx(
-                        "flex cursor-pointer items-center gap-3 rounded-row px-3 py-2",
-                        index === active && "bg-raised",
-                      )}
-                      data-testid="palette-option"
-                      onMouseMove={() => setActive(index)}
-                      onClick={() => choose(entry)}
-                      onKeyDown={() => {}}
-                    >
-                      <span className="inline-flex w-avatar-md flex-none justify-center">
-                        {entry.icon}
-                      </span>
-                      <span className="flex min-w-0 flex-col">
-                        <span className="truncate text-label leading-inherit">{entry.label}</span>
-                        {entry.detail !== undefined && entry.detail !== "" && (
-                          <MutedText className="truncate leading-inherit">{entry.detail}</MutedText>
-                        )}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })}
-          {entries.length === 0 && (
-            <MutedText as="p" size="inherit" className="p-5 text-center" role="status">
-              {searching ? "Buscando…" : "Nada encontrado."}
-            </MutedText>
-          )}
-        </div>
+          aria-autocomplete="list"
+          aria-label="Buscar Bots, chats, configurações"
+          className="min-w-0 flex-1 border-0 bg-transparent py-px text-body outline-0"
+          placeholder="Buscar Bots, chats, configurações…"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setActive(0);
+          }}
+        />
       </div>
-    </Scrim>
+      <div
+        ref={listRef}
+        id={listId}
+        role="listbox"
+        aria-label="Resultados"
+        className="overflow-y-auto p-2"
+      >
+        {sections.map((section) => {
+          const items = entries.filter((e) => e.section === section);
+          if (items.length === 0) return null;
+          return (
+            <div key={section} role="group" aria-label={section}>
+              <SectionLabel className="px-3 pt-3 pb-1">{section}</SectionLabel>
+              {items.map((entry) => {
+                const index = entries.indexOf(entry);
+                return (
+                  <div
+                    key={entry.id}
+                    id={`${listId}-${entry.id}`}
+                    role="option"
+                    tabIndex={-1}
+                    aria-selected={index === active}
+                    className={cx(
+                      "flex cursor-pointer items-center gap-3 rounded-row px-3 py-2",
+                      index === active && "bg-raised",
+                    )}
+                    data-testid="palette-option"
+                    onMouseMove={() => setActive(index)}
+                    onClick={() => choose(entry)}
+                    onKeyDown={() => {}}
+                  >
+                    <span className="inline-flex w-avatar-md flex-none justify-center">
+                      {entry.icon}
+                    </span>
+                    <span className="flex min-w-0 flex-col">
+                      <span className="truncate text-label leading-inherit">{entry.label}</span>
+                      {entry.detail !== undefined && entry.detail !== "" && (
+                        <MutedText className="truncate leading-inherit">{entry.detail}</MutedText>
+                      )}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+        {entries.length === 0 && (
+          <MutedText as="p" size="inherit" className="p-5 text-center" role="status">
+            {searching ? "Buscando…" : "Nada encontrado."}
+          </MutedText>
+        )}
+      </div>
+    </Modal>
   );
 }
 

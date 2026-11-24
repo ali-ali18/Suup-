@@ -394,7 +394,7 @@ export function NewBotDialog() {
               variant="field"
               label="Modelo"
               value={modelId}
-              options={usable.map((m) => ({ value: m.id, label: `${m.id} · ${m.provider}` }))}
+              options={usable.map((m) => ({ value: m.id, label: m.name }))}
               onChange={setModelId}
             />
           </FormRow>

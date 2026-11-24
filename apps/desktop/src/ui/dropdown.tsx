@@ -1,16 +1,23 @@
+/*
+ * Our copies of the shadcn `select` and `combobox` of the base-maia style (shadcn CLI 4.23.0, preset
+ * b3XoIU6DI0, 24/11/2026), on Base UI's Select and Combobox. Rewritten to our tokens (docs/DESIGN.md
+ * §2a, §3c): the quiet text-and-chevron of a settings row or the bordered control of a form, the
+ * shared popup surface of `ui/popover.tsx`, options drawn as the items of our menus. The public API
+ * did not change (`Dropdown`, `DropdownOption`, `DROPDOWN_FILTER_AFTER`).
+ *
+ * A short list is a Select (`role="combobox"` on the button, a `listbox` of `option`s). A long one
+ * (more than `filterAfter` options) is a Combobox with its field INSIDE the popup ("Filtrar"): Base
+ * UI's Select does not filter, and its docs say to use the Combobox when a list is long enough. The
+ * filter is a case-insensitive substring of the labels already loaded, never a pattern.
+ */
+import { Combobox } from "@base-ui/react/combobox";
+import { Select } from "@base-ui/react/select";
 import { Check, ChevronDown, Search } from "lucide-react";
-import {
-  type CSSProperties,
-  type KeyboardEvent,
-  useEffect,
-  useId,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
-import { createPortal } from "react-dom";
+import { useMemo, useState } from "react";
 import { cx } from "../lib/cx.js";
-import { MENU_PANEL, menuItemClass } from "./menu.js";
+import { MENU_ITEM } from "./menu.js";
+import { POPUP_LAYER, POPUP_MOTION, POPUP_SURFACE } from "./popover.js";
+import { Separator } from "./separator.js";
 
 export interface DropdownOption<V extends string = string> {
   value: V;
@@ -22,8 +29,6 @@ export interface DropdownOption<V extends string = string> {
 /** With more options than this the list gets a filter field at the top. */
 export const DROPDOWN_FILTER_AFTER = 8;
 
-const OPTION = '[role="option"]';
-
 /** `quiet`: text and chevron, no box until hover; `field`: the bordered control of a form. */
 const TRIGGER = {
   quiet:
@@ -31,26 +36,38 @@ const TRIGGER = {
   field: "h-control w-full rounded-pill border-border bg-bg px-4 text-body",
 } as const;
 
+const TRIGGER_BASE =
+  "inline-flex max-w-full items-center justify-between gap-2 border text-left text-text focus-visible:border-border-strong focus-visible:outline-2 focus-visible:outline-focus disabled:opacity-40";
+
 /**
- * The app's one dropdown (docs/DESIGN.md §3c): never a native select element. A button with the current
- * value and a chevron (`aria-haspopup="listbox"`) opens our menu surface, a listbox in a portal on
- * the body (so a dialog never cuts it). Keyboard: Enter, Space and ArrowDown/ArrowUp open it;
- * arrows, Home and End move; Enter chooses; Escape closes and gives the focus back to the button.
- * A long list has a filter field: a case-insensitive substring of the labels already loaded.
- * `quiet` is the text-and-chevron of a settings row; `field` is the bordered control of a form.
+ * The list's panel: at least as wide as its button and as a menu, at most the dropdown's width,
+ * never taller than the room on its side (it scrolls inside).
  */
-export function Dropdown<V extends string>({
-  label,
-  value,
-  options,
-  onChange,
-  testId,
-  variant = "quiet",
-  placeholder,
-  disabled,
-  id,
-  filterAfter = DROPDOWN_FILTER_AFTER,
-}: {
+const PANEL = cx(
+  "flex max-h-[min(var(--available-height),var(--height-dropdown))] w-max max-w-dropdown min-w-[max(var(--anchor-width),var(--width-menu))] flex-col overflow-hidden p-1.5",
+  POPUP_SURFACE,
+  POPUP_MOTION,
+);
+
+/** Where the list opens: under the button, lined up with its end (a quiet row) or its start (a form). */
+const ALIGN = { quiet: "end", field: "start" } as const;
+
+/** The content of an option: its label and, when it has one, the muted line under it. */
+function OptionBody({ option }: { option: DropdownOption }) {
+  return (
+    <span className="flex min-w-0 flex-1 flex-col">
+      <span data-testid="menu-label">{option.label}</span>
+      {option.description !== undefined && (
+        <span className="text-small text-text-muted">{option.description}</span>
+      )}
+    </span>
+  );
+}
+
+const CHECK = <Check size={16} className="flex-none text-text-muted" aria-hidden="true" />;
+const CHEVRON = <ChevronDown size={14} className="flex-none text-text-muted" aria-hidden="true" />;
+
+interface DropdownProps<V extends string> {
   /** The accessible name (also names the list). */
   label: string;
   value: V;
@@ -63,240 +80,185 @@ export function Dropdown<V extends string>({
   disabled?: boolean;
   id?: string;
   filterAfter?: number;
-}) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const [pos, setPos] = useState<CSSProperties | undefined>(undefined);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
-  const filterRef = useRef<HTMLInputElement>(null);
-  const listId = useId();
-  const filtered = options.length > filterAfter;
-  const needle = query.trim().toLowerCase();
-  const shown =
-    filtered && needle !== ""
-      ? options.filter((o) => o.label.toLowerCase().includes(needle))
-      : options;
-  const current = options.find((o) => o.value === value);
+}
 
-  const close = (refocus: boolean) => {
-    setOpen(false);
-    setQuery("");
-    if (refocus) buttonRef.current?.focus();
-  };
-  const choose = (next: V) => {
-    close(true);
-    if (next !== value) onChange(next);
-  };
-
-  // Placed by the screen (fixed): below the button when it fits, else above, with a scroll of its own.
-  useLayoutEffect(() => {
-    if (!open) {
-      setPos(undefined);
-      return;
-    }
-    const rect = buttonRef.current?.getBoundingClientRect();
-    if (rect === undefined) return;
-    const edge = 8;
-    const wanted = Math.min(320, (panelRef.current?.scrollHeight ?? 320) + 2);
-    const below = window.innerHeight - rect.bottom - edge - 6;
-    const above = rect.top - edge - 6;
-    const up = below < wanted && above > below;
-    const room = Math.max(120, up ? above : below);
-    const width = Math.max(rect.width, 200);
-    const left =
-      variant === "quiet"
-        ? Math.min(Math.max(edge, rect.right - width), window.innerWidth - width - edge)
-        : Math.min(Math.max(edge, rect.left), window.innerWidth - width - edge);
-    setPos({
-      position: "fixed",
-      left,
-      minWidth: width,
-      maxHeight: Math.min(320, room),
-      ...(up
-        ? { top: "auto", bottom: window.innerHeight - rect.top + 6 }
-        : { top: rect.bottom + 6 }),
-    });
-  }, [open, variant, shown.length]);
-
-  // Focus: the filter field when there is one, else the chosen option (or the first). Only once the
-  // panel has its place: until then it is hidden, and a hidden element cannot take the focus (Esc
-  // would then reach the dialog around instead of closing just this menu).
-  const placed = pos !== undefined;
-  useEffect(() => {
-    if (!open || !placed) return;
-    if (filtered) filterRef.current?.focus({ preventScroll: true });
-    else
-      focusOption(
-        panelRef.current?.querySelector<HTMLElement>('[aria-selected="true"]') ??
-          first(panelRef.current),
-      );
-  }, [open, filtered, placed]);
-
-  // Outside click, a resize or a scroll of the page behind (the trigger moved) close it.
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (panelRef.current?.contains(target) || buttonRef.current?.contains(target)) return;
-      close(false);
-    };
-    // The page behind scrolled: close only when the button really moved from where it opened (a
-    // scroll that was already under way when it opened does not move it).
-    const at = buttonRef.current?.getBoundingClientRect();
-    const onScroll = (e: Event) => {
-      if (e.target instanceof Node && panelRef.current?.contains(e.target)) return;
-      const now = buttonRef.current?.getBoundingClientRect();
-      if (at !== undefined && now !== undefined && at.top === now.top && at.left === now.left)
-        return;
-      close(false);
-    };
-    const onResize = () => close(false);
-    document.addEventListener("mousedown", onDown);
-    window.addEventListener("resize", onResize);
-    document.addEventListener("scroll", onScroll, true);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      window.removeEventListener("resize", onResize);
-      document.removeEventListener("scroll", onScroll, true);
-    };
-  }, [open]);
-
-  const onButtonKey = (e: KeyboardEvent) => {
-    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-      e.preventDefault();
-      setOpen(true);
-    }
-  };
-
-  const onPanelKey = (e: KeyboardEvent) => {
-    e.stopPropagation(); // the dialog around must not read these keys
-    if (e.key === "Escape") {
-      e.preventDefault();
-      close(true);
-      return;
-    }
-    if (e.key === "Tab") {
-      close(false);
-      return;
-    }
-    const entries = Array.from(panelRef.current?.querySelectorAll<HTMLElement>(OPTION) ?? []);
-    const index = entries.indexOf(document.activeElement as HTMLElement);
-    const move = (next: number) => {
-      e.preventDefault();
-      focusOption(entries[Math.max(0, Math.min(entries.length - 1, next))]);
-    };
-    if (e.key === "ArrowDown") move(index + 1);
-    else if (e.key === "ArrowUp") {
-      if (index <= 0 && filtered) {
-        e.preventDefault();
-        filterRef.current?.focus({ preventScroll: true });
-      } else move(index - 1);
-    } else if (e.key === "Home" && index >= 0) move(0);
-    else if (e.key === "End" && index >= 0) move(entries.length - 1);
-    else if (e.key === "Enter" && document.activeElement === filterRef.current) {
-      e.preventDefault();
-      const top = shown[0];
-      if (top !== undefined) choose(top.value);
-    }
-  };
-
-  return (
-    <>
-      <button
-        ref={buttonRef}
-        id={id}
-        type="button"
-        className={cx(
-          "inline-flex max-w-full items-center justify-between gap-2 border text-left text-text focus-visible:border-border-strong focus-visible:outline-2 focus-visible:outline-focus disabled:opacity-40",
-          TRIGGER[variant],
-        )}
-        aria-label={label}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-controls={open ? listId : undefined}
-        disabled={disabled}
-        data-testid={testId}
-        data-value={value}
-        onClick={() => (open ? close(false) : setOpen(true))}
-        onKeyDown={onButtonKey}
-      >
-        <span className="min-w-0 truncate">{current?.label ?? placeholder ?? ""}</span>
-        <ChevronDown size={14} className="flex-none text-text-muted" aria-hidden="true" />
-      </button>
-      {open &&
-        createPortal(
-          <div
-            ref={panelRef}
-            className={cx(MENU_PANEL, "fixed z-60 max-w-dropdown overflow-hidden")}
-            style={pos ?? { position: "fixed", visibility: "hidden" }}
-            onKeyDown={onPanelKey}
-          >
-            {filtered && (
-              <label className="mb-1 flex h-9 flex-none items-center gap-2 border-b border-border px-3 text-text-muted">
-                <Search size={14} aria-hidden="true" />
-                <input
-                  className="min-w-0 flex-1 border-0 bg-transparent text-small text-text focus-visible:outline-none"
-                  ref={filterRef}
-                  type="text"
-                  aria-label={`Filtrar: ${label}`}
-                  placeholder="Filtrar"
-                  autoComplete="off"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                />
-              </label>
-            )}
-            <div
-              id={listId}
-              role="listbox"
-              aria-label={label}
-              className="relative flex min-h-0 flex-col overflow-y-auto"
-            >
-              {shown.map((o) => (
-                <button
-                  key={o.value}
-                  type="button"
-                  role="option"
-                  aria-selected={o.value === value}
-                  tabIndex={-1}
-                  data-value={o.value}
-                  className={menuItemClass()}
-                  onClick={() => choose(o.value)}
-                >
-                  <span className="flex min-w-0 flex-col">
-                    <span data-testid="menu-label">{o.label}</span>
-                    {o.description !== undefined && (
-                      <span className="text-small text-text-muted">{o.description}</span>
-                    )}
-                  </span>
-                  {o.value === value && (
-                    <Check size={16} className="flex-none text-text-muted" aria-hidden="true" />
-                  )}
-                </button>
-              ))}
-              {shown.length === 0 && (
-                <p className="p-3 text-small text-text-muted">Nada com “{query.trim()}”.</p>
-              )}
-            </div>
-          </div>,
-          document.body,
-        )}
-    </>
+/**
+ * The app's one dropdown (docs/DESIGN.md §3c): never a native select element. A button with the
+ * current value and a chevron opens our menu surface, in a portal on the body (so a dialog never cuts
+ * it). Keyboard (Base UI): Enter, Space and the arrows open it; arrows, Home and End move; typing
+ * jumps to a label; Enter chooses; Escape closes it and gives the focus back to the button, without
+ * closing the dialog around.
+ */
+export function Dropdown<V extends string>(props: DropdownProps<V>) {
+  const filterAfter = props.filterAfter ?? DROPDOWN_FILTER_AFTER;
+  return props.options.length > filterAfter ? (
+    <FilteredDropdown {...props} />
+  ) : (
+    <ShortDropdown {...props} />
   );
 }
 
-const first = (panel: HTMLElement | null): HTMLElement | null | undefined =>
-  panel?.querySelector<HTMLElement>(OPTION);
+function ShortDropdown<V extends string>({
+  label,
+  value,
+  options,
+  onChange,
+  testId,
+  variant = "quiet",
+  placeholder,
+  disabled,
+  id,
+}: DropdownProps<V>) {
+  const current = options.find((o) => o.value === value);
+  return (
+    <Select.Root
+      value={value}
+      modal={false}
+      disabled={disabled === true}
+      onValueChange={(next) => {
+        if (next !== null && next !== value) onChange(next as V);
+      }}
+    >
+      <Select.Trigger
+        id={id}
+        aria-label={label}
+        data-testid={testId}
+        data-value={value}
+        className={cx(TRIGGER_BASE, TRIGGER[variant])}
+      >
+        <span className="min-w-0 truncate">{current?.label ?? placeholder ?? ""}</span>
+        {CHEVRON}
+      </Select.Trigger>
+      <Select.Portal>
+        <Select.Positioner
+          alignItemWithTrigger={false}
+          side="bottom"
+          align={ALIGN[variant]}
+          sideOffset={6}
+          collisionPadding={8}
+          className={cx(POPUP_LAYER, "outline-none")}
+        >
+          <Select.Popup className={PANEL}>
+            <Select.List aria-label={label} className="flex min-h-0 flex-col overflow-y-auto">
+              {options.map((o) => (
+                <Select.Item
+                  key={o.value}
+                  value={o.value}
+                  label={o.label}
+                  data-value={o.value}
+                  className={MENU_ITEM}
+                >
+                  <OptionBody option={o} />
+                  <Select.ItemIndicator render={<span className="flex flex-none" />}>
+                    {CHECK}
+                  </Select.ItemIndicator>
+                </Select.Item>
+              ))}
+            </Select.List>
+          </Select.Popup>
+        </Select.Positioner>
+      </Select.Portal>
+    </Select.Root>
+  );
+}
 
-/** Focus an option without letting the browser scroll the page; the list is scrolled by hand. */
-function focusOption(el: HTMLElement | null | undefined): void {
-  if (el === null || el === undefined) return;
-  el.focus({ preventScroll: true });
-  const list = el.closest<HTMLElement>('[role="listbox"]');
-  if (list === null) return;
-  const top = el.offsetTop; // the list is positioned: it is the offset parent
-  if (top < list.scrollTop) list.scrollTop = top;
-  else if (top + el.offsetHeight > list.scrollTop + list.clientHeight)
-    list.scrollTop = top + el.offsetHeight - list.clientHeight;
+function FilteredDropdown<V extends string>({
+  label,
+  value,
+  options,
+  onChange,
+  testId,
+  variant = "quiet",
+  placeholder,
+  disabled,
+  id,
+}: DropdownProps<V>) {
+  const current = options.find((o) => o.value === value) ?? null;
+  // The values the Combobox works with are the options themselves (it shows their labels).
+  const items = useMemo(() => [...options], [options]);
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const [highlighted, setHighlighted] = useState<DropdownOption<V> | undefined>(undefined);
+  const matches = (o: DropdownOption<V>, text: string): boolean =>
+    o.label.toLowerCase().includes(text.trim().toLowerCase());
+  return (
+    <Combobox.Root
+      items={items}
+      value={current}
+      open={open}
+      inputValue={query}
+      onInputValueChange={(next) => setQuery(next)}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) setQuery("");
+      }}
+      onItemHighlighted={(next: DropdownOption<V> | undefined) => setHighlighted(next)}
+      modal={false}
+      autoHighlight
+      disabled={disabled === true}
+      itemToStringLabel={(o: DropdownOption<V>) => o.label}
+      isItemEqualToValue={(a: DropdownOption<V>, b: DropdownOption<V>) => a.value === b.value}
+      // A case-insensitive substring of the label (docs/REGRAS.md §1: never a pattern).
+      filter={matches}
+      onValueChange={(next: DropdownOption<V> | null) => {
+        if (next !== null && next.value !== value) onChange(next.value);
+      }}
+    >
+      <Combobox.Trigger
+        id={id}
+        aria-label={label}
+        data-testid={testId}
+        data-value={value}
+        className={cx(TRIGGER_BASE, TRIGGER[variant])}
+      >
+        <span className="min-w-0 truncate">{current?.label ?? placeholder ?? ""}</span>
+        {CHEVRON}
+      </Combobox.Trigger>
+      <Combobox.Portal>
+        <Combobox.Positioner
+          side="bottom"
+          align={ALIGN[variant]}
+          sideOffset={6}
+          collisionPadding={8}
+          className={cx(POPUP_LAYER, "outline-none")}
+        >
+          <Combobox.Popup aria-label={label} className={PANEL}>
+            <div className="flex h-9 flex-none items-center gap-2 px-2.5 text-text-muted">
+              <Search size={14} aria-hidden="true" />
+              <Combobox.Input
+                aria-label={`Filtrar: ${label}`}
+                placeholder="Filtrar"
+                autoComplete="off"
+                onKeyDown={(e) => {
+                  // Enter with nothing highlighted takes the first match, as the filter shows it.
+                  if (e.key !== "Enter" || highlighted !== undefined) return;
+                  const first = options.find((o) => matches(o, query));
+                  if (first === undefined) return;
+                  e.preventDefault();
+                  setOpen(false);
+                  setQuery("");
+                  if (first.value !== value) onChange(first.value);
+                }}
+                className="min-w-0 flex-1 border-0 bg-transparent text-small text-text focus-visible:outline-none"
+              />
+            </div>
+            <Separator className="-mx-1.5 my-1.5" />
+            <Combobox.Empty className="text-small text-text-muted">
+              <p className="p-3">Nada com “{query.trim()}”.</p>
+            </Combobox.Empty>
+            <Combobox.List aria-label={label} className="flex min-h-0 flex-col overflow-y-auto">
+              {(o: DropdownOption<V>) => (
+                <Combobox.Item key={o.value} value={o} data-value={o.value} className={MENU_ITEM}>
+                  <OptionBody option={o} />
+                  <Combobox.ItemIndicator render={<span className="flex flex-none" />}>
+                    {CHECK}
+                  </Combobox.ItemIndicator>
+                </Combobox.Item>
+              )}
+            </Combobox.List>
+          </Combobox.Popup>
+        </Combobox.Positioner>
+      </Combobox.Portal>
+    </Combobox.Root>
+  );
 }

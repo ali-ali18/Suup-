@@ -4,6 +4,8 @@ import type { Isolation } from "./protocol.js";
 const MODELS = [
   {
     id: "claude-sonnet-5-5",
+    // the short name the app shows (declared, never derived from the id)
+    name: "Sonnet 5.5",
     provider: "anthropic",
     contextWindow: 1_000_000,
     maxOutputTokens: 128_000,
@@ -18,6 +20,7 @@ const MODELS = [
   },
   {
     id: "claude-haiku-5-5",
+    name: "Haiku 5.5",
     provider: "anthropic",
     contextWindow: 1_000_000,
     maxOutputTokens: 128_000,

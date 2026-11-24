@@ -2,7 +2,7 @@
 
 Regra do dono (`docs/REGRAS.md`): **cada etapa do plano ganha uma pesquisa confiável, para validar a ideia antes de implementar.** Uma pesquisa por fase ou entrega significativa de `docs/PLANO.md`, salva aqui como `docs/pesquisas/<fase>-<tema>.md` (por exemplo, `fase-3-aprovacoes.md`) e ligada a partir da seção do plano que ela valida.
 
-Índice: [ícones de marca dos conectores](icones-de-marca-dos-conectores.md) (23/11/2026); [atualizador do app](atualizador-do-app.md) (23/11/2026); [implantar na VPS com o Dokploy](deploy-vps-dokploy.md) (24/11/2026).
+Índice: [ícones de marca dos conectores](icones-de-marca-dos-conectores.md) (23/11/2026); [atualizador do app](atualizador-do-app.md) (23/11/2026); [implantar na VPS com o Dokploy](deploy-vps-dokploy.md) (24/11/2026); [shadcn base-maia e Base UI](shadcn-base-maia.md) (24/11/2026).
 
 ## Formato
 

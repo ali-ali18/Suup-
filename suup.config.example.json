@@ -15,6 +15,7 @@
   "models": [
     {
       "id": "model-x",
+      "name": "Modelo X",
       "provider": "anthropic",
       "contextWindow": 200000,
       "maxOutputTokens": 8192,
@@ -22,6 +23,7 @@
     },
     {
       "id": "model-y",
+      "name": "Modelo Y",
       "provider": "local",
       "contextWindow": 32000,
       "maxOutputTokens": 4096

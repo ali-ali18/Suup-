@@ -9,6 +9,9 @@
  */
 @layer theme, base, components, utilities;
 
+/* The fonts of the app, bundled (tokens.css, --font-sans and --font-heading). */
+@import "@fontsource-variable/outfit" layer(base);
+@import "@fontsource-variable/geist" layer(base);
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/preflight.css" layer(base);
 @import "tailwindcss/utilities.css" layer(utilities) source(none);

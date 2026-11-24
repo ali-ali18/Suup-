@@ -52,7 +52,7 @@ const expiryOptions = (current: number | null): readonly (readonly [string, stri
  * are Geral's. A change shows at once and goes back, with the server's words under its row, when the
  * server refuses it; the ranges are the server's to judge.
  */
-export function MemorySettings({ title, titleId, onClose }: SectionProps) {
+export function MemorySettings({ title, titleId }: SectionProps) {
   const { api } = useServices();
   const setMemoryBot = useUi((s) => s.setMemoryBot);
   const go = useUi((s) => s.go);
@@ -94,7 +94,7 @@ export function MemorySettings({ title, titleId, onClose }: SectionProps) {
   const usage = settings?.promptUsage;
   return (
     <>
-      <PaneHead title={title} titleId={titleId} onClose={onClose} />
+      <PaneHead title={title} titleId={titleId} />
       <PaneBody>
         {settings === undefined || consolidation === undefined || usage === undefined ? (
           <SettingsGroup>

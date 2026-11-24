@@ -99,7 +99,7 @@ Em **Configurações > Conectores** fica a galeria: GitHub, Notion, Linear, Figm
 | Senhas e chaves (banco, token, cofre, Anthropic) | Gerenciador de Credenciais do Windows, entradas `app.suup.desktop` |
 | Escolha de servidor e aparência | `%APPDATA%\app.suup.desktop\` |
 
-Os registros **não** contêm chaves nem o token. **Avançado:** para trocar os modelos ou os limites, crie `config.override.json` na pasta de dados (cada chave de primeiro nível, como `models` ou `defaults`, substitui a gerada; o formato é o de [CONFIGURACAO.md](CONFIGURACAO.md)). O app começa com `claude-sonnet-5-5` (bot principal) e `claude-haiku-5-5` (revisão e memória).
+Os registros **não** contêm chaves nem o token. **Avançado:** para trocar os modelos ou os limites, crie `config.override.json` na pasta de dados (cada chave de primeiro nível, como `models` ou `defaults`, substitui a gerada; o formato é o de [CONFIGURACAO.md](CONFIGURACAO.md)). O app começa com `claude-sonnet-5-5` (bot principal) e `claude-haiku-5-5` (revisão e memória), que aparecem como "Sonnet 5.5" e "Haiku 5.5". Para dar um nome curto a um modelo seu, ponha `"name": "Meu modelo"` no item dele em `models`: é o que o app mostra no lugar do `id`.
 
 ## 6. Desinstalar e fazer backup
 

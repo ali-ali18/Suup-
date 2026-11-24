@@ -68,12 +68,12 @@ Sem token. `200 {"status":"ok"}`. É o teste do `HEALTHCHECK` da imagem.
 Os modelos da configuração, para o formulário de bot. `200 { "items": [ModelInfo] }`:
 
 ```json
-{ "id": "model-x", "provider": "anthropic", "providerKind": "anthropic",
+{ "id": "model-x", "name": "Modelo X", "provider": "anthropic", "providerKind": "anthropic",
   "contextWindow": 200000, "maxOutputTokens": 8192, "priced": true,
   "available": false, "unavailableReason": "a variável de ambiente ANTHROPIC_API_KEY não está definida" }
 ```
 
-`available` diz se o provedor tem o que precisa (a chave de API no ambiente do servidor); `priced`, se há preço na configuração (só então o custo das execuções é contado).
+`name` é o nome curto que o app mostra (o `name` da configuração; sem ele, o próprio `id`). `available` diz se o provedor tem o que precisa (a chave de API no ambiente do servidor); `priced`, se há preço na configuração (só então o custo das execuções é contado).
 
 ### `GET /v1/tools`
 

@@ -140,7 +140,14 @@ describe("Tailwind: classes name tokens, never a colour, a palette or a pixel", 
   it("the theme maps every token of tokens.css, exactly, and empties the default scales", () => {
     for (const reset of ["--color-*", "--radius-*", "--text-*", "--shadow-*", "--font-*"])
       expect(theme, reset).toContain(`${reset}: initial;`);
-    for (const prefix of ["--color-", "--radius-", "--shadow-", "--font-sans", "--font-mono"]) {
+    for (const prefix of [
+      "--color-",
+      "--radius-",
+      "--shadow-",
+      "--font-sans",
+      "--font-heading",
+      "--font-mono",
+    ]) {
       for (const name of defined(tokens, prefix)) {
         // A token is exposed by name, pointing at itself: `--color-bg: var(--color-bg);`.
         expect(theme, name).toContain(`${name}: var(${name});`);
@@ -185,6 +192,64 @@ describe("Tailwind: classes name tokens, never a colour, a palette or a pixel", 
         const isPalette = PALETTE.some((c) => name === c || name.startsWith(`${c}-`));
         if (isPalette || name === "white" || name === "black")
           offenders.push(`${rel(file)}: ${word}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("no shadcn name survives in a copied piece: its classes were rewritten to our theme (docs/DESIGN.md §2a)", () => {
+    // The colours, radii, sizes and shadows of the shadcn styles. None exists in our theme, so a
+    // class with one of them would silently draw nothing.
+    const SHADCN_COLOURS = new Set([
+      "popover",
+      "popover-foreground",
+      "foreground",
+      "background",
+      "accent",
+      "accent-foreground",
+      "primary",
+      "primary-foreground",
+      "secondary",
+      "secondary-foreground",
+      "muted",
+      "muted-foreground",
+      "destructive",
+      "input",
+      "ring",
+      "card",
+      "card-foreground",
+    ]);
+    const SHADCN_SCALE = new Set([
+      "rounded-sm",
+      "rounded-md",
+      "rounded-lg",
+      "rounded-xl",
+      "rounded-2xl",
+      "rounded-3xl",
+      "rounded-4xl",
+      "text-xs",
+      "text-sm",
+      "text-base",
+      "text-lg",
+      "shadow-sm",
+      "shadow-md",
+      "shadow-lg",
+      "shadow-xl",
+      "shadow-2xl",
+      "backdrop-blur",
+      "backdrop-blur-sm",
+    ]);
+    const offenders: string[] = [];
+    for (const file of components) {
+      for (const word of words(read(file))) {
+        let utility = word.slice(word.lastIndexOf(":") + 1);
+        while (utility.startsWith("-") || utility.startsWith("!")) utility = utility.slice(1);
+        if (SHADCN_SCALE.has(utility)) offenders.push(`${rel(file)}: ${word}`);
+        const prefix = COLOUR_PREFIXES.find((p) => utility.startsWith(p));
+        // `shadow-popover` is OUR shadow token: a shadow names a size here, never a colour
+        if (prefix === undefined || prefix === "shadow-") continue;
+        const name = utility.slice(prefix.length).split("/")[0] ?? "";
+        if (SHADCN_COLOURS.has(name)) offenders.push(`${rel(file)}: ${word}`);
       }
     }
     expect(offenders).toEqual([]);
@@ -260,6 +325,118 @@ describe("Tailwind: classes name tokens, never a colour, a palette or a pixel", 
       }
     }
     expect(offenders).toEqual([]);
+  });
+});
+
+describe("a base dos componentes: cópias do shadcn base-maia sobre Base UI (docs/DESIGN.md §2a, dono 24/11/2026)", () => {
+  const pkg = JSON.parse(read(join(SRC, "..", "package.json"))) as {
+    dependencies: Record<string, string>;
+    devDependencies: Record<string, string>;
+  };
+  const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+
+  it("só o Base UI entra como dependência: nada do shadcn em tempo de execução nem config do CLI", () => {
+    expect(deps["@base-ui/react"]).toBeDefined();
+    for (const name of [
+      "shadcn",
+      "cn",
+      "class-variance-authority",
+      "tailwind-merge",
+      "clsx",
+      "tw-animate-css",
+      "@radix-ui/react-slot",
+    ])
+      expect(deps[name], name).toBeUndefined();
+    expect(existsSync(join(SRC, "..", "components.json"))).toBe(false);
+  });
+
+  it("as fontes vêm embutidas (Outfit no texto, Geist nos títulos) e nunca do Google", () => {
+    const app = read(join(SRC, "styles", "app.css"));
+    expect(app).toContain('@import "@fontsource-variable/outfit"');
+    expect(app).toContain('@import "@fontsource-variable/geist"');
+    const tokens = read(join(SRC, "styles", "tokens.css"));
+    expect(tokens).toContain('"Outfit Variable", ui-sans-serif');
+    expect(tokens).toContain('"Geist Variable", ui-sans-serif');
+    expect(read(join(SRC, "styles", "base.css"))).toContain("font-family: var(--font-heading);");
+    const html = read(join(SRC, "..", "index.html"));
+    for (const text of [html, app, tokens]) expect(text).not.toContain("fonts.googleapis");
+  });
+
+  it("lote 1: o interruptor, a dica e o popover são as cópias sobre o Base UI", () => {
+    const sw = read(join(SRC, "ui", "switch.tsx"));
+    expect(sw).toContain('from "@base-ui/react/switch"');
+    expect(sw).toContain("nativeButton");
+    expect(read(join(SRC, "ui", "primitives.tsx"))).toContain(
+      'export { Toggle } from "./switch.js";',
+    );
+    expect(read(join(SRC, "ui", "tooltip.tsx"))).toContain('from "@base-ui/react/tooltip"');
+    expect(read(join(SRC, "ui", "popover.tsx"))).toContain('from "@base-ui/react/popover"');
+    // the round icon button shows its name as the app's tip, not the native title
+    const primitives = read(join(SRC, "ui", "primitives.tsx"));
+    const round = primitives.slice(primitives.indexOf("export function RoundButton"));
+    const body = round.slice(0, round.indexOf("\n}\n"));
+    expect(body).toContain("<Tip label={label}>");
+    expect(body).not.toContain("title=");
+    expect(read(join(SRC, "main.tsx"))).toContain("<TipProvider>");
+  });
+
+  it("lote 2: os menus e o dropdown são as cópias sobre o Base UI, e o menu da conta é um MenuButton", () => {
+    const menu = read(join(SRC, "ui", "menu.tsx"));
+    expect(menu).toContain('from "@base-ui/react/menu"');
+    expect(menu).toContain("export function MenuButton");
+    expect(menu).toContain("export function PopupMenu");
+    expect(menu).toContain('data-testid="menu-icon"');
+    expect(menu).toContain('data-testid="menu-label"');
+    expect(existsSync(join(SRC, "ui", "popup-menu.tsx"))).toBe(false);
+    // every popup draws the one surface of ui/popover.tsx
+    for (const file of ["menu.tsx", "dropdown.tsx", "popover.tsx"])
+      expect(read(join(SRC, "ui", file)), file).toContain("POPUP_SURFACE");
+    const sidebar = read(join(SRC, "features", "shell", "Sidebar.tsx"));
+    expect(sidebar).toContain('label="Sua conta"');
+    expect(sidebar.indexOf("<MenuButton")).toBeLessThan(
+      sidebar.indexOf('data-testid="owner-menu"'),
+    );
+    // each opening of a menu at a point is a new menu
+    for (const file of [
+      join("features", "shell", "Sidebar.tsx"),
+      join("features", "chat", "ChatScreen.tsx"),
+    ])
+      expect(read(join(SRC, file)), file).toContain("key={menu.key}");
+  });
+
+  it("o menu do dono (24/11/2026): linhas de ícone e rótulo, grupos com Separator e Label, dica e submenu; nome curto do modelo", () => {
+    const menu = read(join(SRC, "ui", "menu.tsx"));
+    for (const part of [
+      "<Menu.Separator",
+      "<Menu.GroupLabel",
+      "<Menu.SubmenuTrigger",
+      "<ChevronRight",
+      'data-testid="menu-hint"',
+      "font-normal",
+    ])
+      expect(menu, part).toContain(part);
+    expect(read(join(SRC, "ui", "separator.tsx"))).toContain('from "@base-ui/react/separator"');
+    // no hand-made divider
+    const hr = files(SRC, /\.tsx$/).filter((f) => read(f).includes("<hr"));
+    expect(hr.map(rel)).toEqual([]);
+    // the model is shown by the short name the server declares, never the id with the provider
+    for (const file of [
+      join("features", "panel", "ActivityTab.tsx"),
+      join("features", "new-bot", "NewBotDialog.tsx"),
+      join("features", "inspector", "InspectorScreen.tsx"),
+    ]) {
+      const source = read(join(SRC, file));
+      expect(source, file).toContain("label: m.name");
+      expect(source, file).not.toContain("m.provider}");
+    }
+    // the account menu: its groups, the pending count as a hint
+    const sidebar = read(join(SRC, "features", "shell", "Sidebar.tsx"));
+    expect(sidebar).toContain("const ownerItems: MenuSection[]");
+    expect(sidebar).toContain("hint: String(pending)");
+  });
+
+  it("a raiz isola o empilhamento, para os popups no body ficarem por cima", () => {
+    expect(read(join(SRC, "styles", "base.css"))).toContain("isolation: isolate;");
   });
 });
 
@@ -465,18 +642,30 @@ describe("the settings dialog: a modal with a left nav, groups of simple rows, n
 
   it("is a modal dialog with a nav on the left, closed by Escape and the X, with the focus trapped", () => {
     const dialog = settings("SettingsDialog.tsx");
-    expect(dialog).toContain('aria-modal="true"');
-    expect(dialog).toContain('role="dialog"');
+    // the modal of ui/dialog.tsx (Base UI: role="dialog", the focus trapped, Escape, the focus back)
+    expect(dialog).toContain("<Modal");
     expect(dialog).toContain('role="tablist"');
-    expect(dialog).toContain("useModalFocus(");
-    expect(settings("parts.tsx")).toContain('label="Fechar as configurações"');
+    const parts = settings("parts.tsx");
+    expect(parts).toContain('label="Fechar as configurações"');
+    expect(parts).toContain("<DialogClose");
     // It is a dialog over the screen, not a screen of its own.
     expect(read(join(SRC, "app", "ui-store.ts"))).not.toContain('"settings"');
     expect(read(join(SRC, "features", "shell", "Shell.tsx"))).toContain("<SettingsDialog />");
-    // The focus helpers every dialog shares live in one place.
-    const primitives = read(join(SRC, "ui", "primitives.tsx"));
-    expect(primitives).toContain("export function useModalFocus");
-    expect(primitives).toContain('e.key === "Escape"');
+    // Every modal is the one of ui/dialog.tsx: the base-maia copy on Base UI's Dialog, marked
+    // aria-modal for the focus rule of lib/focus.ts; no hand-made scrim or focus trap is left.
+    const modal = read(join(SRC, "ui", "dialog.tsx"));
+    expect(modal).toContain('from "@base-ui/react/dialog"');
+    expect(modal).toContain('aria-modal="true"');
+    expect(modal).toContain("<DialogPrimitive.Backdrop");
+    expect(modal).toContain("MODAL_MOTION");
+    expect(read(join(SRC, "ui", "primitives.tsx"))).toContain(
+      'export { Dialog } from "./dialog.js";',
+    );
+    for (const file of files(SRC, /\.tsx$/)) {
+      const source = read(file);
+      expect(source.includes("useModalFocus"), rel(file)).toBe(false);
+      expect(source.includes("<Scrim"), rel(file)).toBe(false);
+    }
   });
 
   it("has exactly the sections the backend can fill, and no hollow ones", () => {
@@ -515,21 +704,20 @@ describe("the settings dialog: a modal with a left nav, groups of simple rows, n
 
   it("never a native select: every choice is the dropdown of ui/dropdown.tsx", () => {
     const dropdown = read(join(SRC, "ui", "dropdown.tsx"));
-    // The dropdown is the ARIA listbox pattern, with the keys of the menu and no pattern matching.
+    // The dropdown is the base-maia copy on Base UI: the ARIA listbox pattern (its role, keys and
+    // focus are Base UI's, tested by behaviour in ui/dropdown.test.tsx), in a portal, and a long
+    // list is a Combobox whose filter is a substring of the labels: no pattern matching.
     for (const part of [
-      'aria-haspopup="listbox"',
-      'role="listbox"',
-      'role="option"',
-      "aria-selected",
-      "preventScroll",
-      'e.key === "Escape"',
-      'e.key === "ArrowDown"',
-      'e.key === "Home"',
-      'e.key === "End"',
-      'e.key === "Enter"',
-      "createPortal(",
-      ".includes(needle)",
+      'from "@base-ui/react/select"',
+      'from "@base-ui/react/combobox"',
+      "<Select.Portal>",
+      "<Combobox.Portal>",
+      "<Combobox.Input",
+      "aria-label={`Filtrar: ",
+      ".toLowerCase().includes(text.trim().toLowerCase())",
       "DROPDOWN_FILTER_AFTER",
+      "props.options.length > filterAfter",
+      "alignItemWithTrigger={false}",
     ])
       expect(dropdown, part).toContain(part);
     expect(dropdown).not.toContain("RegExp");
@@ -703,8 +891,9 @@ describe("the settings dialog: a modal with a left nav, groups of simple rows, n
     const dialog = settings("SettingsDialog.tsx");
     // Esc inside a connector goes back to the list first; the second one closes the dialog.
     expect(dialog).toContain(
-      'tab === "connectors" && connector !== null ? setConnector(null) : close()',
+      'if (reason !== "escape" || tab !== "connectors" || connector === null) return true;',
     );
+    expect(dialog).toContain("setConnector(null);");
     // The store: selecting a section (even the selected one) lands on its first view.
     const store = read(join(SRC, "app", "ui-store.ts"));
     expect(store).toContain(
@@ -715,8 +904,8 @@ describe("the settings dialog: a modal with a left nav, groups of simple rows, n
   });
 
   it("a dialog opened from another is its own modal surface, on top", () => {
-    const primitives = read(join(SRC, "ui", "primitives.tsx"));
-    expect(primitives).toContain("createPortal(");
+    // each dialog has its own portal on the body (Base UI's), the last one on top
+    expect(read(join(SRC, "ui", "dialog.tsx"))).toContain("<DialogPrimitive.Portal>");
     expect(read(join(SRC, "lib", "focus.ts"))).toContain("topModal");
   });
 });
@@ -1362,8 +1551,8 @@ describe("ajustes do dono de 23/11/2026 (docs/DESIGN.md §2, §4a, §4c, §5, §
 
   it("barra lateral: sem bot marcado sem escolha, só o nome no trilho, 'Sem interação', nada selecionável", () => {
     expect(sidebar).toContain('view === "chat" && picked ? selected : null');
-    expect(sidebar).toContain('data-testid="rail-tip"');
-    expect(sidebar).toContain("{tip.name}");
+    // the name of the rail is the app's tip (ui/tooltip.tsx), with only the bot's name in it
+    expect(sidebar).toContain('<Tip label={bot.name} side="right" delay={0} testId="rail-tip">');
     expect(sidebar).toContain('"Sem interação"');
     expect(sidebar).not.toContain("Sem mensagens");
     expect(sidebar).toContain("select-none");

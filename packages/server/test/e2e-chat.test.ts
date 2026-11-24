@@ -167,12 +167,15 @@ describe.skipIf(!DATABASE_URL)(
       const models = await api.models.list();
       expect(models.map((m) => m.id)).toEqual(["model-x", "model-y", "model-k"]);
       expect(models.find((m) => m.id === "model-x")).toMatchObject({
+        name: "Roteiro X",
         provider: "roteiro",
         providerKind: "scripted",
         priced: true,
         available: true,
         unavailableReason: null,
       });
+      // without a declared name, the id is the name
+      expect(models.find((m) => m.id === "model-y")?.name).toBe("model-y");
       expect(models.find((m) => m.id === "model-k")).toMatchObject({
         available: false,
         unavailableReason: expect.stringContaining("SUUP_TEST_MISSING_KEY"),

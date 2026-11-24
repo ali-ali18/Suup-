@@ -22,6 +22,18 @@ const SIZES = [
   { dir: "1440x900@2x", viewport: { width: 1440, height: 900 }, scale: 2 },
 ] as const;
 
+/**
+ * Waits for the finite animations and transitions on the page (a popup fading in) to end, so a
+ * capture never catches a popup half transparent. The endless ones (the working dots) are skipped.
+ */
+const settled = (page: Page): Promise<void> =>
+  page.evaluate(async () => {
+    const finite = document
+      .getAnimations()
+      .filter((a) => a.effect?.getComputedTiming().iterations !== Number.POSITIVE_INFINITY);
+    await Promise.all(finite.map((a) => a.finished.catch(() => undefined)));
+  });
+
 test.describe("screenshots", () => {
   test.skip(DATABASE_URL === undefined, SKIP_REASON);
   /** Each size gets a world of its own: the scripted runs cannot be repeated in one conversation. */
@@ -248,7 +260,7 @@ test.describe("screenshots", () => {
       });
       const page = await context.newPage();
       const shot = (name: string) =>
-        page.screenshot({ path: `screenshots/${size.dir}/${name}.png` });
+        settled(page).then(() => page.screenshot({ path: `screenshots/${size.dir}/${name}.png` }));
       const settle = async () => {
         await page.evaluate(() => document.fonts.ready);
         // Past the short transitions of buttons and cards.
@@ -589,7 +601,7 @@ test.describe("screenshots", () => {
       });
       const page = await context.newPage();
       const shot = (name: string) =>
-        page.screenshot({ path: `screenshots/${size.dir}/${name}.png` });
+        settled(page).then(() => page.screenshot({ path: `screenshots/${size.dir}/${name}.png` }));
       await connect(page, world);
       await expect(page.getByTestId("sidebar")).toBeVisible();
       await selectBot(page, "Pesquisador");
@@ -633,7 +645,7 @@ test.describe("screenshots", () => {
       });
       const page = await context.newPage();
       const shot = (name: string) =>
-        page.screenshot({ path: `screenshots/${size.dir}/${name}.png` });
+        settled(page).then(() => page.screenshot({ path: `screenshots/${size.dir}/${name}.png` }));
       const settle = async () => {
         await page.evaluate(() => document.fonts.ready);
         await page.waitForTimeout(250);

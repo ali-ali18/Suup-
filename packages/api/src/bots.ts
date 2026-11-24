@@ -153,6 +153,8 @@ export type BotDraft = z.infer<typeof botDraftSchema>;
 /** A model the bots can use, and whether it can be used right now. */
 export const modelInfoSchema = z.object({
   id: z.string(),
+  /** The short name to show (the configuration's `name`, or the id when it declares none). */
+  name: z.string(),
   provider: z.string(),
   providerKind: z.enum(["anthropic", "openai-compatible", "scripted"]),
   contextWindow: z.number().int(),

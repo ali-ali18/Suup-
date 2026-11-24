@@ -1,4 +1,4 @@
-import { Search, X } from "lucide-react";
+import { Search } from "lucide-react";
 import {
   type ButtonHTMLAttributes,
   type HTMLAttributes,
@@ -10,8 +10,8 @@ import {
   useId,
   useRef,
 } from "react";
-import { createPortal } from "react-dom";
 import { cx } from "../lib/cx.js";
+import { Tip } from "./tooltip.js";
 
 /**
  * `primary` is the white pill, `secondary` and `danger` the neutral ones with a border, `ghost` plain
@@ -105,7 +105,7 @@ export interface RoundButtonProps extends ButtonHTMLAttributes<HTMLButtonElement
   ref?: Ref<HTMLButtonElement>;
 }
 
-/** The round icon button (Figma v2/Botão redondo). */
+/** The round icon button (Figma v2/Botão redondo). Its name shows as a tip on hover (`ui/tooltip.tsx`). */
 export function RoundButton({
   tone = "raised",
   label,
@@ -116,20 +116,21 @@ export function RoundButton({
   ...rest
 }: RoundButtonProps) {
   return (
-    <button
-      type={type ?? "button"}
-      aria-label={label}
-      title={label}
-      className={cx(
-        "inline-flex flex-none items-center justify-center rounded-pill border disabled:opacity-40",
-        ROUND_SIZE[size],
-        ROUND_TONE[tone],
-        className,
-      )}
-      {...rest}
-    >
-      {children}
-    </button>
+    <Tip label={label}>
+      <button
+        type={type ?? "button"}
+        aria-label={label}
+        className={cx(
+          "inline-flex flex-none items-center justify-center rounded-pill border disabled:opacity-40",
+          ROUND_SIZE[size],
+          ROUND_TONE[tone],
+          className,
+        )}
+        {...rest}
+      >
+        {children}
+      </button>
+    </Tip>
   );
 }
 
@@ -550,54 +551,8 @@ export function SearchField({
   );
 }
 
-export function Toggle({
-  checked,
-  onChange,
-  label,
-  disabled,
-  testId,
-  accent,
-}: {
-  checked: boolean;
-  onChange(next: boolean): void;
-  label: string;
-  disabled?: boolean;
-  testId?: string;
-  /** The blue switch (the routines of the panel; owner's decision, 22/11/2026): on is blue, off is light. */
-  accent?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      disabled={disabled}
-      data-testid={testId}
-      className={cx(
-        "relative h-6 w-10 flex-none rounded-pill border p-0 disabled:opacity-40",
-        accent === true
-          ? cx("border-transparent", checked ? "bg-switch-on" : "bg-switch-off")
-          : cx("border-border-strong", checked ? "bg-bg-inverse" : "bg-raised"),
-      )}
-      onClick={() => onChange(!checked)}
-    >
-      <span
-        className={cx(
-          "absolute top-0.5 left-0.5 size-4.5 rounded-pill transition-transform",
-          checked && "translate-x-4",
-          accent === true
-            ? checked
-              ? "bg-switch-knob-on"
-              : "bg-switch-knob-off"
-            : checked
-              ? "bg-text-inverse"
-              : "bg-text-muted",
-        )}
-      />
-    </button>
-  );
-}
+/** The on/off switch lives in its own file (the base-maia copy on Base UI); screens import it from here. */
+export { Toggle } from "./switch.js";
 
 /** The class of a tab (and of the filter buttons that look like one). */
 export function tabClass(active: boolean): string {
@@ -851,147 +806,8 @@ export function ToastStack({
   );
 }
 
-/** A modal with a focus trap, closed by Escape. */
-const FOCUSABLE = 'button, [href], input, textarea, select, [tabindex]:not([tabindex="-1"])';
-
-/**
- * What every modal surface does about the focus: it takes it when it opens, keeps Tab inside, closes
- * on Escape and gives the focus back to whatever had it. Returns the ref for the dialog element and
- * its key handler.
- */
-export function useModalFocus(onClose: () => void) {
-  const ref = useRef<HTMLDivElement>(null);
-  const closing = useRef(onClose);
-  closing.current = onClose;
-  useEffect(() => {
-    const previous = document.activeElement as HTMLElement | null;
-    const first = Array.from(ref.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []).filter(
-      (el) => !el.hasAttribute("disabled"),
-    )[0];
-    (first ?? ref.current)?.focus();
-    // When the focus is lost (what had it was removed: a row deleted from a dialog opened on top
-    // of this one), the keys still reach the topmost modal: Escape closes it, Tab brings the focus back.
-    const lost = (e: globalThis.KeyboardEvent) => {
-      const active = document.activeElement;
-      if (active !== null && active !== document.body) return;
-      const modals = document.querySelectorAll('[aria-modal="true"]');
-      if (modals.item(modals.length - 1) !== ref.current) return;
-      if (e.key === "Escape") closing.current();
-      else if (e.key === "Tab") {
-        e.preventDefault();
-        (first ?? ref.current)?.focus();
-      }
-    };
-    document.addEventListener("keydown", lost);
-    return () => {
-      document.removeEventListener("keydown", lost);
-      if (previous?.isConnected === true) previous.focus();
-      else {
-        // What had the focus is gone: hand it to the modal that is now on top, if there is one.
-        const modals = document.querySelectorAll<HTMLElement>('[aria-modal="true"]');
-        modals.item(modals.length - 1)?.focus();
-      }
-    };
-  }, []);
-  const onKeyDown = (e: KeyboardEvent) => {
-    // A dialog opened from this one (a portal) bubbles its keys through React: those are not ours.
-    if (!ref.current?.contains(e.target as Node)) return;
-    if (e.key === "Escape") {
-      e.stopPropagation();
-      onClose();
-      return;
-    }
-    if (e.key !== "Tab") return;
-    const items = Array.from(ref.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []).filter(
-      (el) => !el.hasAttribute("disabled"),
-    );
-    const first = items[0];
-    const last = items[items.length - 1];
-    if (first === undefined || last === undefined) return;
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
-    }
-  };
-  return { ref, onKeyDown };
-}
-
-/**
- * The dark layer behind a modal; a press on it (not on what is inside) closes the modal. `top`
- * puts the modal near the top of the window (the command palette).
- */
-export function Scrim({
-  onClose,
-  top,
-  children,
-}: {
-  onClose(): void;
-  top?: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <div
-      className={cx(
-        "fixed inset-0 z-40 flex justify-center bg-scrim p-5",
-        top === true ? "items-start pt-[12vh]" : "items-center",
-      )}
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
-    >
-      {children}
-    </div>
-  );
-}
-
-export function Dialog({
-  title,
-  onClose,
-  children,
-  footer,
-  wide,
-}: {
-  title: string;
-  onClose(): void;
-  children: ReactNode;
-  footer?: ReactNode;
-  wide?: boolean;
-}) {
-  const { ref, onKeyDown } = useModalFocus(onClose);
-  const titleId = useId();
-  // In the body, not inside whatever opened it: a dialog opened from another dialog (a rule from the
-  // settings) is its own modal surface, the topmost one, with its own focus trap.
-  return createPortal(
-    <Scrim onClose={onClose}>
-      <div
-        ref={ref}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        tabIndex={-1}
-        className={cx(
-          "flex max-h-[90vh] flex-col gap-4 overflow-hidden rounded-card border border-border-strong bg-surface p-6 shadow-popover",
-          wide ? "w-dialog-wide" : "w-dialog",
-        )}
-        onKeyDown={onKeyDown}
-      >
-        <div className="flex items-center justify-between gap-3">
-          <h2 id={titleId} className="text-title font-title">
-            {title}
-          </h2>
-          <IconButton label="Fechar janela" onClick={onClose}>
-            <X size={18} aria-hidden="true" />
-          </IconButton>
-        </div>
-        {/* A tall form scrolls inside the dialog; the title and the buttons stay where they are. */}
-        <div className="-m-0.5 min-h-0 flex-auto overflow-y-auto p-0.5">{children}</div>
-        {footer !== undefined && <div className="flex flex-none justify-end gap-2">{footer}</div>}
-      </div>
-    </Scrim>,
-    document.body,
-  );
-}
+/** The modal dialog lives in its own file (the base-maia copy on Base UI); screens import it from here. */
+export { Dialog } from "./dialog.js";
 
 /** A honest empty state: says what will appear here, nothing is faked. */
 export function EmptyState({
