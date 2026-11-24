@@ -34,6 +34,14 @@ export async function dismissQuestion(
   messageId: string,
 ): Promise<{ message: Message; dismissed: boolean }> {
   const result = await withTransaction(db, async (tx) => {
+    // Lock order of the whole codebase: the conversation, then its run (docs: lock-order test). A
+    // message sent at the same moment holds the conversation too, so the "newer message" check below
+    // sees it, and the two never deadlock.
+    const [owner] = await tx.sql<{ conversation_id: string }[]>`
+      select conversation_id from messages where id = ${messageId}`;
+    if (owner === undefined) throw new QuestionDismissError("not_found", "Pergunta não encontrada.");
+    await tx.sql`
+      select 1 from conversations where id = ${owner.conversation_id} for no key update`;
     const [row] = await tx.sql<
       {
         run_id: string | null;
