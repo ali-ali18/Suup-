@@ -135,6 +135,12 @@ export interface RuntimeOptions {
    * tests with an entry that points at a fake OAuth server). Never read from the configuration.
    */
   connectorCatalog?: readonly CatalogEntry[];
+  /**
+   * Where the runtime writes what only the logs need (the web services that did not start, a page
+   * that could not be reached and why). The CLI and the app's server send it to stderr, which the
+   * app keeps in its log files. Never seen by the model or the user.
+   */
+  log?: (message: string) => void;
 }
 
 export interface ResolvedModel {
@@ -393,6 +399,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
   // Web search and page reading (docs/BUSCA.md): nothing starts until a tool asks for it.
   const web = createWebWiring(config.web, {
     ...(dockerPath === undefined ? {} : { dockerPath }),
+    ...(options.log === undefined ? {} : { log: options.log }),
     // Identical searches are answered from the database: it outlives a restart and is shared.
     searchCache: dbSearchCache(() => runtime.db),
   });

@@ -101,7 +101,12 @@ export function makeCtx(
     runtime() {
       if (runtime === undefined) {
         const { config: cfg, baseDir } = config();
-        runtime = createRuntime(cfg, { env: io.env, baseDir });
+        runtime = createRuntime(cfg, {
+          env: io.env,
+          baseDir,
+          // What only the logs need (the app keeps stderr in its log files).
+          log: (message) => out.err(message),
+        });
         const made = runtime;
         out.scrub = (text) => made.redactor.redact(text);
         closers.push(() => made.close());

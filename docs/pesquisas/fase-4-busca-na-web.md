@@ -366,3 +366,12 @@ Inferência, com base nos fatos acima. Não decide nada: é uma proposta para o 
 ### Próximo passo sugerido
 
 Antes de implementar: (1) ler `docs.searxng.org` e a página de preços de Brave, Tavily e Exa com outro acesso, para fechar os itens bloqueados acima; (2) rodar o SearXNG em um contêiner de teste, com a versão fixada, e medir captcha e 429 em um conjunto de consultas; (3) decidir com o dono a opção de rede para a leitura de página, (i) ou (ii) da tabela; (4) só então desenhar a tela de configuração do `web_search`, pelo `docs/DESIGN.md`.
+
+### Adendo (24/11/2026): robots.txt que não se consegue buscar
+
+Motivo: no PC do dono a leitura de `pt.wikipedia.org` falhou com "could not be asked for its robots.txt", contado ao bot como se o site tivesse se fechado.
+
+- RFC 9309 (https://www.rfc-editor.org/rfc/rfc9309.html): tentada de novo em 24/11/2026, **não lida** (host fora da rede desta sessão). Nenhuma frase dela é citada.
+- O que vale continua sendo a convenção já registrada (biblioteca `robots-parser` e o uso comum): falha ao buscar o arquivo deixa o site sem ler por um tempo. A mudança é só de **honestidade e diagnóstico**, não de regra: a falha de rede deste lado (DNS, rota, TLS, tempo) passa a ser dita como "não consegui acessar o site", com espera curta (1 minuto) e o detalhe só nos registros; um `5xx` do site continua fechando por 5 minutos.
+- Os códigos de erro comparados (`ENOTFOUND`, `EAI_AGAIN`, `ENETUNREACH`, `ECONNREFUSED`, códigos de certificado do TLS) são os que o Node devolve em `error.code` (documentação do Node, módulos `dns`, `net` e `tls`; **não relida** nesta sessão pela mesma falta de rede). Comparação exata, sem padrão.
+- Reprodução local: o contêiner do leitor (`suup-reader:app-dockertest`) com `--dns 192.0.2.53` (um DNS que não responde) devolvia a mesma frase do dono; com o conserto devolve `unreachable` e `stage=dns code=EAI_AGAIN`.

@@ -102,9 +102,12 @@ export type WebReadOutcome =
       /**
        * `robots`: the site's robots.txt asks robots not to read it. `private`: the address is not a
        * public one. `not_text`: a file that is not a page. `unavailable`: no way to read right now.
+       * `unreachable`: the site could not be reached from here (DNS, route, TLS, time): a connection
+       * problem on this side, never the site refusing.
        */
       reason:
         | "robots"
+        | "unreachable"
         | "private"
         | "not_text"
         | "http"
@@ -115,6 +118,19 @@ export type WebReadOutcome =
         | "failed";
       message: string;
       status?: number;
+      /**
+       * What failed, for the logs only (never shown to the model or the user): the step (`dns`,
+       * `connect`, `tls`, `timeout`, `transfer`), the host, the system's error code, the addresses
+       * tried, and which request (`robots` for the site's robots.txt, `page` for the page).
+       */
+      diagnostic?: {
+        stage: string;
+        host: string;
+        request?: "robots" | "page";
+        code?: string;
+        addresses?: string[];
+        detail?: string;
+      };
     };
 
 /** What the tools may do on the web, bound to the run by the runtime. */

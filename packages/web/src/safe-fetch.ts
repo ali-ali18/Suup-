@@ -23,6 +23,22 @@ export type FetchRefusal =
   | "too_many_redirects"
   | "failed";
 
+/**
+ * Where a request that never got an answer stopped, for the logs (never for the model or the user):
+ * the DNS lookup, the connection, the TLS handshake, the time limit, or the transfer. Its presence
+ * means the site could not be REACHED from here; it says nothing about what the site wants.
+ */
+export interface FetchDiagnostic {
+  stage: "dns" | "connect" | "tls" | "timeout" | "transfer";
+  host: string;
+  /** The error code of the system or of TLS (`EAI_AGAIN`, `ENETUNREACH`, `SELF_SIGNED_CERT_IN_CHAIN`...). */
+  code?: string;
+  /** The addresses tried, in order (the DNS answer, all of them checked). */
+  addresses?: string[];
+  /** The error's own text. */
+  detail?: string;
+}
+
 export type SafeResponse =
   | {
       ok: true;
@@ -33,7 +49,25 @@ export type SafeResponse =
       body: Buffer;
       redirects: number;
     }
-  | { ok: false; reason: FetchRefusal; message: string };
+  | { ok: false; reason: FetchRefusal; message: string; diagnostic?: FetchDiagnostic };
+
+/** A connection that failed with one of these never reached the server: the next address is tried. */
+const CONNECT_CODES: ReadonlySet<string> = new Set([
+  "ECONNREFUSED",
+  "ENETUNREACH",
+  "EHOSTUNREACH",
+  "EADDRNOTAVAIL",
+  "EAFNOSUPPORT",
+  "ETIMEDOUT",
+]);
+
+/** The DNS said the name does not exist (as opposed to a lookup that failed on this side). */
+const NO_SUCH_NAME_CODES: ReadonlySet<string> = new Set(["ENOTFOUND", "ENODATA"]);
+
+const errorCode = (error: unknown): string | undefined => {
+  const code = (error as { code?: unknown } | null)?.code;
+  return typeof code === "string" ? code : undefined;
+};
 
 export interface SafeFetchOptions {
   userAgent: string;
@@ -116,30 +150,69 @@ export async function safeGet(urlText: string, options: SafeFetchOptions): Promi
     if (refused !== undefined) return { ok: false, ...refused };
     const resolved = await resolveForConnect(normalizeName(current.hostname), resolver);
     if (!resolved.ok) {
+      if (resolved.reason === "forbidden_address") {
+        return {
+          ok: false,
+          reason: "private",
+          message: `${current.hostname} points to a private, loopback, link-local or metadata address, so it is not read.`,
+        };
+      }
+      const noSuchName = resolved.code !== undefined && NO_SUCH_NAME_CODES.has(resolved.code);
       return {
         ok: false,
-        reason: resolved.reason === "forbidden_address" ? "private" : "failed",
-        message:
-          resolved.reason === "forbidden_address"
-            ? `${current.hostname} points to a private, loopback, link-local or metadata address, so it is not read.`
-            : `${current.hostname} could not be resolved: check the spelling of the domain.`,
+        reason: "failed",
+        message: noSuchName
+          ? `${current.hostname} could not be found: check the spelling of the domain (if it is right, the DNS on this side may be failing).`
+          : `The name ${current.hostname} could not be looked up from here right now (a DNS problem on this side, not the site).`,
+        diagnostic: {
+          stage: "dns",
+          host: current.hostname,
+          ...(resolved.code === undefined ? {} : { code: resolved.code }),
+        },
       };
     }
-    let step: Step;
-    try {
-      step = await getOnce(current, resolved.address, options, maxBytes, signal);
-    } catch (error) {
+    let step: Step | undefined;
+    // Every address of the answer was checked; a connection that never reached the server (no
+    // route for IPv6, refused) goes on to the next one.
+    const tried: string[] = [];
+    let failure: unknown;
+    for (const address of resolved.addresses) {
+      tried.push(address);
+      try {
+        step = await getOnce(current, address, options, maxBytes, signal);
+        break;
+      } catch (error) {
+        failure = error;
+        const code = errorCode(error);
+        if (signal.aborted || code === undefined || !CONNECT_CODES.has(code)) break;
+      }
+    }
+    if (step === undefined) {
+      const code = errorCode(failure);
+      const diagnostic = (stage: FetchDiagnostic["stage"]): FetchDiagnostic => ({
+        stage,
+        host: current?.hostname ?? "",
+        addresses: tried,
+        ...(code === undefined ? {} : { code }),
+        ...(failure instanceof Error ? { detail: failure.message } : {}),
+      });
       if (timeout.aborted) {
         return {
           ok: false,
           reason: "timeout",
           message: `Reading ${current.href} took too long and was stopped.`,
+          diagnostic: diagnostic("timeout"),
         };
       }
       if (options.signal?.aborted === true) {
         return { ok: false, reason: "failed", message: "The read was cancelled." };
       }
-      return { ok: false, reason: "failed", message: failureText(current, error) };
+      return {
+        ok: false,
+        reason: "failed",
+        message: failureText(current, failure),
+        diagnostic: diagnostic(stageOf(code)),
+      };
     }
     if (step.kind === "too_large") {
       return {
@@ -293,19 +366,39 @@ function readBody(response: IncomingMessage, maxBytes: number): Promise<Buffer |
   });
 }
 
+/** Which step failed, by the error code (compared exactly). */
+function stageOf(code: string | undefined): FetchDiagnostic["stage"] {
+  if (code === undefined) return "transfer";
+  if (CONNECT_CODES.has(code)) return "connect";
+  if (code.startsWith("ERR_TLS") || code.startsWith("ERR_SSL") || CERT_CODES.has(code))
+    return "tls";
+  return "transfer";
+}
+
+/** The certificate errors of Node's TLS (`tls.connect`), as their codes. */
+const CERT_CODES: ReadonlySet<string> = new Set([
+  "CERT_HAS_EXPIRED",
+  "CERT_NOT_YET_VALID",
+  "DEPTH_ZERO_SELF_SIGNED_CERT",
+  "SELF_SIGNED_CERT_IN_CHAIN",
+  "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+  "UNABLE_TO_GET_ISSUER_CERT",
+  "UNABLE_TO_GET_ISSUER_CERT_LOCALLY",
+  "ERR_TLS_CERT_ALTNAME_INVALID",
+]);
+
 function failureText(url: URL, error: unknown): string {
-  const code = (error as { code?: unknown }).code;
+  const code = errorCode(error);
   if (code === "ECONNREFUSED")
     return `Could not connect to ${url.hostname}: the server refused the connection.`;
   if (code === "ECONNRESET") return `The connection to ${url.hostname} was interrupted.`;
-  if (typeof code === "string" && code.startsWith("ERR_TLS"))
-    return `The TLS handshake with ${url.hostname} failed.`;
-  if (
-    code === "CERT_HAS_EXPIRED" ||
-    code === "DEPTH_ZERO_SELF_SIGNED_CERT" ||
-    code === "UNABLE_TO_VERIFY_LEAF_SIGNATURE"
-  ) {
-    return `The TLS certificate of ${url.hostname} could not be verified.`;
+  if (code !== undefined && CERT_CODES.has(code)) {
+    return `The TLS certificate of ${url.hostname} could not be verified from here (something on this side, such as an antivirus or proxy that inspects HTTPS, may be in the way).`;
   }
+  if (code?.startsWith("ERR_TLS") === true || code?.startsWith("ERR_SSL") === true)
+    return `The TLS handshake with ${url.hostname} failed.`;
+  if (code === "ENETUNREACH" || code === "EHOSTUNREACH")
+    return `There is no network route from here to ${url.hostname} right now.`;
+  if (code === "ETIMEDOUT") return `The connection to ${url.hostname} timed out.`;
   return `Reading ${url.href} failed${error instanceof Error ? `: ${error.message}` : ""}.`;
 }
