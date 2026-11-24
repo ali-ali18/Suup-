@@ -41,6 +41,7 @@ import {
   SettingsSelect,
 } from "./parts.js";
 import { ServerGroup } from "./ServerGroup.js";
+import { UpdateGroup } from "./UpdateGroup.js";
 
 /** A setting of the app, drawn as one row: a quiet dropdown, or a switch for an on/off pair. */
 interface Choice<K extends keyof Settings> {
@@ -228,7 +229,7 @@ const ZONE_SOURCE: Record<"device" | "user" | "config" | "none", string> = {
 /**
  * Server (ServerGroup), how the app looks and behaves on this computer, the time zone, the
  * reception, the models and the limits (the last two read-only: the server has no endpoint to change
- * them).
+ * them), and the version of the app with its update (UpdateGroup, the desktop app only).
  */
 
 export function GeneralSettings({ title, titleId, onClose }: SectionProps) {
@@ -385,6 +386,7 @@ export function GeneralSettings({ title, titleId, onClose }: SectionProps) {
             />
           ))}
         </SettingsGroup>
+        <UpdateGroup />
       </PaneBody>
     </>
   );

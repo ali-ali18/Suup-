@@ -261,6 +261,7 @@ Decisão do dono (19/11/2026): "pode ser embutido no app, segue". O app de deskt
 - **Segredos no chaveiro** do sistema, passados ao filho só por variável de ambiente. A chave da Anthropic é digitada uma vez no app.
 - **Máquina dos bots:** Docker, se houver (`docker info`); as imagens são construídas dos Dockerfiles do app na primeira vez; sem Docker (ou sem alcançar a rede interna dele), sem isolamento, **dito na tela**. No Windows o sandbox `local` não tem shell (usa `/bin/sh`): sem Docker, os bots não têm terminal. Em aberto: provar o proxy de saída com o Docker Desktop (o endereço da rede interna fica dentro da VM do Docker) ou levá-lo para um contêiner.
 - **Instalador:** `.github/workflows/desktop-installer.yml` (NSIS no Windows, sem assinatura). Guia do dono: [USAR-NO-WINDOWS.md](USAR-NO-WINDOWS.md).
+- **Atualização automática** (aprovada pelo dono, 23/11/2026: "não preciso reinstalar nada, ele só atualiza"): o atualizador oficial do Tauri 2, com Releases do GitHub assinadas (minisign) publicadas como rascunho por `.github/workflows/release.yml`; o servidor embutido para antes do instalador e migra o banco na partida seguinte. Desligado até o dono pôr a chave pública. Base: [pesquisas/atualizador-do-app.md](pesquisas/atualizador-do-app.md); como funciona e o passo a passo do dono: [ATUALIZACAO.md](ATUALIZACAO.md).
 
 ### 4.13 Diagnóstico: de quem é o problema
 

@@ -39,7 +39,7 @@ const MAX_BACKOFF_SECS: u64 = 30;
 /// Um filho que ficou de pé tanto tempo zera a contagem de falhas.
 const STABLE_AFTER: Duration = Duration::from_secs(60);
 /// Quanto esperar o filho parar com calma ao sair (as execuções em andamento voltam à fila).
-const GRACEFUL_STOP: Duration = Duration::from_secs(40);
+pub const GRACEFUL_STOP: Duration = Duration::from_secs(40);
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -110,6 +110,11 @@ impl Local {
 
     fn snapshot(&self) -> LocalStatus {
         self.inner.lock().unwrap().status.clone()
+    }
+
+    /// O servidor deve estar de pé (foi iniciado e não foi parado de propósito)?
+    pub fn is_wanted(&self) -> bool {
+        self.inner.lock().unwrap().want
     }
 
     /// O app está saindo e o filho ainda precisa de uns instantes para parar.

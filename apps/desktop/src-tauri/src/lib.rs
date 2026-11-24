@@ -9,6 +9,7 @@
 
 use std::collections::HashMap;
 mod local;
+mod update;
 
 use std::fs;
 use std::path::PathBuf;
@@ -326,6 +327,8 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(update::Updates::default())
         .manage(Net::new())
         .manage(local.clone())
         .setup(|app| {
@@ -352,7 +355,11 @@ pub fn run() {
             local::local_connection,
             local::local_set_api_key,
             local::local_open_logs,
-            local::local_database_url
+            local::local_database_url,
+            update::update_info,
+            update::update_check,
+            update::update_download,
+            update::update_install
         ])
         .build(tauri::generate_context!())
         .expect("erro ao iniciar o Suup");
