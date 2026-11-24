@@ -611,7 +611,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("routines through the API"), { timeou
     const hidden = await w.db.sql<{ id: string; next_run_at: Date; schedule: unknown }[]>`
       select id, next_run_at, schedule from routines where bot_id = ${bot.id} and reminder`;
     expect(hidden).toHaveLength(1);
-    const [reminder] = hidden as [{ id: string; next_run_at: Date; schedule: unknown }];
+    const reminder = hidden[0] as { id: string; next_run_at: Date; schedule: unknown };
     expect(reminder.schedule).toEqual({ kind: "once", date: LATER, time: "19:00" });
     expect(reminder.next_run_at.toISOString()).toBe(`${LATER}T22:00:00.000Z`);
     // never reachable by id through the API either
