@@ -24,7 +24,6 @@ import {
   FieldLabel,
   FormRow,
   FormStack,
-  fieldControlClass,
   IconButton,
   Notice,
   Pill,

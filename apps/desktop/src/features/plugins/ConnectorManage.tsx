@@ -16,16 +16,7 @@ import { RUNS_IN_LABEL } from "../../lib/network.js";
 import { reviewNotice } from "../../lib/tool-review.js";
 import { Dropdown, type DropdownOption } from "../../ui/dropdown.js";
 import { Input } from "../../ui/input.js";
-import {
-  Dialog,
-  FieldError,
-  fieldControlClass,
-  Notice,
-  Pill,
-  PlainText,
-  Tag,
-  Toggle,
-} from "../../ui/primitives.js";
+import { Dialog, FieldError, Notice, Pill, PlainText, Tag, Toggle } from "../../ui/primitives.js";
 import { ConnectorGrants } from "../settings/ConnectorGrants.js";
 import { ConnectorNetwork } from "../settings/ConnectorNetwork.js";
 import {
