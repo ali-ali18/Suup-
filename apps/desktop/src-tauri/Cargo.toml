@@ -1,6 +1,6 @@
 [package]
 name = "suup-desktop"
-version = "0.0.0"
+version = "0.1.0-beta"
 description = "Suup: app de desktop do harness agêntico"
 edition = "2021"
 rust-version = "1.77"
