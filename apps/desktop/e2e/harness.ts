@@ -125,7 +125,20 @@ export const SCRIPTS = {
             ],
             delayMs: 300,
           }),
-          s({ calls: [{ name: "send_file", args: { path: "pesquisa/historia_pucpr.pdf" } }] }),
+          // A tiny stand-in PDF: the delivery check refuses it (no page, no font), so the script hands it
+          // over the way the bot may when the user asked for exactly this, with `force` and the reason.
+          s({
+            calls: [
+              {
+                name: "send_file",
+                args: {
+                  path: "pesquisa/historia_pucpr.pdf",
+                  force: true,
+                  reason: "o dono pediu um PDF mínimo de teste",
+                },
+              },
+            ],
+          }),
           s({ text: "Pronto: o PDF com a história da PUCPR está aqui embaixo." }),
         ],
       },
