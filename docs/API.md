@@ -143,6 +143,16 @@ A mensagem do bot que **é uma pergunta** (o `escalate` do bot, ou o desempate d
 - **Enviar** usa as regras da conversa ([MEMORIA.md](MEMORIA.md)): sem execução ativa, a mensagem abre uma (`queuedForRun: false`, `run.status` `queued`); com uma ativa, a mensagem entra na caixa dela (`queuedForRun: true`, `message.status` `sent`, e vira `delivered` quando o bot a lê no próximo ponto seguro); se o bot tinha feito uma pergunta, a mensagem **é a resposta**. Uma execução **pausada** guarda a mensagem até ser retomada.
 - **Marcar como lida** leva `lastReadSeq` até `upToSeq` (ou até a última mensagem, sem corpo). Nunca anda para trás, e um número além do fim vale o fim.
 
+### Arquivos que o bot entrega
+
+Quando o bot faz um arquivo para você (um PDF, uma planilha), ele o entrega com a ferramenta `send_file` (risco `read`: o arquivo vai para o seu chat, no seu servidor; [pesquisa](pesquisas/arquivos-no-chat.md)). O servidor copia o arquivo da máquina do bot (só de dentro do workspace dele, com as mesmas checagens de caminho e de link simbólico; até **25 MB**) e o guarda no banco (tabela `files`, migração 0030: o dump do banco já o leva no backup). A **próxima mensagem do bot (ou do sistema) da mesma execução** traz `attachments`: `[{ id, name, mime, size, kind }]`, do mais antigo ao mais novo. `mime` é o tipo que o harness detectou (assinatura dos primeiros bytes e extensão, por tabela exata); `kind` (`pdf`, `image`, `document`, `spreadsheet`, `presentation`, `text`, `archive`, `audio`, `video`, `other`) escolhe o ícone. Nas demais mensagens o campo não existe.
+
+| Método e caminho | Resposta |
+|---|---|
+| `GET /v1/files/{id}` | `200` com os bytes do arquivo: `Content-Type` (o `mime`), `Content-Disposition: attachment; filename="…"; filename*=UTF-8''…` (sempre um download, nunca aberto no navegador), `X-Content-Type-Options: nosniff` e `Content-Security-Policy: sandbox`; `401` sem token; `404` |
+
+No cliente: `api.files.download(id)` devolve os bytes (`Uint8Array`) e `api.files.url(id)` o endereço (o token vai no cabeçalho `Authorization`, nunca no endereço).
+
 ---
 
 ## Execuções

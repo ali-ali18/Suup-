@@ -295,7 +295,7 @@ Uma tela separada do chat, para quando algo dá errado. A API serve os mesmos c�
 | Tela | Dados |
 |---|---|
 | Lista de bots | `GET /v1/bots` (cada bot já traz `latestRun` e `unreadCount`) e o stream (`run.updated`, `conversation.updated`, `bot.updated`) |
-| Conversa | `GET /v1/conversations/{id}/messages` e `GET /v1/runs/{id}/events?view=chat`; no stream, `message.*` e `run.event` |
+| Conversa | `GET /v1/conversations/{id}/messages` e `GET /v1/runs/{id}/events?view=chat`; no stream, `message.*` e `run.event`. Os arquivos que o bot entregou (`message.attachments`) viram o cartão de arquivo embaixo da mensagem, e `GET /v1/files/{id}` os baixa ([API.md](API.md), "Arquivos que o bot entrega") |
 | Sala de grupo | O mesmo, com vários bots |
 | Recepção e equipe | `POST /v1/bots/{id}/reception` (ao abrir o chat), `POST /v1/bots/{id}/reception/reset` (Configurações), `POST /v1/messages/{id}/team` (o cartão de equipe, [RECEPCAO.md](RECEPCAO.md)), `GET /v1/info` (fuso, só leitura) |
 | Criar e editar bot | `GET /v1/models`, `GET /v1/tools`, `POST /v1/bots`, `PATCH /v1/bots/{id}`, `POST /v1/bots/draft` |

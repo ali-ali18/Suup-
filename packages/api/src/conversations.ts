@@ -1,3 +1,4 @@
+import { FILE_KINDS } from "@suup/core/files";
 import { z } from "zod";
 import { botColorSchema, botSchema } from "./bots.js";
 import { boolQuery, intQuery, isoDate, list, uuid } from "./common.js";
@@ -51,6 +52,20 @@ export const teamProposalSchema = z.object({
 });
 export type TeamProposal = z.infer<typeof teamProposalSchema>;
 
+/**
+ * A file a bot message carries (`send_file`): what the chat draws (`kind` picks the icon, from the
+ * MIME type by an exact table) and what `GET /v1/files/:id` downloads.
+ */
+export const messageAttachmentSchema = z.object({
+  id: uuid,
+  name: z.string(),
+  mime: z.string(),
+  /** Bytes. */
+  size: z.number().int().nonnegative(),
+  kind: z.enum(FILE_KINDS),
+});
+export type MessageAttachment = z.infer<typeof messageAttachmentSchema>;
+
 export const messageSchema = z.object({
   id: uuid,
   conversationId: uuid,
@@ -78,6 +93,8 @@ export const messageSchema = z.object({
    * of the message, never part of `text`; the bot is told which routine it is.
    */
   routineRef: z.exactOptional(z.object({ id: uuid })),
+  /** Only on a bot (or system) message whose run sent files: the files, oldest first. */
+  attachments: z.exactOptional(z.array(messageAttachmentSchema)),
 });
 export type Message = z.infer<typeof messageSchema>;
 
