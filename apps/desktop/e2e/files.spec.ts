@@ -75,7 +75,7 @@ test.describe("files in the chat, collapsed rows, the question apart", () => {
     await expect(rows.nth(0)).toHaveAttribute("data-expanded", "false");
   });
 
-  test("a question: the bot's words in the bubble, the question as the card's title, the X and the hint", async ({
+  test("a question: the bot's words in the bubble, the question as the card's title, the hint; the X locks it", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -112,16 +112,30 @@ test.describe("files in the chat, collapsed rows, the question apart", () => {
     await page.mouse.move(0, 0);
     await page.screenshot({ path: "screenshots/1440x900@2x/pergunta-separada.png" });
 
-    // The X: the card goes away, the composer takes the focus, and typing answers.
+    // The X: the card STAYS, locked ("Não respondido"), its title visible, the options off, and the
+    // composer takes the focus. The run is told and goes on by itself.
     await card.getByRole("button", { name: "Fechar e responder no chat" }).click();
-    await expect(page.getByTestId("question-card")).toHaveCount(0);
-    await expect(page.getByTestId("question-hint")).toHaveCount(0);
     const composer = page.getByLabel("Mensagem", { exact: true });
     await expect(composer).toBeFocused();
-    await composer.fill("Pode fazer sem fontes mesmo.");
-    await composer.press("Enter");
+    await expect(card).toHaveAttribute("data-state", "dismissed");
+    await expect(card).toBeVisible();
+    await expect(card.getByTestId("question-text")).toBeVisible();
+    await expect(card.getByTestId("question-text")).toHaveText("Como você prefere seguir?");
+    await expect(card.getByTestId("question-status")).toHaveText("Não respondido");
+    for (const option of await card.getByTestId("question-option").all()) {
+      await expect(option).toBeDisabled();
+      await expect(option).toHaveAttribute("aria-checked", "false");
+    }
+    await expect(page.getByTestId("question-hint")).toHaveCount(0);
     await expect(page.getByTestId("message-bot").filter({ hasText: "Combinado." })).toBeVisible();
-    // Answered, the card is back in the history, dimmed (typed: nothing marked).
-    await expect(page.getByTestId("question-card")).toHaveAttribute("data-state", "answered");
+    await page.evaluate(() => document.fonts.ready);
+    await page.mouse.move(0, 0);
+    await page.screenshot({ path: "screenshots/1440x900@2x/pergunta-nao-respondida.png" });
+    // In the history (after a reload) the card is the same: locked, "Não respondido".
+    await page.reload();
+    await page.locator('[data-testid="bot-item"][data-bot="Cores"]').click();
+    await expect(page.getByTestId("question-card")).toHaveAttribute("data-state", "dismissed");
+    await expect(page.getByTestId("question-status")).toHaveText("Não respondido");
+    await expect(page.getByTestId("question-text")).toHaveText("Como você prefere seguir?");
   });
 });

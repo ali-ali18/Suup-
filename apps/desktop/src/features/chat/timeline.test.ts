@@ -372,6 +372,10 @@ describe("buildTimeline: a question's bubble is only what the bot wrote besides 
     const item = ask({ questions });
     expect(item?.kind === "bot" && item.ask?.lead).toBe(undefined);
   });
+  it("closed with the X: not open, dismissed (the card stays, locked)", () => {
+    const item = ask({ questions, dismissed: true });
+    expect(item?.kind === "bot" && item.ask).toMatchObject({ open: false, dismissed: true });
+  });
   it("the lead the server declares is the bubble", () => {
     const item = ask({ questions, lead: "A busca está fora do ar." });
     expect(item?.kind === "bot" && item.ask?.lead).toBe("A busca está fora do ar.");
@@ -421,6 +425,7 @@ describe("bubblePositions: consecutive text bubbles of one sender form a group",
         questions: [{ question: "Qual?", options: [{ label: "A" }, { label: "B" }] }],
         answer: undefined,
         open: true,
+        dismissed: false,
         tieBreak: false,
       },
     }) as TimelineItem;
@@ -433,6 +438,7 @@ describe("bubblePositions: consecutive text bubbles of one sender form a group",
         questions: [{ question: "E então?" }],
         answer: undefined,
         open: true,
+        dismissed: false,
         tieBreak: false,
       },
     }) as TimelineItem;

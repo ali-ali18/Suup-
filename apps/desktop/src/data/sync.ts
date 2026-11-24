@@ -356,6 +356,19 @@ export class Sync {
     }
   }
 
+  /**
+   * The X of a question card: the server locks the card ("Não respondido") and tells the run. The
+   * card changes when the server answers (nothing optimistic); a refusal is one friendly sentence.
+   */
+  async dismissQuestion(messageId: string): Promise<void> {
+    try {
+      const message = await this.deps.api.conversations.dismissQuestion(messageId);
+      update(this.store, (s) => upsertMessage(s, message));
+    } catch (error) {
+      this.deps.onError?.(friendlyError(error));
+    }
+  }
+
   /** From now on the conversation is on screen: fetch it and keep it fresh on `resync`. */
   async watchConversation(conversationId: string): Promise<void> {
     this.watched.add(conversationId);

@@ -18,6 +18,8 @@ export type TimelineItem =
         answer: string | undefined;
         /** The run still waits for the reply. */
         open: boolean;
+        /** The user closed the card with its X (`message.question.dismissed`): locked, "Não respondido". */
+        dismissed: boolean;
         tieBreak: boolean;
         /**
          * What the bot wrote besides the question (`message.question.lead`, from the server), for a
@@ -193,7 +195,11 @@ export function buildTimeline(
         ask: {
           questions: message.question.questions,
           answer: reply?.text,
-          open: reply === undefined && run?.status === "waiting_user",
+          open:
+            reply === undefined &&
+            run?.status === "waiting_user" &&
+            message.question.dismissed !== true,
+          dismissed: message.question.dismissed === true,
           tieBreak: message.question.reason === "review_tie_break",
           // What the bot wrote besides the question, as the server declares it (never compared).
           ...(message.question.lead === undefined ? {} : { lead: message.question.lead }),

@@ -22,6 +22,11 @@ export interface QuestionCardProps {
   questions: readonly Question[];
   /** The text of the user's reply, once there is one: the card is then dimmed and inert. */
   answer?: string | undefined;
+  /**
+   * The user closed the card with its X: it stays where it is, locked (no option can be chosen),
+   * the question still its title, and a muted "Não respondido". Wins over `answer`.
+   */
+  dismissed?: boolean;
   /** Move the focus into the card when it appears (the caller says whether the user is typing). */
   autoFocus?: boolean;
   disabled?: boolean;
@@ -56,6 +61,7 @@ export function userIsTyping(active: Element | null = document.activeElement): b
 export function QuestionCard({
   questions,
   answer,
+  dismissed,
   autoFocus,
   disabled,
   onSubmit,
@@ -66,7 +72,8 @@ export function QuestionCard({
   const [others, setOthers] = useState<string[]>(() => questions.map(() => ""));
   const rootId = useId();
   const ref = useRef<HTMLDivElement>(null);
-  const answered = answer !== undefined;
+  const locked = dismissed === true;
+  const answered = answer !== undefined || locked;
   const count = questions.length;
   const quick = count === 1 && questions[0]?.multiple !== true;
 
@@ -78,7 +85,8 @@ export function QuestionCard({
     if (autoFocus === true && !answered && !userIsTyping()) focusOnAppearance(ref.current);
   }, []);
 
-  const parsed: QuestionAnswer[] | null = answered ? parseAnswerText(questions, answer) : null;
+  const parsed: QuestionAnswer[] | null =
+    answer !== undefined && !locked ? parseAnswerText(questions, answer) : null;
 
   const submit = (nextPicks: string[][] = picks, nextOthers: string[] = others) => {
     const answers = questions.map((_, i): QuestionAnswer => {
@@ -227,6 +235,21 @@ export function QuestionCard({
       </div>
     );
   };
+
+  if (locked) {
+    // Closed with the X: in place, locked; the title stays as it is, the options are off, and one
+    // muted status in plain words. Typing in the chat still answers (that is the bot's business).
+    return (
+      <div className={CARD} data-testid="question-card" data-state="dismissed" aria-disabled="true">
+        <div className="flex flex-col gap-3 [&_[data-testid=question-option]]:opacity-55">
+          {questions.map((q, i) => renderQuestion(q, i, true))}
+        </div>
+        <p className="text-small text-text-muted" data-testid="question-status">
+          Não respondido
+        </p>
+      </div>
+    );
+  }
 
   if (answered) {
     return (

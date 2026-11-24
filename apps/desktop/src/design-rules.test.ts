@@ -589,9 +589,17 @@ describe("chat cards share one chrome and one collapsed row", () => {
     // The same in Pendências.
     const pending = read(join(SRC, "features", "pending", "PendingScreen.tsx"));
     expect(pending).toContain("ask.question.lead !== undefined &&");
-    // The X at the top right: close the card and answer in the chat (only an open card has it).
+    // The X at the top right: the card STAYS, locked, with "Não respondido" (owner, 24/11/2026); the
+    // server records it (`question.dismissed`) and tells the run. The chat never hides the card.
     expect(card).toContain('aria-label="Fechar e responder no chat"');
     expect(card).toContain("!readOnly && onDismiss !== undefined");
+    expect(card).toContain('data-state="dismissed"');
+    expect(card).toContain("Não respondido");
+    expect(list).toContain("dismissed={item.ask.dismissed}");
+    expect(list).not.toContain("dismissed?.has(");
+    expect(read(join(SRC, "data", "sync.ts"))).toContain(
+      "api.conversations.dismissQuestion(messageId)",
+    );
     // Under the card, OUTSIDE it: a plain muted line, not a button nor a link.
     const hint = list.slice(
       list.indexOf('data-testid="question-hint"') - 120,

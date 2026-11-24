@@ -34,6 +34,8 @@ export interface MessageQuestion {
    * Absent when it only asked: the card, whose title is the question, is then all there is.
    */
   lead?: string;
+  /** The user closed the card with its X: no option will be chosen (`dismissQuestion`). */
+  dismissed?: boolean;
 }
 
 /** A file a bot message shows (`send_file`): what the chat draws; the content is in `files`. */
@@ -178,6 +180,7 @@ const questionSchema = z.object({
     .max(5),
   reason: z.exactOptional(z.literal("review_tie_break")),
   lead: z.exactOptional(z.string().min(1)),
+  dismissed: z.exactOptional(z.boolean()),
 });
 
 export const teamProposalItemSchema = z.object({

@@ -7,6 +7,7 @@ import {
 } from "@suup/api";
 import {
   decideTeamProposal,
+  dismissQuestion,
   getBotSummary,
   getConversation,
   listActiveConversationRuns,
@@ -14,6 +15,7 @@ import {
   listConversations,
   listMessages,
   markConversationRead,
+  QuestionDismissError,
   TeamProposalError,
 } from "@suup/db";
 import { sendMessage } from "@suup/runtime";
@@ -160,6 +162,29 @@ export const conversationRoutes: Route[] = [
                 : "conflict",
             error.message,
             { cause: error },
+          );
+        }
+        throw error;
+      }
+    },
+  },
+  {
+    // The X of a question card: the user will not pick an option (docs/API.md, "Fechar a pergunta").
+    // The card stays, locked; the run is told and goes on; typing in the chat still answers.
+    method: "POST",
+    pattern: "/v1/messages/:id/dismiss",
+    async handler(ctx) {
+      try {
+        const { message } = await dismissQuestion(ctx.runtime.db, ctx.uuid("id"));
+        return { body: { message: toMessageDto(message) } };
+      } catch (error) {
+        if (error instanceof QuestionDismissError) {
+          throw new HttpError(
+            error.code === "not_found" ? "not_found" : "conflict",
+            error.message,
+            {
+              cause: error,
+            },
           );
         }
         throw error;
