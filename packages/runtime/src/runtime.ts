@@ -15,6 +15,7 @@ import {
   type Executor,
   type LoopDeps,
   type NativeToolSearch,
+  type OutgoingFile,
   type Provider,
   ProviderError,
   planToolSearch,
@@ -42,6 +43,7 @@ import {
   getMemorySettings,
   getRun,
   getUserSettings,
+  insertFile,
   listBots,
   listConnectorsForBot,
   PgRunQueue,
@@ -64,7 +66,12 @@ import {
   NetworkedExecutor,
   startEgressContainer,
 } from "@suup/sandbox";
-import { networkTools, registerBuiltinTools, requestNetworkAccessTool } from "@suup/tools";
+import {
+  networkTools,
+  registerBuiltinTools,
+  requestNetworkAccessTool,
+  sendFileTool,
+} from "@suup/tools";
 import {
   configuredTimeZone,
   DEFAULT_CONNECTOR_IMAGE,
@@ -367,6 +374,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
   const newRegistry = (): ToolRegistry => {
     const registry = registerBuiltinTools(new ToolRegistry(registryOptions));
     if (config.sandbox.kind === "docker") for (const tool of networkTools) registry.register(tool);
+    registry.register(sendFileTool);
     return registry;
   };
   const tools = newRegistry();
@@ -795,6 +803,19 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
       ? { ...botCfg, allowedTools: [...botCfg.allowedTools, requestNetworkAccessTool.name] }
       : botCfg;
 
+  /**
+   * A bot with a machine (a terminal or files) can always hand a file it made to the user's chat
+   * (`send_file`, a read: the file goes to the user's own chat). Built in and always loaded, like the
+   * network tool, so a bot created before the tool existed has it too. One function for the run and
+   * for the measurement.
+   */
+  const withSendFileTool = <C extends { allowedTools: string[] }>(botCfg: C): C =>
+    !botCfg.allowedTools.includes(sendFileTool.name) &&
+    (botCfg.allowedTools.includes("shell") ||
+      FILE_TOOL_NAMES.some((name) => botCfg.allowedTools.includes(name)))
+      ? { ...botCfg, allowedTools: [...botCfg.allowedTools, sendFileTool.name] }
+      : botCfg;
+
   /** How the connector tools of a bot reach its model (see `docs/CONFIGURACAO.md`, `toolSearch`). */
   const toolSearchSetup = (
     candidates: BotConnectorCandidate[],
@@ -885,7 +906,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
         botCfg = { ...cfg, allowedTools: [...cfg.allowedTools, ...names] };
         toolSearch = toolSearchSetup(offered.candidates, bot.modelId);
       }
-      botCfg = withNetworkTool(botCfg);
+      botCfg = withSendFileTool(withNetworkTool(botCfg));
       connectorNames = [
         ...new Set((await listConnectorsForBot(handle, bot.id)).map((c) => c.name)),
       ];
@@ -1049,6 +1070,25 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
             },
           }),
       webFor: () => web.access,
+      // The files a run sends wait in the database for the run's next message in the chat. An
+      // evaluation (isolated) has no chat: the tool says so.
+      ...(guarded
+        ? {
+            filesFor: (record: { botId: string; id: string }) => ({
+              send: async (file: OutgoingFile, callId: string) => {
+                const { file: stored } = await insertFile(handle, {
+                  botId: record.botId,
+                  runId: record.id,
+                  callId,
+                  name: file.name,
+                  mime: file.mime,
+                  content: file.bytes,
+                });
+                return { id: stored.id };
+              },
+            }),
+          }
+        : {}),
       ...(sandbox.kind === "docker" && guarded
         ? {
             networkFor: (record: { botId: string; id: string }) => ({
@@ -1083,7 +1123,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     async toolReport(botId) {
       const bot = await getBot(runtime.db, botId);
       if (bot === null) throw new RuntimeError("bot_not_found", `Bot ${botId} não encontrado.`);
-      const cfg = withNetworkTool(botConfig(bot));
+      const cfg = withSendFileTool(withNetworkTool(botConfig(bot)));
       const offered = await connectors.toolsForBot(bot.id);
       const reg = newRegistry();
       const connectorNames = new Set<string>();
