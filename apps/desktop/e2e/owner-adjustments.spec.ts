@@ -113,4 +113,49 @@ test.describe("owner adjustments", () => {
       await context.close();
     });
   }
+
+  test("the three avatar styles side by side: shapes, pixel 2D and pixel 3D (and the star on a pixel Principal)", async ({
+    browser,
+  }) => {
+    const { api } = world;
+    const principal = (await api.bots.list()).find((b) => b.isDefault);
+    if (principal !== undefined)
+      await api.bots.update(principal.id, {
+        avatarStyle: "pixel",
+        avatar: "mascot:gato",
+        avatarPixel3d: false,
+        color: null,
+      });
+    await freshBot(world, "Formas", { avatar: "mascot:blob", color: "laranja" });
+    await freshBot(world, "Pixel 2D", { avatarStyle: "pixel", avatar: "mascot:folha" });
+    await freshBot(world, "Pixel 3D", {
+      avatarStyle: "pixel",
+      avatar: "mascot:robo",
+      avatarPixel3d: true,
+    });
+    const context = await browser.newContext({
+      viewport: { width: 1440, height: 900 },
+      deviceScaleFactor: 2,
+      locale: "pt-BR",
+    });
+    const page = await context.newPage();
+    const shot = async (name: string) => {
+      await page.evaluate(() => document.fonts.ready);
+      await page.waitForTimeout(500);
+      await page.screenshot({ path: `screenshots/1440x900@2x/${name}.png` });
+    };
+    await openFramed(page, world);
+    for (const name of ["Formas", "Pixel 2D", "Pixel 3D"])
+      await expect(botItem(page, name)).toBeVisible();
+    await expect(botItem(page, "Pixel 3D").locator('[data-pixel3d="true"]')).toBeAttached();
+    await expect(botItem(page, "Principal").locator('[data-mascot-style="pixel"]')).toBeAttached();
+    await expect(botItem(page, "Principal").getByTestId("supervisor-star")).toBeVisible();
+    await botItem(page, "Pixel 3D").click();
+    await page.mouse.move(720, 450);
+    await shot("38-estilos-de-avatar-barra");
+    await page.keyboard.press("Control+b");
+    await expect(page.getByTestId("sidebar")).toHaveAttribute("data-collapsed", "true");
+    await shot("39-estilos-de-avatar-trilho");
+    await context.close();
+  });
 });

@@ -38,6 +38,15 @@ import {
 } from "../../ui/primitives.js";
 import { BotNetwork } from "./BotNetwork.js";
 
+/**
+ * One cell of the mascot grid (owner, 24/11/2026): no box behind the chosen one or on hover; the
+ * choice is only the discreet outline that follows the mascot's own shape (`picked`), and the hover
+ * a small scale, eased. The cell is a whole column of the grid (6 per row), wider than
+ * the mascot, so the mascots breathe; the mascot keeps its size (`size-11` inside).
+ */
+const MASCOT_CELL =
+  "flex h-14 w-full items-center justify-center border-0 bg-transparent p-0 *:size-11 transition-[scale] duration-(--duration-base) ease-out";
+
 /** The colour a new bot starts with (shapes style; pixel starts with its own drawing's colours). */
 export const DEFAULT_NEW_COLOR: BotColor = "branco";
 
@@ -277,7 +286,7 @@ export function NewBotDialog() {
             aria-label="Mascote"
             data-testid="newbot-mascots"
             data-style={style}
-            className="flex flex-wrap justify-center gap-3"
+            className="grid grid-cols-6 justify-items-stretch"
           >
             {style === "pixel"
               ? PIXELS.map((m) => (
@@ -287,10 +296,7 @@ export function NewBotDialog() {
                     role="radio"
                     aria-checked={pixel === m.id}
                     aria-label={m.name}
-                    className={cx(
-                      "size-14 rounded-card border-[1.5px] border-transparent p-1.5",
-                      pixel === m.id ? "bg-raised" : "bg-transparent hover:bg-hover",
-                    )}
+                    className={cx(MASCOT_CELL, pixel === m.id ? "" : "hover:scale-105")}
                     onClick={() => setPixel(m.id)}
                   >
                     <PixelMascot
@@ -309,10 +315,7 @@ export function NewBotDialog() {
                     role="radio"
                     aria-checked={mascot === m.id}
                     aria-label={m.name}
-                    className={cx(
-                      "size-14 rounded-card border-[1.5px] border-transparent p-1.5",
-                      mascot === m.id ? "bg-raised" : "bg-transparent hover:bg-hover",
-                    )}
+                    className={cx(MASCOT_CELL, mascot === m.id ? "" : "hover:scale-105")}
                     onClick={() => setMascot(m.id)}
                   >
                     <Mascot

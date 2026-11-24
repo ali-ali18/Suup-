@@ -1310,7 +1310,8 @@ describe("nada seco: nada aparece, some ou corta de repente (docs/DESIGN.md §1,
       const lists = classLists(read(file));
       // a variant map (a tone) carries the hover; the piece's base class carries the transition
       const baseFades = lists.some(
-        (l) => l.includes("transition-[background-color,opacity]") || l.includes("transition-all"),
+        (l) =>
+          l.includes("transition-all") || (l.includes("transition-[") && l.includes("opacity")),
       );
       for (const [index, list] of lists.entries()) {
         const words = list.split(" ");
@@ -1383,6 +1384,10 @@ describe("ajustes do dono de 23/11/2026 (docs/DESIGN.md §2, §4a, §4c, §5, §
     const dialog = read(join(SRC, "features", "new-bot", "NewBotDialog.tsx"));
     expect(dialog).toContain('DEFAULT_NEW_COLOR: BotColor = "branco"');
     expect(dialog).not.toContain("ring-text");
+    // the mascot grid: no box behind the chosen one or on hover, wide cells (6 columns)
+    expect(dialog).toContain("grid grid-cols-6");
+    expect(dialog).not.toContain('? "bg-raised" : "bg-transparent hover:bg-hover"');
+    expect(dialog).toContain("hover:scale-105");
     expect(read(join(SRC, "styles", "tokens.css"))).toContain("var(--color-picked-ring)");
   });
 
