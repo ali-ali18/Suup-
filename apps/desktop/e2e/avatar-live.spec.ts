@@ -88,6 +88,29 @@ test.describe("the live avatar in the chat", () => {
     });
   }
 
+  test("a finished conversation shows results only: the bot's words and the approval line, no tool rows", async ({
+    page,
+  }) => {
+    await freshBot(world, "Vivo Resultado", { avatar: "mascot:blob", color: "azul" });
+    await openApp(page, world);
+    await selectBot(page, "Vivo Resultado");
+    await send(page, "CASE-APPROVE escreva o arquivo");
+    const card = page.getByTestId("approval-card");
+    await expect(card).toHaveAttribute("data-state", "needs-action");
+    await card.getByTestId("approval-approve").click();
+    await expect(
+      page.getByTestId("message-bot").filter({ hasText: "Escrevi o arquivo aprovado." }),
+    ).toBeVisible();
+    await expect(indicator(page)).toHaveCount(0);
+    // What stays: the approval's one line (decided) and the bot's message; no row of the tool.
+    await expect(card).toHaveCount(1);
+    await expect(card).toHaveAttribute("data-state", "done");
+    await expect(page.getByTestId("action-card")).toHaveCount(0);
+    await expect(page.getByTestId("action-fold")).toHaveCount(0);
+    await page.mouse.move(0, 0);
+    await page.screenshot({ path: `${SHOTS}resultados-so-1-conversa-pronta.png` });
+  });
+
   test("reduced motion: the face is still, and the avatar still shows and leaves", async ({
     page,
   }) => {

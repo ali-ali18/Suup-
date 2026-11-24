@@ -15,7 +15,7 @@ test.describe("the app converges", () => {
   test("a reload in the middle of a run ends in the same state", async ({ page }) => {
     await openWithBot(page, world, "Recarga");
     await send(page, "CASE-LONG recarregue no meio");
-    await expect(page.getByTestId("action-card").first()).toBeVisible();
+    await expect(page.getByTestId("working-indicator")).toBeVisible();
     await page.reload();
     // The page starts again on the main bot; the conversation is the server's, not the page's.
     await expect(page.getByTestId("sidebar")).toBeVisible();
@@ -29,9 +29,9 @@ test.describe("the app converges", () => {
       page.getByTestId("message-bot").filter({ hasText: "Terminei os oito passos." }),
     ).toBeVisible({ timeout: 90_000 });
     await expect(page.getByTestId("working-indicator")).toHaveCount(0);
-    // Eight finished cards: the latest three, and the five older ones folded into one row.
-    await expect(page.getByTestId("action-fold")).toContainText("Mais 5 ações");
-    await expect(page.getByTestId("action-card")).toHaveCount(3);
+    // Eight tool calls ran and none of them is a row: the chat shows results only.
+    await expect(page.getByTestId("action-card")).toHaveCount(0);
+    await expect(page.getByTestId("action-fold")).toHaveCount(0);
     // The server agrees: one run, done, eight tool calls.
     const bot = (await world.api.bots.list()).find((b) => b.name === "Recarga");
     expect(bot?.latestRun?.status).toBe("done");
@@ -48,11 +48,11 @@ test.describe("the app converges", () => {
   }) => {
     await openWithBot(page, world, "Reinicio");
     await send(page, "CASE-LONG reinicie o servidor");
-    await expect(page.getByTestId("action-card").first()).toBeVisible();
+    await expect(page.getByTestId("working-indicator")).toBeVisible();
     await world.stopServer();
     // While it is down the app says so, and keeps what it had.
     await expect(page.getByTestId("connection-banner")).toContainText("Reconectando");
-    await expect(page.getByTestId("action-card").first()).toBeVisible();
+    await expect(page.getByTestId("working-indicator")).toBeVisible();
     // The worker is another process: the run goes on without the server.
     await world.startServer();
     await expect(page.getByTestId("connection-banner")).toHaveCount(0);
@@ -60,7 +60,8 @@ test.describe("the app converges", () => {
       page.getByTestId("message-bot").filter({ hasText: "Terminei os oito passos." }),
     ).toBeVisible({ timeout: 90_000 });
     await expect(page.getByTestId("working-indicator")).toHaveCount(0);
-    await expect(page.getByTestId("action-fold")).toContainText("Mais 5 ações");
+    await expect(page.getByTestId("action-card")).toHaveCount(0);
+    await expect(page.getByTestId("action-fold")).toHaveCount(0);
     await expect(userBubbles(page)).toHaveCount(1);
     // Sending still works afterwards.
     await send(page, "OI-SIMPLES depois do reinício");

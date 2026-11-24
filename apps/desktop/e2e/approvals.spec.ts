@@ -19,6 +19,9 @@ import {
 // The decision card (waiting for you) and the row of a call (what the bot did, an approval merged in).
 const card = (page: Page) => page.getByTestId("approval-card");
 const row = (page: Page) => page.getByTestId("action-card");
+// A tool call leaves no row in the chat any more (docs/DESIGN.md "O chat mostra só resultados"):
+// only the approval line stays, and the steps live in the Inspector.
+const expectNoToolRows = (page: Page) => expect(row(page)).toHaveCount(0);
 const botMessage = (page: Page, text: string) =>
   page.getByTestId("message-bot").filter({ hasText: text });
 
@@ -104,12 +107,12 @@ test.describe("approval cards", () => {
     // Confirmed: ONE line for the call, with the decision and the execution together, closed; the run
     // goes on and the bot says so. The decision card is gone and no second row stands for the tool.
     await expect(botMessage(page, "Escrevi o arquivo aprovado.")).toBeVisible();
-    await expect(card(page)).toHaveCount(0);
-    await expect(row(page)).toHaveCount(1);
-    await expect(row(page)).toHaveAttribute("data-state", "done");
-    await expect(row(page)).toContainText("Arquivo");
-    await expect(row(page)).toContainText("Aprovado e concluído · Escrever aprovado.txt");
-    await expect(row(page).getByRole("button", { name: /Aprovado/ })).toHaveAttribute(
+    await expectNoToolRows(page);
+    await expect(card(page)).toHaveCount(1);
+    await expect(card(page)).toHaveAttribute("data-state", "done");
+    await expect(card(page)).toContainText("Arquivo");
+    await expect(card(page)).toContainText("Aprovado · Escrever aprovado.txt");
+    await expect(card(page).getByRole("button", { name: /Aprovado/ })).toHaveAttribute(
       "aria-expanded",
       "false",
     );
@@ -117,7 +120,7 @@ test.describe("approval cards", () => {
     // The row's chevron shows only on hover and on keyboard focus, and the row expands to what was
     // approved and what ran, and collapses again.
     await page.mouse.move(0, 0);
-    const resolved = row(page);
+    const resolved = card(page);
     const rowButton = resolved.getByRole("button").first();
     const chevron = resolved.locator('[data-testid="action-chevron"]');
     await expect(chevron).toHaveCSS("opacity", "0");
@@ -136,25 +139,25 @@ test.describe("approval cards", () => {
     await expect(chevron).toHaveCSS("opacity", "1");
     await rowButton.blur();
     await rowButton.click();
-    await expect(row(page).getByRole("region")).toContainText("Você aprovou");
+    await expect(card(page).getByRole("region")).toContainText("Você aprovou");
     // What was approved, exactly, and what the tool answered.
-    await expect(row(page).getByTestId("arg-value").first()).toHaveText("aprovado.txt");
-    await expect(row(page).getByTestId("arg-value").nth(1)).toHaveText(
+    await expect(card(page).getByTestId("arg-value").first()).toHaveText("aprovado.txt");
+    await expect(card(page).getByTestId("arg-value").nth(1)).toHaveText(
       /conteúdo aprovado\s+segunda linha/,
     );
-    await expect(row(page).getByTestId("action-output")).toBeVisible();
-    await expect(row(page).getByRole("button")).toHaveCount(1);
+    await expect(card(page).getByTestId("action-output")).toHaveCount(0);
+    await expect(card(page).getByRole("button")).toHaveCount(1);
     await rowButton.click();
-    await expect(row(page).getByRole("region")).toHaveCount(0);
+    await expect(card(page).getByRole("region")).toHaveCount(0);
     // Nothing waits any more: the badge, the counter and the avatar went back.
     await expect(botItem(page, "Aprovador").getByTestId("bot-badge")).toHaveCount(0);
     await expect(page.getByTestId("pending-counter")).toHaveCount(0);
     // After a reload the card is still there, decided (it comes from the server, not from memory).
     await page.reload();
     await botItem(page, "Aprovador").click();
-    await expect(row(page)).toHaveCount(1);
-    await expect(row(page)).toHaveAttribute("data-state", "done");
-    await expect(row(page)).toContainText("Aprovado e concluído · Escrever aprovado.txt");
+    await expect(card(page)).toHaveCount(1);
+    await expect(card(page)).toHaveAttribute("data-state", "done");
+    await expect(card(page)).toContainText("Aprovado · Escrever aprovado.txt");
   });
 
   test("approved after the card waited for hours: the row says so, the bot resumes the old task and asks again, and the identical call needs no second card", async ({
@@ -174,14 +177,12 @@ test.describe("approval cards", () => {
     await card(page).getByTestId("approval-approve").click();
     await expect(botMessage(page, "Escrevi o arquivo tardio.")).toBeVisible();
     // One card only: the second, identical call ran on the grant. The first row is the old card.
-    await expect(card(page)).toHaveCount(0);
-    await expect(row(page)).toHaveCount(2);
-    await expect(row(page).first()).toContainText("Aprovado depois de 5 h · Escrever tardio.txt");
-    await expect(row(page).first().getByRole("button")).toHaveCount(1);
-    await expect(row(page).last()).toContainText("Escrever tardio.txt");
-    await expect(row(page).last()).not.toContainText("Aprovado");
-    await row(page).first().getByRole("button").click();
-    await expect(row(page).first().getByTestId("approval-detail")).toContainText(
+    await expectNoToolRows(page);
+    await expect(card(page)).toHaveCount(1);
+    await expect(card(page).first()).toContainText("Aprovado depois de 5 h · Escrever tardio.txt");
+    await expect(card(page).first().getByRole("button")).toHaveCount(1);
+    await card(page).first().getByRole("button").click();
+    await expect(card(page).first().getByTestId("approval-detail")).toContainText(
       "Você aprovou depois de 5 h: a ação não rodou na hora",
     );
     const approvals = await world.api.approvals.list({ botId: pending?.botId as string });
@@ -193,7 +194,7 @@ test.describe("approval cards", () => {
     // After a reload the row is the same, read from the server.
     await page.reload();
     await botItem(page, "Retardatario").click();
-    await expect(row(page).first()).toContainText("Aprovado depois de 5 h · Escrever tardio.txt");
+    await expect(card(page).first()).toContainText("Aprovado depois de 5 h · Escrever tardio.txt");
   });
 
   test("deny is one click, with no reason field: the bot is told, goes on and says so", async ({
@@ -205,17 +206,16 @@ test.describe("approval cards", () => {
     await expect(card(page).getByRole("textbox")).toHaveCount(0);
     await card(page).getByTestId("approval-deny").click();
     // Denied: it never ran, so the one row says "Recusado" and there is no row of a tool that failed.
-    await expect(row(page)).toHaveCount(1);
-    await expect(row(page)).toHaveAttribute("data-state", "stopped");
-    await expect(row(page)).toContainText("Recusado · Escrever negado.txt");
-    await expect(card(page)).toHaveCount(0);
+    await expect(card(page)).toHaveCount(1);
+    await expect(card(page)).toHaveAttribute("data-state", "stopped");
+    await expect(card(page)).toContainText("Recusado · Escrever negado.txt");
     await expect(botMessage(page, "Entendi, não escrevi o arquivo.")).toBeVisible();
-    await row(page)
+    await card(page)
       .getByRole("button", { name: /Recusado/ })
       .click();
-    await expect(row(page).getByTestId("approval-detail")).toContainText("Você recusou");
-    await expect(row(page).getByTestId("approval-denial")).toHaveCount(0);
-    await expect(row(page).getByTestId("action-output")).toHaveCount(0);
+    await expect(card(page).getByTestId("approval-detail")).toContainText("Você recusou");
+    await expect(card(page).getByTestId("approval-denial")).toHaveCount(0);
+    await expect(card(page).getByTestId("action-output")).toHaveCount(0);
     // No reason was sent; the file was not written.
     const [denied] = await world.api.approvals.list({
       botId: await botId(world, "Negador"),
@@ -235,13 +235,13 @@ test.describe("approval cards", () => {
     expect(await card(page).getByRole("button").allTextContents()).toEqual(["Recusar", "Aprovar"]);
     await card(page).getByTestId("approval-approve").click();
     await expect(botMessage(page, "Primeiro arquivo escrito.")).toBeVisible();
-    await expect(row(page)).toHaveCount(1);
-    await expect(row(page)).toHaveAttribute("data-state", "done");
+    await expect(card(page)).toHaveCount(1);
+    await expect(card(page)).toHaveAttribute("data-state", "done");
     // Approving created nothing behind the user's back.
-    await row(page)
+    await card(page)
       .getByRole("button", { name: /Aprovado/ })
       .click();
-    await expect(row(page).getByTestId("approval-rule")).toHaveCount(0);
+    await expect(card(page).getByTestId("approval-rule")).toHaveCount(0);
     expect((await world.api.rules.list()).filter((r) => r.createdBy === "approval")).toHaveLength(
       0,
     );
@@ -263,9 +263,9 @@ test.describe("approval cards", () => {
     await selectBot(page, "Permissivo");
     await send(page, "CASE-AGAIN agora faça de novo");
     await expect(botMessage(page, "Segundo arquivo escrito, sem perguntar.")).toBeVisible();
-    await expect(card(page)).toHaveCount(0);
-    await expect(row(page)).toHaveCount(2);
-    await expect(row(page).last()).not.toContainText("Aprovado");
+    await expectNoToolRows(page);
+    // Only the first call has a decision line; the one the rule let through leaves nothing behind.
+    await expect(card(page)).toHaveCount(1);
     expect(
       await world.api.approvals.list({ botId: await botId(world, "Permissivo") }),
     ).toHaveLength(1);
@@ -311,7 +311,6 @@ test.describe("approval cards", () => {
     // It works: the call is refused by the rule, with no card, and the bot is told and goes on.
     await send(page, "CASE-RULEDENY escreva em proibido/segredo.txt");
     await expect(botMessage(page, "A regra não deixou eu escrever lá.")).toBeVisible();
-    await expect(card(page)).toHaveCount(0);
     const runs = await world.api.runs.list({ botId: await botId(world, "Regrado") });
     const events = await world.api.runs.events(runs.items[0]?.id as string, { limit: 500 });
     expect(
@@ -365,16 +364,15 @@ test.describe("approval cards", () => {
         .filter({ hasText: "já tinha sido decidido em outro lugar: recusado" }),
     ).toBeVisible();
     // The call was refused: ONE row, stopped, "Recusado"; the run went on (the script's next line).
-    await expect(row(page)).toHaveCount(1);
-    await expect(row(page)).toHaveAttribute("data-state", "stopped");
-    await expect(row(page)).toContainText("Recusado · Escrever aprovado.txt");
-    await expect(card(page)).toHaveCount(0);
-    await expect(row(page)).not.toContainText("Concluído");
+    await expect(card(page)).toHaveCount(1);
+    await expect(card(page)).toHaveAttribute("data-state", "stopped");
+    await expect(card(page)).toContainText("Recusado · Escrever aprovado.txt");
+    await expect(card(page)).not.toContainText("Concluído");
     // A reason given by another client (the API still takes one) is shown when the row opens.
-    await row(page)
+    await card(page)
       .getByRole("button", { name: /Recusado/ })
       .click();
-    await expect(row(page).getByTestId("approval-denial")).toContainText("neguei no terminal");
+    await expect(card(page).getByTestId("approval-denial")).toContainText("neguei no terminal");
     await page.unroute("**/v1/approvals/*/decision");
     await expect(botMessage(page, "Escrevi o arquivo aprovado.")).toBeVisible();
 
@@ -389,10 +387,9 @@ test.describe("approval cards", () => {
       botId: await botId(world, "Cancelado"),
     });
     await world.api.runs.cancel(open?.runId as string);
-    await expect(row(page)).toHaveCount(1);
-    await expect(row(page)).toHaveAttribute("data-state", "stopped");
-    await expect(row(page)).toContainText("Cancelado · Escrever aprovado.txt");
-    await expect(card(page)).toHaveCount(0);
+    await expect(card(page)).toHaveCount(1);
+    await expect(card(page)).toHaveAttribute("data-state", "stopped");
+    await expect(card(page)).toContainText("Cancelado · Escrever aprovado.txt");
   });
 
   test("long content is collapsed with a button, and the whole card works from the keyboard", async ({
@@ -420,8 +417,8 @@ test.describe("approval cards", () => {
     // Nothing comes after Aprovar: there is no menu on a normal card.
     await page.keyboard.press("Enter");
     await expect(botMessage(page, "Arquivo longo escrito.")).toBeVisible();
-    await expect(row(page)).toHaveCount(1);
-    await expect(row(page)).toHaveAttribute("data-state", "done");
+    await expect(card(page)).toHaveCount(1);
+    await expect(card(page)).toHaveAttribute("data-state", "done");
   });
 
   test("Pendências lists the card with the same buttons, and a decision there is a decision in the chat", async ({
@@ -440,8 +437,8 @@ test.describe("approval cards", () => {
     await expect(page.getByTestId("pending-approval")).toHaveCount(0);
     await expect(page.getByText("Nenhuma aprovação")).toBeVisible();
     await botItem(page, "Pendente").click();
-    await expect(row(page)).toHaveCount(1);
-    await expect(row(page)).toHaveAttribute("data-state", "done");
+    await expect(card(page)).toHaveCount(1);
+    await expect(card(page)).toHaveAttribute("data-state", "done");
     await expect(botMessage(page, "Escrevi o arquivo aprovado.")).toBeVisible();
   });
 });

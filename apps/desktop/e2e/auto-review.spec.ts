@@ -4,7 +4,7 @@ import { closeSettings, openSettings, openWithBot, selectBot, send } from "./hel
 
 // Auto-review in the browser, against the real server and the scripted provider: the mode and the
 // rules the user WRITES in Configurações > Permissões (one of each kind: create, edit, switch, remove),
-// a call a "Nunca permitir" rule refused (one collapsed row in the chat, no card), and a card that
+// a call a "Nunca permitir" rule refused (no card and no row in the chat), and a card that
 // says why the reviewer sent it to you. The reviewer's answers are the `autoReview` section of the
 // scripts; what the model would decide on its own is measured elsewhere (evals/).
 
@@ -286,7 +286,7 @@ test.describe("Auto-review: the mode, the rules you write, and what the chat sho
     await closeSettings(page);
   });
 
-  test("a call a 'Nunca permitir' rule refused is one collapsed row in the chat: no card, the rule's words, and the rule's current text after a reload", async ({
+  test("a call a 'Nunca permitir' rule refused leaves no card and no row in the chat: the bot only says it did not run, also after a reload", async ({
     page,
   }) => {
     await openWithBot(page, world, "Bloqueado");
@@ -296,27 +296,20 @@ test.describe("Auto-review: the mode, the rules you write, and what the chat sho
       values (${NEVER_ID}, 'never', ${BLOCK_TEXT}, ${mine})`;
     await send(page, "CASE-BLOCK rode o comando");
     await expect(botMessage(page, "Entendi, não vou rodar.")).toBeVisible();
-    // No card ever: the call was refused, and the row says so.
+    // No card ever, and no row either: the call was refused, the chat shows only the bot's words
+    // (the refusal and the rule's words are in the Inspector).
     await expect(card(page)).toHaveCount(0);
-    await expect(row(page)).toHaveCount(1);
-    await expect(row(page)).toHaveAttribute("data-state", "stopped");
-    await expect(row(page)).toContainText(`Bloqueado pela regra · ${BLOCK_TEXT}`);
-    await expect(row(page)).not.toContainText("Falhou");
+    await expect(row(page)).toHaveCount(0);
     await page.mouse.move(0, 0);
     await page.waitForTimeout(250);
     await page.screenshot({ path: `${SHOTS}/25d-chat-bloqueado-pela-regra.png` });
-    // Opens to the call that did not run, and says why.
-    await row(page).getByRole("button").first().click();
-    await expect(row(page).getByTestId("action-blocked-detail")).toContainText(BLOCK_TEXT);
-    await expect(row(page)).toContainText("$ echo nao-rode");
-    await expect(row(page).getByTestId("action-output")).toHaveCount(0);
     expect(await world.api.approvals.list({ botId: mine })).toHaveLength(0);
-    // The row follows the rule: change its words and the chat says the new ones.
+    // The rule is still read from the server after a reload; the chat still shows no row.
     await world.api.writtenRules.update(NEVER_ID, { text: "rodar qualquer echo" });
     await page.reload();
     await selectBot(page, "Bloqueado");
-    await expect(row(page)).toHaveCount(1);
-    await expect(row(page)).toContainText("Bloqueado pela regra · rodar qualquer echo");
+    await expect(botMessage(page, "Entendi, não vou rodar.")).toBeVisible();
+    await expect(row(page)).toHaveCount(0);
     await world.api.writtenRules.remove(NEVER_ID);
   });
 
@@ -341,7 +334,9 @@ test.describe("Auto-review: the mode, the rules you write, and what the chat sho
     await page.screenshot({ path: `${SHOTS}/25e-cartao-motivo-da-revisao.png` });
     await pending.getByTestId("approval-approve").click();
     await expect(botMessage(page, "Rodei, com a sua licença.")).toBeVisible();
-    await expect(row(page)).toHaveCount(1);
-    await expect(row(page)).toContainText("Aprovado e concluído");
+    await expect(row(page)).toHaveCount(0);
+    await expect(card(page)).toHaveCount(1);
+    await expect(card(page)).toHaveAttribute("data-state", "done");
+    await expect(card(page)).toContainText("Aprovado");
   });
 });

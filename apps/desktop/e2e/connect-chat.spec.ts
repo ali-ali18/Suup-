@@ -33,56 +33,25 @@ test.describe("connect and chat", () => {
     await expect(page.getByTestId("chat")).toHaveAttribute("data-bot", "Principal");
   });
 
-  test("a tool call is a flat card: running, then collapsed; it expands in place with the command and its output", async ({
+  test("a tool call is no row in the chat: the live avatar says what the bot does, and only the answer stays", async ({
     page,
   }) => {
     await openWithBot(page, world, "Fluxo");
     await send(page, "CASE-ACTIONS faça as coisas");
     await expect(userBubbles(page).last()).toContainText("CASE-ACTIONS");
-    // The indicator says what the bot is doing, from the real state: the plan step, then the tool.
+    // The indicator says what the bot is doing, from the real state, in friendly words: no step
+    // list, no command, no tool row (the chat shows results only; the steps are in the Inspector).
     const indicator = page.getByTestId("working-indicator");
-    await expect(indicator).toHaveAttribute("data-phrase", "Passo 1 de 2 · Preparar o ambiente");
-    await expect(indicator).toHaveAttribute(
-      "data-phrase",
-      "Rodando o comando sleep 3; echo primeiro",
-    );
+    await expect(indicator).toHaveAttribute("data-activity", "terminal");
+    await expect(indicator).toContainText("Rodando um comando…");
+    await expect(indicator).not.toContainText("sleep");
+    await expect(page.getByTestId("action-card")).toHaveCount(0);
     // While it works, the bot's face in the sidebar is the engine's "thinking"/"working" state.
     const entry = page.locator('[data-testid="bot-item"][data-bot="Fluxo"]');
     await expect(entry).toHaveAttribute("data-working", "true");
     const face = entry.locator("[data-mascot]");
-    await expect(face).toHaveAttribute("data-state", /^(thinking|working)$/);
+    await expect(face).toHaveAttribute("data-state", /^(thinking|working|coding|pondering)$/);
     await expect(face).toHaveAttribute("data-mode", "animated");
-    // The card of the running tool: one row, with a spinner.
-    const running = page.locator('[data-testid="action-card"][data-state="running"]');
-    await expect(running).toContainText("Terminal");
-    await expect(running).toContainText("Rodando · Rodar o comando sleep 3; echo primeiro");
-    await expect(running.locator(".animate-spin")).toBeVisible();
-    // When it is done, the card collapses to "Concluído · ..." with a chevron.
-    const first = page.getByTestId("action-card").first();
-    await expect(first).toHaveAttribute("data-state", "done");
-    await expect(first).toContainText("Concluído · Rodar o comando sleep 3; echo primeiro");
-    await expect(first.getByRole("button")).toHaveAttribute("aria-expanded", "false");
-    // Expanding shows it IN PLACE: the command and the output, as plain text on the card's own background.
-    await first.getByRole("button").click();
-    await expect(first.getByRole("button")).toHaveAttribute("aria-expanded", "true");
-    const region = first.getByRole("region");
-    await expect(region).toContainText("$ sleep 3; echo primeiro");
-    await expect(region.getByTestId("action-output")).toContainText("primeiro");
-    const flat = await first.evaluate((card) => {
-      const pre = card.querySelector("pre") as HTMLElement;
-      const style = getComputedStyle(pre);
-      return {
-        cardBackground: getComputedStyle(card).backgroundColor,
-        preBackground: style.backgroundColor,
-        preBorder: style.borderTopWidth,
-        prePadding: style.paddingTop,
-        font: style.fontFamily,
-      };
-    });
-    expect(flat.preBackground).toBe("rgba(0, 0, 0, 0)");
-    expect(flat.preBorder).toBe("0px");
-    expect(flat.font).toContain("JetBrains Mono");
-    expect(flat.cardBackground).toBe("rgb(30, 30, 30)");
     // The face leaves the working state when the bot stops (a happy moment, then rest); the indicator goes.
     await expect(
       page.getByTestId("message-bot").filter({ hasText: "Terminei as cinco ações." }),
@@ -91,64 +60,25 @@ test.describe("connect and chat", () => {
     await expect(entry).toHaveAttribute("data-working", "false");
     await expect(entry.locator("[data-mascot] svg")).toBeVisible();
     await expect(entry.locator("[data-mascot]")).toHaveAttribute("data-state", /^(done|idle)$/);
-    // Five finished cards: the latest three stay, the two older ones fold into "Mais 2 ações".
-    await expect(page.getByTestId("action-card")).toHaveCount(3);
-    const fold = page.getByTestId("action-fold");
-    await expect(fold).toContainText("Mais 2 ações");
-    await expect(fold.getByRole("button")).toHaveAttribute("aria-expanded", "false");
-    // What was expanded before the fold formed is still expanded when the fold opens (state by call id).
-    await fold.getByRole("button").click();
-    await expect(fold.getByTestId("action-card")).toHaveCount(2);
-    await expect(fold.getByTestId("action-card").first().getByRole("button")).toHaveAttribute(
-      "aria-expanded",
-      "true",
-    );
-    await expect(fold.getByTestId("action-card").nth(1).getByRole("button")).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    );
-    // The card is flat like the bot's bubble: the same background.
-    const bubble = await page
-      .getByTestId("message-bot")
-      .filter({ hasText: "Terminei as cinco ações." })
-      .locator('[data-testid="bubble-bot"]')
-      .evaluate((el) => getComputedStyle(el).backgroundColor);
-    expect(bubble).toBe(flat.cardBackground);
-    // Collapses again, from the keyboard.
-    const toggle = fold.getByTestId("action-card").first().getByRole("button");
-    await toggle.focus();
-    await page.keyboard.press("Enter");
-    await expect(toggle).toHaveAttribute("aria-expanded", "false");
-    await page.keyboard.press("Space");
-    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    // Five commands ran and not one of them left a row, a fold or a step list behind.
+    await expect(page.getByTestId("action-card")).toHaveCount(0);
+    await expect(page.getByTestId("action-fold")).toHaveCount(0);
   });
 
-  test("files: an edit expands to a plain-text diff, with no coloured blocks", async ({ page }) => {
+  test("files: creating and editing a file leaves no row and no diff in the chat, only the bot's answer", async ({
+    page,
+  }) => {
     await openWithBot(page, world, "Arquivos");
     await send(page, "CASE-FLOW faça o arquivo");
-    const edit = page.getByTestId("action-card").filter({ hasText: "Arquivo" });
-    await expect(edit).toContainText("Concluído · Editar ola.txt", { timeout: 60_000 });
-    await edit.getByRole("button").click();
-    const diff = edit.getByTestId("diff");
-    await expect(diff).toContainText("- feito");
-    await expect(diff).toContainText("+ tudo certo");
-    expect(
-      await diff
-        .locator('[data-testid="action-line-removed"]')
-        .evaluate((el) => getComputedStyle(el).backgroundColor),
-    ).toBe("rgba(0, 0, 0, 0)");
-    expect(
-      await diff
-        .locator('[data-testid="action-line-added"]')
-        .evaluate((el) => getComputedStyle(el).color),
-    ).toBe("rgb(74, 222, 128)");
     await expect(
       page
         .getByTestId("message-bot")
         .filter({ hasText: "Criei o arquivo ola.txt e conferi o conteúdo." }),
     ).toBeVisible({ timeout: 60_000 });
-    // The plan is not a card: it shows in the indicator while the work goes on.
-    await expect(page.getByTestId("action-card")).toHaveCount(2);
+    // The command, the edit and the plan are steps: they live in the Inspector, never in the chat.
+    await expect(page.getByTestId("action-card")).toHaveCount(0);
+    await expect(page.getByTestId("diff")).toHaveCount(0);
+    await expect(page.getByTestId("action-fold")).toHaveCount(0);
   });
 
   test("a question with one choice is a card: click an option, it answers; the card stays, dimmed, with the choice marked", async ({
@@ -306,7 +236,12 @@ test.describe("connect and chat", () => {
     await send(page, "CASE-BUSY trabalhe um pouco");
     await expect(page.getByTestId("working-indicator")).toBeVisible();
     // The bot is in the middle of a step (its tool is running), so the next message waits its turn.
-    await expect(page.getByTestId("action-card").first()).toBeVisible();
+    // The step is no row in the chat: the live avatar is the only sign.
+    await expect(page.getByTestId("working-indicator")).toHaveAttribute(
+      "data-activity",
+      "terminal",
+    );
+    await expect(page.getByTestId("action-card")).toHaveCount(0);
     await send(page, "e mais uma coisa");
     const second = userBubbles(page).last();
     await expect(second).toContainText("e mais uma coisa");

@@ -538,22 +538,19 @@ test.describe("bots, sidebar, palette, memory", () => {
     await expect
       .poll(() => page.evaluate(() => (window as unknown as { __imgs: string[] }).__imgs))
       .toContain("https://example.com/favicon.ico|no-referrer|lazy");
-    // Wide column and "show all actions" are settings too.
+    // Wide column and the phrase of the working avatar are settings too.
     await page.getByTestId("owner-menu").click();
     await page.getByRole("menuitem", { name: "Configurações" }).click();
     await choose(page, page.getByTestId("setting-width"), "Larga");
     await choose(page, page.getByTestId("setting-phrase"), "Discreta");
-    await page.getByTestId("setting-fold").click();
     await expect(page.locator("html")).toHaveAttribute("data-width", "wide");
     await expect(page.locator("html")).toHaveAttribute("data-phrase", "discreet");
-    await expect(page.locator("html")).toHaveAttribute("data-fold", "off");
     await choose(page, page.getByTestId("setting-bubble"), "Seguir o bot");
     await choose(page, page.getByTestId("setting-density"), "Confortável");
     await page.getByTestId("setting-favicons").click();
     await expect(page.getByTestId("setting-favicons")).toHaveAttribute("aria-checked", "false");
     await choose(page, page.getByTestId("setting-width"), "Padrão");
     await choose(page, page.getByTestId("setting-phrase"), "Estado real");
-    await page.getByTestId("setting-fold").click();
     await closeSettings(page);
   });
 
