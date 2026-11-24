@@ -624,14 +624,12 @@ function ConnectorDetail({
   title: _title,
   titleId,
   onBack,
-  onClose,
   onAskEnable,
 }: {
   connector: Connector;
   title?: string;
   titleId: string;
   onBack(): void;
-  onClose(): void;
   onAskEnable(c: Connector): void;
 }) {
   const { sync, api } = useServices();
@@ -663,7 +661,7 @@ function ConnectorDetail({
       data-name={connector.name}
       data-enabled={connector.enabled}
     >
-      <PaneHead title={connector.name} titleId={titleId} onClose={onClose}>
+      <PaneHead title={connector.name} titleId={titleId}>
         <RowAction danger data-testid="connector-delete" onClick={() => setRemoving(true)}>
           Remover
         </RowAction>
@@ -884,7 +882,7 @@ function ConnectorDetail({
 // ----------------------------------------------------------------- the section
 
 /** MCP connectors: external servers whose tools a bot can use, once you give it the connector. */
-export function ConnectorsSettings({ title, titleId, onClose }: SectionProps) {
+export function ConnectorsSettings({ title, titleId }: SectionProps) {
   const { sync, api } = useServices();
   const byName = useData((s) => s.connectors);
   const loaded = useData((s) => s.connectorsLoaded);
@@ -910,12 +908,11 @@ export function ConnectorsSettings({ title, titleId, onClose }: SectionProps) {
           connector={current}
           titleId={titleId}
           onBack={() => setSelected(null)}
-          onClose={onClose}
           onAskEnable={setEnabling}
         />
       ) : (
         <>
-          <PaneHead title={title} titleId={titleId} onClose={onClose}>
+          <PaneHead title={title} titleId={titleId}>
             <Pill
               tone="primary"
               size="sm"

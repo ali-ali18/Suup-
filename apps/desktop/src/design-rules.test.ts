@@ -611,18 +611,30 @@ describe("the settings dialog: a modal with a left nav, groups of simple rows, n
 
   it("is a modal dialog with a nav on the left, closed by Escape and the X, with the focus trapped", () => {
     const dialog = settings("SettingsDialog.tsx");
-    expect(dialog).toContain('aria-modal="true"');
-    expect(dialog).toContain('role="dialog"');
+    // the modal of ui/dialog.tsx (Base UI: role="dialog", the focus trapped, Escape, the focus back)
+    expect(dialog).toContain("<Modal");
     expect(dialog).toContain('role="tablist"');
-    expect(dialog).toContain("useModalFocus(");
-    expect(settings("parts.tsx")).toContain('label="Fechar as configurações"');
+    const parts = settings("parts.tsx");
+    expect(parts).toContain('label="Fechar as configurações"');
+    expect(parts).toContain("<DialogClose");
     // It is a dialog over the screen, not a screen of its own.
     expect(read(join(SRC, "app", "ui-store.ts"))).not.toContain('"settings"');
     expect(read(join(SRC, "features", "shell", "Shell.tsx"))).toContain("<SettingsDialog />");
-    // The focus helpers every dialog shares live in one place.
-    const primitives = read(join(SRC, "ui", "primitives.tsx"));
-    expect(primitives).toContain("export function useModalFocus");
-    expect(primitives).toContain('e.key === "Escape"');
+    // Every modal is the one of ui/dialog.tsx: the base-maia copy on Base UI's Dialog, marked
+    // aria-modal for the focus rule of lib/focus.ts; no hand-made scrim or focus trap is left.
+    const modal = read(join(SRC, "ui", "dialog.tsx"));
+    expect(modal).toContain('from "@base-ui/react/dialog"');
+    expect(modal).toContain('aria-modal="true"');
+    expect(modal).toContain("<DialogPrimitive.Backdrop");
+    expect(modal).toContain("MODAL_MOTION");
+    expect(read(join(SRC, "ui", "primitives.tsx"))).toContain(
+      'export { Dialog } from "./dialog.js";',
+    );
+    for (const file of files(SRC, /\.tsx$/)) {
+      const source = read(file);
+      expect(source.includes("useModalFocus"), rel(file)).toBe(false);
+      expect(source.includes("<Scrim"), rel(file)).toBe(false);
+    }
   });
 
   it("has exactly the sections the backend can fill, and no hollow ones", () => {
@@ -848,8 +860,9 @@ describe("the settings dialog: a modal with a left nav, groups of simple rows, n
     const dialog = settings("SettingsDialog.tsx");
     // Esc inside a connector goes back to the list first; the second one closes the dialog.
     expect(dialog).toContain(
-      'tab === "connectors" && connector !== null ? setConnector(null) : close()',
+      'if (reason !== "escape" || tab !== "connectors" || connector === null) return true;',
     );
+    expect(dialog).toContain("setConnector(null);");
     // The store: selecting a section (even the selected one) lands on its first view.
     const store = read(join(SRC, "app", "ui-store.ts"));
     expect(store).toContain(
@@ -860,8 +873,8 @@ describe("the settings dialog: a modal with a left nav, groups of simple rows, n
   });
 
   it("a dialog opened from another is its own modal surface, on top", () => {
-    const primitives = read(join(SRC, "ui", "primitives.tsx"));
-    expect(primitives).toContain("createPortal(");
+    // each dialog has its own portal on the body (Base UI's), the last one on top
+    expect(read(join(SRC, "ui", "dialog.tsx"))).toContain("<DialogPrimitive.Portal>");
     expect(read(join(SRC, "lib", "focus.ts"))).toContain("topModal");
   });
 });

@@ -232,7 +232,7 @@ const ZONE_SOURCE: Record<"device" | "user" | "config" | "none", string> = {
  * them), and the version of the app with its update (UpdateGroup, the desktop app only).
  */
 
-export function GeneralSettings({ title, titleId, onClose }: SectionProps) {
+export function GeneralSettings({ title, titleId }: SectionProps) {
   const { api, sync } = useServices();
   const bots = useData((s) => s.bots);
   const [models, setModels] = useState<ModelInfo[] | undefined>(undefined);
@@ -274,7 +274,7 @@ export function GeneralSettings({ title, titleId, onClose }: SectionProps) {
   const active = sortedBots(bots).filter((b) => b.archivedAt === null);
   return (
     <>
-      <PaneHead title={title} titleId={titleId} onClose={onClose} />
+      <PaneHead title={title} titleId={titleId} />
       <PaneBody>
         <ServerGroup />
         <SettingsGroup label="Aparência" hint="Fica guardado neste computador." testId="appearance">

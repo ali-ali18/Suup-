@@ -7,6 +7,7 @@ import { setBots, setRules, setWrittenRules } from "../../data/reducers.js";
 import { createDataStore, update } from "../../data/store.js";
 import { Sync } from "../../data/sync.js";
 import { makeBot, makeRule, makeWrittenRule, pressOption } from "../../test-fixtures.js";
+import { Modal } from "../../ui/dialog.js";
 import { PermissionsSettings } from "./PermissionsSettings.js";
 
 const settingsOf = (over: Partial<ApprovalSettings> = {}): ApprovalSettings => ({
@@ -30,7 +31,10 @@ function setup(api: Record<string, unknown>, written: WrittenRule[] = []) {
   const services = { api: full, sync, data: store } as unknown as Services;
   render(
     <ServicesProvider services={services}>
-      <PermissionsSettings title="Permissões" titleId="t" onClose={() => {}} />
+      {/* as in the app: a section lives inside the settings dialog (its X closes that dialog) */}
+      <Modal onClose={() => {}} label="Configurações" className="">
+        <PermissionsSettings title="Permissões" titleId="t" />
+      </Modal>
     </ServicesProvider>,
   );
   return { store, bots };

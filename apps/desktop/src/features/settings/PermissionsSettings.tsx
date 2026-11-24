@@ -246,7 +246,7 @@ function ExactRulesDialog({ rules, onClose }: { rules: ApprovalRule[]; onClose()
  * in Pendências and in the chat, how the cards behave is in Geral. The old exact rules are one quiet
  * row at the end, only when some exist.
  */
-export function PermissionsSettings({ title, titleId, onClose }: SectionProps) {
+export function PermissionsSettings({ title, titleId }: SectionProps) {
   const { sync, api } = useServices();
   const bots = useData((s) => s.bots);
   const writtenById = useData((s) => s.writtenRules);
@@ -306,7 +306,7 @@ export function PermissionsSettings({ title, titleId, onClose }: SectionProps) {
 
   return (
     <>
-      <PaneHead title={title} titleId={titleId} onClose={onClose} />
+      <PaneHead title={title} titleId={titleId} />
       <PaneBody>
         <SettingsGroup label="Aprovações">
           <SettingsRow
