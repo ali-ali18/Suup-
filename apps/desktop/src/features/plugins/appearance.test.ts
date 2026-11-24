@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 // The server's own list, from its source (the gallery is a fixed list in the repository): the
 // look of the app may only name ids that list has. No copy of the ids is kept here.
-import { CONNECTOR_CATALOG } from "../../../../../packages/connectors/src/catalog.js";
+import {
+  CONNECTOR_CATALOG,
+  SEARCH_PLUGIN_CATALOG,
+} from "../../../../../packages/connectors/src/catalog.js";
 import { solidMarkFor } from "../../ui/brand-icons.js";
 import { APPEARANCE_IDS, appearanceOf, BANNERS, CATEGORIES, NEUTRAL, TONES } from "./appearance.js";
 
-const SERVER_IDS = CONNECTOR_CATALOG.map((e) => e.id);
+const SERVER_IDS = [...CONNECTOR_CATALOG, ...SEARCH_PLUGIN_CATALOG].map((e) => e.id);
 
 describe("the look of the connectors, by the id of the server's gallery", () => {
   it("every id with a look is a real id of the server's gallery (nothing the server does not offer)", () => {
@@ -46,6 +49,8 @@ describe("the backgrounds of the logos: neutral, and FIXED for each connector", 
       "google-workspace": "neutral",
       composio: "black",
       firecrawl: "black",
+      tavily: "neutral",
+      brave: "solid",
     });
     // a solid tile needs the brand's mark and colour; any other needs the logo of thesvg
     for (const id of APPEARANCE_IDS) {
@@ -67,6 +72,8 @@ describe("the backgrounds of the logos: neutral, and FIXED for each connector", 
       "google-workspace": "coral",
       composio: "plum",
       firecrawl: "amber",
+      tavily: "sky",
+      brave: "coral",
     });
     for (const id of APPEARANCE_IDS) expect(BANNERS, id).toContain(appearanceOf(id).banner);
   });

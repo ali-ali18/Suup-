@@ -172,7 +172,7 @@
   --size-status-gap: 2px;
   --width-sidebar: 316px; /* owner's layout: expanded sidebar */
   --width-rail: 110px; /* owner's layout: narrow icon rail on the left */
-  --size-rail-tile: 60px; /* a bot's tile in the rail: the face (36 px) inside a box; the tiles sit 2 px apart (a 62 px pitch, measured on the reference) */
+  --size-rail-tile: 68px; /* a bot's tile in the rail: the face (36 px) inside a box; the tiles sit 2 px apart (a 62 px pitch, measured on the reference) */
   --width-panel: 450px; /* owner's layout: bot panel on the right */
   --width-chat-min: 420px; /* the chat column never gets narrower than this */
   --width-reading: 700px; /* the widest a bot bubble gets */

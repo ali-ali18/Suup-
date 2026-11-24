@@ -2,7 +2,7 @@
 
 Lista viva do que os testes reais, as avaliações e o uso mostraram que dá para melhorar no Suup. Cada item diz **de onde veio** (a evidência), **o que fazer** e o **estado**. Pedido do dono (23/11/2026): "vai anotando os pontos de melhoria".
 
-Estados: **aberto**, **em andamento**, **feito** (com o commit).
+Estados: **aberto**, **em andamento**, **feito** (com o commit). A lista curta e priorizada do que falta está em [PENDENCIAS.md](PENDENCIAS.md).
 
 ## Motor (loop, prompts, ferramentas)
 
@@ -55,9 +55,9 @@ Estados: **aberto**, **em andamento**, **feito** (com o commit).
 |---|---|---|---|---|
 | I3 | Menus no estilo do shadcn, nome curto do modelo, separadores do shadcn | Dono, 24/11 | PR #13 | feito (`c1ca95b`, `c028b63`) |
 | I4 | Arquivo aparece duas vezes; pergunta sem título no cartão | Dono, 24/11 | O bot sabe o que as ferramentas desenham; cartão sempre com título | feito (`ed1cc1d`, `13ca1e7`) |
-| I5 | O X do cartão de pergunta trava as opções e mostra "Não respondido" | Dono, 24/11 | Em `feat/arquivos-no-chat` | em andamento |
-| I6 | Chat só com resultados (sem linhas de passos) e avatar vivo no lugar das bolinhas | Dono, 24/11 | Em `feat/avatar-vivo`; pesquisa `avatar-vivo-no-chat.md` | em andamento |
-| I7 | Documento (PDF, Word, Excel) sem Python: ferramenta própria que monta e confere | Dono, 24/11 | Em `feat/ferramenta-documento`; pesquisa `ferramenta-de-documento.md` | em andamento |
+| I5 | O X do cartão de pergunta trava as opções e mostra "Não respondido" | Dono, 24/11 | Feito e juntado em `feat/ajustes-ui` | feito |
+| I6 | Chat só com resultados (sem linhas de passos) e avatar vivo no lugar das bolinhas | Dono, 24/11 | Feito e juntado em `feat/ajustes-ui`; pesquisa `avatar-vivo-no-chat.md` | feito |
+| I7 | Documento (PDF, Word, Excel) sem Python: ferramenta própria que monta e confere | Dono, 24/11 | Feito e juntado em `feat/ajustes-ui` (código livre + guia + conferência; a ferramenta fica como atalho); pesquisa `ferramenta-de-documento.md` | feito |
 | I8 | Imagens montadas no GitHub, a VPS só baixa | Dono, 24/11 | PR #15 | feito (`d4be66a`) |
 
 ## Memória

@@ -1411,7 +1411,7 @@ describe("conectores: o ícone do serviço (docs/DESIGN.md 5c, plug-ins)", () =>
 });
 
 describe("conectores: a tela da vitrine (docs/DESIGN.md 5d)", () => {
-  const screen = `${read(join(SRC, "features", "plugins", "ConnectorsScreen.tsx"))}\n${read(join(SRC, "features", "plugins", "EntryIcon.tsx"))}\n${read(join(SRC, "features", "plugins", "use-plugins.ts"))}`;
+  const screen = `${read(join(SRC, "features", "plugins", "ConnectorsScreen.tsx"))}\n${read(join(SRC, "features", "plugins", "EntryIcon.tsx"))}\n${read(join(SRC, "features", "plugins", "use-plugins.ts"))}\n${read(join(SRC, "features", "plugins", "ExamplesBanner.tsx"))}`;
   const palette = read(join(SRC, "features", "palette", "CommandPalette.tsx"));
   const shell = read(join(SRC, "features", "shell", "Shell.tsx"));
 

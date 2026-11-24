@@ -1,5 +1,7 @@
 # Instruções para quem trabalha neste repositório
 
+As regras completas, os comandos e as decisões já tomadas estão em [`AGENTS.md`](AGENTS.md); o que falta fazer, em [`docs/PENDENCIAS.md`](docs/PENDENCIAS.md). Leia os dois antes de começar.
+
 - **Regex e padrões de texto (regra do dono, leia `docs/REGRAS.md`).** Proibido usar regex/glob/padrão para identificar, classificar, filtrar ou interpretar (o que algo *é*, ou se pode rodar) no harness (`packages/*`, `apps/*`, `evals/`): vira amarra. Use estrutura declarada, comparação exata ou o modelo. Regex só para formato formal de gramática fixa, e **na dúvida pergunte ao dono antes**. `packages/core/test/no-regex.test.ts` falha com regex nova fora da lista.
 - **Pesquisa antes de implementar (regra do dono, `docs/REGRAS.md` §2).** Cada fase ou entrega significativa do plano tem uma pesquisa confiável em `docs/pesquisas/` (fontes primárias com URL e data) antes do código; se ela contradiz o plano, mude o plano ou pergunte.
 - Em `apps/desktop`, leia e siga `docs/DESIGN.md` **antes** de desenhar ou mudar qualquer interface (cartões, telas, componentes, CSS). É o padrão do dono; não se discute caso a caso.

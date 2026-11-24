@@ -1,6 +1,6 @@
 # Logos dos serviços (plug-ins)
 
-SVGs copiados do **thesvg** (https://thesvg.org, repositório https://github.com/glincker/thesvg, licença MIT do repositório; os dados de cada ícone dizem CC0-1.0, exceto o Composio, Unlicense, e o Firecrawl, MIT), **fixados** no commit `551229c188b4ab6e2d8b5763b9633ec91206d04c` (21/11/2026, o mais recente em 23/11/2026). Nenhum foi editado.
+SVGs copiados do **thesvg** (https://thesvg.org, repositório https://github.com/glincker/thesvg, licença MIT do repositório; os dados de cada ícone dizem CC0-1.0, exceto o Composio, Unlicense, e o Firecrawl e o Tavily, MIT), **fixados** no commit `551229c188b4ab6e2d8b5763b9633ec91206d04c` (21/11/2026, o mais recente em 23/11/2026). Nenhum foi editado.
 
 | Arquivo | Origem no thesvg |
 | --- | --- |
@@ -14,6 +14,7 @@ SVGs copiados do **thesvg** (https://thesvg.org, repositório https://github.com
 | `google-sheets.svg` | `google-sheets-2026/default.svg` |
 | `google.svg` | `google/default.svg` (o "G" do Google, para a entrada Google Workspace; baixado em 23/11/2026 do mesmo commit) |
 | `composio.svg` | `composio/default.svg` (branco; no tema claro o app inverte a cor) |
+| `tavily.svg` | `tavily/default.svg` (colorido; licença MIT nos dados do ícone; baixado em 24/11/2026 do mesmo commit) |
 | `firecrawl.svg` | `firecrawl/default.svg` (branco; licença MIT nos dados do ícone; baixado em 24/11/2026 do mesmo commit) |
 
 Higgsfield não existe no thesvg: o app usa o plug genérico. As marcas são dos seus donos; os logos servem **só para identificar o serviço** (`TRADEMARK.md` do thesvg). Para atualizar: troque o commit acima, copie de novo e releia `docs/pesquisas/icones-de-marca-dos-conectores.md`.

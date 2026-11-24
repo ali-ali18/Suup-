@@ -107,9 +107,10 @@ export function searchStatus(provider: SearchProvider): PluginStatus {
     : { tone: "muted", label: PROVIDER_STATE_WORDS[provider.state] };
 }
 
-/** How the tile of a search engine is drawn: Brave has its own colour, Tavily the magnifier. */
+/** How the tile of a search engine is drawn: its own look by exact id (Brave's colour, Tavily's logo). */
 export function searchLook(provider: Pick<SearchProvider, "id">): PluginLook {
-  return { tone: provider.id === "brave" ? "solid" : "neutral", glyph: "search" };
+  const look = appearanceOf(provider.id);
+  return { tone: look.tone, logo: look.logo, glyph: "search" };
 }
 
 /** The engines the gallery offers as plugins (those with a gallery entry), in the queue's order. */

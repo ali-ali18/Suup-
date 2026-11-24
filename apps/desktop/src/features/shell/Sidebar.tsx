@@ -6,6 +6,7 @@ import {
   FolderInput,
   Inbox,
   Keyboard,
+  LayoutGrid,
   LogOut,
   Pencil,
   Pin,
@@ -103,7 +104,8 @@ function BotEntry({
   const label = status === "" ? bot.name : `${bot.name} — ${status}`;
   // O bot trabalhando (`data-working`): o rosto continua o rosto (docs/DESIGN.md §6).
   const working = ["working", "thinking", "resuming", "queued"].includes(display.chip ?? "");
-  const size = variant === "tile" ? "tile" : variant === "row" ? "row" : "md";
+  // The rail draws the big face (owner's reference, 24/11/2026: about 65% of its 68 px square).
+  const size = variant === "tile" ? "tile" : variant === "rail" ? "lg" : "row";
   const openMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     onMenu(bot, e.clientX, e.clientY);
@@ -392,7 +394,8 @@ export function Sidebar() {
         >
           <span
             className={cx(
-              "relative inline-flex size-avatar-sm flex-none items-center justify-center rounded-pill border border-border-strong bg-raised text-small font-label",
+              "relative inline-flex flex-none items-center justify-center rounded-pill border border-border-strong bg-raised font-label",
+              variant === "rail" ? "size-11 text-label" : "size-avatar-sm text-small",
             )}
             aria-hidden="true"
           >
@@ -471,38 +474,51 @@ export function Sidebar() {
     >
       {collapsed ? (
         <>
-          <div
-            className="flex flex-none animate-fade-in flex-col items-center gap-1"
-            data-tauri-drag-region
-          >
-            <RoundButton
-              label="Buscar"
-              tone="ghost"
-              size="circle"
-              onClick={() => ui().setPalette(true)}
-            >
-              <Search size={18} aria-hidden="true" />
-            </RoundButton>
-            <RoundButton label="Novo bot" tone="ghost" size="circle" onClick={ui().openNewBot}>
-              <Plus size={20} aria-hidden="true" />
-            </RoundButton>
-          </div>
+          {/* The rail of the owner's reference (24/11/2026): the bots at the top, each in its rounded
+              square; a line between the pinned and the rest; at the bottom "+", the plugins and the
+              account. Search stays on Ctrl+K and in the open bar. */}
+          <div className="h-6 flex-none" data-tauri-drag-region />
           <div className="relative flex min-h-0 w-full flex-1 flex-col">
             <div
               className="flex min-h-0 w-full flex-1 animate-fade-in flex-col items-center gap-0.5 overflow-y-auto py-fade"
               role="group"
               aria-label="Bots"
             >
-              {layout.pinned.map((bot) => entry(bot, "rail"))}
-              {layout.pinned.length > 0 && flat.length > layout.pinned.length && (
-                <Separator tone="strong" className="my-0.5 w-6" />
-              )}
-              {flat.filter((b) => !b.pinned).map((bot) => entry(bot, "rail"))}
+              {/* One block per section of the open bar (the pinned, each group, the rest), a line
+                  between each two (owner, 24/11/2026: "cada um ganha uma separação"). */}
+              {[
+                { key: "pinned", bots: layout.pinned },
+                ...layout.groups.map((g) => ({ key: `group:${g.name}`, bots: g.bots })),
+                { key: "rest", bots: layout.rest },
+              ]
+                .filter((section) => section.bots.length > 0)
+                .map((section, i) => (
+                  <div
+                    key={section.key}
+                    className="flex flex-col items-center gap-0.5"
+                    data-testid="rail-section"
+                  >
+                    {i > 0 && <Separator tone="strong" className="my-1.5 w-rail-tile" />}
+                    {section.bots.map((bot) => entry(bot, "rail"))}
+                  </div>
+                ))}
             </div>
             <ScrollFade tone="sidebar" />
           </div>
-          <div className="relative flex w-full flex-none flex-col items-center pt-2">
-            {ownerButton("rail")}
+          <div className="relative flex w-full flex-none flex-col items-center gap-1 pt-2">
+            <RoundButton label="Novo bot" tone="ghost" size="circle" onClick={ui().openNewBot}>
+              <Plus size={22} aria-hidden="true" />
+            </RoundButton>
+            <RoundButton
+              label="Conectores"
+              tone="ghost"
+              size="circle"
+              onClick={() => go("connectors")}
+              data-testid="rail-plugins"
+            >
+              <LayoutGrid size={18} aria-hidden="true" />
+            </RoundButton>
+            <div className="pt-1">{ownerButton("rail")}</div>
           </div>
         </>
       ) : (

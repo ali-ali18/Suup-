@@ -5,7 +5,9 @@ import { cx } from "../../lib/cx.js";
 import { BulletList, MutedText, Pill } from "../../ui/primitives.js";
 import { Screen, ScreenBody, ScreenHeader } from "../../ui/screen.js";
 import { SecretDialog } from "../settings/VaultSettings.js";
+import { appearanceOf } from "./appearance.js";
 import { EntryIcon } from "./EntryIcon.js";
+import { ExamplesBanner } from "./ExamplesBanner.js";
 import {
   PROVIDER_STATE_WORDS,
   queueWords,
@@ -172,6 +174,7 @@ export function SearchPluginPage({
         </div>
       </ScreenHeader>
       <ScreenBody>
+        <ExamplesBanner name={provider.label} look={appearanceOf(plugin.id)} />
         <section className="flex flex-col gap-1" aria-label="Situação">
           <h2 className="flex h-7.5 items-center text-label font-normal text-text-muted">
             Situação

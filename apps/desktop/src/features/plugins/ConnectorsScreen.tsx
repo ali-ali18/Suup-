@@ -1,5 +1,5 @@
 import type { CatalogItem, CatalogStatus } from "@suup/api";
-import { ArrowRight, ChevronRight, LoaderCircle, Plus } from "lucide-react";
+import { ChevronRight, LoaderCircle, Plus } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { useUi } from "../../app/ui-store.js";
@@ -16,30 +16,15 @@ import {
 } from "../../ui/primitives.js";
 import { Screen, ScreenBody, ScreenHead, ScreenHeader } from "../../ui/screen.js";
 import { SecretDialog } from "../settings/VaultSettings.js";
-import { type Appearance, appearanceOf, type Banner, CATEGORIES } from "./appearance.js";
+import { type Appearance, appearanceOf, CATEGORIES } from "./appearance.js";
 import { ConnectorManage } from "./ConnectorManage.js";
 import { EntryIcon, type TILE } from "./EntryIcon.js";
+import { ExamplesBanner } from "./ExamplesBanner.js";
 import { type PluginLook, searchPlugins } from "./installed.js";
 import { ManualPluginPage } from "./ManualPlugin.js";
 import { type SearchEntry, SearchPluginPage, SearchRow } from "./SearchPlugin.js";
 import { type Connect, POLL_MS, useConnect } from "./use-connect.js";
 import { usePlugins } from "./use-plugins.js";
-
-/** The twelve gradients of the banner of a page (the full class names, so Tailwind finds them). */
-const BANNER_BG: Record<Banner, string> = {
-  ink: "from-banner-ink-from to-banner-ink-to",
-  slate: "from-banner-slate-from to-banner-slate-to",
-  navy: "from-banner-navy-from to-banner-navy-to",
-  plum: "from-banner-plum-from to-banner-plum-to",
-  paper: "from-banner-paper-from to-banner-paper-to",
-  sky: "from-banner-sky-from to-banner-sky-to",
-  mint: "from-banner-mint-from to-banner-mint-to",
-  sun: "from-banner-sun-from to-banner-sun-to",
-  coral: "from-banner-coral-from to-banner-coral-to",
-  amber: "from-banner-amber-from to-banner-amber-to",
-  indigo: "from-banner-indigo-from to-banner-indigo-to",
-  lilac: "from-banner-lilac-from to-banner-lilac-to",
-};
 
 /**
  * Where an entry stands, in words (docs/FRONTEND.md, "Galeria de conectores"); the status itself is
@@ -458,30 +443,7 @@ function ConnectorPage({
         </div>
       </ScreenHeader>
       <ScreenBody>
-        {look.examples.length > 0 && (
-          <section
-            className={cx(
-              "flex flex-col gap-2 rounded-card bg-linear-to-br p-4",
-              BANNER_BG[look.banner],
-            )}
-            data-banner={look.banner}
-            aria-label="Exemplos do que você poderá pedir"
-            data-testid="connector-examples"
-          >
-            {look.examples.map((text) => (
-              <div
-                key={text}
-                className="flex items-center gap-3 rounded-row bg-surface px-3 py-2.5 text-body"
-              >
-                <span className="inline-flex flex-none items-center gap-1.5 rounded-chip bg-raised px-2 py-0.5 text-small">
-                  {name}
-                </span>
-                <span className="min-w-0 flex-1">{text}</span>
-                <ArrowRight size={16} className="flex-none text-text-muted" aria-hidden="true" />
-              </div>
-            ))}
-          </section>
-        )}
+        <ExamplesBanner name={name} look={look} />
         <Block title="Conexão">
           <div
             className="flex flex-col gap-3 rounded-card bg-raised p-3"
