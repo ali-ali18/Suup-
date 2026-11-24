@@ -1,6 +1,14 @@
 import type { DecideTeamBody, Run } from "@suup/api";
 import { ArrowDown } from "lucide-react";
-import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  type ReactNode,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useServices } from "../../app/context.js";
 import { useSettings } from "../../app/settings-store.js";
 import { FRIENDLY_FAILURE } from "../../data/derive.js";
@@ -14,6 +22,7 @@ import { QuestionCard } from "../../ui/question-card.js";
 import { ScrollFade } from "../../ui/scroll-fade.js";
 import { TeamCard } from "../../ui/team-card.js";
 import { ApprovalRow, CallRow, callKey, SecretRequestRow } from "./ApprovalRows.js";
+import { FileRows } from "./FileRows.js";
 import { bubblePositions, isChoiceCard, type TimelineItem } from "./timeline.js";
 
 const NEAR_BOTTOM = 80;
@@ -32,6 +41,7 @@ export function MessageList({
   hasOlder,
   onLoadOlder,
   onAnswer,
+  onDismissQuestion,
   onDecideTeam,
   onInspect,
   expanded,
@@ -48,6 +58,8 @@ export function MessageList({
   onLoadOlder(): Promise<boolean>;
   /** The answer to a question (plain text): it is sent as the user's message. */
   onAnswer(text: string): void;
+  /** The X of an open question (the message's id): the card locks, the composer takes the focus. */
+  onDismissQuestion?(messageId: string): void;
   /** The user's decision on a team card. Resolves when the server has answered. */
   onDecideTeam(
     messageId: string,
@@ -174,16 +186,44 @@ export function MessageList({
                   />
                 );
               case "bot":
-                // A question with choices is a card; an open one is an ordinary bubble.
+                // A question with choices: the card, ALWAYS apart, with the question as its title
+                // (owner, 24/11/2026). A bubble above it only when the bot wrote more than the
+                // question (`ask.lead`), so the question is never shown twice. An open question
+                // (no options) is only the bubble.
                 return isChoiceCard(item) && item.ask !== undefined ? (
-                  <BotMessage key={item.key}>
-                    <QuestionCard
-                      questions={item.ask.questions}
-                      answer={item.ask.answer ?? (item.ask.open ? undefined : "")}
-                      autoFocus={item.ask.open}
-                      onSubmit={onAnswer}
-                    />
-                  </BotMessage>
+                  <Fragment key={item.key}>
+                    {item.ask.lead !== undefined && (
+                      <BotMessage
+                        text={item.ask.lead}
+                        position={positions.get(item.key)}
+                        openUrl={platform.openUrl}
+                        favicons={favicons}
+                      />
+                    )}
+                    {
+                      <BotMessage>
+                        <QuestionCard
+                          questions={item.ask.questions}
+                          answer={item.ask.answer ?? (item.ask.open ? undefined : "")}
+                          dismissed={item.ask.dismissed}
+                          autoFocus={item.ask.open}
+                          onSubmit={onAnswer}
+                          {...(item.ask.open && onDismissQuestion !== undefined
+                            ? { onDismiss: () => onDismissQuestion(item.key) }
+                            : {})}
+                        />
+                        {item.ask.open && (
+                          // Outside the card: the chat answers too (any text is the answer).
+                          <p
+                            className="pl-5 text-small text-text-muted"
+                            data-testid="question-hint"
+                          >
+                            Ou responda no chat abaixo
+                          </p>
+                        )}
+                      </BotMessage>
+                    }
+                  </Fragment>
                 ) : (
                   <BotMessage
                     key={item.key}
@@ -192,6 +232,12 @@ export function MessageList({
                     openUrl={platform.openUrl}
                     favicons={favicons}
                   />
+                );
+              case "files":
+                return (
+                  <BotMessage key={item.key}>
+                    <FileRows files={item.files} />
+                  </BotMessage>
                 );
               case "team":
                 return (

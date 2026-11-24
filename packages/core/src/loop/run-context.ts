@@ -14,6 +14,7 @@ import type {
   SupervisorRole,
   Teammate,
 } from "../events.js";
+import type { FileSender } from "../files.js";
 import type { Message } from "../messages.js";
 import type { Provider, ToolSpec } from "../provider.js";
 import type { InvokeOptions, ToolInvocation } from "../registry.js";
@@ -145,6 +146,8 @@ export interface LoopDeps {
   networkFor?(run: RunRecord): NetworkAccess;
   /** The web (search and the reader service) the tools of this run may use; see `web.ts`. */
   webFor?(run: RunRecord): WebAccess;
+  /** Where the files this run sends to the user go (`send_file`); without it the tool says so. */
+  filesFor?(run: RunRecord): FileSender;
   /**
    * The run may schedule its own return (`schedule_return`): set for a conversation run of the
    * user, left out for an evaluation (isolated) run. It is also required that the run's origin is

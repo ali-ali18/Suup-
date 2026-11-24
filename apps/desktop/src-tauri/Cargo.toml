@@ -17,6 +17,8 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-notification = "2"
 tauri-plugin-opener = "2"
+# A janela "Salvar como" do sistema, para o arquivo que o bot entrega no chat (files.rs).
+tauri-plugin-dialog = "2"
 # O servidor que o app carrega roda como processo filho (o Node do pacote), iniciado por aqui.
 tauri-plugin-shell = "2"
 getrandom = "0.3"

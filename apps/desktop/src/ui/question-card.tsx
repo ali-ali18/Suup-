@@ -5,6 +5,7 @@ import {
   type Question,
   type QuestionAnswer,
 } from "@suup/api";
+import { X } from "lucide-react";
 import { type KeyboardEvent, useEffect, useId, useRef, useState } from "react";
 import { cx } from "../lib/cx.js";
 import { focusOnAppearance } from "../lib/focus.js";
@@ -21,11 +22,21 @@ export interface QuestionCardProps {
   questions: readonly Question[];
   /** The text of the user's reply, once there is one: the card is then dimmed and inert. */
   answer?: string | undefined;
+  /**
+   * The user closed the card with its X: it stays where it is, locked (no option can be chosen),
+   * the question still its title, and a muted "Não respondido". Wins over `answer`.
+   */
+  dismissed?: boolean;
   /** Move the focus into the card when it appears (the caller says whether the user is typing). */
   autoFocus?: boolean;
   disabled?: boolean;
   /** The answer, as the plain text that is sent as the user's message. */
   onSubmit(text: string): void;
+  /**
+   * The X at the top right of an open card: the person will answer by typing in the chat. Absent:
+   * no X (Pendências has no chat under it).
+   */
+  onDismiss?(): void;
 }
 
 /** True when the user is in the middle of typing something that is not an empty composer. */
@@ -37,38 +48,45 @@ export function userIsTyping(active: Element | null = document.activeElement): b
 }
 
 /**
- * A question of the bot as a card (like the owner's reference): the question in bold, a muted
- * helper line, options as rows with a letter chip. One choice answers on click; several choices, or
- * several questions, use a footer with page dots and Voltar / Pular / Avançar (Enviar on the last
- * page). The answer is plain text (`buildAnswerText`); once there is a reply the card shows what was
- * chosen, dimmed.
+ * A question of the bot with options, as a card ALWAYS apart from any bubble (owner, 24/11/2026:
+ * "o card de perguntas deve sempre vir separado, nunca integrado na mensagem"). Its TITLE is always
+ * the question, visible (one question, or the question of each page of a questionnaire); the
+ * options are rows with a letter chip and the TITLE only ("só o title é suficiente": a description
+ * the bot gave is not drawn). One choice answers on click; several choices, or several questions,
+ * use a footer with page dots and Voltar / Pular / Avançar (Enviar on the last page). The answer is
+ * plain text (`buildAnswerText`); once there is a reply the card shows what was chosen, dimmed.
+ * Appearing, the card itself takes the focus (no option looks chosen); the keyboard's focus on an
+ * option is a soft rounded fill, only for the keyboard.
  */
 export function QuestionCard({
   questions,
   answer,
+  dismissed,
   autoFocus,
   disabled,
   onSubmit,
+  onDismiss,
 }: QuestionCardProps) {
   const [page, setPage] = useState(0);
   const [picks, setPicks] = useState<string[][]>(() => questions.map(() => []));
   const [others, setOthers] = useState<string[]>(() => questions.map(() => ""));
   const rootId = useId();
   const ref = useRef<HTMLDivElement>(null);
-  const answered = answer !== undefined;
+  const locked = dismissed === true;
+  const answered = answer !== undefined || locked;
   const count = questions.length;
   const quick = count === 1 && questions[0]?.multiple !== true;
 
   // The card appears: take the focus, unless the user is typing.
+  // The card appears: it takes the focus (so the letters and the arrows answer at once), unless the
+  // user is typing. The CARD takes it, not an option: nothing looks selected before the person moves
+  // (owner, 24/11/2026: no ring on an option at load); the first arrow lands on an option.
   useEffect(() => {
-    if (autoFocus === true && !answered && !userIsTyping()) {
-      focusOnAppearance(
-        ref.current?.querySelector<HTMLElement>('[role="radio"], [role="checkbox"]'),
-      );
-    }
+    if (autoFocus === true && !answered && !userIsTyping()) focusOnAppearance(ref.current);
   }, []);
 
-  const parsed: QuestionAnswer[] | null = answered ? parseAnswerText(questions, answer) : null;
+  const parsed: QuestionAnswer[] | null =
+    answer !== undefined && !locked ? parseAnswerText(questions, answer) : null;
 
   const submit = (nextPicks: string[][] = picks, nextOthers: string[] = others) => {
     const answers = questions.map((_, i): QuestionAnswer => {
@@ -112,7 +130,8 @@ export function QuestionCard({
       rows[(index + 1) % rows.length]?.focus();
     } else if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
       e.preventDefault();
-      rows[(index - 1 + rows.length) % rows.length]?.focus();
+      // From the card itself (no option yet), up goes to the last option.
+      rows[index === -1 ? rows.length - 1 : (index - 1 + rows.length) % rows.length]?.focus();
     } else if (/^[a-fA-F]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
       const row = rows[e.key.toUpperCase().charCodeAt(0) - 65];
       if (row !== undefined) {
@@ -124,26 +143,36 @@ export function QuestionCard({
   };
 
   const renderQuestion = (q: Question, qi: number, readOnly: boolean) => {
-    const options = [
-      ...(q.options ?? []).map((o) => ({
-        key: o.label,
-        label: o.label,
-        description: o.description,
-      })),
-    ];
+    // The title only: the description of an option is never drawn (owner, 24/11/2026).
+    const options = (q.options ?? []).map((o) => ({ key: o.label, label: o.label }));
     if (q.allowOther === true && q.options !== undefined)
-      options.push({ key: OTHER, label: "Outra resposta", description: undefined });
+      options.push({ key: OTHER, label: "Outra resposta" });
     const chosenBefore = parsed?.[qi]?.chosen ?? [];
     const multiple = q.multiple === true;
     const selected = picks[qi] ?? [];
     return (
       <div className="flex flex-col gap-2" key={`${rootId}-${qi}`} data-testid="question-block">
-        <p
-          className="text-title font-title wrap-anywhere whitespace-pre-wrap"
-          id={`${rootId}-q${qi}`}
-        >
-          {q.question}
-        </p>
+        <div className="flex items-start justify-between gap-3">
+          <p
+            className="min-w-0 text-title font-title wrap-anywhere whitespace-pre-wrap"
+            id={`${rootId}-q${qi}`}
+            data-testid="question-text"
+          >
+            {q.question}
+          </p>
+          {!readOnly && onDismiss !== undefined && (
+            // The X: the person will answer by typing in the chat (any text is the answer).
+            <button
+              type="button"
+              className="-mt-1 -mr-1 inline-flex size-7 flex-none items-center justify-center rounded-pill border-0 bg-transparent text-text-muted transition-colors hover:bg-hover hover:text-text"
+              aria-label="Fechar e responder no chat"
+              data-testid="question-dismiss"
+              onClick={onDismiss}
+            >
+              <X size={16} aria-hidden="true" />
+            </button>
+          )}
+        </div>
         {multiple && !readOnly && (
           <p className="text-label text-text-muted">Selecione todas as opções aplicáveis</p>
         )}
@@ -165,13 +194,15 @@ export function QuestionCard({
                   aria-checked={on}
                   disabled={disabled === true || readOnly}
                   tabIndex={readOnly ? -1 : on || (selected.length === 0 && oi === 0) ? 0 : -1}
-                  className="group flex w-full items-center gap-3 border-0 bg-transparent px-0 py-1.5 text-left"
+                  // The keyboard's focus is the calm one of the chat: a rounded soft fill and the
+                  // chip's stronger edge, only for the keyboard (`focus-visible`), never a hard box.
+                  className="group -mx-2 flex items-center gap-3 self-stretch rounded-inner border-0 bg-transparent px-2 py-1.5 text-left transition-colors focus-visible:bg-hover focus-visible:outline-none"
                   data-testid="question-option"
                   onClick={() => choose(qi, o.key)}
                 >
                   <span
                     className={cx(
-                      "inline-flex size-7.5 flex-none items-center justify-center rounded-inner border text-small font-label group-enabled:group-hover:border-border-strong",
+                      "inline-flex size-7.5 flex-none items-center justify-center rounded-inner border text-small font-label group-focus-visible:border-border-strong group-enabled:group-hover:border-border-strong",
                       on
                         ? "border-bg-inverse bg-bg-inverse text-text-inverse"
                         : "border-border bg-raised text-text-muted",
@@ -180,12 +211,7 @@ export function QuestionCard({
                   >
                     {letter(oi)}
                   </span>
-                  <span className="flex min-w-0 flex-col">
-                    <span className="text-body wrap-anywhere">{o.label}</span>
-                    {o.description !== undefined && o.description !== "" && (
-                      <span className="text-small text-text-muted">{o.description}</span>
-                    )}
-                  </span>
+                  <span className="min-w-0 text-body wrap-anywhere">{o.label}</span>
                 </button>
               );
             })}
@@ -210,6 +236,21 @@ export function QuestionCard({
     );
   };
 
+  if (locked) {
+    // Closed with the X: in place, locked; the title stays as it is, the options are off, and one
+    // muted status in plain words. Typing in the chat still answers (that is the bot's business).
+    return (
+      <div className={CARD} data-testid="question-card" data-state="dismissed" aria-disabled="true">
+        <div className="flex flex-col gap-3 [&_[data-testid=question-option]]:opacity-55">
+          {questions.map((q, i) => renderQuestion(q, i, true))}
+        </div>
+        <p className="text-small text-text-muted" data-testid="question-status">
+          Não respondido
+        </p>
+      </div>
+    );
+  }
+
   if (answered) {
     return (
       <div
@@ -229,7 +270,9 @@ export function QuestionCard({
   return (
     <div
       ref={ref}
-      className={CARD}
+      // Focusable from code only (it takes the focus when it appears), with no ring of its own.
+      tabIndex={-1}
+      className={cx(CARD, "outline-none")}
       data-testid="question-card"
       data-state="open"
       onKeyDown={onKeyDown}

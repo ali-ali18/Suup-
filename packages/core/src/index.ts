@@ -61,6 +61,7 @@ export {
   toolOutcomeSchema,
   toolStatsSchema,
 } from "./events.js";
+export * from "./files.js";
 export * from "./loop/index.js";
 export * from "./memory/index.js";
 export {

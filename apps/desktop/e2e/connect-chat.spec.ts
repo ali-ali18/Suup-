@@ -158,11 +158,18 @@ test.describe("connect and chat", () => {
     await send(page, "CASE-OPTIONS escolha uma cor");
     const card = page.getByTestId("question-card");
     await expect(card).toHaveAttribute("data-state", "open");
-    await expect(card).toContainText("Qual cor você prefere?");
-    await expect(card.getByTestId("question-option")).toHaveText([
-      "AAzulA cor do mar",
-      "BVerdeA cor da mata",
-    ]);
+    // The card's title is ALWAYS the question, visible (owner, 24/11/2026). The bot's message is only
+    // the question, so there is no bubble too: the question is never shown twice.
+    await expect(card.getByTestId("question-text")).toBeVisible();
+    await expect(card.getByTestId("question-text")).toHaveText("Qual cor você prefere?");
+    await expect(page.getByTestId("chat-log").getByText("Qual cor você prefere?")).toHaveCount(1);
+    await expect(page.locator('[data-testid="bubble-bot"]', { hasText: "Qual cor" })).toHaveCount(
+      0,
+    );
+    // At load nothing looks chosen: the card has the focus, not an option.
+    await expect(card).toBeFocused();
+    await expect(card.getByTestId("question-option")).toHaveText(["AAzul", "BVerde"]);
+    await expect(card).not.toContainText("A cor do mar");
     await expect(card.getByRole("radiogroup")).toBeVisible();
     // While it is open the composer invites a free answer, and the bot is marked as having a doubt.
     await expect(page.getByLabel("Mensagem", { exact: true })).toHaveAttribute(
@@ -183,7 +190,7 @@ test.describe("connect and chat", () => {
     ).toBeVisible();
     await expect(card).toHaveAttribute("data-state", "answered");
     await expect(card.locator('[data-testid="question-option"][aria-checked="true"]')).toHaveText(
-      "BVerdeA cor da mata",
+      "BVerde",
     );
     await expect(page.getByLabel("Mensagem", { exact: true })).toHaveAttribute(
       "placeholder",
@@ -224,10 +231,15 @@ test.describe("connect and chat", () => {
     await openWithBot(page, world, "Questionario");
     await send(page, "CASE-QUIZ pergunte");
     const card = page.getByTestId("question-card");
-    await expect(card).toContainText("Qual banco de dados?");
+    // Each page's visible title is its question; the harness's numbered list is not a bubble too.
+    await expect(card.getByTestId("question-text")).toBeVisible();
+    await expect(card.getByTestId("question-text")).toHaveText("Qual banco de dados?");
+    await expect(page.locator('[data-testid="bubble-bot"]', { hasText: "Qual banco" })).toHaveCount(
+      0,
+    );
     await expect(card.getByRole("img", { name: "Pergunta 1 de 3" })).toBeVisible();
     await card.getByRole("button", { name: "Pular" }).click();
-    await expect(card).toContainText("Quais extras você quer?");
+    await expect(card.getByTestId("question-text")).toHaveText("Quais extras você quer?");
     await expect(card).toContainText("Selecione todas as opções aplicáveis");
     await card.getByTestId("question-option").filter({ hasText: "Cache" }).click();
     await card.getByTestId("question-option").filter({ hasText: "Fila" }).click();

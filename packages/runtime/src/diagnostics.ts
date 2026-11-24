@@ -38,6 +38,7 @@ import {
 } from "./routines.js";
 import type { Runtime } from "./runtime.js";
 import { loadScript } from "./scripted-provider.js";
+import { withSendFileTool } from "./send-file.js";
 import { checkVaultAndApprovals } from "./vault/doctor.js";
 import { checkWeb } from "./web/doctor.js";
 
@@ -235,6 +236,8 @@ export async function replayRecordedRun(runtime: Runtime, runId: string): Promis
   // tools of a conversation run of the user, and those of a routine's own run (docs/ROTINAS.md).
   let tools: ToolRegistry = runtime.tools;
   let botCfg = runtime.botConfig(bot);
+  // A guarded run offers `send_file` to a bot with a machine (`withSendFileTool`, as `buildDeps`).
+  if (run.isolated !== true) botCfg = withSendFileTool(botCfg);
   if (run.isolated !== true && (run.origin === "user" || run.origin === "routine")) {
     tools = new ToolRegistry();
     for (const tool of runtime.tools.list()) tools.register(tool);

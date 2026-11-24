@@ -36,6 +36,7 @@ import { botRoutes } from "./routes/bots.js";
 import { connectorRoutes } from "./routes/connectors.js";
 import { conversationRoutes } from "./routes/conversations.js";
 import { diagnosticsRoutes } from "./routes/diagnostics.js";
+import { fileRoutes } from "./routes/files.js";
 import { memoryRoutes } from "./routes/memories.js";
 import { metaRoutes } from "./routes/meta.js";
 import { networkRoutes } from "./routes/network.js";
@@ -150,6 +151,7 @@ export function createServer(runtime: Runtime, options: ServerOptions): SuupServ
     ...conversationRoutes,
     ...runRoutes,
     ...diagnosticsRoutes,
+    ...fileRoutes,
     ...memoryRoutes,
     ...supervisorRoutes,
     ...routineRoutes,
@@ -309,6 +311,11 @@ export function createServer(runtime: Runtime, options: ServerOptions): SuupServ
         reply = await Promise.race([route.handler(ctx), timedOut]);
       } finally {
         clearTimeout(timer);
+      }
+      // A file the bot made goes out as it is (bytes are not text the vault's redactor can read).
+      if (reply.file !== undefined) {
+        out.file(reply.file);
+        return;
       }
       // Nothing leaves the server holding a known secret value, whatever put it there.
       out.json(reply.status ?? 200, await runtime.redactJson(reply.body));

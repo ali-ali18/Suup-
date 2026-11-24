@@ -803,6 +803,12 @@ export const runEventSchema = z.discriminatedUnion("type", [
       questions: z.exactOptional(z.array(escalateQuestionSchema).min(1).max(5)),
       /** The `escalate` call this question came from. Absent for a review tie-break. */
       callId: z.exactOptional(z.string()),
+      /**
+       * What the bot wrote in the same turn, besides the question (context, a short reason). The
+       * chat shows it as the bot's message above the card; the question is the card's title.
+       * Absent when the bot only called the tool.
+       */
+      lead: z.exactOptional(z.string()),
       /** `review_tie_break`: the reviewer rejected too often and a human must decide. */
       reason: z.exactOptional(z.enum(["review_tie_break"])),
       /**

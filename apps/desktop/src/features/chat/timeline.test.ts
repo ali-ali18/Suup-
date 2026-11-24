@@ -518,6 +518,67 @@ describe("buildTimeline: approval cards and secure forms among the bot's actions
   });
 });
 
+describe("buildTimeline: a question's bubble is only what the bot wrote besides it", () => {
+  const base = {
+    conversationId: "c",
+    authorBotId: "b",
+    runId: null,
+    status: null,
+    createdAt: new Date(2026, 10, 24, 14, 0).toISOString(),
+  };
+  const questions = [{ question: "Qual cor?", options: [{ label: "Azul" }, { label: "Verde" }] }];
+  const ask = (question: object) =>
+    buildTimeline(
+      [{ ...base, id: "q", seq: 1, authorKind: "bot", text: "Qual cor?", question }] as never,
+      {},
+      [],
+      new Date(2026, 10, 24, 15, 0),
+    ).find((i) => i.kind === "bot");
+  it("no lead from the server: the card alone (its title is the question)", () => {
+    const item = ask({ questions });
+    expect(item?.kind === "bot" && item.ask?.lead).toBe(undefined);
+  });
+  it("closed with the X: not open, dismissed (the card stays, locked)", () => {
+    const item = ask({ questions, dismissed: true });
+    expect(item?.kind === "bot" && item.ask).toMatchObject({ open: false, dismissed: true });
+  });
+  it("the lead the server declares is the bubble", () => {
+    const item = ask({ questions, lead: "A busca está fora do ar." });
+    expect(item?.kind === "bot" && item.ask?.lead).toBe("A busca está fora do ar.");
+  });
+});
+
+describe("buildTimeline: the files a bot handed over", () => {
+  it("come right under their message, as one card item that breaks the bubbles", () => {
+    const file = {
+      id: "00000000-0000-4000-8000-0000000000f1",
+      name: "a.pdf",
+      mime: "application/pdf",
+      size: 10,
+      kind: "pdf" as const,
+    };
+    const base = {
+      conversationId: "c",
+      authorBotId: "b",
+      runId: null,
+      status: null,
+      createdAt: new Date(2026, 10, 24, 14, 0).toISOString(),
+    };
+    const items = buildTimeline(
+      [
+        { ...base, id: "m1", seq: 1, authorKind: "bot", text: "Aqui está.", attachments: [file] },
+        { ...base, id: "m2", seq: 2, authorKind: "bot", text: "Mais alguma coisa?" },
+      ] as never,
+      {},
+      [],
+      new Date(2026, 10, 24, 15, 0),
+    ).filter((i) => i.kind !== "separator");
+    expect(items.map((i) => i.kind)).toEqual(["bot", "files", "bot"]);
+    expect(items[1]).toMatchObject({ key: "m1-files", files: [file] });
+    expect(Object.fromEntries(bubblePositions(items))).toEqual({ m1: "single", m2: "single" });
+  });
+});
+
 describe("bubblePositions: consecutive text bubbles of one sender form a group", () => {
   const user = (key: string, state: "sending" | "sent" | "delivered" | undefined = undefined) =>
     ({ kind: "user", key, text: key, state }) as TimelineItem;
@@ -531,6 +592,7 @@ describe("bubblePositions: consecutive text bubbles of one sender form a group",
         questions: [{ question: "Qual?", options: [{ label: "A" }, { label: "B" }] }],
         answer: undefined,
         open: true,
+        dismissed: false,
         tieBreak: false,
       },
     }) as TimelineItem;
@@ -543,6 +605,7 @@ describe("bubblePositions: consecutive text bubbles of one sender form a group",
         questions: [{ question: "E então?" }],
         answer: undefined,
         open: true,
+        dismissed: false,
         tieBreak: false,
       },
     }) as TimelineItem;
@@ -593,7 +656,16 @@ describe("bubblePositions: consecutive text bubbles of one sender form a group",
     expect(positions).toEqual({ a: "first", b: "last", c: "first", d: "middle", e: "last" });
     expect(positions).not.toHaveProperty("k");
     // Every kind of card or line breaks it, even a lone bubble around it.
+    // A question with choices whose text is only the question is the card alone: it breaks the group.
     expect(of([bot("a"), choice("q"), bot("b")])).toEqual({ a: "single", b: "single" });
+    // With words of the bot besides the question, they are a bubble that ends its group.
+    const withLead = (key: string) => {
+      const item = choice(key);
+      return item.kind === "bot" && item.ask !== undefined
+        ? ({ ...item, ask: { ...item.ask, lead: "Antes, um aviso." } } as TimelineItem)
+        : item;
+    };
+    expect(of([bot("a"), withLead("q"), bot("b")])).toEqual({ a: "first", q: "last", b: "single" });
     expect(
       of([
         bot("a"),

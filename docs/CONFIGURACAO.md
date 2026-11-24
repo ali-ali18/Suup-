@@ -74,6 +74,18 @@ A máquina dos bots. Cada bot trabalha na própria subpasta `bots/<id do bot>` d
 | `network` (opcional) | A rede dos bots: o contêiner **não tem rede própria** e sai por um proxy do harness, só para os hosts da lista. `name` (rede interna, padrão `suup-sandbox-net`), `defaultHosts` (nomes exatos liberados a todos; padrão `registry.npmjs.org`, `pypi.org`, `files.pythonhosted.org`; `[]` = nenhum), `ports` (padrão `[80, 443]`), `proxy` (`listenHost`, `advertiseHost`, `port`: só se o worker não roda no host; `mode: "container"` e `image` põem o proxy no contêiner `suup-egress`, o caminho do app no Windows). Veja [REDE.md](REDE.md) |
 | `connectors` (opcional) | Onde rodam os conectores stdio: `image` (padrão `suup-connector-runner:dev`, de `docker/connector-runner`), `memory` (padrão 512m), `cpus` (padrão 1). Veja [CONECTORES.md](CONECTORES.md) |
 
+**O que a máquina tem** (`docker/sandbox/Dockerfile`; Debian 12, usuário `bot`, pasta `/workspace`). Para o bot produzir documentos de assistente pessoal sem depender da rede:
+
+| O quê | Para quê |
+|---|---|
+| `bash`, `coreutils`, `findutils`, `procps`, `curl`, `git`, `jq`, `ripgrep`, `zip`, `unzip`, `file` | o terminal de sempre; `file` diz o tipo de um arquivo |
+| `python3`, `python3-pip`, `python3-venv` | scripts; `pip install` e ambientes virtuais |
+| `python3-reportlab` | PDF |
+| `python3-docx` | documento do Word (`.docx`) |
+| `python3-openpyxl` | planilha do Excel (`.xlsx`) |
+
+O que **não** vem, para a imagem continuar pequena: LaTeX, LibreOffice e `pandoc` (o binário do `pandoc` sozinho tem perto de 190 MB). Quando o bot precisa de outra biblioteca, ele a instala com `pip install <pacote>`: o Python do sistema é "gerenciado externamente" (PEP 668), e o `/etc/pip.conf` da imagem instala na pasta do próprio usuário (`~/.local`, no volume), sem mexer nos pacotes do sistema. O `pip` sai pelo proxy como qualquer comando (as variáveis `HTTP_PROXY`/`HTTPS_PROXY` vêm em cada `docker exec`), e `pypi.org` e `files.pythonhosted.org` estão na lista padrão de hosts; se o dono tirou os dois da lista, o proxy recusa, o resultado do comando diz qual host faltou e o bot pede com `request_network_access` (um cartão, [REDE.md](REDE.md)). Conversões com `pandoc` saem de `pip install pypandoc_binary` (a roda traz o binário). Teste real: `packages/sandbox/test/egress-pip.test.ts` (com `SUUP_DOCKER_TESTS=1`, `SUUP_PIP_TESTS=1` e a imagem em `SUUP_SANDBOX_IMAGE`; numa rede que reassina o TLS, `SUUP_EXTRA_CA_BUNDLE`).
+
 **`local`** (só para desenvolvimento e testes): `{ "kind": "local", "root": "<pasta>" }`. Os comandos dos bots rodam **diretamente neste computador, sem nenhum isolamento**, dentro de `<root>/bots/<id>`. Toda vez que esse modo está em uso, a CLI imprime um aviso visível (`AVISO: sandbox LOCAL em uso ...`), e `suup doctor` o marca.
 
 ### `worker` (opcional)

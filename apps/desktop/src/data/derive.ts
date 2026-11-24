@@ -115,6 +115,9 @@ export const SILENT_TOOLS: ReadonlySet<string> = new Set([
   "web_search",
   "web_read",
   "web_fetch",
+  // Handing a file over is the file card under the bot's message, never a row too (owner,
+  // 24/11/2026: the file must not appear twice in the thread).
+  "send_file",
 ]);
 
 export const toolLabel = (name: string): string => TOOL_LABEL[name] ?? name;

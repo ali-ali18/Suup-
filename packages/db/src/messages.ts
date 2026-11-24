@@ -29,6 +29,21 @@ export interface MessageQuestionItem {
 export interface MessageQuestion {
   questions: MessageQuestionItem[];
   reason?: "review_tie_break";
+  /**
+   * What the bot wrote besides the question, in the same turn (the chat's bubble above the card).
+   * Absent when it only asked: the card, whose title is the question, is then all there is.
+   */
+  lead?: string;
+  /** The user closed the card with its X: no option will be chosen (`dismissQuestion`). */
+  dismissed?: boolean;
+}
+
+/** A file a bot message shows (`send_file`): what the chat draws; the content is in `files`. */
+export interface MessageAttachment {
+  id: string;
+  name: string;
+  mime: string;
+  size: number;
 }
 
 /** One bot proposed on a team card: what the draft feature wrote, for the user to tick. */
@@ -77,6 +92,8 @@ export interface Message {
    * draft). Structured, never in `text`; the harness tells the model which routine it is.
    */
   routineRef: string | null;
+  /** Bot or system messages only: the files the run sent with it (`send_file`), oldest first. */
+  attachments?: MessageAttachment[];
 }
 
 export interface MessageRow {
@@ -93,6 +110,7 @@ export interface MessageRow {
   team: TeamProposal | null;
   routine_id: string | null;
   routine_ref: string | null;
+  attachments: MessageAttachment[] | null;
 }
 
 export function mapMessage(row: MessageRow): Message {
@@ -111,6 +129,9 @@ export function mapMessage(row: MessageRow): Message {
     ...(row.team === null || row.team === undefined ? {} : { team: row.team }),
     routineId: row.routine_id ?? null,
     routineRef: row.routine_ref ?? null,
+    ...(row.attachments === null || row.attachments === undefined || row.attachments.length === 0
+      ? {}
+      : { attachments: row.attachments }),
   };
 }
 
@@ -129,6 +150,7 @@ const MESSAGE_COLUMNS = [
   "team",
   "routine_id",
   "routine_ref",
+  "attachments",
 ];
 
 const uuidSchema = z.uuid();
@@ -157,6 +179,8 @@ const questionSchema = z.object({
     .min(1)
     .max(5),
   reason: z.exactOptional(z.literal("review_tie_break")),
+  lead: z.exactOptional(z.string().min(1)),
+  dismissed: z.exactOptional(z.boolean()),
 });
 
 export const teamProposalItemSchema = z.object({
@@ -285,8 +309,24 @@ export async function appendMessageOnce(
         );
       }
     }
+    // The files the run sent that no message shows yet go with this one (a bot or system message
+    // of the run), in the same transaction: whoever sees the message sees its files.
+    const waiting =
+      m.authorKind !== "user" && m.runId !== undefined
+        ? await tx.sql<{ id: string; name: string; mime: string; size: number }[]>`
+            select id, name, mime, size from files
+            where run_id = ${m.runId} and message_id is null
+            order by created_at, id
+            for update`
+        : [];
+    const attachments = waiting.map((f) => ({
+      id: f.id,
+      name: f.name,
+      mime: f.mime,
+      size: f.size,
+    }));
     const [row] = await tx.sql<MessageRow[]>`
-      insert into messages (conversation_id, seq, author_kind, author_bot_id, text, run_id, status, dedupe_key, question, team, routine_id, routine_ref, created_at)
+      insert into messages (conversation_id, seq, author_kind, author_bot_id, text, run_id, status, dedupe_key, question, team, routine_id, routine_ref, attachments, created_at)
       values (
         ${m.conversationId},
         (select coalesce(max(seq), 0) + 1 from messages where conversation_id = ${m.conversationId}),
@@ -300,10 +340,16 @@ export async function appendMessageOnce(
         ${m.team === undefined ? null : tx.sql.json({ items: m.team, status: "pending", created: [] })},
         ${m.routineId ?? null},
         ${m.routineRef ?? null},
+        ${attachments.length === 0 ? null : tx.sql.json(attachments)},
         clock_timestamp()
       )
       returning ${tx.sql(MESSAGE_COLUMNS)}`;
     if (!row) throw new Error("insert into messages returned no row");
+    if (attachments.length > 0) {
+      await tx.sql`
+        update files set message_id = ${row.id}
+        where id = any(${attachments.map((a) => a.id)}::uuid[])`;
+    }
     await tx.sql`
       update conversations set last_message_at = ${row.created_at} where id = ${m.conversationId}`;
     return { message: mapMessage(row), created: true };

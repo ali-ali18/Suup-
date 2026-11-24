@@ -142,6 +142,7 @@ async function outcomeMessage(
             question?: string;
             questions?: EscalateQuestion[];
             reason?: "review_tie_break";
+            lead?: string;
           };
         }[]
       >`
@@ -160,14 +161,20 @@ async function outcomeMessage(
       }
       const text = question?.payload.question?.trim();
       if (question === undefined || text === undefined || text === "") return null;
+      // What the bot wrote besides the question (it may write nothing and only ask). The structured
+      // side carries it apart: the app draws it as the bubble and the question as the card's title,
+      // so nothing is drawn twice. `text` keeps both, for whoever reads only the text (the CLI, the
+      // history of later runs, a notification).
+      const lead = question.payload.lead?.trim() ?? "";
       return {
         authorKind: "bot",
-        text,
+        text: lead === "" ? text : `${lead}\n\n${text}`,
         key: `run:${run.id}:question:${question.seq}`,
         // The structured side, so the app draws the card from the message alone.
         question: {
           questions: escalatedQuestions({ question: text, questions: question.payload.questions }),
           ...(question.payload.reason === undefined ? {} : { reason: question.payload.reason }),
+          ...(lead === "" ? {} : { lead }),
         },
       };
     }

@@ -147,6 +147,14 @@ export {
   type RunSources,
 } from "./events.js";
 export {
+  getFile,
+  type InsertFileInput,
+  insertFile,
+  MAX_FILE_BYTES,
+  type StoredFile,
+  type StoredFileWithContent,
+} from "./files.js";
+export {
   ackInboxEntries,
   hasPendingInbox,
   type InboxEntry,
@@ -252,6 +260,7 @@ export {
   MESSAGE_AUTHOR_KINDS,
   MESSAGE_STATUSES,
   type Message,
+  type MessageAttachment,
   type MessageAuthorKind,
   type MessageQuestion,
   type MessageQuestionItem,
@@ -287,6 +296,11 @@ export {
 } from "./network.js";
 export { PgRunQueue } from "./pg-queue.js";
 export { PgRunStore, type PgRunStoreOptions, type RunStatusHook } from "./pg-store.js";
+export {
+  DISMISSED_QUESTION_ANSWER,
+  dismissQuestion,
+  QuestionDismissError,
+} from "./question-dismiss.js";
 export {
   heartbeatRun,
   type RequeueStaleOptions,
