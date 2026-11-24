@@ -266,6 +266,18 @@ Decisão do dono (19/11/2026): "pode ser embutido no app, segue". O app de deskt
 - **Instalador:** `.github/workflows/desktop-installer.yml` (NSIS no Windows, sem assinatura). Guia do dono: [USAR-NO-WINDOWS.md](USAR-NO-WINDOWS.md).
 - **Atualização automática** (aprovada pelo dono, 23/11/2026: "não preciso reinstalar nada, ele só atualiza"): o atualizador oficial do Tauri 2, com Releases do GitHub assinadas (minisign) publicadas como rascunho por `.github/workflows/release.yml`; o servidor embutido para antes do instalador e migra o banco na partida seguinte. Desligado até o dono pôr a chave pública. Base: [pesquisas/atualizador-do-app.md](pesquisas/atualizador-do-app.md); como funciona e o passo a passo do dono: [ATUALIZACAO.md](ATUALIZACAO.md).
 
+### 4.12b Chamada de voz
+
+Decisão do dono (23/11/2026): um modo **chamada de voz**, como o do Grok Bot. A pessoa conversa por voz, como numa ligação, e o bot **continua agindo** durante a conversa: cria rotinas, consulta a memória, busca, usa conectores. Tudo pelas mesmas ferramentas, com as mesmas regras e cartões.
+
+- **No chat**, a chamada vira um bloco próprio na conversa, uma "subconversa": "Chat de voz · 00:02" com a duração. Dentro dele ficam a **transcrição**, das duas falas, e as **ações** do bot como as linhas de sempre (por exemplo, "Rotina criada"). Ao terminar, o app mostra que a transcrição está sendo salva e ela entra no histórico como mensagens comuns. Assim a memória, a busca nas conversas e o supervisor a enxergam.
+- **Na tela:** botão de chamada no compositor, ao lado do microfone de ditado. Durante a chamada há a tela da ligação (o rosto do bot falando, mudo e desligar). Um cartão que precisar de você aparece na tela e pode ser respondido por voz ("pode", "não") ou tocando.
+- **Aprovações por voz:** um "sim" falado só vale para o cartão que está na tela, nunca para algo que o bot apenas descreveu. A frase dita fica na transcrição. Regras e pisos não mudam.
+- **Aberto e sem prender a provedor** (regra do dono): fala para texto e texto para fala escolhíveis, com opção local e aberta (a pesquisa decide quais: modelos abertos de transcrição e de voz rodando no PC), além de serviços de voz em tempo real dos provedores como opção. A conversa usa o mesmo loop: cada fala é uma mensagem do usuário, e a resposta é falada enquanto é gerada.
+- **Ditado** (o microfone, sem chamada) é a parte simples e pode vir antes: fala vira texto no compositor.
+- **Motor de voz escolhível** (decisão do dono, 23/11/2026), sempre com o loop do Suup como cérebro (mesmas ferramentas, regras e cartões): (1) **leve, sem contêiner**, no app (sherpa-onnx: Whisper e vozes pt-BR), para qualquer PC; (2) **pacote aberto opcional em contêiner** (candidato: speaches, MIT, CPU ou CUDA), instalado só se a pessoa pedir, **depois de conferir a máquina** (memória, CPUs, WSL 2, placa NVIDIA); (3) **serviços pagos** com a chave no cofre: OpenAI (transcrição/voz ou GPT-Live com o Suup como cérebro), Deepgram, Cartesia, ElevenLabs, xAI, Gemini, Azure, conforme a pesquisa confirmar preço e pt-BR. Detalhes e números: [pesquisas/fase-7-chamada-de-voz.md](pesquisas/fase-7-chamada-de-voz.md), "Segunda rodada". **Prioridade** (dono, 23/11/2026: "a maioria vai de pago, é muito difícil ter 16 GB de VRAM"): os motores **pagos** vêm primeiro (OpenAI: transcrição e voz em cadeia, depois o GPT-Live com o Suup como cérebro); o leve local é a opção grátis; o pacote em contêiner fica por último, para quem tiver placa.
+- **Antes de implementar:** pesquisa em `docs/pesquisas/` sobre transcrição e voz abertas (qualidade em pt-BR, latência, CPU/GPU no PC do dono), detecção de fim de fala e interrupção (falar por cima do bot), eco e microfone no Tauri/WebView2, serviços em tempo real dos provedores e custo por minuto.
+
 ### 4.13 Diagnóstico: de quem é o problema
 
 Um problema pode estar em cinco lugares: modelo, harness, ferramenta, servidor ou app. O desenho precisa permitir separar os cinco sem adivinhar.
@@ -495,7 +507,7 @@ docs/
 | 4 | Rotinas (horário e webhook), iniciativa, notificações, diário, delegação, sala de grupo | Monitor que avisa só quando a condição é atendida; bot nota um prazo na agenda, prepara o material e deixa um cartão pronto para aceitar; evento assinado dispara a rotina uma única vez, mesmo reenviado; bot principal encaminha e recebe de volta |
 | 5 | Navegador com tela por bot, ao vivo, passagem de controle | Bot navega num site com login, pausa para o usuário entrar e retoma |
 | 6 | Agente local nos PCs | Instala uma ferramenta no PC, com aprovação, e confere que funciona |
-| 7 | Páginas salvas, documentos, imagem, vídeo, voz, agentes de código externos | Gera um documento e uma página compartilhável; abre um PR por agente externo |
+| 7 | Páginas salvas, documentos, imagem, vídeo, voz (ditado e **chamada de voz**, 4.12b), agentes de código externos | Gera um documento e uma página compartilhável; abre um PR por agente externo |
 | 8 | Celular, reuniões, telefone, outros canais | Definido quando a fase 7 terminar |
 
 ## 9. Fase 1 em detalhe
