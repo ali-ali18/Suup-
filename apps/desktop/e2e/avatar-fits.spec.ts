@@ -58,12 +58,20 @@ for (const variant of ["tile", "row"] as const) {
           x.right,
           x.bottom,
         ];
+        const svg = el.querySelector("[data-mascot]") as HTMLElement;
         return {
+          frame: q(svg.getBoundingClientRect()),
+          box: q((layer.parentElement as HTMLElement).getBoundingClientRect()),
           face: q(g.getBoundingClientRect()),
           layer: q(layer.getBoundingClientRect()),
           scrollTop: scroller.getBoundingClientRect().top,
         };
       });
+      // The drawing's frame is exactly the avatar's box (owner, 24/11/2026: "Ele tá gigante!").
+      expect(Math.abs(rects.frame[0] - rects.box[0]), name).toBeLessThanOrEqual(1);
+      expect(Math.abs(rects.frame[1] - rects.box[1]), name).toBeLessThanOrEqual(1);
+      expect(Math.abs(rects.frame[2] - rects.box[2]), name).toBeLessThanOrEqual(1);
+      expect(Math.abs(rects.frame[3] - rects.box[3]), name).toBeLessThanOrEqual(1);
       expect(rects.face[0], name).toBeGreaterThanOrEqual(rects.layer[0]);
       expect(rects.face[1], name).toBeGreaterThanOrEqual(rects.layer[1]);
       expect(rects.face[2], name).toBeLessThanOrEqual(rects.layer[2]);

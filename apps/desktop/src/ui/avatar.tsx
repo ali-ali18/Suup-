@@ -91,10 +91,16 @@ export function cornerStatus(s: {
  */
 export const FACE_BLEED = 0.35;
 const percent = (fraction: number) => `${Math.round(fraction * 1e4) / 100}%`;
-/** The layer's inset (negative) and padding that put its content box exactly over the avatar's box. */
+/**
+ * The layer's inset (negative) and padding that put its content box exactly over the avatar's box.
+ * A percentage padding is a share of the WIDTH OF THE CONTAINING BLOCK (CSS Box Model, "padding"),
+ * which for this absolute layer is the avatar's box, not the layer: so it is FACE_BLEED itself.
+ * (It once was FACE_BLEED / (1 + 2 FACE_BLEED), as if relative to the layer, and the face came out
+ * about 29% bigger than its box: the owner saw it overflow everywhere, 24/11/2026.)
+ */
 const FACE_LAYER = {
   inset: percent(-FACE_BLEED),
-  padding: percent(FACE_BLEED / (1 + 2 * FACE_BLEED)),
+  padding: percent(FACE_BLEED),
 } as const;
 
 /**

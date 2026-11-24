@@ -80,9 +80,7 @@ describe("the star of the main bot", () => {
       const root = draw({ supervisor: true, size });
       const layer = root.querySelector<HTMLElement>('[data-testid="avatar-notch"]');
       expect(layer?.style.inset).toBe(`${-FACE_BLEED * 100}%`);
-      expect(layer?.style.padding).toBe(
-        `${Math.round((FACE_BLEED / (1 + 2 * FACE_BLEED)) * 1e4) / 100}%`,
-      );
+      expect(layer?.style.padding).toBe(`${Math.round(FACE_BLEED * 1e4) / 100}%`);
       expect(layer?.style.maskRepeat).toBe("no-repeat");
       // the circle sits at the avatar's lower right corner (in the layer's own coordinates)
       expect(layer?.style.maskImage).toContain("circle at calc(79.41% - ");
