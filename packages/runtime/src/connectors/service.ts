@@ -4,11 +4,14 @@
 // (`@suup/connectors`) and the vault; the loop and the tools know none of this.
 import {
   adaptConnector,
+  type CatalogEntry,
   ConnectorConfigError,
   ConnectorError,
   ConnectorManager,
+  type ConnectorOAuthConfig,
   type ConnectorSpec,
   type ConnectorToolInfo,
+  connectionOAuthProvider,
   connectorTag,
   type PinnedDefinition,
   parseConnectorSpec,
@@ -31,6 +34,7 @@ import {
   getBot,
   getConnector,
   getConnectorDiscovery,
+  getConnectorOAuth,
   grantConnector,
   listConnectorEvents,
   listConnectors,
@@ -48,6 +52,8 @@ import {
 } from "@suup/db";
 import { RuntimeError } from "../errors.js";
 import type { Vault } from "../vault/service.js";
+import { type ConnectorGallery, createGallery } from "./gallery.js";
+import { forgetOAuth, vaultOAuthStore } from "./oauth-store.js";
 import { boundSnapshot, readSnapshot } from "./snapshot.js";
 
 /** What a person (API, CLI) gives to create a connector; checked by the rules of `@suup/connectors`. */
@@ -114,6 +120,18 @@ export interface ConnectorView {
   timeoutMs: number;
   enabled: boolean;
   origin: "user" | "proposal";
+  /** The gallery entry it was installed from (exact id), or `null`. */
+  catalogId: string | null;
+  /**
+   * The OAuth login of an HTTP connector that uses one (never a token: only where it stands), or
+   * `null` when the connector does not log in by OAuth.
+   */
+  oauth: {
+    status: "needs_login" | "connected" | "error";
+    lastError: string | null;
+    /** When the access token stops working (it is renewed on its own while there is a refresh token). */
+    expiresAt: Date | null;
+  } | null;
   grantedBotIds: string[];
   /** What each bot with a grant may use. */
   grants: ConnectorGrantView[];
@@ -165,11 +183,24 @@ export interface BotConnectorTools {
   withheld: { connector: string; tool: string; reason: string }[];
 }
 
+export interface CreateOptions {
+  origin?: "user" | "proposal";
+  /** The gallery entry it comes from. */
+  catalogId?: string;
+  /**
+   * The gallery installs an entry before its token is in the vault (the person types it next in
+   * the secure form); the connector is created off and the missing secret is its status.
+   */
+  allowMissingSecrets?: boolean;
+}
+
 export interface ConnectorService {
   readonly manager: ConnectorManager;
+  /** The gallery: entries, installing one, and the OAuth login in the browser. */
+  readonly gallery: ConnectorGallery;
   list(): Promise<ConnectorView[]>;
   get(name: string): Promise<ConnectorView | null>;
-  create(input: ConnectorInput, options?: { origin?: "user" | "proposal" }): Promise<ConnectorView>;
+  create(input: ConnectorInput, options?: CreateOptions): Promise<ConnectorView>;
   update(name: string, patch: ConnectorPatch): Promise<ConnectorView>;
   remove(name: string): Promise<boolean>;
   /** Replaces what the bot may use of the connector: every tool or exactly the listed ones. */
@@ -239,7 +270,12 @@ export function specOf(c: StoredConnector): ConnectorSpec {
             ...(c.cwd === null ? {} : { cwd: c.cwd }),
             egressHosts: c.egressHosts,
           }
-        : { kind: "http", url: c.url, headers: c.headers },
+        : {
+            kind: "http",
+            url: c.url,
+            headers: c.headers,
+            ...(c.oauth === null ? {} : { oauth: c.oauth }),
+          },
     scope: c.scope,
     tools: c.toolOverrides,
     trustAnnotations: c.trustAnnotations,
@@ -269,6 +305,7 @@ function writeOf(
     timeoutMs: extra.timeoutMs,
     enabled: extra.enabled,
     egressHosts: t.kind === "stdio" ? t.egressHosts : [],
+    oauth: t.kind === "http" && t.oauth !== undefined ? { ...t.oauth } : null,
   };
 }
 
@@ -305,6 +342,16 @@ export function createConnectorService(options: {
   fetch?: typeof fetch | undefined;
   /** Runs stdio servers isolated (docker sandbox). Absent: they are child processes of this one. */
   launcher?: StdioLauncher | undefined;
+  /** The loopback listener of the OAuth login (tests): host and port. */
+  oauthCallback?: { host?: string; port?: number } | undefined;
+  /** The server's public address (`server.publicUrl`): the browser comes back there. */
+  publicUrl?: string | undefined;
+  /** How long a browser login waits for its callback (tests). */
+  oauthFlowTtlMs?: number | undefined;
+  /** The clock of the logins (tests). */
+  now?: (() => number) | undefined;
+  /** Another list of gallery entries (tests only: an entry that points at a fake OAuth server). */
+  catalog?: readonly CatalogEntry[] | undefined;
   /** For tests of backoff and health checks. */
   managerOptions?: Partial<ConstructorParameters<typeof ConnectorManager>[0]> | undefined;
 }): ConnectorService {
@@ -319,6 +366,24 @@ export function createConnectorService(options: {
     redact: (text) => vault.redactor.redact(text),
     ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
     ...(options.launcher === undefined ? {} : { launcher: options.launcher }),
+    oauthProvider: async (spec) => {
+      const oauth: ConnectorOAuthConfig | undefined =
+        spec.transport.kind === "http" ? spec.transport.oauth : undefined;
+      let clientSecret: string | undefined;
+      if (oauth?.clientSecret !== undefined) {
+        await vault.refresh(5_000);
+        clientSecret = (await vault.resolveForConnector([oauth.clientSecret.secret]))[
+          oauth.clientSecret.secret
+        ];
+      }
+      return connectionOAuthProvider({
+        store: vaultOAuthStore(db, vault, spec.name),
+        clientName: "Suup",
+        ...(oauth?.clientId === undefined
+          ? {}
+          : { preRegistered: { clientId: oauth.clientId, clientSecret } }),
+      });
+    },
     ...(options.managerOptions ?? {}),
     onListed: (name, tools) => {
       void saveConnectorDiscovery(db(), name, { tools: boundSnapshot(tools) }).catch(() => {
@@ -333,6 +398,9 @@ export function createConnectorService(options: {
     const raw = readSnapshot(seen?.tools) ?? manager.lastKnownTools(spec);
     const state = manager.status().find((s) => s.connector === c.name);
     const pins = new Map((await listPins(db(), c.name)).map((p) => [p.tool, p]));
+    const login = c.oauth === null ? null : await getConnectorOAuth(db(), c.name);
+    const expiresIn = login?.tokenInfo?.expires_in;
+    const obtainedAt = login?.tokenInfo?.obtainedAt;
     return {
       id: c.id,
       name: c.name,
@@ -344,6 +412,21 @@ export function createConnectorService(options: {
       timeoutMs: spec.timeoutMs,
       enabled: c.enabled,
       origin: c.origin,
+      catalogId: c.catalogId,
+      oauth:
+        c.oauth === null
+          ? null
+          : {
+              status: login?.status ?? "needs_login",
+              lastError:
+                login?.lastError === undefined || login.lastError === null
+                  ? null
+                  : vault.redactor.redact(login.lastError),
+              expiresAt:
+                typeof expiresIn === "number" && typeof obtainedAt === "number"
+                  ? new Date(obtainedAt + expiresIn * 1000)
+                  : null,
+            },
       grantedBotIds: c.grantedBotIds,
       grants: c.grants,
       secretNames: secretNamesOf(spec),
@@ -416,6 +499,13 @@ export function createConnectorService(options: {
     }
   };
 
+  const secretsReady = async (spec: ConnectorSpec): Promise<boolean> => {
+    const names = secretNamesOf(spec);
+    if (names.length === 0) return true;
+    const have = new Set((await vault.list()).map((s) => s.name));
+    return names.every((n) => have.has(n));
+  };
+
   const asRuntimeError = (error: unknown): never => {
     if (error instanceof ConnectorConfigError) {
       throw new RuntimeError("invalid_input", error.message, { cause: error });
@@ -423,8 +513,12 @@ export function createConnectorService(options: {
     throw error;
   };
 
+  let gallery: ConnectorGallery;
   const service: ConnectorService = {
     manager,
+    get gallery() {
+      return gallery;
+    },
     async list() {
       return Promise.all((await listConnectors(db())).map(view));
     },
@@ -448,17 +542,22 @@ export function createConnectorService(options: {
       } catch (error) {
         return asRuntimeError(error);
       }
-      await checkSecrets(spec);
+      if (opts.allowMissingSecrets !== true) await checkSecrets(spec);
       const origin = opts.origin ?? "user";
       try {
         const created = await createConnector(db(), {
           name: spec.name,
           origin,
+          catalogId: opts.catalogId ?? null,
           ...writeOf(spec, {
             description: input.description ?? "",
             timeoutMs: input.timeoutMs ?? null,
             // A proposal is never live until a person approves it.
-            enabled: origin === "proposal" ? false : (input.enabled ?? true),
+            enabled:
+              origin === "proposal" ||
+              (opts.allowMissingSecrets === true && !(await secretsReady(spec)))
+                ? false
+                : (input.enabled ?? true),
           }),
         });
         return await view(created);
@@ -501,6 +600,11 @@ export function createConnectorService(options: {
       return view(saved);
     },
     async remove(name) {
+      const stored = await getConnector(db(), name);
+      if (stored?.oauth !== null && stored?.oauth !== undefined) {
+        // The login goes with the connector (the tokens leave the vault).
+        await forgetOAuth(db, vault, name);
+      }
       const gone = await deleteConnector(db(), name);
       await manager.invalidate(name);
       return gone;
@@ -690,8 +794,22 @@ export function createConnectorService(options: {
       }
       return out;
     },
-    close: () => manager.close(),
+    close: async () => {
+      await gallery.close();
+      await manager.close();
+    },
   };
+  gallery = createGallery({
+    db,
+    vault,
+    service,
+    fetch: options.fetch,
+    callback: options.oauthCallback,
+    publicUrl: options.publicUrl,
+    ...(options.oauthFlowTtlMs === undefined ? {} : { ttlMs: options.oauthFlowTtlMs }),
+    ...(options.now === undefined ? {} : { now: options.now }),
+    ...(options.catalog === undefined ? {} : { catalog: options.catalog }),
+  });
   return service;
 }
 

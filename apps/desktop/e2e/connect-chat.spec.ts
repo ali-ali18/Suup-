@@ -23,7 +23,7 @@ test.describe("connect and chat", () => {
     await page.getByLabel("Token").fill(world.token);
     await page.getByRole("button", { name: "Conectar" }).click();
     await expect(page.getByTestId("connect-error")).toContainText(
-      "Não foi possível falar com o servidor",
+      "Não consegui falar com o servidor",
     );
     // The right one.
     await page.getByLabel("Endereço do servidor").fill(world.serverUrl);
@@ -356,7 +356,9 @@ test.describe("connect and chat", () => {
     await expect(page.getByRole("dialog")).toHaveCount(0);
     const origin = page.getByTestId("ended-origin");
     await expect(origin).toHaveAttribute("data-origin", "provider");
-    await expect(origin).toContainText("A API do modelo falhou");
+    await expect(origin).toHaveText(
+      "O modelo não respondeu agora (rede, chave ou limite de uso). Tenta de novo daqui a pouco?",
+    );
     await expect(
       page.getByTestId("ended-detail").getByRole("button", { name: "Abrir no inspetor" }),
     ).toBeVisible();

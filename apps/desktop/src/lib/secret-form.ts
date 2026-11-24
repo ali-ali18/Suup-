@@ -5,6 +5,7 @@ import {
   type Secret,
   type SuupClient,
 } from "@suup/api";
+import { formError, friendlyError } from "./friendly-error.js";
 
 // The secure form's side of the network. A credential the person types goes from the field to the
 // server and nowhere else: this file never stores it, never logs it, and never lets it into a
@@ -45,7 +46,16 @@ function failure(error: unknown, value: string): { ok: false; message: string; c
         message: "A execução não está mais esperando este segredo.",
       };
     }
-    return { ok: false, conflict: false, message: scrubSecret(error.message, value) };
+    // A refusal of what was typed (too short, too long) is about the person's own input; any other
+    // kind is the friendly sentence (docs/DESIGN.md, "Amigável").
+    return {
+      ok: false,
+      conflict: false,
+      message:
+        error.code === "invalid_request"
+          ? scrubSecret(formError(error), value)
+          : friendlyError(error),
+    };
   }
   return {
     ok: false,

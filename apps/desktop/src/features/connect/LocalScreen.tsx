@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { friendlyError } from "../../lib/friendly-error.js";
 import type { LocalServer, LocalStatus } from "../../lib/platform.js";
-import { FieldError, FieldHint, MutedText, Notice, Pill } from "../../ui/primitives.js";
+import { FieldError, MutedText, Notice, Pill } from "../../ui/primitives.js";
 import { SecretInput, type SecretInputHandle } from "../../ui/secret-input.js";
 import { WelcomeCard } from "../../ui/welcome.js";
 import { STAGE_TEXT } from "./local-text.js";
@@ -49,7 +50,7 @@ export function LocalScreen({
       const now = await local.status();
       if (!gone) setStatus(now);
       if (gone) off();
-    })().catch((e: unknown) => setKeyError(e instanceof Error ? e.message : String(e)));
+    })().catch((e: unknown) => setKeyError(friendlyError(e)));
     return () => {
       gone = true;
       off?.();
@@ -73,7 +74,8 @@ export function LocalScreen({
       field.current?.clear();
       setStep("start");
     } catch (e) {
-      setKeyError(e instanceof Error ? e.message : String(e));
+      setKeyError("Não deu para guardar a chave. Tenta de novo?");
+      friendlyError(e);
     } finally {
       setSaving(false);
     }
@@ -83,7 +85,7 @@ export function LocalScreen({
     return (
       <WelcomeCard
         title="A chave do modelo"
-        subtitle="Digite a chave da Anthropic uma vez. Ela fica guardada no chaveiro do sistema e nunca é mostrada de novo."
+        subtitle="Digite a chave da Anthropic uma vez; ela fica guardada no chaveiro do sistema."
         onSubmit={() => void saveKey()}
         testId="local-key"
       >
@@ -145,21 +147,21 @@ export function LocalScreen({
       )}
       {restarting && (
         <Notice role="status" data-testid="local-restarting">
-          O servidor parou e vai tentar de novo
-          {status.restartInSeconds === null ? "" : ` em ${status.restartInSeconds} s`}
-          {status.message === null ? "" : `. Motivo: ${status.message}`}
+          {/* The reason is a log line (the supervisor's words): the logs keep it. */}O Suup parou e
+          vai tentar de novo
+          {status.restartInSeconds === null ? "" : ` em ${status.restartInSeconds} s`}.
         </Notice>
       )}
       {failed && (
         <>
+          {/* The reason is a log line, never parsed: one friendly sentence, the logs have the rest. */}
           <FieldError data-testid="local-error">
-            {status.message ?? "O servidor local parou sem dizer o motivo."}
+            Algo impediu o Suup de iniciar neste computador. Tenta de novo?
           </FieldError>
-          <FieldHint>Os registros ficam em {status.logsDir}.</FieldHint>
           <Pill tone="primary" onClick={() => void local.start()} data-testid="local-retry">
             Tentar de novo
           </Pill>
-          <Pill tone="secondary" onClick={() => void local.openLogs()}>
+          <Pill tone="secondary" onClick={() => void local.openLogs()} data-testid="local-logs">
             Abrir a pasta de registros
           </Pill>
         </>

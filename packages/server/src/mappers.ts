@@ -3,6 +3,7 @@ import type {
   Approval,
   ApprovalRule,
   Bot,
+  CatalogItem,
   Connector,
   ConnectorTest,
   ConnectorToolEvent,
@@ -10,6 +11,7 @@ import type {
   Conversation,
   Memory,
   Message,
+  OAuthStatus,
   Run,
   RunEvent,
   Secret,
@@ -17,8 +19,10 @@ import type {
 } from "@suup/api";
 import { recipientMatchers } from "@suup/core";
 import type {
+  CatalogItem as CatalogItemView,
   ConnectorTestResult,
   ConnectorView,
+  OAuthStatusView,
   ConnectorToolReview as ReviewView,
 } from "@suup/runtime";
 import {
@@ -287,6 +291,15 @@ export function toConnectorDto(view: ConnectorView): Connector {
     timeoutMs: view.timeoutMs,
     enabled: view.enabled,
     origin: view.origin,
+    catalogId: view.catalogId,
+    oauth:
+      view.oauth === null
+        ? null
+        : {
+            status: view.oauth.status,
+            lastError: view.oauth.lastError,
+            expiresAt: isoOrNull(view.oauth.expiresAt),
+          },
     grantedBotIds: view.grantedBotIds,
     grants: view.grants,
     pendingReviews: view.pendingReviews,
@@ -362,5 +375,57 @@ export function toConnectorEventDto(event: {
     toFingerprint: event.toFingerprint,
     detail: event.detail,
     createdAt: iso(event.createdAt),
+  };
+}
+
+export function toCatalogItemDto(item: CatalogItemView): CatalogItem {
+  const e = item.entry;
+  const auth: CatalogItem["entry"]["auth"] =
+    e.auth.kind === "oauth"
+      ? { kind: "oauth", scopes: e.auth.scopes === undefined ? null : [...e.auth.scopes] }
+      : e.auth.kind === "token"
+        ? {
+            kind: "token",
+            secret: e.auth.secret,
+            header: e.auth.header,
+            prefix: e.auth.prefix ?? null,
+            steps: [...e.auth.steps],
+          }
+        : { kind: "oauth_owner_client", steps: [...e.auth.steps] };
+  return {
+    entry: {
+      id: e.id,
+      name: e.name,
+      description: e.description,
+      source: e.source,
+      license: e.license,
+      icon: e.icon,
+      availability: e.availability,
+      unverifiedReason: e.unverifiedReason ?? null,
+      transport: e.transport as CatalogItem["entry"]["transport"],
+      auth,
+      egressHosts: [...e.egressHosts],
+      readTools: [...e.readTools],
+      writeTools: [...e.writeTools],
+      notes: [...e.notes],
+      disclosure: e.disclosure ?? null,
+      checkedAt: e.checkedAt,
+    },
+    status: item.status,
+    connector: item.connector,
+    detail: item.detail,
+    login:
+      item.login === null
+        ? null
+        : { flowId: item.login.flowId, expiresAt: iso(item.login.expiresAt) },
+  };
+}
+
+export function toOAuthStatusDto(view: OAuthStatusView): OAuthStatus {
+  return {
+    status: view.status,
+    flowId: view.flowId,
+    expiresAt: isoOrNull(view.expiresAt),
+    error: view.error,
   };
 }

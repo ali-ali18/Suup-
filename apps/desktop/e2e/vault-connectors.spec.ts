@@ -144,7 +144,8 @@ test.describe("secret requests and the vault", () => {
     await freshBot(world, "Usuário do cofre");
     await openApp(page, world);
     await openSettings(page, "Cofre");
-    await expect(page.getByTestId("vault-ok")).toContainText("SUUP_E2E_VAULT_KEY");
+    // the name of the key's variable is technical: nowhere on the screen
+    await expect(page.getByTestId("settings-screen")).not.toContainText("SUUP_E2E_VAULT_KEY");
     await expect(page.getByTestId("vault-status")).toContainText("nunca é mostrado");
     // Create.
     await page.getByTestId("secret-new").click();
@@ -221,7 +222,8 @@ test.describe("a server without a vault", () => {
     await openSettings(page, "Cofre");
     const notice = page.getByTestId("vault-missing");
     await expect(notice).toContainText("Este servidor não tem cofre configurado");
-    await expect(notice).toContainText("suup vault key generate");
+    await expect(notice).toContainText("quem cuida do servidor precisa ligá-lo");
+    await expect(notice).not.toContainText("suup vault key generate");
     await expect(page.getByTestId("secret-new")).toBeDisabled();
     await expect(page.getByTestId("vault-empty")).toContainText("Nada guardado ainda");
   });
@@ -279,12 +281,14 @@ test.describe("connectors", () => {
     await item.getByTestId("connector-details").click();
     const row = page.getByTestId("connector-row").filter({ hasText: "fake" });
     await expect(row.getByTestId("connector-panel")).toBeVisible();
-    await expect(row.getByTestId("connector-health")).toContainText("Ainda não listado");
+    await expect(row.getByTestId("connector-health")).toHaveText("Teste para ver as ferramentas.");
     // Test: it really starts the server, lists its tools and shows the result.
     await row.getByTestId("connector-test").click();
     const result = row.getByTestId("connector-test-result");
     await expect(result).toHaveAttribute("data-ok", "true");
-    await expect(result).toContainText("fake-server 1.2.3");
+    await expect(result).toContainText("Funcionou:");
+    // the server's name and version are technical: not on the screen
+    await expect(result).not.toContainText("fake-server 1.2.3");
     await expect(row.getByTestId("connector-health")).toContainText("ferramentas oferecidas");
     // The panel: the grants (a row per bot with a count), scope, the tools with the risk and origin.
     const panel = row.getByTestId("connector-panel");
@@ -303,7 +307,8 @@ test.describe("connectors", () => {
     // A tool is one row; its details open on its own button.
     await expect(echo.getByTestId("tool-basis")).toHaveCount(0);
     await echo.getByTestId("connector-tool-toggle").click();
-    await expect(echo).toContainText("conn_fake__echo");
+    // the internal registered name stays out of sight
+    await expect(echo).not.toContainText("conn_fake__echo");
     await expect(echo).toContainText("Externa ou irreversível");
     await expect(echo.getByTestId("tool-basis")).toContainText("Padrão: pergunta antes de rodar.");
     await expect(echo.getByTestId("tool-basis")).toContainText("só lê");
@@ -374,8 +379,10 @@ test.describe("connectors", () => {
     );
     await card.getByTestId("approval-approve").click();
     await expect(botMessage(page, "Criei a coisa no conector.")).toBeVisible();
-    const action = page.getByTestId("action-card").filter({ hasText: "conn_fake__write_thing" });
+    // The row says the tool in words, never the internal `conn_<connector>__<tool>` name.
+    const action = page.getByTestId("action-card").filter({ hasText: "Usar “write thing”" });
     await expect(action).toBeVisible();
+    await expect(action).not.toContainText("conn_fake__write_thing");
     // One row for the call, with the connector's name as its category, the same as on the card.
     await expect(page.getByTestId("action-card")).toHaveCount(1);
     await expect(action.locator('[data-testid="action-kind"]')).toHaveText("fake");
@@ -522,8 +529,10 @@ test.describe("connectors", () => {
     await row.getByTestId("connector-test").click();
     const result = row.getByTestId("connector-test-result");
     await expect(result).toHaveAttribute("data-ok", "false");
-    await expect(result).toContainText("quebrado");
-    await expect(row.getByTestId("connector-health")).toContainText("Último erro:");
+    // a friendly sentence; the raw error (the path, the system's words) stays in the logs
+    await expect(result).toHaveText("Não deu para falar com o conector agora. Tenta de novo?");
+    await expect(row).not.toContainText("/caminho/que/nao/existe");
+    await expect(row.getByTestId("connector-health")).toHaveText("Não está respondendo agora.");
     await row.getByTestId("connector-delete").click();
     await page.getByTestId("connector-delete-confirm").click();
     await expect(page.getByTestId("connector-row")).toHaveCount(0);

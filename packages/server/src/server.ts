@@ -7,7 +7,13 @@ import {
 import type { AddressInfo, Socket } from "node:net";
 import { streamQuerySchema } from "@suup/api";
 import { migrationStatus, pruneChangeLog } from "@suup/db";
-import { DEFAULT_SERVER, ensureDefaultBot, type Runtime, reconcileRunEffects } from "@suup/runtime";
+import {
+  DEFAULT_SERVER,
+  ensureDefaultBot,
+  OAUTH_CALLBACK_PATH,
+  type Runtime,
+  reconcileRunEffects,
+} from "@suup/runtime";
 import type { z } from "zod";
 import { assertToken, isAuthorized } from "./auth.js";
 import { checkOrigin, corsHeaders } from "./cors.js";
@@ -234,6 +240,26 @@ export function createServer(runtime: Runtime, options: ServerOptions): SuupServ
         out.json(200, { status: "ok" });
         return;
       }
+      // Where the browser comes back from the OAuth login of a connector when the server has a
+      // public address (`server.publicUrl`; docs/CONECTORES.md, "OAuth"). No token: the browser has
+      // none; what protects it is the single-use `state` of a login this server started, checked by
+      // the gallery exactly as on the loopback listener. Without a public address it does not exist.
+      if (path === OAUTH_CALLBACK_PATH) {
+        const page =
+          method === "GET"
+            ? await runtime.connectors.gallery.publicCallback(url.searchParams)
+            : undefined;
+        if (page === undefined) throw new HttpError("not_found", "Rota não encontrada.");
+        res.writeHead(page.status, {
+          "Cache-Control": "no-store",
+          "X-Content-Type-Options": "nosniff",
+          "Referrer-Policy": "no-referrer",
+          "X-Request-Id": requestId,
+          "Content-Type": "text/html; charset=utf-8",
+        });
+        res.end(page.html);
+        return;
+      }
       if (!path.startsWith("/v1/")) throw new HttpError("not_found", "Rota não encontrada.");
       // Everything under /v1 is behind the token, unknown routes included: a stranger learns
       // nothing about which routes exist.
@@ -311,7 +337,18 @@ export function createServer(runtime: Runtime, options: ServerOptions): SuupServ
       if (matcher.route.method !== method) continue;
       const params: Record<string, string> = {};
       matcher.keys.forEach((key, i) => {
-        params[key] = decodeURIComponent(match[i] ?? "");
+        try {
+          params[key] = decodeURIComponent(match[i] ?? "");
+        } catch (caught) {
+          // A broken percent escape (`%E0%A4%A`, a lone `%`) is the client's mistake, not ours.
+          throw new HttpError(
+            "invalid_request",
+            `parâmetro ${key}: codificação inválida no endereço.`,
+            {
+              cause: caught,
+            },
+          );
+        }
       });
       return { route: matcher.route, params };
     }

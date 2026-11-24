@@ -156,19 +156,25 @@ describe("review: evidence rounds", () => {
 
   it("after the last round the reviewer must decide: it cannot ask again", async () => {
     const rig = createRig({
-      script: [use(finishCall("c1", "Done.")), use(finishCall("c2", "Done, as decided."))],
+      script: [
+        use(finishCall("c1", "Done.")),
+        use(finishCall("c1b", "Done; the totals are in d.md.")),
+        use(finishCall("c2", "Done, as decided.")),
+      ],
       reviewerScript: [
         needEvidence("v1", "first", { files: ["a.md"] }),
         needEvidence("v2", "second", { files: ["b.md"] }),
         needEvidence("v3", "third", { files: ["c.md"] }),
         needEvidence("v4", "still not sure about the totals", { files: ["d.md"] }),
+        // Sent back once to the bot, which finishes again: the second review still lacks it.
+        verdict("cannot_verify", "the totals still cannot be checked"),
       ],
     });
     for (const f of ["a.md", "b.md", "c.md", "d.md"]) await rig.executor.writeFile(f, `file ${f}`);
     expect(await rig.run()).toBe("waiting_user");
 
     const requests = rig.reviewerProvider?.requests ?? [];
-    expect(requests).toHaveLength(EVIDENCE_MAX_ROUNDS + 1);
+    expect(requests).toHaveLength(EVIDENCE_MAX_ROUNDS + 2);
     // The rounds may ask; the last request offers only a decision, and says so.
     expect(JSON.stringify(requests[0]?.tools[0]?.inputSchema)).toContain("need_evidence");
     expect(JSON.stringify(requests[3]?.tools[0]?.inputSchema)).not.toContain("need_evidence");
@@ -181,30 +187,39 @@ describe("review: evidence rounds", () => {
     expect(review?.payload.notes).toContain("still asking for evidence after 3 rounds");
     expect(review?.payload.notes).toContain("still not sure about the totals");
 
-    // Not a rejection of the work: the owner is asked, and the question says what was not verified.
+    // It lacked evidence: first back to the bot with what the reviewer asked for.
+    expect(review?.payload.missingEvidence).toBe(true);
+    const [first, attempt] = eventsOfType(events, "finish_attempt");
+    expect(first?.payload).toMatchObject({ accepted: false, sentBack: true });
+    expect(first?.payload.rejectionReasons[0]).toContain("still not sure about the totals");
+    // Then not a rejection of the work: the owner is asked, and the question says what was not verified.
     const [escalated] = eventsOfType(events, "escalated");
     expect(escalated?.payload.reason).toBe("review_tie_break");
     expect(escalated?.payload.question).toContain("could not verify");
-    expect(escalated?.payload.question).toContain("still not sure about the totals");
+    expect(escalated?.payload.question).toContain("the totals still cannot be checked");
     expect(escalated?.payload.question).not.toContain("keeps disagreeing");
-    const [attempt] = eventsOfType(events, "finish_attempt");
     expect(attempt?.payload).toMatchObject({ accepted: false, handedToUser: true });
     expect(attempt?.payload.rejectionReasons[0]).toContain("not a rejection of the work");
-    // The extra calls (3 follow-ups) count as turns, besides the agent's own.
-    expect((await rig.record()).turns).toBe(4);
+    // The extra calls (3 follow-ups) count as turns, besides the agent's own two.
+    expect((await rig.record()).turns).toBe(5);
 
     // When the owner answers, the finish is accepted without a new review.
     rig.store.postInbox(rig.runId, { kind: "user_message", text: "Looks fine." });
     expect(await rig.run()).toBe("done");
-    // the tie-break is settled: one more evidence round than before (3), no new review
-    expect(rig.reviewerProvider?.calls).toBe(4);
+    // the tie-break is settled: no new review
+    expect(rig.reviewerProvider?.calls).toBe(5);
   });
 
   it("cannot_verify ends the review as unverified with the reviewer's words", async () => {
     const rig = createRig({
-      script: [use(finishCall("c1", "Done."))],
+      script: [use(finishCall("c1", "Done.")), use(finishCall("c2", "Done."))],
       reviewerScript: [
         needEvidence("v1", "need it", { files: ["gone.md"] }),
+        verdict(
+          "cannot_verify",
+          "The CNPJ in the summary cannot be checked: gone.md does not exist.",
+        ),
+        // The bot was sent back once and could not produce it: the second review says the same.
         verdict(
           "cannot_verify",
           "The CNPJ in the summary cannot be checked: gone.md does not exist.",

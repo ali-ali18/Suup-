@@ -10,7 +10,7 @@ export function FirstRunScreen({ onLocal, onVps }: { onLocal(): void; onVps(): v
   return (
     <WelcomeCard
       title="Bem-vindo ao Suup"
-      subtitle="Onde o Suup deve rodar? Você pode trocar depois, mas um de cada vez: os dois não se sincronizam."
+      subtitle="Onde o Suup deve rodar? Dá para trocar depois, mas os dois não se sincronizam."
       testId="first-run"
     >
       <ChoiceCard

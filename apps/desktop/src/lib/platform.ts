@@ -111,6 +111,35 @@ export interface WindowFrame {
   isMaximized(): Promise<boolean>;
 }
 
+/** This app's version and whether it can update itself (the owner's public key is configured). */
+export interface UpdateInfo {
+  enabled: boolean;
+  currentVersion: string;
+}
+
+/** How much of the new version arrived (`total` is null when the server did not say). */
+export interface UpdateProgress {
+  downloaded: number;
+  total: number | null;
+}
+
+/**
+ * The app's own updater (Tauri only; docs/ATUALIZACAO.md): the shell asks GitHub for the newest
+ * release, checks its signature and installs it. The page never talks to the network for it.
+ */
+export interface AppUpdater {
+  info(): Promise<UpdateInfo>;
+  /** The newer version, or null when there is none (or the updater is off). */
+  check(): Promise<{ version: string } | null>;
+  /** Downloads the version `check` found, and checks its signature. */
+  download(onProgress: (progress: UpdateProgress) => void): Promise<void>;
+  /**
+   * Stops the server the app carries, installs and reopens the app: on success it never resolves.
+   * On failure the server comes back and the app keeps its version.
+   */
+  install(): Promise<void>;
+}
+
 export interface Platform {
   /** `"tauri"` (token in the OS keychain, requests through the Rust side) or `"browser"`. */
   kind: "tauri" | "browser";
@@ -121,6 +150,8 @@ export interface Platform {
   local?: LocalServer;
   /** The window's frame (Tauri only). */
   frame?: WindowFrame;
+  /** The app's own updater (Tauri only). */
+  updater?: AppUpdater;
   settings: SettingsStore;
   /** The `fetch` every request of the app goes through. */
   fetch: typeof fetch;

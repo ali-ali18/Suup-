@@ -20,6 +20,13 @@ export const REPEAT_FAIL_AT = 5;
  */
 export async function settle(ctx: LoopContext): Promise<RunStatus | "again" | undefined> {
   const state = ctx.state;
+  if (state.failedFinish !== null) {
+    // A routine's finish that could not be verified: nobody can decide live, so it ends here.
+    if (state.wait !== null) {
+      await record(ctx, { type: "wait_cancelled", payload: { reason: "finished" } });
+    }
+    return fail(ctx, state.failedFinish.origin, state.failedFinish.detail);
+  }
   if (state.acceptedFinish !== null) {
     // A return still pending is moot now that the work is finished.
     if (state.wait !== null) {

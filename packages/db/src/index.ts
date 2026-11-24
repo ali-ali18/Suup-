@@ -59,6 +59,14 @@ export {
 } from "./change-feed.js";
 export { type CreateDbOptions, createDb, type Db, withTransaction } from "./client.js";
 export {
+  type ConnectorOAuthRow,
+  type ConnectorOAuthStatus,
+  deleteConnectorOAuth,
+  getConnectorOAuth,
+  saveConnectorOAuth,
+  setConnectorOAuthStatus,
+} from "./connector-oauth.js";
+export {
   approvePin,
   type ConnectorToolEvent,
   listConnectorEvents,
@@ -294,8 +302,12 @@ export {
   startReception,
 } from "./reception.js";
 export {
+  BROKEN_SCHEDULE_PROBLEM,
   CATCH_UP_AFTER_MS,
+  COST_CAP_DECIMALS,
+  COST_CAP_INTEGER_DIGITS,
   type CreateRoutineInput,
+  costCapText,
   createRoutine,
   deleteRoutine,
   type FiredRoutine,
@@ -303,6 +315,7 @@ export {
   fireDueRoutines,
   getRoutine,
   getRoutineFireByRun,
+  isCostCapText,
   listRoutineFires,
   listRoutines,
   MAX_ROUTINE_INSTRUCTION,

@@ -152,18 +152,29 @@ export function secretForms(value: string): string[] {
   add(encodeURIComponent(value).replaceAll("%20", "+"));
   add(encodeURI(value));
   add(JSON.stringify(value).slice(1, -1));
-  add(Buffer.from(value, "utf8").toString("hex"));
+  const hex = Buffer.from(value, "utf8").toString("hex");
+  add(hex);
+  add(hex.toUpperCase());
   return [...forms];
 }
 
 /** An in-memory redactor. The runtime keeps one up to date with the vault. */
 export function createRedactor(initial: Readonly<Record<string, string>> = {}): MutableRedactor {
-  const entries = new Map<string, { name: string; forms: string[] }>();
+  // By NAME: two secrets may share a value, and a name that gets a new value drops the old one.
+  const entries = new Map<string, string[]>();
   let needles: { needle: string; mark: string }[] = [];
 
   const rebuild = () => {
-    needles = [...entries.values()]
-      .flatMap(({ name, forms }) => forms.map((needle) => ({ needle, mark: redactionMark(name) })))
+    const byNeedle = new Map<string, string>();
+    // Each text is marked once, with the first name in alphabetical order that has it: the mark
+    // does not depend on the order the secrets were loaded in.
+    for (const name of [...entries.keys()].sort()) {
+      for (const needle of entries.get(name) ?? []) {
+        if (!byNeedle.has(needle)) byNeedle.set(needle, name);
+      }
+    }
+    needles = [...byNeedle.entries()]
+      .map(([needle, name]) => ({ needle, mark: redactionMark(name) }))
       .sort((a, b) => b.needle.length - a.needle.length);
   };
 
@@ -181,7 +192,21 @@ export function createRedactor(initial: Readonly<Record<string, string>> = {}): 
       if (typeof node === "string") return redact(node);
       if (Array.isArray(node)) return node.map(walk);
       if (node !== null && typeof node === "object") {
-        return Object.fromEntries(Object.entries(node).map(([k, v]) => [redact(k), walk(v)]));
+        // Two keys may become the same text once scrubbed (`tok` and `[REDACTED:X]`): the later
+        // one gets `#2`, `#3`... so no entry is lost, in the input's key order.
+        const out: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(node)) {
+          let key = redact(k);
+          for (let n = 2; Object.hasOwn(out, key); n++) key = `${redact(k)}#${n}`;
+          // `defineProperty`, not `out[key] =`: a `__proto__` key stays a plain key.
+          Object.defineProperty(out, key, {
+            value: walk(v),
+            enumerable: true,
+            writable: true,
+            configurable: true,
+          });
+        }
+        return out;
       }
       return node;
     };
@@ -192,8 +217,11 @@ export function createRedactor(initial: Readonly<Record<string, string>> = {}): 
     redact,
     redactJson,
     add(name, value) {
-      if (value.length < MIN_REDACTED_LENGTH) return;
-      entries.set(value, { name, forms: secretForms(value) });
+      if (value.length < MIN_REDACTED_LENGTH) {
+        if (entries.delete(name)) rebuild();
+        return;
+      }
+      entries.set(name, secretForms(value));
       rebuild();
     },
     clear() {

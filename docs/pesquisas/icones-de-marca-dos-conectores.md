@@ -82,3 +82,14 @@ Fatos verificados:
 Não verificado: as diretrizes de marca de cada serviço (o Figma publica uma em https://www.figma.com/using-the-figma-brand/, **não lida**); se o thesvg atualiza os logos quando as marcas mudam. Para atualizar, trocar o commit e copiar de novo (`apps/desktop/src/assets/brand/README.md`).
 
 Implicação: os logos da galeria de plug-ins são arquivos copiados (nada é buscado em tempo de execução, o app funciona sem internet), **sem edição**, num quadrado cinza do projeto. O Simple Icons continua só nas linhas de Conectores, em uma cor.
+
+## Adendo de 23/11/2026: a tela ligada à galeria do servidor
+
+Fontes (lidas em 23/11/2026, no mesmo commit `551229c188b4ab6e2d8b5763b9633ec91206d04c` do thesvg):
+
+- https://raw.githubusercontent.com/glincker/thesvg/551229c188b4ab6e2d8b5763b9633ec91206d04c/public/icons/google/default.svg (o "G" do Google, quadrado, em cores).
+- https://raw.githubusercontent.com/glincker/thesvg/551229c188b4ab6e2d8b5763b9633ec91206d04c/public/icons/google-workspace-2026/default.svg (existe, mas é uma faixa de 1216 x 192 com os apps lado a lado; não cabe no quadrado de um ícone).
+- `google-2026` e `google-workspace` **não existem** nesse commit (404).
+- O `gmail-2026/default.svg` baixado agora é idêntico, byte a byte, ao `src/assets/brand/gmail.svg` copiado antes (a cópia é a mesma fonte).
+
+Implicação: a entrada **Google Workspace** da galeria do servidor (a única do Google; ela está "a confirmar") usa o `google/default.svg`, sem edição, no quadrado cinza. As peças separadas do Gmail, Agenda, Docs, Planilhas e Drive saíram da tela porque o servidor não as oferece; os SVGs delas continuam em `src/assets/brand/` para quando o servidor tiver as entradas. Linear e Stack Overflow seguem no tom `solid` do Simple Icons, agora pelo id do servidor (`stackoverflow`, sem hífen).

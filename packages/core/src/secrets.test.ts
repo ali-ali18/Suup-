@@ -104,6 +104,71 @@ describe("redactor", () => {
     expect(redactor.redact("x secretvalue-extended y")).toBe("x [REDACTED:LONG] y");
   });
 
+  it("scrubs the hex form in upper case too (xxd -u, od, many debug dumps)", () => {
+    const value = "hexvalue-9z";
+    const upper = Buffer.from(value, "utf8").toString("hex").toUpperCase();
+    expect(secretForms(value)).toContain(upper);
+    const redactor = createRedactor({ HEXED: value });
+    expect(redactor.redact(`dump: ${upper}.`)).toBe("dump: [REDACTED:HEXED].");
+  });
+
+  it("keeps secrets by NAME: two names with one value, and a name whose value changes", () => {
+    // Same value under two names: both are known; the mark shows the first name in alphabetical
+    // order, whatever order they were added in.
+    for (const order of [
+      ["ZETA_TOKEN", "ALPHA_TOKEN"],
+      ["ALPHA_TOKEN", "ZETA_TOKEN"],
+    ]) {
+      const redactor = createRedactor();
+      for (const name of order) redactor.add(name, "shared-value-1");
+      expect(redactor.size).toBe(2);
+      expect(redactor.redact("a shared-value-1 b")).toBe("a [REDACTED:ALPHA_TOKEN] b");
+    }
+    // A new value for a name replaces the old one: the old text is no longer named after it, and
+    // the other name with the old value keeps it.
+    const redactor = createRedactor();
+    redactor.add("FIRST", "old-value-1");
+    redactor.add("SECOND", "old-value-1");
+    redactor.add("FIRST", "new-value-2");
+    expect(redactor.size).toBe(2);
+    expect(redactor.redact("old-value-1 new-value-2")).toBe("[REDACTED:SECOND] [REDACTED:FIRST]");
+    const alone = createRedactor({ ONLY: "first-value" });
+    alone.add("ONLY", "second-value");
+    expect(alone.size).toBe(1);
+    expect(alone.redact("first-value second-value")).toBe("first-value [REDACTED:ONLY]");
+  });
+
+  it("redactJson never drops a key that collides with another after redaction", () => {
+    const redactor = createRedactor({ KEY: "key-secret-1" });
+    const out = redactor.redactJson({
+      "key-secret-1": 1,
+      "[REDACTED:KEY]": 2,
+      "x-key-secret-1": 3,
+      nested: { "key-secret-1": "key-secret-1", "%5B": 4 },
+    });
+    expect(out).toEqual({
+      "[REDACTED:KEY]": 1,
+      "[REDACTED:KEY]#2": 2,
+      "x-[REDACTED:KEY]": 3,
+      nested: { "[REDACTED:KEY]": "[REDACTED:KEY]", "%5B": 4 },
+    });
+    // Deterministic: the same input gives the same keys.
+    expect(redactor.redactJson({ a: 0, "key-secret-1": 1, "[REDACTED:KEY]": 2 })).toEqual({
+      a: 0,
+      "[REDACTED:KEY]": 1,
+      "[REDACTED:KEY]#2": 2,
+    });
+    const three = redactor.redactJson({
+      "key-secret-1": 1,
+      "[REDACTED:KEY]": 2,
+      "[REDACTED:KEY]#2": 3,
+    });
+    expect(Object.values(three).sort()).toEqual([1, 2, 3]);
+    const proto = redactor.redactJson(JSON.parse('{"__proto__": {"polluted": 1}, "b": 2}'));
+    expect(Object.keys(proto)).toEqual(["__proto__", "b"]);
+    expect(({} as { polluted?: number }).polluted).toBeUndefined();
+  });
+
   it("knows each form once", () => {
     const forms = secretForms("plainplain");
     expect(new Set(forms).size).toBe(forms.length);

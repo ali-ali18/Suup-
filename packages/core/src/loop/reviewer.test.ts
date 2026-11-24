@@ -150,7 +150,7 @@ describe("reviewer", () => {
     expect(problemsInRequests(rig.provider)).toEqual([]);
   });
 
-  it("a malformed verdict counts as an approval with a warning", async () => {
+  it("a malformed verdict is a failed review, never an approval: the owner decides", async () => {
     for (const bad of [
       say("Looks fine to me."),
       use(call("v", "verdict", { verdict: "maybe", notes: 3 })),
@@ -160,25 +160,110 @@ describe("reviewer", () => {
         script: [use(finishCall("c1", "Done."))],
         reviewerScript: [bad],
       });
-      expect(await rig.run()).toBe("done");
-      const [review] = eventsOfType(await rig.events(), "review");
-      expect(review?.payload.verdict).toBe("approve");
-      expect(review?.payload.warning).toMatch(/approved by default/);
+      expect(await rig.run()).toBe("waiting_user");
+      const events = await rig.events();
+      const [review] = eventsOfType(events, "review");
+      expect(review?.payload).toMatchObject({ verdict: "unverified", failed: "model" });
+      expect(review?.payload.notes).toContain("a revisão falhou");
+      expect(review?.payload).not.toHaveProperty("warning");
+      expect(eventsOfType(events, "finish_attempt")[0]?.payload).toMatchObject({
+        accepted: false,
+        handedToUser: true,
+      });
+      expect(eventsOfType(events, "escalated")[0]?.payload).toMatchObject({
+        reason: "review_tie_break",
+        reviewVerdict: "unverified",
+      });
     }
   });
 
-  it("a reviewer that errors is skipped with a warning, and never blocks the run", async () => {
+  it("a reviewer that errors is asked once more; failing again, the finish is not accepted and the owner decides", async () => {
     const rig = createRig({
       script: [use(finishCall("c1", "Done."))],
-      reviewerScript: [new ProviderError("auth", "reviewer key revoked")],
+      reviewerScript: [
+        new ProviderError("auth", "reviewer key revoked"),
+        new ProviderError("auth", "reviewer key revoked"),
+      ],
+    });
+    expect(await rig.run()).toBe("waiting_user");
+    const events = await rig.events();
+    expect(rig.reviewerProvider?.calls).toBe(2);
+    const errors = eventsOfType(events, "model_error");
+    expect(errors.map((e) => e.payload.purpose)).toEqual(["review", "review"]);
+    const [review] = eventsOfType(events, "review");
+    expect(review?.payload).toMatchObject({ verdict: "unverified", failed: "provider" });
+    expect(review?.payload.notes).toContain("a revisão falhou");
+    expect(review?.payload.notes).toContain("reviewer key revoked");
+    expect(eventsOfType(events, "finish_attempt")[0]?.payload).toMatchObject({
+      accepted: false,
+      handedToUser: true,
+    });
+    const [escalated] = eventsOfType(events, "escalated");
+    expect(escalated?.payload.reason).toBe("review_tie_break");
+    expect(escalated?.payload.question).toContain("a revisão falhou");
+  });
+
+  it("a passing reviewer error is retried: the second answer approves", async () => {
+    const rig = createRig({
+      script: [use(finishCall("c1", "Done."))],
+      reviewerScript: [new ProviderError("overloaded", "busy right now"), verdict("approve", "ok")],
     });
     expect(await rig.run()).toBe("done");
     const events = await rig.events();
-    const [review] = eventsOfType(events, "review");
-    expect(review?.payload.verdict).toBe("approve");
-    expect(review?.payload.warning).toContain("reviewer key revoked");
-    const error = eventsOfType(events, "model_error")[0];
-    expect(error?.payload.purpose).toBe("review");
+    expect(rig.reviewerProvider?.calls).toBe(2);
+    expect(eventsOfType(events, "review")[0]?.payload).toEqual({ verdict: "approve", notes: "ok" });
+    expect(eventsOfType(events, "finish_attempt")[0]?.payload.accepted).toBe(true);
+    expect(eventsOfType(events, "escalated")).toEqual([]);
+  });
+
+  it("in a routine run (nobody answers live), a failed review ends the run not concluded, without asking", async () => {
+    const rig = createRig({
+      origin: "routine",
+      script: [use(finishCall("c1", "Resumo pronto."))],
+      reviewerScript: [new ProviderError("network", "down"), new ProviderError("network", "down")],
+    });
+    expect(await rig.run()).toBe("failed");
+    const events = await rig.events();
+    expect(eventsOfType(events, "escalated")).toEqual([]);
+    expect(eventsOfType(events, "finish_attempt")[0]?.payload).toMatchObject({
+      accepted: false,
+      endsRun: { origin: "provider" },
+    });
+    expect(eventsOfType(events, "finish_attempt")[0]?.payload).not.toHaveProperty("handedToUser");
+    const end = lastStatus(events);
+    expect(end?.to).toBe("failed");
+    expect(end?.failure?.origin).toBe("provider");
+    expect(end?.failure?.detail).toContain("a revisão falhou");
+    const run = await rig.record();
+    expect(run.status).toBe("failed");
+    // Run again: it stays as it is (nothing waits; the next fire is free to start).
+    expect(await rig.run()).toBe("failed");
+    expect(rig.reviewerProvider?.calls).toBe(2);
+  });
+
+  it("in a routine run, a review that cannot verify goes back to the bot once, then ends the run, never parked for an answer", async () => {
+    const cannot = () =>
+      use(
+        call("v", "verdict", {
+          verdict: "cannot_verify",
+          notes: "the calendar was never read",
+          unchecked: [{ what: "the calendar entries", kind: "result", ref: "#9" }],
+        }),
+      );
+    const rig = createRig({
+      origin: "routine",
+      script: [use(finishCall("c1", "Resumo pronto.")), use(finishCall("c2", "Resumo pronto."))],
+      reviewerScript: [cannot(), cannot()],
+    });
+    expect(await rig.run()).toBe("failed");
+    const events = await rig.events();
+    expect(eventsOfType(events, "escalated")).toEqual([]);
+    expect(eventsOfType(events, "finish_attempt").map((e) => e.payload.sentBack)).toEqual([
+      true,
+      undefined,
+    ]);
+    expect(lastStatus(events)?.failure?.origin).toBe("model");
+    expect(lastStatus(events)?.failure?.detail).toContain("o revisor não conseguiu confirmar");
   });
 
   it("does not force the verdict tool for a model configured as not supporting a forced choice", async () => {

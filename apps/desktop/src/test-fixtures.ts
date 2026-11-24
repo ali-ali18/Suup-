@@ -276,6 +276,7 @@ export const routineOf = (over: Partial<Routine> = {}): Routine => ({
   instruction: "Veja meu calendário de hoje.",
   triggerKind: "schedule",
   schedule: { kind: "daily", time: "08:00" },
+  problem: null,
   timeZone: "America/Sao_Paulo",
   status: "active",
   nextRunAt: "2026-11-23T11:00:00.000Z",

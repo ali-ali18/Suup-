@@ -42,6 +42,29 @@ export interface WebAccessOptions {
   sleep?: (ms: number) => Promise<void>;
   /** The in-process reader used when there is no reader container. */
   local?: Reader;
+  /**
+   * Where a read that could not reach a site is told, with what failed (the logs; never the model
+   * nor the user): `web_read: could not reach <host> (robots, container): stage=dns code=EAI_AGAIN ...`.
+   */
+  log?: (message: string) => void;
+}
+
+/** One line for the logs about a read that could not reach the site (docs/USAR-NO-WINDOWS.md, 4b). */
+export function readFailureLogLine(
+  outcome: WebReadOutcome,
+  where: "container" | "local",
+): string | undefined {
+  if (outcome.ok || outcome.diagnostic === undefined) return undefined;
+  const d = outcome.diagnostic;
+  const parts = [
+    `stage=${d.stage}`,
+    ...(d.code === undefined ? [] : [`code=${d.code}`]),
+    ...(d.addresses === undefined || d.addresses.length === 0
+      ? []
+      : [`addresses=${d.addresses.join(",")}`]),
+    ...(d.detail === undefined ? [] : [`detail=${JSON.stringify(d.detail.slice(0, 300))}`]),
+  ];
+  return `web_read: could not reach ${d.host} (${d.request ?? "page"}, reader ${where}, reason ${outcome.reason}): ${parts.join(" ")}`;
 }
 
 export interface WebStatus {
@@ -111,10 +134,15 @@ export function createWebAccess(options: WebAccessOptions): WebAccessWithStatus 
         return { ok: false, reason: "unavailable", message: "The reader service is turned off." };
       }
       const started = await options.services();
+      const logged = (outcome: WebReadOutcome, where: "container" | "local"): WebReadOutcome => {
+        const line = readFailureLogLine(outcome, where);
+        if (line !== undefined) options.log?.(line);
+        return outcome;
+      };
       if (started.reader !== undefined) {
         const outcome = await started.reader.read(request);
         renderKnown = started.reader.renderAvailable === true;
-        return outcome;
+        return logged(outcome, "container");
       }
       // No container: read in this process (no rendering), and say why a render cannot happen.
       if (request.render === true && started.readerProblem !== undefined) {
@@ -124,7 +152,7 @@ export function createWebAccess(options: WebAccessOptions): WebAccessWithStatus 
           message: `Rendering pages with JavaScript needs the reader container, which is not running here (${started.readerProblem}). Read without render, or tell the user.`,
         };
       }
-      return await localReader().read(request);
+      return logged(await localReader().read(request), "local");
     },
     extract: async (input) => localReader().extract(input),
     async status(): Promise<WebStatus> {

@@ -157,6 +157,40 @@ export function intervalMinutes(s: { every: number; unit: IntervalUnit }): numbe
   return s.unit === "hours" ? s.every * 60 : s.every;
 }
 
+/**
+ * True when two schedules fire at the same times: the same kind and fields, compared exactly
+ * (the days of a weekly schedule as a set, an interval by its minutes). No text is compared.
+ */
+export function sameSchedule(a: Schedule, b: Schedule): boolean {
+  const end = (s: Schedule): string | undefined => (s.kind === "once" ? undefined : s.until);
+  if (end(a) !== end(b)) return false;
+  switch (a.kind) {
+    case "once":
+      return b.kind === "once" && a.date === b.date && a.time === b.time;
+    case "daily":
+      return b.kind === "daily" && a.time === b.time;
+    case "weekly":
+      return (
+        b.kind === "weekly" &&
+        a.time === b.time &&
+        a.days.length === b.days.length &&
+        a.days.every((day) => b.days.includes(day))
+      );
+    case "monthly":
+      return b.kind === "monthly" && a.day === b.day && a.time === b.time;
+    case "interval":
+      return b.kind === "interval" && intervalMinutes(a) === intervalMinutes(b);
+  }
+}
+
+/**
+ * A routine name as compared for "the same name": Unicode NFC, spaces at the ends trimmed, case
+ * folded (`toLowerCase`, code point by code point). Exact comparison after that; no pattern.
+ */
+export function routineNameKey(name: string): string {
+  return name.normalize("NFC").trim().toLowerCase();
+}
+
 // ---------------------------------------------------------------------------------------------
 // Time zones
 

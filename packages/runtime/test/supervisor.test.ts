@@ -484,7 +484,28 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("delegation, end to end"), () => {
       },
       {
         whenObjectiveContains: "Task delegated by",
-        agent: [{ text: "Cronograma: seg e qua revisão, qui simulado." }],
+        // The delegated run has acceptance criteria: it ends with finish and evidence (a plain
+        // reply is sent back once asking for it).
+        agent: [
+          { text: "Cronograma: seg e qua revisão, qui simulado." },
+          {
+            calls: [
+              {
+                id: "f1",
+                name: "finish",
+                args: {
+                  summary: "Cronograma: seg e qua revisão, qui simulado.",
+                  evidence: [
+                    {
+                      criterion: "tem os dias e os temas",
+                      evidence: "seg e qua revisão, qui simulado",
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        ],
       },
       {
         whenObjectiveContains: "Use o segredo",
@@ -495,6 +516,18 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("delegation, end to end"), () => {
             ],
           },
           { text: "Feito com o token." },
+          {
+            calls: [
+              {
+                id: "f2",
+                name: "finish",
+                args: {
+                  summary: "Feito com o token.",
+                  evidence: [{ criterion: "tem os dias e os temas", evidence: "shell: t=..." }],
+                },
+              },
+            ],
+          },
         ],
       },
       {

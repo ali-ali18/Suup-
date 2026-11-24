@@ -1,4 +1,4 @@
-import type { SupervisorSettings, SuupClient, TeamReview } from "@suup/api";
+import { ApiError, type SupervisorSettings, type SuupClient, type TeamReview } from "@suup/api";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type Services, ServicesProvider } from "../../app/context.js";
@@ -104,7 +104,7 @@ describe("Configurações > Memória > Principal", () => {
 
   it("goes back and shows the server's words when it refuses", async () => {
     const update = vi.fn(async () => {
-      throw new Error("deve ser um valor entre 0,01 e 1000");
+      throw new ApiError("invalid_request", "deve ser um valor entre 0,01 e 1000", 400);
     });
     setup(settingsOf(), [], update);
     fireEvent.click(await screen.findByTestId("supervisor-cost-cap"));
@@ -113,10 +113,10 @@ describe("Configurações > Memória > Principal", () => {
     expect(screen.getByTestId("supervisor-cost-cap").textContent).toBe("Sem teto");
   });
 
-  it("says why the model cannot be used, in a faded line", async () => {
+  it("says the model cannot be used, in a faded friendly line (the server's reason stays in the logs)", async () => {
     setup(settingsOf({ model: { available: false, id: "m", reason: "Falta a chave." } }));
     expect((await screen.findByTestId("supervisor-model-unavailable")).textContent).toBe(
-      "Falta a chave.",
+      "O modelo do Principal não está disponível agora.",
     );
   });
 

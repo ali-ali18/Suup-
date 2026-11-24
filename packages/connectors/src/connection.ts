@@ -2,6 +2,8 @@
 // session), the protocol handshake, listing tools, calling one, closing it. It does not decide
 // when to connect, retry or reuse (the manager does). The protocol and the transports are the
 // official SDK's; nothing here is an agent loop.
+
+import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -58,6 +60,11 @@ export interface ConnectionDeps {
   connectTimeoutMs: number;
   fetch?: typeof fetch | undefined;
   clientInfo: { name: string; version: string };
+  /**
+   * The OAuth provider of an HTTP connector that logs in with the OAuth of the protocol (the tokens
+   * live in the vault). Throws `OAuthLoginRequiredError` when there is no login yet.
+   */
+  oauthProvider?: ((spec: ConnectorSpec) => Promise<OAuthClientProvider>) | undefined;
 }
 
 export interface Live {
@@ -163,8 +170,25 @@ export async function openConnection(
     for (const [key, ref] of Object.entries(t.headers)) {
       headers[key] = resolveRef(ref, secrets, spec.name, `o cabeçalho ${key}`);
     }
+    let authProvider: OAuthClientProvider | undefined;
+    if (t.oauth !== undefined) {
+      if (deps.oauthProvider === undefined) {
+        throw new ConnectorError(spec.name, "config", "este processo não faz login OAuth.");
+      }
+      try {
+        authProvider = await deps.oauthProvider(spec);
+      } catch (error) {
+        throw new ConnectorError(
+          spec.name,
+          "config",
+          `precisa de login: abra Configurações > Conectores e clique em Conectar (${deps.redact(errorText(error))}).`,
+          error,
+        );
+      }
+    }
     transport = new StreamableHTTPClientTransport(new URL(t.url), {
       requestInit: { headers },
+      ...(authProvider === undefined ? {} : { authProvider }),
       ...(deps.fetch === undefined ? {} : { fetch: deps.fetch }),
       // A single try per request: the manager owns reconnecting, with its own backoff.
       reconnectionOptions: {

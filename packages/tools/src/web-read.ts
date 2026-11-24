@@ -142,6 +142,8 @@ const HINTS: Record<string, string> = {
   not_text: "For a PDF, image or archive, download it with the shell tool (curl -L -o file URL).",
   too_large: "Look for a smaller page, or download it with the shell tool and read parts of it.",
   timeout: "The site is slow or not answering. Try again later or use another source.",
+  unreachable:
+    "Tell the user you could not reach the site right now (a connection problem here, not the site refusing), and use another source or try again in a few minutes.",
   invalid_url: "Give a full http(s) URL such as https://example.com/page.",
   unavailable: "Tell the user; do not try to get the page by other means.",
 };

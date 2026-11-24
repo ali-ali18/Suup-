@@ -3,8 +3,9 @@ import { ArrowDown } from "lucide-react";
 import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useServices } from "../../app/context.js";
 import { useSettings } from "../../app/settings-store.js";
-import { failureOriginLabel, ORIGIN_EXPLANATION } from "../../data/derive.js";
-import { ActionFold, ActionList, ActionPre } from "../../ui/action-card.js";
+import { FRIENDLY_FAILURE } from "../../data/derive.js";
+import { SOMETHING_WRONG } from "../../lib/friendly-error.js";
+import { ActionFold, ActionList } from "../../ui/action-card.js";
 import { EndedLine, WorkingIndicator } from "../../ui/chat-lines.js";
 import { BotMessage, EventLine, UserMessage } from "../../ui/message.js";
 import { Pill, RoundButton } from "../../ui/primitives.js";
@@ -264,13 +265,10 @@ export function MessageList({
                   >
                     {run?.status === "failed" && (
                       <>
+                        {/* One friendly sentence by the origin; the detail is in the Inspector. */}
                         <p data-testid="ended-origin" data-origin={run.failureOrigin ?? "harness"}>
-                          Origem: {failureOriginLabel(run.failureOrigin)}.{" "}
-                          {ORIGIN_EXPLANATION[run.failureOrigin ?? "harness"]}
+                          {FRIENDLY_FAILURE[run.failureOrigin ?? "harness"] ?? SOMETHING_WRONG}
                         </p>
-                        {run.failureDetail !== null && (
-                          <ActionPre error>{run.failureDetail}</ActionPre>
-                        )}
                       </>
                     )}
                     {run?.status === "cancelled" && (

@@ -1021,7 +1021,9 @@ describe("conectores: a tela da vitrine (docs/DESIGN.md 5d)", () => {
 
   it("é uma tela no lugar do chat e do painel, não um diálogo (dono, 23/11/2026), e o detalhe é uma página da mesma tela", () => {
     expect(existsSync(join(SRC, "features", "plugins", "PluginsDialog.tsx"))).toBe(false);
-    expect(screen).not.toContain("<Dialog");
+    // the only dialog of the screen is the confirmation of Desconectar (and the secure form)
+    expect(screen.split("<Dialog").length - 1).toBe(1);
+    expect(screen).toContain("Seus bots deixam de usar o {name} até você entrar de novo.");
     expect(screen).toContain("<Screen");
     expect(screen).toContain("<ScreenHead");
     expect(shell).toContain("<ConnectorsScreen />");
@@ -1046,7 +1048,7 @@ describe("conectores: a tela da vitrine (docs/DESIGN.md 5d)", () => {
     expect(screen).toContain("text-small text-text-muted");
     // the logo: thesvg, as an <img>, on the project's grey, white ones inverted in the light theme
     expect(screen).toContain("<img");
-    expect(screen).toContain("data-logo={entry.id}");
+    expect(screen).toContain("data-logo={id}");
     // the band of a page: one of twelve gradients, a class for each (owner: "cadê o bg do gradiente que falamos?")
     for (const name of [
       "ink",
@@ -1064,7 +1066,7 @@ describe("conectores: a tela da vitrine (docs/DESIGN.md 5d)", () => {
     ]) {
       expect(screen, name).toContain(`from-banner-${name}-from to-banner-${name}-to`);
     }
-    expect(screen).toContain("BANNER_BG[entry.banner]");
+    expect(screen).toContain("BANNER_BG[look.banner]");
     // neutral backgrounds only (owner, 23/11/2026): the project's grey, or the black or the white a brand's own icon has
     expect(screen).toContain("bg-raised");
     expect(screen).toContain("bg-tile-black");
@@ -1076,7 +1078,7 @@ describe("conectores: a tela da vitrine (docs/DESIGN.md 5d)", () => {
     expect(screen).not.toContain("bg-brand-tile");
     expect(screen).not.toContain("bg-logo-tile");
     // a one-colour brand: its OWN colour (from the package) as the tile, the mark in white over it
-    expect(screen).toContain("solidMarkFor(entry.id)");
+    expect(screen).toContain("solidMarkFor(id)");
     expect(screen).toContain("backgroundColor:");
     expect(screen).toContain("solid.hex");
     expect(screen).toContain("text-tile-white");
@@ -1086,32 +1088,244 @@ describe("conectores: a tela da vitrine (docs/DESIGN.md 5d)", () => {
     expect(screen).not.toContain("rounded-card border border-border bg-transparent");
   });
 
-  it("a página: o caminho, o estado, o Conectar desligado (enfeite), os exemplos, Conexão e Informações", () => {
+  it("a página: o caminho, o estado, a ação de verdade, os exemplos, Conexão e Bom saber; nada técnico (dono, 23/11/2026)", () => {
     for (const word of [
-      "Não conectado",
-      "disabled",
+      'aria-label="Caminho"',
+      "<StateTag state={state} />",
+      "<MainAction",
       "Exemplos do que você poderá pedir",
       "Conexão",
-      "Informações",
-      "Desenvolvedor",
-      "Categoria",
-      "Disponibilidade",
-      "Site",
+      "Bom saber",
     ]) {
       expect(screen, word).toContain(word);
     }
+    // "Informações" with the address, the licence, the hosts, the date and the login jargon is gone
+    for (const technical of [
+      "Informações",
+      "Categoria",
+      "Disponibilidade",
+      '"Fonte"',
+      "Licença",
+      "Fala com",
+      "Conferido em",
+      "entry.source",
+      "entry.license",
+      "entry.egressHosts",
+      "entry.checkedAt",
+      "item.detail",
+      "<MonoText",
+      "A confirmar",
+    ]) {
+      expect(screen, technical).not.toContain(technical);
+    }
+    expect(screen).toContain('unverified: "Em breve"');
+    // "Meus conectores" is real now: a button with the logos of what is connected, stacked
     expect(screen).toContain("flex-row-reverse");
-    expect(screen).toContain("opacity-60");
+    expect(screen).toContain('e.item.status === "connected"');
+    expect(screen).not.toContain("opacity-60");
+    expect(screen).not.toContain('title="Em breve"');
   });
 
-  it("o app não finge: a vitrine é declarada num lugar só, não chama a API, e leva ao que é real", () => {
-    expect(read(join(SRC, "features", "plugins", "catalog.ts"))).toContain("CATALOG");
-    expect(screen).not.toContain("api.");
-    expect(screen).toContain('openSettings("connectors")');
+  it('liga ao servidor (dono, 23/11/2026: "Liga"): a lista é a do servidor, a aparência é só por id', () => {
+    // which connectors exist, in the server's order
+    expect(screen).toContain("api.connectorCatalog.list()");
+    expect(existsSync(join(SRC, "features", "plugins", "catalog.ts"))).toBe(false);
+    const look = read(join(SRC, "features", "plugins", "appearance.ts"));
+    // the look is found by the EXACT id, never by a search in the text (docs/REGRAS.md §1)
+    expect(look).toContain("BY_ID.get(id) ?? NEUTRAL");
+    for (const searching of [".includes(", ".startsWith(", ".match(", ".test(", "RegExp"]) {
+      expect(look, searching).not.toContain(searching);
+    }
+    // the look does not repeat what the server says (name, line, how it logs in)
+    for (const field of ["  name:", "  about:", "  developer:", "  site:"]) {
+      expect(look, field).not.toContain(field);
+    }
+    expect(screen).toContain("appearanceOf(item.entry.id)");
+    const flow = read(join(SRC, "features", "plugins", "use-connect.ts"));
+    // the flows: install and follow next; OAuth in the system browser with polling
+    for (const call of [
+      "api.connectorCatalog.install(",
+      "api.connectors.oauthStart(",
+      "platform.openUrl(start.authorizationUrl)",
+      "api.connectors.oauthStatus(",
+      "api.connectors.oauthDisconnect(",
+    ]) {
+      expect(flow, call).toContain(call);
+    }
+    // never an address to paste (owner, 23/11/2026: "Mas por que raios eu colaria um link?"): the
+    // browser comes back to the server (its loopback, or its public address); a VPS without one
+    // does not offer the login
+    expect(flow).not.toContain("oauthComplete");
+    expect(screen).not.toContain("connector-paste");
+    expect(screen).not.toContain("<TextField");
+    expect(screen).toContain("api.info()");
+    expect(screen).toContain('mode === "local" || callback === "public"');
+    // the token goes through the secure form of the vault, never a plain field of the screen
+    expect(screen).toContain("<SecretDialog");
+    expect(screen).not.toContain("<SecretInput");
+    expect(screen).not.toContain('type="password"');
   });
 
   it("abre pela paleta de ações e pelo menu do dono", () => {
     expect(palette).toContain('go("connectors")');
     expect(read(join(SRC, "features", "shell", "Sidebar.tsx"))).toContain('go("connectors")');
+  });
+});
+
+describe('amigável: nada de log para o usuário (dono, 23/11/2026: "a ideia é ser friendly")', () => {
+  const sources = files(SRC, /\.tsx?$/).filter(
+    (f) =>
+      !f.endsWith("design-rules.test.ts") &&
+      // the one place that turns an error into words, and the diagnostic screen
+      !f.endsWith(join("lib", "friendly-error.ts")) &&
+      // the transport of the shell: its text becomes a network ApiError, whose kind is what is shown
+      !f.endsWith(join("lib", "tauri.ts")) &&
+      !f.includes(join("features", "inspector")),
+  );
+
+  it("nenhuma tela lê o texto cru de um erro: a frase vem do tipo declarado (friendlyError/formError)", () => {
+    for (const f of sources) {
+      const text = read(f);
+      for (const raw of [
+        "instanceof Error ?",
+        " e.message",
+        "(e.message",
+        "error.message",
+        "err.message",
+        "String(e)",
+      ]) {
+        expect(text.includes(raw), `${rel(f)}: ${raw}`).toBe(false);
+      }
+    }
+    const friendly = read(join(SRC, "lib", "friendly-error.ts"));
+    // by the kind the API declares, compared exactly: never by the text
+    expect(friendly).toContain("BY_CODE[error.code]");
+    expect(friendly).toContain('"Algo deu errado. Tenta de novo?"');
+    for (const searching of [".includes(", ".startsWith(", ".match(", ".test(", "RegExp"]) {
+      expect(friendly, searching).not.toContain(searching);
+    }
+    expect(read(join(SRC, "data", "sync.ts"))).toContain("export const messageOf = friendlyError;");
+  });
+
+  it("a página de um conector não mostra endereço, licença, hosts, data, detalhe cru nem o nome do segredo", () => {
+    const screen = read(join(SRC, "features", "plugins", "ConnectorsScreen.tsx"));
+    for (const technical of [
+      "entry.source",
+      "entry.license",
+      "entry.egressHosts",
+      "entry.checkedAt",
+      "item.detail",
+      "status.error",
+    ]) {
+      expect(screen, technical).not.toContain(technical);
+    }
+    // the secure form never shows the name the token is kept under
+    const vault = read(join(SRC, "features", "settings", "VaultSettings.tsx"));
+    expect(vault).not.toContain("{preset.name}");
+    expect(vault).not.toContain("vault.keyEnv");
+    expect(vault).not.toContain("{vault.reason}");
+  });
+
+  it("nunca há campo para colar o endereço de retorno de um login (dono: “por que raios eu colaria um link?”)", () => {
+    for (const f of sources) {
+      const text = read(f);
+      for (const paste of ["oauthComplete", "callbackUrl", "connector-paste"]) {
+        expect(text.includes(paste), `${rel(f)}: ${paste}`).toBe(false);
+      }
+    }
+  });
+
+  it("as telas antes do app e o Servidor não mostram caminho de arquivo nem nome de variável", () => {
+    const local = read(join(SRC, "features", "connect", "LocalScreen.tsx"));
+    expect(local).not.toContain("{status.logsDir}");
+    expect(local).not.toContain("{status.message");
+    expect(local).toContain("Abrir a pasta de registros");
+    const server = read(join(SRC, "features", "settings", "ServerGroup.tsx"));
+    expect(server).not.toContain("description={status.logsDir}");
+    expect(server).not.toContain("description={connection.serverUrl}");
+    for (const f of [
+      join(SRC, "features", "connect", "ConnectScreen.tsx"),
+      join(SRC, "app", "connect.ts"),
+    ]) {
+      for (const name of ["SUUP_", "allowedOrigins", "tokenEnv"]) {
+        expect(read(f).includes(name), `${rel(f)}: ${name}`).toBe(false);
+      }
+    }
+  });
+
+  it("o chat não mostra o nome interno de uma ferramenta de conector nem o detalhe cru de uma falha", () => {
+    const actions = read(join(SRC, "data", "actions.ts"));
+    expect(actions).toContain("parseConnectorTool(name, connectors)");
+    const list = read(join(SRC, "features", "chat", "MessageList.tsx"));
+    expect(list).not.toContain("failureDetail");
+    expect(list).toContain("FRIENDLY_FAILURE[");
+    // the motives a server sends without a kind stay out of the screens: a fixed sentence
+    for (const [file, raw] of [
+      [join(SRC, "features", "settings", "PermissionsSettings.tsx"), "reviewer.reason"],
+      [join(SRC, "features", "settings", "MemorySettings.tsx"), "reviewer.reason"],
+      [join(SRC, "features", "settings", "SupervisorSettings.tsx"), "model.reason"],
+      [join(SRC, "features", "settings", "GeneralSettings.tsx"), "{m.unavailableReason}"],
+    ] as const) {
+      expect(read(file).includes(raw), `${rel(file)}: ${raw}`).toBe(false);
+    }
+  });
+});
+
+describe("atualização do app: um aviso calmo e uma linha em Geral (docs/DESIGN.md 3e)", () => {
+  const notice = read(join(SRC, "features", "shell", "UpdateNotice.tsx"));
+  const row = read(join(SRC, "features", "settings", "UpdateGroup.tsx"));
+  const store = read(join(SRC, "app", "update-store.ts"));
+
+  it("o aviso é um cartão no canto, nunca um diálogo, com 'Depois' e uma ação primária", () => {
+    expect(notice).toContain('role="status"');
+    expect(notice).not.toContain("<Dialog");
+    expect(notice).not.toContain("aria-modal");
+    expect(notice).toContain("Nova versão do Suup disponível");
+    expect(notice).toContain("Depois");
+    for (const action of ["Atualizar agora", "Reiniciar para concluir", "Tentar de novo"])
+      expect(notice, action).toContain(action);
+    expect(notice).toContain('tone="primary"');
+    expect(notice).toContain('role="progressbar"');
+    expect(read(join(SRC, "features", "shell", "Shell.tsx"))).toContain("<UpdateNotice />");
+  });
+
+  it("a linha de Geral usa as peças de Configurações e um só controle (RowAction)", () => {
+    expect(row).toContain('from "./parts.js"');
+    expect(row).toContain("<SettingsRow");
+    expect(row).toContain("<RowAction");
+    expect(row).not.toContain("<Pill");
+    expect(row).toContain("Procurar atualização");
+    expect(read(join(SRC, "features", "settings", "GeneralSettings.tsx"))).toContain(
+      "<UpdateGroup />",
+    );
+  });
+
+  it("nada técnico: nem GitHub, nem latest.json, nem assinatura; o erro só vai para o registro", () => {
+    for (const [name, source] of [
+      ["UpdateNotice.tsx", notice],
+      ["UpdateGroup.tsx", row],
+    ] as const) {
+      for (const technical of ["github", "latest.json", "assinatura", "pubkey", ".message"]) {
+        expect(source.toLowerCase().includes(technical), `${name}: ${technical}`).toBe(false);
+      }
+    }
+    // the store logs the detail and keeps only which step failed
+    expect(store).toContain("console.warn(");
+    expect(store).toContain('failure: "download"');
+    expect(store).toContain('failure: "install"');
+  });
+
+  it("o servidor embutido para antes do instalador, e a chave de marcador desliga tudo", () => {
+    const rust = read(join(SRC, "..", "src-tauri", "src", "update.rs"));
+    expect(rust).toContain("local::stop(&local, local::GRACEFUL_STOP).await;");
+    expect(rust.indexOf("local::stop(")).toBeLessThan(rust.indexOf("update.install(&bytes)"));
+    expect(rust).toContain("key != PLACEHOLDER_PUBKEY");
+    const conf = JSON.parse(read(join(SRC, "..", "src-tauri", "tauri.conf.json"))) as {
+      plugins: { updater: { pubkey: string } };
+    };
+    // The owner's public key is in place (23/11/2026): not the marker, so the updater is on.
+    expect(conf.plugins.updater.pubkey).not.toBe("SUBSTITUA-PELA-CHAVE-PUBLICA-DO-SUUP");
+    expect(conf.plugins.updater.pubkey.length).toBeGreaterThan(40);
+    expect(rust).toContain('"SUBSTITUA-PELA-CHAVE-PUBLICA-DO-SUUP"');
   });
 });

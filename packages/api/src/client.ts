@@ -41,6 +41,16 @@ import {
   type UpdateBotBody,
 } from "./bots.js";
 import {
+  type CatalogItem,
+  catalogListSchema,
+  type InstallResult,
+  installResultSchema,
+  type OAuthStart,
+  type OAuthStatus,
+  oauthStartSchema,
+  oauthStatusSchema,
+} from "./connector-catalog.js";
+import {
   type ApproveToolBody,
   type Connector,
   type ConnectorTest,
@@ -347,6 +357,18 @@ export interface SuupClient {
     setToolOutbound(name: string, tool: string, body: SetToolOutboundBody): Promise<Connector>;
     /** Starts the server from scratch where THIS server runs, lists its tools and closes. */
     test(name: string): Promise<ConnectorTest>;
+    /** Starts a browser login (OAuth of the MCP): open `authorizationUrl` in the system browser. */
+    oauthStart(name: string): Promise<OAuthStart>;
+    /** Where the login stands: poll it while `pending`. */
+    oauthStatus(name: string): Promise<OAuthStatus>;
+    /** Revokes (when the server can), forgets the tokens and turns the connector off. */
+    oauthDisconnect(name: string): Promise<Connector>;
+  };
+  /** The gallery of connectors (docs/CONECTORES.md, "Galeria"). */
+  connectorCatalog: {
+    list(): Promise<CatalogItem[]>;
+    /** Installs the entry (off until the login or the token), or turns it on once its token is in the vault. */
+    install(id: string): Promise<InstallResult>;
   };
   network: {
     /** The hosts a bot's machine may reach (defaults, its own) and what the proxy refused lately. */
@@ -714,6 +736,17 @@ export function createClient(options: ClientOptions): SuupClient {
           body,
         }),
       test: (name) => call("POST", `/v1/connectors/${id(name)}/test`, connectorTestSchema, noBody),
+      oauthStart: (name) =>
+        call("POST", `/v1/connectors/${id(name)}/oauth/start`, oauthStartSchema, noBody),
+      oauthStatus: (name) =>
+        call("GET", `/v1/connectors/${id(name)}/oauth/status`, oauthStatusSchema),
+      oauthDisconnect: (name) =>
+        call("DELETE", `/v1/connectors/${id(name)}/oauth`, connectorSchema),
+    },
+    connectorCatalog: {
+      list: async () => (await call("GET", "/v1/connector-catalog", catalogListSchema)).items,
+      install: (catalogId) =>
+        call("POST", `/v1/connector-catalog/${id(catalogId)}/install`, installResultSchema, noBody),
     },
     network: {
       forBot: (botId) => call("GET", `/v1/bots/${id(botId)}/network`, botNetworkSchema),

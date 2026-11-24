@@ -13,14 +13,19 @@ import {
   formatClock,
   INTERVAL_UNITS,
   isKnownTimeZone,
+  OWN_ROUTINES_PROMPT_MAX,
+  type OwnRoutines,
   type RoutineRunFacts,
+  routineNameKey,
   SCHEDULE_KINDS,
   type Schedule,
+  sameSchedule,
   scheduleSchema,
   WEEKDAYS,
 } from "@suup/core";
 import {
   appendMessageOnce,
+  costCapText,
   createDirectConversation,
   createRoutine,
   type Db,
@@ -92,6 +97,13 @@ async function routineOf(
   };
 }
 
+/** When a routine runs, in words; a stored schedule this version cannot read says so. */
+function scheduleWords(r: Pick<Routine, "schedule">): string {
+  return r.schedule === null
+    ? "INVALID SCHEDULE (it does not run; ask the user for a new schedule)"
+    : describeSchedule(r.schedule);
+}
+
 /** A routine as the bot reads it: name, id, when (in words and zone), state and the next run. */
 function routineLine(r: Routine): string {
   const status =
@@ -106,7 +118,54 @@ function routineLine(r: Routine): string {
     r.lastFire === null
       ? ""
       : `; last: ${r.lastFire.status}${r.lastFire.missedCount > 0 ? ` (missed ×${r.lastFire.missedCount})` : ""}`;
-  return `- ${JSON.stringify(r.name)} (id ${r.id}): ${describeSchedule(r.schedule)} (${r.timeZone}); ${status}${last}. Instruction: ${clip(r.instruction, 300)}`;
+  return `- ${JSON.stringify(r.name)} (id ${r.id}): ${scheduleWords(r)} (${r.timeZone}); ${status}${last}. Instruction: ${clip(r.instruction, 300)}`;
+}
+
+/**
+ * The routine of the bot that a new one would duplicate: one that is not ended, with the same name
+ * (`routineNameKey`, compared exactly) AND the same schedule in the same time zone (`sameSchedule`).
+ * Structure only: no text is interpreted.
+ */
+export function duplicateRoutineOf(
+  mine: readonly Pick<Routine, "id" | "name" | "schedule" | "timeZone" | "status">[],
+  wanted: { name: string; schedule: Schedule; timeZone: string },
+): Pick<Routine, "id" | "name" | "schedule" | "timeZone" | "status"> | undefined {
+  const key = routineNameKey(wanted.name);
+  return mine.find(
+    (r) =>
+      r.status !== "ended" &&
+      r.schedule !== null &&
+      r.timeZone === wanted.timeZone &&
+      routineNameKey(r.name) === key &&
+      sameSchedule(r.schedule, wanted.schedule),
+  );
+}
+
+/**
+ * The bot's own routines as a run starts (recorded in `context_loaded.ownRoutines`): the ones that
+ * are not ended, active first, capped at `OWN_ROUTINES_PROMPT_MAX`; the rest is counted.
+ */
+export async function ownRoutinesFor(
+  db: Db,
+  botId: string,
+  max: number = OWN_ROUTINES_PROMPT_MAX,
+): Promise<OwnRoutines> {
+  const live = (await listRoutines(db, { botId })).filter((r) => r.status !== "ended");
+  const ordered = [
+    ...live.filter((r) => r.status === "active"),
+    ...live.filter((r) => r.status !== "active"),
+  ];
+  const shown = ordered.slice(0, max);
+  return {
+    items: shown.map((r) => ({
+      id: r.id,
+      name: r.name,
+      schedule: scheduleWords(r),
+      timeZone: r.timeZone,
+      status: r.status === "active" ? ("active" as const) : ("paused" as const),
+    })),
+    more: ordered.length - shown.length,
+  };
 }
 
 function routineErrorText(error: RoutineError): string {
@@ -209,6 +268,18 @@ export function createRoutineTool(db: Db, userZone: UserZone) {
       }
       const read = readSchedule(schedule);
       if ("error" in read) return { isError: true, content: read.error };
+      // The same routine twice is never what the user wants: the model is told it already exists.
+      const twin = duplicateRoutineOf(await listRoutines(db, { botId: ctx.botId }), {
+        name,
+        schedule: read.schedule,
+        timeZone: zone,
+      });
+      if (twin !== undefined) {
+        return {
+          isError: true,
+          content: `Not created: you already have this routine, ${JSON.stringify(twin.name)} (id ${twin.id}), ${scheduleWords(twin)} (${twin.timeZone}), ${twin.status === "paused" ? "PAUSED" : "active"}. It was set up before and is real. Do not create it again: to change it, call update_routine with routine: "${twin.id}"${twin.status === "paused" ? " (paused: false resumes it)" : ""}; if it is already what the user asked, just tell them it is set up.`,
+        };
+      }
       try {
         const routine = await createRoutine(db, {
           botId: ctx.botId,
@@ -216,12 +287,14 @@ export function createRoutineTool(db: Db, userZone: UserZone) {
           instruction,
           schedule: read.schedule,
           timeZone: zone,
-          ...(costCapUsd === undefined ? {} : { costCapUsd: String(costCapUsd) }),
+          ...(costCapUsd === undefined
+            ? {}
+            : { costCapUsd: costCapText(costCapUsd) ?? String(costCapUsd) }),
           createdBy: "bot",
           createdRunId: ctx.runId,
         });
         return {
-          content: `Routine created: ${routineLine(routine)}\nNow tell the user in your message, in plain words, what you set up and when (${describeSchedule(routine.schedule)}), and ask if they want another time.`,
+          content: `Routine created: ${routineLine(routine)}\nNow tell the user in your message, in plain words, what you set up and when (${scheduleWords(routine)}), and ask if they want another time.`,
         };
       } catch (error) {
         if (error instanceof RoutineError) {
@@ -299,7 +372,12 @@ export function updateRoutineTool(db: Db) {
           ...(args.paused === undefined ? {} : { paused: args.paused }),
           ...(args.costCapUsd === undefined
             ? {}
-            : { costCapUsd: args.costCapUsd === null ? null : String(args.costCapUsd) }),
+            : {
+                costCapUsd:
+                  args.costCapUsd === null
+                    ? null
+                    : (costCapText(args.costCapUsd) ?? String(args.costCapUsd)),
+              }),
         });
         return { content: `Routine updated: ${routineLine(routine)}` };
       } catch (error) {
@@ -386,7 +464,7 @@ export async function routineRunFacts(db: Db, runId: string): Promise<RoutineRun
   return {
     id: routine.id,
     name: routine.name,
-    schedule: describeSchedule(routine.schedule),
+    schedule: scheduleWords(routine),
     timeZone: routine.timeZone,
     scheduledFor: fire.scheduledFor.toISOString(),
     kind: fire.kind,

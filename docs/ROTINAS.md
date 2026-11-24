@@ -11,6 +11,14 @@ Decisão do dono: como no Grok, a rotina nasce da conversa, não de um formulár
 - O usuário diz "vê meu calendário todo dia". O bot chama `create_routine` escolhendo **ele mesmo** um horário razoável e diz na própria mensagem o que escolheu: "Combinado, vejo seu calendário todo dia às 8h. Quer outro horário?". O prompt (`ROUTINES_HOW`, `packages/core/src/loop/prompts.ts`) manda escolher, dizer em palavras e perguntar; e manda **não** criar rotina que o usuário não pediu.
 - Para mudar, o usuário fala ("muda para 7h") e o bot chama `update_routine`. **Não há formulário de horário no app** (decisão do dono, 22/11/2026, como as tarefas do Grok): o "Editar" do painel leva ao chat do bot com o rascunho preenchido ("Editar a rotina “Calendário da manhã” (todo dia às 08:00): ") e uma **referência escondida** à rotina (abaixo).
 
+### A execução seguinte sabe o que a anterior criou
+
+Caso real (24/11/2026): o bot criou um lembrete e disse "Combinado, criei…"; na mensagem seguinte disse "na verdade não criei" e criou **outra** rotina. Causa: o histórico de uma execução nova é **só texto** (as mensagens do chat), sem as chamadas e resultados das execuções anteriores; o prompt manda nunca afirmar o que nenhum resultado mostra, então o modelo viu a própria frase sem prova e se "corrigiu".
+
+- **"Your routines" no prompt.** Uma execução de conversa do usuário começa com a lista das rotinas do bot que não terminaram (nome, horário por extenso, fuso, ativa ou pausada, e o id só para as ferramentas; ativas primeiro, até 20, "and N more"). É lida uma vez e gravada em `context_loaded.ownRoutines` (`ownRoutinesFor`, `packages/runtime/src/routines.ts`), então retomar e reproduzir dão o mesmo. A seção diz que essas rotinas são reais e que o histórico vem sem as chamadas; `ROUTINES_HOW` manda olhar a lista antes de criar e mudar a que já existe com `update_routine`.
+- **Duplicata recusada.** `create_routine` recusa uma rotina igual a uma que o bot já tem e que não terminou: mesmo nome (aparado, NFC, minúsculas, comparado por igualdade: `routineNameKey`) **e** mesmo horário no mesmo fuso (campos comparados exatamente, dias da semana como conjunto, intervalo em minutos: `sameSchedule`, `packages/core/src/schedule.ts`). O resultado diz ao modelo que ela já existe, o nome, e que mude com `update_routine`. Sem regex e sem interpretar texto: nome com outras palavras não é duplicata (quem evita isso é a lista no prompt).
+- Não foi feita a nota de "ações desta conversa" no histórico: a lista do estado atual é a fonte certa (uma rotina apagada pelo usuário no painel não aparece como "criada").
+
 ### A referência à rotina na mensagem
 
 O id da rotina **nunca aparece no chat**. O "Editar" prende ao rascunho do compositor uma referência estruturada (`routineRef: { id }`); apagar o rascunho, ou trocar de bot, a tira. Ela vai com a mensagem (`POST /v1/conversations/{id}/messages`, `{ text, routineRef }`), o servidor confere que é uma rotina do bot da conversa e a guarda **na mensagem** (`messages.routine_ref`, migração 0027; `null` quando a rotina é apagada), nunca no texto.
@@ -45,6 +53,7 @@ A pesquisa (Claude Code, rotinas): o texto disparado "can't act as approval or c
 - Dentro da execução da rotina, **toda** ferramenta passa pelo portão normal: regras, revisor, pisos, cartões. Os cartões aparecem em **Pendências** como quaisquer outros (a execução fica `waiting_approval`).
 - O revisor do Auto-review recebe, num bloco próprio, que a execução foi **iniciada por uma rotina**, que o usuário não está vendo ao vivo e que o disparo não é aprovação; a instrução aparece como "pedida quando o usuário configurou a rotina", **fora** das mensagens do usuário (`ReviewTrigger`, versão `auto-review-v3`).
 - Ninguém responde ao vivo: `escalate` e `request_secret` são **recusados** numa rotina (o bot diz na resposta final o que precisa). Senão a execução ficaria esperando para sempre e todos os próximos disparos seriam pulados.
+- Pelo mesmo motivo, quando o revisor de conclusão não consegue verificar o `finish` (ou a revisão falha, mesmo depois de tentar de novo), a execução da rotina **termina não concluída** (`failed`, motivo em português no chat: "a revisão falhou..." ou "o revisor não conseguiu confirmar...") em vez de passar a decisão ao dono. O próximo disparo roda normalmente.
 - `schedule_return` não é oferecido a rotinas (só a conversa do usuário volta sozinha), então o teto de 6 retornos seguidos continua valendo sem mudança.
 
 ## Horário: campos, nunca cron
@@ -89,7 +98,8 @@ Políticas (da pesquisa e do dono):
 - **Sobreposição**: se a execução anterior da rotina ainda não terminou (qualquer estado não final, inclusive esperando aprovação), o disparo é registrado como `skipped` (`overlap`) e nada entra na fila. "Rodar agora" responde `409` nesse caso.
 - **Pausada**: não dispara, e o que passou durante a pausa não é recuperado (retomar calcula a partir de agora).
 - **Fim**: data única que já disparou, ou `until` passado: a rotina fica `ended` (registrado). O resumo final opcional do PLANO **não** foi feito: a rotina só para e registra.
-- **Custo**: teto por execução opcional por rotina (`costCapUsd`, padrão nenhum, como o do supervisor); com teto, vale o menor entre ele e o do bot.
+- **Custo**: teto por execução opcional por rotina (`costCapUsd`, padrão nenhum, como o do supervisor); com teto, vale o menor entre ele e o do bot. É texto decimal simples (só algarismos e um ponto, até 4 casas, conferido caractere a caractere, sem regex); na API, um número de 0.01 a 100 com até 4 casas.
+- **Horário salvo inválido** (gravado por uma versão anterior ou à mão): a rotina continua na lista com `schedule: null` e `problem` (frase para o usuário); o agendador a **pausa** uma vez (registra no log do worker) em vez de falhar a cada passada, e ela só volta a rodar com um horário novo. Uma linha ruim nunca quebra a lista inteira.
 
 ## Onde roda e onde o resultado aparece
 

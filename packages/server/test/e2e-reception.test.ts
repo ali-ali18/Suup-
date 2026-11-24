@@ -162,7 +162,7 @@ describe.skipIf(!DATABASE_URL)(
 
     it("tells the app the user's time zone is not known yet: never the server's own", async () => {
       const info = await w.started.api.info();
-      expect(info).toEqual({ timeZone: null, timeZoneSource: null });
+      expect(info).toEqual({ timeZone: null, timeZoneSource: null, oauthCallback: "loopback" });
     });
 
     it("the main bot welcomes once, in one conversation, with its questions one at a time", async () => {

@@ -5,6 +5,7 @@ import type { ToolGate } from "../approvals/gate.js";
 import type {
   ContextItem,
   MachineInfo,
+  OwnRoutines,
   ReceptionKind,
   RoutineRef,
   RoutineRunFacts,
@@ -81,6 +82,8 @@ export interface RunContextSnapshot {
   routine?: RoutineRunFacts;
   /** The routines the messages that opened the run are about (the app's "Editar"; recorded). */
   routineRefs?: RoutineRef[];
+  /** The bot's own routines when the run started (a run that may create routines; recorded). */
+  ownRoutines?: OwnRoutines;
   /** Compact the history past this share of the context window (the user's setting; recorded). */
   compactionThreshold?: number;
   /** Rules and profile facts left out because they did not fit the size cap (recorded). */

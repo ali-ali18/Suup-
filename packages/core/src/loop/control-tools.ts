@@ -45,7 +45,7 @@ Rules:
 
 You may call plan in the same turn as other tools.`;
 
-export const FINISH_DESCRIPTION = `End the run. Call it only when the work is really finished AND verified. Call it ALONE in its turn, after you have seen the results of every other tool; a finish sent together with other tool calls is rejected.
+export const FINISH_DESCRIPTION = `End the run. Call it only when the work is really finished AND verified. Call it ALONE in its turn, after you have seen the results of every other tool; a finish sent together with other tool calls is rejected (only a \`plan\` update placed BEFORE it in the same turn is allowed, e.g. marking the last step done).
 
 Arguments:
 - \`summary\`: what was done and what the outcome is, written for the user, in the user's language.

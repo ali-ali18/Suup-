@@ -352,15 +352,15 @@ describe("review: cannot_verify must name something the reviewer lacks", () => {
     expect((await replayRun(events, { bot: rig.bot })).identical).toBe(true);
   });
 
-  it("an item it really lacks is kept, with no re-ask, and shown to the owner", async () => {
+  it("an item it really lacks is kept, with no re-ask; the bot gets one turn to produce it, then the owner is shown it", async () => {
+    const lacks = () =>
+      cannotVerify("the CNPJ", [
+        { what: "the CNPJ in the summary", kind: "file", ref: "contrato.md" },
+        { what: "the echo", kind: "result", ref: "#9" },
+      ]);
     const rig = createRig({
-      script: [use(finishCall("c1", "Done."))],
-      reviewerScript: [
-        cannotVerify("the CNPJ", [
-          { what: "the CNPJ in the summary", kind: "file", ref: "contrato.md" },
-          { what: "the echo", kind: "result", ref: "#9" },
-        ]),
-      ],
+      script: [use(finishCall("c1", "Done.")), use(finishCall("c2", "Done, still."))],
+      reviewerScript: [lacks(), lacks()],
     });
     expect(await rig.run()).toBe("waiting_user");
     const events = await rig.events();
@@ -368,8 +368,47 @@ describe("review: cannot_verify must name something the reviewer lacks", () => {
     const [review] = eventsOfType(events, "review");
     expect(review?.payload.unchecked).toHaveLength(2);
     expect(review?.payload.namedNothing).toBeUndefined();
+    expect(review?.payload.missingEvidence).toBe(true);
+    // First: back to the bot with what the reviewer asked for, not to the owner.
+    const [first, second] = eventsOfType(events, "finish_attempt").map((e) => e.payload);
+    expect(first).toMatchObject({ accepted: false, sentBack: true });
+    expect(first).not.toHaveProperty("handedToUser");
+    expect(first?.rejectionReasons[0]).toContain("The reviewer asked for");
+    expect(first?.rejectionReasons[0]).toContain(
+      "the CNPJ in the summary (needs: file contrato.md)",
+    );
+    expect(first?.rejectionReasons[0]).toContain("call finish again");
+    // Second: the owner decides, as before.
+    expect(second).toMatchObject({ accepted: false, handedToUser: true });
+    expect(eventsOfType(events, "escalated")).toHaveLength(1);
     expect(eventsOfType(events, "escalated")[0]?.payload.question).toContain(
       "- the CNPJ in the summary (needs: file contrato.md)",
     );
+  });
+
+  it("sent back once with the reviewer's notes, the bot produces the evidence and the next review approves", async () => {
+    const rig = createRig({
+      script: [
+        use(finishCall("c1", "Done.")),
+        use(call("e1", "echo", { text: "CNPJ 12.345.678/0001-90" })),
+        use(finishCall("c2", "Done, with the CNPJ shown.")),
+      ],
+      reviewerScript: [
+        cannotVerify("the CNPJ was never shown", [
+          { what: "the CNPJ in the summary", kind: "other", ref: "" },
+        ]),
+        verdict("approve", "now it is shown"),
+      ],
+    });
+    expect(await rig.run()).toBe("done");
+    const events = await rig.events();
+    expect(eventsOfType(events, "escalated")).toEqual([]);
+    expect(eventsOfType(events, "finish_attempt").map((e) => e.payload.accepted)).toEqual([
+      false,
+      true,
+    ]);
+    // What the bot read: the reviewer's notes, as the result of its finish.
+    const seen = JSON.stringify(rig.provider.requests[1]?.messages.at(-1));
+    expect(seen).toContain("the CNPJ was never shown");
   });
 });

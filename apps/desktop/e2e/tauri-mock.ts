@@ -12,6 +12,18 @@ export interface MockOptions {
    * Windows and Linux); `native` has one (as on macOS). Default: `native`.
    */
   frame?: "custom" | "native";
+  /**
+   * The saved choice is "minha VPS", already connected to the test's server (as a reopened app
+   * finds it): an explicit VPS mode, not the browser's default.
+   */
+  vps?: boolean;
+  /**
+   * The app's updater: `enabled` false plays the placeholder key (the default, as the repository
+   * ships); `version` is the newer release the check finds (none when absent). The download sends a
+   * few progress events; the install is recorded in `__updateInstalls` and, like the real one, never
+   * comes back (the app would close and reopen).
+   */
+  update?: { enabled?: boolean; version?: string };
 }
 
 /**
@@ -48,6 +60,13 @@ export async function installTauriMock(
         logsDir: "/mock/logs",
       };
       let failures = 0;
+      if (options.vps === true && store("mode") === null) {
+        put("mode", "vps");
+        put("connection", JSON.stringify({ serverUrl, token }));
+      }
+      // What the app asked the system browser to open (the test plays the browser).
+      const opened: string[] = [];
+      w.__openedUrls = opened;
       const begin = () => {
         status = {
           ...status,
@@ -89,6 +108,8 @@ export async function installTauriMock(
         ];
         for (const [ms, run] of steps) setTimeout(run, ms);
       };
+      const updateInstalls: string[] = [];
+      w.__updateInstalls = updateInstalls;
       const windowCalls: string[] = [];
       let maximized = false;
       w.__windowCalls = windowCalls;
@@ -132,8 +153,27 @@ export async function installTauriMock(
           status = { ...status, hasApiKey: true };
         },
         local_open_logs: () => undefined,
+        update_info: () => ({
+          enabled: options.update?.enabled === true,
+          currentVersion: "0.1.0",
+        }),
+        update_check: () =>
+          options.update?.enabled === true && options.update.version !== undefined
+            ? { version: options.update.version }
+            : null,
+        update_download: async (a) => {
+          const channel = a.onEvent as { onmessage(m: unknown): void };
+          for (const downloaded of [0, 40, 80, 100]) {
+            channel.onmessage({ kind: "progress", downloaded, total: 100 });
+            await new Promise((r) => setTimeout(r, 150));
+          }
+        },
+        update_install: () => {
+          updateInstalls.push(options.update?.version ?? "");
+          return new Promise(() => undefined);
+        },
         local_database_url: () => "postgres://suup:senha-de-mentira@127.0.0.1:5999/suup",
-        open_url: () => undefined,
+        open_url: (a) => opened.push(String(a.url)),
         http_abort: () => undefined,
         http_fetch: async (a) => {
           const channel = a.onEvent as { onmessage(m: unknown): void };

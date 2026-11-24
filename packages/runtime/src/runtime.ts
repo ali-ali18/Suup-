@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { hostname } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
-import type { StdioLauncher } from "@suup/connectors";
+import type { CatalogEntry, StdioLauncher } from "@suup/connectors";
 import {
   type AutoReviewer,
   allowAllGate,
@@ -76,6 +76,7 @@ import {
   type RuntimeConfig,
   resolveDatabaseUrl,
 } from "./config.js";
+import { PROPOSE_CONNECTOR_TOOL, proposeConnectorTool } from "./connectors/propose-tool.js";
 import {
   type BotConnectorCandidate,
   type ConnectorService,
@@ -95,6 +96,7 @@ import {
   createRoutineTool,
   deleteRoutineTool,
   listRoutinesTool,
+  ownRoutinesFor,
   ROUTINE_RUN_TOOL_NAMES,
   ROUTINE_TOOL_NAMES,
   routineCostCap,
@@ -128,6 +130,17 @@ export interface RuntimeOptions {
   fetch?: typeof fetch;
   /** Path of the docker CLI. Default: `SUUP_DOCKER_PATH` from the environment, else `docker`. */
   dockerPath?: string;
+  /**
+   * Another list of gallery entries in place of the owner's (tests only, e.g. the app's end-to-end
+   * tests with an entry that points at a fake OAuth server). Never read from the configuration.
+   */
+  connectorCatalog?: readonly CatalogEntry[];
+  /**
+   * Where the runtime writes what only the logs need (the web services that did not start, a page
+   * that could not be reached and why). The CLI and the app's server send it to stderr, which the
+   * app keeps in its log files. Never seen by the model or the user.
+   */
+  log?: (message: string) => void;
 }
 
 export interface ResolvedModel {
@@ -273,7 +286,7 @@ export interface Runtime {
    */
   userTimeZone(): Promise<UserTimeZone>;
   /** One pass of the routine scheduler, as the worker does it (docs/ROTINAS.md). */
-  routinesOnce(options?: { now?: Date }): Promise<FiredRoutine[]>;
+  routinesOnce(options?: { now?: Date; log?: (message: string) => void }): Promise<FiredRoutine[]>;
   /** The web (search and reading): starts its services if needed and says what is running. */
   webStatus(): ReturnType<WebWiring["status"]>;
   close(): Promise<void>;
@@ -386,6 +399,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
   // Web search and page reading (docs/BUSCA.md): nothing starts until a tool asks for it.
   const web = createWebWiring(config.web, {
     ...(dockerPath === undefined ? {} : { dockerPath }),
+    ...(options.log === undefined ? {} : { log: options.log }),
     // Identical searches are answered from the database: it outlives a restart and is shared.
     searchCache: dbSearchCache(() => runtime.db),
   });
@@ -450,7 +464,9 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     db: () => runtime.db,
     vault,
     launcher: containerLauncher,
+    ...(config.server?.publicUrl === undefined ? {} : { publicUrl: config.server.publicUrl }),
     ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+    ...(options.connectorCatalog === undefined ? {} : { catalog: options.connectorCatalog }),
   });
   // Every tool call goes through the approval policy: the user's rules, the reviewer, then a card.
   // The gate asks the registry of the RUN (built-in tools plus the connector tools of its bot).
@@ -900,7 +916,11 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     if (guarded && run.origin === "user") {
       if (runTools === tools) runTools = copyOfBase();
       routineToolsFor(handle)(runTools);
-      botCfg = { ...botCfg, allowedTools: [...botCfg.allowedTools, ...ROUTINE_TOOL_NAMES] };
+      runTools.register(proposeConnectorTool(() => connectors.gallery));
+      botCfg = {
+        ...botCfg,
+        allowedTools: [...botCfg.allowedTools, ...ROUTINE_TOOL_NAMES, PROPOSE_CONNECTOR_TOOL],
+      };
     } else if (guarded && run.origin === "routine") {
       if (runTools === tools) runTools = copyOfBase();
       runTools.register(listRoutinesTool(handle));
@@ -967,6 +987,10 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
                 .map((other) => ({ name: other.name, description: other.description }));
               const zone = (await userTimeZone()).timeZone;
               const facts = run.origin === "routine" ? await routineRunFacts(handle, id) : null;
+              // The bot's routines, in a run that may create them: a new run knows what an
+              // earlier one set up (the history is text only, without the tool calls behind it).
+              const ownRoutines =
+                run.origin === "user" ? await ownRoutinesFor(handle, bot.id) : undefined;
               const withFacts: RunContextSnapshot = {
                 ...snapshot,
                 // Never the server's own zone: unknown is said as unknown (and is UTC).
@@ -984,6 +1008,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
                 ...(receptionKind === undefined ? {} : { reception: receptionKind }),
                 ...(supervisor === undefined ? {} : { supervisor }),
                 ...(facts === null ? {} : { routine: facts }),
+                ...(ownRoutines === undefined ? {} : { ownRoutines }),
               };
               // The model is told which secrets exist (names and purpose), never their values.
               return vault.status().ok
@@ -1069,8 +1094,14 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
       }
       // What a conversation run of the user is offered besides: the routine tools (docs/ROTINAS.md).
       routineToolsFor(runtime.db)(reg);
+      reg.register(proposeConnectorTool(() => connectors.gallery));
       const control = new Set<string>(CONTROL_TOOL_NAMES);
-      const specs = reg.specs([...cfg.allowedTools, ...ROUTINE_TOOL_NAMES, ...connectorNames]);
+      const specs = reg.specs([
+        ...cfg.allowedTools,
+        ...ROUTINE_TOOL_NAMES,
+        PROPOSE_CONNECTOR_TOOL,
+        ...connectorNames,
+      ]);
       const builtin = specs.filter((s) => !connectorNames.has(s.name) && !control.has(s.name));
       const connectorSpecs = new Map(
         specs.filter((s) => connectorNames.has(s.name)).map((s) => [s.name, s]),
@@ -1190,7 +1221,10 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     },
     userTimeZone,
     async routinesOnce(opts = {}) {
-      return fireDueRoutines(runtime.db, opts.now === undefined ? {} : { now: opts.now });
+      return fireDueRoutines(runtime.db, {
+        ...(opts.now === undefined ? {} : { now: opts.now }),
+        ...(opts.log === undefined ? {} : { log: opts.log }),
+      });
     },
     async morningOnce(opts = {}) {
       const zone = (await userTimeZone()).timeZone;
@@ -1302,7 +1336,9 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
                   name: "routines",
                   everyMs: opts.routinesEveryMs ?? 15_000,
                   run: async () => {
-                    await runtime.routinesOnce();
+                    await runtime.routinesOnce({
+                      log: (message) => opts.onError?.(new Error(message), "routines"),
+                    });
                   },
                 },
                 {

@@ -1,6 +1,5 @@
 import type { ComponentType } from "react";
 import {
-  siDiscord,
   siFigma,
   siGithub,
   siGmail,
@@ -11,10 +10,6 @@ import {
   siLinear,
   siNotion,
   siStackoverflow,
-  siTelegram,
-  siTodoist,
-  siTrello,
-  siWhatsapp,
 } from "simple-icons";
 
 /** What a leading slot of a row draws: a Lucide icon or a brand glyph (both take a size). */
@@ -92,15 +87,10 @@ export interface SolidMark {
 /**
  * The services whose logo is ONE colour: the tile takes the brand's own primary colour (the `hex`
  * of the package, never typed here) and the mark is drawn white over it, as in the app icon of
- * Trello, Todoist or Discord. An EXACT lookup by the connector's id (docs/REGRAS.md §1).
+ * Linear. An EXACT lookup by the id of the server's gallery (docs/REGRAS.md §1).
  */
 const SOLID: ReadonlyMap<string, SolidMark> = new Map<string, SolidMark>([
-  ["stack-overflow", siStackoverflow],
-  ["discord", siDiscord],
-  ["telegram", siTelegram],
-  ["whatsapp", siWhatsapp],
-  ["trello", siTrello],
-  ["todoist", siTodoist],
+  ["stackoverflow", siStackoverflow],
   ["linear", siLinear],
 ]);
 

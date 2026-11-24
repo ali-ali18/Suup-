@@ -19,6 +19,7 @@ import {
   testTools,
   textOf,
   use,
+  verdict,
 } from "../testing/index.js";
 import { defineTool } from "../tool.js";
 import { computeCost, runLoop } from "./loop.js";
@@ -68,6 +69,53 @@ describe("runLoop: finishing", () => {
     expect((await rig.record()).status).toBe("done");
     expect(rig.store.outcome(rig.runId).result).toEqual({ summary: "Four." });
     expectCleanRequests(rig);
+  });
+
+  it("a run WITH acceptance criteria and no plan is not done by a plain-text reply: it is asked for finish once, and the reviewer sees it", async () => {
+    const rig = createRig({
+      objective: "Implement the spec.",
+      criteria: ["the tests pass"],
+      script: [
+        use(call("c1", "echo", { text: "tests: 3 passed" })),
+        say("All done, the tests pass."),
+        use(
+          finishCall("f1", "Implemented.", [
+            { criterion: "the tests pass", evidence: "echo: tests: 3 passed" },
+          ]),
+        ),
+      ],
+      reviewerScript: [verdict("approve", "evidence matches")],
+    });
+    expect(await rig.run()).toBe("done");
+    const events = await rig.events();
+    const nudges = eventsOfType(events, "nudge").map((e) => e.payload);
+    expect(nudges).toHaveLength(1);
+    expect(nudges[0]?.reason).toBe("finish_required");
+    expect(nudges[0]?.text).toContain("acceptance criteria");
+    expect(nudges[0]?.text).toContain("finish");
+    expect(eventsOfType(events, "review")).toHaveLength(1);
+    expect(lastStatus(events)?.result?.summary).toBe("Implemented.");
+    expectCleanRequests(rig);
+  });
+
+  it("asked once, a second plain-text reply still ends the run (no loop of nudges)", async () => {
+    const rig = createRig({
+      criteria: ["it is answered"],
+      script: [say("Answer one."), say("Answer two.")],
+    });
+    expect(await rig.run()).toBe("done");
+    const events = await rig.events();
+    expect(eventsOfType(events, "nudge").map((e) => e.payload.reason)).toEqual(["finish_required"]);
+    expect(lastStatus(events)?.result?.summary).toBe("Answer two.");
+    // Rebuilt from the log (resume, replay): the same decision.
+    expect(rebuildState(events).status).toBe("done");
+  });
+
+  it("a plain chat run (no criteria, no plan) still ends with its text, with no extra turn", async () => {
+    const rig = createRig({ script: [say("Oi! Tudo bem.")], objective: "oi" });
+    expect(await rig.run()).toBe("done");
+    expect(eventsOfType(await rig.events(), "nudge")).toEqual([]);
+    expect(rig.provider.calls).toBe(1);
   });
 
   it("runs a multi-step task: plan, tools, finish accepted", async () => {
@@ -310,6 +358,45 @@ describe("runLoop: finish validation", () => {
     expect(results.c2).toContain(
       "call finish alone, after you have seen the results of the other tools",
     );
+    const [first] = await reasonsOf(rig);
+    expect(first?.[0]).toContain("call finish alone");
+  });
+
+  it("a finish that comes after only plan updates in its turn is evaluated with the new plan", async () => {
+    const rig = createRig({
+      criteria: ["echo works"],
+      script: [
+        use(planCall("p1", [{ id: "s1", title: "Call echo", status: "in_progress" }])),
+        use(call("c1", "echo", { text: "hi" })),
+        // The last step marked done and the finish, in one turn: one turn saved.
+        use(
+          planCall("p2", [{ id: "s1", title: "Call echo", status: "done" }]),
+          finishCall("f1", "Echo works.", [{ criterion: "echo works", evidence: "echo: hi" }]),
+        ),
+      ],
+    });
+    expect(await rig.run()).toBe("done");
+    expect(rig.provider.calls).toBe(3);
+    const events = await rig.events();
+    const attempts = eventsOfType(events, "finish_attempt").map((e) => e.payload);
+    expect(attempts).toHaveLength(1);
+    expect(attempts[0]?.accepted).toBe(true);
+    // The plan was applied before the finish was judged.
+    const types = eventTypes(events);
+    expect(types.lastIndexOf("plan_updated")).toBeLessThan(types.indexOf("finish_attempt"));
+  });
+
+  it("a finish next to a plan update that comes AFTER it, or next to a real tool, is still refused", async () => {
+    const rig = createRig({
+      script: [
+        use(
+          finishCall("f1", "Done."),
+          planCall("p1", [{ id: "s1", title: "Work", status: "done" }]),
+        ),
+        use(finishCall("f2", "Done.")),
+      ],
+    });
+    expect(await rig.run()).toBe("done");
     const [first] = await reasonsOf(rig);
     expect(first?.[0]).toContain("call finish alone");
   });

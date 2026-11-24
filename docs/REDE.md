@@ -106,6 +106,20 @@ O proxy ganhou dois modos para isso (`packages/sandbox/src/egress/proxy.ts`, com
 
 Veja [CONECTORES.md](CONECTORES.md). Com o sandbox `docker`, cada conector stdio roda **num contêiner próprio**, na mesma rede interna, e sai pelo mesmo proxy com a lista **dos padrões + `egressHosts` do conector**. Conector novo que precisa de um host: `suup connectors set-egress <nome> --host api.exemplo.com`. Não há cartão para conector (não há execução para pausar): a recusa fica registrada em `network_events` (sujeito `connector`) e o servidor costuma dizê-la no erro da chamada; ainda não há comando nem tela que liste as recusas de um conector (adiado). Quem libera é o usuário.
 
+## Conectores HTTP e a galeria
+
+Um conector **HTTP** não roda num contêiner: quem faz as requisições é o processo do worker (e, no teste e no login, o do servidor), a partir da rede dele, sem o proxy dos bots. Os hosts de cada entrada da galeria estão declarados em `egressHosts` ([CONECTORES.md](CONECTORES.md), "Galeria"), para quem precisa liberá-los num firewall de saída:
+
+| Entrada | Hosts |
+|---|---|
+| GitHub | `api.githubcopilot.com` |
+| Notion | `mcp.notion.com` |
+| Linear | `mcp.linear.app` |
+| Figma | `mcp.figma.com` |
+| Composio | `connect.composio.dev` |
+
+O **login OAuth** fala também com o servidor de autorização que o próprio servidor MCP anuncia (descoberto na hora, não declarado: depende do serviço). O retorno do login chega em `http://127.0.0.1:<porta>/callback`, uma porta que o **processo do servidor** abre só em `127.0.0.1` enquanto vive.
+
 ## `suup doctor`
 
 Com o sandbox docker o `doctor` confere, **de dentro do contêiner**: (1) que um endereço público sem o proxy (`curl --noproxy '*' http://1.1.1.1/`) **não** responde; (2) que o proxy recusa um host que não está na lista. Falha no primeiro é "PERIGO": a máquina tem saída direta (por exemplo, um contêiner criado antes desta versão; o runtime o recria sozinho ao subir, mantendo o volume). Com o sandbox `local` ele diz que não há proxy. Para cada conector stdio diz **onde ele roda**: em contêiner (isolado) ou no host, sem isolamento.

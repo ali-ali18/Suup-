@@ -101,6 +101,8 @@ No nginx, o equivalente é `proxy_pass http://127.0.0.1:8787; proxy_buffering of
 
 Depois: `curl -s https://suup.exemplo.com/health`, e no app o endereço `https://suup.exemplo.com` com o token. Acrescente em `server.allowedOrigins` as origens do app (Tauri: `tauri://localhost`, `http://tauri.localhost`, `https://tauri.localhost`, já presentes no exemplo de configuração). Feche o resto do firewall (`ufw allow 22,80,443/tcp`): o Postgres não tem porta publicada, e a 8787 só existe no loopback.
 
+Para conectar serviços **por login** (Notion, Linear, Figma) com o servidor na VPS, ponha o mesmo endereço em `server.publicUrl` (`"server": { "publicUrl": "https://suup.exemplo.com" }`): o navegador volta do login direto para `https://suup.exemplo.com/oauth/callback`. Sem ele, o app avisa que a VPS precisa do endereço público para conectar por login; as entradas por token (GitHub, Composio) funcionam assim mesmo.
+
 ## O socket do Docker: o que ele dá ao worker
 
 O worker comanda a máquina dos bots com `docker exec`, o que exige falar com o daemon do Docker do host. Há duas formas de dar isso a ele, e as duas passam pelo socket:

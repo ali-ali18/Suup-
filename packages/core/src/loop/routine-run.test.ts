@@ -8,6 +8,7 @@ import { ROUTINE_NO_QUESTIONS } from "./control-calls.js";
 import { runLoop } from "./loop.js";
 import { buildSystemPrompt, ROUTINES_HOW } from "./prompts.js";
 import type { RunContextSnapshot } from "./run-context.js";
+import { rebuildState } from "./state.js";
 
 const ROUTINE = {
   id: "r-1",
@@ -227,5 +228,39 @@ describe("a message of the user that is about a routine (the app's Editar)", () 
     plain.store.postInbox(plain.runId, { kind: "user_message", text: "muda pra 7h" });
     await runLoop(plain.deps(), plain.runId);
     expect(texts(plain)).not.toContain("your routine");
+  });
+});
+
+describe("a conversation run knows the routines an earlier run created", () => {
+  const OWN = {
+    items: [
+      {
+        id: "rot-9",
+        name: "Lembrete: trabalhos e prova",
+        schedule: "todo dia às 20:00, até 30/11/2026",
+        timeZone: "America/Sao_Paulo",
+        status: "active" as const,
+      },
+    ],
+    more: 0,
+  };
+
+  it("lists them in the prompt of every turn, recorded once, and a rebuilt run reads the same", async () => {
+    const rig = createRig({
+      script: [use(call("c1", "echo", { text: "x" })), say("Seu lembrete já está criado.")],
+      objective: "pesquisa a história da PUC",
+    });
+    await runLoop(
+      rig.deps({ loadRunContext: async () => context({ ownRoutines: OWN }, false) }),
+      rig.runId,
+    );
+    const line =
+      '- "Lembrete: trabalhos e prova": todo dia às 20:00, até 30/11/2026 (America/Sao_Paulo); active; id rot-9';
+    expect(rig.provider.requests.length).toBe(2);
+    for (const request of rig.provider.requests) expect(request.system).toContain(line);
+    const events = await rig.events();
+    const [loaded] = eventsOfType(events, "context_loaded");
+    expect(loaded?.payload.ownRoutines).toEqual(OWN);
+    expect(rebuildState(events).context?.ownRoutines).toEqual(OWN);
   });
 });

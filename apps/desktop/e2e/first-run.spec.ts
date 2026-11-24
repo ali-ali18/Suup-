@@ -79,7 +79,13 @@ test.describe("first run: this computer or a VPS", () => {
     await page.goto(world.appUrl);
     await page.getByTestId("choose-local").click();
     await page.getByTestId("key-later").click();
-    await expect(page.getByTestId("local-error")).toContainText("A porta do banco está ocupada.");
+    // one friendly sentence and the way to the logs; the supervisor's reason stays in the logs
+    await expect(page.getByTestId("local-error")).toHaveText(
+      "Algo impediu o Suup de iniciar neste computador. Tenta de novo?",
+    );
+    await expect(page.getByTestId("local-start")).not.toContainText("A porta do banco");
+    await expect(page.getByTestId("local-start")).not.toContainText("/mock/logs");
+    await expect(page.getByTestId("local-logs")).toHaveText("Abrir a pasta de registros");
     await page.getByTestId("local-retry").click();
     await expect(page.getByTestId("sidebar")).toBeVisible();
   });
@@ -105,7 +111,8 @@ test.describe("first run: this computer or a VPS", () => {
     await expect(page.getByTestId("sidebar")).toBeVisible();
     await openSettings(page, "Geral");
     await expect(page.getByTestId("server-mode")).toContainText("Minha VPS");
-    await expect(page.getByTestId("server-url")).toContainText(world.serverUrl);
+    await expect(page.getByTestId("server-url")).toHaveAttribute("title", world.serverUrl);
+    await expect(page.getByTestId("server-url")).not.toContainText(world.serverUrl);
     await expect(page.getByTestId("local-state")).toHaveCount(0);
   });
 });

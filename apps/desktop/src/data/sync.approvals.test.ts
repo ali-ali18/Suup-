@@ -78,7 +78,7 @@ describe("deciding an approval: never optimistic", () => {
     expect(errors).toEqual([]);
   });
 
-  it("any other failure leaves the card pending and hands the message back", async () => {
+  it("any other failure leaves the card pending and hands back a friendly sentence (never the server's text)", async () => {
     const card = makeApproval();
     const decide = vi.fn().mockRejectedValue(new ApiError("internal_error", "falhou", 500));
     const { store, sync } = setup({ approvals: { decide } });
@@ -86,7 +86,7 @@ describe("deciding an approval: never optimistic", () => {
     expect(await sync.decideApproval(card.id, { decision: "approve" })).toEqual({
       ok: false,
       reason: "error",
-      message: "falhou",
+      message: "Algo deu errado. Tenta de novo?",
     });
     expect(store.getState().approvals[card.id]?.status).toBe("pending");
     // And it can be tried again: the failed one is not stuck "on its way".

@@ -165,6 +165,12 @@ export interface RunState {
   parkedAt: Date | null;
   /** A `finish` was accepted but the run has not been closed yet. */
   acceptedFinish: { summary: string; evidence: { criterion: string; evidence: string }[] } | null;
+  /** Unverified finishes already sent back to the bot to produce the evidence (at most one). */
+  unverifiedSentBack: number;
+  /** The harness already sent a plain-text end back asking for `finish` (criteria, no plan). */
+  finishRequested: boolean;
+  /** A `finish` ended the run as not concluded (`finish_attempt.endsRun`), not closed yet. */
+  failedFinish: { origin: FailureOrigin; detail: string } | null;
   finishAttempts: Map<string, FinishAttemptRecord>;
   /** The review recorded since the latest `finish` call started, if any. */
   currentReview: RunEventPayload<"review"> | null;
@@ -286,6 +292,9 @@ export function createRunState(): RunState {
     waitedMs: 0,
     parkedAt: null,
     acceptedFinish: null,
+    failedFinish: null,
+    finishRequested: false,
+    unverifiedSentBack: 0,
     finishAttempts: new Map(),
     currentReview: null,
     reviewRounds: [],
@@ -367,6 +376,9 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
         ...(event.payload.routine === undefined
           ? {}
           : { routine: structuredClone(event.payload.routine) }),
+        ...(event.payload.ownRoutines === undefined
+          ? {}
+          : { ownRoutines: structuredClone(event.payload.ownRoutines) }),
       };
       state.compactionThreshold = event.payload.compactionThreshold ?? null;
       // The user's earlier messages come before the objective (the history is text only).
@@ -635,6 +647,7 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
     case "nudge":
       appendUserBlock(state, { type: "text", text: renderNotice(event.payload.text) }, event.seq);
       if (event.payload.reason === "repetition") state.repeat.nudged = true;
+      if (event.payload.reason === "finish_required") state.finishRequested = true;
       if (state.pending !== null && state.pending.toolCalls.length === 0) {
         // The turn had no tool call: the nudge is how the harness answered it.
         state.noProgressStreak += 1;
@@ -643,7 +656,16 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
       break;
 
     case "finish_attempt": {
-      const { callId, accepted, rejectionReasons, summary, evidence, handedToUser } = event.payload;
+      const {
+        callId,
+        accepted,
+        rejectionReasons,
+        summary,
+        evidence,
+        handedToUser,
+        endsRun,
+        sentBack,
+      } = event.payload;
       if (callId !== undefined) {
         state.finishAttempts.set(callId, {
           accepted,
@@ -652,6 +674,8 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
         });
       }
       if (accepted) state.acceptedFinish = { summary, evidence: structuredClone(evidence) };
+      if (endsRun !== undefined) state.failedFinish = { ...endsRun };
+      if (sentBack === true) state.unverifiedSentBack += 1;
       break;
     }
 
@@ -744,6 +768,7 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
       };
       if (event.payload.to === "done" || event.payload.to === "failed") {
         state.acceptedFinish = null;
+        state.failedFinish = null;
       }
       if (state.pending !== null && state.pending.toolCalls.length === 0) state.pending = null;
       break;

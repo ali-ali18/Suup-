@@ -94,6 +94,7 @@ O servidor da API e do tempo real (`suup server`; [API.md](API.md)). Todos os ca
 | `port` | 8787 | Porta |
 | `allowedOrigins` | `[]` | Origens de navegador que podem chamar a API (CORS): esquema, host e porta, sem barra no fim (`http://localhost:1420`). Vazio: nenhuma. Do app de desktop (Tauri) acrescente `tauri://localhost`, `http://tauri.localhost` e `https://tauri.localhost` |
 | `tokenEnv` | `SUUP_SERVER_TOKEN` | O **NOME** da variável de ambiente que guarda o token do app (mínimo 32 caracteres; `suup server --generate-token` gera um). O token em si **nunca** vai no arquivo: um campo `token` é recusado |
+| `publicUrl` | (nenhum) | O endereço com que os navegadores chegam a este servidor numa VPS (o do proxy HTTPS, ex.: `https://suup.exemplo.com`). Com ele, o login OAuth de um conector volta a `<publicUrl>/oauth/callback`; sem ele, a um ouvinte local (só funciona com o navegador no mesmo computador). Precisa ser HTTPS (ou `localhost`/`127.0.0.1`, para testes); sem `?`, `#` ou usuário. Ver [CONECTORES.md](CONECTORES.md), "OAuth do MCP" |
 | `maxStreams` | 16 | Conexões de tempo real ao mesmo tempo; a seguinte leva `429` |
 | `maxBodyBytes` | 1048576 | Maior corpo de requisição aceito (`413` acima) |
 | `eventRetentionMinutes` | 360 | Por quanto tempo o diário de mudanças é guardado: a janela em que um cliente consegue retomar o stream de onde parou (fora dela, o servidor manda recarregar) |

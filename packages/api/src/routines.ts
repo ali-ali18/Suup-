@@ -56,7 +56,10 @@ export const routineSchema = z.object({
   instruction: z.string(),
   /** Today `schedule`; a monitor and a webhook are later kinds. */
   triggerKind: z.enum(["schedule"]),
-  schedule: scheduleSchema,
+  /** `null` when the stored schedule is not valid any more: see `problem`. */
+  schedule: scheduleSchema.nullable(),
+  /** Why the routine cannot run as it is (Portuguese, for the user); `null` when it can. */
+  problem: z.string().nullable(),
   /** The IANA zone the schedule is read in. */
   timeZone: z.string(),
   status: z.enum(ROUTINE_STATUSES),
@@ -79,7 +82,12 @@ export const routineListSchema = list(routineSchema);
 export const listRoutinesQuerySchema = z.object({ botId: uuid.optional() });
 export type ListRoutinesQuery = z.input<typeof listRoutinesQuerySchema>;
 
-const costCap = z.number().min(0.01).max(100);
+/** US$ 0.01 to 100, with at most 4 decimals (what the database column keeps). */
+const costCap = z
+  .number()
+  .min(0.01)
+  .max(100)
+  .refine((n) => Number(n.toFixed(4)) === n, "no máximo 4 casas decimais");
 
 export const createRoutineBodySchema = z.strictObject({
   botId: uuid,

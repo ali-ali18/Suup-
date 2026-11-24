@@ -4,6 +4,7 @@ import {
   createRoutineCardLine,
   createRoutineTool,
   deleteRoutineTool,
+  duplicateRoutineOf,
   listRoutinesTool,
   updateRoutineStateTool,
   updateRoutineTool,
@@ -71,5 +72,59 @@ describe("routine tools: what they declare", () => {
     expect(deleteRoutineTool(db).risk).toBe("read");
     expect(listRoutinesTool(db).risk).toBe("read");
     expect(updateRoutineStateTool(db).risk).toBe("read");
+  });
+});
+
+describe("create_routine: the same routine twice", () => {
+  const daily = { kind: "daily" as const, time: "20:00", until: "2026-11-30" };
+  const mine = [
+    {
+      id: "r1",
+      name: "Lembrete: trabalhos e prova",
+      schedule: daily,
+      timeZone: "America/Sao_Paulo",
+      status: "active" as const,
+    },
+    {
+      id: "r2",
+      name: "Antiga",
+      schedule: daily,
+      timeZone: "America/Sao_Paulo",
+      status: "ended" as const,
+    },
+  ];
+  const zone = "America/Sao_Paulo";
+
+  it("finds one that is not ended, with the same name (case and ends ignored) and schedule", () => {
+    expect(
+      duplicateRoutineOf(mine, {
+        name: " lembrete: TRABALHOS e prova ",
+        schedule: daily,
+        timeZone: zone,
+      })?.id,
+    ).toBe("r1");
+  });
+
+  it("another name, another schedule, another zone or an ended routine is not a duplicate", () => {
+    expect(
+      duplicateRoutineOf(mine, { name: "Lembrete provas", schedule: daily, timeZone: zone }),
+    ).toBeUndefined();
+    expect(
+      duplicateRoutineOf(mine, {
+        name: "Lembrete: trabalhos e prova",
+        schedule: { kind: "daily", time: "21:00", until: "2026-11-30" },
+        timeZone: zone,
+      }),
+    ).toBeUndefined();
+    expect(
+      duplicateRoutineOf(mine, {
+        name: "Lembrete: trabalhos e prova",
+        schedule: daily,
+        timeZone: "UTC",
+      }),
+    ).toBeUndefined();
+    expect(
+      duplicateRoutineOf(mine, { name: "Antiga", schedule: daily, timeZone: zone }),
+    ).toBeUndefined();
   });
 });

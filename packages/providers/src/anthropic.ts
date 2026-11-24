@@ -147,7 +147,7 @@ export function buildAnthropicBody(
     req.system === ""
       ? undefined
       : promptCache
-        ? [{ type: "text", text: req.system, cache_control: CACHE }]
+        ? systemBlocks(req.system, req.systemCacheBreak)
         : req.system;
   return {
     ...extraBody,
@@ -160,6 +160,23 @@ export function buildAnthropicBody(
     ...(toolChoice !== undefined ? { tool_choice: toolChoice } : {}),
     messages,
   };
+}
+
+/**
+ * The system prompt with its cache breakpoints: one at the end, and one where the part shared by
+ * every bot and run ends (`systemCacheBreak`), so a new bot or a new run (another name, another
+ * time) reads that part from the cache instead of writing it again. Four breakpoints at most per
+ * request: the last tool, these two and the last user block. The two blocks join to exactly the
+ * same text.
+ */
+function systemBlocks(system: string, cacheBreak: number | undefined): Wire[] {
+  if (cacheBreak === undefined || cacheBreak <= 0 || cacheBreak >= system.length) {
+    return [{ type: "text", text: system, cache_control: CACHE }];
+  }
+  return [
+    { type: "text", text: system.slice(0, cacheBreak), cache_control: CACHE },
+    { type: "text", text: system.slice(cacheBreak), cache_control: CACHE },
+  ];
 }
 
 /**

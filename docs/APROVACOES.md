@@ -30,6 +30,7 @@ Uma ferramenta que não declara nada, ou declara um nível que não existe, vale
 | `write_file`, `edit_file`, `remember`, `forget` | `write_reversible` | Mudam a pasta do próprio bot ou a memória, e dá para desfazer |
 | `shell` | `write_reversible` **na máquina isolada** (Docker); `external_irreversible` na máquina `local` | Veja abaixo |
 | `request_network_access` | `external_irreversible` (fixo) | Pede ao usuário que a máquina alcance **um host** (nome exato). Sempre é cartão, com o host e o motivo; aprovar libera o host só para a execução. Veja [REDE.md](REDE.md) |
+| `propose_connector` | `external_irreversible` (fixo) | O bot propõe **uma entrada da galeria** de conectores, pelo id exato. O cartão (`summary`) é montado **da entrada**, nunca do texto do bot: "Instalar o conector Notion da galeria (`fonte`): o que faz. Servidor: `URL`. Login: como. Fica desligado até você entrar em Configurações > Conectores." Aprovar instala **desligado** (`origin: "proposal"`); o login ou o token continuam sendo seus, na galeria. Recusar não instala nada. Um id fora da galeria é recusado. Veja [CONECTORES.md](CONECTORES.md), "O bot propõe um conector" |
 
 | `conn_<conector>__<ferramenta>` (conectores MCP) | `external_irreversible`, a não ser que **você** a marque como leitura (ou confie nas dicas do servidor) | O servidor é um programa externo e o que ele diz de si (`readOnlyHint`...) é só uma dica: ela pode apertar o nível, nunca afrouxar. Veja [CONECTORES.md](CONECTORES.md) |
 

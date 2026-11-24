@@ -11,6 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createClient } from "@suup/api";
+import { createDb } from "@suup/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { decodeEvent, type SidecarEvent } from "../src/protocol.js";
 
@@ -332,6 +333,83 @@ describe.skipIf(!CAN_RUN)(
       again.stdin?.end();
       await new Promise<void>((resolve) => again.once("exit", () => resolve()));
       expect(listProcesses(join(appData, "postgres"))).toEqual([]);
+    });
+
+    // An update of the app (docs/ATUALIZACAO.md): the installer replaced the resources, with a new
+    // migration, and left the app-data folder alone. The next start migrates the same database and
+    // everything that was there is still there.
+    it("after an update, the next start applies the new migration to the same data", async () => {
+      writeFileSync(
+        join(resources, "migrations", "9999_update_probe.sql"),
+        "create table update_probe (id int primary key);\n",
+      );
+      give(resources);
+      const env = {
+        ...process.env,
+        SUUP_APP_DATA: appData,
+        SUUP_RESOURCES: resources,
+        SUUP_PG_PASSWORD: "senha-do-banco-do-teste-1234",
+        SUUP_SERVER_TOKEN: TOKEN,
+        SUUP_VAULT_KEY: Buffer.alloc(32, 7).toString("base64"),
+        SUUP_SANDBOX: "local",
+        SUUP_APP_VERSION: "test-next",
+      };
+      const node = process.execPath;
+      const bundle = join(resources, "sidecar", "sidecar.mjs");
+      const asRoot = RUN_AS !== undefined && IS_ROOT;
+      const args = asRoot
+        ? [
+            "-u",
+            RUN_AS as string,
+            "--",
+            "env",
+            ...Object.entries(env)
+              .filter(([k]) => k.startsWith("SUUP_"))
+              .map(([k, v]) => `${k}=${v}`),
+            node,
+            bundle,
+          ]
+        : [bundle];
+      const next = spawn(asRoot ? "runuser" : node, args, { env, stdio: ["pipe", "pipe", "pipe"] });
+      let out = "";
+      next.stdout?.on("data", (c) => {
+        out += String(c);
+      });
+      try {
+        const deadline = Date.now() + 120_000;
+        while (!out.includes('"event":"ready"')) {
+          if (Date.now() > deadline) throw new Error(`não subiu: ${out}\n${diagnostics()}`);
+          await new Promise((r) => setTimeout(r, 100));
+        }
+        const ports = JSON.parse(readFileSync(join(appData, "ports.json"), "utf8")) as {
+          server: number;
+          postgres: number;
+        };
+        const db = createDb(
+          `postgres://suup:${env.SUUP_PG_PASSWORD}@127.0.0.1:${ports.postgres}/suup`,
+        );
+        try {
+          const [probe] = await db.sql<{ found: string | null }[]>`
+            select to_regclass('update_probe')::text as found`;
+          expect(probe?.found).toBe("update_probe");
+          const [applied] = await db.sql<{ name: string }[]>`
+            select name from schema_migrations where name = '9999_update_probe.sql'`;
+          expect(applied?.name).toBe("9999_update_probe.sql");
+        } finally {
+          await db.close();
+        }
+        // The conversation of before the update is still there.
+        const api = createClient({ baseUrl: `http://127.0.0.1:${ports.server}`, token: TOKEN });
+        const [main] = await api.bots.list();
+        const conversation = await api.bots.openConversation(main?.id as string);
+        const { items } = await api.conversations.messages(conversation.id);
+        expect(items.some((m) => m.text === "Olá, de dentro do app.")).toBe(true);
+        next.stdin?.write("stop\n");
+        await new Promise<void>((resolve) => next.once("exit", () => resolve()));
+        expect(listProcesses(join(appData, "postgres"))).toEqual([]);
+      } finally {
+        if (next.exitCode === null) next.kill("SIGKILL");
+      }
     });
   },
 );

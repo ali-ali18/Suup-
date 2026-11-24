@@ -561,7 +561,9 @@ test.describe("bots, sidebar, palette, memory", () => {
     await page.getByTestId("owner-menu").click();
     await page.getByRole("menuitem", { name: "Configurações" }).click();
     const settings = page.getByTestId("settings-screen");
-    await expect(settings.getByTestId("server-url")).toHaveText(world.serverUrl);
+    // the address is technical: only on hover, never as text (docs/DESIGN.md, "Amigável")
+    await expect(settings.getByTestId("server-url")).toHaveText("Os bots rodam no seu servidor.");
+    await expect(settings.getByTestId("server-url")).toHaveAttribute("title", world.serverUrl);
     await expect(settings.getByTestId("model-row")).toHaveCount(2);
     await choose(page, settings.getByTestId("setting-theme"), "Claro");
     await expect(page.locator("html")).toHaveAttribute("data-theme", "light");

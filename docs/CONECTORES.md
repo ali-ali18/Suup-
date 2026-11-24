@@ -42,7 +42,7 @@ suup connectors list | enable | disable | revoke | rm
 - `--arg` repete, e um argumento que começa com hífen vai com `=` (`--arg=-y`).
 - **Credenciais são sempre referências**: `--env-secret NOME=SEGREDO` (variável de ambiente do processo), `--header-secret Nome=SEGREDO` ou `--bearer SEGREDO` (cabeçalho HTTP). O valor é lido do cofre **na hora de conectar**. Um segredo que não existe no cofre é recusado ao cadastrar. `--env` e `--header` são para valores que **não** são segredo; nunca digite uma credencial neles (ela ficaria em texto no banco; o que o cofre conhece sai das respostas, o resto não).
 - `--bot` em `add` concede **todas** as ferramentas (`--all`) ao bot, por ser você agindo naquele comando; para escolher, omita `--bot` e use `grant --tools`.
-- Adicionar, ligar ou editar um conector, **pela API ou pela CLI, é você agindo**: não há cartão. O caminho "o bot propõe instalar um conector e você aprova num cartão" **não existe ainda** (veja o fim).
+- Adicionar, ligar ou editar um conector, **pela API ou pela CLI, é você agindo**: não há cartão. O bot só pode **propor** uma entrada da galeria, e isso é um cartão (veja "O bot propõe um conector").
 
 ### O que é recusado ao cadastrar
 
@@ -198,7 +198,72 @@ Credenciais são **referências por nome**: no banco ficam `{"secret": "ERP_TOKE
 - o processo filho recebe **só** as variáveis que você declarou, mais as que o SDK herda por segurança (`HOME`, `LOGNAME`, `PATH`, `SHELL`, `TERM`, `USER`). Nunca `DATABASE_URL`, chaves de provedor nem a chave do cofre (há um teste). O comando e os argumentos vão como lista para `spawn`, sem shell, e uma mensagem do protocolo maior que 4 MB derruba a conexão (limita a memória);
 - o que o filho escreve no erro padrão é guardado (as últimas linhas) só para diagnóstico, passa pela redação e aparece nas mensagens de falha ("o servidor escreveu: ...").
 
-Um conector **HTTP** é o servidor Suup (o worker) fazendo requisições para o endereço que você cadastrou, a partir da rede dele: `http://` só para `localhost`, redirecionamentos só para a mesma origem (padrão do SDK), e como o endereço é escolhido por você (e não pelo modelo) não há proteção contra um endereço interno: não cadastre um endereço que você não quer que o servidor alcance. Autenticação por OAuth do protocolo **não** é suportada (use um token no cofre).
+Um conector **HTTP** é o servidor Suup (o worker) fazendo requisições para o endereço que você cadastrou, a partir da rede dele: `http://` só para `localhost`, redirecionamentos só para a mesma origem (padrão do SDK), e como o endereço é escolhido por você (e não pelo modelo) não há proteção contra um endereço interno: não cadastre um endereço que você não quer que o servidor alcance. Um conector HTTP entra com um token do cofre num cabeçalho **ou** pelo OAuth do protocolo (`transport.oauth`, veja "OAuth do MCP").
+
+## Galeria
+
+Pesquisa: [galeria, OAuth do MCP e Composio](pesquisas/fase-4-conectores-galeria-oauth-composio.md) (23/11/2026). Decisão do dono (23/11/2026): uma **galeria predefinida** com "Conectar" de um clique, OAuth do MCP incluído e a Composio como entrada opcional, com aviso.
+
+A galeria é uma **lista fixa no código** (`packages/connectors/src/catalog.ts`): cada entrada é dado declarado, nada é deduzido de nome ou texto. Mudar a galeria é mudar o repositório (como no Hermes, em que "estar na lista = aprovação do dono"). Cada entrada diz:
+
+| Campo | O quê |
+|---|---|
+| `id` | também o nome do conector que ela cria |
+| `name`, `description` | o serviço e uma linha do que o bot faz com ele |
+| `source`, `license` | a página oficial do servidor e a licença conhecida |
+| `icon` | um *slug* do Simple Icons (CC0) para o app desenhar o logo, só como identificação do serviço; `null` = ícone genérico |
+| `availability` | `ready` (instalável) ou `unverified` ("Em breve" no app: aparece com o motivo, `unverifiedReason`, numa frase simples para a pessoa; não instala) |
+| `transport` | o transporte **fixo** (URL HTTP; nunca um comando de fora) |
+| `auth` | `oauth` (OAuth do MCP no navegador), `token` (o token do serviço no formulário seguro: o nome do segredo, o cabeçalho e o passo a passo) ou `oauth_owner_client` (um app OAuth do dono, com o passo a passo) |
+| `egressHosts` | os hosts exatos com que ele fala ([REDE.md](REDE.md)) |
+| `readTools`, `writeTools` | ferramentas por **nome exato**: as de leitura entram marcadas como `read` (rodam sem cartão); as de escrita como `external_irreversible` (sempre perguntam). Qualquer outra fica no padrão de conector: pergunta |
+| `notes`, `disclosure`, `checkedAt` | o que a pessoa precisa saber e o aviso de terceiro, **cada um numa frase curta e amigável** (o app os mostra; regra do dono "a ideia é ser friendly", [DESIGN.md](DESIGN.md) §1), e a data da última conferência (só para nós). O fato técnico por trás de cada nota (qual servidor, o que não foi verificado, de onde veio) fica num comentário da entrada e nesta página, nunca na tela |
+
+As entradas de hoje:
+
+| Entrada | Transporte | Login | Situação |
+|---|---|---|---|
+| **GitHub** | remoto oficial `https://api.githubcopilot.com/mcp/readonly` (só leitura pela própria URL) | `token`: um PAT em `GITHUB_TOKEN`, no cabeçalho `Authorization: Bearer` | pronta. 15 ferramentas de leitura por nome (`get_file_contents`, `list_issues`, `issue_read`, `pull_request_read`...), observadas na lista do servidor oficial, não na pesquisa |
+| **Notion** | remoto oficial `https://mcp.notion.com/mcp` (o servidor local está sem manutenção) | `oauth` | pronta; se o Notion aceita o registro automático **não foi verificado** |
+| **Linear** | `https://mcp.linear.app/mcp` | `oauth` | pronta; endereço e OAuth vêm de observação de par (Hermes), não verificados |
+| **Figma** | `https://mcp.figma.com/mcp` | `oauth` | pronta, com aviso: 6 chamadas por mês no Starter ou com assento View/Collab, e o Figma pode recusar o registro de aplicativos que não estão na lista dele (observação de par). O Suup se apresenta como "Suup", nunca com o nome de outro cliente |
+| **Stack Overflow** | não verificado | `oauth` | a confirmar: o endereço e o login estão numa documentação que não abriu; beta com 100 chamadas por dia; o `web_search` já consulta o Stack Overflow sem login |
+| **Google Workspace** | não verificado | `oauth_owner_client` | a confirmar: o servidor aberto (`gemini-cli-extensions/workspace`, Apache-2.0) roda como extensão do Gemini CLI e guarda o login no chaveiro do sistema; ainda não há como rodá-lo no contêiner. O passo a passo do app OAuth do dono (projeto no Google Cloud, tela de consentimento em teste com a sua conta, cliente "App para computador") já aparece |
+| **Composio** | `https://connect.composio.dev/mcp` | `token`: a chave em `COMPOSIO_API_KEY`, no cabeçalho `x-consumer-api-key` | pronta, **opcional**, com o aviso de terceiro (abaixo) |
+
+**Higgsfield ficou de fora**: endereço, login, licença e preço não puderam ser lidos em nenhuma fonte primária, e as ferramentas gastam créditos; entra quando houver fonte.
+
+**Por que o GitHub é por token e não um clique.** O servidor remoto do GitHub só aceita OAuth de um app registrado por cada aplicativo hospedeiro (o Suup não tem um, e registrar um app em nome do dono não é "aberto"); o servidor local traz um app OAuth embutido, mas é a imagem `ghcr.io/github/github-mcp-server` (um binário Go, não roda no contêiner de conectores do Suup) e precisa de uma porta de retorno publicada no contêiner, que o lançador não faz, ou do código de dispositivo, que apareceria no erro padrão do servidor. Fica o PAT, pelo formulário seguro, com o servidor em modo somente leitura.
+
+**Instalar** (`POST /v1/connector-catalog/{id}/install`, API.md) cria o conector com o transporte da entrada, as marcas de leitura e escrita e `catalogId`, **desligado** até as credenciais existirem: o login OAuth bem-sucedido o liga; numa entrada por token, salvar o token no cofre e instalar de novo o liga (se o token já estava no cofre, nasce ligado: o clique é um só). Um conector com o mesmo nome que não veio da galeria nunca é tomado.
+
+### Composio, com todas as letras
+
+A Composio é **opcional** e é **um serviço de terceiros**: os logins dos seus apps e os dados que passam por eles ficam na nuvem da Composio, os apps OAuth são os dela (na tela de consentimento aparece "Composio", não o Suup), e é preciso uma chave de API da Composio (guardada no cofre do Suup; é a única coisa que o Suup guarda). O SDK é aberto (MIT no repositório, ISC no npm); a plataforma não; preço, plano gratuito e política de dados **não foram verificados**. As ferramentas são metaferramentas genéricas (descobrir, autorizar e executar qualquer app), por isso nenhuma é marcada como leitura: todas perguntam. O aviso está na entrada (`disclosure`) e o app o mostra antes de conectar.
+
+## OAuth do MCP
+
+Segue a especificação de autorização do MCP, revisão **2026-07-28**, como resumida na pesquisa, sobre as funções do SDK oficial (`@modelcontextprotocol/sdk` 1.32.2: `auth()`, descoberta, PKCE, registro, renovação). O código é `packages/connectors/src/oauth.ts` (protocolo) e `packages/runtime/src/connectors/gallery.ts` e `oauth-store.ts` (onde escuta e onde guarda).
+
+1. **Descoberta.** Os metadados de recurso protegido do servidor (RFC 9728) são obrigatórios: sem eles o login é recusado. O primeiro `authorization_servers` é o servidor de autorização; seus metadados (RFC 8414, ou OpenID) precisam dizer o mesmo emissor que o endereço de onde vieram.
+2. **Recusas antes de abrir o navegador.** Sem `code_challenge_methods_supported` com `S256` (PKCE), recusado ("MUST refuse to proceed"). Endereços de autorização, token e registro que não sejam HTTPS (ou `http` só para este computador, nos testes), recusados.
+3. **Registro do cliente, nesta ordem** (a da especificação): (1) um cliente **pré-registrado** pela pessoa no serviço (`transport.oauth.clientId` e `clientSecret` como referência do cofre, pela API); (2) **Client ID Metadata Document**, se o servidor anuncia `client_id_metadata_document_supported` **e** o Suup tiver uma URL HTTPS pública do documento (hoje não tem: o passo é pulado); (3) **registro dinâmico** (DCR, obsoleto na 2026-07-28 mas o que os servidores aceitam hoje) com `application_type: "native"`, o nome verdadeiro "Suup" e o URI de retorno; (4) nenhum: o login para com a mensagem "registre um app OAuth no serviço e informe o ID do cliente, ou use um token". O cliente fica vinculado ao emissor (o SDK descarta um registro de outro servidor de autorização) e ao URI de retorno: se a porta mudou, registra de novo.
+4. **Navegador.** O endereço de autorização leva PKCE `S256`, um `state` aleatório (256 bits, **uso único**, 10 minutos), o `resource` (RFC 8707, o servidor MCP) e o escopo (o do servidor, ou o da entrada). O verificador PKCE fica **só na memória** do processo, nunca é gravado.
+5. **Retorno.** O processo do servidor escuta em `http://127.0.0.1:<porta>/callback` (porta livre, a mesma enquanto o processo vive). O `state` é tirado da lista na hora (uma segunda chegada é recusada); um `error` é recusado com o motivo; o `iss` (RFC 9207) precisa ser **exatamente** o emissor gravado antes do redirecionamento, e a falta dele é recusada quando o servidor prometeu mandá-lo (`authorization_response_iss_parameter_supported`). Só então o código é trocado (com o verificador e o `resource`).
+6. **Tokens no cofre.** O de acesso, o de renovação e a chave secreta do cliente (de um DCR) ficam no cofre, cifrados, como `SUUP_OAUTH_<CONECTOR>_ACCESS`, `_REFRESH` e `_CLIENT_SECRET`; o redator passa a conhecê-los na hora em que são gravados. Na tabela `connector_oauth` fica só o que não é segredo: metadados públicos, o cliente sem a chave, validade e escopo, o URI de retorno, o estado e o último erro. Nunca na configuração do conector, em eventos, registros ou respostas da API (há testes que varrem o banco e as respostas).
+7. **Renovação.** Uma conexão manda o token de acesso; num 401, o SDK usa o de renovação e grava os novos no cofre. Se a renovação é recusada, o conector fica em "precisa de login" (nada é apagado por uma conexão, e nenhuma conexão registra cliente nem abre navegador).
+8. **Desconectar** (`DELETE /v1/connectors/{nome}/oauth`) revoga os tokens no servidor de autorização (RFC 7009) quando ele tem `revocation_endpoint`, apaga-os do cofre e desliga o conector. Remover o conector também apaga o login.
+
+**Onde fica o retorno: app no computador e VPS** (decisão do dono, 23/11/2026: "Mas por que raios eu colaria um link?"; não existe mais o passo de colar o endereço, nem `POST .../oauth/complete`). O servidor diz ao app qual é o seu caso em `GET /v1/info` (`oauthCallback`):
+- **`loopback`, o app com o servidor embutido.** O processo do servidor escuta em `http://127.0.0.1:<porta>/callback`; o navegador e o servidor estão no mesmo computador e o retorno chega sozinho.
+- **`public`, uma VPS com endereço HTTPS** (`server.publicUrl`, [CONFIGURACAO.md](CONFIGURACAO.md)). O retorno vai direto ao servidor, na rota própria `<publicUrl>/oauth/callback` (fora de `/v1`, **sem token**: o navegador não tem um; o que protege é o `state` de uso único de um login que este servidor abriu). As conferências são **as mesmas** do ouvinte local (função `callback` de `gallery.ts`): o `state` (uma vez), o endereço de chegada igual ao `redirect_uri` daquele login, o `error`, o `iss` e a troca com PKCE. O endereço precisa ser HTTPS (ou um host deste computador: a regra do MCP, "redirect URIs MUST be either localhost or use HTTPS").
+- **Uma VPS sem endereço público.** O navegador não tem como voltar a ela: o app não oferece o login e diz, numa frase, que a VPS precisa do endereço público para conectar por login; as entradas por **token** continuam funcionando.
+
+**Limites, honestamente.** Nenhum servidor real foi alcançado desta máquina: Notion, Linear e Figma foram desenhados pela pesquisa e testados contra um servidor de autorização falso local (`packages/connectors/src/testing/fake-oauth.ts`). O SDK 1.32.2 fala a revisão 2025-11-25 do transporte; servidores que só falem a 2026-07-28 podem exigir o pacote 2.x (não verificado). O ouvinte usa porta livre: um cliente pré-registrado que exija porta fixa ainda não tem onde configurá-la. O `127.0.0.1` local não impede outro programa do mesmo computador de tentar o retorno: o `state` de uso único e o PKCE são o que protege (a especificação diz o mesmo de URIs `localhost`).
+
+## O bot propõe um conector
+
+A ferramenta `propose_connector` (risco `external_irreversible`: **sempre cartão**, a não ser por uma regra sua) é oferecida nas execuções de uma conversa sua. O bot só passa o **id exato** de uma entrada da galeria e um motivo: nenhum comando, URL ou argumento dele chega a um conector. O cartão é montado **da entrada**: "Instalar o conector Notion da galeria (fonte): o que faz. Servidor: URL. Login: como. Fica desligado até você entrar em Configurações > Conectores." Aprovado, a entrada é instalada **desligada** com `origin: "proposal"`, e o bot diz para você terminar o login (ou dar o token) na galeria; recusado, nada acontece. Um id fora da galeria, ou uma entrada "a confirmar", é recusado sem instalar nada.
 
 ## Ciclo de vida
 
@@ -233,7 +298,9 @@ Uma falha de um conector **nunca** derruba o harness: todo erro vira um `Connect
 
 - A tela do app para escolher as ferramentas concedidas e para revisar uma definição mudada (o backend existe; veja [FRONTEND.md](FRONTEND.md)).
 - Medir com modelo real a busca e a alternativa fixa; a busca de ferramentas por embeddings.
-- **O bot propor a instalação de um conector** ("Um registro onde o bot procura e propõe instalar conectores novos; a instalação passa por aprovação", plano 4.11). Não está feito. O que já existe para isso: a coluna `origin` (`user` ou `proposal`), e `connectors.create(..., { origin: "proposal" })` nasce **desligado** e fica assim até um cartão de aprovação o ligar. Falta: a ferramenta do bot (`propose_connector`, risco `external_irreversible`, cujo cartão mostraria o comando e os argumentos exatos), o serviço que a ferramenta usaria (hoje o contexto de uma ferramenta não tem um) e o catálogo ("registro") de onde o bot procuraria. Não foi feito porque exige ampliar o contexto das ferramentas em `core` e decidir de onde vem o catálogo; ligar um conector por uma ferramenta sem cartão seria o oposto do que o plano pede.
-- OAuth do protocolo; o transporte antigo por SSE (só o *streamable HTTP* e o `stdio`); recursos (*resources*), *prompts*, amostragem e `elicitation` do protocolo (o cliente não declara nenhuma capacidade, então o servidor não pode pedir nada); aviso do servidor de que a lista de ferramentas mudou (a lista é lida de novo a cada 5 minutos ou ao editar o conector).
+- A **tela** da galeria e do login no app (o backend existe; [FRONTEND.md](FRONTEND.md) diz como usá-lo).
+- Entradas a confirmar (Stack Overflow, Google Workspace) e o Higgsfield; o teste vivo de Notion, Linear e Figma (registro automático e ferramentas por nome); Client ID Metadata Document (falta uma URL HTTPS pública do documento do Suup); porta fixa do retorno para um cliente pré-registrado.
+- **Repassar o retorno pelo app** (ideia pendente): numa VPS sem endereço público, o app de desktop poderia escutar o retorno no seu próprio `127.0.0.1` e repassá-lo ao servidor. Pede um ouvinte novo na casca Rust (dependência nova e pesquisa): não feito; hoje a saída é o `server.publicUrl` ou uma entrada por token.
+- O transporte antigo por SSE (só o *streamable HTTP* e o `stdio`); recursos (*resources*), *prompts*, amostragem e `elicitation` do protocolo (o cliente não declara nenhuma capacidade, então o servidor não pode pedir nada); aviso do servidor de que a lista de ferramentas mudou (a lista é lida de novo a cada 5 minutos ou ao editar o conector).
 - Um aviso, dentro da conversa, de que um conector estava fora do ar quando a execução começou (hoje aparece no `doctor`, no estado do conector e no erro da chamada).
 - Quadro em tempo real para mudanças de conectores (o app lê de novo depois de escrever).

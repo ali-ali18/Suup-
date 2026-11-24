@@ -65,6 +65,9 @@ O orçamento de uma avaliação com modelos reais é limitado, e o controle de c
 
 Ordem de grandeza (sem cache de prompt): cada turno reenvia o prompt do sistema e as ferramentas (cerca de 4 mil tokens) mais a conversa até ali, então uma tarefa de 8 a 10 turnos consome da ordem de 70 a 100 mil tokens de entrada e 2 mil de saída. O **pior caso** de uma passada completa por modelo é a soma dos tetos: US$ 6,40 no conjunto principal e US$ 0,70 na qualificação (`suup eval list` mostra a conta). O custo **real** costuma ser menos da metade disso; com preços de `US$ 3` por milhão de tokens de entrada e `US$ 15` por milhão de saída, uma passada completa fica na casa de US$ 3 a US$ 4 por modelo. Confira sempre o plano que o comando imprime antes de aceitar: o preço do seu modelo é que decide.
 
+**Cache de prompt.** O prompt do sistema começa pela parte **igual para todos os bots e execuções** com as mesmas opções (como trabalhar, mensagens do harness, ferramentas e dados) e só depois vem o que muda (nome e personalidade, a hora, a equipe, a máquina, regras, perfil, rotina, segredos, índice de ferramentas). No Anthropic, além dos pontos de cache na última ferramenta, no fim do prompt do sistema e no último bloco do usuário, há um no fim dessa parte comum (`systemCacheBreak`; quatro no máximo, a ordem do cache é ferramentas, sistema, mensagens, como em [CONECTORES.md](CONECTORES.md)): um bot novo ou uma execução nova lê essa parte do cache em vez de regravá-la. O prompt do revisor já é fixo (`REVIEWER_SYSTEM`); o que muda nele é a mensagem de cada revisão.
+
+
 ## As tarefas
 
 Todas são pequenas (um modelo competente termina em até cerca de 12 turnos) e cada uma exercita algo para o qual o harness existe. O texto que o bot recebe (objetivo e critérios) está em português; `suup eval list --json` mostra tudo.

@@ -228,9 +228,10 @@ describe.skipIf(!DATABASE_URL)(
       // 17 tools of the fake server + 60 generated: 77 connector tools.
       expect(loaded.catalog.connectorTools).toBe(77);
       // (`schedule_return` is one more control tool than before: 82 became 83; the four routine
-      // tools of a conversation run, docs/ROTINAS.md, make it 87.)
-      expect(loaded.request.toolStats.definitions).toBe(87);
-      expect(searched.request.toolStats.definitions).toBe(12);
+      // tools of a conversation run, docs/ROTINAS.md, make it 87; `propose_connector`, the gallery
+      // proposal of docs/CONECTORES.md, 88.)
+      expect(loaded.request.toolStats.definitions).toBe(88);
+      expect(searched.request.toolStats.definitions).toBe(13);
       // The bounds follow the estimate of 2.65 characters per token (it was 4: about 10 400 and
       // 2 600 then, 1.5 times more now). The four routine tools add about 1 700 to both.
       expect(loaded.request.toolStats.estimatedTokens).toBeGreaterThan(15_700);

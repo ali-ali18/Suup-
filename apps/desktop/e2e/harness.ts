@@ -15,6 +15,7 @@ import {
   parseConfig,
   type Runtime,
   type RuntimeConfig,
+  type RuntimeOptions,
 } from "@suup/runtime";
 import { createServer, generateToken, type SuupServer } from "@suup/server";
 
@@ -491,6 +492,15 @@ async function serveDist(): Promise<{ server: Server; origin: string }> {
   return { server, origin: `http://127.0.0.1:${(server.address() as AddressInfo).port}` };
 }
 
+/** A free port of this computer (asked of the system, then let go). */
+async function freePort(): Promise<number> {
+  const probe = createHttpServer();
+  await new Promise<void>((resolve) => probe.listen(0, "127.0.0.1", resolve));
+  const { port } = probe.address() as AddressInfo;
+  await new Promise<void>((resolve) => probe.close(() => resolve()));
+  return port;
+}
+
 export async function startWorld(
   options: {
     scripts?: Record<string, unknown>;
@@ -523,6 +533,17 @@ export async function startWorld(
      * turns it on.
      */
     reception?: boolean;
+    /**
+     * The entries of the connector gallery in place of the owner's (the gallery spec adds one that
+     * points at the in-repo fake OAuth server). Default: the owner's list.
+     */
+    connectorCatalog?: RuntimeOptions["connectorCatalog"];
+    /**
+     * Gives the server a public address (`server.publicUrl`, its own address here: a loopback host
+     * is allowed, as the MCP rule says), as a VPS behind HTTPS has: the OAuth login comes back to
+     * `<serverUrl>/oauth/callback`. Default: none (the loopback listener).
+     */
+    publicAddress?: boolean;
   } = {},
 ): Promise<World> {
   if (DATABASE_URL === undefined) throw new Error(SKIP_REASON);
@@ -559,7 +580,12 @@ export async function startWorld(
       JSON.stringify({ cases: [{ whenObjectiveContains: "X", agent: [{ text: "x", usage }] }] }),
     );
   }
+  // A public address must be known before the server starts: the port is chosen first.
+  let port = options.publicAddress === true ? await freePort() : 0;
   const config: RuntimeConfig = parseConfig({
+    ...(options.publicAddress === true
+      ? { server: { publicUrl: `http://127.0.0.1:${port}` } }
+      : {}),
     providers: [
       { id: "roteiro", kind: "scripted", scriptPath: "roteiro.json" },
       { id: "outro", kind: "scripted", scriptPath: "outro.json" },
@@ -590,7 +616,13 @@ export async function startWorld(
     worker: { concurrency: 4, leaseRenewMs: 1000, staleAfterMs: 8000, controlPollMs: 100 },
     defaults: { maxTurns: 30 },
   });
-  const runtimeOptions = { env, baseDir: dir };
+  const runtimeOptions: RuntimeOptions = {
+    env,
+    baseDir: dir,
+    ...(options.connectorCatalog === undefined
+      ? {}
+      : { connectorCatalog: options.connectorCatalog }),
+  };
   const withNetworkTool = async (runtime: Runtime): Promise<Runtime> => {
     for (const tool of options.extraTools ?? []) runtime.tools.register(tool);
     if (options.networkTool !== true) return runtime;
@@ -607,7 +639,6 @@ export async function startWorld(
 
   let serverRuntime: Runtime | undefined;
   let server: SuupServer | undefined;
-  let port = 0;
   const startServer = async (bootstrap: boolean) => {
     serverRuntime = await withNetworkTool(createRuntime(config, runtimeOptions));
     server = createServer(serverRuntime, {

@@ -7,6 +7,7 @@ import { Moon, Sunrise, Users, Wallet } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useServices } from "../../app/context.js";
 import { messageOf } from "../../data/sync.js";
+import { formError } from "../../lib/friendly-error.js";
 import { Toggle } from "../../ui/primitives.js";
 import { RowLine, SettingsGroup, SettingsRow, SettingsSelect } from "./parts.js";
 
@@ -93,7 +94,7 @@ export function SupervisorSettings() {
     setSettings((s) => (s === undefined ? s : { ...s, ...show }));
     api.supervisor.settings.update(body).then(setSettings, (error: unknown) => {
       if (before !== undefined) setSettings(before);
-      setErrors((e) => ({ ...e, [field]: messageOf(error) }));
+      setErrors((e) => ({ ...e, [field]: formError(error) }));
     });
   };
   const error = (field: Field) =>
@@ -128,7 +129,7 @@ export function SupervisorSettings() {
               </RowLine>
               {!settings.model.available && (
                 <RowLine data-testid="supervisor-model-unavailable">
-                  {settings.model.reason ?? "O modelo do Principal não está disponível."}
+                  O modelo do Principal não está disponível agora.
                 </RowLine>
               )}
               {error("enabled")}

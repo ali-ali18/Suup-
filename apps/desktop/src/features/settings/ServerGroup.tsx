@@ -2,6 +2,7 @@ import { Activity, Box, Database, FolderOpen, Key, Server, ShieldAlert } from "l
 import { useEffect, useRef, useState } from "react";
 import { useServices } from "../../app/context.js";
 import { useUi } from "../../app/ui-store.js";
+import { friendlyError } from "../../lib/friendly-error.js";
 import type { LocalServer, LocalState, LocalStatus } from "../../lib/platform.js";
 import { Dialog, FieldHint, Pill } from "../../ui/primitives.js";
 import { SecretInput, type SecretInputHandle } from "../../ui/secret-input.js";
@@ -13,7 +14,7 @@ const STATE_TEXT: Record<LocalState, string> = {
   starting: "Iniciando…",
   ready: "Rodando",
   restarting: "Reiniciando…",
-  failed: "Parou com erro",
+  failed: "Parou",
   stopping: "Parando…",
 };
 
@@ -55,8 +56,7 @@ function SwitchDialog({ onClose, onConfirm }: { onClose(): void; onConfirm(): vo
       }
     >
       <FieldHint>
-        O Suup usa um servidor de cada vez e os dois não se sincronizam: os bots e as conversas de
-        um não aparecem no outro. Nada é apagado, e dá para voltar a este depois.
+        Os dois servidores não se sincronizam; nada é apagado e dá para voltar depois.
       </FieldHint>
     </Dialog>
   );
@@ -76,7 +76,8 @@ function ApiKeyDialog({ local, onClose }: { local: LocalServer; onClose(): void 
       field.current?.clear();
       onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      friendlyError(e);
+      setError("Não deu para guardar a chave. Tenta de novo?");
       setBusy(false);
     }
   };
@@ -103,7 +104,7 @@ function ApiKeyDialog({ local, onClose }: { local: LocalServer; onClose(): void 
         onEmptyChange={setEmpty}
         onEnter={() => void save()}
         error={error}
-        hint="Fica no chaveiro do sistema e nunca é mostrada de novo. O servidor local reinicia para usá-la."
+        hint="Fica no chaveiro do sistema e nunca é mostrada de novo."
         testId="api-key-input"
       />
     </Dialog>
@@ -124,7 +125,8 @@ export function ServerGroup() {
       await navigator.clipboard.writeText((await local?.databaseUrl()) ?? "");
       toast("Endereço do banco copiado.", "info");
     } catch (e) {
-      toast(e instanceof Error ? e.message : "Não foi possível copiar o endereço.", "error");
+      friendlyError(e);
+      toast("Não deu para copiar. Tenta de novo?", "error");
     }
   };
   return (
@@ -133,7 +135,11 @@ export function ServerGroup() {
         <SettingsRow
           icon={Server}
           title={mode === "local" ? "Neste computador" : "Minha VPS"}
-          description={connection.serverUrl}
+          // The address is technical (docs/DESIGN.md, "Amigável"): only on hover.
+          description={
+            mode === "local" ? "Tudo roda dentro do app." : "Os bots rodam no seu servidor."
+          }
+          descriptionTitle={connection.serverUrl}
           descriptionTestId="server-url"
           testId="server-mode"
           control={
@@ -191,7 +197,7 @@ export function ServerGroup() {
             <SettingsRow
               icon={Database}
               title="Banco de dados"
-              description="Para um backup ou para levar os dados a uma VPS (docs/IMPLANTACAO.md). O endereço leva a senha: guarde como guarda uma senha."
+              description="Para um backup ou para levar os dados a uma VPS; guarde como uma senha."
               control={
                 <RowAction onClick={() => void copyDatabaseUrl()} data-testid="database-copy">
                   Copiar endereço
@@ -201,8 +207,13 @@ export function ServerGroup() {
             <SettingsRow
               icon={FolderOpen}
               title="Registros"
-              description={status.logsDir}
-              control={<RowAction onClick={() => void local.openLogs()}>Abrir pasta</RowAction>}
+              description="O que o Suup anotou, para quando algo der errado."
+              descriptionTitle={status.logsDir}
+              control={
+                <RowAction onClick={() => void local.openLogs()} data-testid="logs-open">
+                  Abrir a pasta de registros
+                </RowAction>
+              }
             />
           </>
         )}

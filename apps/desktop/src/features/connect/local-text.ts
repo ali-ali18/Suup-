@@ -4,25 +4,21 @@ import type { LocalStage, LocalStatus, NoIsolationReason } from "../../lib/platf
 export const STAGE_TEXT: Record<LocalStage, string> = {
   database: "Preparando o banco de dados…",
   migrations: "Atualizando o banco de dados…",
-  machine:
-    "Preparando a máquina dos bots… Só na primeira vez; pode levar alguns minutos, e precisa de internet.",
+  machine: "Preparando a máquina dos bots (só na primeira vez, pode levar alguns minutos)…",
   server: "Iniciando o servidor…",
 };
 
 /** Why the bots' machine is not isolated, as one sentence. */
 export const NO_ISOLATION_TEXT: Record<NoIsolationReason, string> = {
-  docker_missing:
-    "O Docker não está instalado ou não está aberto. Instale o Docker Desktop e abra-o para ter a máquina isolada.",
-  gateway_unreachable:
-    "O Docker está aberto, mas o proxy de saída dos bots não iniciou (nem em contêiner nem neste computador). Veja os registros para o motivo.",
-  image_failed:
-    "Não foi possível preparar as imagens da máquina dos bots. Veja os registros para o motivo.",
-  network_failed: "Não foi possível criar a rede interna dos bots no Docker.",
+  docker_missing: "Abra o Docker Desktop (ou instale) para os bots trabalharem isolados.",
+  gateway_unreachable: "O Docker está aberto, mas o isolamento dos bots não começou.",
+  image_failed: "Não deu para preparar a máquina isolada dos bots.",
+  network_failed: "Não deu para preparar a rede isolada dos bots.",
 };
 
 /** The standing warning when the bots run on this computer itself. */
 export const NO_ISOLATION_WARNING =
-  "Sem isolamento: os comandos dos bots rodam diretamente neste computador, com os seus arquivos e acessos. Use só com tarefas e dados em que você confia.";
+  "Sem isolamento, os comandos dos bots rodam diretamente neste computador: use só com tarefas e dados em que você confia.";
 
 /** The line that says where the bots work: "isolada (Docker)", or the reason it is not. */
 export function machineLine(status: LocalStatus): string {

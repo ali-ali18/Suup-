@@ -24,6 +24,7 @@ import { useData, useServices } from "../../app/context.js";
 import { sortedBots } from "../../app/selectors.js";
 import { useSettings } from "../../app/settings-store.js";
 import { useUi } from "../../app/ui-store.js";
+import { formError, friendlyError } from "../../lib/friendly-error.js";
 import { timeZones } from "../../lib/routines.js";
 import type { Settings } from "../../lib/settings.js";
 import { Dropdown } from "../../ui/dropdown.js";
@@ -40,6 +41,7 @@ import {
   SettingsSelect,
 } from "./parts.js";
 import { ServerGroup } from "./ServerGroup.js";
+import { UpdateGroup } from "./UpdateGroup.js";
 
 /** A setting of the app, drawn as one row: a quiet dropdown, or a switch for an on/off pair. */
 interface Choice<K extends keyof Settings> {
@@ -227,7 +229,7 @@ const ZONE_SOURCE: Record<"device" | "user" | "config" | "none", string> = {
 /**
  * Server (ServerGroup), how the app looks and behaves on this computer, the time zone, the
  * reception, the models and the limits (the last two read-only: the server has no endpoint to change
- * them).
+ * them), and the version of the app with its update (UpdateGroup, the desktop app only).
  */
 
 export function GeneralSettings({ title, titleId, onClose }: SectionProps) {
@@ -236,11 +238,7 @@ export function GeneralSettings({ title, titleId, onClose }: SectionProps) {
   const [models, setModels] = useState<ModelInfo[] | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
   useEffect(() => {
-    api.models
-      .list()
-      .then(setModels, (e: unknown) =>
-        setError(e instanceof Error ? e.message : "Não foi possível listar os modelos."),
-      );
+    api.models.list().then(setModels, (e: unknown) => setError(friendlyError(e)));
   }, [api]);
   const [zone, setZone] = useState<UserSettings | undefined>(undefined);
   const [zoneError, setZoneError] = useState<string | undefined>(undefined);
@@ -258,7 +256,7 @@ export function GeneralSettings({ title, titleId, onClose }: SectionProps) {
     setZone({ timeZone, timeZoneSource: "user" });
     api.userSettings.update({ timeZone, source: "user" }).then(setZone, (e: unknown) => {
       setZone(before);
-      setZoneError(e instanceof Error ? e.message : "Não foi possível mudar o fuso.");
+      setZoneError(formError(e));
     });
   };
   const redo = async (bot: Parameters<typeof sync.resetReception>[0]) => {
@@ -279,11 +277,7 @@ export function GeneralSettings({ title, titleId, onClose }: SectionProps) {
       <PaneHead title={title} titleId={titleId} onClose={onClose} />
       <PaneBody>
         <ServerGroup />
-        <SettingsGroup
-          label="Aparência"
-          hint="Fica guardado neste computador. O mascote, a cor e o nome de cada bot se editam no próprio bot."
-          testId="appearance"
-        >
+        <SettingsGroup label="Aparência" hint="Fica guardado neste computador." testId="appearance">
           {APPEARANCE.map((row) => (
             <ChoiceRow key={row.key} row={row} />
           ))}
@@ -296,10 +290,7 @@ export function GeneralSettings({ title, titleId, onClose }: SectionProps) {
             <SwitchRow key={row.key} row={row} />
           ))}
         </SettingsGroup>
-        <SettingsGroup
-          label="Modelos"
-          hint="A lista vem da configuração do servidor e não pode ser alterada por aqui."
-        >
+        <SettingsGroup label="Modelos" hint="A lista vem da configuração do servidor.">
           {error !== undefined && (
             <SettingsRow title="Não foi possível listar" description={error} />
           )}
@@ -314,7 +305,7 @@ export function GeneralSettings({ title, titleId, onClose }: SectionProps) {
               description={
                 m.available || m.unavailableReason === null
                   ? m.provider
-                  : `${m.provider} · ${m.unavailableReason}`
+                  : `${m.provider} · indisponível agora`
               }
               control={
                 <RowValue>
@@ -327,7 +318,7 @@ export function GeneralSettings({ title, titleId, onClose }: SectionProps) {
         </SettingsGroup>
         <SettingsGroup
           label="Hora e recepção"
-          hint="O fuso é o seu, nunca o do servidor: é a hora das rotinas, das datas e dos lembretes dos bots. A recepção é a primeira conversa de cada bot; o que ele aprende fica em Memória."
+          hint="O fuso é o seu: é a hora das rotinas e dos lembretes dos bots."
           testId="reception-group"
         >
           <SettingsRow
@@ -377,7 +368,7 @@ export function GeneralSettings({ title, titleId, onClose }: SectionProps) {
         </SettingsGroup>
         <SettingsGroup
           label="Limites do bot principal"
-          hint="Os limites padrão (turnos, custo e tempo de cada execução) ficam no arquivo de configuração do servidor."
+          hint="Os limites de cada execução vêm da configuração do servidor."
         >
           {LIMIT_LABEL.map(([key, label, icon]) => (
             <SettingsRow
@@ -395,6 +386,7 @@ export function GeneralSettings({ title, titleId, onClose }: SectionProps) {
             />
           ))}
         </SettingsGroup>
+        <UpdateGroup />
       </PaneBody>
     </>
   );

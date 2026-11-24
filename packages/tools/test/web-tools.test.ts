@@ -285,6 +285,20 @@ describe("web_read", () => {
     expect(robots.isError).toBe(true);
     expect(robots.content).toContain("robots.txt says no.");
     expect(robots.content).toContain("another source");
+    // could not reach the site: said as a connection problem here, the diagnostic never shown
+    const unreachable = formatRead(
+      {
+        ok: false,
+        reason: "unreachable",
+        message: "Could not reach pt.wikipedia.org from here right now.",
+        diagnostic: { stage: "dns", host: "pt.wikipedia.org", code: "EAI_AGAIN" },
+      },
+      "reader",
+    );
+    expect(unreachable.content).toContain("could not reach the site right now");
+    expect(unreachable.content).toContain("not the site refusing");
+    expect(unreachable.content).not.toContain("Do not look for a way around it");
+    expect(unreachable.content).not.toContain("EAI_AGAIN");
     expect(
       formatRead({ ok: false, reason: "private", message: "Private." }, "reader").content,
     ).toContain("public pages only");

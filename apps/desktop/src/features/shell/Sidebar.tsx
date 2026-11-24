@@ -7,6 +7,7 @@ import { useUi } from "../../app/ui-store.js";
 import { arrangeBots, flatBots } from "../../data/botlist.js";
 import { pendingApprovals } from "../../data/reducers.js";
 import { cx } from "../../lib/cx.js";
+import { friendlyError } from "../../lib/friendly-error.js";
 import { plainText } from "../../lib/markdown.js";
 import { SIDEBAR_SPEC } from "../../lib/pane-size.js";
 import { Avatar } from "../../ui/avatar.js";
@@ -238,12 +239,7 @@ export function Sidebar() {
       try {
         sync.mergeBotNow(await api.bots.update(bot.id, body));
       } catch (error) {
-        useUi
-          .getState()
-          .toast(
-            error instanceof Error ? error.message : "Não foi possível alterar o bot.",
-            "error",
-          );
+        useUi.getState().toast(friendlyError(error), "error");
       }
     },
     [api, sync],
@@ -357,12 +353,7 @@ export function Sidebar() {
             try {
               sync.mergeBotNow(await api.bots.archive(bot.id));
             } catch (error) {
-              useUi
-                .getState()
-                .toast(
-                  error instanceof Error ? error.message : "Não foi possível arquivar.",
-                  "error",
-                );
+              useUi.getState().toast(friendlyError(error), "error");
             }
           }}
         />
@@ -515,7 +506,7 @@ function ArchiveDialog({
       }
     >
       <MutedText as="p" size="inherit">
-        O bot deixa de receber trabalho novo. A conversa e a memória dele continuam guardadas.
+        O bot para de receber trabalho; a conversa e a memória dele ficam guardadas.
       </MutedText>
     </Dialog>
   );

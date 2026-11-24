@@ -2,6 +2,7 @@ import type { RoutineFire } from "@suup/api";
 import { describe, expect, it } from "vitest";
 import { routineOf } from "../test-fixtures.js";
 import {
+  describeSchedule,
   editDraft,
   fireKindText,
   fireStatusText,
@@ -84,5 +85,13 @@ describe("Editar: the draft for the chat (no schedule form in the app)", () => {
     ).toBe("Editar a rotina “Resumo” (toda segunda e sexta às 18:00): ");
     // never the id
     expect(editDraft(routineOf())).not.toContain(routineOf().id);
+  });
+
+  it("a routine whose saved schedule the server could not read says so in plain words", () => {
+    const broken = routineOf({ schedule: null, problem: "O horário salvo não é válido." });
+    expect(describeSchedule(broken.schedule)).toBe("Horário inválido: peça ao bot um novo horário");
+    expect(editDraft(broken)).toBe(
+      "Editar a rotina “Calendário da manhã” (Horário inválido: peça ao bot um novo horário): ",
+    );
   });
 });

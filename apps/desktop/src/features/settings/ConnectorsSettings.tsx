@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { useUi } from "../../app/ui-store.js";
 import { LEVEL_LABEL, LEVELS } from "../../data/approval-text.js";
-import { formatDuration } from "../../data/derive.js";
 import { orderedConnectors, orderedSecrets } from "../../data/reducers.js";
 import {
   bearerRow,
@@ -22,6 +21,7 @@ import {
   TIGHTENED_HELP,
 } from "../../lib/connector-form.js";
 import { cx } from "../../lib/cx.js";
+import { friendlyError } from "../../lib/friendly-error.js";
 import { RUNS_IN_LABEL } from "../../lib/network.js";
 import { reviewNotice } from "../../lib/tool-review.js";
 import { brandGlyphFor } from "../../ui/brand-icons.js";
@@ -44,7 +44,6 @@ import {
 } from "../../ui/primitives.js";
 import { ConnectorGrants } from "./ConnectorGrants.js";
 import { ConnectorNetwork } from "./ConnectorNetwork.js";
-import { formatWhen } from "./formatting.js";
 import {
   PaneBody,
   PaneHead,
@@ -247,7 +246,7 @@ function AddConnectorDialog({ onClose, onNewSecret }: { onClose(): void; onNewSe
           onChange={(name) => set({ name })}
           placeholder="github"
           error={errors.name}
-          hint="Letras minúsculas e números, separados por hífen. É como o conector aparece nos cartões e nas regras."
+          hint="Letras minúsculas e números, separados por hífen."
           name="connector-name"
         />
         <TextField
@@ -263,7 +262,7 @@ function AddConnectorDialog({ onClose, onNewSecret }: { onClose(): void; onNewSe
               onChange={(command) => set({ command })}
               placeholder="npx"
               error={errors.command}
-              hint="Só o executável, sem espaços. Ele precisa existir no computador onde o servidor trabalha."
+              hint="Só o executável, sem espaços, no computador onde o servidor trabalha."
               name="connector-command"
             />
             <TextField
@@ -391,7 +390,7 @@ function OutboundMark({ connector, tool }: { connector: Connector; tool: Connect
     <>
       <SettingsRow
         title="Envia mensagem para outra pessoa"
-        description="Só você marca isto; o servidor não pode. O cartão desta ferramenta passa a ter “Enviar” e o menu do destinatário."
+        description="Só você marca isto: o cartão desta ferramenta passa a ter “Enviar” e o menu do destinatário."
         control={
           <Toggle
             checked={marked}
@@ -483,9 +482,7 @@ function ToolRow({ connector, tool }: { connector: Connector; tool: ConnectorToo
       />
       {open && (
         <SettingsFold>
-          <SettingsHint>
-            Nome registrado: <code>{tool.name}</code>
-          </SettingsHint>
+          {/* The registered name (`conn_<connector>__<tool>`) is internal: the Inspector has it. */}
           {tool.description !== "" && (
             <blockquote
               className="m-0 flex flex-col items-start gap-1 border-l-2 border-border-strong pl-3 text-small text-text-muted"
@@ -654,8 +651,10 @@ function ConnectorDetail({
     test === undefined
       ? undefined
       : test.ok
-        ? `Funcionou: ${test.serverName ?? "servidor"}${test.serverVersion === null ? "" : ` ${test.serverVersion}`}, ${test.tools.length} ${test.tools.length === 1 ? "ferramenta" : "ferramentas"}, em ${formatDuration(test.durationMs)}.`
-        : `Falhou: ${test.error ?? "sem detalhes"}`;
+        ? `Funcionou: ${test.tools.length} ${test.tools.length === 1 ? "ferramenta" : "ferramentas"}.`
+        : // The server's error is a log line (docs/DESIGN.md, "Amigável"): the Inspector and the
+          // logs keep it.
+          "Não deu para falar com o conector agora. Tenta de novo?";
 
   return (
     <div
@@ -709,10 +708,10 @@ function ConnectorDetail({
             descriptionTestId="connector-health"
             description={
               lastError !== null
-                ? `Último erro: ${lastError}`
+                ? "Não está respondendo agora."
                 : connector.tools === null
-                  ? "Ainda não listado: teste para ver as ferramentas."
-                  : `${available.length} ${available.length === 1 ? "ferramenta oferecida" : "ferramentas oferecidas"}${connector.discovery.discoveredAt !== null ? ` · listado em ${formatWhen(connector.discovery.discoveredAt)}` : ""}`
+                  ? "Teste para ver as ferramentas."
+                  : `${available.length} ${available.length === 1 ? "ferramenta oferecida" : "ferramentas oferecidas"}`
             }
             control={
               <RowAction
@@ -727,8 +726,7 @@ function ConnectorDetail({
                     } catch (error) {
                       return {
                         ok: false,
-                        message:
-                          error instanceof Error ? error.message : "Não foi possível testar.",
+                        message: friendlyError(error),
                       };
                     }
                   })
@@ -791,7 +789,7 @@ function ConnectorDetail({
             />
             <SettingsRow
               title="Confiar nas dicas do servidor"
-              description="Ligado, uma ferramenta que o servidor diz que só lê passa a rodar sem cartão. O servidor é um programa que você não escreveu: só ligue se confia nele. Uma dica de “destrutiva” nunca é ignorada."
+              description="Ligado, o que o servidor diz que só lê roda sem cartão; só ligue se confia nele."
               control={
                 <Toggle
                   checked={connector.trustAnnotations}
@@ -936,7 +934,7 @@ export function ConnectorsSettings({ title, titleId, onClose }: SectionProps) {
                 aqui.
               </SettingsEmpty>
             ) : (
-              <SettingsGroup hint="Um conector liga um servidor externo (MCP) aos seus bots. Cada ferramenta pede um cartão de aprovação antes de rodar, a não ser que você diga o contrário.">
+              <SettingsGroup hint="Um conector liga um serviço aos seus bots; cada ferramenta pede a sua aprovação antes de rodar.">
                 <SettingsList data-testid="connector-list">
                   {connectors.map((c) => (
                     <ConnectorRow

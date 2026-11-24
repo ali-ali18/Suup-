@@ -260,6 +260,28 @@ export const routineRefSchema = z.object({
 });
 export type RoutineRef = z.infer<typeof routineRefSchema>;
 
+/**
+ * The bot's own routines as the run starts (docs/ROTINAS.md): name, schedule in words, time zone
+ * and state, plus the id for the model. Told to the model in "Your routines", so a new run knows
+ * what an earlier run already set up (the history carries text only, not the tool calls behind it).
+ * Read once and recorded in `context_loaded.ownRoutines`: a resumed run and a replay read the same.
+ */
+export const ownRoutineSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  /** The schedule in words (pt-BR), as the user reads it. */
+  schedule: z.string(),
+  timeZone: z.string(),
+  status: z.enum(["active", "paused"]),
+});
+export type OwnRoutine = z.infer<typeof ownRoutineSchema>;
+export const ownRoutinesSchema = z.object({
+  items: z.array(ownRoutineSchema),
+  /** How many more routines exist beyond the ones listed (the list is capped). */
+  more: z.number().int().nonnegative(),
+});
+export type OwnRoutines = z.infer<typeof ownRoutinesSchema>;
+
 /** Why a pending return was dropped: the user wrote, the run was stopped, a new call replaced it, or the run finished. */
 export const WAIT_CANCEL_REASONS = ["user_message", "cancelled", "replaced", "finished"] as const;
 export type WaitCancelReason = (typeof WAIT_CANCEL_REASONS)[number];
@@ -372,6 +394,11 @@ export const runEventSchema = z.discriminatedUnion("type", [
       routine: z.exactOptional(routineRunFactsSchema),
       /** The routines the messages that opened the run are about (the app's "Editar"). */
       routineRefs: z.exactOptional(z.array(routineRefSchema)),
+      /**
+       * The bot's own routines when the run started (only in a run that may create routines).
+       * Absent in a run recorded before it existed.
+       */
+      ownRoutines: z.exactOptional(ownRoutinesSchema),
       /**
        * The share of the context window past which this run compacts its history (the user's
        * setting at the start of the run). Recorded so that a replay compacts at the same point.
@@ -626,6 +653,17 @@ export const runEventSchema = z.discriminatedUnion("type", [
       rejectionReasons: z.array(z.string()),
       /** Not accepted, and the decision was handed to the user (the review kept rejecting). */
       handedToUser: z.exactOptional(z.boolean()),
+      /**
+       * Not accepted, and the run ends failed with this (a routine's run, which nobody answers
+       * live, whose review could not verify the work or failed): the loop closes it at the next
+       * safe point, so a resumed or replayed run ends the same way.
+       */
+      endsRun: z.exactOptional(z.object({ origin: failureOriginSchema, detail: z.string() })),
+      /**
+       * Not accepted because the reviewer could not verify it, and sent back to the bot ONCE with
+       * the reviewer's notes to produce the evidence (the next unverified goes to the owner).
+       */
+      sentBack: z.exactOptional(z.boolean()),
     }),
   }),
   z.object({
@@ -639,8 +677,8 @@ export const runEventSchema = z.discriminatedUnion("type", [
       verdict: z.enum(["approve", "reject", "unverified"]),
       notes: z.string(),
       /**
-       * Set when the review did not really happen (reviewer unreachable, answer malformed): the
-       * verdict is then an approval by default and this says why.
+       * Logs written before 23/11/2026 only: the review did not really happen and the verdict was an
+       * approval by default. Today such a review is `unverified` with `failed`.
        */
       warning: z.exactOptional(z.string()),
       /** `reject`: the concrete discrepancies the reviewer named (at least one; else not a reject). */
@@ -652,6 +690,18 @@ export const runEventSchema = z.discriminatedUnion("type", [
        * the harness had not already sent in full (or nothing at all): the owner is told so.
        */
       namedNothing: z.exactOptional(z.boolean()),
+      /**
+       * `unverified` because the review did not happen ("a revisão falhou"): the reviewer could not
+       * be reached even after one more try (`provider`), or answered without a usable verdict
+       * (`model`). Never an approval: a user's run asks the owner, a routine's run ends failed.
+       */
+      failed: z.exactOptional(z.enum(["provider", "model"])),
+      /**
+       * `unverified` because the reviewer lacked evidence it named (still asking after the evidence
+       * rounds, or a `cannot_verify` listing what it lacks): evidence the bot may still produce, so
+       * the first such finish goes back to the bot with these notes before the owner is asked.
+       */
+      missingEvidence: z.exactOptional(z.boolean()),
     }),
   }),
   z.object({

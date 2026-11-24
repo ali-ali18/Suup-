@@ -156,6 +156,12 @@ describe("actionsOf", () => {
     );
     expect(direct).toHaveLength(1);
     expect(direct[0]).toMatchObject({ name: "conn_fake__write_thing", kindLabel: "fake" });
+    // the row says the tool in words, never the internal `conn_<connector>__<tool>` name
+    expect(direct[0]).toMatchObject({
+      summary: "Usar “write thing”",
+      doing: "Usando “write thing”",
+    });
+    expect(`${direct[0]?.summary} ${direct[0]?.doing}`).not.toContain("conn_");
     // ...and a refused one keeps the wrapper's name, with the real one inside its arguments.
     const refused = actionsOf(
       "r",

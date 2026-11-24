@@ -308,6 +308,9 @@ test.describe("routines", () => {
     await page.reload();
     await expect(page.getByTestId("sidebar")).toBeVisible();
     await page.waitForTimeout(500);
-    expect(await world.api.info()).toEqual({ timeZone: "Europe/Lisbon", timeZoneSource: "user" });
+    expect(await world.api.info()).toMatchObject({
+      timeZone: "Europe/Lisbon",
+      timeZoneSource: "user",
+    });
   });
 });

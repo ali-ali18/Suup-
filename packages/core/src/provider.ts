@@ -48,6 +48,12 @@ export interface GenerateRequest {
   /** Model id as the provider knows it. */
   model: string;
   system: string;
+  /**
+   * Where the stable part of `system` ends (characters): the text before is the same for every bot
+   * and run with the same options. A provider with explicit cache breakpoints may put one there;
+   * the text sent is still exactly `system`.
+   */
+  systemCacheBreak?: number;
   messages: Message[];
   tools: ToolSpec[];
   /**

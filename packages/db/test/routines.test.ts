@@ -212,6 +212,109 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("routines (migration 0026)"), () => {
     ).rejects.toMatchObject({ code: "never_fires" });
   });
 
+  it("the cost cap is plain decimal text only (no hex, binary, exponent, sign or spaces)", async () => {
+    const bot = await newBot();
+    const withCap = (costCapUsd: string) =>
+      createRoutine(ctx.db, {
+        botId: bot.id,
+        name: "Teto",
+        instruction: "Faça algo.",
+        schedule: daily8,
+        timeZone: SP,
+        costCapUsd,
+        createdBy: "user",
+        now: NOW,
+      });
+    for (const bad of [
+      "0x10",
+      "0b11",
+      "0o7",
+      "1e3",
+      " 1",
+      "1 ",
+      "-1",
+      "+1",
+      "0",
+      "0.0000",
+      "",
+      ".",
+      "1.",
+      ".5",
+      "1.2.3",
+      "1.12345",
+      "1.1234567",
+      "Infinity",
+      "NaN",
+      "1234567",
+    ]) {
+      await expect(withCap(bad), bad).rejects.toMatchObject({
+        name: "RoutineError",
+        code: "invalid",
+      });
+    }
+    const routine = await withCap("0.5");
+    expect(routine.costCapUsd).toBe("0.5000");
+    for (const [good, stored] of [
+      ["2", "2.0000"],
+      ["1.25", "1.2500"],
+      ["0.0001", "0.0001"],
+      ["999999.9999", "999999.9999"],
+    ] as const) {
+      const updated = await updateRoutine(ctx.db, routine.id, { costCapUsd: good, now: NOW });
+      expect(updated.costCapUsd).toBe(stored);
+    }
+    await expect(
+      updateRoutine(ctx.db, routine.id, { costCapUsd: "0x10", now: NOW }),
+    ).rejects.toMatchObject({ code: "invalid" });
+    expect((await getRoutine(ctx.db, routine.id))?.costCapUsd).toBe("999999.9999");
+  });
+
+  it("a row with a broken schedule is listed as unusable, not a crash, and the scheduler pauses it once", async () => {
+    const bot = await newBot("Quebrada");
+    const good = await routineFor(bot.id);
+    const bad = await routineFor(bot.id);
+    // As an older version (or a hand edit) could have left it: valid JSON, not a schedule.
+    await ctx.db.sql`
+      update routines set schedule = ${ctx.db.sql.json({ kind: "cron", expression: "0 8 * * *" })}
+      where id = ${bad.id}`;
+    const listed = await listRoutines(ctx.db, { botId: bot.id });
+    expect(listed.map((r) => [r.id, r.schedule === null, r.problem !== null])).toEqual([
+      [good.id, false, false],
+      [bad.id, true, true],
+    ]);
+    expect(await getRoutine(ctx.db, bad.id)).toMatchObject({ schedule: null, status: "active" });
+    expect((await getRoutine(ctx.db, good.id))?.problem).toBeNull();
+
+    const later = new Date("2026-11-23T11:00:30.000Z");
+    const logged: string[] = [];
+    const fired = await fireDueRoutines(ctx.db, { now: later, log: (m) => logged.push(m) });
+    expect(fired.map((f) => f.routineId)).toContain(good.id);
+    expect(fired.map((f) => f.routineId)).not.toContain(bad.id);
+    expect(logged).toHaveLength(1);
+    expect(await getRoutine(ctx.db, bad.id)).toMatchObject({ status: "paused", nextRunAt: null });
+    // The next pass does not pick it up again.
+    await fireDueRoutines(ctx.db, {
+      now: new Date("2026-11-24T11:00:30.000Z"),
+      log: (m) => logged.push(m),
+    });
+    expect(logged).toHaveLength(1);
+    expect(await listRoutineFires(ctx.db, bad.id)).toEqual([]);
+
+    // It can be renamed while paused; resuming without a schedule says why; a new schedule fixes it.
+    expect((await updateRoutine(ctx.db, bad.id, { name: "Consertar", now: later })).name).toBe(
+      "Consertar",
+    );
+    await expect(
+      updateRoutine(ctx.db, bad.id, { paused: false, now: later }),
+    ).rejects.toMatchObject({ code: "invalid" });
+    const fixed = await updateRoutine(ctx.db, bad.id, {
+      schedule: daily8,
+      paused: false,
+      now: later,
+    });
+    expect(fixed).toMatchObject({ status: "active", problem: null, schedule: daily8 });
+  });
+
   it("run now is a manual fire that keeps the schedule; state and finish are recorded", async () => {
     const bot = await newBot();
     const routine = await routineFor(bot.id);
@@ -330,6 +433,7 @@ describe.skipIf(!DATABASE_URL)(
         "0025_bot_avatar_style.sql",
         "0026_routines.sql",
         "0027_message_routine_ref.sql",
+        "0028_connector_oauth_catalog.sql",
       ]);
       for (const file of held) await rm(join(dir, file));
       await migrate(ctx.db, dir);
@@ -362,7 +466,7 @@ describe.skipIf(!DATABASE_URL)(
       const dir = await mkdtemp(join(tmpdir(), "suup-migrations-"));
       await cp(MIGRATIONS_DIR, dir, { recursive: true });
       const held = (await readdir(MIGRATIONS_DIR)).filter((f) => f >= "0027" && f.endsWith(".sql"));
-      expect(held).toEqual(["0027_message_routine_ref.sql"]);
+      expect(held).toEqual(["0027_message_routine_ref.sql", "0028_connector_oauth_catalog.sql"]);
       for (const file of held) await rm(join(dir, file));
       await migrate(ctx.db, dir);
       const [bot] = await ctx.db.sql<{ id: string }[]>`

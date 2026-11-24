@@ -136,7 +136,7 @@ export interface ParsedVerdict {
   unchecked: UncheckedItem[];
   /** Set when a `reject` named no usable discrepancy: it is not a rejection. */
   invalidReject?: string;
-  /** Set when the answer was unusable and the verdict is an approval by default. */
+  /** Set when the answer was unusable: no review happened (the caller fails it closed). */
   warning?: string;
 }
 
@@ -162,15 +162,14 @@ function byDefault(warning: string): ParsedVerdict {
   };
 }
 
-/** Reads the reviewer's answer. Anything unusable counts as an approval with a warning. */
+/** Reads the reviewer's answer. Anything unusable comes back with `warning`: no review happened. */
 export function parseVerdict(blocks: readonly Block[]): ParsedVerdict {
   const call = blocks.find((b) => b.type === "tool_call" && b.name === "verdict");
   if (call === undefined || call.type !== "tool_call") {
-    return byDefault("the reviewer did not answer through the verdict tool; approved by default");
+    return byDefault("the reviewer did not answer through the verdict tool");
   }
   const parsed = verdictParseSchema.safeParse(call.args);
-  if (!parsed.success)
-    return byDefault("the reviewer's verdict was malformed; approved by default");
+  if (!parsed.success) return byDefault("the reviewer's verdict was malformed");
   const notes = parsed.data.notes.trim();
   const { verdict } = parsed.data;
   const discrepancies = validDiscrepancies(parsed.data.discrepancies);
