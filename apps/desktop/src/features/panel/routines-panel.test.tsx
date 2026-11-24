@@ -7,7 +7,7 @@ import { useUi } from "../../app/ui-store.js";
 import { mergeBot } from "../../data/reducers.js";
 import { createDataStore, update } from "../../data/store.js";
 import { Sync } from "../../data/sync.js";
-import { makeBot, routineOf } from "../../test-fixtures.js";
+import { makeBot, pressOption, routineOf } from "../../test-fixtures.js";
 import { Panel } from "./Panel.js";
 
 afterEach(cleanup);
@@ -101,7 +101,7 @@ describe("the Rotinas list", () => {
     const dropdown = await screen.findByTestId("chat-model");
     expect(dropdown.textContent).toContain("model-x");
     fireEvent.click(dropdown);
-    fireEvent.click(await screen.findByRole("option", { name: /model-y/ }));
+    pressOption(await screen.findByRole("option", { name: /model-y/ }));
     await waitFor(() =>
       expect(apiAll.bots.update).toHaveBeenCalledWith(BOT, { modelId: "model-y" }),
     );

@@ -1,16 +1,28 @@
+/*
+ * Our copy of the shadcn `dropdown-menu` of the base-maia style (shadcn CLI 4.23.0, preset
+ * b3XoIU6DI0, 24/11/2026), on Base UI's Menu. Rewritten to our tokens (docs/DESIGN.md §2a): the
+ * shared popup surface of `ui/popover.tsx`, items of the row radius highlighted with `bg-hover`,
+ * a muted icon, a muted line under the label, the danger tone. The public API of the app's menus
+ * did not change: `MenuButton` (a button that opens a menu) and `PopupMenu` (a menu at a point of
+ * the screen, the context menu) take the same `MenuItem` list as before.
+ *
+ * Base UI gives the ARIA menu button: `role="menu"`/`menuitem`/`menuitemcheckbox`, arrows, Home and
+ * End, typeahead, Escape and the focus back to the trigger, a press outside. The menus are not modal
+ * (a press outside closes the menu and still reaches what was pressed), and the popup follows its
+ * trigger when the page behind scrolls.
+ */
+import { Menu } from "@base-ui/react/menu";
 import { Check, type LucideIcon } from "lucide-react";
 import {
-  type CSSProperties,
-  type KeyboardEvent,
+  type ButtonHTMLAttributes,
+  type ReactElement,
   type ReactNode,
   type Ref,
-  useEffect,
-  useId,
-  useLayoutEffect,
-  useRef,
+  useMemo,
   useState,
 } from "react";
 import { cx } from "../lib/cx.js";
+import { POPUP_LAYER, POPUP_MOTION, POPUP_SURFACE } from "./popover.js";
 import { RoundButton } from "./primitives.js";
 
 export interface MenuItem {
@@ -28,45 +40,28 @@ export interface MenuItem {
   onSelect(): void;
 }
 
-export interface MenuTriggerProps {
-  ref: Ref<HTMLButtonElement>;
-  "aria-haspopup": "menu";
-  "aria-expanded": boolean;
-  "aria-controls": string | undefined;
-  onClick(): void;
-}
+/** What a custom trigger receives and spreads on its button (Base UI's props: ref, ARIA, handlers). */
+export type MenuTriggerProps = ButtonHTMLAttributes<HTMLButtonElement> & {
+  ref?: Ref<HTMLButtonElement>;
+};
 
-/** The panel of every menu (a menu button, a context menu, the list of a dropdown). */
-export const MENU_PANEL =
-  "flex min-w-menu flex-col rounded-row border border-border-strong bg-raised p-1 shadow-popover";
+/** The panel of a menu: the shared popup surface, a scroll of its own when the window is short. */
+const MENU_PANEL = cx(
+  "flex max-h-(--available-height) flex-col overflow-y-auto p-1.5",
+  POPUP_SURFACE,
+  POPUP_MOTION,
+);
 
-/** One entry of a menu or one option of a dropdown (`aria-selected` marks the chosen one). */
-export function menuItemClass(danger?: boolean): string {
-  return cx(
-    "flex items-center justify-between gap-3 rounded-inner border-0 bg-transparent px-3 py-2.5 text-left text-label leading-inherit focus-visible:bg-hover enabled:hover:bg-hover disabled:opacity-40 aria-selected:bg-hover",
-    danger === true && "text-danger-text",
-  );
-}
+/** The width of a menu: `wide` for a menu of a button (items with a line under them), `normal` at a point. */
+const MENU_WIDTH = { normal: "min-w-menu", wide: "min-w-menu-wide" } as const;
 
-const ENTRY = '[role^="menuitem"]:not([disabled])';
+/** One entry of a menu or a list (Base UI marks the one under the pointer or the keys `data-highlighted`). */
+export const MENU_ITEM =
+  "flex w-full cursor-default items-center justify-between gap-3 rounded-row border-0 bg-transparent px-3 py-2.5 text-left text-label leading-inherit outline-none select-none data-disabled:opacity-40 data-highlighted:bg-hover";
 
-/**
- * Focus a menu item without letting the browser scroll the page to reveal it: the menu is `fixed`,
- * and a plain `focus()` of an item that is cut by the list's own scroll also scrolls the chat
- * behind it, which the menu takes for "the screen moved" and closes. The list is scrolled by hand.
- */
-export function focusEntry(el: HTMLElement | null | undefined): void {
-  if (el === undefined || el === null) return;
-  el.focus({ preventScroll: true });
-  const list = el.closest<HTMLElement>('[role="menu"]');
-  if (list === null) return;
-  const top = el.offsetTop; // the list is positioned: it is the item's offset parent
-  if (top < list.scrollTop) list.scrollTop = top;
-  else if (top + el.offsetHeight > list.scrollTop + list.clientHeight)
-    list.scrollTop = top + el.offsetHeight - list.clientHeight;
-}
+const ITEM_TONE = { normal: "text-text", danger: "text-danger-text" } as const;
 
-/** The content of a menu item: its label, and the muted line and the check when it has them. */
+/** The content of a menu item: its icon, its label, the muted line and the check when it has them. */
 export function MenuItemBody({ item }: { item: MenuItem }) {
   const Icon = item.icon;
   return (
@@ -92,10 +87,69 @@ export function MenuItemBody({ item }: { item: MenuItem }) {
   );
 }
 
+/** The items of a menu: a plain item, or a checkbox item when it is on or off. Each is a native button. */
+function MenuItems({ items }: { items: readonly MenuItem[] }) {
+  return items.map((item) => {
+    const shared = {
+      nativeButton: true,
+      render: <button type="button" />,
+      disabled: item.disabled === true,
+      "data-testid": item.testId,
+      label: item.label,
+      className: cx(MENU_ITEM, ITEM_TONE[item.danger === true ? "danger" : "normal"]),
+      onClick: () => item.onSelect(),
+    };
+    return item.checked === undefined ? (
+      <Menu.Item key={item.id} {...shared}>
+        <MenuItemBody item={item} />
+      </Menu.Item>
+    ) : (
+      // The state is the screen's: a click tells it (onSelect), and the item shows what it says.
+      <Menu.CheckboxItem key={item.id} {...shared} checked={item.checked} closeOnClick>
+        <MenuItemBody item={item} />
+      </Menu.CheckboxItem>
+    );
+  });
+}
+
+/** The popup of a menu, in a portal on the body, above the dialogs. */
+function MenuPopup({
+  label,
+  items,
+  side,
+  align,
+  width,
+  anchor,
+}: {
+  label: string;
+  items: readonly MenuItem[];
+  side: "top" | "bottom";
+  align: "start" | "end";
+  width: keyof typeof MENU_WIDTH;
+  anchor?: { getBoundingClientRect(): DOMRect };
+}) {
+  return (
+    <Menu.Portal>
+      <Menu.Positioner
+        side={side}
+        align={align}
+        sideOffset={6}
+        collisionPadding={8}
+        className={cx(POPUP_LAYER, "outline-none")}
+        {...(anchor === undefined ? {} : { anchor })}
+      >
+        <Menu.Popup aria-label={label} className={cx(MENU_PANEL, MENU_WIDTH[width])}>
+          <MenuItems items={items} />
+        </Menu.Popup>
+      </Menu.Positioner>
+    </Menu.Portal>
+  );
+}
+
 /**
- * A button that opens a small menu (ARIA menu button: arrows, Home/End, Escape and focus back to the
- * button, click outside). `trigger` draws the button itself (the chevron of a split button);
- * `placement` opens it above or below, aligned to the end of the button.
+ * A button that opens a small menu (ARIA menu button). `trigger` draws the button itself (the
+ * chevron of a split button, the account button of the sidebar) from the props it is given;
+ * `placement` opens it above or below; `align` lines it up with the start or the end of the button.
  */
 export function MenuButton({
   label,
@@ -103,139 +157,96 @@ export function MenuButton({
   items,
   trigger,
   placement = "below",
+  align = "end",
   disabled,
+  width = "wide",
 }: {
   label: string;
   icon?: ReactNode;
   items: readonly MenuItem[];
-  trigger?(props: MenuTriggerProps): ReactNode;
+  trigger?(props: MenuTriggerProps): ReactElement;
   placement?: "below" | "above";
+  align?: "start" | "end";
   disabled?: boolean;
+  width?: keyof typeof MENU_WIDTH;
 }) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const menuId = useId();
-  // Placed by the screen (fixed): above the button when it fits, else below, else on the side
-  // with more room, with a scroll of its own: a tall menu is never cut by the chat or its header.
-  const [pos, setPos] = useState<CSSProperties | undefined>(undefined);
-  useLayoutEffect(() => {
-    if (!open || placement !== "above") {
-      setPos(undefined);
-      return;
-    }
-    const list = rootRef.current?.querySelector<HTMLElement>('[role="menu"]');
-    const rect = rootRef.current?.getBoundingClientRect();
-    if (list === null || list === undefined || rect === undefined) return;
-    const edge = 8;
-    const top = 72; // under the chat's header
-    const above = rect.top - top;
-    const below = window.innerHeight - rect.bottom - edge;
-    const wanted = list.scrollHeight + 6;
-    const up = above >= wanted || above >= below;
-    const side = up ? above : below;
-    setPos({
-      position: "fixed",
-      right: Math.max(edge, window.innerWidth - rect.right),
-      ...(up
-        ? { top: "auto", bottom: window.innerHeight - rect.top + 6 }
-        : { top: rect.bottom + 6 }),
-      left: "auto",
-      maxHeight: Math.max(160, side - 6),
-      overflowY: "auto",
-    });
-  }, [open, placement]);
-  useEffect(() => {
-    if (!open || placement !== "above") return;
-    const close = (e?: Event) => {
-      if (e?.target instanceof Node && rootRef.current?.contains(e.target)) return;
-      setOpen(false);
-    };
-    window.addEventListener("resize", close);
-    document.addEventListener("scroll", close, true);
-    return () => {
-      window.removeEventListener("resize", close);
-      document.removeEventListener("scroll", close, true);
-    };
-  }, [open, placement]);
-  useEffect(() => {
-    if (!open) return;
-    const first = rootRef.current?.querySelector<HTMLElement>(ENTRY);
-    focusEntry(first);
-    const onDown = (e: MouseEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [open]);
-
-  const onKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "Escape") {
-      setOpen(false);
-      buttonRef.current?.focus();
-      return;
-    }
-    const entries = Array.from(rootRef.current?.querySelectorAll<HTMLElement>(ENTRY) ?? []);
-    const index = entries.indexOf(document.activeElement as HTMLElement);
-    const move = (next: number) => {
-      e.preventDefault();
-      focusEntry(entries[(next + entries.length) % entries.length]);
-    };
-    if (e.key === "ArrowDown") move(index + 1);
-    else if (e.key === "ArrowUp") move(index - 1);
-    else if (e.key === "Home") move(0);
-    else if (e.key === "End") move(entries.length - 1);
-    else if (e.key === "Tab") setOpen(false);
-  };
-
-  const triggerProps: MenuTriggerProps = {
-    ref: buttonRef,
-    "aria-haspopup": "menu",
-    "aria-expanded": open,
-    "aria-controls": open ? menuId : undefined,
-    onClick: () => setOpen((v) => !v),
-  };
   return (
-    <div className="relative" ref={rootRef} onKeyDown={onKeyDown}>
-      {trigger !== undefined ? (
-        trigger(triggerProps)
-      ) : (
-        <RoundButton label={label} tone="ghost" disabled={disabled} {...triggerProps}>
-          {icon}
-        </RoundButton>
-      )}
-      {open && (
-        <div
-          id={menuId}
-          role="menu"
-          aria-label={label}
-          className={cx(
-            MENU_PANEL,
-            "absolute top-[calc(100%+var(--menu-gap))] right-0 z-30 min-w-menu-wide",
-          )}
-          {...(pos === undefined ? {} : { style: pos })}
-        >
-          {items.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              {...(item.checked === undefined
-                ? { role: "menuitem" }
-                : { role: "menuitemcheckbox", "aria-checked": item.checked })}
-              disabled={item.disabled}
-              data-testid={item.testId}
-              className={menuItemClass(item.danger)}
-              onClick={() => {
-                setOpen(false);
-                buttonRef.current?.focus();
-                item.onSelect();
-              }}
-            >
-              <MenuItemBody item={item} />
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+    <Menu.Root modal={false}>
+      <Menu.Trigger
+        disabled={disabled === true}
+        render={(props) => {
+          // Base UI's props are those of a button here (ref, ARIA, handlers): typed as such.
+          const own = props as MenuTriggerProps;
+          return trigger !== undefined ? (
+            trigger(own)
+          ) : (
+            <RoundButton label={label} tone="ghost" disabled={disabled === true} {...own}>
+              {icon}
+            </RoundButton>
+          );
+        }}
+      />
+      <MenuPopup
+        label={label}
+        items={items}
+        side={placement === "above" ? "top" : "bottom"}
+        align={align}
+        width={width}
+      />
+    </Menu.Root>
+  );
+}
+
+let popupCount = 0;
+/**
+ * A new key for each opening of a `PopupMenu`: the screen keys the menu by it, so an opening while
+ * the last one is still fading out is a new menu, and the old one's `onClose` cannot close it.
+ */
+export function popupKey(): number {
+  popupCount += 1;
+  return popupCount;
+}
+
+/**
+ * A menu at a point of the screen (a context menu, or a menu opened from a key), with the same
+ * keyboard as `MenuButton`. It is open while it is mounted; `onClose` is called once it has gone
+ * (after its exit), and the focus goes back to what had it before.
+ */
+export function PopupMenu({
+  x,
+  y,
+  label,
+  items,
+  onClose,
+}: {
+  x: number;
+  y: number;
+  label: string;
+  items: readonly MenuItem[];
+  onClose(): void;
+}) {
+  const [open, setOpen] = useState(true);
+  const anchor = useMemo(
+    () => ({ getBoundingClientRect: () => DOMRect.fromRect({ x, y, width: 0, height: 0 }) }),
+    [x, y],
+  );
+  return (
+    <Menu.Root
+      open={open}
+      modal={false}
+      onOpenChange={(next) => setOpen(next)}
+      onOpenChangeComplete={(next) => {
+        if (!next) onClose();
+      }}
+    >
+      <MenuPopup
+        label={label}
+        items={items}
+        side="bottom"
+        align="start"
+        width="normal"
+        anchor={anchor}
+      />
+    </Menu.Root>
   );
 }

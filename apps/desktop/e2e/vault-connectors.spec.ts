@@ -475,6 +475,9 @@ test.describe("connectors", () => {
       /Gerenciar regras/,
     ]);
     await expect(page.getByTestId("approval-needs")).toHaveAttribute("aria-checked", "true");
+    // Opened by the pointer the menu holds the focus; the first arrow goes to the first item.
+    await expect(page.getByRole("menu")).toBeFocused();
+    await page.keyboard.press("ArrowDown");
     await expect(items.first()).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(page.getByRole("menu")).toHaveCount(0);

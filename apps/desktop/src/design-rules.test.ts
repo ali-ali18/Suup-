@@ -380,6 +380,30 @@ describe("a base dos componentes: cópias do shadcn base-maia sobre Base UI (doc
     expect(read(join(SRC, "main.tsx"))).toContain("<TipProvider>");
   });
 
+  it("lote 2: os menus e o dropdown são as cópias sobre o Base UI, e o menu da conta é um MenuButton", () => {
+    const menu = read(join(SRC, "ui", "menu.tsx"));
+    expect(menu).toContain('from "@base-ui/react/menu"');
+    expect(menu).toContain("export function MenuButton");
+    expect(menu).toContain("export function PopupMenu");
+    expect(menu).toContain('data-testid="menu-icon"');
+    expect(menu).toContain('data-testid="menu-label"');
+    expect(existsSync(join(SRC, "ui", "popup-menu.tsx"))).toBe(false);
+    // every popup draws the one surface of ui/popover.tsx
+    for (const file of ["menu.tsx", "dropdown.tsx", "popover.tsx"])
+      expect(read(join(SRC, "ui", file)), file).toContain("POPUP_SURFACE");
+    const sidebar = read(join(SRC, "features", "shell", "Sidebar.tsx"));
+    expect(sidebar).toContain('label="Sua conta"');
+    expect(sidebar.indexOf("<MenuButton")).toBeLessThan(
+      sidebar.indexOf('data-testid="owner-menu"'),
+    );
+    // each opening of a menu at a point is a new menu
+    for (const file of [
+      join("features", "shell", "Sidebar.tsx"),
+      join("features", "chat", "ChatScreen.tsx"),
+    ])
+      expect(read(join(SRC, file)), file).toContain("key={menu.key}");
+  });
+
   it("a raiz isola o empilhamento, para os popups no body ficarem por cima", () => {
     expect(read(join(SRC, "styles", "base.css"))).toContain("isolation: isolate;");
   });
@@ -637,21 +661,20 @@ describe("the settings dialog: a modal with a left nav, groups of simple rows, n
 
   it("never a native select: every choice is the dropdown of ui/dropdown.tsx", () => {
     const dropdown = read(join(SRC, "ui", "dropdown.tsx"));
-    // The dropdown is the ARIA listbox pattern, with the keys of the menu and no pattern matching.
+    // The dropdown is the base-maia copy on Base UI: the ARIA listbox pattern (its role, keys and
+    // focus are Base UI's, tested by behaviour in ui/dropdown.test.tsx), in a portal, and a long
+    // list is a Combobox whose filter is a substring of the labels: no pattern matching.
     for (const part of [
-      'aria-haspopup="listbox"',
-      'role="listbox"',
-      'role="option"',
-      "aria-selected",
-      "preventScroll",
-      'e.key === "Escape"',
-      'e.key === "ArrowDown"',
-      'e.key === "Home"',
-      'e.key === "End"',
-      'e.key === "Enter"',
-      "createPortal(",
-      ".includes(needle)",
+      'from "@base-ui/react/select"',
+      'from "@base-ui/react/combobox"',
+      "<Select.Portal>",
+      "<Combobox.Portal>",
+      "<Combobox.Input",
+      "aria-label={`Filtrar: ",
+      ".toLowerCase().includes(text.trim().toLowerCase())",
       "DROPDOWN_FILTER_AFTER",
+      "props.options.length > filterAfter",
+      "alignItemWithTrigger={false}",
     ])
       expect(dropdown, part).toContain(part);
     expect(dropdown).not.toContain("RegExp");

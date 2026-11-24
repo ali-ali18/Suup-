@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from "vitest";
 import { ActionCard, ActionFold } from "./action-card.js";
 import { Dots, EndedLine, WorkingIndicator } from "./chat-lines.js";
 import { Composer } from "./composer.js";
-import { focusEntry } from "./menu.js";
 import { UserMessage } from "./message.js";
 import { Tabs } from "./primitives.js";
 
@@ -297,30 +296,5 @@ describe("ActionFold", () => {
     expect(screen.getByRole("region", { name: "4 ações anteriores" }).textContent).toBe(
       "os cartões",
     );
-  });
-});
-
-describe("focusEntry (menu items)", () => {
-  it("focuses without scrolling the page, and scrolls the list itself to the item", () => {
-    const { container } = render(
-      <div role="menu" style={{ position: "fixed" }}>
-        <button type="button" role="menuitem">
-          a
-        </button>
-        <button type="button" role="menuitem">
-          b
-        </button>
-      </div>,
-    );
-    const items = container.querySelectorAll<HTMLElement>('[role="menuitem"]');
-    const focus = vi.spyOn(items[1] as HTMLElement, "focus");
-    const list = container.querySelector<HTMLElement>('[role="menu"]') as HTMLElement;
-    Object.defineProperty(list, "clientHeight", { value: 40 });
-    Object.defineProperty(items[1], "offsetTop", { value: 60 });
-    Object.defineProperty(items[1], "offsetHeight", { value: 30 });
-    focusEntry(items[1]);
-    expect(focus).toHaveBeenCalledWith({ preventScroll: true });
-    expect(list.scrollTop).toBe(50);
-    focusEntry(undefined);
   });
 });

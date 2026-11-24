@@ -227,7 +227,7 @@ describe("ApprovalCard waiting for you", () => {
     expect(within(card).getByTestId("approval-more")).toBeTruthy();
   });
 
-  it("the chevron opens the recipient menu: Permitir destinatário, Precisa de aprovação (checked), Gerenciar regras", () => {
+  it("the chevron opens the recipient menu: Permitir destinatário, Precisa de aprovação (checked), Gerenciar regras", async () => {
     const onManageRules = vi.fn();
     show({ approval: makeMessageApproval(), onManageRules });
     const trigger = screen.getByTestId("approval-more");
@@ -244,7 +244,7 @@ describe("ApprovalCard waiting for you", () => {
     expect(screen.getByTestId("approval-needs").getAttribute("aria-checked")).toBe("true");
     fireEvent.click(screen.getByTestId("approval-manage-rules"));
     expect(onManageRules).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole("menu")).toBeNull();
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
   });
 
   it("'Permitir destinatário' sends the approval with allowRecipient (the server pins exactly the recipient)", async () => {
@@ -279,8 +279,12 @@ describe("ApprovalCard waiting for you", () => {
       }),
     });
     openMenu();
-    expect((screen.getByTestId("allow-recipient") as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByTestId("approval-needs") as HTMLButtonElement).disabled).toBe(true);
+    // A disabled item of a menu stays reachable by the keys and says so (aria-disabled): a press does nothing.
+    expect(screen.getByTestId("allow-recipient").getAttribute("aria-disabled")).toBe("true");
+    expect(screen.getByTestId("approval-needs").getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(screen.getByTestId("allow-recipient"));
+    expect(onDecide).not.toHaveBeenCalled();
+    expect(screen.getByRole("menu")).toBeTruthy();
     fireEvent.click(screen.getByTestId("approval-more"));
     fireEvent.click(screen.getByTestId("approval-approve"));
     expect(onDecide).toHaveBeenLastCalledWith({ decision: "approve" });
@@ -292,22 +296,24 @@ describe("ApprovalCard waiting for you", () => {
     expect(onDecide).toHaveBeenCalledExactlyOnceWith({ decision: "deny" });
   });
 
-  it("the menu works from the keyboard: arrows move, Escape closes and gives the focus back", () => {
+  it("the menu works from the keyboard: arrows move, Escape closes and gives the focus back", async () => {
     show({ approval: makeMessageApproval() });
     const trigger = screen.getByTestId("approval-more");
-    openMenu();
-    const items = Array.from(
-      screen.getByRole("menu").querySelectorAll<HTMLElement>('[role^="menuitem"]'),
-    );
-    expect(document.activeElement).toBe(items[0]);
+    // opened from the keyboard, the first item takes the focus
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    const menu = await screen.findByRole("menu", { name: "Mais opções de envio" });
+    const items = Array.from(menu.querySelectorAll<HTMLElement>('[role^="menuitem"]'));
+    await waitFor(() => expect(document.activeElement).toBe(items[0]));
     fireEvent.keyDown(items[0] as HTMLElement, { key: "ArrowDown" });
     expect(document.activeElement).toBe(items[1]);
     fireEvent.keyDown(items[1] as HTMLElement, { key: "End" });
     expect(document.activeElement).toBe(items.at(-1));
+    // wrapping to the first item moves the focus on the next frame (Base UI)
     fireEvent.keyDown(items.at(-1) as HTMLElement, { key: "ArrowDown" });
-    expect(document.activeElement).toBe(items[0]);
+    await waitFor(() => expect(document.activeElement).toBe(items[0]));
     fireEvent.keyDown(items[0] as HTMLElement, { key: "Escape" });
-    expect(screen.queryByRole("menu")).toBeNull();
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
     expect(document.activeElement).toBe(trigger);
   });
 

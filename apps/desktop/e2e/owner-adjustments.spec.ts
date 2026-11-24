@@ -73,6 +73,20 @@ test.describe("owner adjustments", () => {
       await shot("31-menu-da-conta");
       await page.keyboard.press("Escape");
 
+      // The panel's chat model (base-maia, 24/11/2026): the list opens under its button, with room.
+      await page.getByTestId("chat-model").click();
+      await expect(page.getByRole("listbox", { name: "Modelo de chat" })).toBeVisible();
+      await shot("38-modelo-de-chat-aberto");
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("listbox")).toHaveCount(0);
+      await expect(page.getByTestId("chat-model")).toBeFocused();
+
+      // A round icon button shows its name as the app's tip (not the native title).
+      await page.getByRole("button", { name: "Novo bot" }).first().hover();
+      await expect(page.getByText("Novo bot", { exact: true })).toBeVisible();
+      await shot("39-dica-do-botao");
+      await page.mouse.move(size.viewport.width / 2, size.viewport.height / 2);
+
       // The rail: hovering a bot shows only its name.
       await page.keyboard.press("Control+b");
       await expect(page.getByTestId("sidebar")).toHaveAttribute("data-collapsed", "true");

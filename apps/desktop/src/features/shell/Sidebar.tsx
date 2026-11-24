@@ -23,8 +23,7 @@ import { SIDEBAR_SPEC } from "../../lib/pane-size.js";
 import { Avatar } from "../../ui/avatar.js";
 import { type BadgeKind, BotBadge } from "../../ui/bot-badge.js";
 import { BotTitle } from "../../ui/bot-title.js";
-import type { MenuItem } from "../../ui/menu.js";
-import { PopupMenu } from "../../ui/popup-menu.js";
+import { MenuButton, type MenuItem, PopupMenu, popupKey } from "../../ui/menu.js";
 import { Dialog, MutedText, Pill, RoundButton } from "../../ui/primitives.js";
 import { ResizeHandle } from "../../ui/resize-handle.js";
 import { ScrollFade } from "../../ui/scroll-fade.js";
@@ -218,8 +217,7 @@ export function Sidebar() {
   const ui = useUi.getState;
   const selectBot = useUi((s) => s.selectBot);
   const go = useUi((s) => s.go);
-  const [menu, setMenu] = useState<{ bot: Bot; x: number; y: number } | null>(null);
-  const [ownerMenu, setOwnerMenu] = useState<{ x: number; y: number } | null>(null);
+  const [menu, setMenu] = useState<{ bot: Bot; x: number; y: number; key: number } | null>(null);
   const [archiving, setArchiving] = useState<Bot | null>(null);
   const refs = useRef<Record<string, HTMLButtonElement | null>>({});
 
@@ -289,7 +287,7 @@ export function Sidebar() {
       tabStop={bot.id === tabStop}
       preview={previewOf(bot)}
       onSelect={() => selectBot(bot.id)}
-      onMenu={(b, x, y) => setMenu({ bot: b, x, y })}
+      onMenu={(b, x, y) => setMenu({ bot: b, x, y, key: popupKey() })}
       setRef={(el) => {
         refs.current[bot.id] = el;
       }}
@@ -326,56 +324,56 @@ export function Sidebar() {
       onSelect: () => void disconnect(),
     },
   ];
+  // The account button opens its menu above it, lined up with its start (the menu of sempre).
   const ownerButton = (variant: "bar" | "rail") => (
-    <button
-      type="button"
-      className={cx(
-        "inline-flex items-center rounded-row border-0 bg-transparent transition-colors hover:bg-hover",
-        variant === "bar" ? "min-w-0 flex-1 gap-2.5 py-1.5 pr-3 pl-1.5" : "p-1",
+    <MenuButton
+      label="Sua conta"
+      items={ownerItems}
+      placement="above"
+      align="start"
+      width="normal"
+      trigger={(props) => (
+        <button
+          type="button"
+          {...props}
+          className={cx(
+            "inline-flex items-center rounded-row border-0 bg-transparent transition-colors hover:bg-hover aria-expanded:bg-hover",
+            variant === "bar" ? "min-w-0 flex-1 gap-2.5 py-1.5 pr-3 pl-1.5" : "p-1",
+          )}
+          aria-label={
+            pending > 0 ? `Menu da sua conta (${pending} pendências)` : "Menu da sua conta"
+          }
+          data-testid="owner-menu"
+        >
+          <span
+            className={cx(
+              "relative inline-flex size-avatar-sm flex-none items-center justify-center rounded-pill border border-border-strong bg-raised text-small font-label",
+            )}
+            aria-hidden="true"
+          >
+            V
+            {pending > 0 && (
+              <BotBadge kind="question" data-testid="pending-counter">
+                {pending}
+              </BotBadge>
+            )}
+          </span>
+          {variant === "bar" && <span className="truncate text-label font-label">Você</span>}
+        </button>
       )}
-      aria-haspopup="menu"
-      aria-label={pending > 0 ? `Menu da sua conta (${pending} pendências)` : "Menu da sua conta"}
-      data-testid="owner-menu"
-      onClick={(e) => {
-        const rect = e.currentTarget.getBoundingClientRect();
-        setOwnerMenu({ x: rect.left, y: rect.top - ownerItems.length * 40 - 16 });
-      }}
-    >
-      <span
-        className={cx(
-          "relative inline-flex size-avatar-sm flex-none items-center justify-center rounded-pill border border-border-strong bg-raised text-small font-label",
-        )}
-        aria-hidden="true"
-      >
-        V
-        {pending > 0 && (
-          <BotBadge kind="question" data-testid="pending-counter">
-            {pending}
-          </BotBadge>
-        )}
-      </span>
-      {variant === "bar" && <span className="truncate text-label font-label">Você</span>}
-    </button>
+    />
   );
 
   const popups = (
     <>
-      {ownerMenu !== null && (
-        <PopupMenu
-          x={ownerMenu.x}
-          y={ownerMenu.y}
-          label="Sua conta"
-          items={ownerItems}
-          onClose={() => setOwnerMenu(null)}
-        />
-      )}
       {menu !== null && (
         <PopupMenu
+          key={menu.key}
           x={menu.x}
           y={menu.y}
           label={`Opções de ${menu.bot.name}`}
           items={menuItems(menu.bot)}
-          onClose={() => setMenu(null)}
+          onClose={() => setMenu((m) => (m?.key === menu.key ? null : m))}
         />
       )}
       {archiving !== null && (

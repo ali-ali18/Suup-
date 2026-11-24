@@ -185,6 +185,7 @@
   --width-menu: 240px;
   --width-menu-wide: 320px;
   --width-dropdown: min(380px, calc(100vw - 16px));
+  --height-dropdown: 320px; /* the tallest the list of a dropdown gets (it scrolls inside) */
   --width-empty-text: 280px;
   --width-input: 260px; /* the field of a settings row */
   --width-connect: min(440px, 100%); /* the card of the connect screen */

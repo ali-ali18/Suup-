@@ -18,8 +18,7 @@ import { Avatar } from "../../ui/avatar.js";
 import { EventLineButton } from "../../ui/chat-lines.js";
 import { Composer } from "../../ui/composer.js";
 import { DraftReference } from "../../ui/draft-reference.js";
-import type { MenuItem } from "../../ui/menu.js";
-import { PopupMenu } from "../../ui/popup-menu.js";
+import { type MenuItem, PopupMenu, popupKey } from "../../ui/menu.js";
 import { EmptyState } from "../../ui/primitives.js";
 import { Panel } from "../panel/Panel.js";
 import { MessageList } from "./MessageList.js";
@@ -93,7 +92,7 @@ function ChatForBot({ botId }: { botId: string }) {
   const openEditBot = useUi((s) => s.openEditBot);
   const [convId, setConvId] = useState<string | null>(bot?.conversationId ?? null);
   const [restore, setRestore] = useState<{ text: string; nonce: number } | undefined>(undefined);
-  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; key: number } | null>(null);
   // "Editar" on a routine (docs/ROTINAS.md): a draft for the composer and the routine bound to it.
   // The reference lives with THIS chat's draft: clearing the draft drops it, and another bot is
   // another chat (this component is keyed by the bot), so it never follows to another one.
@@ -278,13 +277,13 @@ function ChatForBot({ botId }: { botId: string }) {
               onClick={togglePanel}
               onContextMenu={(e) => {
                 e.preventDefault();
-                setMenu({ x: e.clientX, y: e.clientY });
+                setMenu({ x: e.clientX, y: e.clientY, key: popupKey() });
               }}
               onKeyDown={(e) => {
                 if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
                   e.preventDefault();
                   const rect = e.currentTarget.getBoundingClientRect();
-                  setMenu({ x: rect.left, y: rect.bottom + 4 });
+                  setMenu({ x: rect.left, y: rect.bottom + 4, key: popupKey() });
                 }
               }}
             >
@@ -363,11 +362,12 @@ function ChatForBot({ botId }: { botId: string }) {
       {panelOpen && <Panel botId={bot.id} />}
       {menu !== null && (
         <PopupMenu
+          key={menu.key}
           x={menu.x}
           y={menu.y}
           label={`Opções de ${bot.name}`}
           items={menuItems}
-          onClose={() => setMenu(null)}
+          onClose={() => setMenu((m) => (m?.key === menu.key ? null : m))}
         />
       )}
     </div>

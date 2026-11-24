@@ -13,6 +13,7 @@ import type {
   Secret,
   WrittenRule,
 } from "@suup/api";
+import { fireEvent } from "@testing-library/react";
 
 let n = 0;
 const uuid = (): string => {
@@ -289,3 +290,13 @@ export const routineOf = (over: Partial<Routine> = {}): Routine => ({
   lastFire: null,
   ...over,
 });
+
+/**
+ * Choose an option of a dropdown as a person does: the pointer goes down on it, then the click.
+ * Base UI's Select ignores a click that did not start on the option (a press that opened the list
+ * and was released over it), so a bare synthetic click is not a choice.
+ */
+export function pressOption(el: Element): void {
+  fireEvent.pointerDown(el, { pointerType: "mouse" });
+  fireEvent.click(el);
+}

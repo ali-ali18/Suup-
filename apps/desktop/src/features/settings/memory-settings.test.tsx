@@ -5,6 +5,7 @@ import { type Services, ServicesProvider } from "../../app/context.js";
 import { useUi } from "../../app/ui-store.js";
 import { createDataStore } from "../../data/store.js";
 import { Sync } from "../../data/sync.js";
+import { pressOption } from "../../test-fixtures.js";
 import { MemorySettings as Section } from "./MemorySettings.js";
 
 afterEach(cleanup);
@@ -94,7 +95,7 @@ describe("Configurações > Memória", () => {
     fireEvent.click(screen.getByTestId("memory-enabled"));
     await waitFor(() => expect(update).toHaveBeenCalledWith({ consolidation: { enabled: false } }));
     fireEvent.click(screen.getByTestId("memory-expiry-days"));
-    fireEvent.click(await screen.findByRole("option", { name: "Nunca" }));
+    pressOption(await screen.findByRole("option", { name: "Nunca" }));
     await waitFor(() => expect(update).toHaveBeenCalledWith({ expiryDays: null }));
   });
 
