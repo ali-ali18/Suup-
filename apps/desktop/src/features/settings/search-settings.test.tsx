@@ -5,6 +5,7 @@ import { type Services, ServicesProvider } from "../../app/context.js";
 import { createDataStore } from "../../data/store.js";
 import { Sync } from "../../data/sync.js";
 import { makeSecret } from "../../test-fixtures.js";
+import { Modal } from "../../ui/dialog.js";
 import { SearchSettings as Section, usageWords } from "./SearchSettings.js";
 
 afterEach(cleanup);
@@ -39,7 +40,9 @@ function setup(first: WebSearchSettings | Error, later?: WebSearchSettings) {
   const services = { api, sync, data: store } as unknown as Services;
   render(
     <ServicesProvider services={services}>
-      <Section title="Busca" titleId="t" onClose={() => {}} />
+      <Modal onClose={() => {}} label="Configurações" className="">
+        <Section title="Busca" titleId="t" />
+      </Modal>
     </ServicesProvider>,
   );
   return api;
