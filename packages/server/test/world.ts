@@ -118,6 +118,7 @@ export function useWorld(options: WorldOptions = {}): World {
       models: [
         {
           id: "model-x",
+          name: "Roteiro X",
           provider: "roteiro",
           contextWindow: 100_000,
           maxOutputTokens: 4096,

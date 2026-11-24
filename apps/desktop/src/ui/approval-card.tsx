@@ -1,5 +1,5 @@
 import type { Approval, ApprovalRule, DecideApprovalBody } from "@suup/api";
-import { ChevronDown, LoaderCircle } from "lucide-react";
+import { ChevronDown, LoaderCircle, Settings2, ShieldQuestion, UserCheck } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
   allowRecipientSentence,
@@ -25,7 +25,7 @@ import { ActionCard, ActionLabel } from "./action-card.js";
 import { ArgRow, ArgsView } from "./args-view.js";
 import { categoryGlyph } from "./category-icon.js";
 import { DecisionCard } from "./decision-card.js";
-import { MenuButton, type MenuItem } from "./menu.js";
+import { MenuButton, type MenuItem, type MenuSection } from "./menu.js";
 import { FieldError, Pill } from "./primitives.js";
 import { userIsTyping } from "./question-card.js";
 
@@ -311,11 +311,12 @@ function MessageFooter({
   const waiting = busy !== null;
   const approving = busy === "approve" || busy === "allow";
   const canAllow = recipients !== null;
-  const items: MenuItem[] = [
+  const recipientItems: MenuItem[] = [
     {
       id: "allow-recipient",
       testId: "allow-recipient",
       label: "Permitir destinatário",
+      icon: UserCheck,
       description: canAllow
         ? "Envia e libera este destinatário, neste bot."
         : "Indisponível: não há um único destinatário em texto.",
@@ -326,6 +327,7 @@ function MessageFooter({
       id: "needs-approval",
       testId: "approval-needs",
       label: "Precisa de aprovação",
+      icon: ShieldQuestion,
       description: needsApproval
         ? "Pergunta de novo na próxima vez."
         : "Enviar passa a liberar este destinatário também.",
@@ -334,12 +336,20 @@ function MessageFooter({
       onSelect: () => onNeedsApproval(!needsApproval),
     },
   ];
+  // The recipient's choices, then (a group of its own) the way to the rules.
+  const items: MenuSection[] = [{ id: "recipient", items: recipientItems }];
   if (onManageRules !== undefined) {
     items.push({
-      id: "manage-rules",
-      testId: "approval-manage-rules",
-      label: "Gerenciar regras",
-      onSelect: onManageRules,
+      id: "rules",
+      items: [
+        {
+          id: "manage-rules",
+          testId: "approval-manage-rules",
+          label: "Gerenciar regras",
+          icon: Settings2,
+          onSelect: onManageRules,
+        },
+      ],
     });
   }
   const allowing = !needsApproval && canAllow;

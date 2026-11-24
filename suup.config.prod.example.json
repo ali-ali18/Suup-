@@ -9,6 +9,7 @@
   "models": [
     {
       "id": "model-x",
+      "name": "Modelo X",
       "provider": "anthropic",
       "contextWindow": 200000,
       "maxOutputTokens": 8192,

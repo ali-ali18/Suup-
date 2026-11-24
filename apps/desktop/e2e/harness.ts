@@ -593,6 +593,7 @@ export async function startWorld(
     models: [
       {
         id: "model-x",
+        name: "Roteiro X",
         provider: "roteiro",
         contextWindow: 100_000,
         maxOutputTokens: 4096,

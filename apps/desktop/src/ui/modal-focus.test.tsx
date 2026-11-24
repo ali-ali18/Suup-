@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { mayTakeFocus } from "../lib/focus.js";
 import { makeApproval } from "../test-fixtures.js";
@@ -82,14 +82,18 @@ describe("a modal surface keeps the focus when the chat appears behind it", () =
     expect(document.activeElement).toBe(screen.getByTestId("approval-card"));
   });
 
-  it("a dialog (the primitive) opened over the chat takes the focus into itself", () => {
+  it("a dialog (the primitive) opened over the chat takes the focus into itself", async () => {
     render(<Composer placeholder="Mensagem" onSend={noop} autoFocus />);
     render(
       <Dialog title="Atalhos" onClose={noop}>
         <button type="button">Fechar</button>
       </Dialog>,
     );
-    expect(screen.getByRole("dialog").contains(document.activeElement)).toBe(true);
+    // Base UI moves the focus into the dialog once it is in the page (a frame after it mounts)
+    await waitFor(() =>
+      expect(screen.getByRole("dialog").contains(document.activeElement)).toBe(true),
+    );
+    expect(screen.getByRole("dialog").getAttribute("aria-modal")).toBe("true");
   });
 });
 

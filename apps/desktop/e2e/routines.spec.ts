@@ -303,7 +303,8 @@ test.describe("routines", () => {
     await page.getByLabel("Filtrar: Fuso horário").fill("Lisbon");
     await page.getByRole("option", { name: "Europe/Lisbon" }).click();
     await expect(page.getByTestId("time-zone-source")).toHaveText("Escolhido por você.");
-    expect((await world.api.info()).timeZone).toBe("Europe/Lisbon");
+    // the screen updates at once; the server's answer may land a moment later
+    await expect.poll(async () => (await world.api.info()).timeZone).toBe("Europe/Lisbon");
     // the computer's zone does not replace the user's choice on the next connection
     await page.reload();
     await expect(page.getByTestId("sidebar")).toBeVisible();

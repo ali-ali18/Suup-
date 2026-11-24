@@ -214,7 +214,7 @@ export function SecretDialog({
 }
 
 /** The vault: secret names and who may use them. Values can be written and replaced, never read. */
-export function VaultSettings({ title, titleId, onClose }: SectionProps) {
+export function VaultSettings({ title, titleId }: SectionProps) {
   const { sync, api } = useServices();
   const bots = useData((s) => s.bots);
   const secretsByName = useData((s) => s.secrets);
@@ -251,7 +251,7 @@ export function VaultSettings({ title, titleId, onClose }: SectionProps) {
         );
   return (
     <>
-      <PaneHead title={title} titleId={titleId} onClose={onClose}>
+      <PaneHead title={title} titleId={titleId}>
         <Pill
           tone="primary"
           size="sm"

@@ -42,6 +42,7 @@ Opções comuns aos dois adaptadores de rede (as mesmas de `@suup/providers`): `
 |---|---|
 | `id` | Identificador do modelo **como o provedor o conhece**; é o que vai na requisição e o que se passa a `suup bot create --model`. Único no arquivo |
 | `provider` | `id` de um provedor de `providers` |
+| `name` | Opcional. O **nome curto** que o app mostra para o modelo (por exemplo, no "Modelo de chat" do painel e no menu de modelos), em vez do `id`. Declarado aqui, nunca deduzido do `id`; sem ele, o app mostra o `id` |
 | `contextWindow` | Tamanho da janela de contexto, em tokens (inteiro positivo). Dispara a compactação da conversa |
 | `maxOutputTokens` | Limite de tokens de saída por resposta (não pode passar de `contextWindow`) |
 | `pricing` (opcional) | `inputPerMTok`, `outputPerMTok`, `cachedInputPerMTok` (opcional: tokens lidos do cache), `cacheWriteInputPerMTok` (opcional: tokens gravados no cache, que alguns provedores cobram acima do preço normal; padrão `inputPerMTok`): dólares por milhão de tokens. Sem `pricing`, o custo da execução fica em zero |

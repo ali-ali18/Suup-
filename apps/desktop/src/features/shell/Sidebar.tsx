@@ -1,10 +1,15 @@
 import type { Bot } from "@suup/api";
 import {
+  Archive,
   Brain,
   Ellipsis,
+  FolderInput,
   Inbox,
   Keyboard,
   LogOut,
+  Pencil,
+  Pin,
+  PinOff,
   Plug,
   Plus,
   Search,
@@ -23,11 +28,12 @@ import { SIDEBAR_SPEC } from "../../lib/pane-size.js";
 import { Avatar } from "../../ui/avatar.js";
 import { type BadgeKind, BotBadge } from "../../ui/bot-badge.js";
 import { BotTitle } from "../../ui/bot-title.js";
-import type { MenuItem } from "../../ui/menu.js";
-import { PopupMenu } from "../../ui/popup-menu.js";
+import { MenuButton, type MenuSection, PopupMenu, popupKey } from "../../ui/menu.js";
 import { Dialog, MutedText, Pill, RoundButton } from "../../ui/primitives.js";
 import { ResizeHandle } from "../../ui/resize-handle.js";
 import { ScrollFade } from "../../ui/scroll-fade.js";
+import { Separator } from "../../ui/separator.js";
+import { Tip } from "../../ui/tooltip.js";
 
 /** How a bot's entry is laid out: a tile (pinned), a row (a list), or only the face (the rail). */
 const ENTRY_MAIN = {
@@ -55,8 +61,6 @@ interface EntryProps {
   onMenu(bot: Bot, x: number, y: number): void;
   setRef(el: HTMLButtonElement | null): void;
   onKeyDown(e: KeyboardEvent): void;
-  /** The rail only: show (a box) or hide (`null`) the bot's name beside its face. */
-  onTip?(box: DOMRect | null): void;
 }
 
 function BotEntry({
@@ -69,7 +73,6 @@ function BotEntry({
   onMenu,
   setRef,
   onKeyDown,
-  onTip,
 }: EntryProps) {
   const runs = useData((s) => s.runs);
   const conversations = useData((s) => s.conversations);
@@ -105,79 +108,83 @@ function BotEntry({
     e.preventDefault();
     onMenu(bot, e.clientX, e.clientY);
   };
+  const main = (
+    <button
+      ref={setRef}
+      type="button"
+      className={cx(
+        "flex min-w-0 items-center rounded-card border border-transparent bg-transparent text-left hover:bg-hover aria-[current=page]:bg-sidebar-active",
+        ENTRY_MAIN[variant],
+      )}
+      aria-label={label}
+      aria-current={active ? "page" : undefined}
+      data-testid="bot-item"
+      data-bot={bot.name}
+      data-chip={display.chip ?? ""}
+      data-working={working}
+      tabIndex={tabStop ? 0 : -1}
+      onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+          e.preventDefault();
+          const rect = e.currentTarget.getBoundingClientRect();
+          onMenu(bot, rect.left + 24, rect.bottom);
+          return;
+        }
+        onKeyDown(e);
+      }}
+      onContextMenu={openMenu}
+    >
+      <span className="relative inline-flex flex-none">
+        <Avatar
+          avatar={bot.avatar}
+          avatarStyle={bot.avatarStyle}
+          pixel3d={bot.avatarPixel3d}
+          color={bot.color}
+          seed={bot.id}
+          size={size}
+          state={display.avatar}
+          supervisor={bot.isDefault}
+          working={working}
+          unread={unread > 0}
+        />
+        {badge !== undefined && (
+          <BotBadge
+            kind={badge.kind}
+            data-testid="bot-badge"
+            data-kind={badge.kind}
+            aria-hidden="true"
+          >
+            {badge.text}
+          </BotBadge>
+        )}
+      </span>
+      {variant === "tile" && (
+        <span className="max-w-full truncate text-label leading-inherit font-label">
+          {bot.name}
+        </span>
+      )}
+      {variant === "row" && (
+        <span className="flex min-w-0 flex-1 flex-col" data-testid="bot-entry-text">
+          <span className="truncate text-label">
+            <BotTitle name={bot.name} description={bot.description} />
+          </span>
+          <MutedText className="truncate">{preview ?? NO_MESSAGES}</MutedText>
+        </span>
+      )}
+    </button>
+  );
   return (
     <div className="group/entry relative min-w-0">
-      <button
-        ref={setRef}
-        type="button"
-        className={cx(
-          "flex min-w-0 items-center rounded-card border border-transparent bg-transparent text-left hover:bg-hover aria-[current=page]:bg-sidebar-active",
-          ENTRY_MAIN[variant],
-        )}
-        aria-label={label}
-        aria-current={active ? "page" : undefined}
-        data-testid="bot-item"
-        data-bot={bot.name}
-        data-chip={display.chip ?? ""}
-        data-working={working}
-        tabIndex={tabStop ? 0 : -1}
-        onClick={onSelect}
-        onMouseEnter={(e) => onTip?.(e.currentTarget.getBoundingClientRect())}
-        onMouseLeave={() => onTip?.(null)}
-        onFocus={(e) => {
-          if (e.currentTarget.matches(":focus-visible"))
-            onTip?.(e.currentTarget.getBoundingClientRect());
-        }}
-        onBlur={() => onTip?.(null)}
-        onKeyDown={(e) => {
-          if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
-            e.preventDefault();
-            const rect = e.currentTarget.getBoundingClientRect();
-            onMenu(bot, rect.left + 24, rect.bottom);
-            return;
-          }
-          onKeyDown(e);
-        }}
-        onContextMenu={openMenu}
-      >
-        <span className="relative inline-flex flex-none">
-          <Avatar
-            avatar={bot.avatar}
-            avatarStyle={bot.avatarStyle}
-            pixel3d={bot.avatarPixel3d}
-            color={bot.color}
-            seed={bot.id}
-            size={size}
-            state={display.avatar}
-            supervisor={bot.isDefault}
-            working={working}
-            unread={unread > 0}
-          />
-          {badge !== undefined && (
-            <BotBadge
-              kind={badge.kind}
-              data-testid="bot-badge"
-              data-kind={badge.kind}
-              aria-hidden="true"
-            >
-              {badge.text}
-            </BotBadge>
-          )}
-        </span>
-        {variant === "tile" && (
-          <span className="max-w-full truncate text-label leading-inherit font-label">
-            {bot.name}
-          </span>
-        )}
-        {variant === "row" && (
-          <span className="flex min-w-0 flex-1 flex-col" data-testid="bot-entry-text">
-            <span className="truncate text-label">
-              <BotTitle name={bot.name} description={bot.description} />
-            </span>
-            <MutedText className="truncate">{preview ?? NO_MESSAGES}</MutedText>
-          </span>
-        )}
-      </button>
+      {variant === "rail" ? (
+        // The rail: only the bot's name beside its face (owner, 23/11/2026), at once, in a portal
+        // so no scrolling list clips it.
+        <Tip label={bot.name} side="right" delay={0} testId="rail-tip">
+          {main}
+        </Tip>
+      ) : (
+        main
+      )}
       {variant !== "rail" && (
         <button
           type="button"
@@ -214,13 +221,9 @@ export function Sidebar() {
   const selected = useUi((s) => s.selectedBotId);
   const picked = useUi((s) => s.botPicked);
   const ui = useUi.getState;
-  // The name beside a face of the rail: drawn fixed on the page, so no scrolling list clips it.
-  // Only the name: the message preview of a row is unreadable there (owner, 23/11/2026).
-  const [tip, setTip] = useState<{ name: string; x: number; y: number } | null>(null);
   const selectBot = useUi((s) => s.selectBot);
   const go = useUi((s) => s.go);
-  const [menu, setMenu] = useState<{ bot: Bot; x: number; y: number } | null>(null);
-  const [ownerMenu, setOwnerMenu] = useState<{ x: number; y: number } | null>(null);
+  const [menu, setMenu] = useState<{ bot: Bot; x: number; y: number; key: number } | null>(null);
   const [archiving, setArchiving] = useState<Bot | null>(null);
   const refs = useRef<Record<string, HTMLButtonElement | null>>({});
 
@@ -270,15 +273,37 @@ export function Sidebar() {
     [api, sync],
   );
 
-  const menuItems = (bot: Bot): MenuItem[] => [
+  const menuItems = (bot: Bot): MenuSection[] => [
     {
-      id: "pin",
-      label: bot.pinned ? "Desafixar" : "Fixar",
-      onSelect: () => void patch(bot, { pinned: !bot.pinned }),
+      id: "bot",
+      items: [
+        {
+          id: "pin",
+          label: bot.pinned ? "Desafixar" : "Fixar",
+          icon: bot.pinned ? PinOff : Pin,
+          onSelect: () => void patch(bot, { pinned: !bot.pinned }),
+        },
+        {
+          id: "group",
+          label: "Mover para grupo…",
+          icon: FolderInput,
+          onSelect: () => ui().setGroupBot(bot.id),
+        },
+        { id: "edit", label: "Editar…", icon: Pencil, onSelect: () => ui().openEditBot(bot.id) },
+      ],
     },
-    { id: "group", label: "Mover para grupo…", onSelect: () => ui().setGroupBot(bot.id) },
-    { id: "edit", label: "Editar…", onSelect: () => ui().openEditBot(bot.id) },
-    { id: "archive", label: "Arquivar…", danger: true, onSelect: () => setArchiving(bot) },
+    {
+      id: "archive",
+      items: [
+        {
+          id: "archive",
+          label: "Arquivar…",
+          icon: Archive,
+          danger: true,
+          onSelect: () => setArchiving(bot),
+        },
+      ],
+    },
   ];
 
   const entry = (bot: Bot, variant: EntryProps["variant"]) => (
@@ -290,114 +315,110 @@ export function Sidebar() {
       tabStop={bot.id === tabStop}
       preview={previewOf(bot)}
       onSelect={() => selectBot(bot.id)}
-      onMenu={(b, x, y) => setMenu({ bot: b, x, y })}
+      onMenu={(b, x, y) => setMenu({ bot: b, x, y, key: popupKey() })}
       setRef={(el) => {
         refs.current[bot.id] = el;
       }}
       onKeyDown={(e) => move(e, bot.id)}
-      {...(variant === "rail"
-        ? {
-            onTip: (box: DOMRect | null) =>
-              setTip(
-                box === null
-                  ? null
-                  : { name: bot.name, x: box.right + 10, y: box.top + box.height / 2 },
-              ),
-          }
-        : {})}
     />
   );
 
-  const ownerItems: MenuItem[] = [
+  // Three groups split by a line: the screens, the app, leaving (owner, 24/11/2026).
+  const ownerItems: MenuSection[] = [
     {
-      id: "pending",
-      label: pending > 0 ? `Pendências (${pending})` : "Pendências",
-      icon: Inbox,
-      onSelect: () => go("pending"),
-    },
-    { id: "memory", label: "Memória", icon: Brain, onSelect: () => go("memory") },
-    { id: "plugins", label: "Conectores", icon: Plug, onSelect: () => go("connectors") },
-    {
-      id: "settings",
-      label: "Configurações",
-      icon: Settings,
-      onSelect: () => ui().openSettings(),
-    },
-    {
-      id: "shortcuts",
-      label: "Atalhos de teclado",
-      icon: Keyboard,
-      onSelect: () => ui().setShortcuts(true),
+      id: "screens",
+      items: [
+        {
+          id: "pending",
+          label: "Pendências",
+          icon: Inbox,
+          ...(pending > 0 ? { hint: String(pending) } : {}),
+          onSelect: () => go("pending"),
+        },
+        { id: "memory", label: "Memória", icon: Brain, onSelect: () => go("memory") },
+        { id: "plugins", label: "Conectores", icon: Plug, onSelect: () => go("connectors") },
+      ],
     },
     {
-      id: "disconnect",
-      label: mode === "local" ? "Trocar de servidor" : "Desconectar",
-      icon: LogOut,
-      danger: true,
-      onSelect: () => void disconnect(),
+      id: "app",
+      items: [
+        {
+          id: "settings",
+          label: "Configurações",
+          icon: Settings,
+          onSelect: () => ui().openSettings(),
+        },
+        {
+          id: "shortcuts",
+          label: "Atalhos de teclado",
+          icon: Keyboard,
+          onSelect: () => ui().setShortcuts(true),
+        },
+      ],
+    },
+    {
+      id: "leave",
+      items: [
+        {
+          id: "disconnect",
+          label: mode === "local" ? "Trocar de servidor" : "Desconectar",
+          icon: LogOut,
+          danger: true,
+          onSelect: () => void disconnect(),
+        },
+      ],
     },
   ];
+  // The account button opens its menu above it, lined up with its start (the menu of sempre).
   const ownerButton = (variant: "bar" | "rail") => (
-    <button
-      type="button"
-      className={cx(
-        "inline-flex items-center rounded-row border-0 bg-transparent transition-colors hover:bg-hover",
-        variant === "bar" ? "min-w-0 flex-1 gap-2.5 py-1.5 pr-3 pl-1.5" : "p-1",
+    <MenuButton
+      label="Sua conta"
+      items={ownerItems}
+      placement="above"
+      align="start"
+      width="normal"
+      trigger={(props) => (
+        <button
+          type="button"
+          {...props}
+          className={cx(
+            "inline-flex items-center rounded-row border-0 bg-transparent transition-colors hover:bg-hover aria-expanded:bg-hover",
+            variant === "bar" ? "min-w-0 flex-1 gap-2.5 py-1.5 pr-3 pl-1.5" : "p-1",
+          )}
+          aria-label={
+            pending > 0 ? `Menu da sua conta (${pending} pendências)` : "Menu da sua conta"
+          }
+          data-testid="owner-menu"
+        >
+          <span
+            className={cx(
+              "relative inline-flex size-avatar-sm flex-none items-center justify-center rounded-pill border border-border-strong bg-raised text-small font-label",
+            )}
+            aria-hidden="true"
+          >
+            V
+            {pending > 0 && (
+              <BotBadge kind="question" data-testid="pending-counter">
+                {pending}
+              </BotBadge>
+            )}
+          </span>
+          {variant === "bar" && <span className="truncate text-label font-label">Você</span>}
+        </button>
       )}
-      aria-haspopup="menu"
-      aria-label={pending > 0 ? `Menu da sua conta (${pending} pendências)` : "Menu da sua conta"}
-      data-testid="owner-menu"
-      onClick={(e) => {
-        const rect = e.currentTarget.getBoundingClientRect();
-        setOwnerMenu({ x: rect.left, y: rect.top - ownerItems.length * 40 - 16 });
-        setTip(null);
-      }}
-    >
-      <span
-        className={cx(
-          "relative inline-flex size-avatar-sm flex-none items-center justify-center rounded-pill border border-border-strong bg-raised text-small font-label",
-        )}
-        aria-hidden="true"
-      >
-        V
-        {pending > 0 && (
-          <BotBadge kind="question" data-testid="pending-counter">
-            {pending}
-          </BotBadge>
-        )}
-      </span>
-      {variant === "bar" && <span className="truncate text-label font-label">Você</span>}
-    </button>
+    />
   );
 
   const popups = (
     <>
-      {collapsed && tip !== null && (
-        <span
-          role="tooltip"
-          className="pointer-events-none fixed z-60 -translate-y-1/2 animate-fade-in rounded-pill border border-border-strong bg-raised px-2.5 py-1 text-small whitespace-nowrap shadow-popover"
-          style={{ left: tip.x, top: tip.y }}
-          data-testid="rail-tip"
-        >
-          {tip.name}
-        </span>
-      )}
-      {ownerMenu !== null && (
-        <PopupMenu
-          x={ownerMenu.x}
-          y={ownerMenu.y}
-          label="Sua conta"
-          items={ownerItems}
-          onClose={() => setOwnerMenu(null)}
-        />
-      )}
       {menu !== null && (
         <PopupMenu
+          key={menu.key}
           x={menu.x}
           y={menu.y}
           label={`Opções de ${menu.bot.name}`}
           items={menuItems(menu.bot)}
-          onClose={() => setMenu(null)}
+          onClose={() => setMenu((m) => (m?.key === menu.key ? null : m))}
         />
       )}
       {archiving !== null && (
@@ -471,11 +492,10 @@ export function Sidebar() {
               className="flex min-h-0 w-full flex-1 animate-fade-in flex-col items-center gap-0.5 overflow-y-auto py-2"
               role="group"
               aria-label="Bots"
-              onScroll={() => setTip(null)}
             >
               {layout.pinned.map((bot) => entry(bot, "rail"))}
               {layout.pinned.length > 0 && flat.length > layout.pinned.length && (
-                <hr className="my-0.5 w-6 border-0 border-t border-border-strong" />
+                <Separator tone="strong" className="my-0.5 w-6" />
               )}
               {flat.filter((b) => !b.pinned).map((bot) => entry(bot, "rail"))}
             </div>

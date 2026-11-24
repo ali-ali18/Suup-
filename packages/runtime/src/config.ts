@@ -86,6 +86,11 @@ const pricingSchema = z.strictObject({
 const modelSchema = z.strictObject({
   id: z.string({ error: "esperado o identificador do modelo (texto)" }).min(1),
   provider: z.string({ error: 'esperado o id de um provedor de "providers"' }).min(1),
+  /**
+   * The short name the app shows for this model (a person's name for it, not the provider's id):
+   * declared here, never derived from the id. Absent: the app shows the id.
+   */
+  name: z.exactOptional(z.string({ error: "esperado o nome curto do modelo (texto)" }).min(1)),
   contextWindow: positiveInt,
   maxOutputTokens: positiveInt,
   pricing: z.exactOptional(pricingSchema),

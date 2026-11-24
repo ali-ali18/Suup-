@@ -24,6 +24,7 @@ export const metaRoutes: Route[] = [
         const status = runtime.keyStatus(model.provider);
         return {
           id: model.id,
+          name: model.name ?? model.id,
           provider: model.provider,
           providerKind: provider?.kind ?? "openai-compatible",
           contextWindow: model.contextWindow,
