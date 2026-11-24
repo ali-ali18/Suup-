@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useLayoutEffect, useMemo } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { sortedBots } from "../../app/selectors.js";
 import { useUi } from "../../app/ui-store.js";
@@ -41,8 +41,10 @@ export function Shell() {
     }
   }, [loaded, selected, bots, list]);
 
-  // Ctrl/Cmd+K opens the command palette from anywhere.
-  useEffect(() => {
+  // Ctrl/Cmd+K opens the command palette from anywhere. Registered before the first paint
+  // (`useLayoutEffect`): the sidebar is on screen as soon as it paints, so a shortcut pressed right
+  // after a reload must already work (it was lost to the gap between paint and a plain effect).
+  useLayoutEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
