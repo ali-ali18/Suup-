@@ -190,20 +190,19 @@ function ChatForBot({ botId }: { botId: string }) {
   );
   // What the user opened, in THIS conversation: another chat starts with every row collapsed.
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
-  // The questions whose card the user closed with its X, to answer in the chat (this conversation,
-  // this session): the card goes away while it waits; answered, it is back in the history.
-  const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set());
   const [composerFocus, setComposerFocus] = useState(0);
   useEffect(() => {
-    if (convId !== null) {
-      setExpanded(new Set());
-      setDismissed(new Set());
-    }
+    if (convId !== null) setExpanded(new Set());
   }, [convId]);
-  const dismissQuestion = useCallback((key: string) => {
-    setDismissed((current) => new Set(current).add(key));
-    setComposerFocus((n) => n + 1);
-  }, []);
+  // The X of a question card: the focus goes to the composer at once (the person will type), and the
+  // server locks the card ("Não respondido") and tells the run (docs/API.md, "Fechar a pergunta").
+  const dismissQuestion = useCallback(
+    (messageId: string) => {
+      setComposerFocus((n) => n + 1);
+      void sync.dismissQuestion(messageId);
+    },
+    [sync],
+  );
   const toggle = useCallback(
     (key: string) =>
       setExpanded((current) => {
@@ -281,7 +280,6 @@ function ChatForBot({ botId }: { botId: string }) {
         aria-label={`Conversa com ${bot.name}`}
       >
         <MessageList
-          dismissed={dismissed}
           onDismissQuestion={dismissQuestion}
           head={
             <button

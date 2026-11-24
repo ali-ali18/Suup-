@@ -87,6 +87,30 @@ describe("QuestionCard: the X (answer in the chat)", () => {
     expect(screen.queryByTestId("question-dismiss")).toBeNull();
   });
 
+  it("closed: in place, the title visible, the options off and unmarked, 'Não respondido', no X", () => {
+    const onSubmit = vi.fn();
+    render(
+      <QuestionCard
+        questions={single}
+        dismissed
+        answer="texto digitado depois"
+        onSubmit={onSubmit}
+        onDismiss={vi.fn()}
+      />,
+    );
+    const card = screen.getByTestId("question-card");
+    expect(card.getAttribute("data-state")).toBe("dismissed");
+    expect(screen.getByTestId("question-text").textContent).toBe("Qual banco?");
+    expect(screen.getByTestId("question-status").textContent).toBe("Não respondido");
+    for (const option of options()) {
+      expect((option as HTMLButtonElement).disabled).toBe(true);
+      expect(option.getAttribute("aria-checked")).toBe("false");
+    }
+    fireEvent.click(options()[0] as HTMLElement);
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("question-dismiss")).toBeNull();
+  });
+
   it("without onDismiss (Pendências) there is no X", () => {
     render(<QuestionCard questions={single} onSubmit={vi.fn()} />);
     expect(screen.queryByTestId("question-dismiss")).toBeNull();

@@ -297,6 +297,11 @@ export {
 export { PgRunQueue } from "./pg-queue.js";
 export { PgRunStore, type PgRunStoreOptions, type RunStatusHook } from "./pg-store.js";
 export {
+  DISMISSED_QUESTION_ANSWER,
+  dismissQuestion,
+  QuestionDismissError,
+} from "./question-dismiss.js";
+export {
   heartbeatRun,
   type RequeueStaleOptions,
   type RunControlState,

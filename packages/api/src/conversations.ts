@@ -34,6 +34,11 @@ export const messageQuestionSchema = z.object({
    * bubble above the card. Absent when the bot only asked (the card's title is the question).
    */
   lead: z.exactOptional(z.string()),
+  /**
+   * The user closed the card with its X (`POST /v1/messages/{id}/dismiss`): no option will be
+   * chosen. The app draws the card locked, "Não respondido"; the run was told and went on.
+   */
+  dismissed: z.exactOptional(z.boolean()),
 });
 export type MessageQuestion = z.infer<typeof messageQuestionSchema>;
 

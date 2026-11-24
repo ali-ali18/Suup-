@@ -79,6 +79,7 @@ import {
   type MarkReadBody,
   type Message,
   messagePageSchema,
+  messageSchema,
   type ReceptionResult,
   receptionResultSchema,
   type SendMessageResult,
@@ -252,6 +253,8 @@ export interface SuupClient {
     markRead(id: string, body?: MarkReadBody): Promise<Conversation>;
     /** The user's decision on a team card (the message that carries it): create the ticked ones, or "Agora não". */
     decideTeam(messageId: string, body: DecideTeamBody): Promise<DecideTeamResult>;
+    /** The X of a question card: no option will be chosen; the run is told and goes on. */
+    dismissQuestion(messageId: string): Promise<Message>;
   };
   runs: {
     list(query?: ListRunsQuery): Promise<{ items: Run[]; hasMore: boolean }>;
@@ -574,6 +577,15 @@ export function createClient(options: ClientOptions): SuupClient {
               ? { text }
               : { text, routineRef: { id: options.routineRef.id } },
         }),
+      dismissQuestion: async (messageId) =>
+        (
+          await call(
+            "POST",
+            `/v1/messages/${id(messageId)}/dismiss`,
+            z.object({ message: messageSchema }),
+            noBody,
+          )
+        ).message,
       decideTeam: (messageId, body) =>
         call("POST", `/v1/messages/${id(messageId)}/team`, decideTeamResultSchema, {
           body,
