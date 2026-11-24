@@ -117,6 +117,7 @@ Um conector **HTTP** não roda num contêiner: quem faz as requisições é o pr
 | Linear | `mcp.linear.app` |
 | Figma | `mcp.figma.com` |
 | Composio | `connect.composio.dev` |
+| Firecrawl | `mcp.firecrawl.dev` |
 
 O **login OAuth** fala também com o servidor de autorização que o próprio servidor MCP anuncia (descoberto na hora, não declarado: depende do serviço). O retorno do login chega em `http://127.0.0.1:<porta>/callback`, uma porta que o **processo do servidor** abre só em `127.0.0.1` enquanto vive.
 

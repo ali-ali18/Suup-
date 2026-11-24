@@ -40,6 +40,7 @@ describe.skipIf(!DATABASE_URL)(
         "stackoverflow",
         "google-workspace",
         "composio",
+        "firecrawl",
       ]);
       const composio = items.find((i) => i.entry.id === "composio");
       expect(composio).toMatchObject({

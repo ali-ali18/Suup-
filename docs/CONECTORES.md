@@ -152,7 +152,7 @@ Lido em 19/11/2026 em https://platform.claude.com/docs/en/agents-and-tools/tool-
 
 ## Busca na web por um conector (opcional)
 
-O Suup traz `web_search` e `web_read` próprios, de código aberto, sem provedor ([BUSCA.md](BUSCA.md)); **nenhum** conector de busca vem pronto nem é padrão. Quem quiser uma busca de um serviço (Brave, Tavily, Exa, Firecrawl...) acrescenta o servidor MCP dele como qualquer conector: `suup connectors add ...` com a chave no cofre (enviada como **cabeçalho**, nunca na URL), os `egressHosts` do serviço (o conector stdio sai só por eles) e a concessão ao bot. As ferramentas dele entram com o nome `conn_<conector>__<ferramenta>` e o nível de risco que **você** marcar. É escolha do usuário, por conta dele; o Suup não depende disso.
+O Suup traz `web_search` e `web_read` próprios, de código aberto, sem provedor ([BUSCA.md](BUSCA.md)); nenhum conector de busca é padrão; o **Firecrawl** vem pronto na galeria, opcional (abaixo). Quem quiser uma busca de um serviço (Brave, Tavily, Exa, Firecrawl...) acrescenta o servidor MCP dele como qualquer conector: `suup connectors add ...` com a chave no cofre (enviada como **cabeçalho**, nunca na URL), os `egressHosts` do serviço (o conector stdio sai só por eles) e a concessão ao bot. As ferramentas dele entram com o nome `conn_<conector>__<ferramenta>` e o nível de risco que **você** marcar. É escolha do usuário, por conta dele; o Suup não depende disso.
 
 ## Conteúdo não confiável e envenenamento de ferramentas
 
@@ -232,6 +232,7 @@ As entradas de hoje:
 | **Stack Overflow** | não verificado | `oauth` | a confirmar: o endereço e o login estão numa documentação que não abriu; beta com 100 chamadas por dia; o `web_search` já consulta o Stack Overflow sem login |
 | **Google Workspace** | não verificado | `oauth_owner_client` | a confirmar: o servidor aberto (`gemini-cli-extensions/workspace`, Apache-2.0) roda como extensão do Gemini CLI e guarda o login no chaveiro do sistema; ainda não há como rodá-lo no contêiner. O passo a passo do app OAuth do dono (projeto no Google Cloud, tela de consentimento em teste com a sua conta, cliente "App para computador") já aparece |
 | **Composio** | `https://connect.composio.dev/mcp` | `token`: a chave em `COMPOSIO_API_KEY`, no cabeçalho `x-consumer-api-key` | pronta, **opcional**, com o aviso de terceiro (abaixo) |
+| **Firecrawl** | remoto oficial `https://mcp.firecrawl.dev/v2/mcp` (servidor MCP MIT) | `token`: a chave `fc-…` em `FIRECRAWL_API_KEY`, no cabeçalho `Authorization: Bearer` (nunca na URL) | pronta, categoria "Pesquisa na web", com aviso de terceiro. Decisão do dono (24/11/2026): pelo MCP quem busca é o serviço deles, não o Suup. `firecrawl_search`, `firecrawl_scrape` e `firecrawl_map` rodam sem cartão (gastam créditos da conta de quem instalou); `firecrawl_interact`, `firecrawl_interact_stop` e `firecrawl_save_skill` nunca são oferecidos; o resto pede cartão. Não é motor da fila de busca ([BUSCA.md](BUSCA.md)) |
 
 **Higgsfield ficou de fora**: endereço, login, licença e preço não puderam ser lidos em nenhuma fonte primária, e as ferramentas gastam créditos; entra quando houver fonte.
 

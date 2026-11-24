@@ -314,6 +314,49 @@ export const CONNECTOR_CATALOG: readonly CatalogEntry[] = [
     disclosure: "Pelo Composio, seus logins ficam guardados na nuvem deles.",
     checkedAt: CHECKED,
   },
+  {
+    id: "firecrawl",
+    name: "Firecrawl",
+    description: "Pesquisar na web e ler páginas pelo serviço do Firecrawl, com a sua conta.",
+    source: "https://github.com/firecrawl/firecrawl-mcp-server",
+    license: "MIT (o servidor MCP); a plataforma é um serviço hospedado",
+    icon: null,
+    availability: "ready",
+    // The official remote server with the key in a header, never in the URL (its README: "Never put
+    // an API key in the server URL"). Owner, 24/11/2026: through MCP it is Firecrawl's service that
+    // searches and reads the pages, with its own proxies, not the Suup; so it is a connector of the
+    // gallery ("Pesquisa na web"), never one of the built-in engines of the search queue
+    // (docs/BUSCA.md). Research: docs/pesquisas/fase-4-busca-alternativas-ao-ddg.md, "Firecrawl".
+    transport: {
+      kind: "http",
+      url: "https://mcp.firecrawl.dev/v2/mcp",
+      headers: { Authorization: { secret: "FIRECRAWL_API_KEY", prefix: "Bearer " } },
+    },
+    auth: {
+      kind: "token",
+      secret: "FIRECRAWL_API_KEY",
+      header: "Authorization",
+      prefix: "Bearer ",
+      steps: [
+        "Crie uma conta grátis no site do Firecrawl (mil créditos por mês, sem cartão).",
+        "Copie a chave de API do painel (começa com fc-) e cole aqui. Ela vai para o cofre; o bot nunca vê o valor.",
+      ],
+    },
+    egressHosts: ["mcp.firecrawl.dev"],
+    // Search, read one page and list a site's pages only read (they spend credits of the person's
+    // account). Everything else asks: crawls, agents, monitors, research.
+    readTools: ["firecrawl_search", "firecrawl_scrape", "firecrawl_map"],
+    writeTools: [],
+    // Never offered: driving a page in a remote browser (clicks, forms, as the person) and saving a
+    // skill on Firecrawl's side.
+    deniedTools: ["firecrawl_interact", "firecrawl_interact_stop", "firecrawl_save_skill"],
+    notes: [
+      "A conta grátis tem mil créditos por mês: uma busca gasta 2 e cada página lida gasta 1.",
+      "Quem busca e lê as páginas são os servidores do Firecrawl, do jeito deles.",
+    ],
+    disclosure: "Pelo Firecrawl, suas buscas e as páginas lidas passam pelos servidores deles.",
+    checkedAt: "2026-11-24",
+  },
 ];
 
 /** The entry with exactly this id, or `undefined`. */
@@ -369,7 +412,7 @@ export interface SearchPluginEntry {
   checkedAt: string;
 }
 
-/** The search engines of the gallery, in the order they are shown. Firecrawl is out (docs/BUSCA.md). */
+/** The search engines of the built-in queue shown as plugins. Firecrawl is a connector of the gallery instead. */
 export const SEARCH_PLUGIN_CATALOG: readonly SearchPluginEntry[] = [
   {
     id: "tavily",

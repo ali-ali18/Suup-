@@ -45,6 +45,7 @@ describe("the backgrounds of the logos: neutral, and FIXED for each connector", 
       stackoverflow: "solid",
       "google-workspace": "neutral",
       composio: "black",
+      firecrawl: "black",
     });
     // a solid tile needs the brand's mark and colour; any other needs the logo of thesvg
     for (const id of APPEARANCE_IDS) {
@@ -65,6 +66,7 @@ describe("the backgrounds of the logos: neutral, and FIXED for each connector", 
       stackoverflow: "sun",
       "google-workspace": "coral",
       composio: "plum",
+      firecrawl: "amber",
     });
     for (const id of APPEARANCE_IDS) expect(BANNERS, id).toContain(appearanceOf(id).banner);
   });

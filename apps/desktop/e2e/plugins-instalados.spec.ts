@@ -169,11 +169,14 @@ test.describe("plugins: the installed list, the plugin's page and the search eng
     const section = page.locator(
       '[data-testid="connectors-section"][data-category="Pesquisa na web"]',
     );
-    await expect(section.getByTestId("connector-item")).toHaveCount(2);
+    // Tavily and Brave (engines of the queue) and Firecrawl (a connector of the gallery, owner 24/11/2026).
+    await expect(section.getByTestId("connector-item")).toHaveCount(3);
     const entry = (id: string) =>
       section.locator(`[data-testid="connector-item"][data-plugin="${id}"]`);
     await expect(entry("tavily")).toContainText("Tavily");
     await expect(entry("brave")).toContainText("Brave Search");
+    await expect(entry("firecrawl")).toContainText("Firecrawl");
+    await expect(entry("firecrawl").locator("img[data-logo='firecrawl']")).toHaveCount(1);
     // Not installed yet: no key.
     await openSettings(page, "Conectores");
     await expect(page.locator('[data-testid="installed-item"][data-plugin="tavily"]')).toHaveCount(

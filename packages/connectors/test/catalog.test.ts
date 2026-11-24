@@ -58,7 +58,12 @@ describe("connector gallery", () => {
       ["stackoverflow", "oauth", "unverified"],
       ["google-workspace", "oauth_owner_client", "unverified"],
       ["composio", "token", "ready"],
+      ["firecrawl", "token", "ready"],
     ]);
+    // Firecrawl is a connector of the gallery (its service searches, owner 24/11/2026), never an
+    // engine of the built-in queue; it never drives a remote browser.
+    expect(catalogEntry("firecrawl")?.egressHosts).toEqual(["mcp.firecrawl.dev"]);
+    expect(catalogEntry("firecrawl")?.deniedTools).toContain("firecrawl_interact");
     // Not verified anywhere: left out.
     expect(catalogEntry("higgsfield")).toBeUndefined();
     // Composio says out loud that a third party keeps the logins.
@@ -137,7 +142,7 @@ describe("search plugins of the gallery", () => {
       expect(entry.description.length).toBeLessThanOrEqual(120);
     }
     expect(searchPluginOf("tavily")?.name).toBe("Tavily");
-    // Firecrawl stays out; an unknown engine has no entry.
+    // Firecrawl is not an engine of the queue (it is a connector); an unknown engine has no entry.
     expect(searchPluginOf("firecrawl")).toBeUndefined();
     expect(searchPluginOf("Tavily")).toBeUndefined();
   });

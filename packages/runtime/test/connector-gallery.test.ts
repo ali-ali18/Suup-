@@ -99,6 +99,7 @@ describe.skipIf(!DATABASE_URL)(
         ["stackoverflow", "unverified"],
         ["google-workspace", "unverified"],
         ["composio", "available"],
+        ["firecrawl", "available"],
       ]);
       expect(items.find((i) => i.entry.id === "google-workspace")?.detail).toContain("Google");
       await expect(rt.connectors.gallery.install("stackoverflow")).rejects.toThrow(

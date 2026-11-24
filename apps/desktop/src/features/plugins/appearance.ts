@@ -1,5 +1,6 @@
 import composio from "../../assets/brand/composio.svg";
 import figma from "../../assets/brand/figma.svg";
+import firecrawl from "../../assets/brand/firecrawl.svg";
 import github from "../../assets/brand/github.svg";
 import google from "../../assets/brand/google.svg";
 import notion from "../../assets/brand/notion.svg";
@@ -177,6 +178,20 @@ const BY_ID: ReadonlyMap<string, Appearance> = new Map<string, Appearance>([
         "Liste as ações disponíveis no app que escolhi.",
       ],
       logo: composio,
+    },
+  ],
+  [
+    "firecrawl",
+    {
+      tone: "black",
+      banner: "amber",
+      category: "Pesquisa na web",
+      examples: [
+        "Pesquise as notícias desta semana sobre energia solar.",
+        "Leia esta página e me resuma os pontos principais.",
+        "Liste as páginas do site de documentação deste projeto.",
+      ],
+      logo: firecrawl,
     },
   ],
 ]);
