@@ -9,7 +9,8 @@ import { X } from "lucide-react";
 import { type KeyboardEvent, useEffect, useId, useRef, useState } from "react";
 import { cx } from "../lib/cx.js";
 import { focusOnAppearance } from "../lib/focus.js";
-import { fieldControlClass, Pill } from "./primitives.js";
+import { Input } from "./input.js";
+import { Pill } from "./primitives.js";
 
 /** The chrome of a chat card (docs/DESIGN.md §3): one border, one radius, the width of reading. */
 const CARD =
@@ -218,12 +219,12 @@ export function QuestionCard({
           </div>
         )}
         {!readOnly && (q.options === undefined || selected.includes(OTHER)) && (
-          <input
-            className={cx("mt-1", fieldControlClass())}
+          <Input
+            className="mt-1"
             aria-label={`Sua resposta para: ${q.question}`}
             placeholder="Escreva a sua resposta"
             value={others[qi] ?? ""}
-            onChange={(e) => setOthers(others.map((v, i) => (i === qi ? e.target.value : v)))}
+            onValueChange={(next) => setOthers(others.map((v, i) => (i === qi ? next : v)))}
             onKeyDown={(e) => {
               if (e.key === "Enter" && quick && (others[qi] ?? "").trim() !== "") {
                 e.preventDefault();

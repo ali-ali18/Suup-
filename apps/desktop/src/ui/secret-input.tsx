@@ -1,7 +1,8 @@
 import { Eye, EyeOff } from "lucide-react";
-import { type Ref, useId, useImperativeHandle, useRef, useState } from "react";
-import { cx } from "../lib/cx.js";
-import { FieldError, FieldHint, fieldControlClass, IconButton } from "./primitives.js";
+import { type Ref, useImperativeHandle, useRef, useState } from "react";
+import { Field, FieldCaption, FieldDescription, FieldMessage } from "./field.js";
+import { Input } from "./input.js";
+import { IconButton } from "./primitives.js";
 
 /** What a screen can do with the field: take the value once, and clear it. It is never held in state. */
 export interface SecretInputHandle {
@@ -42,7 +43,6 @@ export function SecretInput({
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [revealed, setRevealed] = useState(false);
-  const id = useId();
   const emptyRef = useRef(onEmptyChange);
   emptyRef.current = onEmptyChange;
   useImperativeHandle(
@@ -58,18 +58,14 @@ export function SecretInput({
     }),
     [],
   );
-  const describedBy =
-    error !== undefined ? `${id}-err` : hint !== undefined ? `${id}-hint` : undefined;
   return (
-    <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className="text-small text-text-muted">
-        {label}
-      </label>
+    <Field invalid={error !== undefined} disabled={disabled}>
+      <FieldCaption>{label}</FieldCaption>
       <div className="relative flex items-center">
-        <input
+        <Input
           ref={input}
-          id={id}
-          className={cx("flex-1", fieldControlClass({ secret: true, error: error !== undefined }))}
+          className="flex-1"
+          look={{ secret: true, error: error !== undefined }}
           type={revealed ? "text" : "password"}
           autoComplete="off"
           autoCapitalize="off"
@@ -79,11 +75,8 @@ export function SecretInput({
           data-1p-ignore="true"
           data-form-type="other"
           data-testid={testId}
-          disabled={disabled}
           autoFocus={autoFocus}
-          aria-invalid={error !== undefined ? true : undefined}
-          aria-describedby={describedBy}
-          onChange={(e) => onEmptyChange?.(e.currentTarget.value === "")}
+          onValueChange={(text) => onEmptyChange?.(text === "")}
           onKeyDown={(e) => {
             if (e.key === "Enter" && onEnter !== undefined) {
               e.preventDefault();
@@ -107,10 +100,10 @@ export function SecretInput({
         </IconButton>
       </div>
       {error !== undefined ? (
-        <FieldError id={`${id}-err`}>{error}</FieldError>
+        <FieldMessage>{error}</FieldMessage>
       ) : hint !== undefined ? (
-        <FieldHint id={`${id}-hint`}>{hint}</FieldHint>
+        <FieldDescription>{hint}</FieldDescription>
       ) : null}
-    </div>
+    </Field>
   );
 }

@@ -39,10 +39,16 @@ describe("FileCard: a file the bot handed over", () => {
   });
 
   it("while one works, both are off and the one working says so", () => {
-    render(<FileCard file={pdf} canOpen busy="open" onOpen={vi.fn()} onSave={vi.fn()} />);
+    const onOpen = vi.fn();
+    render(<FileCard file={pdf} canOpen busy="open" onOpen={onOpen} onSave={vi.fn()} />);
     const open = screen.getByRole("button", { name: "Abrir" }) as HTMLButtonElement;
-    expect(open.disabled).toBe(true);
+    // the one working is off but keeps the focus (Base UI `focusableWhenDisabled`): aria-disabled, not `disabled`
+    expect(open.getAttribute("aria-disabled")).toBe("true");
+    expect(open.hasAttribute("data-disabled")).toBe(true);
     expect(open.getAttribute("aria-busy")).toBe("true");
+    fireEvent.click(open);
+    expect(onOpen).not.toHaveBeenCalled();
+    // the other one is plainly disabled
     expect((screen.getByRole("button", { name: "Salvar" }) as HTMLButtonElement).disabled).toBe(
       true,
     );

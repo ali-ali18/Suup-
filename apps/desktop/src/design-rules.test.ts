@@ -362,6 +362,72 @@ describe("a base dos componentes: cópias do shadcn base-maia sobre Base UI (doc
     for (const text of [html, app, tokens]) expect(text).not.toContain("fonts.googleapis");
   });
 
+  it("lote 4, rádio: ui/radio.tsx é a cópia sobre o Base UI (botão nativo, label irmão) e nenhuma tela escreve role=radio na mão", () => {
+    const radio = read(join(SRC, "ui", "radio.tsx"));
+    expect(radio).toContain('from "@base-ui/react/radio"');
+    expect(radio).toContain('from "@base-ui/react/radio-group"');
+    expect(radio).toContain("nativeButton");
+    expect(radio).toContain("htmlFor={id}");
+    // the owner's rule: on is filled with the text colour, with the inverted dot (not shadcn's primary)
+    expect(radio).toContain("data-checked:bg-text");
+    expect(radio).toContain("bg-text-inverse");
+    // the old hand-made pieces are gone
+    const choice = read(join(SRC, "ui", "choice.tsx"));
+    for (const name of ["ChoiceGroup", "ChoiceRow", 'type="radio"', "radio = false"])
+      expect(choice, name).not.toContain(name);
+    expect(read(join(SRC, "features", "shell", "GroupDialog.tsx"))).toContain("<RadioRow");
+    // only the question card (its own keys A to F: Option and its group) still draws a radio by hand
+    const handMade = files(SRC, /\.tsx$/)
+      .filter((f) => !f.endsWith(".test.tsx") && read(f).includes('role="radio"'))
+      .map(rel)
+      .sort();
+    expect(handMade).toEqual(["ui/primitives.tsx", "ui/question-card.tsx"]);
+  });
+
+  it("lote 4, campo: Field e Input são as cópias sobre o Base UI; o TextField e o SecretInput os usam e o inválido vem da tela", () => {
+    const field = read(join(SRC, "ui", "field.tsx"));
+    expect(field).toContain('from "@base-ui/react/field"');
+    expect(field).toContain("invalid={invalid === true}");
+    expect(field).toContain('role="alert"');
+    const input = read(join(SRC, "ui", "input.tsx"));
+    expect(input).toContain('from "@base-ui/react/input"');
+    expect(input).toContain("export function fieldControlClass");
+    // the screen decides what is wrong: Base UI's own validation is never switched on
+    for (const file of files(SRC, /\.tsx$/).filter((f) => !f.endsWith(".test.tsx"))) {
+      const source = read(file);
+      expect(source, rel(file)).not.toContain("validationMode");
+      expect(source, rel(file)).not.toContain("pattern=");
+    }
+    const primitives = read(join(SRC, "ui", "primitives.tsx"));
+    const text = primitives.slice(primitives.indexOf("export function TextField"));
+    expect(text.slice(0, text.indexOf("\n}\n"))).toContain("<Field invalid={error !== undefined}");
+    expect(read(join(SRC, "ui", "secret-input.tsx"))).toContain(
+      "<Field invalid={error !== undefined}",
+    );
+    expect(read(join(SRC, "ui", "secret-input.tsx"))).toContain("<Input");
+  });
+
+  it("lote 4, botão: Pill, RoundButton e IconButton desenham pelo Button do Base UI; só o ocupado fica focável", () => {
+    const button = read(join(SRC, "ui", "button.tsx"));
+    expect(button).toContain('from "@base-ui/react/button"');
+    expect(button).toContain("focusableWhenDisabled={busy}");
+    expect(button).not.toContain("cva(");
+    const primitives = read(join(SRC, "ui", "primitives.tsx"));
+    for (const name of ["Pill", "RoundButton", "IconButton"]) {
+      const from = primitives.indexOf(`export function ${name}`);
+      const body = primitives.slice(from, primitives.indexOf("\n}\n", from));
+      expect(body, name).toContain("<Button");
+      expect(body, name).not.toContain("<button");
+    }
+    // the public props stay
+    expect(primitives).toContain("tone?: PillTone;");
+    expect(primitives).toContain("label: string;");
+    // never `focusableWhenDisabled` outside the busy rule: a plain disabled button stays `disabled`
+    for (const file of files(SRC, /\.tsx$/).filter((f) => !f.endsWith(".test.tsx")))
+      if (!file.endsWith("button.tsx"))
+        expect(read(file), rel(file)).not.toContain("focusableWhenDisabled");
+  });
+
   it("lote 1: o interruptor, a dica e o popover são as cópias sobre o Base UI", () => {
     const sw = read(join(SRC, "ui", "switch.tsx"));
     expect(sw).toContain('from "@base-ui/react/switch"');
@@ -1325,7 +1391,7 @@ describe("conectores: a tela da vitrine (docs/DESIGN.md 5d)", () => {
     expect(screen).toContain("<SearchField");
     // the search and the blocks of the page take the colour of the chat input (bg-raised), not a bordered surface
     expect(read(join(SRC, "ui", "primitives.tsx"))).toContain(
-      "fieldControlClass({ search: true, raised: true })",
+      "look={{ search: true, raised: true }}",
     );
     expect(screen).not.toContain("border border-border bg-surface");
     expect(screen).toContain('className="max-w-search"');
