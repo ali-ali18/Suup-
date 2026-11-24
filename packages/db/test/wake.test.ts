@@ -62,6 +62,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("migration 0019: waiting_timer"), () 
       "0029_routine_reminders.sql",
       "0030_files.sql",
       "0031_web_search_usage.sql",
+      "0032_secrets_managed_by.sql",
     ]);
     for (const file of held) await rm(join(dir, file));
     await migrate(ctx.db, dir);

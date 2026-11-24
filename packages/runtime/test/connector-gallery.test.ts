@@ -200,8 +200,24 @@ describe.skipIf(!DATABASE_URL)(
 
       // The tokens are in the vault (by name), and their values are nowhere in plain text.
       const names = oauthSecretNames("fakeauth");
-      const vaultNames = (await rt.vault.list()).map((s) => s.name);
+      const vaultNames = (await rt.vault.list({ includeManaged: true })).map((s) => s.name);
       expect(vaultNames).toEqual(expect.arrayContaining([names.access, names.refresh]));
+      // They are the connector's own: the owner's list does not show them, and no bot can get them.
+      const ownerNames = (await rt.vault.list()).map((s) => s.name);
+      for (const name of Object.values(names)) expect(ownerNames).not.toContain(name);
+      const grantee = await createBot(rt.db, {
+        name: "grantee",
+        modelProvider: "script",
+        modelId: "model-s",
+      });
+      await expect(rt.vault.grant(names.access, grantee.id)).rejects.toThrow(
+        "login de um conector",
+      );
+      await expect(rt.vault.set(names.access, "outro-valor-qualquer")).rejects.toThrow(
+        "login de um conector",
+      );
+      expect(await rt.vault.remove(names.access)).toBe(false);
+      expect(await rt.vault.infoFor(grantee.id)).toEqual([]);
       const [access] = server.validAccessTokens();
       const [refresh] = server.validRefreshTokens();
       expect(access).toBeDefined();

@@ -1,5 +1,7 @@
 // Owns where a connector's OAuth login is kept: the access token, the refresh token and the client
-// secret in the VAULT (encrypted, known to the redactor the moment they are written), everything
+// secret in the VAULT (encrypted, known to the redactor the moment they are written, and marked
+// `managed_by` that connector: they are the connector's own, never listed with the owner's
+// secrets nor granted to a bot), everything
 // else (public metadata, the client without its secret, expiry and scope) in `connector_oauth`.
 // Nothing of it goes to the connector's configuration, an event, a log or an API response.
 import type { OAuthStore, StoredOAuth } from "@suup/connectors";
@@ -27,7 +29,7 @@ export function oauthSecretNames(connector: string): {
 }
 
 const description = (connector: string): string =>
-  `Login OAuth do conector ${connector}. O Suup cuida dele: não conceda a bots.`;
+  `Login OAuth do conector ${connector}, guardado pelo próprio conector.`;
 
 type Json = Record<string, unknown>;
 
@@ -37,7 +39,7 @@ export function vaultOAuthStore(db: () => Db, vault: Vault, connector: string): 
   let known: Record<string, string | undefined> = {};
 
   const readSecrets = async (): Promise<Record<string, string | undefined>> => {
-    const have = new Set((await vault.list()).map((s) => s.name));
+    const have = new Set((await vault.list({ includeManaged: true })).map((s) => s.name));
     const wanted = Object.values(names).filter((n) => have.has(n));
     const values = wanted.length === 0 ? {} : await vault.resolveForConnector(wanted);
     known = { ...values };
@@ -46,8 +48,9 @@ export function vaultOAuthStore(db: () => Db, vault: Vault, connector: string): 
 
   const put = async (name: string, value: string | undefined): Promise<void> => {
     if (known[name] === value) return;
-    if (value === undefined) await vault.remove(name);
-    else await vault.set(name, value, { description: description(connector) });
+    if (value === undefined) await vault.remove(name, { managedBy: connector });
+    else
+      await vault.set(name, value, { description: description(connector), managedBy: connector });
     known[name] = value;
   };
 
@@ -106,9 +109,6 @@ export function vaultOAuthStore(db: () => Db, vault: Vault, connector: string): 
 /** Removes every trace of a connector's login: the vault secrets and the row. */
 export async function forgetOAuth(db: () => Db, vault: Vault, connector: string): Promise<void> {
   const names = oauthSecretNames(connector);
-  const have = new Set((await vault.list()).map((s) => s.name));
-  for (const name of Object.values(names)) {
-    if (have.has(name)) await vault.remove(name);
-  }
+  for (const name of Object.values(names)) await vault.remove(name, { managedBy: connector });
   await deleteConnectorOAuth(db(), connector);
 }

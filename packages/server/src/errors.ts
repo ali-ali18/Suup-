@@ -6,6 +6,7 @@ import {
   RuleError,
   RunControlError,
   RunNotFoundError,
+  SecretManagedError,
   SecretNotFoundError,
   WrittenRuleError,
 } from "@suup/db";
@@ -149,6 +150,9 @@ export function toHttpError(error: unknown): HttpError {
     return new HttpError(error.code === "not_found" ? "not_found" : "conflict", error.message, {
       cause: error,
     });
+  }
+  if (error instanceof SecretManagedError) {
+    return new HttpError("invalid_request", error.message, { cause: error });
   }
   if (error instanceof SecretNotFoundError) {
     return new HttpError("not_found", error.message, { cause: error });

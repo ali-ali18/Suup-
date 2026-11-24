@@ -366,10 +366,10 @@ Só **escrita**: não existe rota nem campo que devolva um valor. O que é e o q
 |---|---|---|
 | `GET /v1/vault` | | `200 { configured, ok, keyEnv, reason }`: o servidor consegue guardar segredos? `configured`: a seção `vault` está na configuração; `ok`: a chave existe no ambiente e é válida; `keyEnv`: o **nome** da variável (nunca a chave); `reason`: o que falta, em português. O app usa para avisar antes de tentar escrever |
 | `GET /v1/web-search` | | `200 { enabled, providers: [{ id, label, position, state, retryInSeconds?, searchesThisMonth, keyNames? }] }`: os motores da **busca geral** (Tavily, Brave) na ordem em que são tentados. `state`: `ready`, `no_key`, `quota` (cota do mês usada), `key_rejected`, `unavailable` ou `off`; `searchesThisMonth`: quantas buscas o motor respondeu no mês (UTC; nunca o texto de uma busca); `keyNames.secret`: o nome do segredo do cofre onde a chave entra (`PUT /v1/secrets/{nome}`), `keyNames.env`: a variável de ambiente que o servidor também lê. Nunca devolve uma chave. Não inicia nada |
-| `GET /v1/secrets` | | `200 { items: [Secret] }` |
+| `GET /v1/secrets` | | `200 { items: [Secret] }`: só os segredos do dono para os bots; o login OAuth de um conector (`SUUP_OAUTH_*`, marcado `managed_by`) **não** entra |
 | `PUT /v1/secrets/{nome}` | `{ value, description?, grantBotIds? }` | `200 Secret`. Cria ou **substitui** o valor (as concessões ficam); `value` de 8 a 16 384 caracteres; `400`; `503` |
 | `DELETE /v1/secrets/{nome}` | | `200 { deleted: true }`; `404` |
-| `PUT /v1/secrets/{nome}/grants/{botId}` | | `200 Secret`: o bot passa a poder usar; `404` |
+| `PUT /v1/secrets/{nome}/grants/{botId}` | | `200 Secret`: o bot passa a poder usar; `404`; `400` se o segredo é o login de um conector (nunca se concede) |
 | `DELETE /v1/secrets/{nome}/grants/{botId}` | | `200 Secret`: o bot deixa de poder; `404` |
 | `GET /v1/runs/{id}/secret-request` | | `200 { request: { runId, botId, name, reason } \| null }`: o segredo que a execução (em `waiting_user`) pediu com `request_secret` |
 | `POST /v1/runs/{id}/secret-request/answer` | `{ value?, declined?, description? }` | `200 { name, provided }`. O valor vai **direto ao cofre**, o bot é concedido e a execução volta à fila; o modelo só fica sabendo que o segredo está disponível. `409` se a execução não espera um segredo |
@@ -421,7 +421,7 @@ A galeria é uma lista fixa de serviços que o dono aprovou, declarada no servid
 
 `CatalogItem`: `entry` (`id`, que é também o nome do conector; `name`; `description` (uma linha); `source` (URL oficial); `license`; `icon` (um *slug* do Simple Icons para o logo, ou `null`); `availability` (`ready` ou `unverified`, com `unverifiedReason`); `transport` (o fixo da entrada, ou `null` quando é isso que falta verificar); `auth` (`{ kind: "oauth", scopes }`, `{ kind: "token", secret, header, prefix, steps }` ou `{ kind: "oauth_owner_client", steps }`); `egressHosts`; `readTools` e `writeTools` (nomes exatos); `notes`; `disclosure` (aviso de terceiro, ou `null`); `checkedAt`), `status` (`available`, `unverified`, `needs_login`, `needs_secret`, `connected`, `off`, `error`), `connector` (o nome do conector instalado, ou `null`), `detail` (o motivo do erro ou o que falta) e `login` (`{ flowId, expiresAt }` enquanto um login espera, ou `null`).
 
-Os tokens de acesso e de renovação e a chave secreta do cliente ficam no cofre como `SUUP_OAUTH_<CONECTOR>_ACCESS`, `_REFRESH` e `_CLIENT_SECRET` (aparecem em `GET /v1/secrets` só pelo nome); nenhuma resposta, evento ou registro traz o valor. O cliente da API: `api.connectorCatalog.list/install` e `api.connectors.oauthStart/oauthStatus/oauthComplete/oauthDisconnect`.
+Os tokens de acesso e de renovação e a chave secreta do cliente ficam no cofre como `SUUP_OAUTH_<CONECTOR>_ACCESS`, `_REFRESH` e `_CLIENT_SECRET` (**não** aparecem em `GET /v1/secrets`: são do conector, marcados `managed_by`, e não se concedem a bots); nenhuma resposta, evento ou registro traz o valor. O cliente da API: `api.connectorCatalog.list/install` e `api.connectors.oauthStart/oauthStatus/oauthComplete/oauthDisconnect`.
 
 Sem tempo real próprio: o app lê de novo depois de escrever. `GET /v1/doctor` ganha uma linha `Conector <nome>` por conector ligado (e, numa instalação em que a API não roda os bots, diz que não verificou).
 

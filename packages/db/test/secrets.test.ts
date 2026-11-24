@@ -13,6 +13,7 @@ import {
   putSecret,
   replaceSecretCipher,
   revokeSecret,
+  SecretManagedError,
   SecretNotFoundError,
 } from "../src/index.js";
 import { DATABASE_URL, dbSuiteName, useIsolatedDb } from "./helpers.js";
@@ -42,6 +43,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("the vault's rows"), () => {
       "id",
       "keyId",
       "lastUsedAt",
+      "managedBy",
       "name",
       "updatedAt",
     ]);
@@ -134,5 +136,30 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("the vault's rows"), () => {
         keyId: "k",
       }),
     ).rejects.toThrow();
+  });
+
+  it("a secret a connector keeps is hidden, never granted, never edited by the owner", async () => {
+    const bot = await newBot("managed-owner");
+    await putSecret(ctx.db, { name: "SUUP_OAUTH_X_ACCESS", managedBy: "x", ...cipher() });
+    await putSecret(ctx.db, { name: "OWNERS_OWN", ...cipher() });
+    expect((await listSecrets(ctx.db)).map((s) => s.name)).not.toContain("SUUP_OAUTH_X_ACCESS");
+    expect((await listSecrets(ctx.db)).map((s) => s.name)).toContain("OWNERS_OWN");
+    expect(
+      (await listSecrets(ctx.db, { includeManaged: true })).find(
+        (s) => s.name === "SUUP_OAUTH_X_ACCESS",
+      )?.managedBy,
+    ).toBe("x");
+    await expect(grantSecret(ctx.db, "SUUP_OAUTH_X_ACCESS", bot.id)).rejects.toThrow(
+      SecretManagedError,
+    );
+    await expect(putSecret(ctx.db, { name: "SUUP_OAUTH_X_ACCESS", ...cipher() })).rejects.toThrow(
+      SecretManagedError,
+    );
+    await expect(
+      putSecret(ctx.db, { name: "OWNERS_OWN", managedBy: "x", ...cipher() }),
+    ).rejects.toThrow(SecretManagedError);
+    expect(await deleteSecret(ctx.db, "SUUP_OAUTH_X_ACCESS")).toBe(false);
+    expect(await deleteSecret(ctx.db, "SUUP_OAUTH_X_ACCESS", "y")).toBe(false);
+    expect(await deleteSecret(ctx.db, "SUUP_OAUTH_X_ACCESS", "x")).toBe(true);
   });
 });

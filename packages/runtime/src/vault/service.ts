@@ -76,9 +76,18 @@ export interface Vault {
   readonly settings: VaultSettings | undefined;
   status(): VaultStatus;
   /** Creates or replaces a secret. The value is never returned. */
-  set(name: string, value: string, options?: { description?: string }): Promise<SecretMeta>;
-  list(): Promise<SecretMeta[]>;
-  remove(name: string): Promise<boolean>;
+  set(
+    name: string,
+    value: string,
+    options?: { description?: string; managedBy?: string },
+  ): Promise<SecretMeta>;
+  /**
+   * The owner's secrets: the ones for bots. What a connector keeps for its own login (OAuth
+   * tokens, `managedBy` set) is left out unless `includeManaged` is asked for.
+   */
+  list(options?: { includeManaged?: boolean }): Promise<SecretMeta[]>;
+  /** Removes the owner's secret, or (with `managedBy`) one that connector keeps. */
+  remove(name: string, options?: { managedBy?: string }): Promise<boolean>;
   grant(name: string, botId: string): Promise<void>;
   revoke(name: string, botId: string): Promise<boolean>;
   /** The secrets a bot may use, for the model (names and descriptions). */
@@ -218,15 +227,16 @@ export function createVault(db: () => Db, env: Env, settings: VaultSettings | un
       const meta = await putSecret(db(), {
         name,
         ...(options.description === undefined ? {} : { description: options.description }),
+        ...(options.managedBy === undefined ? {} : { managedBy: options.managedBy }),
         ...sealed,
       });
       // From this instant the value is scrubbed from everything this process writes.
       redactor.add(name, value);
       return meta;
     },
-    list: () => listSecrets(db()),
-    async remove(name) {
-      const gone = await deleteSecret(db(), name);
+    list: (options) => listSecrets(db(), options),
+    async remove(name, options = {}) {
+      const gone = await deleteSecret(db(), name, options.managedBy ?? null);
       if (gone) loadedAt = 0; // reload (without it) at the next refresh
       return gone;
     },

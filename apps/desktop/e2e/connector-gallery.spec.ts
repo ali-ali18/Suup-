@@ -161,6 +161,8 @@ test.describe("the connectors screen, wired to the server's gallery", () => {
     await expect(tab.locator("body")).toContainText("Login feito");
     await tab.close();
     expect((await world.api.connectors.get(FAKE_ID)).enabled).toBe(true);
+    // The login tokens are the connector's own: the Cofre never lists them.
+    expect((await world.api.vault.list()).filter((s) => s.name.includes("OAUTH"))).toEqual([]);
     await page.screenshot({ path: `${SHOTS}/24d-conectores-conectado.png` });
 
     // Desconectar asks first.

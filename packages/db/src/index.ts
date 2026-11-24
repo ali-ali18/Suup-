@@ -394,6 +394,7 @@ export {
   putSecret,
   replaceSecretCipher,
   revokeSecret,
+  SecretManagedError,
   type SecretMeta,
   SecretNotFoundError,
   type SecretRow,
