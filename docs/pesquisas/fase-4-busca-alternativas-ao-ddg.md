@@ -10,39 +10,46 @@ Quais são os jeitos **legítimos** (sem resolver captcha, sem rodízio de IP, s
 
 ## Fontes
 
-Acesso a todas em **24/11/2026**. Nesta máquina quase todo host é bloqueado (falha de DNS): `brave.com`, `www.tavily.com`, `exa.ai`, `help.kagi.com`, `www.mojeek.com` e `developers.google.com` foram tentados e **não abriram**. Só `raw.githubusercontent.com` respondeu. Por isso há **dois níveis de fonte**, e cada fato abaixo diz de qual veio:
+### Leitura de 24/11/2026 (esta revisão)
 
-- **[lido]**: texto original lido por inteiro (repositórios oficiais no GitHub, via `raw.githubusercontent.com`).
-- **[resumo]**: página **oficial** (documentação, preços, termos do próprio serviço) que apareceu na ferramenta de busca, mas que **não foi aberta**: o que se tem é o resumo que a ferramenta fez dela. É mais fraco que [lido]; os números devem ser conferidos na página antes de cobrar o usuário ou escrever código. Resumos de páginas de terceiros (blogs, agregadores) **não entram** como fato.
+Acesso em **24/11/2026**. Nesta revisão, a maioria dos hosts **abriu** (a nota anterior dizia que quase tudo estava bloqueado por DNS; isso não se repetiu). Páginas lidas, com URL:
 
-### [lido] Repositórios oficiais
+- Brave, página do produto (com os planos de preço e exemplos de parâmetros): https://brave.com/search/api/ (mesmo conteúdo de https://api-dashboard.search.brave.com, que responde igual).
+- Brave, termos da API (cache, armazenamento, atribuição, uso proibido): https://api-dashboard.search.brave.com/terms-of-service
+- Tavily, documentação (página inicial apenas): https://docs.tavily.com
+- Exa, documentação (página inicial apenas): https://docs.exa.ai
+- Exa, preços: https://exa.ai/pricing
+- Kagi, central de ajuda (página inicial; **não traz preço da API**): https://help.kagi.com
+- Mojeek, página inicial: https://www.mojeek.com ; Web Search API: https://www.mojeek.com/services/search/web-search-api/ ; planos: https://www.mojeek.com/services/api.html ; parâmetros da busca: https://www.mojeek.com/support/api/search/request_parameters.html ; termos do site: https://www.mojeek.com/about/terms.html
+- Marginalia, sobre: https://about.marginalia-search.com ; documentação da API: https://about.marginalia-search.com/article/api
+- Google, visão geral da Custom Search JSON API: https://developers.google.com/custom-search/v1/overview
+- DuckDuckGo, termos de serviço: https://duckduckgo.com/terms
 
-- Kagi, documentação oficial (fonte de `help.kagi.com`), repositório `kagisearch/kagi-docs`, ramo `main`:
-  - "Quick Start" da API: https://raw.githubusercontent.com/kagisearch/kagi-docs/main/docs/kagi/api/overview.md
-  - "Search API": https://raw.githubusercontent.com/kagisearch/kagi-docs/main/docs/kagi/api/search.md
-  - "API Portal": https://raw.githubusercontent.com/kagisearch/kagi-docs/main/docs/kagi/api/api-portal.md
-- SearXNG, módulos de motor e configuração padrão, ramo `master`:
-  - `searx/engines/duckduckgo.py`: https://raw.githubusercontent.com/searxng/searxng/master/searx/engines/duckduckgo.py
-  - `searx/engines/mojeek.py`: https://raw.githubusercontent.com/searxng/searxng/master/searx/engines/mojeek.py
-  - `searx/engines/qwant.py`: https://raw.githubusercontent.com/searxng/searxng/master/searx/engines/qwant.py
-  - `searx/engines/marginalia.py`: https://raw.githubusercontent.com/searxng/searxng/master/searx/engines/marginalia.py
-  - `searx/engines/braveapi.py`: https://raw.githubusercontent.com/searxng/searxng/master/searx/engines/braveapi.py
-  - `searx/engines/mwmbl.py`: https://raw.githubusercontent.com/searxng/searxng/master/searx/engines/mwmbl.py
-  - `searx/settings.yml`: https://raw.githubusercontent.com/searxng/searxng/master/searx/settings.yml
-- SearXNG, `searx/engines/duckduckgo.py` **na versão fixada pelo Suup** (commit `541c6c3cb`): https://raw.githubusercontent.com/searxng/searxng/541c6c3cb/searx/engines/duckduckgo.py
-- Marginalia Search, modelo da resposta da API (`ApiSearchResults.java`): https://raw.githubusercontent.com/MarginaliaSearch/MarginaliaSearch/master/code/services-application/api-service/java/nu/marginalia/api/model/ApiSearchResults.java
+**Não lidos (bloqueio ou fora do pedido):**
 
-### [resumo] Páginas oficiais vistas só pelo resumo da busca
+- `https://www.tavily.com/pricing` e `https://www.tavily.com/terms`: **recusados pela proxy de saída** com HTTP 403 ("host não permitido para esta sessão"). `https://tavily.com/pricing` e `https://tavily.com/terms` não abriram (sem conexão). **Não foi feita nenhuma tentativa de contornar.** Por isso a Tavily fica sem preço e sem termos lidos.
+- `https://api-dashboard.search.brave.com/app/documentation/web-search/rate-limiting`: 404 (página inexistente, não bloqueio). `https://brave.com/terms-of-service/`: 404.
+- `https://kagi.com/api/pricing`: não foi pedido nesta revisão; o preço da Kagi continua vindo do repositório oficial (abaixo).
+- `https://duckduckgo.com/acceptable-use`: linkada pelos termos, não foi pedida; não lida.
+- Termos da Exa (`exa.ai/terms`) e subpáginas de `docs.tavily.com` e `docs.exa.ai` (limites, créditos, parâmetros): só se vê o menu; não lidos.
 
-- Brave: documentação de preços, https://api-dashboard.search.brave.com/documentation/pricing ; planos, https://api-dashboard.search.brave.com/app/plans?tab=normal ; parâmetros da busca web, https://api-dashboard.search.brave.com/app/documentation/web-search/query ; termos de serviço, https://api-dashboard.search.brave.com/terms-of-service ; página do produto, https://brave.com/search/api
-- Tavily: créditos da API, https://docs.tavily.com/documentation/api-credits ; referência do endpoint de busca, https://docs.tavily.com/api-reference/endpoint/search ; boas práticas, https://docs.tavily.com/documentation/best-practices/best-practices-search
-- Exa: preços, https://exa.ai/docs/reference/pricing e https://exa.ai/pricing ; tipos de busca e latência, https://exa.ai/docs/changelog/new-fast-search-type e https://exa.ai/blog/fastest-search-api ; filtro de localização, https://exa.ai/docs/changelog/geolocation-filter-support
-- Kagi: preços da API, https://kagi.com/api/pricing
-- Mojeek: Web Search API, https://www.mojeek.com/services/search/web-search-api/ ; planos da API, https://www.mojeek.com/services/api.html ; termos do site, https://mojeek.com/about/terms.html ; termos de anúncios, https://www.mojeek.com/ads/terms/
-- Marginalia: documentação da API, https://about.marginalia-search.com/article/api
-- Google: visão geral da Custom Search JSON API, https://developers.google.com/custom-search/v1/overview ; blog oficial do Programmable Search Engine, https://programmablesearchengine.googleblog.com/2026/ ; blog do Google sobre o processo contra a SerpApi (19/12/2025), https://blog.google/technology/safety-security/serpapi-lawsuit/
-- Microsoft: aviso de aposentadoria das Bing Search APIs, https://learn.microsoft.com/en-us/lifecycle/announcements/bing-search-api-retirement
-- DuckDuckGo: termos, https://duckduckgo.com/terms ; política de uso aceitável, https://duckduckgo.com/acceptable-use ; termos do Duck.ai, https://duckduckgo.com/duckai/privacy-terms ; ajuda sobre respostas instantâneas, https://duckduckgo.com/duckduckgo-help-pages/features/instant-answers-and-other-features
+### Repositórios oficiais (leitura da revisão anterior, mantida)
+
+Lidos via `raw.githubusercontent.com`:
+
+- Kagi, documentação oficial (`kagisearch/kagi-docs`, ramo `main`): "Quick Start" https://raw.githubusercontent.com/kagisearch/kagi-docs/main/docs/kagi/api/overview.md ; "Search API" https://raw.githubusercontent.com/kagisearch/kagi-docs/main/docs/kagi/api/search.md ; "API Portal" https://raw.githubusercontent.com/kagisearch/kagi-docs/main/docs/kagi/api/api-portal.md
+- SearXNG, módulos de motor e configuração padrão (ramo `master`): `duckduckgo.py`, `mojeek.py`, `qwant.py`, `marginalia.py`, `braveapi.py`, `mwmbl.py` e `settings.yml`, em https://raw.githubusercontent.com/searxng/searxng/master/searx/engines/ e https://raw.githubusercontent.com/searxng/searxng/master/searx/settings.yml
+- SearXNG, `duckduckgo.py` na versão fixada pelo Suup (commit `541c6c3cb`): https://raw.githubusercontent.com/searxng/searxng/541c6c3cb/searx/engines/duckduckgo.py
+- Marginalia Search, modelo da resposta (`ApiSearchResults.java`): https://raw.githubusercontent.com/MarginaliaSearch/MarginaliaSearch/master/code/services-application/api-service/java/nu/marginalia/api/model/ApiSearchResults.java
+
+### [resumo] Vistas só pelo resumo da busca (não abertas)
+
+- Brave: documentação de preços e de parâmetros da busca web, https://api-dashboard.search.brave.com/documentation/pricing e https://api-dashboard.search.brave.com/app/documentation/web-search/query
+- Tavily: créditos e preço por crédito (`US$ 0,008`), https://docs.tavily.com/documentation/api-credits ; endpoint de busca, https://docs.tavily.com/api-reference/endpoint/search
+- Exa: latência (números da própria Exa), https://exa.ai/blog/fastest-search-api e https://exa.ai/docs/changelog/new-fast-search-type ; filtro de localização, https://exa.ai/docs/changelog/geolocation-filter-support
+- Google: blog do Programmable Search Engine, https://programmablesearchengine.googleblog.com/2026/ ; processo contra a SerpApi, https://blog.google/technology/safety-security/serpapi-lawsuit/
+- Microsoft: aposentadoria das Bing Search APIs, https://learn.microsoft.com/en-us/lifecycle/announcements/bing-search-api-retirement
+- DuckDuckGo: termos do Duck.ai, https://duckduckgo.com/duckai/privacy-terms
 - Qwant: páginas legais, https://about.qwant.com/en/legal/confidentialite/
 
 ## Fatos verificados
@@ -50,145 +57,185 @@ Acesso a todas em **24/11/2026**. Nesta máquina quase todo host é bloqueado (f
 ### 1. DuckDuckGo
 
 - **[lido] O próprio módulo do SearXNG descreve um "bot blocker".** Na versão fixada (`541c6c3cb`) e no `master`: o `User-Agent` "is generated by the WEB-client and are checked by DDG's bot blocker"; "it is possible that certain UA headers (such as curl) are filtered"; "In DDG's bot blocker, the IP will be blocked (DDG does not have a client session!)"; houve "changes to the bot blocker in the period of Q3/Q4 2025: in the past, the IP blocking was implemented as a 'sliding window' (unblock after about 1 hour without requests from this IP)". Os campos do formulário são "reverse-engineered from DDG-html and may be subject to additional bot detection mechanisms".
-- **[lido] O `master` do SearXNG passou a se disfarçar de navegador** para o DuckDuckGo: `params["impersonate"] = "firefox"` (biblioteca `curl_cffi`, que imita a impressão digital TLS de um navegador), mais `Sec-Fetch-*` e `Referer` "to simulate the behavior of a real browser session". A versão fixada ainda usa `_HTTP_User_Agent` (que o Suup troca pelo nome honesto), sem `impersonate`.
+- **[lido] O `master` do SearXNG passou a se disfarçar de navegador** para o DuckDuckGo: `params["impersonate"] = "firefox"` (biblioteca `curl_cffi`), mais `Sec-Fetch-*` e `Referer` "to simulate the behavior of a real browser session". A versão fixada ainda usa `_HTTP_User_Agent`, sem `impersonate`.
 - **[lido]** Ao ver o captcha, o módulo levanta `SearxEngineCaptchaException(suspended_time=0, ...)` (comentário: "set suspend time to zero is OK --> ddg does not block the IP").
-- **[resumo] Termos.** Os termos do DuckDuckGo mandam seguir a política de uso aceitável; o trecho visto da política fala de invadir, embutir os serviços em outros e interferir na integridade ou no desempenho, sem citar busca automática. Os termos do **Duck.ai** proíbem "automated querying" e contornar limites de ritmo, mas valem para o Duck.ai. O texto inteiro dos termos e da política **não foi lido**.
-- **[resumo] API oficial.** A ajuda do DuckDuckGo descreve as "Instant Answers" como respostas mostradas acima dos resultados. Nenhuma página oficial de uma API de **resultados web** foi encontrada. (Que a API de respostas instantâneas não devolve a lista de links vem de fontes de terceiros, não da página oficial.)
-- **Declaração oficial sobre captcha em IP residencial: não encontrada.** As páginas oficiais achadas sobre robôs tratam só dos rastreadores do próprio DuckDuckGo (DuckDuckBot, DuckAssistBot).
+- **[lido] Termos de serviço do DuckDuckGo (https://duckduckgo.com/terms, lidos em 24/11/2026).** Dizem que "We expect you to use our Services as authorized, or we may otherwise suspend access" e que é preciso "comply with the DuckDuckGo Acceptable Use Policy". **Não há cláusula sobre busca automática no texto lido.** A política de uso aceitável **não foi lida**. A proibição de "automated querying" que a nota anterior citava é dos termos do **Duck.ai** [resumo], outro serviço.
+- **[resumo] API oficial.** A ajuda do DuckDuckGo descreve as "Instant Answers" como respostas mostradas acima dos resultados. Nenhuma página oficial de uma API de **resultados web** foi encontrada.
+- **Declaração oficial sobre captcha em IP residencial: não encontrada.**
+
+Consequência: o argumento contra o DuckDuckGo **não é** que os termos proíbam a busca. O argumento é técnico: o SearXNG descreve um bloqueador de robôs, e o motor só passa a funcionar imitando um navegador (fato [lido] acima), o que o Suup não faz.
 
 ### 2. APIs de busca pagas (com chave)
 
 **Brave Search API**
 
-- **[resumo] Preço:** a documentação de preços lista **US$ 5,00 por 1000 pedidos** para a busca, com **US$ 5 de crédito grátis por mês** (cerca de 1000 buscas). Uma página antiga da documentação ainda mostra um plano "Free" de 2000 pedidos por mês a 1 pedido por segundo; o painel atual não. O crédito mensal é vinculado a **dar atribuição** à Brave (resumo de notícia, não da página oficial).
-- **[resumo] Formato:** `GET https://api.search.brave.com/res/v1/web/search`, chave no cabeçalho `X-Subscription-Token`, parâmetros `q`, `country` (código de 2 letras), `search_lang` (padrão `en`, "two or more characters").
-- **[lido]** O módulo `braveapi.py` do SearXNG confirma o host `api.search.brave.com/res/v1/web/search`, paginação (`offset`, até 10 páginas), `safesearch` (`strict`/`moderate`/`off`) e filtro de tempo (`past_day`, `past_week`, `past_month`, `past_year`), resposta JSON, até 20 resultados por página.
-- **[resumo] Termos:** "Customer shall not ... store, cache, or create a database of Search Results, in whole or in part, other than transient storage required for operation of Customer Applications". Há planos distintos para busca e para uso com IA ("Data for AI"), e planos com "storage rights" à parte. A regra exata sobre "AI inference" no plano comum **não foi lida** (só resumo de terceiro).
+- **[lido] Preço (página do produto, https://brave.com/search/api/, lida em 24/11/2026):** plano Search com "**$5 per 1,000 requests**", "**Includes $5 in free credits every month**" ("Credits are automatically applied to your account"), capacidade "**50 queries per second**". Plano Answers: "$4 per 1,000 requests + $5 per million input/output tokens", também com US$ 5 de crédito mensal.
+- **[lido] Contradição a registrar:** a mesma página, no topo, diz "**Up to $20 in free calls every month** · Prepaid credits, no subscription". Os planos listados dão US$ 5 por produto. Este relatório usa o valor do plano de busca (US$ 5). Se o dono quiser o total de US$ 20, é preciso conferir no painel. Também não foi lido se o cadastro pede cartão ("Prepaid credits" sugere pagamento antecipado, mas isso não está confirmado).
+- **[lido] Formato (exemplos da página):** `GET https://api.search.brave.com/res/v1/web/search` com o cabeçalho `X-Subscription-Token`, parâmetros `q`, `count`, `country` (código de 2 letras, exemplo `us`) e `search_lang` (exemplo `en`). Os exemplos usam `country=us` e `search_lang=en`; a página não traz valores para Brasil nem para português. Os valores `country=BR` e `search_lang=pt-br` continuam **inferência**, pois a lista de valores aceitos não foi lida.
+- **[lido] Termos de serviço da API (https://api-dashboard.search.brave.com/terms-of-service, lidos em 24/11/2026):**
+  - Cache e armazenamento: o cliente não pode "store, cache, or create a database of Search Results, in whole or in part, other than transient storage required for operation of Customer Applications or related software, service or systems". **Cache de 3 horas no banco não cabe** nessa frase, a não ser que seja "transient storage required for operation" (interpretação a confirmar com o dono).
+  - IA: é proibido "use the Search Results to create, evaluate, train, re-train, fine-tune, benchmark or otherwise improve artificial intelligence models or services". Isso pega **avaliações (`evals/`)** que usem resultados da Brave.
+  - Limites: é proibido "circumvent or bypass rate limits or service limits through any method, including by creating multiple accounts".
+  - Identidade: é proibido "attempt to obfuscate or conceal Customer's identity ... when requesting authorization to use the API".
+  - Atribuição: **opcional**. "Customer may provide attribution ... 'POWERED BY BRAVE'". A nota anterior dizia que o crédito "é vinculado a dar atribuição"; **isso estava errado**.
+  - Redistribuição: não pode "redistribute, resell, or sublicense the Search Results".
+- **[lido] SearXNG (`braveapi.py`):** host `api.search.brave.com/res/v1/web/search`, paginação (`offset`, até 10 páginas), `safesearch`, filtro de tempo, JSON, até 20 resultados por página.
+- **Latência:** não verificada.
 
 **Tavily**
 
-- **[resumo] Preço:** **1000 créditos por mês grátis, sem cartão**; depois, **US$ 0,008 por crédito** (pague pelo uso). Busca `basic`, `fast` e `ultra-fast`: 1 crédito; `advanced`: 2 créditos. Há planos mensais (por exemplo US$ 30 por 4000 créditos), com nomes que variam entre as páginas.
-- **[resumo] Formato:** `POST` no endpoint de busca, chave por `Authorization: Bearer`; parâmetros `query`, `search_depth` (`basic` padrão, `advanced`, `fast`, `ultra-fast`), `country` (código ISO de 2 letras; "boost search results from a specific country", só com `topic` geral), `max_results`. `auto_parameters` pode subir sozinho para `advanced` (2 créditos).
-- **[resumo] Latência:** a documentação só diz, qualitativamente, que `advanced` troca latência por relevância e que `ultra-fast` "minimizes latency above all else". Nenhum número oficial.
+- **[lido] Grátis (https://docs.tavily.com, página inicial, lida em 24/11/2026):** "Get a free Tavily API key (**1,000 API credits every month, no credit card required**)".
+- **[resumo] Preço:** depois da cota, US$ 0,008 por crédito. Busca `basic` 1 crédito; `advanced` 2 créditos. **Não confirmado**: a página de preço e os termos não puderam ser abertos (proxy recusou `www.tavily.com`).
+- **[resumo] Formato:** `POST` no endpoint de busca, `Authorization: Bearer`, `query`, `search_depth`, `country` (só com `topic` geral), `max_results`, `auto_parameters`. Não lido nesta revisão.
+- **Termos: não lidos.** Por isso a Tavily **não pode mais ser recomendada** como caminho padrão sem leitura dos termos.
 
 **Exa**
 
-- **[resumo] Preço:** pague pelo uso, sem assinatura; busca comum **US$ 7 por 1000 pedidos** (até 10 resultados; cada resultado além de 10 custa US$ 1 por 1000). Crédito gratuito: as páginas oficiais divergem (**US$ 10** no cadastro e por mês, ou **US$ 20** no cadastro e US$ 10 por mês).
-- **[resumo] Latência (números da própria Exa):** `instant` cerca de 250 ms, `fast` cerca de 450 ms (lançamento: p50 abaixo de 425 ms; depois, "lower than 350ms" medido a partir de `us-west-2`), `auto` cerca de 1 s; os modos `deep` levam de segundos a dezenas de segundos.
-- **[resumo] Brasil:** `userLocation` com código de país de 2 letras ("BR") "to bias results toward a user's geographic region". Nenhum parâmetro de idioma foi visto.
+- **[lido] Preços (https://exa.ai/pricing, lido em 24/11/2026):**
+  - Plano gratuito "Starter": "**$10 credits every month plus a $10 onboarding bonus. No payment method required**". A nota anterior tinha "US$ 10 ou 20"; a página diz **US$ 10 por mês e US$ 10 de bônus na entrada**.
+  - Busca "**Lite**": **US$ 4 por 1000 pedidos**, descrita como "low-latency Lite search" para "latency-sensitive agent loops".
+  - Busca "**Auto**": **US$ 7 por 1000**. Busca "**Deep**": **US$ 12 por 1000**. Acima de 10 resultados: US$ 1 por 1000 por resultado extra.
+  - Os valores de "US$ 7" da nota anterior correspondem à Auto; a opção mais barata é a **Lite, US$ 4**.
+- **[lido] Autenticação (https://docs.exa.ai, página inicial):** exemplos com `Authorization: Bearer $EXA_API_KEY`.
+- **[resumo] Latência (números da própria Exa, em blog):** `instant` cerca de 250 ms, `fast` cerca de 450 ms, `auto` cerca de 1 s. Não lido nesta revisão.
+- **[resumo] Brasil:** `userLocation` com código de 2 letras, só viés. Não aparece na página inicial lida.
+- **Termos de uso: não lidos.**
 
 **Kagi Search API**
 
-- **[lido] Preço e acesso:** "The Kagi Search API is priced at **$12 per 1,000 queries** ($0.012 per search)." Passos: criar conta Kagi (o link é de teste, `plan_id=trial`), gerar o token em `kagi.com/api`, pôr saldo. (overview.md)
-- **[lido] Formato:** `GET https://kagi.com/api/v1/search?q=...` com `Authorization: Bot <token>`; também aparece um exemplo `POST` com JSON `{"query": ...}` e `Authorization: Bearer`. "The Search API inherits settings from your account" (sites bloqueados ou promovidos, tamanho do trecho). Há uma API v0 legada. (overview.md, search.md)
-- **[resumo]** Uma página antiga da ajuda dizia "closed beta", só para o plano Team, a US$ 0,025 por busca; a documentação atual (lida) não fala em beta nem em convite.
-- Se é preciso **assinatura** Kagi paga além do saldo da API: **não verificado**.
+- **[lido] Preço e acesso (repositório oficial `kagi-docs`, lido em revisão anterior):** "The Kagi Search API is priced at **$12 per 1,000 queries** ($0.012 per search)." Criar conta, gerar o token em `kagi.com/api`, pôr saldo.
+- **[lido] Formato:** `GET https://kagi.com/api/v1/search?q=...` com `Authorization: Bot <token>`; também `POST` com JSON e `Authorization: Bearer`. "The Search API inherits settings from your account".
+- **Nesta revisão, a central de ajuda de `help.kagi.com` não traz nenhuma página de API nem preço.** O preço de US$ 12 vem do repositório, não do site de ajuda. Não confirmado no site.
+- Se é preciso **assinatura** Kagi além do saldo: **não verificado**.
 
 **Mojeek Web Search API**
 
-- **[resumo] Preço:** planos em libras por 1000 pedidos: **Startup £2/1000** (até 100 000 por dia, 5 por segundo) e **Business £3/1000** (até 400 000 por dia, 10 por segundo); Enterprise sob consulta. A página da Web Search API fala em "Flexible Terms" e num teste gratuito "with limited queries", sem cota publicada, pedido ao comercial.
-- **[resumo] Termos do site:** fazer raspagem dos serviços "without Our prior consent is expressly prohibited"; os termos de anúncios proíbem acesso automatizado "unless you are an authorised Mojeek API user". Há termos próprios da API, **não lidos**.
-- **[lido]** O módulo `mojeek.py` do SearXNG (`master`) lê a página HTML (`"use_official_api": False`), **resolve o captcha de prova de trabalho do Mojeek** (`solve_altcha`, rota `/captcha/challenge` e `/captcha/verify`, "Cache for storing the auth cookie after solving the CAPTCHA") e usa `curl_cffi`. O `settings.yml` o deixa `inactive: true` ("uses a Proof of Work CAPTCHA that requires much computer power to solve"). A documentação da API oficial apontada no módulo é `https://www.mojeek.com/support/api/search/request_parameters.html` (não aberta). Parâmetros de idioma e região usados pelo módulo: `lb` e `arc`.
+- **[lido] Planos (https://www.mojeek.com/services/api.html, lido em 24/11/2026):**
+  - **Startup: £ 2 por 1000 pedidos**, 5 consultas por segundo, até 100 000 por dia, **cache de 1 hora** (FAQ), **sem "storage rights"**.
+  - **Business: £ 3 por 1000**, 10 por segundo, até 400 000 por dia, com direito de armazenamento ("storage rights", retenção indefinida).
+  - Enterprise: sob consulta. Preços sem impostos.
+- **[lido] Teste gratuito:** "sign up to our Startup Plan and claim a free credit. A bank card is required to open an account however no automatic payments are processed". A nota anterior dizia "teste a pedido"; **está errado**: é crédito gratuito ao abrir conta no Startup, **com cartão**.
+- **[lido] Parâmetros (https://www.mojeek.com/support/api/search/request_parameters.html):** `api_key` (parâmetro na URL, `/search`), `rb` (região, ISO 3166-1 alfa-2, por exemplo `GB`; `rbb` de 1 a 100, recomendado 10), `lb` (idioma, ISO 639-1, por exemplo `EN`; `lbb` de 1 a 100, recomendado 100). **Brasil e português são possíveis via `rb=BR` e `lb=PT`**. O parâmetro `arc` citado pelo módulo do SearXNG **não aparece** nessa página.
+- **[lido] Termos do site (https://www.mojeek.com/about/terms.html):** proíbe "use or access Our Services by any automated means (**unless you are an authorised Mojeek API user**)"; permite "crawling ... if done in accordance with the provisions of the robots.txt file", e proíbe "scraping the Services without Our prior consent". **Uso pela API autorizada é o caminho permitido.** Termos próprios da API não foram lidos.
+- **[lido] Anúncios:** "We don't require attribution" (FAQ da Web Search API).
+- **[lido] SearXNG (`mojeek.py`):** lê a página HTML (`"use_official_api": False`), **resolve o captcha de prova de trabalho do Mojeek** e usa `curl_cffi`; desligado no `settings.yml`. **Nunca usar esse motor do SearXNG.**
 
 **Revendedores tipo SerpApi (raspam o Google)**
 
-- **[resumo]** O Google processou a SerpApi em 19/12/2025 (Google LLC v. SerpApi, LLC, 5:25-cv-10826, N.D. Califórnia), alegando que ela contorna a proteção do Google ("SearchGuard") com consultas falsas, com base nas regras anticircunvenção da DMCA, e viola os termos do Google, que proíbem raspagem automatizada e proxies para esconder a identidade. A SerpApi nega. O estado atual do processo **não foi verificado**.
+- **[resumo]** O Google processou a SerpApi em 19/12/2025, alegando contorno da proteção do Google ("SearchGuard") e violação dos termos. A SerpApi nega. O estado atual **não foi verificado**.
 - [lido na pesquisa anterior, 21/11/2026] O `robots.txt` do Google tem `Disallow: /search` para todos os robôs.
 
 **Google Custom Search JSON API**
 
-- **[resumo]** A página de visão geral diz que a API está **fechada para novos clientes** e será **descontinuada em 1/1/2027**. O substituto sugerido (Vertex AI Search, agora renomeado "Agent Search") cobre **até 50 domínios**, não a web inteira; para a web inteira o Google não oferece opção de autoatendimento, só um formulário de interesse.
+- **[lido] (https://developers.google.com/custom-search/v1/overview, lido em 24/11/2026):** "The API offers **100 free queries per day**, with additional queries available for a fee." Mas: "The Custom Search JSON API is **closed to new customers**." "Existing Custom Search JSON API customers have **until January 1, 2027** to transition to an alternative solution." Sugestão: "Vertex AI Search ... for searching **up to 50 domains**". Para a web inteira, só "contact us to express your interest".
+- Faltam **pouco mais de 5 semanas** (contadas a partir de 24/11/2026) para o fim para clientes existentes.
 
 **Bing Web Search API**
 
-- **[resumo]** As Bing Search APIs (v7, incluindo Custom Search) foram **aposentadas em 11/08/2025**. O substituto indicado, "Grounding with Bing Search", só existe dentro dos agentes do Azure AI e **não entrega os resultados brutos** ao desenvolvedor, só a resposta gerada pelo modelo; a consulta sai da fronteira de conformidade do Azure.
+- **[resumo]** Aposentada em 11/08/2025 (aviso da Microsoft, não lido nesta revisão). O substituto só entrega resposta gerada, não resultados brutos.
 
 ### 3. Gratuitas ou sem chave
 
 **Marginalia Search**
 
-- **[resumo] Acesso:** há uma chave compartilhada **`public`** para experimentar, que "often hits a rate limit" (devolve HTTP 503 quando estoura) e não aceita filtros próprios. Uma **chave própria gratuita para uso não comercial** é pedida por e-mail ("to prevent mass signup abuse"); só o uso comercial é pago. Base atual `api2.marginalia-search.com`, chave no cabeçalho `API-Key`; os endereços antigos de `api.marginalia.nu` continuam, sem funções novas. A documentação da API é CC-BY-NC-SA 4.0; o software é AGPL.
-- **[lido]** O módulo `marginalia.py` do SearXNG usa `https://api2.marginalia-search.com`, `"use_official_api": True`, `"require_api_key": True`, 20 resultados por página, paginação e `nsfw`, e manda o `User-Agent` do próprio SearXNG (`searxng_useragent()`), não um navegador. Categorias `general` e `blogs`. A resposta (`ApiSearchResults.java`) tem `license`, `query`, `page`, `pages` e `results` (cada um com `url`, `title`, `description`, `quality`, `format`, `details`).
-- **[lido]** Marginalia é um buscador "independent open source ... operating out of Sweden" (docstring do módulo).
+- **[lido] Chaves (https://about.marginalia-search.com/article/api, lido em 24/11/2026):**
+  - Chave `public`: compartilhada, "for experimentation"; "often hits a rate limit"; "This key has a shared rate limit across all consumers; when the limit is hit, HTTP 503 is returned"; sem filtros próprios.
+  - **Gratuita não comercial:** pedida por e-mail (`contact@marginalia-search.com`), "necessary to prevent mass signup abuse"; CC-BY-NC-SA 4.0.
+  - **Paga não comercial:** opcional, pagamento único.
+  - **Comercial:** "metered commercial key with no commercial usage restriction or attribution requirement". O preço **não foi lido**.
+- **[lido] Endpoint:** `https://api2.marginalia-search.com/search?query=...` com cabeçalho `API-Key`. Os endereços `api.marginalia.nu` são "deprecated API", sem funções novas.
+- **[lido] Licença:** a documentação da API é CC-BY-NC-SA 4.0; o software é AGPL.
+- **[lido] Sobre o projeto:** "independent open source Internet search engine operating out of Sweden"; "bills in the ballpark of $200/month".
+- **[lido] SearXNG (`marginalia.py`):** `api2.marginalia-search.com`, `require_api_key: True`, 20 resultados por página, `User-Agent` do próprio SearXNG.
+- **[lido] Português:** a API não tem parâmetro de idioma ou de país.
 
 **Wiby**
 
-- **[lido]** O `settings.yml` do SearXNG traz `wiby` como `json_engine` em `https://wiby.me/json/?q={query}&p={pageno}` (campos `URL`, `Title`, `Snippet`), desligado por padrão. Termos e documentação do Wiby: **não encontrados**.
+- **[lido]** O `settings.yml` do SearXNG traz `wiby` como `json_engine` em `https://wiby.me/json/?q={query}&p={pageno}`, desligado por padrão. Termos e documentação: **não encontrados**.
 
 **Mwmbl**
 
-- **[lido]** O módulo `mwmbl.py` do SearXNG: API JSON sem chave (`"use_official_api": True`, `"require_api_key": False`), e o aviso: "At the moment it is little more than an idea together with a proof of concept implementation ... on a small index"; "does not support regions, languages, safe-search or time range".
+- **[lido]** API JSON sem chave, "little more than an idea together with a proof of concept implementation ... on a small index"; "does not support regions, languages, safe-search or time range".
 
 **Qwant**
 
-- **[lido]** O módulo `qwant.py` do SearXNG: "uses the Qwant API (https://api.qwant.com/v3) ... The API is undocumented but can be reverse engineered by reading the network log of https://www.qwant.com/ queries"; `"official_api_documentation": None`; usa `curl_cffi` com a ordem de cabeçalhos de um navegador ("drop impersonate default headers"). Desligado no `settings.yml`.
-- **[resumo]** A política de privacidade da Qwant diz que trata as consultas para, entre outras coisas, detectar spam e "automated activity". As condições gerais de uso **não foram lidas**; nenhuma API pública documentada foi encontrada.
+- **[lido]** O módulo `qwant.py` do SearXNG: "The API is undocumented but can be reverse engineered by reading the network log"; usa `curl_cffi` com cabeçalhos de navegador. Desligado no `settings.yml`.
+- **[resumo]** A política de privacidade fala em "automated activity". Condições gerais de uso **não lidas**.
 
-### 4. SearXNG com outros motores (os termos dos motores)
+### 4. SearXNG com outros motores
 
-- **[lido]** Dos motores gerais do SearXNG olhados: **Mojeek** (raspagem, resolve captcha), **Qwant** (API não documentada, cabeçalhos de navegador) e **DuckDuckGo** no `master` (imitação de navegador) dependem exatamente do que a regra do Suup proíbe. **Marginalia**, **Brave API**, **Mwmbl** e **Wiby** usam API ou JSON oficial, os dois primeiros com chave.
+- **[lido]** Mojeek (raspagem, resolve captcha), Qwant (API não documentada, cabeçalhos de navegador) e DuckDuckGo no `master` (imitação de navegador) dependem do que a regra do Suup proíbe. Marginalia, Brave API, Mwmbl e Wiby usam API ou JSON oficial, os dois primeiros com chave.
 
 ## Inferências
 
-Marcadas como inferência: concluídas dos fatos acima, não lidas em fonte.
-
-- **I1. O captcha do DuckDuckGo é o comportamento esperado, não um defeito.** O módulo do SearXNG descreve um bloqueador de robôs que olha o `User-Agent`, cabeçalhos de navegador e o IP, e o `master` passou a imitar o Firefox para passar por ele. Um cliente que **se declara robô** é justamente o que esse bloqueador pega; o IP residencial não ajuda. Não há declaração oficial dizendo isso, mas não há caminho honesto para melhorar: tudo o que o SearXNG faz para passar é o que o Suup proíbe.
-- **I2. Não existe busca geral gratuita, sem chave e com bons resultados em português.** As opções sem chave ou de chave gratuita com termos claros (Marginalia, Mwmbl, Wiby) têm índices pequenos e voltados à "web independente", majoritariamente em inglês; para "notícia de hoje no Brasil" ou "preço de X no Brasil" elas quase não ajudam. Servem como complemento honesto, não como substituto do Google.
-- **I3. O "grátis" que existe exige cadastro e chave.** Tavily (1000 créditos por mês, sem cartão) e Brave (US$ 5 de crédito por mês, cerca de 1000 buscas, com atribuição e cadastro de pagamento) cobrem bem o uso de uma pessoa, desde que ela crie conta.
-- **I4. Português e Brasil.** Brave (`country=BR`, `search_lang=pt-br` ou `pt`), Tavily (`country=br`, só realce), Exa (`userLocation: "BR"`, só viés) e Mojeek (`lb`, `arc`) têm alguma alavanca de região ou idioma; Kagi herda o que a conta configurou. A Brave tem índice próprio grande e parâmetro de idioma explícito, e deve ser a melhor em português entre as baratas; Mojeek tem índice próprio britânico e deve ser a mais fraca entre as pagas em português. **Nada disso foi medido.**
-- **I5. SerpApi e parecidos estão fora pela regra do Suup**, não só por risco jurídico: pagar alguém para contornar a proteção do Google é terceirizar o que o Suup se recusa a fazer.
-- **I6. Google e Bing não são opção**: um some em 1/1/2027 e já não aceita cliente novo; o outro já acabou e o substituto não devolve resultados.
-- **I7. O cache do Suup e os termos da Brave.** O cache de 3 h no banco (`web_search_cache`) não parece "transient storage required for operation" e pode bater no texto dos termos da Brave. As outras (Tavily, Exa, Kagi) não tiveram os termos lidos sobre isso.
-- **I8. Custo de 1000 buscas por mês** (preços acima, sem impostos, sem câmbio): Tavily **grátis** (basic) ou cerca de US$ 8 além da cota; Brave **cerca de zero** com o crédito de US$ 5, cerca de US$ 5 sem ele; Mojeek **cerca de £2**, se aceitarem conta pequena; Exa **cerca de US$ 7**, ou zero enquanto durar o crédito gratuito; Kagi **US$ 12**; Marginalia, Mwmbl, Wiby **zero**.
+- **I1. O captcha do DuckDuckGo é o comportamento esperado, não um defeito.** O bloqueador de robôs olha o `User-Agent`, cabeçalhos e o IP; um cliente que se declara robô é o que ele pega. O SearXNG só passa imitando navegador. Sem declaração oficial.
+- **I2. Não existe busca geral gratuita, sem chave, com bons resultados em português.** Marginalia, Mwmbl e Wiby têm índices pequenos, majoritariamente em inglês. Complemento, não substituto.
+- **I3. O "grátis" exige cadastro e chave.** Tavily (1000 créditos por mês, sem cartão, [lido]) e Exa (US$ 10 por mês, sem cartão, [lido]) cobrem o uso de uma pessoa. Brave (US$ 5 por mês, [lido]) também, se a conta permitir sem cartão (não lido).
+- **I4. Português e Brasil.** Brave (`country`, `search_lang`: parâmetros aparecem nos exemplos [lido], mas os valores aceitos para BR/pt não foram lidos). Mojeek (`rb=BR`, `lb=PT`, [lido] nos nomes; a qualidade não foi medida). Tavily (`country`, [resumo]). Exa (`userLocation`, [resumo]). Kagi herda a conta. **Nada disso foi medido.**
+- **I5. SerpApi e parecidos estão fora pela regra do Suup.**
+- **I6. Google e Bing não são opção:** o Google fecha para clientes existentes em 1/1/2027 e não aceita cliente novo [lido]; a Bing já acabou [resumo].
+- **I7. Cache e termos (agora [lido] para a Brave e a Mojeek).** A Brave proíbe cache além do transitório; o cache de 3 h do banco (`web_search_cache`) não cabe nisso. A Mojeek Startup permite cache de **1 hora**. A Tavily, a Exa e a Kagi não tiveram os termos lidos.
+- **I8. Custo de 1000 buscas por mês** (sem impostos, sem câmbio): Tavily **grátis** pelo basic (1000 créditos, [lido]); Brave **grátis** com o crédito de US$ 5 ([lido] o preço, [lido] o crédito); Exa **grátis** com US$ 10 por mês ([lido]) se for só Lite (US$ 4 por 1000, o que dá 4 dólares por 1000 sem crédito) ou Auto (US$ 7); Mojeek **cerca de £ 2** pelo Startup; Kagi **US$ 12**; Marginalia **zero** se não comercial; Google 100 por dia para clientes existentes.
 
 ## O que não foi verificado
 
-- Nenhuma página de preço, termo ou documentação de Brave, Tavily, Exa, Mojeek, Marginalia, Google, Microsoft, DuckDuckGo ou Qwant foi **aberta**: host bloqueado nesta máquina. Tudo marcado [resumo] precisa ser conferido na página antes de virar código ou promessa ao usuário.
-- **Termos de uso para agente de IA pessoal**: os termos completos de Tavily, Exa, Kagi e da API do Mojeek **não foram lidos**; o da Brave só em trecho (cache), sem a regra de "AI inference" no plano comum.
-- **Latência** de Brave, Tavily, Kagi, Mojeek e Marginalia: nenhum número oficial lido. A da Exa é a que a própria Exa publica, medida nos EUA; do Brasil deve ser maior.
-- **Qualidade em português e no Brasil**: nada foi medido; tudo é inferência (I4).
-- Endpoint exato e formato da API do Mojeek; se o teste gratuito existe para pessoa física.
-- Se a Kagi exige assinatura paga além do saldo da API.
-- Se a Brave exige cartão para o crédito mensal e como a atribuição tem de aparecer num app de desktop.
-- Termos e `robots.txt` do Wiby e do Mwmbl; condições gerais de uso da Qwant; termos completos e política de uso aceitável do DuckDuckGo.
-- Qualquer declaração oficial do DuckDuckGo sobre captcha para IP residencial: **não encontrada**.
+- **Preço e termos da Tavily**: bloqueados pela proxy de saída (www.tavily.com, HTTP 403). Não foram contornados.
+- **Termos completos da Exa, da Kagi e da API da Mojeek**: não lidos.
+- **Latência** de todas: nenhum número lido de fonte oficial nesta revisão (a Exa é [resumo]).
+- **Qualidade em português e no Brasil**: nada foi medido.
+- **Se a Brave exige cartão** para o crédito mensal (a página diz "prepaid credits" e não diz se o cadastro pede cartão).
+- **O total de "US$ 20" na página da Brave** (contradiz os US$ 5 por plano).
+- **Preço comercial da Marginalia**.
+- **Se a Kagi exige assinatura paga** além do saldo.
+- **Política de uso aceitável do DuckDuckGo** (linkada nos termos, não lida).
+- **Declaração oficial do DuckDuckGo sobre captcha em IP residencial**: não encontrada.
 - Estado atual do processo Google contra SerpApi.
-- Nenhuma API foi chamada de verdade (nem a do DuckDuckGo): esta máquina não alcança os hosts.
+- **Nenhuma API foi chamada de verdade**, com chave ou sem: o pedido do dono foi ler páginas oficiais, não consultar APIs.
 
 ## Tabela comparativa
 
-Custo em dólar salvo indicação; "1000/mês" é o custo aproximado de 1000 buscas por mês (I8). PT-BR é inferência (I4), não medição.
+Custo em dólar salvo indicação. "1000/mês" é o custo aproximado de 1000 buscas por mês. PT-BR é inferência, não medição.
 
 | Opção | Grátis | 1000/mês | PT-BR | Termos para agente pessoal | Latência | API | Cabe no Suup |
 |---|---|---|---|---|---|---|---|
-| **Brave Search API** | US$ 5/mês de crédito (com atribuição) [resumo] | ~0 (ou US$ 5) | boa provável (`country`, `search_lang`) | permitido com chave; **cache limitado a transitório** [resumo] | não verificada | `GET api.search.brave.com/res/v1/web/search`, `X-Subscription-Token`, JSON | motor `direct`, host exato; precisa de chave e de **cache desligado ou curto** para ele |
-| **Tavily** | 1000 créditos/mês, sem cartão [resumo] | 0 (basic) | razoável provável (`country` só realça) | feito para agentes; termos não lidos | não verificada | `POST`, `Authorization: Bearer`, JSON com trecho já limpo | motor `direct`; travar `search_depth=basic` e `auto_parameters` desligado para não gastar 2 créditos |
-| **Exa** | US$ 10 ou 20 de crédito [resumo] | ~US$ 7 | incerta (`userLocation` só viés) | feito para agentes; termos não lidos | ~0,25 a 1 s (números da Exa) | `POST`, `x-api-key` ou `Bearer`, JSON | motor `direct`; índice "semântico", diferente de uma busca por palavras |
-| **Kagi Search API** | não | US$ 12 [lido] | boa provável (herda a conta) | não lidos | não verificada | `GET kagi.com/api/v1/search`, `Authorization: Bot`, JSON [lido] | motor `direct`; mais cara; host `kagi.com` (o mesmo do site) |
-| **Mojeek API** | teste a pedido [resumo] | ~£2 | fraca provável | **só pela API autorizada**; raspar é proibido [resumo] | não verificada | não verificado | motor `direct` depois de ler a doc; **nunca** pelo SearXNG (que resolve o captcha deles) |
-| SerpApi e parecidos | varia | varia | boa (é o Google) | **fere a regra do Suup** (contorno de proteção, processo do Google) | n/a | n/a | **não** |
-| Google CSE JSON | fechado a novos | n/a | n/a | acaba em 1/1/2027 [resumo] | n/a | n/a | **não** |
-| Bing Web Search | aposentada | n/a | n/a | acabou em 11/08/2025 [resumo] | n/a | n/a | **não** |
-| **Marginalia** | chave `public` ou chave grátis não comercial [resumo] | 0 | **fraca** (web pequena, inglês) | permitido, não comercial [resumo] | não verificada | `GET api2.marginalia-search.com`, `API-Key`, JSON [lido] | motor `direct`, host exato; bom complemento honesto |
-| Mwmbl / Wiby | sem chave | 0 | muito fraca (índice mínimo) [lido] | termos não encontrados | não verificada | JSON simples | só se o dono quiser; pouco valor |
+| **Brave Search API** | US$ 5/mês de crédito [lido] | US$ 5 por 1000, zero com o crédito [lido] | `country`, `search_lang` (valores BR/pt não lidos) | **cache só transitório; proibido usar para avaliar ou treinar IA; atribuição opcional** [lido] | não verificada | `GET api.search.brave.com/res/v1/web/search`, `X-Subscription-Token`, JSON [lido] | motor `direct`; **cache desligado para ele**; evals não podem usar seus resultados |
+| **Tavily** | 1000 créditos/mês, sem cartão [lido, docs] | 0 no basic [resumo do preço] | não lido | **não lido** (proxy bloqueou) | não verificada | `POST`, `Bearer` [resumo] | **adiado** até ler termos e preço |
+| **Exa** | US$ 10/mês + US$ 10 de entrada, sem cartão [lido] | Lite US$ 4; Auto US$ 7; Deep US$ 12 [lido] | `userLocation` só viés [resumo] | não lidos | ~0,25 a 1 s (números da Exa, [resumo]) | `Authorization: Bearer` [lido] | motor `direct`, se os termos permitirem; a Lite é a mais barata |
+| **Mojeek API** | crédito grátis no Startup, com cartão [lido] | £ 2 por 1000, Startup [lido] | `rb=BR`, `lb=PT` [lido nos nomes] | **API autorizada é o caminho; scraping proibido** [lido]; cache 1 h no Startup | não verificada | `GET .../search?api_key=` [lido] | motor `direct` pela API; **nunca** o motor SearXNG (resolve captcha) |
+| **Kagi Search API** | não | US$ 12 por 1000 [lido, repositório] | herda a conta | não lidos | não verificada | `Authorization: Bot`, JSON [lido, repositório] | motor `direct`; a mais cara |
+| **Marginalia** | chave `public` (limite compartilhado) ou chave grátis não comercial por e-mail [lido] | zero se não comercial | não tem parâmetro de idioma/país [lido] | não comercial, CC-BY-NC-SA; comercial sem restrição [lido] | não verificada | `GET api2.marginalia-search.com`, `API-Key`, JSON [lido] | motor `direct`, host exato; complemento honesto |
+| SerpApi e parecidos | varia | varia | boa (é o Google) | **fere a regra do Suup** | n/a | n/a | **não** |
+| Google CSE JSON | 100/dia, só para clientes existentes [lido] | n/a | n/a | **fecha em 1/1/2027; fechada a novos** [lido] | n/a | n/a | **não** |
+| Bing Web Search | aposentada [resumo] | n/a | n/a | acabou | n/a | n/a | **não** |
+| Mwmbl / Wiby | sem chave | zero | muito fraca [lido] | termos não encontrados | não verificada | JSON simples | só se o dono quiser |
 | Qwant | n/a | n/a | n/a | API não documentada, cabeçalhos de navegador [lido] | n/a | n/a | **não** |
-| DuckDuckGo (atual) | sem chave | 0 | boa quando responde | sem API sancionada; bloqueador de robôs [lido] | n/a (captcha) | raspagem do HTML | **desligar** |
+| DuckDuckGo (atual) | sem chave | zero | boa quando responde | **termos lidos não proíbem busca automática**; o bloqueador de robôs e o disfarce de navegador são o problema [lido] | n/a (captcha) | raspagem do HTML | **desligar** |
 
 ## Implicação para o Suup
 
 ### Como uma API paga cabe no desenho atual
 
-- **Mesmo caminho dos motores diretos.** Cada uma vira uma entrada em `packages/web/src/engines.ts` com `via: "direct"`, `access: "api"`, `general: true`, `defaultOn: false` e os hosts exatos (`api.search.brave.com`, `kagi.com` e `api2.marginalia-search.com` vêm de fonte [lido]; os da Tavily, da Exa e do Mojeek **não foram lidos** e têm de ser confirmados na documentação), mais um módulo em `direct-engines.ts`. O `EgressProxy` em `127.0.0.1` continua deixando passar só esses hosts, com TLS até o serviço e sem seguir redirecionamento. O `User-Agent` honesto continua o mesmo.
-- **Chave: mudança de desenho, precisa de decisão do dono.** Hoje o BUSCA.md diz que os motores diretos saem "sem credencial". Uma API paga leva a chave num **cabeçalho** (nunca na URL, como a pesquisa de 21/11 já pedia): `X-Subscription-Token` (Brave), `Authorization: Bearer` (Tavily), `x-api-key` (Exa), `Authorization: Bot` (Kagi), `API-Key` (Marginalia). A chave vem **só** de `apiKeyEnv` (o nome da variável, como os provedores em `packages/runtime/src/config.ts`) ou do cofre; nunca no `suup.config.json`, nunca no chat. Sem a variável, o motor aparece como "sem chave" em `suup doctor` e fica fora da busca (falha fechada).
-- **Limites.** Os limites por minuto que já existem servem (a Brave antiga falava em 1 pedido por segundo). **Falta um teto mensal por motor** (orçamento), para o usuário nunca ser cobrado sem saber: por exemplo `perMonth`, contado no banco, que suspende o motor quando chega e diz até quando. HTTP 429 e 402/403 de cota entram na contabilidade de suspensão que já existe.
-- **Cache.** O cache de 3 h economiza dinheiro, mas o termo da Brave limita a guarda a "transient storage". O motor precisa poder declarar a própria política de cache (desligado ou bem curto para a Brave) até os termos serem lidos inteiros.
-- **SearXNG.** Nenhuma das opções recomendadas precisa do SearXNG. Se o DuckDuckGo sair, **o contêiner de busca deixa de ser necessário** no padrão (o desenho já não o cria sem motor `searxng` ligado). Os motores gerais do SearXNG que poderiam entrar (Mojeek, Qwant, Google, Bing) ferem a regra; o `braveapi` do SearXNG existe, mas o Suup chamaria a Brave direto, com o próprio nome, como já faz com os outros.
-- **Regra da pesquisa antes do código.** Antes de escrever cada módulo: abrir a documentação e os termos do serviço escolhido numa máquina com rede (o que aqui ficou [resumo] ou "não verificado") e registrar num adendo desta pesquisa.
+- **Mesmo caminho dos motores diretos.** Cada uma vira uma entrada em `packages/web/src/engines.ts` com `via: "direct"`, `access: "api"`, `general: true`, `defaultOn: false` e os hosts exatos: `api.search.brave.com`, `api2.marginalia-search.com`, `kagi.com` (fonte [lido]), `api.exa.ai` e `api.mojeek.com` ou o host que a documentação indicar (**não confirmados**; a Tavily fica fora). O `EgressProxy` em `127.0.0.1` deixa passar só esses hosts, com TLS e sem redirecionamento. O `User-Agent` honesto continua o mesmo.
+- **Chave: mudança de desenho, decisão do dono.** O BUSCA.md diz que os motores diretos saem "sem credencial". Uma API paga leva a chave num **cabeçalho**, nunca na URL: `X-Subscription-Token` (Brave), `Authorization: Bearer` (Exa), `Authorization: Bot` (Kagi), `API-Key` (Marginalia). A Mojeek recebe `api_key` na URL, o que é uma exceção a evitar: o ideal é confirmar se aceita cabeçalho. A chave vem **só** de `apiKeyEnv` ou do cofre; nunca no `suup.config.json`, nunca no chat. Sem a variável, o motor aparece como "sem chave" em `suup doctor` e fica fora da busca (falha fechada).
+- **Limites.** Os limites por minuto que já existem servem. A Brave declara 50 consultas por segundo no plano Search [lido]; a Mojeek Startup, 5 por segundo [lido]. **Falta um teto mensal por motor** (orçamento): por exemplo `perMonth`, contado no banco, que suspende o motor quando chega e diz até quando. HTTP 429 e 402/403 de cota entram na suspensão que já existe.
+- **Cache.** Para a **Brave**, cache de 3 h no banco **não cabe** nos termos lidos: o motor precisa declarar cache desligado (ou transitório), e o dono precisa dizer se "transient storage required for operation" cobre um cache de 3 h. Para a **Mojeek Startup**, o limite é 1 hora [lido]. Para a Tavily, a Exa e a Kagi, os termos **não foram lidos**: não há base para cache longo.
+- **Evals.** Pelos termos da Brave, resultados dela **não podem alimentar avaliações** de modelos. Isso vale para `evals/`. Se o Suup usar a Brave, as avaliações têm de ignorar esse motor ou ter uma exceção contratual.
+- **SearXNG.** Nenhuma das opções recomendadas precisa do SearXNG. Se o DuckDuckGo sair, o contêiner de busca deixa de ser necessário no padrão. Mojeek e Qwant no SearXNG ferem a regra.
+- **Regra da pesquisa antes do código.** Antes de cada módulo: ler a documentação e os termos do serviço escolhido. Tavily e Exa precisam de leitura de termos antes de qualquer código.
 
 ### Recomendação
 
-1. **Padrão para quem não vai pagar:** os três motores atuais (Wikipédia, arXiv, Stack Overflow) **mais Marginalia** (chave `public` ou chave gratuita pedida por e-mail), todos honestos, abertos e sem custo. Dizer com clareza, na ferramenta e na tela, que **isso não é uma busca geral boa em português**. Para quem aceita **criar uma conta grátis**, o caminho recomendado é a **Tavily** (1000 buscas por mês sem cartão), ligada com a chave por `apiKeyEnv` ou no cofre.
-2. **Melhor para pagar pouco:** **Brave Search API**. Índice próprio (não raspa ninguém), parâmetros de país e idioma (`country=BR`, `search_lang=pt-br`), resultados brutos no formato que o desenho já usa, e cerca de US$ 5 por 1000 buscas com US$ 5 de crédito por mês (na prática ~1000 buscas mensais sem pagar nada, com atribuição). Ponto a resolver antes: a regra de cache dos termos. Alternativas: Mojeek (mais barata, independente, fraca em português provável), Kagi (melhor qualidade provável, US$ 12 por 1000), Exa (boa para pesquisa "por significado", US$ 7 por 1000).
-3. **DuckDuckGo: desligar por padrão** (`defaultOn: false`) e, de preferência, **tirar da lista**. Ele não tem API sancionada, o próprio SearXNG descreve um bloqueador de robôs e já precisa se disfarçar de navegador para passar, e um robô honesto recebe captcha (I1). Mantê-lo ligado só gera "busca indisponível" e uma hora de suspensão a cada tentativa. Se o dono quiser deixá-lo como opção avançada, que fique desligado e com o aviso de que vai falhar com o nome honesto. Sem ele, a busca padrão deixa de depender do Docker e do SearXNG.
+1. **Sem custo:** Wikipédia, arXiv, Stack Overflow **mais Marginalia** (chave gratuita por e-mail para uso não comercial, o que serve a um agente pessoal). Dizer na ferramenta e na tela que **isso não é uma busca geral boa em português**. A Tavily, que a nota anterior recomendava, **não pode mais ser recomendada**: o preço e os termos não foram lidos, porque a proxy bloqueou o host.
+2. **Pagar pouco:** **Brave Search API** continua a melhor opção com termos lidos: US$ 5 por 1000 com crédito de US$ 5 por mês, sem atribuição obrigatória, índice próprio e parâmetros de país e idioma. Condições: **cache desligado ou transitório** e **resultados fora de avaliações de IA**, que são exigências dos termos. Alternativas: Mojeek Startup (£ 2 por 1000, cache de 1 hora, API autorizada, português possível via `lb`), e Exa Lite (US$ 4 por 1000, após ler os termos).
+3. **DuckDuckGo: desligar por padrão** (`defaultOn: false`) e, de preferência, tirar da lista. Corrigido: os termos lidos **não** proíbem busca automática; o motivo é o bloqueador de robôs e o disfarce de navegador que o SearXNG usa para passar, o que o Suup não faz (I1). Mantê-lo ligado só gera "busca indisponível" e suspensão a cada tentativa.
 
-Isto muda o plano (BUSCA.md: "duckduckgo ligado por decisão do dono" e "o Suup não traz adaptadores de Brave, Tavily nem Exa"). **O dono decide** antes de qualquer código: (a) tirar ou desligar o DuckDuckGo, (b) aceitar motores com chave no núcleo (opcionais, desligados por padrão), (c) quais entram primeiro.
+Isto muda o plano (BUSCA.md: "duckduckgo ligado por decisão do dono" e "o Suup não traz adaptadores de Brave, Tavily nem Exa"). **O dono decide** antes de qualquer código: (a) tirar ou desligar o DuckDuckGo, (b) aceitar motores com chave no núcleo, opcionais e desligados por padrão, (c) quais entram primeiro, (d) se a Brave aceita cache transitório de 3 h e se as avaliações `evals/` podem usar resultados dela.
+
+## Adendo de 24/11/2026: o que mudou em relação à nota anterior
+
+- **[resumo] virou [lido]** nestes pontos: preço da Brave (US$ 5 por 1000, crédito de US$ 5 por mês); termos da Brave sobre cache, IA e atribuição; preço da Exa (planos Lite, Auto e Deep, e crédito de US$ 10 por mês); crédito da Tavily (1000 por mês, sem cartão); Google (fechado a novos, fim em 1/1/2027, 100 por dia para clientes existentes); termos do DuckDuckGo (lidos, sem cláusula de busca automática); planos, cache e parâmetros da Mojeek; chaves e preço não comercial da Marginalia.
+- **Corrigido:** a Brave **não** vincula o crédito à atribuição (é opcional nos termos). A Exa **não** tem "US$ 20 no cadastro": são US$ 10 por mês mais US$ 10 de bônus. A Mojeek **não** tem teste "a pedido": o crédito vem ao abrir conta no Startup, com cartão. A Exa **tem** uma opção mais barata (Lite, US$ 4 por 1000) que a nota anterior não citava.
+- **Mudou a recomendação:** a Tavily saiu do "caminho recomendado" porque o preço e os termos não puderam ser lidos. A Brave ficou com termos mais restritivos do que a nota dizia (cache transitório, sem avaliações de IA). A Mojeek Startup passou a ser alternativa concreta (cache de 1 hora).
+- **Corrigido:** a nota dizia que a maioria dos hosts estava bloqueada por DNS. Nesta revisão, quase todos abriram. Só `www.tavily.com` foi recusado pela proxy.
+- **Corrigido:** a nota citava `arc` como parâmetro da Mojeek. A documentação oficial lista `rb` e `lb`.
+- **Corrigido:** a nota citava os termos de "automated querying" como se fossem do DuckDuckGo. Eles são do Duck.ai.
