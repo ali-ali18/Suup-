@@ -27,6 +27,7 @@ Os valores vêm do código (`src/styles/tokens.css`, os componentes de `src/ui/`
 - [ ] Todo comportamento é configurável em Configurações (`src/lib/settings.ts`); a tela lê a configuração, nunca fixa a escolha.
 - [ ] Nada de efeito decorativo: sem sombra pesada, sem preenchimento forte, sem pílula vermelha.
 - [ ] **O retorno interno do bot não tem marcador próprio na interface; ele avisa pela própria mensagem** (decisão do dono, 19/11/2026: um "volto às 14h20" com botão Cancelar seria "meio anti-usuário"). A chamada de `schedule_return` não vira cartão, a execução parada até a hora (`waiting_timer`) não tem chip, indicador de trabalho, linha de "terminou" nem aviso, e o avatar fica calmo (`idle`). Parar é falar com o bot ou cancelar a execução como sempre. O estado só aparece no inspetor, que é diagnóstico. `design-rules.test.ts` confere onde `waiting_timer` pode ser lido. Ver [RETORNO.md](RETORNO.md).
+- [ ] **Lembrete de uma vez não é rotina** (regra do dono, 23/11/2026: "lembrete único é interno; rotina é o que se repete"). O painel Rotinas só mostra o que se repete; o lembrete (o retorno de até 60 minutos ou o `create_reminder`, [ROTINAS.md](ROTINAS.md)) não aparece lá (a API nem o lista) e a chamada `create_reminder` concluída não vira linha no chat (`SILENT_TOOLS`); o aviso é a mensagem do bot. Um cartão que espera aprovação continua aparecendo, com a categoria "Lembrete".
 
 ## 2a. Como se estiliza (Tailwind CSS v4)
 

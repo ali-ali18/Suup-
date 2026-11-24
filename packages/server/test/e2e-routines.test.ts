@@ -26,9 +26,67 @@ const createCall = (marker: string) => ({
   },
 });
 
+/** A date three days ahead (YYYY-MM-DD): "dia 29 às 19h" is always in the future in the test. */
+const LATER = new Date(Date.now() + 3 * 24 * 3_600_000).toISOString().slice(0, 10);
+
 const SCRIPTS = {
   roteiro: {
     cases: [
+      {
+        // "me lembra daqui 20 minutos": a one-time reminder within the hour is the internal return
+        whenObjectiveContains: "LEMBRA-20MIN",
+        agent: [
+          s({
+            calls: [
+              {
+                name: "schedule_return",
+                args: { inMinutes: 20, note: "Lembrar o usuário de enviar o RG para a faculdade." },
+              },
+            ],
+          }),
+          s({ text: "Combinado! Daqui a 20 minutos eu te lembro de enviar o RG." }),
+        ],
+      },
+      {
+        // "lembra dia 29 às 19h": later than an hour, a hidden one-time reminder
+        whenObjectiveContains: "LEMBRA-DIA29",
+        agent: [
+          s({
+            calls: [
+              {
+                name: "create_reminder",
+                args: { text: "LEMBRETE-BOLETO pagar o boleto", date: LATER, time: "19:00" },
+              },
+            ],
+          }),
+          s({ text: "Combinado! Dia 29 às 19h eu te lembro de pagar o boleto." }),
+        ],
+        autoReview: [verdict("run", "Você pediu este lembrete.")],
+      },
+      {
+        // the bot tries a one-time "routine": refused, and pointed to the reminder
+        whenObjectiveContains: "ROTINA-UMA-VEZ",
+        agent: [
+          s({
+            calls: [
+              {
+                name: "create_routine",
+                args: {
+                  name: "RG",
+                  instruction: "Lembrar do RG.",
+                  schedule: { kind: "once", date: LATER, time: "19:00" },
+                },
+              },
+            ],
+          }),
+          s({ text: "Feito." }),
+        ],
+        autoReview: [verdict("run", "Você pediu.")],
+      },
+      {
+        whenObjectiveContains: "LEMBRETE-BOLETO",
+        agent: [s({ text: "Oi! Lembrete: pagar o boleto hoje." })],
+      },
       {
         whenObjectiveContains: "CRIAR-AUTO",
         agent: [
@@ -509,5 +567,93 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("routines through the API"), { timeou
     await api.routines.delete(routine.id);
     expect(await code(api.routines.get(routine.id))).toBe("not_found");
     expect(await code(api.routines.delete(routine.id))).toBe("not_found");
+  });
+
+  it("'me lembra daqui 20 minutos': no routine, the internal return is scheduled", async () => {
+    const { api } = w.started;
+    const bot = await api.bots.create({ name: "Lembra", modelId: "model-x" });
+    const conversation = await api.bots.openConversation(bot.id);
+    const sent = await api.conversations.send(
+      conversation.id,
+      "LEMBRA-20MIN me lembra daqui 20 minutos de enviar meu RG",
+    );
+    const parked = await until(async () => {
+      const run = await api.runs.get(sent.run.id);
+      return run.status === "waiting_timer" ? run : undefined;
+    }, "the run to wait for its return");
+    expect(parked.wakeNote).toBe("Lembrar o usuário de enviar o RG para a faculdade.");
+    const minutes = (new Date(parked.wakeAt as string).getTime() - Date.now()) / 60_000;
+    expect(minutes).toBeGreaterThan(18);
+    expect(minutes).toBeLessThanOrEqual(20);
+    // nothing in the panel, nothing hidden either
+    expect(await api.routines.list({ botId: bot.id })).toEqual([]);
+    const [rows] = await w.db.sql<{ n: number }[]>`
+      select count(*)::int as n from routines where bot_id = ${bot.id}`;
+    expect(rows?.n).toBe(0);
+    await api.runs.cancel(sent.run.id);
+  });
+
+  it("'lembra dia 29 às 19h': a hidden one-time reminder, never listed, gone after it fires", async () => {
+    const { api } = w.started;
+    const bot = await api.bots.create({ name: "Boleto", modelId: "model-x" });
+    const conversation = await api.bots.openConversation(bot.id);
+    const sent = await api.conversations.send(
+      conversation.id,
+      "LEMBRA-DIA29 lembra dia 29 às 19h de pagar o boleto",
+    );
+    expect((await finished(sent.run.id)).status).toBe("done");
+    // not a routine: the panel (the API list) has nothing
+    expect(await api.routines.list({ botId: bot.id })).toEqual([]);
+    expect(await api.routines.list()).not.toContainEqual(
+      expect.objectContaining({ botId: bot.id }),
+    );
+    // ...but the bot's scheduler has it, once, at 19:00 in Sao Paulo (22:00 UTC)
+    const hidden = await w.db.sql<{ id: string; next_run_at: Date; schedule: unknown }[]>`
+      select id, next_run_at, schedule from routines where bot_id = ${bot.id} and reminder`;
+    expect(hidden).toHaveLength(1);
+    const [reminder] = hidden as [{ id: string; next_run_at: Date; schedule: unknown }];
+    expect(reminder.schedule).toEqual({ kind: "once", date: LATER, time: "19:00" });
+    expect(reminder.next_run_at.toISOString()).toBe(`${LATER}T22:00:00.000Z`);
+    // never reachable by id through the API either
+    expect(await code(api.routines.get(reminder.id))).toBe("not_found");
+    expect(await code(api.routines.fires(reminder.id))).toBe("not_found");
+    expect(await code(api.routines.run(reminder.id))).toBe("not_found");
+    // the bot's own message is the only notice
+    const said = await until(async () => {
+      const items = (await api.conversations.messages(conversation.id)).items;
+      return items.length >= 2 ? items : undefined;
+    }, "the bot's answer");
+    expect(said.map((m) => m.text)).toContain(
+      "Combinado! Dia 29 às 19h eu te lembro de pagar o boleto.",
+    );
+
+    // the time comes: the bot reminds the user in the chat, as a plain message, and the row is gone
+    await forceDue(reminder.id);
+    const reminded = await until(async () => {
+      const items = (await api.conversations.messages(conversation.id)).items;
+      return items.find((m) => m.text === "Oi! Lembrete: pagar o boleto hoje.");
+    }, "the reminder in the chat");
+    expect(reminded.routineId).toBeUndefined();
+    await until(async () => {
+      const left = await w.db.sql`select id from routines where id = ${reminder.id}`;
+      return left.length === 0 ? true : undefined;
+    }, "the fired reminder to be deleted");
+    expect(await api.routines.list({ botId: bot.id })).toEqual([]);
+  });
+
+  it("the bot cannot make a one-time 'routine': create_routine refuses `once`", async () => {
+    const { api } = w.started;
+    const bot = await api.bots.create({ name: "Uma vez", modelId: "model-x" });
+    const conversation = await api.bots.openConversation(bot.id);
+    const sent = await api.conversations.send(conversation.id, "ROTINA-UMA-VEZ dia 29");
+    expect((await finished(sent.run.id)).status).toBe("done");
+    const result = (await api.runs.events(sent.run.id, { limit: 500 })).items.find(
+      (e) => e.type === "tool_result",
+    )?.payload as { isError?: boolean; content?: unknown };
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result.content)).toContain("create_reminder");
+    const [rows] = await w.db.sql<{ n: number }[]>`
+      select count(*)::int as n from routines where bot_id = ${bot.id}`;
+    expect(rows?.n).toBe(0);
   });
 });

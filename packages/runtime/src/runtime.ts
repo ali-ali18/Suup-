@@ -93,6 +93,7 @@ import { createMemoryService } from "./memory-service.js";
 import { createNetworkService, type NetworkService } from "./network/service.js";
 import { PROPOSE_TEAM_TOOL, proposeTeamTool } from "./reception.js";
 import {
+  createReminderTool,
   createRoutineTool,
   deleteRoutineTool,
   listRoutinesTool,
@@ -820,7 +821,9 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
   const routineToolsFor =
     (handle: Db): ((registry: ToolRegistry) => void) =>
     (registry) => {
-      registry.register(createRoutineTool(handle, async () => (await userTimeZone()).timeZone));
+      const zone = async () => (await userTimeZone()).timeZone;
+      registry.register(createRoutineTool(handle, zone));
+      registry.register(createReminderTool(handle, zone));
       registry.register(updateRoutineTool(handle));
       registry.register(deleteRoutineTool(handle));
       registry.register(listRoutinesTool(handle));

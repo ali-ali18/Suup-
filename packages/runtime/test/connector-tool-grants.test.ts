@@ -229,15 +229,17 @@ describe.skipIf(!DATABASE_URL)(
       expect(loaded.catalog.connectorTools).toBe(77);
       // (`schedule_return` is one more control tool than before: 82 became 83; the four routine
       // tools of a conversation run, docs/ROTINAS.md, make it 87; `propose_connector`, the gallery
-      // proposal of docs/CONECTORES.md, 88.)
-      expect(loaded.request.toolStats.definitions).toBe(88);
-      expect(searched.request.toolStats.definitions).toBe(13);
+      // proposal of docs/CONECTORES.md, 88; `create_reminder`, the one-time reminder that is not a
+      // routine, 89.)
+      expect(loaded.request.toolStats.definitions).toBe(89);
+      expect(searched.request.toolStats.definitions).toBe(14);
       // The bounds follow the estimate of 2.65 characters per token (it was 4: about 10 400 and
-      // 2 600 then, 1.5 times more now). The four routine tools add about 1 700 to both.
+      // 2 600 then, 1.5 times more now). The four routine tools add about 1 700 to both;
+      // `create_reminder` and the reminder guidance in the routine and return tools, about 450.
       expect(loaded.request.toolStats.estimatedTokens).toBeGreaterThan(15_700);
-      expect(loaded.request.toolStats.estimatedTokens).toBeLessThan(19_200);
+      expect(loaded.request.toolStats.estimatedTokens).toBeLessThan(19_700);
       expect(searched.request.toolStats.estimatedTokens).toBeGreaterThan(4_700);
-      expect(searched.request.toolStats.estimatedTokens).toBeLessThan(6_700);
+      expect(searched.request.toolStats.estimatedTokens).toBeLessThan(7_200);
       expect(loaded.catalog.mode).toBe("direct");
       expect(searched.catalog.mode).toBe("meta");
       expect(searched.catalog.connectorTools).toBeGreaterThanOrEqual(60);

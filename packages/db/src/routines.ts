@@ -32,6 +32,8 @@ export const MAX_ROUTINE_INSTRUCTION = 2000;
 export const MAX_ROUTINE_STATE = 2000;
 /** The most routines one bot may have (active, paused or ended). */
 export const MAX_ROUTINES_PER_BOT = 30;
+/** Pending one-time reminders one bot may have (they are not routines and do not count as one). */
+export const MAX_REMINDERS_PER_BOT = 30;
 /** A fire this late (or with missed times before it) is recorded as a catch-up. */
 export const CATCH_UP_AFTER_MS = 2 * 60_000;
 
@@ -81,6 +83,12 @@ export interface Routine {
   costCapUsd: string | null;
   createdBy: "bot" | "user";
   createdRunId: string | null;
+  /**
+   * A one-time reminder of the bot, not a routine (owner's decision, 23/11/2026): it fires once
+   * through the same scheduler, is never listed in the panel or the API list, and is deleted after
+   * it fires. Only `once` schedules.
+   */
+  reminder: boolean;
   endedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -137,6 +145,7 @@ interface RoutineRow {
   cost_cap_usd: string | null;
   created_by: "bot" | "user";
   created_run_id: string | null;
+  reminder: boolean;
   ended_at: Date | null;
   created_at: Date;
   updated_at: Date;
@@ -186,6 +195,7 @@ function mapRoutine(row: RoutineRow): Routine {
     costCapUsd: row.cost_cap_usd,
     createdBy: row.created_by,
     createdRunId: row.created_run_id,
+    reminder: row.reminder === true,
     endedAt: row.ended_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -280,6 +290,8 @@ export interface CreateRoutineInput {
   costCapUsd?: string | null;
   createdBy: "bot" | "user";
   createdRunId?: string;
+  /** A one-time reminder (see `Routine.reminder`): only a `once` schedule. */
+  reminder?: boolean;
   /** The moment it is created (default: the database clock). The interval is anchored here. */
   now?: Date;
 }
@@ -294,6 +306,10 @@ export async function createRoutine(db: Db, input: CreateRoutineInput): Promise<
     input.costCapUsd === undefined || input.costCapUsd === null
       ? null
       : parseCost(input.costCapUsd);
+  const reminder = input.reminder === true;
+  if (reminder && schedule.kind !== "once") {
+    throw new RoutineError("invalid", "Um lembrete é de uma vez só: precisa de data e hora.");
+  }
   return withTransaction(db, async (tx) => {
     const now = await clockOf(tx, input.now);
     const [bot] = await tx.sql<{ archived_at: Date | null }[]>`
@@ -303,11 +319,15 @@ export async function createRoutine(db: Db, input: CreateRoutineInput): Promise<
       throw new RoutineError("bot_archived", "O bot está arquivado.");
     }
     const [count] = await tx.sql<{ n: number }[]>`
-      select count(*)::int as n from routines where bot_id = ${input.botId}`;
-    if ((count?.n ?? 0) >= MAX_ROUTINES_PER_BOT) {
+      select count(*)::int as n from routines
+      where bot_id = ${input.botId} and reminder = ${reminder}`;
+    const max = reminder ? MAX_REMINDERS_PER_BOT : MAX_ROUTINES_PER_BOT;
+    if ((count?.n ?? 0) >= max) {
       throw new RoutineError(
         "limit",
-        `Este bot já tem ${MAX_ROUTINES_PER_BOT} rotinas. Apague uma antes de criar outra.`,
+        reminder
+          ? `Este bot já tem ${max} lembretes marcados. Espere um disparar ou apague um.`
+          : `Este bot já tem ${max} rotinas. Apague uma antes de criar outra.`,
       );
     }
     const next = nextFireAfter(schedule, { timeZone, anchor: now }, now);
@@ -319,9 +339,9 @@ export async function createRoutine(db: Db, input: CreateRoutineInput): Promise<
     }
     const [row] = await tx.sql<{ id: string }[]>`
       insert into routines (bot_id, name, instruction, schedule, time_zone, anchor_at, next_run_at,
-        cost_cap_usd, created_by, created_run_id)
+        cost_cap_usd, created_by, created_run_id, reminder)
       values (${input.botId}, ${name}, ${instruction}, ${tx.sql.json(schedule)}, ${timeZone},
-        ${now}, ${next}, ${cost}, ${input.createdBy}, ${input.createdRunId ?? null})
+        ${now}, ${next}, ${cost}, ${input.createdBy}, ${input.createdRunId ?? null}, ${reminder})
       returning id`;
     return requireRoutine(tx, (row as { id: string }).id);
   });
@@ -339,11 +359,20 @@ async function requireRoutine(db: Db, id: string): Promise<Routine> {
   return routine;
 }
 
-/** The routines, oldest first; of one bot when `botId` is given. */
-export async function listRoutines(db: Db, options: { botId?: string } = {}): Promise<Routine[]> {
+/**
+ * The routines, oldest first; of one bot when `botId` is given. One-time reminders are internal
+ * (never in the panel or the API list): they come only with `reminders: true` (the bot's own tools).
+ */
+export async function listRoutines(
+  db: Db,
+  options: { botId?: string; reminders?: boolean } = {},
+): Promise<Routine[]> {
+  const reminders = options.reminders === true ? db.sql`` : db.sql`and not r.reminder`;
   const rows = await db.sql<RoutineRow[]>`
     ${selectRoutines(db)}
-    ${options.botId === undefined ? db.sql`` : db.sql`where r.bot_id = ${options.botId}`}
+    where true
+    ${options.botId === undefined ? db.sql`` : db.sql`and r.bot_id = ${options.botId}`}
+    ${reminders}
     order by r.created_at, r.id`;
   return rows.map(mapRoutine);
 }
@@ -386,6 +415,9 @@ export async function updateRoutine(
       select r.*, null as last_fire from routines r where r.id = ${id} for update`;
     if (row === undefined) throw new RoutineError("not_found", "A rotina não existe.");
     const current = mapRoutine(row);
+    if (current.reminder && schedule !== undefined && schedule.kind !== "once") {
+      throw new RoutineError("invalid", "Um lembrete é de uma vez só: precisa de data e hora.");
+    }
     const now = await clockOf(tx, input.now);
     const nextSchedule = schedule ?? current.schedule;
     const nextZone = zone ?? current.timeZone;
@@ -633,7 +665,8 @@ export async function fireDueRoutines(
         missedCount,
       });
       if (result !== null) fired.push(result);
-      const next = nextFireAfter(schedule, ctx, now);
+      // A one-time reminder fires once, whatever its schedule says after now (it is then deleted).
+      const next = routine.reminder ? null : nextFireAfter(schedule, ctx, now);
       await tx.sql`
         update routines set next_run_at = ${next},
           status = ${next === null ? "ended" : "active"},

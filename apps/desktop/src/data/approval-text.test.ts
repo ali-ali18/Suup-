@@ -136,6 +136,9 @@ describe("the category and the title of a card", () => {
     expect(toolCategory("web_search").label).toBe("Web");
     expect(toolCategory("web_read").label).toBe("Web");
     expect(toolCategory("remember").label).toBe("Memória");
+    // a one-time reminder is not a routine (owner, 23/11/2026)
+    expect(toolCategory("create_reminder")).toEqual({ label: "Lembrete", icon: "routine" });
+    expect(toolCategory("create_routine").label).toBe("Rotina");
     expect(toolCategory("conn_erp__criar_pedido")).toEqual({ label: "erp", icon: "connector" });
     // The name of a tool never makes it a message: only the declaration does.
     expect(toolCategory("conn_gmail__send_email")).toEqual({ label: "gmail", icon: "connector" });

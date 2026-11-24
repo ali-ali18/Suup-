@@ -16,13 +16,23 @@ Decisão do dono: como no Grok, a rotina nasce da conversa, não de um formulár
 O id da rotina **nunca aparece no chat**. O "Editar" prende ao rascunho do compositor uma referência estruturada (`routineRef: { id }`); apagar o rascunho, ou trocar de bot, a tira. Ela vai com a mensagem (`POST /v1/conversations/{id}/messages`, `{ text, routineRef }`), o servidor confere que é uma rotina do bot da conversa e a guarda **na mensagem** (`messages.routine_ref`, migração 0027; `null` quando a rotina é apagada), nunca no texto.
 
 O modelo recebe a referência como dado, numa nota do harness no mesmo turno da mensagem (`renderRoutineRef`, `packages/core/src/loop/prompts.ts`): "The user's message is about your routine "Calendário da manhã" (todo dia às 08:00), id …. … To change or delete this routine, pass routine: "…"", com o aviso de não mostrar o id ao usuário. Fica no log, então retomar e reproduzir dão o mesmo: a mensagem que abriu a execução vai em `context_loaded.routineRefs`; a que chegou com a execução andando, em `user_message.routineRef` (a caixa de entrada lê a referência da mensagem). Uma mensagem assim que já está no histórico de uma execução seguinte leva a mesma nota ao lado do texto. O texto que o usuário digitou continua sendo o objetivo e o que o revisor do Auto-review lê como pedido dele. Lacuna: a resposta a uma pergunta do bot (`escalate`) é o resultado da chamada e não leva a nota.
-- `schedule_return` ([RETORNO.md](RETORNO.md)) continua sendo só para voltar **uma vez**, dentro da tarefa atual (um deploy que termina em 20 minutos). O que se repete, ou é para outro dia, é rotina. O prompt diz isso aos dois lados.
+- `schedule_return` ([RETORNO.md](RETORNO.md)) continua sendo para voltar **uma vez**, dentro da tarefa atual (um deploy que termina em 20 minutos), e é também o lembrete de uma vez para daqui a até 60 minutos (abaixo). **Rotina é só o que se repete.** O prompt diz isso aos dois lados.
+
+### Lembrete de uma vez (não é rotina)
+
+Decisão do dono (23/11/2026), depois de "Me lembra daqui 20 minutos de enviar meu RG" ter virado uma rotina no painel: **lembrete único é interno; rotina é para o que se repete.**
+
+- **Até 60 minutos** (`MAX_RETURN_MINUTES`): o bot usa o retorno interno, `schedule_return`, com a nota do que lembrar; ao voltar, lembra o usuário na própria mensagem. Uma mensagem do usuário antes da hora cancela o retorno como sempre; a descrição da ferramenta manda o bot agendar de novo nesse turno se o lembrete ainda vale.
+- **Mais longe** ("lembra dia 29 às 19h"): `create_reminder { text, date, time, timeZone? }`. Por baixo é uma linha de `routines` com `reminder = true` (migração 0029), sempre `once`, que usa o mesmo agendador, o mesmo disparo isolado e a mesma entrega no chat do bot. Diferenças: **não aparece** em `GET /v1/routines` nem por id (`404`), então o painel nunca a desenha; a mensagem do bot não leva `routineId`; o disparo dispara **uma vez** (mesmo atrasado) e a linha é **apagada** logo depois que o resultado é gravado; a execução recebe o bloco "This run is a reminder" (escrever o lembrete ao usuário, curto). Limite próprio de 30 lembretes pendentes por bot, fora da conta das 30 rotinas.
+- `create_routine` **recusa** um horário `once` e manda usar `create_reminder` (ou `schedule_return` dentro de uma hora). `list_routines` mostra os lembretes pendentes marcados como lembrete e `delete_routine` os cancela; `update_routine` não transforma um lembrete em algo que se repete.
+- Aprovação: `create_reminder` é `write_reversible`, como `create_routine` (o revisor do Auto-review vê que o usuário pediu; em "Perguntar tudo", cartão "Criar um lembrete: <o quê> — uma vez, em 29/11/2026 às 19:00", categoria "Lembrete"). Concluída, a chamada **não vira linha no chat** (como o retorno, docs/RETORNO.md "sem marcador"): o aviso é a mensagem do bot.
 
 Ferramentas (só em execução de conversa do usuário, `origin: user`):
 
 | Ferramenta | O que faz | Nível |
 |---|---|---|
-| `create_routine` | `{ name, instruction, schedule, timeZone?, costCapUsd? }` | `write_reversible` (permissão permanente) |
+| `create_routine` | `{ name, instruction, schedule, timeZone?, costCapUsd? }` (nunca `once`) | `write_reversible` (permissão permanente) |
+| `create_reminder` | `{ text, date, time, timeZone? }`: lembrete de uma vez, interno (acima) | `write_reversible` |
 | `update_routine` | `{ routine, name?, instruction?, schedule?, timeZone?, paused?, costCapUsd? }` | `write_reversible`; **só pausar** é `read` (tira poder) |
 | `delete_routine` | `{ routine }` | `read` (tira poder) |
 | `list_routines` | as rotinas do próprio bot | `read` |

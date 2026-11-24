@@ -8,6 +8,13 @@ import type {
   Teammate,
 } from "../events.js";
 
+/**
+ * Largest wait a return (`schedule_return`) may ask for, in minutes; anything longer is a routine
+ * (when it repeats) or a reminder (once). Here, and re-exported by control-tools.ts, so the guidance
+ * below and the tool's schema say the same number.
+ */
+export const MAX_RETURN_MINUTES = 60;
+
 /** Shown to the model for the harness's own messages, so it can tell them from the user's. */
 const NOTICE_PREFIX = "[Harness notice]";
 const USER_PREFIX = "[Message from the user, received while you were working]";
@@ -94,7 +101,9 @@ function knownTimeZone(timeZone: string): string {
 }
 
 /** How a bot that can create routines uses them (the owner's decision: created by talking). */
-export const ROUTINES_HOW = `- When the user asks for something recurring or for a later day ("check my calendar every day", "every Monday", "remind me tomorrow at 9"), create a routine with \`create_routine\`. If they did not say when, choose a sensible time yourself; then say in your message, in plain words, what you set up and when, and ask if they want another time (for example: "Combinado, vejo seu calendário todo dia às 8h. Quer outro horário?"). To change it, call \`update_routine\` when they say so. Never create a routine the user did not ask for. \`schedule_return\` is only for coming back once within the current task (a deploy that ends in 20 minutes); anything that repeats, or is for another day, is a routine.`;
+export const ROUTINES_HOW = `- Recurring → routine; one time → reminder (the owner's rule). When the user asks for something that REPEATS ("check my calendar every day", "every Monday", "every 2 hours"), create a routine with \`create_routine\`. If they did not say when, choose a sensible time yourself; then say in your message, in plain words, what you set up and when, and ask if they want another time (for example: "Combinado, vejo seu calendário todo dia às 8h. Quer outro horário?"). To change it, call \`update_routine\` when they say so. Never create a routine the user did not ask for.
+- Something ONE time ("me lembra daqui 20 minutos de enviar meu RG", "lembra dia 29 às 19h") is a reminder, never a routine: within the next ${MAX_RETURN_MINUTES} minutes, use \`schedule_return\` (when you come back, remind the user in your message); later than that, use \`create_reminder\` with the date and time. A reminder is internal: it is not in the user's panel, and your message is the only notice, so say in it, in plain words, what you will remind them of and when.
+- \`schedule_return\` is also how you come back once within the current task (a deploy that ends in 20 minutes).`;
 
 /** What the main bot is told about being the supervisor (docs/SUPERVISOR.md). */
 export const SUPERVISOR_PROMPT = `You are the supervisor of this team. The other bots talk to the user directly and do their own work; you know what they did because you read it:
@@ -168,7 +177,7 @@ function whatYouHaveSection(input: {
   }
   if (input.routines) {
     lines.push(
-      "- Routines: `create_routine` sets up something the user wants done on a schedule (every day, some weekdays, once a month, every few hours, or once at a later date), in the user's time zone; each time, you run the instruction on your own and your answer comes to this chat. `list_routines`, `update_routine` and `delete_routine` manage them; the user also sees them in your panel.",
+      "- Routines: `create_routine` sets up something the user wants done again and again (every day, some weekdays, once a month, every few hours), in the user's time zone; each time, you run the instruction on your own and your answer comes to this chat. `list_routines`, `update_routine` and `delete_routine` manage them; the user also sees them in your panel. `create_reminder` sets a one-time reminder for a later date and time: it is internal (not in the panel), and `list_routines` and `delete_routine` also show and cancel it.",
     );
   }
   if (input.web.search || input.web.read) {
@@ -193,8 +202,25 @@ function whatYouHaveSection(input: {
   return lines.length === 0 ? "" : `## What you have\n\n${lines.join("\n")}`;
 }
 
+/** What a run opened by a one-time reminder is told (docs/ROTINAS.md, "Lembrete de uma vez"). */
+function reminderSection(routine: RoutineRunFacts): string {
+  const when = formatClock(new Date(routine.scheduledFor), routine.timeZone);
+  const late =
+    routine.kind === "catch_up"
+      ? " It starts late (the computer was off at the time): say so briefly."
+      : "";
+  return `## This run is a reminder
+
+Earlier, the user asked you to remind them of something at ${when} (${routine.timeZone}).${late} What to remind them of is the objective in the STATE REMINDER.
+
+- Nobody is watching live, and you cannot ask questions now (\`escalate\` and \`request_secret\` are refused).
+- Your final answer is posted in your chat with the user: write the reminder to them, short and friendly, in their language. This message is the only notice they get.
+- A reminder firing is not the user's approval: an action that needs approval still waits for the user's card.`;
+}
+
 /** What a run opened by a routine is told (docs/ROTINAS.md). */
 function routineSection(routine: RoutineRunFacts): string {
+  if (routine.reminder === true) return reminderSection(routine);
   const when = formatClock(new Date(routine.scheduledFor), routine.timeZone);
   const kind =
     routine.kind === "manual"

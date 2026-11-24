@@ -27,6 +27,7 @@ import { RuntimeError } from "./errors.js";
 import { checkMemory } from "./memory-doctor.js";
 import { checkNetwork } from "./network/doctor.js";
 import {
+  createReminderTool,
   createRoutineTool,
   deleteRoutineTool,
   listRoutinesTool,
@@ -241,6 +242,7 @@ export async function replayRecordedRun(runtime: Runtime, runId: string): Promis
       run.origin === "user"
         ? [
             createRoutineTool(db, async () => null),
+            createReminderTool(db, async () => null),
             updateRoutineTool(db),
             deleteRoutineTool(db),
             listRoutinesTool(db),

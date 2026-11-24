@@ -571,6 +571,30 @@ describe("mergeApprovals: one row per tool call, the link is the call id", () =>
   });
 });
 
+describe("a one-time reminder is internal, like the return (owner, 23/11/2026)", () => {
+  it("create_reminder leaves no row and no indicator; a routine still shows; a pending card still waits", () => {
+    const events = [
+      call(1, "a", "create_reminder", {
+        text: "pagar o boleto",
+        date: "2026-11-29",
+        time: "19:00",
+      }),
+      result(2, "a"),
+      call(3, "b", "create_routine", { name: "Bom dia", instruction: "x", schedule: {} }),
+      result(4, "b"),
+    ];
+    expect(actionsOf("r", events).map((a) => a.name)).toEqual(["create_routine"]);
+    expect(runningTool([call(1, "a", "create_reminder", { text: "x" })])).toBeUndefined();
+    const waiting = makeApproval({
+      id: "ap",
+      tool: "create_reminder",
+      status: "pending",
+      callId: "y",
+    });
+    expect(mergeApprovals([], [waiting]).pending.map((a) => a.id)).toEqual(["ap"]);
+  });
+});
+
 describe("memory housekeeping is not shown in the chat (owner's rule)", () => {
   it("saving and forgetting a memory leave no row and no 'working' indicator; reading stays", () => {
     const events = [

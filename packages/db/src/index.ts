@@ -318,6 +318,7 @@ export {
   isCostCapText,
   listRoutineFires,
   listRoutines,
+  MAX_REMINDERS_PER_BOT,
   MAX_ROUTINE_INSTRUCTION,
   MAX_ROUTINE_NAME,
   MAX_ROUTINE_STATE,

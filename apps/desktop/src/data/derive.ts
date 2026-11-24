@@ -75,6 +75,7 @@ export const TOOL_LABEL: Record<string, string> = {
   delegate: "Delegar",
   team_recall: "Consultar a equipe",
   create_routine: "Criar rotina",
+  create_reminder: "Criar lembrete",
   update_routine: "Mudar rotina",
   delete_routine: "Apagar rotina",
   list_routines: "Ver rotinas",
@@ -99,9 +100,11 @@ export const CONTROL_TOOLS: ReadonlySet<string> = new Set([
  * The tools whose calls the chat never shows as a row or an indicator (docs/DESIGN.md, owner's rule:
  * "Eu não quero ter que ficar gerenciando memória"): saving and forgetting a memory are the bot's
  * own housekeeping. Reading (`recall`, `search_conversations`) stays a row, because it explains an
- * answer. A card that WAITS for the user (an approval) is still shown: only the finished call is quiet.
+ * answer. A one-time reminder (`create_reminder`) is internal like the return (docs/RETORNO.md, "sem
+ * marcador"): the bot's message is the only notice. A card that WAITS for the user (an approval) is
+ * still shown: only the finished call is quiet.
  */
-export const SILENT_TOOLS: ReadonlySet<string> = new Set(["remember", "forget"]);
+export const SILENT_TOOLS: ReadonlySet<string> = new Set(["remember", "forget", "create_reminder"]);
 
 export const toolLabel = (name: string): string => TOOL_LABEL[name] ?? name;
 

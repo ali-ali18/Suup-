@@ -1,10 +1,14 @@
 import type { Db } from "@suup/db";
 import { describe, expect, it } from "vitest";
 import {
+  CREATE_REMINDER_TOOL,
+  createReminderCardLine,
+  createReminderTool,
   createRoutineCardLine,
   createRoutineTool,
   deleteRoutineTool,
   listRoutinesTool,
+  ROUTINE_TOOL_NAMES,
   updateRoutineStateTool,
   updateRoutineTool,
 } from "../src/index.js";
@@ -71,5 +75,37 @@ describe("routine tools: what they declare", () => {
     expect(deleteRoutineTool(db).risk).toBe("read");
     expect(listRoutinesTool(db).risk).toBe("read");
     expect(updateRoutineStateTool(db).risk).toBe("read");
+  });
+
+  it("one time is a reminder, not a routine: create_routine refuses `once` and points to the reminder", async () => {
+    const tool = createRoutineTool(db, async () => "America/Sao_Paulo");
+    expect(tool.description).toContain("create_reminder");
+    expect(tool.description).toContain("schedule_return");
+    const out = await tool.execute(
+      {
+        name: "Lembrete",
+        instruction: "Lembrar do RG.",
+        schedule: { kind: "once", date: "2026-11-29", time: "19:00" },
+      },
+      { botId: "b", runId: "r" } as never,
+    );
+    expect(out.isError).toBe(true);
+    expect(String(out.content)).toContain("create_reminder");
+    expect(String(out.content)).toContain("schedule_return");
+  });
+
+  it("create_reminder: offered with the routine tools, a standing permission, its card in Portuguese", () => {
+    expect(ROUTINE_TOOL_NAMES).toContain(CREATE_REMINDER_TOOL);
+    const tool = createReminderTool(db, async () => "America/Sao_Paulo");
+    expect(tool.name).toBe("create_reminder");
+    expect(tool.risk).toBe("write_reversible");
+    expect(tool.description).toContain("schedule_return");
+    expect(tool.description).toContain("not in their panel");
+    expect(createReminderCardLine("enviar o RG", "2026-11-29", "19:00")).toBe(
+      "Criar um lembrete: enviar o RG — uma vez, em 29/11/2026 às 19:00",
+    );
+    expect(
+      tool.describe?.({ text: "pagar o boleto", date: "2026-11-29", time: "19:00" }, env),
+    ).toBe("Criar um lembrete: pagar o boleto — uma vez, em 29/11/2026 às 19:00");
   });
 });

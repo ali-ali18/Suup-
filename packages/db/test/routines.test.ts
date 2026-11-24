@@ -434,6 +434,7 @@ describe.skipIf(!DATABASE_URL)(
         "0026_routines.sql",
         "0027_message_routine_ref.sql",
         "0028_connector_oauth_catalog.sql",
+        "0029_routine_reminders.sql",
       ]);
       for (const file of held) await rm(join(dir, file));
       await migrate(ctx.db, dir);
@@ -466,7 +467,11 @@ describe.skipIf(!DATABASE_URL)(
       const dir = await mkdtemp(join(tmpdir(), "suup-migrations-"));
       await cp(MIGRATIONS_DIR, dir, { recursive: true });
       const held = (await readdir(MIGRATIONS_DIR)).filter((f) => f >= "0027" && f.endsWith(".sql"));
-      expect(held).toEqual(["0027_message_routine_ref.sql", "0028_connector_oauth_catalog.sql"]);
+      expect(held).toEqual([
+        "0027_message_routine_ref.sql",
+        "0028_connector_oauth_catalog.sql",
+        "0029_routine_reminders.sql",
+      ]);
       for (const file of held) await rm(join(dir, file));
       await migrate(ctx.db, dir);
       const [bot] = await ctx.db.sql<{ id: string }[]>`

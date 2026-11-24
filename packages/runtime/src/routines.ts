@@ -13,6 +13,7 @@ import {
   formatClock,
   INTERVAL_UNITS,
   isKnownTimeZone,
+  MAX_RETURN_MINUTES,
   type RoutineRunFacts,
   SCHEDULE_KINDS,
   type Schedule,
@@ -42,6 +43,7 @@ import {
 import { z } from "zod";
 
 export const CREATE_ROUTINE_TOOL = "create_routine";
+export const CREATE_REMINDER_TOOL = "create_reminder";
 export const UPDATE_ROUTINE_TOOL = "update_routine";
 export const DELETE_ROUTINE_TOOL = "delete_routine";
 export const LIST_ROUTINES_TOOL = "list_routines";
@@ -50,6 +52,7 @@ export const UPDATE_ROUTINE_STATE_TOOL = "update_routine_state";
 /** What a bot in a conversation with the user gets. */
 export const ROUTINE_TOOL_NAMES = [
   CREATE_ROUTINE_TOOL,
+  CREATE_REMINDER_TOOL,
   UPDATE_ROUTINE_TOOL,
   DELETE_ROUTINE_TOOL,
   LIST_ROUTINES_TOOL,
@@ -73,13 +76,22 @@ export function createRoutineCardLine(instruction: string, schedule: unknown): s
   return `Criar uma rotina: ${clip(instruction.trim(), 300)} — ${parsed.success ? describeSchedule(parsed.data) : "horário inválido"}`;
 }
 
-/** The routine a bot means, among ITS OWN: by id, or by exact name (case ignored). */
+/** One line of the card of a reminder: "Criar um lembrete: <o quê> — <quando, por extenso>". */
+export function createReminderCardLine(text: string, date: unknown, time: unknown): string {
+  const parsed = scheduleSchema.safeParse({ kind: "once", date, time });
+  return `Criar um lembrete: ${clip(text.trim(), 300)} — ${parsed.success ? describeSchedule(parsed.data) : "horário inválido"}`;
+}
+
+/**
+ * The routine a bot means, among ITS OWN (its one-time reminders included): by id, or by exact
+ * name (case ignored).
+ */
 async function routineOf(
   db: Db,
   botId: string,
   ref: string,
 ): Promise<{ routine: Routine } | { error: string }> {
-  const mine = await listRoutines(db, { botId });
+  const mine = await listRoutines(db, { botId, reminders: true });
   const wanted = ref.trim().toLowerCase();
   const found = mine.filter((r) => r.id === ref.trim() || r.name.trim().toLowerCase() === wanted);
   const [only] = found;
@@ -114,7 +126,8 @@ function routineLine(r: Routine): string {
     r.lastFire === null
       ? ""
       : `; last: ${r.lastFire.status}${r.lastFire.missedCount > 0 ? ` (missed ×${r.lastFire.missedCount})` : ""}`;
-  return `- ${JSON.stringify(r.name)} (id ${r.id}): ${scheduleWords(r)} (${r.timeZone}); ${status}${last}. Instruction: ${clip(r.instruction, 300)}`;
+  const what = r.reminder ? "one-time reminder, not in the panel" : "routine";
+  return `- ${JSON.stringify(r.name)} (id ${r.id}, ${what}): ${scheduleWords(r)} (${r.timeZone}); ${status}${last}. Instruction: ${clip(r.instruction, 300)}`;
 }
 
 function routineErrorText(error: RoutineError): string {
@@ -198,7 +211,7 @@ export function createRoutineTool(db: Db, userZone: UserZone) {
   return defineTool({
     name: CREATE_ROUTINE_TOOL,
     description:
-      "Creates a routine of yours: an instruction you will run on your own on a schedule, in the user's time zone, with the result posted in this chat. Use it only when the user asks for something recurring or for a later day. If they did not say when, choose a sensible time yourself, and after it is created tell them in your message what you set up and when, and ask if they want another time.",
+      "Creates a routine of yours: an instruction you will run on your own AGAIN AND AGAIN on a schedule (daily, weekly, monthly or every few minutes/hours), in the user's time zone, with the result posted in this chat. Use it only when the user asks for something recurring. Something for one time only is not a routine: a reminder within the next hour is `schedule_return`; a later one is `create_reminder`. If they did not say when, choose a sensible time yourself, and after it is created tell them in your message what you set up and when, and ask if they want another time.",
     input: createInput,
     risk: "write_reversible",
     ownOutput: true,
@@ -217,6 +230,12 @@ export function createRoutineTool(db: Db, userZone: UserZone) {
       }
       const read = readSchedule(schedule);
       if ("error" in read) return { isError: true, content: read.error };
+      if (read.schedule.kind === "once") {
+        return {
+          isError: true,
+          content: `Not created: something for one time only is not a routine (routines repeat; the user sees them in your panel). Within the next ${MAX_RETURN_MINUTES} minutes use schedule_return; later, use create_reminder with the date and time.`,
+        };
+      }
       try {
         const routine = await createRoutine(db, {
           botId: ctx.botId,
@@ -236,6 +255,72 @@ export function createRoutineTool(db: Db, userZone: UserZone) {
       } catch (error) {
         if (error instanceof RoutineError) {
           return { isError: true, content: `Not created: ${routineErrorText(error)}` };
+        }
+        throw error;
+      }
+    },
+  });
+}
+
+/** The longest text a reminder carries. */
+export const MAX_REMINDER_TEXT = 500;
+
+const reminderInput = z.object({
+  text: z.string().trim().min(1).max(MAX_REMINDER_TEXT).describe("What to remind the user of."),
+  date: z.string().describe("YYYY-MM-DD, user's time zone."),
+  time: z.string().describe("HH:MM (24 h)."),
+  timeZone: timeZoneField,
+});
+
+/**
+ * `create_reminder`: a one-time reminder at a later date and time (owner's decision, 23/11/2026:
+ * "lembrete único é interno; rotina é o que se repete"). It rides the routine scheduler as a hidden
+ * `once` row (`reminder`): never in the panel or the API list, deleted after it fires, and the only
+ * notice is the bot's own message (docs/RETORNO.md, "sem marcador"). Within the next hour the bot
+ * uses `schedule_return` instead (the prompt says so).
+ */
+export function createReminderTool(db: Db, userZone: UserZone) {
+  return defineTool({
+    name: CREATE_REMINDER_TOOL,
+    description: `A one-time reminder for the user at a later date and time: then you run once and your message reminds them here. Internal (not a routine, not in their panel): say in your message what and when. Within ${MAX_RETURN_MINUTES} minutes use schedule_return; something that repeats is create_routine.`,
+    input: reminderInput,
+    risk: "write_reversible",
+    ownOutput: true,
+    describe: ({ text, date, time }) => createReminderCardLine(text, date, time),
+    async execute({ text, date, time, timeZone }, ctx) {
+      const zone = timeZone ?? (await userZone());
+      if (zone === null) {
+        return {
+          isError: true,
+          content:
+            "The user's time zone is not known yet. Ask the user where they are (their city or time zone), then call again with timeZone.",
+        };
+      }
+      if (!isKnownTimeZone(zone)) {
+        return { isError: true, content: `"${zone}" is not an IANA time zone.` };
+      }
+      const read = readSchedule({ kind: "once", date, time });
+      if ("error" in read) return { isError: true, content: read.error };
+      try {
+        const reminder = await createRoutine(db, {
+          botId: ctx.botId,
+          name: clip(`Lembrete: ${text}`, MAX_ROUTINE_NAME),
+          instruction: clip(
+            `Lembre o usuário, numa mensagem curta: ${text}`,
+            MAX_ROUTINE_INSTRUCTION,
+          ),
+          schedule: read.schedule,
+          timeZone: zone,
+          createdBy: "bot",
+          createdRunId: ctx.runId,
+          reminder: true,
+        });
+        return {
+          content: `Reminder set (internal, not in the panel): ${scheduleWords(reminder)} (${reminder.timeZone}), id ${reminder.id}.\nNow tell the user in your message, in plain words, what you will remind them of and when. Your message is the only notice they get.`,
+        };
+      } catch (error) {
+        if (error instanceof RoutineError) {
+          return { isError: true, content: `Not set: ${routineErrorText(error)}` };
         }
         throw error;
       }
@@ -300,6 +385,13 @@ export function updateRoutineTool(db: Db) {
       if ("error" in found) return { isError: true, content: found.error };
       const read = args.schedule === undefined ? undefined : readSchedule(args.schedule);
       if (read !== undefined && "error" in read) return { isError: true, content: read.error };
+      if (read !== undefined && found.routine.reminder && read.schedule.kind !== "once") {
+        return {
+          isError: true,
+          content:
+            "Not changed: a reminder is one time only. For something that repeats, delete the reminder and create_routine.",
+        };
+      }
       try {
         const routine = await updateRoutine(db, found.routine.id, {
           ...(args.name === undefined ? {} : { name: args.name }),
@@ -332,7 +424,7 @@ export function deleteRoutineTool(db: Db) {
   return defineTool({
     name: DELETE_ROUTINE_TOOL,
     description:
-      "Deletes one of your routines (when the user asks to stop it for good, or a routine's own run finds its job is over). Its history goes with it.",
+      "Deletes one of your routines or cancels one of your one-time reminders (when the user asks to stop it for good, or a routine's own run finds its job is over). Its history goes with it.",
     input: z.object({
       routine: z.string().trim().min(1).max(100).describe("The routine's name or id."),
     }),
@@ -343,7 +435,9 @@ export function deleteRoutineTool(db: Db) {
       const found = await routineOf(db, ctx.botId, routine);
       if ("error" in found) return { isError: true, content: found.error };
       await deleteRoutine(db, found.routine.id);
-      return { content: `Routine ${JSON.stringify(found.routine.name)} deleted.` };
+      return {
+        content: `${found.routine.reminder ? "Reminder" : "Routine"} ${JSON.stringify(found.routine.name)} deleted.`,
+      };
     },
   });
 }
@@ -353,12 +447,12 @@ export function listRoutinesTool(db: Db) {
   return defineTool({
     name: LIST_ROUTINES_TOOL,
     description:
-      "Lists your routines: name, id, schedule in words, time zone, next run, last result and instruction.",
+      "Lists your routines and your pending one-time reminders: name, id, schedule in words, time zone, next run, last result and instruction.",
     input: z.object({}),
     risk: "read",
     ownOutput: true,
     async execute(_args, ctx) {
-      const mine = await listRoutines(db, { botId: ctx.botId });
+      const mine = await listRoutines(db, { botId: ctx.botId, reminders: true });
       return {
         content: mine.length === 0 ? "You have no routines." : mine.map(routineLine).join("\n"),
       };
@@ -407,6 +501,7 @@ export async function routineRunFacts(db: Db, runId: string): Promise<RoutineRun
     kind: fire.kind,
     missedCount: fire.missedCount,
     state: routine.state,
+    ...(routine.reminder ? { reminder: true } : {}),
   };
 }
 
@@ -440,12 +535,17 @@ export async function completeRoutineFire(
   if (fire === null || fire.finishedAt !== null) return false;
   const routine = await getRoutine(db, fire.routineId);
   const name = routine?.name ?? "rotina";
+  const reminder = routine?.reminder === true;
   const text =
     run.status === "done"
       ? texts.done
-      : run.status === "failed"
-        ? `A rotina “${name}” não terminou: ${texts.failed}`
-        : `A rotina “${name}” foi cancelada antes de terminar.`;
+      : reminder
+        ? run.status === "failed"
+          ? `O lembrete que você pediu não saiu: ${texts.failed}`
+          : "O lembrete que você pediu foi cancelado antes de sair."
+        : run.status === "failed"
+          ? `A rotina “${name}” não terminou: ${texts.failed}`
+          : `A rotina “${name}” foi cancelada antes de terminar.`;
   let messageId: string | null = null;
   try {
     const conversation = await createDirectConversation(db, run.botId);
@@ -456,16 +556,22 @@ export async function completeRoutineFire(
       text,
       runId: run.id,
       dedupeKey: `routine-fire:${fire.id}`,
-      ...(routine === null ? {} : { routineId: routine.id }),
+      // a reminder is internal: its message is a plain message of the bot, tied to nothing
+      ...(routine === null || reminder ? {} : { routineId: routine.id }),
     });
     messageId = message.id;
   } catch {
     // an archived bot without a chat: the result stays in the routine's history only
   }
-  return finishRoutineFire(db, {
+  const recorded = await finishRoutineFire(db, {
     fireId: fire.id,
     status: run.status,
     resultText: text,
     messageId,
   });
+  // A one-time reminder that fired is gone: nothing is left behind (no panel, no history).
+  if (reminder && routine !== null) {
+    await deleteRoutine(db, routine.id);
+  }
+  return recorded;
 }

@@ -246,6 +246,8 @@ export function toolCategory(
     case "list_routines":
     case "update_routine_state":
       return { label: "Rotina", icon: "routine" };
+    case "create_reminder":
+      return { label: "Lembrete", icon: "routine" };
     default:
       return { label: "Ferramenta", icon: "generic" };
   }

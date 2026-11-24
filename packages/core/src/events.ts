@@ -242,6 +242,8 @@ export const routineRunFactsSchema = z.object({
   kind: z.enum(["scheduled", "catch_up", "manual"]),
   missedCount: z.number().int().nonnegative(),
   state: z.string(),
+  /** A one-time reminder the user asked for (not a routine: docs/ROTINAS.md, "Lembrete de uma vez"). */
+  reminder: z.exactOptional(z.boolean()),
 });
 export type RoutineRunFacts = z.infer<typeof routineRunFactsSchema>;
 

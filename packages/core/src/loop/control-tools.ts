@@ -10,7 +10,12 @@ import {
 } from "../events.js";
 import type { JsonObject } from "../messages.js";
 import type { ToolSpec } from "../provider.js";
-import { FINAL_VERDICT_TOOL_DESCRIPTION, openSteps, VERDICT_TOOL_DESCRIPTION } from "./prompts.js";
+import {
+  FINAL_VERDICT_TOOL_DESCRIPTION,
+  MAX_RETURN_MINUTES,
+  openSteps,
+  VERDICT_TOOL_DESCRIPTION,
+} from "./prompts.js";
 import { toolSearchControlSpecs } from "./tool-search.js";
 
 /**
@@ -75,14 +80,14 @@ To USE a secret, write the placeholder \`{{secret:NAME}}\` where the value belon
 
 Arguments: \`name\` (capital letters, digits and underscores, e.g. GITHUB_TOKEN) and \`reason\` (one sentence the user reads: what it is for). Call it ALONE in its turn; the run pauses until the user answers.`;
 
-/** Largest wait a return may ask for, in minutes; anything longer is a routine, which the user sees. */
-export const MAX_RETURN_MINUTES = 60;
+/** Largest wait a return may ask for, in minutes (defined with the guidance in prompts.ts). */
+export { MAX_RETURN_MINUTES };
 /** Longest note a return may carry, in characters. */
 export const MAX_RETURN_NOTE_CHARS = 500;
 /** Consecutive returns one run may have, unless `limits.maxReturns` says otherwise. */
 export const DEFAULT_MAX_RETURNS = 6;
 
-export const SCHEDULE_RETURN_DESCRIPTION = `Agenda um retorno seu, sozinho, daqui a alguns minutos, na mesma conversa. Use quando você disparou algo que demora (um deploy, um pipeline de CI, um build, uma migração, uma fila) e o resultado só existe depois de um tempo: em vez de ficar em laço de espera, agende e termine o turno. Não use para esperar a resposta do usuário (para isso há \`escalate\`) nem para tarefas que se repetem ou que são para outro dia (isso é uma rotina, \`create_routine\`, quando o usuário pede).
+export const SCHEDULE_RETURN_DESCRIPTION = `Agenda um retorno seu, sozinho, daqui a alguns minutos, na mesma conversa. Use quando você disparou algo que demora (um deploy, um pipeline de CI, um build, uma migração, uma fila) e o resultado só existe depois de um tempo: em vez de ficar em laço de espera, agende e termine o turno. Use também para um lembrete único que o usuário pede para daqui a até ${MAX_RETURN_MINUTES} minutos ("me lembra daqui 20 minutos de enviar meu RG"): agende, diga na mensagem quando vai lembrar e, ao voltar, lembre o usuário na sua mensagem. Não use para esperar a resposta do usuário (para isso há \`escalate\`), para um lembrete mais longe que isso (\`create_reminder\`) nem para o que se repete (isso é uma rotina, \`create_routine\`, quando o usuário pede).
 
 Argumentos:
 - \`inMinutes\`: inteiro de 1 a ${MAX_RETURN_MINUTES}. Se o que você espera demora mais que isso, agende ${MAX_RETURN_MINUTES} e, ao voltar, confira e agende de novo.
