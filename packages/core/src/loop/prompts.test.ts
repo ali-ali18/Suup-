@@ -28,6 +28,32 @@ describe("system prompt", () => {
   });
 });
 
+describe("the owner's rule: hand over the action, never directions", () => {
+  const chat = buildSystemPrompt({ name: "Ada", personality: "" }, undefined, { routines: true });
+
+  it("is in the conversation runs: cards for the missing thing, the link only as a card, never Settings", () => {
+    for (const needle of [
+      "hand over the ACTION in the chat",
+      "`propose_connector`",
+      "`show_connect_card`",
+      "`request_secret`",
+      "NEVER paste the link in your message",
+      "Never tell the user to go look in Settings",
+    ]) {
+      expect(chat, needle).toContain(needle);
+    }
+  });
+
+  it("does not change the shared prefix of the runs that cannot show cards", () => {
+    const plain = buildSystemPrompt({ name: "Ada", personality: "" });
+    expect(plain).not.toContain("show_connect_card");
+    // The text up to the routines line is the same: only a run that can show cards carries the rule.
+    const head = plain.slice(0, plain.indexOf("- When you are blocked"));
+    expect(head.length).toBeGreaterThan(200);
+    expect(chat.startsWith(head)).toBe(true);
+  });
+});
+
 describe("system prompt and memory tools", () => {
   const bot = { name: "Ada", personality: "" };
 

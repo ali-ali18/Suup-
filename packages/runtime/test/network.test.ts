@@ -159,8 +159,9 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("network allowlist and the approval c
     // read_file, the host request, `send_file` and `create_document` (a bot with a machine hands its
     // files to the chat and builds PDF, Word and Excel files),
     // the five routine tools of a conversation run (the four of docs/ROTINAS.md and
-    // `create_reminder`) and the gallery proposal (`propose_connector`, docs/CONECTORES.md)
-    expect(report.builtinTools).toBe(control + 4 + 5 + 1);
+    // `create_reminder`) and the gallery proposal (`propose_connector`, docs/CONECTORES.md) and its card
+    // (`show_connect_card`)
+    expect(report.builtinTools).toBe(control + 4 + 5 + 2);
     expect(report.mode).toBe("direct");
     expect(report.connectorTools).toBe(0);
     expect(report.deferred).toBe(0);

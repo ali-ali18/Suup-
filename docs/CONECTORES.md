@@ -212,6 +212,8 @@ A galeria é uma **lista fixa no código** (`packages/connectors/src/catalog.ts`
 | `name`, `description` | o serviço e uma linha do que o bot faz com ele |
 | `source`, `license` | a página oficial do servidor e a licença conhecida |
 | `icon` | um *slug* do Simple Icons (CC0) para o app desenhar o logo, só como identificação do serviço; `null` = ícone genérico |
+| `deniedTools` | nomes exatos de ferramentas que o Suup **nunca** oferece a um bot (Composio: `COMPOSIO_REMOTE_BASH_TOOL`, `COMPOSIO_REMOTE_WORKBENCH`, `COMPOSIO_PROXY_EXECUTE`, `COMPOSIO_WAIT_FOR_CONNECTIONS`). Entram como `tools.<nome>.denied` do conector (`specOf` junta o que o catálogo declara, mesmo num conector instalado antes) e o adaptador as lista como "não oferecidas" sem registrá-las, qualquer que seja a concessão |
+| `authHosts`, `authLinkSegment` | os hosts exatos de onde vêm os links de conectar/autorizar do serviço (Composio: `connect.composio.dev`, primeiro segmento `link`: `https://connect.composio.dev/link/…`, que valem 10 minutos). Só um link assim pode ir num cartão do chat (`show_connect_card`) |
 | `availability` | `ready` (instalável) ou `unverified` ("Em breve" no app: aparece com o motivo, `unverifiedReason`, numa frase simples para a pessoa; não instala) |
 | `transport` | o transporte **fixo** (URL HTTP; nunca um comando de fora) |
 | `auth` | `oauth` (OAuth do MCP no navegador), `token` (o token do serviço no formulário seguro: o nome do segredo, o cabeçalho e o passo a passo) ou `oauth_owner_client` (um app OAuth do dono, com o passo a passo) |
@@ -264,6 +266,21 @@ Segue a especificação de autorização do MCP, revisão **2026-07-28**, como r
 ## O bot propõe um conector
 
 A ferramenta `propose_connector` (risco `external_irreversible`: **sempre cartão**, a não ser por uma regra sua) é oferecida nas execuções de uma conversa sua. O bot só passa o **id exato** de uma entrada da galeria e um motivo: nenhum comando, URL ou argumento dele chega a um conector. O cartão é montado **da entrada**: "Instalar o conector Notion da galeria (fonte): o que faz. Servidor: URL. Login: como. Fica desligado até você entrar em Configurações > Conectores." Aprovado, a entrada é instalada **desligada** com `origin: "proposal"`, e o bot diz para você terminar o login (ou dar o token) na galeria; recusado, nada acontece. Um id fora da galeria, ou uma entrada "a confirmar", é recusado sem instalar nada.
+
+**Atualização de 24/11/2026 (dono: "ele deveria ter usado um card!!!", "eu ter que sair caçando as coisas não ajuda em nada").**
+
+- O cartão de aprovação não mostra mais o endereço nem o link da fonte: uma frase só ("Instalar o conector Notion da galeria: o que faz. Entrada: …").
+- **Aprovado**, o conector é instalado desligado **e dado ao bot que o propôs** (todas as ferramentas que ele oferece; as que mudam algo continuam pedindo cartão). O cartão do chat tem o botão que falta.
+- **Já instalado**: a ferramenta nem pede cartão (uma execução de conversa lê, no começo, quais entradas já estão instaladas e as declara `read`) e devolve "já instalado" com o que falta (conectar, liberar ao bot), mandando o bot mostrar o cartão. Uma entrada que sumiu depois do começo da execução **não** é instalada sem cartão.
+- **`show_connect_card`** (risco `read`; `{ connector, app?, url?, expiresAt?, action: connect | authorize_app | grant | add_key | manage }`): o jeito de entregar um link ou botão de conectar, autorizar um app, liberar o bot ou adicionar a chave. O servidor valida: o conector existe; `url` (obrigatória em `authorize_app`) é `https`, sem usuário e senha, com host **exatamente** igual a um do conector (`egressHosts`, `authHosts`, o do endereço dele) e, se a entrada declara `authLinkSegment`, o primeiro segmento do caminho igual a ele (`connectLinkProblem`, pelo `URL`, sem regex). O app confere de novo e **desenha só um botão** (o link, e a query dele, nunca aparecem). O que o app mostra: [DESIGN.md](DESIGN.md) §5e.
+- Ligar um conector (interruptor, `PATCH enabled`, ou a instalação com o token já no cofre) **lista as ferramentas na hora**, em segundo plano, como o login OAuth já fazia. **Era o defeito do dono**: um conector ligado à mão ficava "ainda não listado" (ninguém o testava) e "nenhum bot" (nada o concedia), e o bot dizia que não podia usá-lo. Falha: o motivo fica em `discovery.lastError` e a página do plugin diz "Ainda não consegui ver as ferramentas" com "Tentar de novo"; sem bot, "Nenhum bot usa este plugin ainda" com "Escolher os bots".
+- Regra do prompt (`HAND_OVER_RULE`) e nos erros das ferramentas: o bot entrega a ação (cartão, formulário seguro), nunca "abra Configurações". O link de conectar vai **sempre** num cartão.
+- **Composio**: a chave `ck_…` é uma só, no cofre; os apps (Google Agenda…) são autorizados no navegador pelo link `connect.composio.dev/link/…`, que o bot manda num cartão ("Depois de autorizar, me avise"; ele confere de novo com `COMPOSIO_MANAGE_CONNECTIONS`). Seguem pedindo cartão: `COMPOSIO_SEARCH_TOOLS`, `COMPOSIO_GET_TOOL_SCHEMAS`, `COMPOSIO_MANAGE_CONNECTIONS`, `COMPOSIO_MULTI_EXECUTE_TOOL`. **Lacuna**: a lista dos apps ligados dentro do Composio (ativo, falta autorizar, falhou) não é mostrada porque o backend do Suup não tem um endpoint que a devolva (só o bot a vê, por `MANAGE_CONNECTIONS`). A pesquisa `docs/pesquisas/composio-mcp.md` não estava na origem quando isto foi escrito: os fatos acima são os que o coordenador passou e estão **a conferir** nela.
+
+## Plugins na tela (24/11/2026)
+
+Configurações > Conectores é só a lista **"Instalado"**; cada plugin tem a página dele na tela Conectores, com tudo (ligar, entrar, bots, ferramentas e riscos, remover). Tavily e Brave são plugins da categoria "Pesquisa na web" (`SEARCH_PLUGIN_CATALOG`, em `catalog.ts`): **não são conectores MCP** e não criam nada em `connectors`; a entrada só aponta, pelo `provider` (id exato do motor), para a fila de busca ([BUSCA.md](BUSCA.md)). Ver [DESIGN.md](DESIGN.md) §5e.
+
 
 ## Ciclo de vida
 

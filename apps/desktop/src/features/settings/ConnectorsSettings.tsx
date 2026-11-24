@@ -1,9 +1,7 @@
-import type { Connector, ConnectorTest, ConnectorTool, RiskLevel } from "@suup/api";
-import { Ban, Plug, Plus, Power, SlidersHorizontal, Trash2, Wrench } from "lucide-react";
+import { BadgeCheck, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { useUi } from "../../app/ui-store.js";
-import { LEVEL_LABEL, LEVELS } from "../../data/approval-text.js";
 import { orderedConnectors, orderedSecrets } from "../../data/reducers.js";
 import {
   bearerRow,
@@ -13,18 +11,10 @@ import {
   emptyRow,
   type FormErrors,
   HTTP_WARNING,
-  parseRecipientFields,
-  READ_WARNING,
   type RefRow,
-  RISK_BASIS_TEXT,
   STDIO_WARNING,
-  TIGHTENED_HELP,
 } from "../../lib/connector-form.js";
 import { cx } from "../../lib/cx.js";
-import { friendlyError } from "../../lib/friendly-error.js";
-import { RUNS_IN_LABEL } from "../../lib/network.js";
-import { reviewNotice } from "../../lib/tool-review.js";
-import { brandGlyphFor } from "../../ui/brand-icons.js";
 import { Dropdown, type DropdownOption } from "../../ui/dropdown.js";
 import { Input } from "../../ui/input.js";
 import {
@@ -34,33 +24,18 @@ import {
   FieldLabel,
   FormRow,
   FormStack,
+  fieldControlClass,
   IconButton,
   Notice,
   Pill,
-  PlainText,
-  Tag,
   TextField,
-  Toggle,
 } from "../../ui/primitives.js";
 import { RadioChip, RadioGroup } from "../../ui/radio.js";
-import { ConnectorGrants } from "./ConnectorGrants.js";
-import { ConnectorNetwork } from "./ConnectorNetwork.js";
-import {
-  PaneBody,
-  PaneHead,
-  RowAction,
-  RowValue,
-  type SectionProps,
-  SettingsCard,
-  SettingsEmpty,
-  SettingsFold,
-  SettingsGroup,
-  SettingsHint,
-  SettingsList,
-  SettingsRow,
-  SettingsStack,
-} from "./parts.js";
-import { ReviewDialog, ToolHistory } from "./ToolReview.js";
+import { KIND_LABEL } from "../plugins/ConnectorManage.js";
+import { EntryIcon } from "../plugins/EntryIcon.js";
+import { type InstalledPlugin, installedPlugins, searchPlugins } from "../plugins/installed.js";
+import { usePlugins } from "../plugins/use-plugins.js";
+import { PaneBody, PaneHead, type SectionProps, SettingsEmpty } from "./parts.js";
 import { useTask } from "./use-task.js";
 import { SecretDialog } from "./VaultSettings.js";
 
@@ -73,12 +48,6 @@ const SCOPE_OPTIONS: readonly DropdownOption<ConnectorForm["scope"]>[] = [
   { value: "read_only", label: "Somente leitura (só as ferramentas de leitura são oferecidas)" },
   { value: "read_write", label: "Leitura e escrita (as que escrevem pedem cartão)" },
 ];
-const RISK_OPTIONS: readonly DropdownOption<RiskLevel | "">[] = [
-  { value: "", label: "Padrão (pergunta antes)" },
-  ...LEVELS.map((level) => ({ value: level, label: LEVEL_LABEL[level] })),
-];
-
-const KIND_LABEL = { stdio: "Programa neste computador", http: "Servidor HTTP" } as const;
 
 // ------------------------------------------------------------- the form
 
@@ -349,601 +318,150 @@ function AddConnectorDialog({ onClose, onNewSecret }: { onClose(): void; onNewSe
   );
 }
 
-// ------------------------------------------------------------- the tools
+// ----------------------------------------------------------------- the section
+
+/** The right end of an installed row: green "Conectado", the "Conectar" pill, or quiet words. */
+function InstalledStatus({ plugin, onConnect }: { plugin: InstalledPlugin; onConnect(): void }) {
+  const { status } = plugin;
+  if (status.tone === "action") {
+    return (
+      <Pill
+        tone="quiet"
+        size="sm"
+        aria-label={`${status.label} ${plugin.name}`}
+        data-testid="installed-connect"
+        onClick={onConnect}
+      >
+        {status.label}
+      </Pill>
+    );
+  }
+  return (
+    <span
+      className={cx(
+        "flex-none text-small whitespace-nowrap",
+        status.tone === "ok" ? "text-success-text" : "text-text-muted",
+      )}
+      data-testid="installed-state"
+      data-tone={status.tone}
+    >
+      {status.label}
+    </span>
+  );
+}
 
 /**
- * "Envia mensagem para outra pessoa": only the USER can mark a tool this way (a server's hints
- * never do), and says which argument holds the recipient. It is what makes the approval card the
- * message card (Enviar, Permitir destinatário).
+ * The installed plugins, as in the reference the owner gave (24/11/2026): a two-column grid of rows
+ * (the brand tile, the friendly name, one muted line, and where it stands on the right). Clicking one
+ * opens ITS page, where everything about it is managed; at the end, "Mostrar todos" goes to the whole
+ * gallery. A connector added by hand shows with the generic icon and its own name.
  */
-function OutboundMark({ connector, tool }: { connector: Connector; tool: ConnectorTool }) {
-  const { sync, api } = useServices();
-  const task = useTask();
-  const saved = tool.outbound?.recipientFields.join(", ") ?? "";
-  const [marked, setMarked] = useState(tool.outbound !== null);
-  const [fields, setFields] = useState(saved);
-  // What the server holds changed: show it again (while rendering, not in an effect, which also ran
-  // after the first render and could undo what was typed right after the field appeared).
-  const savedKey = JSON.stringify([tool.outbound !== null, saved]);
-  const [shownKey, setShownKey] = useState(savedKey);
-  if (shownKey !== savedKey) {
-    setShownKey(savedKey);
-    setMarked(tool.outbound !== null);
-    setFields(saved);
-  }
-  const id = `outbound-${connector.name}-${tool.tool}`;
-  const parsed = parseRecipientFields(fields);
-  const dirty = marked !== (tool.outbound !== null) || (marked && fields !== saved);
-  const save = () =>
-    task.run(async () => {
-      const result = await sync.connectorCall(() =>
-        api.connectors.setToolOutbound(connector.name, tool.tool, {
-          outbound: marked ? { kind: "message", recipientFields: parsed } : null,
-        }),
-      );
-      return result.ok ? { ok: true } : { ok: false, message: result.message };
-    });
+function InstalledGrid({
+  plugins,
+  total,
+}: {
+  plugins: InstalledPlugin[];
+  total: number | undefined;
+}) {
+  const openPlugin = useUi((s) => s.openPlugin);
   return (
     <>
-      <SettingsRow
-        title="Envia mensagem para outra pessoa"
-        description="Só você marca isto: o cartão desta ferramenta passa a ter “Enviar” e o menu do destinatário."
-        control={
-          <Toggle
-            checked={marked}
-            disabled={task.busy}
-            testId="tool-outbound-check"
-            label={`${tool.tool}: envia mensagem para outra pessoa`}
-            onChange={setMarked}
-          />
-        }
-      />
-      {marked && (
-        <SettingsRow
-          title="Campo do destinatário"
-          titleId={`${id}-label`}
-          control={
-            <Input
-              id={id}
-              look={{ size: "sm" }}
-              aria-labelledby={`${id}-label`}
-              placeholder="ex.: to (separe vários por vírgula)"
-              value={fields}
-              disabled={task.busy}
-              data-testid="tool-outbound-fields"
-              onValueChange={setFields}
-            />
-          }
-        />
-      )}
-      {dirty && (
-        <SettingsRow
-          title="Alteração não salva"
-          control={
-            <RowAction
-              disabled={task.busy || (marked && parsed.length === 0)}
-              data-testid="tool-outbound-save"
-              onClick={() => void save()}
+      <ul
+        className="m-0 grid list-none grid-cols-2 gap-x-3 gap-y-1 p-0 narrow:grid-cols-1"
+        data-testid="installed-list"
+      >
+        {plugins.map((p) => (
+          <li
+            key={`${p.kind}-${p.id}`}
+            className="flex min-w-0 items-center gap-2 rounded-card pr-3 hover:bg-hover"
+            data-testid="installed-item"
+            data-plugin={p.id}
+            data-kind={p.kind}
+          >
+            <button
+              type="button"
+              className="flex min-w-0 flex-1 items-center gap-3 rounded-card border-0 bg-transparent p-3 text-left text-text"
+              onClick={() => openPlugin({ kind: p.kind, id: p.id, autoStart: false })}
             >
-              {task.busy ? "Salvando…" : "Salvar"}
-            </RowAction>
-          }
-        />
-      )}
+              <EntryIcon id={p.id} name={p.name} look={p.look} size="lg" />
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="flex min-w-0 items-center gap-1.5 text-label font-label">
+                  <span className="truncate">{p.name}</span>
+                  {p.verified && (
+                    <BadgeCheck
+                      size={14}
+                      className="flex-none text-text-muted"
+                      aria-label="Da galeria do Suup"
+                    />
+                  )}
+                </span>
+                <span className="truncate text-small text-text-muted">{p.line}</span>
+              </span>
+            </button>
+            <InstalledStatus
+              plugin={p}
+              onConnect={() => openPlugin({ kind: p.kind, id: p.id, autoStart: true })}
+            />
+          </li>
+        ))}
+      </ul>
+      <ShowAll total={total} />
     </>
   );
 }
 
-function ToolRow({ connector, tool }: { connector: Connector; tool: ConnectorTool }) {
-  const { sync, api } = useServices();
-  const task = useTask();
-  const [open, setOpen] = useState(false);
-  const chosen = connector.toolOverrides[tool.tool]?.risk ?? "";
-  return (
-    <li data-testid="connector-tool" data-tool={tool.tool} data-available={tool.available}>
-      <SettingsRow
-        title={tool.tool}
-        description={
-          tool.pin === "changed" || tool.pin === "new" ? (
-            <span data-testid="tool-pin" data-pin={tool.pin}>
-              {tool.pin === "changed"
-                ? "Definição mudou, esperando sua revisão"
-                : "Nova, esperando sua revisão"}
-            </span>
-          ) : undefined
-        }
-        control={
-          <>
-            <RowValue>
-              <Tag
-                tone={
-                  tool.risk === "external_irreversible"
-                    ? "danger"
-                    : tool.risk === "read"
-                      ? "neutral"
-                      : "outline"
-                }
-              >
-                {LEVEL_LABEL[tool.risk]}
-              </Tag>
-            </RowValue>
-            <RowAction
-              aria-expanded={open}
-              data-testid="connector-tool-toggle"
-              onClick={() => setOpen(!open)}
-            >
-              {open ? "Fechar" : "Detalhes"}
-            </RowAction>
-          </>
-        }
-      />
-      {open && (
-        <SettingsFold>
-          {/* The registered name (`conn_<connector>__<tool>`) is internal: the Inspector has it. */}
-          {tool.description !== "" && (
-            <blockquote
-              className="m-0 flex flex-col items-start gap-1 border-l-2 border-border-strong pl-3 text-small text-text-muted"
-              data-testid="tool-description"
-            >
-              <Tag tone="outline">escrito pelo servidor</Tag>
-              <PlainText>{tool.description}</PlainText>
-            </blockquote>
-          )}
-          {tool.available ? (
-            <>
-              <SettingsHint data-testid="tool-basis">
-                {RISK_BASIS_TEXT[tool.riskBasis]}
-                {tool.hints !== null && (
-                  <>
-                    {" "}
-                    Dica do servidor:{" "}
-                    {[
-                      tool.hints.readOnlyHint === undefined
-                        ? undefined
-                        : tool.hints.readOnlyHint
-                          ? "só lê"
-                          : "escreve",
-                      tool.hints.destructiveHint === true ? "destrutiva" : undefined,
-                    ]
-                      .filter(Boolean)
-                      .join(", ") || "nenhuma"}
-                    .
-                  </>
-                )}
-              </SettingsHint>
-              {tool.riskBasis === "tightened_by_hint" && (
-                <Notice role="note">{TIGHTENED_HELP}</Notice>
-              )}
-              <SettingsCard>
-                <SettingsRow
-                  title="O que você afirma"
-                  control={
-                    <Dropdown
-                      label={`O que você afirma sobre ${tool.tool}`}
-                      value={chosen}
-                      options={RISK_OPTIONS}
-                      disabled={task.busy}
-                      testId="tool-risk"
-                      onChange={(value) => {
-                        void task.run(async () => {
-                          const result = await sync.connectorCall(() =>
-                            api.connectors.setToolRisk(connector.name, tool.tool, {
-                              risk: value === "" ? null : value,
-                            }),
-                          );
-                          return result.ok ? { ok: true } : { ok: false, message: result.message };
-                        });
-                      }}
-                    />
-                  }
-                />
-                <OutboundMark connector={connector} tool={tool} />
-              </SettingsCard>
-              {task.error !== undefined && <FieldError>{task.error}</FieldError>}
-            </>
-          ) : (
-            <SettingsHint data-testid="tool-unavailable-reason">
-              Não é oferecida aos bots: {tool.reason ?? "motivo não informado"}.
-            </SettingsHint>
-          )}
-        </SettingsFold>
-      )}
-    </li>
-  );
-}
-
-// ------------------------------------------------------------ one connector
-
-/** The row of a connector in the list: name, one line of state, the switch and "Abrir". */
-function ConnectorRow({
-  connector,
-  onOpen,
-  onAskEnable,
-}: {
-  connector: Connector;
-  onOpen(): void;
-  onAskEnable(c: Connector): void;
-}) {
-  const { sync, api } = useServices();
-  const toggling = useTask();
-  const withAccess = connector.grants.filter((g) => g.all || g.tools.length > 0).length;
-  const notice = reviewNotice(connector);
-  const offered = (connector.tools ?? []).filter((t) => t.available).length;
-  const lastError = connector.discovery.lastError;
-  const summary = [
-    KIND_LABEL[connector.transport.kind],
-    connector.tools === null
-      ? "ainda não listado"
-      : `${offered} ${offered === 1 ? "ferramenta" : "ferramentas"}`,
-    withAccess === 0 ? "nenhum bot" : `${withAccess} ${withAccess === 1 ? "bot" : "bots"}`,
-    lastError !== null ? "com erro" : undefined,
-    notice !== null ? "espera revisão" : undefined,
-    connector.enabled ? undefined : "desligado",
-  ]
-    .filter((part) => part !== undefined)
-    .join(" · ");
-  return (
-    <div data-testid="connector-item" data-name={connector.name}>
-      <SettingsRow
-        icon={brandGlyphFor(connector.name) ?? Plug}
-        title={connector.name}
-        description={summary}
-        control={
-          <>
-            <Toggle
-              checked={connector.enabled}
-              disabled={toggling.busy}
-              label={`${connector.name}: ligado`}
-              onChange={(next) => {
-                if (next && connector.transport.kind === "stdio") return onAskEnable(connector);
-                void toggling.run(async () => {
-                  const result = await sync.connectorCall(() =>
-                    api.connectors.update(connector.name, { enabled: next }),
-                  );
-                  return result.ok ? { ok: true } : { ok: false, message: result.message };
-                });
-              }}
-            />
-            <RowAction data-testid="connector-details" onClick={onOpen}>
-              Abrir
-            </RowAction>
-          </>
-        }
-      />
-      {toggling.error !== undefined && <FieldError>{toggling.error}</FieldError>}
-    </div>
-  );
-}
-
-/** What opens when a connector is selected: its state, its access, its network and its tools. */
-function ConnectorDetail({
-  connector,
-  title: _title,
-  titleId,
-  onBack,
-  onAskEnable,
-}: {
-  connector: Connector;
-  title?: string;
-  titleId: string;
-  onBack(): void;
-  onAskEnable(c: Connector): void;
-}) {
-  const { sync, api } = useServices();
-  const [test, setTest] = useState<ConnectorTest | undefined>(undefined);
-  const [removing, setRemoving] = useState(false);
-  const [reviewing, setReviewing] = useState(false);
-  const toggling = useTask();
-  const scope = useTask();
-  const trust = useTask();
-  const testing = useTask();
-  const removal = useTask();
-  const available = (connector.tools ?? []).filter((t) => t.available);
-  const unavailable = (connector.tools ?? []).filter((t) => !t.available);
-  const lastError = connector.discovery.lastError;
-  const notice = reviewNotice(connector);
-  const testLine =
-    test === undefined
-      ? undefined
-      : test.ok
-        ? `Funcionou: ${test.tools.length} ${test.tools.length === 1 ? "ferramenta" : "ferramentas"}.`
-        : // The server's error is a log line (docs/DESIGN.md, "Amigável"): the Inspector and the
-          // logs keep it.
-          "Não deu para falar com o conector agora. Tenta de novo?";
-
-  return (
-    <div
-      className="contents"
-      data-testid="connector-row"
-      data-name={connector.name}
-      data-enabled={connector.enabled}
-    >
-      <PaneHead title={connector.name} titleId={titleId}>
-        <RowAction danger data-testid="connector-delete" onClick={() => setRemoving(true)}>
-          Remover
-        </RowAction>
-      </PaneHead>
-      <PaneBody>
-        <SettingsGroup>
-          <SettingsRow
-            icon={Power}
-            title="Ligado"
-            description={
-              <>
-                {connector.description !== "" && `${connector.description} · `}
-                {KIND_LABEL[connector.transport.kind]}
-                {connector.runsIn !== null && (
-                  <>
-                    {" · "}
-                    <span data-testid="connector-runs-tag">{RUNS_IN_LABEL[connector.runsIn]}</span>
-                  </>
-                )}
-                {connector.origin === "proposal" && " · proposto por um bot"}
-              </>
-            }
-            control={
-              <Toggle
-                checked={connector.enabled}
-                disabled={toggling.busy}
-                label={`${connector.name}: ligado`}
-                onChange={(next) => {
-                  if (next && connector.transport.kind === "stdio") return onAskEnable(connector);
-                  void toggling.run(async () => {
-                    const result = await sync.connectorCall(() =>
-                      api.connectors.update(connector.name, { enabled: next }),
-                    );
-                    return result.ok ? { ok: true } : { ok: false, message: result.message };
-                  });
-                }}
-              />
-            }
-          />
-          <SettingsRow
-            title="Testar a conexão"
-            descriptionTestId="connector-health"
-            description={
-              lastError !== null
-                ? "Não está respondendo agora."
-                : connector.tools === null
-                  ? "Teste para ver as ferramentas."
-                  : `${available.length} ${available.length === 1 ? "ferramenta oferecida" : "ferramentas oferecidas"}`
-            }
-            control={
-              <RowAction
-                disabled={testing.busy}
-                data-testid="connector-test"
-                onClick={() =>
-                  void testing.run(async () => {
-                    try {
-                      setTest(await api.connectors.test(connector.name));
-                      void sync.loadConnectors();
-                      return { ok: true };
-                    } catch (error) {
-                      return {
-                        ok: false,
-                        message: friendlyError(error),
-                      };
-                    }
-                  })
-                }
-              >
-                {testing.busy ? "Testando…" : "Testar"}
-              </RowAction>
-            }
-          />
-          {notice !== null && (
-            <SettingsRow
-              title="Definições para revisar"
-              description={`${notice}.`}
-              testId="review-notice"
-              role="status"
-              control={
-                <RowAction data-testid="connector-review" onClick={() => setReviewing(true)}>
-                  Revisar
-                </RowAction>
-              }
-            />
-          )}
-        </SettingsGroup>
-        {(toggling.error ?? testing.error) !== undefined && (
-          <FieldError>{toggling.error ?? testing.error}</FieldError>
-        )}
-        {testLine !== undefined && test !== undefined && (
-          <p
-            className={cx("text-small", !test.ok && "text-danger-text")}
-            role="status"
-            data-testid="connector-test-result"
-            data-ok={test.ok}
-          >
-            {testLine}
-          </p>
-        )}
-        <SettingsStack data-testid="connector-panel">
-          <ConnectorGrants connector={connector} onReview={() => setReviewing(true)} />
-          <SettingsGroup label="Ajustes" icon={SlidersHorizontal}>
-            <SettingsRow
-              title="Somente leitura"
-              description="Só as ferramentas de leitura são oferecidas aos bots; as outras nem aparecem para o modelo."
-              control={
-                <Toggle
-                  checked={connector.scope === "read_only"}
-                  disabled={scope.busy}
-                  label={`${connector.name}: somente leitura`}
-                  onChange={(next) =>
-                    void scope.run(async () => {
-                      const result = await sync.connectorCall(() =>
-                        api.connectors.update(connector.name, {
-                          scope: next ? "read_only" : "read_write",
-                        }),
-                      );
-                      return result.ok ? { ok: true } : { ok: false, message: result.message };
-                    })
-                  }
-                />
-              }
-            />
-            <SettingsRow
-              title="Confiar nas dicas do servidor"
-              description="Ligado, o que o servidor diz que só lê roda sem cartão; só ligue se confia nele."
-              control={
-                <Toggle
-                  checked={connector.trustAnnotations}
-                  disabled={trust.busy}
-                  label={`${connector.name}: confiar nas dicas do servidor`}
-                  onChange={(next) =>
-                    void trust.run(async () => {
-                      const result = await sync.connectorCall(() =>
-                        api.connectors.update(connector.name, { trustAnnotations: next }),
-                      );
-                      return result.ok ? { ok: true } : { ok: false, message: result.message };
-                    })
-                  }
-                />
-              }
-            />
-          </SettingsGroup>
-          {(scope.error ?? trust.error) !== undefined && (
-            <FieldError>{scope.error ?? trust.error}</FieldError>
-          )}
-          {connector.secretNames.length > 0 && (
-            <SettingsHint>
-              Usa os segredos do cofre:{" "}
-              <span className="font-mono text-code">{connector.secretNames.join(", ")}</span>
-            </SettingsHint>
-          )}
-          <ConnectorNetwork connector={connector} />
-          <ToolHistory connector={connector} />
-          <SettingsGroup label="Ferramentas" icon={Wrench} hint={READ_WARNING}>
-            {connector.tools === null ? (
-              <SettingsRow
-                title="Ainda não listado"
-                description="Use “Testar” para o servidor listar as ferramentas."
-              />
-            ) : available.length === 0 ? (
-              <SettingsRow title="Nenhuma ferramenta é oferecida aos bots" />
-            ) : (
-              <SettingsList as="ul" data-testid="connector-tools">
-                {available.map((tool) => (
-                  <ToolRow key={tool.name} connector={connector} tool={tool} />
-                ))}
-              </SettingsList>
-            )}
-          </SettingsGroup>
-          {unavailable.length > 0 && (
-            <SettingsGroup label="Não oferecidas aos bots" icon={Ban}>
-              <SettingsList as="ul" data-testid="connector-tools-unavailable">
-                {unavailable.map((tool) => (
-                  <ToolRow key={tool.name} connector={connector} tool={tool} />
-                ))}
-              </SettingsList>
-            </SettingsGroup>
-          )}
-        </SettingsStack>
-      </PaneBody>
-      {reviewing && <ReviewDialog connector={connector} onClose={() => setReviewing(false)} />}
-      {removing && (
-        <Dialog
-          title={`Remover o conector ${connector.name}?`}
-          onClose={() => setRemoving(false)}
-          footer={
-            <>
-              <Pill tone="secondary" onClick={() => setRemoving(false)} disabled={removal.busy}>
-                Cancelar
-              </Pill>
-              <Pill
-                tone="danger"
-                disabled={removal.busy}
-                data-testid="connector-delete-confirm"
-                onClick={() =>
-                  void removal
-                    .run(() => sync.deleteConnector(connector.name))
-                    .then((ok) => ok && onBack())
-                }
-              >
-                {removal.busy ? "Removendo…" : "Remover"}
-              </Pill>
-            </>
-          }
-        >
-          <p>
-            Os bots deixam de ter as ferramentas deste conector na próxima execução. Os segredos do
-            cofre que ele cita continuam guardados.
-          </p>
-          {removal.error !== undefined && <FieldError>{removal.error}</FieldError>}
-        </Dialog>
-      )}
-    </div>
-  );
-}
-
-// ----------------------------------------------------------------- the section
-
-/** MCP connectors: external servers whose tools a bot can use, once you give it the connector. */
+/**
+ * Configurações > Conectores is the "Instalado" list (owner, 24/11/2026): only what is installed,
+ * each row opening the plugin's own page; nothing is switched or managed here. "Adicionar conector"
+ * still makes a connector by hand.
+ */
 export function ConnectorsSettings({ title, titleId }: SectionProps) {
-  const { sync, api } = useServices();
-  const byName = useData((s) => s.connectors);
+  const { sync } = useServices();
   const loaded = useData((s) => s.connectorsLoaded);
-  const connectors = useMemo(() => orderedConnectors({ connectors: byName }), [byName]);
+  const { items, search, loadError, connectorsByName } = usePlugins();
+  const connectors = useMemo(
+    () => orderedConnectors({ connectors: connectorsByName }),
+    [connectorsByName],
+  );
   const [adding, setAdding] = useState(false);
   const [newSecret, setNewSecret] = useState(false);
-  const [enabling, setEnabling] = useState<Connector | null>(null);
-  // Which connector is open lives with the dialog: the nav item and Esc go back to the list.
-  const selected = useUi((s) => s.settingsConnector);
-  const setSelected = useUi((s) => s.setSettingsConnector);
-  const enable = useTask();
 
   useEffect(() => {
     void sync.loadConnectors();
     void sync.loadVault();
   }, [sync]);
 
-  const current = selected === null ? undefined : byName[selected];
+  const plugins = useMemo(
+    () => installedPlugins({ catalog: items ?? [], search, connectors }),
+    [items, search, connectors],
+  );
+  const total = items === null ? undefined : items.length + searchPlugins(search).length;
   return (
     <>
-      {current !== undefined ? (
-        <ConnectorDetail
-          connector={current}
-          titleId={titleId}
-          onBack={() => setSelected(null)}
-          onAskEnable={setEnabling}
-        />
-      ) : (
-        <>
-          <PaneHead title={title} titleId={titleId}>
-            <Pill
-              tone="primary"
-              size="sm"
-              data-testid="connector-new"
-              onClick={() => setAdding(true)}
-            >
-              Adicionar conector
-            </Pill>
-          </PaneHead>
-          <PaneBody data-testid="connectors-card">
-            {!loaded ? (
-              <SettingsEmpty>Carregando…</SettingsEmpty>
-            ) : connectors.length === 0 ? (
-              <SettingsEmpty>
-                Nenhum conector. Adicione um servidor MCP, dê a um bot e veja as ferramentas dele
-                aqui.
-              </SettingsEmpty>
-            ) : (
-              <SettingsGroup hint="Um conector liga um serviço aos seus bots; cada ferramenta pede a sua aprovação antes de rodar.">
-                <SettingsList data-testid="connector-list">
-                  {connectors.map((c) => (
-                    <ConnectorRow
-                      key={c.name}
-                      connector={c}
-                      onOpen={() => setSelected(c.name)}
-                      onAskEnable={setEnabling}
-                    />
-                  ))}
-                </SettingsList>
-              </SettingsGroup>
-            )}
-          </PaneBody>
-        </>
-      )}
+      <PaneHead title={title} titleId={titleId}>
+        <Pill tone="primary" size="sm" data-testid="connector-new" onClick={() => setAdding(true)}>
+          Adicionar conector
+        </Pill>
+      </PaneHead>
+      <PaneBody data-testid="connectors-card">
+        {!loaded || (items === null && loadError === undefined) ? (
+          <SettingsEmpty>Carregando…</SettingsEmpty>
+        ) : plugins.length === 0 ? (
+          <>
+            <SettingsEmpty>
+              Nenhum plugin instalado. Veja a galeria para conectar um serviço aos seus bots.
+            </SettingsEmpty>
+            <div className="flex justify-center">
+              <ShowAll total={total} />
+            </div>
+          </>
+        ) : (
+          <section className="flex flex-col gap-2" aria-label="Instalado">
+            <h3 className="px-2 text-small font-label text-text-muted">Instalado</h3>
+            <InstalledGrid plugins={plugins} total={total} />
+          </section>
+        )}
+      </PaneBody>
       {adding && (
         <AddConnectorDialog
           onClose={() => setAdding(false)}
@@ -951,46 +469,15 @@ export function ConnectorsSettings({ title, titleId }: SectionProps) {
         />
       )}
       {newSecret && <SecretDialog existing={undefined} onClose={() => setNewSecret(false)} />}
-      {enabling !== null && (
-        <Dialog
-          title={`Ligar o conector ${enabling.name}?`}
-          onClose={() => setEnabling(null)}
-          footer={
-            <>
-              <Pill tone="secondary" onClick={() => setEnabling(null)} disabled={enable.busy}>
-                Cancelar
-              </Pill>
-              <Pill
-                tone="primary"
-                disabled={enable.busy}
-                data-testid="connector-enable-confirm"
-                onClick={() =>
-                  void enable
-                    .run(async () => {
-                      const result = await sync.connectorCall(() =>
-                        api.connectors.update(enabling.name, { enabled: true }),
-                      );
-                      return result.ok ? { ok: true } : { ok: false, message: result.message };
-                    })
-                    .then((ok) => ok && setEnabling(null))
-                }
-              >
-                {enable.busy ? "Ligando…" : "Ligar mesmo assim"}
-              </Pill>
-            </>
-          }
-        >
-          <Notice role="note" data-testid="connector-enable-warning">
-            <strong>Isto roda um programa</strong>
-            <p>{STDIO_WARNING}</p>
-          </Notice>
-          <p className="font-mono text-code leading-small wrap-anywhere whitespace-pre-wrap">
-            {enabling.transport.kind === "stdio" &&
-              [enabling.transport.command, ...(enabling.transport.args ?? [])].join(" ")}
-          </p>
-          {enable.error !== undefined && <FieldError>{enable.error}</FieldError>}
-        </Dialog>
-      )}
     </>
+  );
+}
+
+function ShowAll({ total }: { total: number | undefined }) {
+  const openPlugin = useUi((s) => s.openPlugin);
+  return (
+    <Pill tone="quiet" size="sm" data-testid="installed-show-all" onClick={() => openPlugin(null)}>
+      {total === undefined ? "Mostrar todos" : `Mostrar todos os ${total} plugins`}
+    </Pill>
   );
 }

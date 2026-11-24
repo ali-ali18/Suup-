@@ -11,6 +11,16 @@ import type { ToastItem } from "../ui/primitives.js";
 
 export type View = "chat" | "pending" | "memory" | "inspector" | "connectors";
 export type PanelTab = "activity" | "library";
+/**
+ * Which plugin a page is about: an entry of the connector gallery (`catalog`, by its id), a web
+ * search engine (`search`, by its id) or a connector the person added by hand (`manual`, by its
+ * name). `autoStart`: the row's button was clicked, so its action starts as the page opens.
+ */
+export interface PluginRef {
+  kind: "catalog" | "search" | "manual";
+  id: string;
+  autoStart: boolean;
+}
 /** The sections of the settings dialog. */
 export type SettingsTab = "general" | "permissions" | "memory" | "search" | "vault" | "connectors";
 
@@ -32,8 +42,11 @@ export interface UiState {
   settingsOpen: boolean;
   /** The section of the settings dialog that is open. */
   settingsTab: SettingsTab;
-  /** The connector whose details are open in Conectores (`null`: the list). Clicking "Conectores" in the nav, or Esc, goes back to the list. */
-  settingsConnector: string | null;
+  /**
+   * The plugin whose page is open in the Conectores screen (`null`: the gallery). Settings >
+   * Conectores (the installed list) opens it; Esc and "Conectores" in the path go back to the gallery.
+   */
+  plugin: PluginRef | null;
   selectedBotId: string | null;
   /**
    * The person chose the open bot (a click, the palette, "Editar"): only then the sidebar marks it.
@@ -91,10 +104,10 @@ export interface UiState {
   /** Opens the settings dialog on a section. */
   openSettings(tab?: SettingsTab): void;
   closeSettings(): void;
-  /** Selects a section. Always lands on its first view: a connector's details close. */
+  /** Selects a section. */
   setSettingsTab(tab: SettingsTab): void;
-  /** Opens a connector's details (or goes back to the list with `null`). */
-  setSettingsConnector(name: string | null): void;
+  /** Opens a plugin's page in the Conectores screen (closing Settings); `null`: the gallery. */
+  openPlugin(plugin: PluginRef | null): void;
   selectBot(botId: string): void;
   /** Leaving a server (Trocar, Desconectar): nothing the person had open belongs to the next one. */
   leaveServer(): void;
@@ -150,7 +163,7 @@ export const useUi = create<UiState>((set, get) => ({
   view: "chat",
   settingsOpen: false,
   settingsTab: "general",
-  settingsConnector: null,
+  plugin: null,
   selectedBotId: null,
   botPicked: false,
   customFrame: false,
@@ -213,19 +226,18 @@ export const useUi = create<UiState>((set, get) => ({
   toasts: [],
   openNewBot: () => set({ newBotOpen: true, editBotId: null, editBotStep: 1 }),
   closeNewBot: () => set({ newBotOpen: false, editBotId: null }),
-  go: (view) => set({ view }),
+  go: (view) => set({ view, plugin: null }),
   openSettings: (settingsTab) =>
     set((s) => ({
       settingsOpen: true,
       settingsTab: settingsTab ?? s.settingsTab,
-      settingsConnector: null,
     })),
-  closeSettings: () => set({ settingsOpen: false, settingsConnector: null }),
+  closeSettings: () => set({ settingsOpen: false }),
   leaveServer: () =>
     set({
       view: "chat",
       settingsOpen: false,
-      settingsConnector: null,
+      plugin: null,
       selectedBotId: null,
       botPicked: false,
       inspectorRunId: null,
@@ -236,8 +248,8 @@ export const useUi = create<UiState>((set, get) => ({
       groupBotId: null,
     }),
   setCustomFrame: (customFrame) => set({ customFrame }),
-  setSettingsTab: (settingsTab) => set({ settingsTab, settingsConnector: null }),
-  setSettingsConnector: (settingsConnector) => set({ settingsConnector }),
+  setSettingsTab: (settingsTab) => set({ settingsTab }),
+  openPlugin: (plugin) => set({ view: "connectors", plugin, settingsOpen: false }),
   selectBot: (botId) =>
     set((s) => ({
       view: "chat",

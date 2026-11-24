@@ -1,4 +1,6 @@
 import type { Approval, MessageAttachment, Question, Run, TeamProposal } from "@suup/api";
+import type { ConnectCardItem } from "../../data/connect-cards.js";
+import { isApprovedProposal } from "../../data/connect-cards.js";
 import { failureLine } from "../../data/derive.js";
 import type { SecretRequestItem } from "../../data/secret-requests.js";
 import type { LocalMessage } from "../../data/state.js";
@@ -34,6 +36,8 @@ export type TimelineItem =
   | { kind: "team"; key: string; messageId: string; text: string; team: TeamProposal }
   /** An approval: the decision card while it waits for the user; decided, its one line. */
   | { kind: "approval"; key: string; approval: Approval }
+  /** What the bot handed over to connect something: the card with the one button that fits. */
+  | { kind: "connect"; key: string; card: ConnectCardItem }
   /** The bot asked for a credential: the secure form (or, once answered, one line). */
   | { kind: "secret"; key: string; request: SecretRequestItem }
   /** A run that failed or was cancelled: one line that expands in place. */
@@ -89,6 +93,7 @@ export function buildTimeline(
   extras: {
     approvals?: readonly Approval[];
     secrets?: readonly SecretRequestItem[];
+    connectCards?: readonly ConnectCardItem[];
   } = {},
 ): TimelineItem[] {
   const items: TimelineItem[] = [];
@@ -96,15 +101,22 @@ export function buildTimeline(
   // The cards that need (or needed) you, in the order they were asked.
   type Placed =
     | { kind: "approval"; at: string; runId: string; approval: Approval }
-    | { kind: "secret"; at: string; runId: string; request: SecretRequestItem };
+    | { kind: "secret"; at: string; runId: string; request: SecretRequestItem }
+    | { kind: "connect"; at: string; runId: string; card: ConnectCardItem };
   const waiting: Placed[] = [
-    ...(extras.approvals ?? []).map(
-      (approval): Placed => ({
-        kind: "approval",
-        at: approval.createdAt,
-        runId: approval.runId,
-        approval,
-      }),
+    // An approved proposal of a connector is drawn as its card, not as a row of the tool.
+    ...(extras.approvals ?? [])
+      .filter((a) => !isApprovedProposal(a))
+      .map(
+        (approval): Placed => ({
+          kind: "approval",
+          at: approval.createdAt,
+          runId: approval.runId,
+          approval,
+        }),
+      ),
+    ...(extras.connectCards ?? []).map(
+      (card): Placed => ({ kind: "connect", at: card.at, runId: card.runId, card }),
     ),
     ...(extras.secrets ?? []).map(
       (request): Placed => ({
@@ -130,6 +142,8 @@ export function buildTimeline(
           key: `approval-${next.approval.id}`,
           approval: next.approval,
         });
+      else if (next.kind === "connect")
+        items.push({ kind: "connect", key: `connect-${next.card.callId}`, card: next.card });
       else
         items.push({
           kind: "secret",

@@ -3,6 +3,7 @@ import { ChevronRight, CircleStop, CircleX, Pause, Pencil, Play, ScanSearch } fr
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { useUi } from "../../app/ui-store.js";
+import { connectCardsOfConversation } from "../../data/connect-cards.js";
 import { deriveRunDisplay, planOf } from "../../data/derive.js";
 import {
   approvalsOfConversation,
@@ -169,9 +170,28 @@ function ChatForBot({ botId }: { botId: string }) {
     () => (latest === undefined ? [] : secretRequestsOf(latest, latest.id, events)),
     [latest, events],
   );
+  const connectCards = useMemo(
+    () =>
+      connectCardsOfConversation(
+        conversationRuns,
+        Object.fromEntries(
+          conversationRuns.map((r) => [
+            r.id,
+            eventsByRun[r.id] === undefined ? undefined : orderedEvents(eventsByRun[r.id]),
+          ]),
+        ),
+        cards,
+      ),
+    [conversationRuns, eventsByRun, cards],
+  );
   const items = useMemo(
-    () => buildTimeline(messages, runs, new Date(), { approvals: cards, secrets: secretRequests }),
-    [messages, runs, cards, secretRequests],
+    () =>
+      buildTimeline(messages, runs, new Date(), {
+        approvals: cards,
+        secrets: secretRequests,
+        connectCards,
+      }),
+    [messages, runs, cards, secretRequests, connectCards],
   );
   // What the user opened, in THIS conversation: another chat starts with every row collapsed.
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());

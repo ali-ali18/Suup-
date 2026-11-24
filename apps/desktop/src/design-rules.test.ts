@@ -897,7 +897,6 @@ describe("the settings dialog: a modal with a left nav, groups of simple rows, n
     for (const name of [
       "PermissionsSettings",
       "VaultSettings",
-      "ConnectorsSettings",
       "ConnectorGrants",
       "ConnectorNetwork",
     ])
@@ -1019,40 +1018,79 @@ describe("the settings dialog: a modal with a left nav, groups of simple rows, n
     expect(vault).not.toContain("RegExp");
   });
 
-  it("Conectores shows the list first; a connector's details open on selecting it", () => {
+  it('Conectores is the "Instalado" list: only what is installed, each row opens the plugin\'s page, nothing is managed inline (owner, 24/11/2026)', () => {
     const connectors = settings("ConnectorsSettings.tsx");
-    expect(connectors).toContain("function ConnectorRow");
-    expect(connectors).toContain("function ConnectorDetail");
-    expect(connectors).toContain("useUi((s) => s.settingsConnector)");
-    // The list row has a switch and "Abrir"; the grants, network and tools are only in the detail.
-    const list = connectors.slice(
-      connectors.indexOf("function ConnectorRow"),
-      connectors.indexOf("function ConnectorDetail"),
-    );
-    expect(list).not.toContain("<ConnectorGrants");
-    expect(list).not.toContain("<ConnectorNetwork");
+    expect(connectors).toContain("function InstalledGrid");
+    expect(connectors).toContain('aria-label="Instalado"');
+    expect(connectors).toContain("grid-cols-2");
+    expect(connectors).toContain("narrow:grid-cols-1");
+    expect(connectors).toContain("installedPlugins({ catalog: items ?? [], search, connectors })");
+    // A row opens the plugin's own page; "Mostrar todos" goes to the whole gallery.
+    expect(connectors).toContain("openPlugin({ kind: p.kind, id: p.id, autoStart: false })");
+    expect(connectors).toContain(`Mostrar todos os \${total} plugins`);
+    expect(connectors).toContain("onClick={() => openPlugin(null)}");
+    // No switch, no "Abrir", no grants, network or tools here: they are on the plugin's page.
+    for (const gone of [
+      "<Toggle",
+      "<ConnectorGrants",
+      "<ConnectorNetwork",
+      "connector-details",
+      "ConnectorDetail",
+      "ConnectorRow",
+      "settingsConnector",
+    ]) {
+      expect(connectors, gone).not.toContain(gone);
+    }
+    const manage = read(join(SRC, "features", "plugins", "ConnectorManage.tsx"));
+    for (const there of ["<ConnectorGrants", "<ConnectorNetwork", "<ToolRow", "connector-delete"])
+      expect(manage, there).toContain(there);
+    // The state of the app: which plugin is open lives in the store, not in the settings.
+    const store = read(join(SRC, "app", "ui-store.ts"));
+    expect(store).toContain("plugin: PluginRef | null;");
+    expect(store).not.toContain("settingsConnector");
   });
 
-  it("there is no back button inside the Settings dialog: the nav item and Esc return to the list", () => {
+  it("Busca is a short pointer: the queue's order read-only, one \"Abrir\" to the plugin's page, and no key control (owner, 24/11/2026)", () => {
+    const search = settings("SearchSettings.tsx");
+    expect(search).toContain('label="Fila da busca geral"');
+    expect(search).toContain('kind: "search"');
+    expect(search).not.toContain("SecretDialog");
+    expect(search).not.toContain("Adicionar chave");
+    // The key, the state and the count are on the plugin's page (Tavily, Brave).
+    const page = read(join(SRC, "features", "plugins", "SearchPlugin.tsx"));
+    expect(page).toContain("<SecretDialog");
+    expect(page).toContain("plugin.keySteps");
+  });
+
+  it("plugins: the page manages everything, the chat card carries one action, and a link is only a checked button (docs/DESIGN.md 5e)", () => {
+    const design = read(join(SRC, "..", "..", "..", "docs", "DESIGN.md"));
+    expect(design).toContain("## 5e. Plugins");
+    const card = read(join(SRC, "features", "chat", "ConnectCard.tsx"));
+    // The link is checked again by the app, drawn only as a button, never as text.
+    expect(card).toContain("linkAllowed(card.url, hosts, item?.entry.authLinkSegment)");
+    expect(card).not.toContain("{card.url}");
+    expect(card).not.toContain("href=");
+    for (const label of ["Liberar para o", "Adicionar chave", "Gerenciar", "Expirou: peça outro"])
+      expect(card, label).toContain(label);
+    expect(card).toContain("sempre pergunta antes de fazer alterações. Desconecte quando quiser.");
+    // The link is never looked for in a text, and an approved proposal is no row of the tool.
+    const cards = read(join(SRC, "data", "connect-cards.ts"));
+    for (const searching of [".match(", ".test(", "RegExp", "http"]) {
+      expect(cards, searching).not.toContain(searching);
+    }
+    expect(read(join(SRC, "features", "chat", "timeline.ts"))).toContain("!isApprovedProposal(a)");
+    // Tavily and Brave are plugins of "Pesquisa na web" that point at the search; no MCP connector.
+    expect(read(join(SRC, "features", "plugins", "appearance.ts"))).toContain('"Pesquisa na web"');
+  });
+
+  it("there is no back button inside the Settings dialog, and Esc closes it (a plugin's page is not in it)", () => {
     for (const name of [...sections, "ConnectorGrants", "ConnectorNetwork", "ToolReview"]) {
       const source = settings(`${name}.tsx`);
       expect(source, name).not.toContain("connectors-back");
       expect(source, name).not.toContain("ChevronLeft");
       expect(source, name).not.toContain('className="sback"');
     }
-    const dialog = settings("SettingsDialog.tsx");
-    // Esc inside a connector goes back to the list first; the second one closes the dialog.
-    expect(dialog).toContain(
-      'if (reason !== "escape" || tab !== "connectors" || connector === null) return true;',
-    );
-    expect(dialog).toContain("setConnector(null);");
-    // The store: selecting a section (even the selected one) lands on its first view.
-    const store = read(join(SRC, "app", "ui-store.ts"));
-    expect(store).toContain(
-      "setSettingsTab: (settingsTab) => set({ settingsTab, settingsConnector: null })",
-    );
-    // The pane title is the connector's name while its details are open.
-    expect(settings("ConnectorsSettings.tsx")).toContain("<PaneHead title={connector.name}");
+    expect(settings("SettingsDialog.tsx")).not.toContain("beforeClose");
   });
 
   it("a dialog opened from another is its own modal surface, on top", () => {
@@ -1358,8 +1396,12 @@ describe("conectores: o ícone do serviço (docs/DESIGN.md 5c, plug-ins)", () =>
   });
 
   it("a linha do conector usa o glifo da marca ou o plug, e a pesquisa está escrita", () => {
+    // The installed list draws the brand tile of the plug-ins (5d); a connector added by hand, the plug.
     const row = read(join(SRC, "features", "settings", "ConnectorsSettings.tsx"));
-    expect(row).toContain("icon={brandGlyphFor(connector.name) ?? Plug}");
+    expect(row).toContain("<EntryIcon");
+    expect(read(join(SRC, "features", "plugins", "installed.ts"))).toContain(
+      'look: { tone: "neutral", glyph: "plug" }',
+    );
     const root = join(SRC, "..", "..", "..");
     expect(existsSync(join(root, "docs", "pesquisas", "icones-de-marca-dos-conectores.md"))).toBe(
       true,
@@ -1369,7 +1411,7 @@ describe("conectores: o ícone do serviço (docs/DESIGN.md 5c, plug-ins)", () =>
 });
 
 describe("conectores: a tela da vitrine (docs/DESIGN.md 5d)", () => {
-  const screen = read(join(SRC, "features", "plugins", "ConnectorsScreen.tsx"));
+  const screen = `${read(join(SRC, "features", "plugins", "ConnectorsScreen.tsx"))}\n${read(join(SRC, "features", "plugins", "EntryIcon.tsx"))}\n${read(join(SRC, "features", "plugins", "use-plugins.ts"))}`;
   const palette = read(join(SRC, "features", "palette", "CommandPalette.tsx"));
   const shell = read(join(SRC, "features", "shell", "Shell.tsx"));
 

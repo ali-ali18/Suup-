@@ -57,10 +57,27 @@ export interface CatalogEntry {
   auth: CatalogAuth;
   /** The exact host names it talks to (for the network allowlist and docs/REDE.md). */
   egressHosts: readonly string[];
+  /**
+   * Exact hosts of the pages where a person authorizes an app or logs in through this service
+   * (a connect link the service hands out). Only a link to one of these, or to an `egressHosts`
+   * host, may be drawn on the chat's connect card (`show_connect_card`).
+   */
+  authHosts?: readonly string[] | undefined;
   /** Tools that only read, by their EXACT name on the server: they run without a card. */
   readTools: readonly string[];
   /** Tools that change something, by exact name: they always ask (the default, said out loud). */
   writeTools: readonly string[];
+  /**
+   * Tools the Suup NEVER offers to a bot, by exact name on the server (a shell, a free proxy that
+   * sends anything anywhere): the connector runtime lists them as not offered and never registers
+   * them, whatever the person grants.
+   */
+  deniedTools?: readonly string[] | undefined;
+  /**
+   * When the connect links of this service all start with this first path segment on the hosts of
+   * `authHosts` (Composio: `/link/...`), only such a link may be drawn on the chat's connect card.
+   */
+  authLinkSegment?: string | undefined;
   /**
    * What the person should know, in plain pt-BR, one short friendly sentence each (the owner,
    * 23/11/2026: "a ideia é ser friendly"): a limit of the plan, what the bot can do. The technical
@@ -269,6 +286,19 @@ export const CONNECTOR_CATALOG: readonly CatalogEntry[] = [
       ],
     },
     egressHosts: ["connect.composio.dev"],
+    // Where Composio's connect links point: `https://connect.composio.dev/link/...` (the research of
+    // the coordinator, 24/11/2026). They live 10 minutes, and opening one does not finish the
+    // connection: the bot checks again with COMPOSIO_MANAGE_CONNECTIONS afterwards.
+    authHosts: ["connect.composio.dev"],
+    authLinkSegment: "link",
+    // Never offered: a shell and a workbench on Composio's machine, a free proxy that sends any
+    // request with the user's logins, and a call that blocks waiting for the browser.
+    deniedTools: [
+      "COMPOSIO_REMOTE_BASH_TOOL",
+      "COMPOSIO_REMOTE_WORKBENCH",
+      "COMPOSIO_PROXY_EXECUTE",
+      "COMPOSIO_WAIT_FOR_CONNECTIONS",
+    ],
     // Its tools are generic meta-tools (discover, authorize, run any app): none is a plain read.
     readTools: [],
     writeTools: [],
@@ -276,7 +306,11 @@ export const CONNECTOR_CATALOG: readonly CatalogEntry[] = [
     // and data policy of Composio were not verified. A third party: the logins of the apps and the
     // data through them live in Composio's cloud, and the OAuth apps are Composio's (its name is on
     // the consent screen, not Suup's); Suup keeps only the Composio key, in the vault.
-    notes: ["Antes de usar qualquer app pelo Composio, o bot pede a sua aprovação."],
+    notes: [
+      "Antes de usar qualquer app pelo Composio, o bot pede a sua aprovação.",
+      "Você guarda só a chave do Composio (começa com ck_). Cada app, como o Google Agenda, você autoriza no navegador pelo link que o bot mostra num cartão: não precisa de um token por app.",
+      "Depois de autorizar um app no navegador, avise o bot: ele confere a conexão. O link vale por 10 minutos.",
+    ],
     disclosure: "Pelo Composio, seus logins ficam guardados na nuvem deles.",
     checkedAt: CHECKED,
   },
@@ -297,9 +331,84 @@ export const CATALOG_RESEARCH = RESEARCH;
  */
 export function catalogToolOverrides(
   entry: CatalogEntry,
-): Record<string, { risk: "read" | "external_irreversible" }> {
-  const out: Record<string, { risk: "read" | "external_irreversible" }> = {};
+): Record<string, { risk?: "read" | "external_irreversible"; denied?: true }> {
+  const out: Record<string, { risk?: "read" | "external_irreversible"; denied?: true }> = {};
   for (const name of entry.readTools) out[name] = { risk: "read" };
   for (const name of entry.writeTools) out[name] = { risk: "external_irreversible" };
+  for (const name of entry.deniedTools ?? []) out[name] = { denied: true };
   return out;
+}
+
+/**
+ * A search engine shown in the gallery as a plugin (owner, 24/11/2026: Tavily and Brave in the
+ * category "Pesquisa na web"). It is NOT a connector: it stays one of the built-in engines of the
+ * general web search queue (`packages/web`, docs/BUSCA.md) and creates no MCP connector. This entry
+ * only declares how the app presents it and points at the search configuration by `provider`, the
+ * EXACT id of the engine (compared exactly, docs/REGRAS.md §1). Where it stands (key, month's quota,
+ * position in the queue, searches this month) is the search configuration's own data
+ * (`GET /v1/web-search`); the key goes to the vault, never here.
+ */
+export interface SearchPluginEntry {
+  /** The plugin's id in the gallery (the same as its engine's). */
+  id: string;
+  /** The id of the engine in the general search queue (`web.search.general.order`). */
+  provider: string;
+  /** The service's name, as people know it. */
+  name: string;
+  /** One line, pt-BR: what it is for. */
+  description: string;
+  /** The gallery section the plugin is under. */
+  category: "Pesquisa na web";
+  /** The official page of the service. */
+  source: string;
+  /** Where the person creates the key, step by step (pt-BR); shown in the secure form. */
+  keySteps: readonly string[];
+  /** Plain pt-BR facts to show on its page, one friendly sentence each. */
+  notes: readonly string[];
+  /** When this entry was last checked against its sources. */
+  checkedAt: string;
+}
+
+/** The search engines of the gallery, in the order they are shown. Firecrawl is out (docs/BUSCA.md). */
+export const SEARCH_PLUGIN_CATALOG: readonly SearchPluginEntry[] = [
+  {
+    id: "tavily",
+    provider: "tavily",
+    name: "Tavily",
+    description: "Pesquisa na web feita para agentes, com a sua conta do Tavily.",
+    category: "Pesquisa na web",
+    source: "https://www.tavily.com",
+    keySteps: [
+      "Crie uma conta grátis no site do Tavily (mil buscas por mês, sem cartão).",
+      "Copie a chave de API que ele mostra e cole aqui.",
+    ],
+    notes: [
+      "A conta grátis tem mil buscas por mês; uma busca do Suup gasta uma.",
+      "Seus bots só mandam ao Tavily o texto da busca. A chave fica guardada com segurança.",
+    ],
+    checkedAt: CHECKED,
+  },
+  {
+    id: "brave",
+    provider: "brave",
+    name: "Brave Search",
+    description: "Pesquisa na web da Brave, usada quando o primeiro da fila não responde.",
+    category: "Pesquisa na web",
+    source: "https://brave.com/search/api/",
+    keySteps: [
+      "Crie uma conta no painel da Brave Search API e ative o plano de busca.",
+      "O plano traz US$ 5 de crédito por mês, cerca de mil buscas.",
+      "Copie a chave de API e cole aqui.",
+    ],
+    notes: [
+      "O plano traz US$ 5 de crédito por mês, cerca de mil buscas.",
+      "Os resultados da Brave não ficam guardados nem entram em avaliações.",
+    ],
+    checkedAt: CHECKED,
+  },
+];
+
+/** The search plugin of the engine with exactly this id, or `undefined`. */
+export function searchPluginOf(provider: string): SearchPluginEntry | undefined {
+  return SEARCH_PLUGIN_CATALOG.find((e) => e.provider === provider);
 }

@@ -1,3 +1,4 @@
+import { searchPluginOf } from "@suup/connectors";
 import type { Route } from "../http.js";
 
 export const webSearchRoutes: Route[] = [
@@ -9,7 +10,28 @@ export const webSearchRoutes: Route[] = [
     async handler(ctx) {
       const status = await ctx.runtime.webStatus();
       const providers = await ctx.runtime.webSearchProviders();
-      return { body: { enabled: status.search !== "off", providers } };
+      return {
+        body: {
+          enabled: status.search !== "off",
+          // The gallery's entry of each engine, by its exact id (`SEARCH_PLUGIN_CATALOG`).
+          providers: providers.map((p) => {
+            const entry = searchPluginOf(p.id);
+            return {
+              ...p,
+              plugin:
+                entry === undefined
+                  ? null
+                  : {
+                      id: entry.id,
+                      category: entry.category,
+                      description: entry.description,
+                      notes: [...entry.notes],
+                      keySteps: [...entry.keySteps],
+                    },
+            };
+          }),
+        },
+      };
     },
   },
 ];

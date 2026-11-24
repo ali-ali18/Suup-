@@ -41,6 +41,12 @@ export const catalogEntrySchema = z.object({
   auth: catalogAuthSchema,
   /** The exact hosts it talks to. */
   egressHosts: z.array(z.string()),
+  /** Exact hosts of the connect or authorization links this service hands out (the chat card checks them). */
+  authHosts: z.array(z.string()),
+  /** When set, a connect link must also start with this path segment (`/link/...`). */
+  authLinkSegment: z.string().nullable(),
+  /** Tools the Suup never offers to a bot (exact names on the server). */
+  deniedTools: z.array(z.string()),
   /** Tools that only read, by exact name: they run without a card. */
   readTools: z.array(z.string()),
   /** Tools that change something, by exact name: they always ask. */

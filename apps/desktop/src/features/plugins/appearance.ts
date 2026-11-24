@@ -55,6 +55,7 @@ export const CATEGORIES = [
   "Documentos",
   "Desenvolvimento",
   "Automação e mídia",
+  "Pesquisa na web",
   "Outros",
 ] as const;
 export type Category = (typeof CATEGORIES)[number];

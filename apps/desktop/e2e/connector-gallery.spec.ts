@@ -97,11 +97,14 @@ test.describe("the connectors screen, wired to the server's gallery", () => {
     await openApp(page, world);
     await openConnectors(page);
     const served = (await world.api.connectorCatalog.list()).map((i) => i.entry.id);
-    await expect(page.getByTestId("connector-item")).toHaveCount(served.length);
+    // The search engines of the queue are plugins of the gallery too ("Pesquisa na web").
+    const engines = (await world.api.webSearch.get()).providers.map((p) => p.id);
+    expect(engines).toEqual(["tavily", "brave"]);
+    await expect(page.getByTestId("connector-item")).toHaveCount(served.length + engines.length);
     const drawn = await page
       .getByTestId("connector-item")
       .evaluateAll((els) => els.map((e) => e.getAttribute("data-plugin")));
-    expect([...drawn].sort()).toEqual([...served].sort());
+    expect([...drawn].sort()).toEqual([...served, ...engines].sort());
     // within a section, the server's order
     const dev = await page
       .locator(
@@ -210,10 +213,15 @@ test.describe("the connectors screen, wired to the server's gallery", () => {
     await dialog.getByTestId("secret-input").fill(VALUE);
     await dialog.getByTestId("secret-write").click();
     await expect(dialog).toHaveCount(0);
-    await expect(state(page)).toHaveText("Conectado");
-    await expect(page.getByTestId("connector-main")).toHaveText("Trocar o token");
+    // The token turns it on, and turning it on lists its tools at once. This test server reaches no
+    // internet, so the listing fails: the page says so plainly and offers to try again (it is on).
+    await expect.poll(async () => (await world.api.connectors.get("github")).enabled).toBe(true);
+    await expect(state(page)).toHaveText("Não conectou");
+    await expect(page.getByTestId("plugin-unlisted")).toContainText(
+      "Ainda não consegui ver as ferramentas",
+    );
+    await expect(page.getByTestId("plugin-retry")).toHaveText("Tentar de novo");
     expect((await world.api.vault.list()).map((s) => s.name)).toContain("GITHUB_TOKEN");
-    expect((await world.api.connectors.get("github")).enabled).toBe(true);
     // the value is nowhere on the page
     expect(await page.content()).not.toContain(VALUE);
     // back to the list: "Meus conectores" shows what is connected

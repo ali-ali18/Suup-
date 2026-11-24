@@ -26,6 +26,7 @@ import { QuestionCard } from "../../ui/question-card.js";
 import { ScrollFade } from "../../ui/scroll-fade.js";
 import { TeamCard } from "../../ui/team-card.js";
 import { ApprovalRow, SecretRequestRow } from "./ApprovalRows.js";
+import { ConnectCard } from "./ConnectCard.js";
 import { FileRows } from "./FileRows.js";
 import { bubblePositions, isChoiceCard, type TimelineItem } from "./timeline.js";
 
@@ -274,6 +275,12 @@ export function MessageList({
                         autoFocus={item.approval.status === "pending"}
                       />
                     </ActionList>
+                  </BotMessage>
+                );
+              case "connect":
+                return (
+                  <BotMessage key={item.key}>
+                    <ConnectCard card={item.card} botName={botName} />
                   </BotMessage>
                 );
               case "secret":

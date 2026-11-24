@@ -5,6 +5,8 @@ import {
   catalogToolOverrides,
   isConnectorName,
   parseConnectorSpec,
+  SEARCH_PLUGIN_CATALOG,
+  searchPluginOf,
   secretNamesOf,
 } from "../src/index.js";
 
@@ -86,5 +88,57 @@ describe("connector gallery", () => {
         expect(tool.includes("*")).toBe(false);
       }
     }
+  });
+});
+
+describe("tools the gallery never offers", () => {
+  it("Composio denies its shell, workbench, free proxy and blocking wait by exact name, and keeps the four that ask", () => {
+    const composio = catalogEntry("composio");
+    expect(composio?.deniedTools).toEqual([
+      "COMPOSIO_REMOTE_BASH_TOOL",
+      "COMPOSIO_REMOTE_WORKBENCH",
+      "COMPOSIO_PROXY_EXECUTE",
+      "COMPOSIO_WAIT_FOR_CONNECTIONS",
+    ]);
+    const overrides = catalogToolOverrides(composio as NonNullable<typeof composio>);
+    expect(overrides.COMPOSIO_PROXY_EXECUTE).toEqual({ denied: true });
+    for (const kept of [
+      "COMPOSIO_SEARCH_TOOLS",
+      "COMPOSIO_GET_TOOL_SCHEMAS",
+      "COMPOSIO_MANAGE_CONNECTIONS",
+      "COMPOSIO_MULTI_EXECUTE_TOOL",
+    ]) {
+      expect(overrides[kept], kept).toBeUndefined();
+      expect(composio?.deniedTools).not.toContain(kept);
+    }
+    expect(composio?.authHosts).toEqual(["connect.composio.dev"]);
+    expect(composio?.authLinkSegment).toBe("link");
+    // The spec the override makes is accepted by a connector.
+    const spec = parseConnectorSpec({
+      name: "composio",
+      transport: composio?.transport,
+      tools: overrides,
+    });
+    expect(spec.tools.COMPOSIO_PROXY_EXECUTE?.denied).toBe(true);
+  });
+});
+
+describe("search plugins of the gallery", () => {
+  it("are Tavily and Brave in 'Pesquisa na web', point at their engine by exact id and are no connector", () => {
+    expect(SEARCH_PLUGIN_CATALOG.map((e) => [e.id, e.provider, e.category])).toEqual([
+      ["tavily", "tavily", "Pesquisa na web"],
+      ["brave", "brave", "Pesquisa na web"],
+    ]);
+    const connectorIds = new Set(CONNECTOR_CATALOG.map((e) => e.id));
+    for (const entry of SEARCH_PLUGIN_CATALOG) {
+      expect(connectorIds.has(entry.id), entry.id).toBe(false);
+      expect(entry.source.startsWith("https://")).toBe(true);
+      expect(entry.keySteps.length).toBeGreaterThan(0);
+      expect(entry.description.length).toBeLessThanOrEqual(120);
+    }
+    expect(searchPluginOf("tavily")?.name).toBe("Tavily");
+    // Firecrawl stays out; an unknown engine has no entry.
+    expect(searchPluginOf("firecrawl")).toBeUndefined();
+    expect(searchPluginOf("Tavily")).toBeUndefined();
   });
 });
