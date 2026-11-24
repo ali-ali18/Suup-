@@ -140,7 +140,14 @@ describe("Tailwind: classes name tokens, never a colour, a palette or a pixel", 
   it("the theme maps every token of tokens.css, exactly, and empties the default scales", () => {
     for (const reset of ["--color-*", "--radius-*", "--text-*", "--shadow-*", "--font-*"])
       expect(theme, reset).toContain(`${reset}: initial;`);
-    for (const prefix of ["--color-", "--radius-", "--shadow-", "--font-sans", "--font-mono"]) {
+    for (const prefix of [
+      "--color-",
+      "--radius-",
+      "--shadow-",
+      "--font-sans",
+      "--font-heading",
+      "--font-mono",
+    ]) {
       for (const name of defined(tokens, prefix)) {
         // A token is exposed by name, pointing at itself: `--color-bg: var(--color-bg);`.
         expect(theme, name).toContain(`${name}: var(${name});`);
@@ -185,6 +192,64 @@ describe("Tailwind: classes name tokens, never a colour, a palette or a pixel", 
         const isPalette = PALETTE.some((c) => name === c || name.startsWith(`${c}-`));
         if (isPalette || name === "white" || name === "black")
           offenders.push(`${rel(file)}: ${word}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("no shadcn name survives in a copied piece: its classes were rewritten to our theme (docs/DESIGN.md §2a)", () => {
+    // The colours, radii, sizes and shadows of the shadcn styles. None exists in our theme, so a
+    // class with one of them would silently draw nothing.
+    const SHADCN_COLOURS = new Set([
+      "popover",
+      "popover-foreground",
+      "foreground",
+      "background",
+      "accent",
+      "accent-foreground",
+      "primary",
+      "primary-foreground",
+      "secondary",
+      "secondary-foreground",
+      "muted",
+      "muted-foreground",
+      "destructive",
+      "input",
+      "ring",
+      "card",
+      "card-foreground",
+    ]);
+    const SHADCN_SCALE = new Set([
+      "rounded-sm",
+      "rounded-md",
+      "rounded-lg",
+      "rounded-xl",
+      "rounded-2xl",
+      "rounded-3xl",
+      "rounded-4xl",
+      "text-xs",
+      "text-sm",
+      "text-base",
+      "text-lg",
+      "shadow-sm",
+      "shadow-md",
+      "shadow-lg",
+      "shadow-xl",
+      "shadow-2xl",
+      "backdrop-blur",
+      "backdrop-blur-sm",
+    ]);
+    const offenders: string[] = [];
+    for (const file of components) {
+      for (const word of words(read(file))) {
+        let utility = word.slice(word.lastIndexOf(":") + 1);
+        while (utility.startsWith("-") || utility.startsWith("!")) utility = utility.slice(1);
+        if (SHADCN_SCALE.has(utility)) offenders.push(`${rel(file)}: ${word}`);
+        const prefix = COLOUR_PREFIXES.find((p) => utility.startsWith(p));
+        // `shadow-popover` is OUR shadow token: a shadow names a size here, never a colour
+        if (prefix === undefined || prefix === "shadow-") continue;
+        const name = utility.slice(prefix.length).split("/")[0] ?? "";
+        if (SHADCN_COLOURS.has(name)) offenders.push(`${rel(file)}: ${word}`);
       }
     }
     expect(offenders).toEqual([]);
@@ -260,6 +325,45 @@ describe("Tailwind: classes name tokens, never a colour, a palette or a pixel", 
       }
     }
     expect(offenders).toEqual([]);
+  });
+});
+
+describe("a base dos componentes: cópias do shadcn base-maia sobre Base UI (docs/DESIGN.md §2a, dono 24/11/2026)", () => {
+  const pkg = JSON.parse(read(join(SRC, "..", "package.json"))) as {
+    dependencies: Record<string, string>;
+    devDependencies: Record<string, string>;
+  };
+  const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+
+  it("só o Base UI entra como dependência: nada do shadcn em tempo de execução nem config do CLI", () => {
+    expect(deps["@base-ui/react"]).toBeDefined();
+    for (const name of [
+      "shadcn",
+      "cn",
+      "class-variance-authority",
+      "tailwind-merge",
+      "clsx",
+      "tw-animate-css",
+      "@radix-ui/react-slot",
+    ])
+      expect(deps[name], name).toBeUndefined();
+    expect(existsSync(join(SRC, "..", "components.json"))).toBe(false);
+  });
+
+  it("as fontes vêm embutidas (Outfit no texto, Geist nos títulos) e nunca do Google", () => {
+    const app = read(join(SRC, "styles", "app.css"));
+    expect(app).toContain('@import "@fontsource-variable/outfit"');
+    expect(app).toContain('@import "@fontsource-variable/geist"');
+    const tokens = read(join(SRC, "styles", "tokens.css"));
+    expect(tokens).toContain('"Outfit Variable", ui-sans-serif');
+    expect(tokens).toContain('"Geist Variable", ui-sans-serif');
+    expect(read(join(SRC, "styles", "base.css"))).toContain("font-family: var(--font-heading);");
+    const html = read(join(SRC, "..", "index.html"));
+    for (const text of [html, app, tokens]) expect(text).not.toContain("fonts.googleapis");
+  });
+
+  it("a raiz isola o empilhamento, para os popups no body ficarem por cima", () => {
+    expect(read(join(SRC, "styles", "base.css"))).toContain("isolation: isolate;");
   });
 });
 

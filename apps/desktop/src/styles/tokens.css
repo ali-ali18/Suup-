@@ -102,7 +102,14 @@
   --radius-hairline: 1px; /* the line of the resize handle */
 
   /* Type: App/v2 Título 16/24 600, Corpo 15/24, Rótulo 14/20 500, Pequeno 13/20, Seção 12/16 500 +0.72px, Prancha 22/28 600, Código 12/18 */
-  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* The fonts are bundled with the app (owner's decision, 24/11/2026: option B of
+     docs/pesquisas/shadcn-base-maia.md): Outfit for the text, Geist for the headings, both from
+     @fontsource-variable (OFL-1.1), imported by app.css and served by the app itself (CSP
+     font-src 'self'; never Google at run time). Switching the font is a change of these tokens. */
+  --font-sans:
+    "Outfit Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-heading:
+    "Geist Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --text-title-size: 16px;
   --text-title-line: 24px;

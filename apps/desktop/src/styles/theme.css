@@ -98,6 +98,7 @@
 
   --font-*: initial;
   --font-sans: var(--font-sans);
+  --font-heading: var(--font-heading);
   --font-mono: var(--font-mono);
 
   --font-weight-*: initial;
