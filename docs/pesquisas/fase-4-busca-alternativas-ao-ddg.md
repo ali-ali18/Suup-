@@ -27,7 +27,7 @@ Acesso em **24/11/2026**. Nesta revisão, a maioria dos hosts **abriu** (a nota 
 
 **Não lidos (bloqueio ou fora do pedido):**
 
-- `https://www.tavily.com/pricing` e `https://www.tavily.com/terms`: **recusados pela proxy de saída** com HTTP 403 ("host não permitido para esta sessão"). `https://tavily.com/pricing` e `https://tavily.com/terms` não abriram (sem conexão). **Não foi feita nenhuma tentativa de contornar.** Por isso a Tavily fica sem preço e sem termos lidos.
+- Tavily, em 24/11/2026, após o coordenador liberar `www.tavily.com` (uma primeira tentativa, antes da liberação, foi recusada pela proxy com HTTP 403): **lidos** https://www.tavily.com/pricing , https://www.tavily.com/terms (Platform Terms, link "Platform Terms of Use" do rodapé), https://docs.tavily.com/documentation/api-credits e https://docs.tavily.com/api-reference/endpoint/search. Não lido: https://www.tavily.com/acceptable-use (404 nesse caminho); a política de uso aceitável citada nos termos (§3.8) fica como pendência.
 - `https://api-dashboard.search.brave.com/app/documentation/web-search/rate-limiting`: 404 (página inexistente, não bloqueio). `https://brave.com/terms-of-service/`: 404.
 - `https://kagi.com/api/pricing`: não foi pedido nesta revisão; o preço da Kagi continua vindo do repositório oficial (abaixo).
 - `https://duckduckgo.com/acceptable-use`: linkada pelos termos, não foi pedida; não lida.
@@ -84,10 +84,19 @@ Consequência: o argumento contra o DuckDuckGo **não é** que os termos proíba
 
 **Tavily**
 
-- **[lido] Grátis (https://docs.tavily.com, página inicial, lida em 24/11/2026):** "Get a free Tavily API key (**1,000 API credits every month, no credit card required**)".
-- **[resumo] Preço:** depois da cota, US$ 0,008 por crédito. Busca `basic` 1 crédito; `advanced` 2 créditos. **Não confirmado**: a página de preço e os termos não puderam ser abertos (proxy recusou `www.tavily.com`).
-- **[resumo] Formato:** `POST` no endpoint de busca, `Authorization: Bearer`, `query`, `search_depth`, `country` (só com `topic` geral), `max_results`, `auto_parameters`. Não lido nesta revisão.
-- **Termos: não lidos.** Por isso a Tavily **não pode mais ser recomendada** como caminho padrão sem leitura dos termos.
+- **[lido] Grátis (https://www.tavily.com/pricing, https://docs.tavily.com/documentation/api-credits, lidos em 24/11/2026):** plano "Researcher": "**1,000 API credits / month**", "No credit card required". Docs: "You get 1,000 free API Credits every month. No credit card required."
+- **[lido] Preço depois da cota:** "Pay As You Go: **$0.008 / credit**". Planos mensais: Project US$ 30 por 4000 créditos (US$ 0,0075 cada); Bootstrap US$ 100 por 15 000 (US$ 0,0067); Startup US$ 220 por 38 000 (US$ 0,0058); Growth US$ 500 por 100 000 (US$ 0,005). Os créditos viram "requests stop until your credits reset or you upgrade" ao acabar.
+- **[lido] Custo por busca:** "Basic Search (basic): Each request costs 1 API credit." "Advanced Search (advanced): Each request costs 2 API credits." Ou seja, **1000 buscas `basic` por mês cabem exatamente no plano gratuito**, sem cartão.
+- **[lido] Formato (https://docs.tavily.com/api-reference/endpoint/search):** `POST` com `Authorization: Bearer`; campos `query`, `search_depth`, `topic` (`general` ou `news`), `max_results`, `include_domains`, `time_range`, `country`, `language`, `filter_by_language`, `auto_parameters`.
+- **[lido] Brasil e português:** `country` é um **enum por nome em minúsculas**, não código de duas letras: aparece `brazil` (e `portugal`). Descrição: "Boost search results from a specific country. This will prioritize content from the selected country ... Available only if topic is general." Logo, `country=brazil` (**a nota anterior dizia ISO de duas letras; está errado**). `language` aceita "an ISO 639-1 code (e.g. en, fr, zh-cn) or an English language name", ou seja `language=pt` (ou `portuguese`). Por padrão só **realça** o idioma no ranking; `filter_by_language: true` filtra de forma estrita e exige `language`, senão devolve erro 400.
+- **[lido] Termos (https://www.tavily.com/terms, Platform Terms):**
+  - Agente: "Tavily may make available to Customer an Agent Key that enables **automated interaction between Customer's agents and the Services**" (§ introdutório). Ou seja, uso por agente é previsto e **permitido por chave de agente**; o cliente responde pelo que o agente faz.
+  - Uso pessoal: "The Services are provided **solely for Customer's internal business purposes**, including for integration with Customer Applications" (§3). **Uso como agente pessoal não está claramente coberto**; isso precisa de decisão do dono.
+  - AUP: "Customer shall comply with ... Tavily's Acceptable Use Policy" (§3.8). **A política em si não foi lida** (o caminho `/acceptable-use` deu 404).
+  - Cache e armazenamento de resultados (Output): **nenhuma cláusula de cache, armazenamento ou retenção de resultados encontrada** no texto lido. A cláusula de licença (§11) é sobre o que o **cliente envia** (Customer Input), que a Tavily pode usar para melhorar serviços; o Output tem regras de uso de IA (§6): a Tavily e seus provedores "may use, process, analyze, and retain Customer Input ... and Outputs generated by the AI Functionality for purposes of training". **Isso vale para o AI Functionality, não para a busca.**
+  - Atribuição: **nenhuma exigência** encontrada no texto lido.
+  - Limites de taxa: a seção "Rate Limits" aparece no índice, mas o **conteúdo não foi lido**. Os termos só citam "Higher rate limits" nos planos pagos.
+  - Pagamento: renovação automática em planos pagos (§4.5). O plano gratuito não cobra.
 
 **Exa**
 
@@ -171,7 +180,7 @@ Consequência: o argumento contra o DuckDuckGo **não é** que os termos proíba
 - **I1. O captcha do DuckDuckGo é o comportamento esperado, não um defeito.** O bloqueador de robôs olha o `User-Agent`, cabeçalhos e o IP; um cliente que se declara robô é o que ele pega. O SearXNG só passa imitando navegador. Sem declaração oficial.
 - **I2. Não existe busca geral gratuita, sem chave, com bons resultados em português.** Marginalia, Mwmbl e Wiby têm índices pequenos, majoritariamente em inglês. Complemento, não substituto.
 - **I3. O "grátis" exige cadastro e chave.** Tavily (1000 créditos por mês, sem cartão, [lido]) e Exa (US$ 10 por mês, sem cartão, [lido]) cobrem o uso de uma pessoa. Brave (US$ 5 por mês, [lido]) também, se a conta permitir sem cartão (não lido).
-- **I4. Português e Brasil.** Brave (`country`, `search_lang`: parâmetros aparecem nos exemplos [lido], mas os valores aceitos para BR/pt não foram lidos). Mojeek (`rb=BR`, `lb=PT`, [lido] nos nomes; a qualidade não foi medida). Tavily (`country`, [resumo]). Exa (`userLocation`, [resumo]). Kagi herda a conta. **Nada disso foi medido.**
+- **I4. Português e Brasil.** Brave (`country`, `search_lang`: parâmetros aparecem nos exemplos [lido], mas os valores aceitos para BR/pt não foram lidos). Mojeek (`rb=BR`, `lb=PT`, [lido] nos nomes; a qualidade não foi medida). Tavily (`country=brazil`, enum por nome, e `language=pt`, [lido]). Exa (`userLocation`, [resumo]). Kagi herda a conta. **Nada disso foi medido.**
 - **I5. SerpApi e parecidos estão fora pela regra do Suup.**
 - **I6. Google e Bing não são opção:** o Google fecha para clientes existentes em 1/1/2027 e não aceita cliente novo [lido]; a Bing já acabou [resumo].
 - **I7. Cache e termos (agora [lido] para a Brave e a Mojeek).** A Brave proíbe cache além do transitório; o cache de 3 h do banco (`web_search_cache`) não cabe nisso. A Mojeek Startup permite cache de **1 hora**. A Tavily, a Exa e a Kagi não tiveram os termos lidos.
@@ -179,7 +188,7 @@ Consequência: o argumento contra o DuckDuckGo **não é** que os termos proíba
 
 ## O que não foi verificado
 
-- **Preço e termos da Tavily**: bloqueados pela proxy de saída (www.tavily.com, HTTP 403). Não foram contornados.
+- **Tavily**: preço, termos e docs de parâmetros foram lidos em 24/11/2026. Não lidos: a política de uso aceitável (§3.8 dos termos) e a seção de limites de taxa.
 - **Termos completos da Exa, da Kagi e da API da Mojeek**: não lidos.
 - **Latência** de todas: nenhum número lido de fonte oficial nesta revisão (a Exa é [resumo]).
 - **Qualidade em português e no Brasil**: nada foi medido.
@@ -199,7 +208,7 @@ Custo em dólar salvo indicação. "1000/mês" é o custo aproximado de 1000 bus
 | Opção | Grátis | 1000/mês | PT-BR | Termos para agente pessoal | Latência | API | Cabe no Suup |
 |---|---|---|---|---|---|---|---|
 | **Brave Search API** | US$ 5/mês de crédito [lido] | US$ 5 por 1000, zero com o crédito [lido] | `country`, `search_lang` (valores BR/pt não lidos) | **cache só transitório; proibido usar para avaliar ou treinar IA; atribuição opcional** [lido] | não verificada | `GET api.search.brave.com/res/v1/web/search`, `X-Subscription-Token`, JSON [lido] | motor `direct`; **cache desligado para ele**; evals não podem usar seus resultados |
-| **Tavily** | 1000 créditos/mês, sem cartão [lido, docs] | 0 no basic [resumo do preço] | não lido | **não lido** (proxy bloqueou) | não verificada | `POST`, `Bearer` [resumo] | **adiado** até ler termos e preço |
+| **Tavily** | 1000 créditos/mês, sem cartão [lido]; 1000 buscas `basic` cabem no grátis | 0 (basic); depois US$ 0,008 por crédito [lido] | `country=brazil` (enum por nome), `language=pt` (ISO 639-1) [lido] | **agente previsto por Agent Key [lido]; "uso interno/empresarial" [lido]; sem cláusula de cache ou atribuição achada; limites de taxa não lidos** | não verificada | `POST`, `Authorization: Bearer`, JSON [lido] | motor `direct`; travar `search_depth=basic` e `auto_parameters=false`; decidir uso pessoal antes |
 | **Exa** | US$ 10/mês + US$ 10 de entrada, sem cartão [lido] | Lite US$ 4; Auto US$ 7; Deep US$ 12 [lido] | `userLocation` só viés [resumo] | não lidos | ~0,25 a 1 s (números da Exa, [resumo]) | `Authorization: Bearer` [lido] | motor `direct`, se os termos permitirem; a Lite é a mais barata |
 | **Mojeek API** | crédito grátis no Startup, com cartão [lido] | £ 2 por 1000, Startup [lido] | `rb=BR`, `lb=PT` [lido nos nomes] | **API autorizada é o caminho; scraping proibido** [lido]; cache 1 h no Startup | não verificada | `GET .../search?api_key=` [lido] | motor `direct` pela API; **nunca** o motor SearXNG (resolve captcha) |
 | **Kagi Search API** | não | US$ 12 por 1000 [lido, repositório] | herda a conta | não lidos | não verificada | `Authorization: Bot`, JSON [lido, repositório] | motor `direct`; a mais cara |
@@ -221,11 +230,11 @@ Custo em dólar salvo indicação. "1000/mês" é o custo aproximado de 1000 bus
 - **Cache.** Para a **Brave**, cache de 3 h no banco **não cabe** nos termos lidos: o motor precisa declarar cache desligado (ou transitório), e o dono precisa dizer se "transient storage required for operation" cobre um cache de 3 h. Para a **Mojeek Startup**, o limite é 1 hora [lido]. Para a Tavily, a Exa e a Kagi, os termos **não foram lidos**: não há base para cache longo.
 - **Evals.** Pelos termos da Brave, resultados dela **não podem alimentar avaliações** de modelos. Isso vale para `evals/`. Se o Suup usar a Brave, as avaliações têm de ignorar esse motor ou ter uma exceção contratual.
 - **SearXNG.** Nenhuma das opções recomendadas precisa do SearXNG. Se o DuckDuckGo sair, o contêiner de busca deixa de ser necessário no padrão. Mojeek e Qwant no SearXNG ferem a regra.
-- **Regra da pesquisa antes do código.** Antes de cada módulo: ler a documentação e os termos do serviço escolhido. Tavily e Exa precisam de leitura de termos antes de qualquer código.
+- **Regra da pesquisa antes do código.** Antes de cada módulo: ler a documentação e os termos do serviço escolhido. Para a Tavily, falta ler a política de uso aceitável e os limites de taxa; para a Exa, os termos.
 
 ### Recomendação
 
-1. **Sem custo:** Wikipédia, arXiv, Stack Overflow **mais Marginalia** (chave gratuita por e-mail para uso não comercial, o que serve a um agente pessoal). Dizer na ferramenta e na tela que **isso não é uma busca geral boa em português**. A Tavily, que a nota anterior recomendava, **não pode mais ser recomendada**: o preço e os termos não foram lidos, porque a proxy bloqueou o host.
+1. **Sem custo:** Wikipédia, arXiv, Stack Overflow **mais Marginalia** (chave gratuita por e-mail para uso não comercial). **A Tavily volta como segunda opção gratuita**, com preço e termos agora lidos: 1000 buscas `basic` por mês sem cartão, agente previsto por Agent Key, `country=brazil` e `language=pt`. **Condição:** o termo "solely for Customer's internal business purposes" precisa de decisão do dono antes de usar para uso pessoal, e a política de uso aceitável ainda não foi lida. Dizer na ferramenta e na tela que **isso não é uma busca geral boa em português**.
 2. **Pagar pouco:** **Brave Search API** continua a melhor opção com termos lidos: US$ 5 por 1000 com crédito de US$ 5 por mês, sem atribuição obrigatória, índice próprio e parâmetros de país e idioma. Condições: **cache desligado ou transitório** e **resultados fora de avaliações de IA**, que são exigências dos termos. Alternativas: Mojeek Startup (£ 2 por 1000, cache de 1 hora, API autorizada, português possível via `lb`), e Exa Lite (US$ 4 por 1000, após ler os termos).
 3. **DuckDuckGo: desligar por padrão** (`defaultOn: false`) e, de preferência, tirar da lista. Corrigido: os termos lidos **não** proíbem busca automática; o motivo é o bloqueador de robôs e o disfarce de navegador que o SearXNG usa para passar, o que o Suup não faz (I1). Mantê-lo ligado só gera "busca indisponível" e suspensão a cada tentativa.
 
@@ -239,3 +248,4 @@ Isto muda o plano (BUSCA.md: "duckduckgo ligado por decisão do dono" e "o Suup 
 - **Corrigido:** a nota dizia que a maioria dos hosts estava bloqueada por DNS. Nesta revisão, quase todos abriram. Só `www.tavily.com` foi recusado pela proxy.
 - **Corrigido:** a nota citava `arc` como parâmetro da Mojeek. A documentação oficial lista `rb` e `lb`.
 - **Corrigido:** a nota citava os termos de "automated querying" como se fossem do DuckDuckGo. Eles são do Duck.ai.
+- **Tavily (leitura de 24/11/2026, após a liberação de `www.tavily.com`):** preço e grátis agora [lido]: 1000 créditos por mês, sem cartão; US$ 0,008 por crédito depois. Recomendação: a Tavily volta como segunda opção gratuita, com a condição de uso interno dos termos. **Corrigido:** o país da Tavily é um enum por nome (`brazil`), não código ISO de duas letras. O idioma é ISO 639-1 (`pt`).
