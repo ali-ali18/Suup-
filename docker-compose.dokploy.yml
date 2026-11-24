@@ -1,13 +1,19 @@
 # Produção numa VPS gerenciada pelo Dokploy, que também roda OUTROS projetos.
 # Guia passo a passo (painel do Dokploy, Cloudflare, segredos, backup, atualização): docs/DEPLOY-DOKPLOY.md
 # Por que é assim (Docker isolado, redes, Traefik): docs/pesquisas/deploy-vps-dokploy.md
+# Por que as imagens vêm prontas do GitHub: docs/pesquisas/imagens-no-github.md
 #
 # A diferença para o docker-compose.prod.yml: NADA aqui monta o socket do Docker do host. As máquinas dos
 # bots, os conectores, o leitor e o SearXNG rodam num Docker próprio do Suup (o serviço `docker`, Docker
 # dentro de Docker), com dados num volume só dele. Quem controla esse Docker não enxerga os contêineres
 # dos outros projetos da VPS.
 #
+# NADA é compilado na VPS: as imagens são construídas pelo GitHub Actions (.github/workflows/images.yml) e
+# publicadas em ghcr.io/ali-ali18/suup-*; aqui elas só são baixadas. SUUP_IMAGE_TAG escolhe a versão: o
+# padrão `main` segue o ramo; o sha completo de um commit fixa (ou volta para) aquela versão.
+#
 #   O Dokploy roda: docker compose -p <app> -f docker-compose.dokploy.yml up -d --build --remove-orphans
+#   (o --build não faz nada aqui: nenhum serviço tem receita de build).
 #   As variáveis vêm da aba Environment do Dokploy (ele grava um .env ao lado deste arquivo).
 #   A configuração vem de um File Mount do Dokploy: ../files/suup.config.json (modelo: suup.config.dokploy.example.json).
 #
@@ -15,10 +21,10 @@
 # `worker` (que usa a rede do serviço `docker`) não pode ter rede própria.
 
 x-app: &app
-  image: suup:dokploy
-  build:
-    context: .
-    dockerfile: docker/server/Dockerfile
+  # A imagem do servidor e do worker, construída no GitHub. `always`: a cada implantação o Docker da VPS
+  # confere no registro se a tag aponta para uma imagem nova (com `main`, ela muda a cada push).
+  image: ${SUUP_IMAGE_REGISTRY:-ghcr.io/ali-ali18}/suup-server:${SUUP_IMAGE_TAG:-main}
+  pull_policy: always
   restart: unless-stopped
   init: true
   environment: &app-env
@@ -105,22 +111,66 @@ services:
         max-size: "10m"
         max-file: "5"
 
-  # Constrói as imagens dos bots DENTRO do Docker isolado e sai (docker/dokploy/build-images.sh). Na primeira
-  # vez leva vários minutos (o leitor parte da imagem do Playwright, de alguns GB); depois, o cache resolve.
+  # Baixa as imagens dos bots (construídas no GitHub) DENTRO do Docker isolado, dá a elas os nomes que a
+  # configuração usa (suup-sandbox:prod, suup-connector-runner:prod, suup-reader:prod) e sai. Baixa também
+  # o SearXNG (versão fixa, a mesma de packages/web/src/engines.ts). Quem baixa é o daemon do Docker
+  # isolado, pela rede `outbound` dele: este contêiner não tem rede, só o socket.
   images:
-    image: suup-images:dokploy
-    build:
-      context: .
-      dockerfile: docker/dokploy/images.Dockerfile
+    image: docker:29.10.0-cli
     restart: "no"
     environment:
       DOCKER_HOST: unix:///var/run/dind/docker.sock
+      SUUP_IMAGE_REGISTRY: ${SUUP_IMAGE_REGISTRY:-ghcr.io/ali-ali18}
+      SUUP_IMAGE_TAG: ${SUUP_IMAGE_TAG:-main}
       SUUP_IMAGES: ${SUUP_IMAGES:-sandbox connector-runner reader searxng}
       SUUP_READER_BROWSER: ${SUUP_READER_BROWSER:-1}
+      SUUP_SEARXNG_IMAGE: docker.io/searxng/searxng:2026.3.25-541c6c3cb
     volumes:
       - dind-sock:/var/run/dind
-    # Não precisa de rede: quem baixa e constrói é o Docker isolado.
     network_mode: none
+    entrypoint: ["/bin/sh", "-euc"]
+    # O script vai aqui mesmo (com $$ no lugar de $): nada para construir nem montar do repositório.
+    command:
+      - |
+        echo "suup-images: esperando o Docker isolado ($$DOCKER_HOST)..."
+        tries=0
+        until docker version >/dev/null 2>&1; do
+          tries=$$((tries + 1))
+          if [ "$$tries" -ge 90 ]; then
+            echo "suup-images: o Docker isolado não respondeu em 3 minutos" >&2
+            exit 1
+          fi
+          sleep 2
+        done
+        fetch() {
+          echo "suup-images: baixando $$1"
+          docker pull --quiet "$$1"
+          if [ -n "$${2:-}" ]; then
+            docker tag "$$1" "$$2"
+            echo "suup-images:   pronta como $$2"
+          fi
+        }
+        from="$$SUUP_IMAGE_REGISTRY"; tag="$$SUUP_IMAGE_TAG"
+        for image in $$SUUP_IMAGES; do
+          case "$$image" in
+            sandbox) fetch "$$from/suup-sandbox:$$tag" suup-sandbox:prod ;;
+            connector-runner) fetch "$$from/suup-connector-runner:$$tag" suup-connector-runner:prod ;;
+            reader)
+              if [ "$$SUUP_READER_BROWSER" = "0" ]; then
+                fetch "$$from/suup-reader:$$tag-slim" suup-reader:prod
+              else
+                fetch "$$from/suup-reader:$$tag" suup-reader:prod
+              fi ;;
+            searxng) fetch "$$SUUP_SEARXNG_IMAGE" ;;
+            *)
+              echo "suup-images: imagem desconhecida em SUUP_IMAGES: $$image (use sandbox, connector-runner, reader, searxng)" >&2
+              exit 1 ;;
+          esac
+        done
+        # As versões anteriores ficam sem nome depois da troca: libera as que nenhum contêiner usa.
+        docker image prune --force >/dev/null
+        echo "suup-images: pronto"
+        docker image ls --format 'suup-images:   {{.Repository}}:{{.Tag}}  {{.Size}}'
     depends_on:
       docker:
         condition: service_healthy

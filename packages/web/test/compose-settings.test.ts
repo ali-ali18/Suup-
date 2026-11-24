@@ -19,8 +19,25 @@ describe("the committed files agree with the code", () => {
     const tag = SEARXNG_IMAGE.slice(SEARXNG_IMAGE.lastIndexOf(":") + 1);
     expect(read("../../../docker-compose.yml")).toContain(tag);
     expect(read("../../../docker-compose.prod.yml")).toContain(tag);
-    // O Dokploy: quem baixa a imagem no Docker isolado é o script do serviço `images`.
-    expect(read("../../../docker/dokploy/build-images.sh")).toContain(SEARXNG_IMAGE);
+    // O Dokploy: quem baixa a imagem no Docker isolado é o serviço `images` do compose.
+    expect(read("../../../docker-compose.dokploy.yml")).toContain(SEARXNG_IMAGE);
     expect(tag).not.toBe("latest");
+  });
+
+  it("the Dokploy compose pulls (never builds) and gives the bot images the exact names its example config uses", () => {
+    const compose = read("../../../docker-compose.dokploy.yml");
+    const config = JSON.parse(read("../../../suup.config.dokploy.example.json")) as {
+      sandbox: { image: string; connectors: { image: string } };
+      web: { reader: { image: string } };
+    };
+    // O build acontece no GitHub (.github/workflows/images.yml): nada é compilado na VPS.
+    expect(compose).not.toContain("build:");
+    for (const local of [
+      config.sandbox.image,
+      config.sandbox.connectors.image,
+      config.web.reader.image,
+    ]) {
+      expect(compose).toContain(` ${local}`);
+    }
   });
 });
