@@ -60,3 +60,4 @@ Estados: **aberto**, **em andamento**, **feito** (com o commit).
 | B2 | Busca nunca testada com os buscadores de verdade e com o modelo | A rede deste ambiente bloqueia | Testar no PC do dono | aberto |
 | B3 | O DuckDuckGo pede captcha em quase toda busca no PC do dono; a busca geral fica fora | Uso do dono, 24/11/2026; rascunho `docs/pesquisas/fase-4-busca-alternativas-ao-ddg.md` | Trocar por uma API oficial (Tavily, Brave...) após a pesquisa com fonte lida e a escolha do dono | em andamento |
 | B4 | Uma busca que falha não deixava motivo nos registros | Registro do dono, 24/11/2026 | Linha `web_search:` com o motivo, sem a consulta | feito (`5bb7423`) |
+| B5 | Motor de pesquisa profunda (deep research): brief, subtemas, conjunto de fontes, orçamento, citações conferidas | Relatório do dono, 24/11/2026 (`docs/pesquisas/motor-de-pesquisa-deep-research.md`) | Ler as fontes (regra §2), planejar a fase depois da busca plugável (B3) | aberto |
