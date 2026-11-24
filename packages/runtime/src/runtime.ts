@@ -53,6 +53,7 @@ import {
   wakeDueRuns,
   writtenRulesForBot,
 } from "@suup/db";
+import { createDocumentMaker } from "@suup/documents";
 import { createProvider, type ProviderConfig } from "@suup/providers";
 import {
   ContainerStdioLauncher,
@@ -67,6 +68,7 @@ import {
   startEgressContainer,
 } from "@suup/sandbox";
 import {
+  createDocumentTool,
   networkTools,
   registerBuiltinTools,
   requestNetworkAccessTool,
@@ -376,6 +378,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     const registry = registerBuiltinTools(new ToolRegistry(registryOptions));
     if (config.sandbox.kind === "docker") for (const tool of networkTools) registry.register(tool);
     registry.register(sendFileTool);
+    registry.register(createDocumentTool);
     return registry;
   };
   const tools = newRegistry();
@@ -1075,6 +1078,8 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
                 return { id: stored.id };
               },
             }),
+            // The documents a run builds carry the bot's name as their author.
+            documentsFor: () => createDocumentMaker({ author: bot.name }),
           }
         : {}),
       ...(sandbox.kind === "docker" && guarded

@@ -86,9 +86,13 @@ await build({
   target: "node22",
   minify: false,
   legalComments: "none",
-  // A few dependencies are CommonJS and call `require`.
+  // Optional native module that pdf.js and jsdom try to load and do without (the PDF check of
+  // `create_document` and the page reader need no canvas): never bundled.
+  external: ["@napi-rs/canvas"],
+  // A few dependencies are CommonJS and call `require`; pdfkit (the PDF builder of
+  // `create_document`) also reads `__filename` when it loads.
   banner: {
-    js: "import { createRequire as __suupRequire } from 'node:module'; const require = __suupRequire(import.meta.url);",
+    js: "import { createRequire as __suupRequire } from 'node:module'; import { fileURLToPath as __suupFileURL } from 'node:url'; import { dirname as __suupDirname } from 'node:path'; const require = __suupRequire(import.meta.url); const __filename = __suupFileURL(import.meta.url); const __dirname = __suupDirname(__filename);",
   },
   logLevel: "warning",
 });

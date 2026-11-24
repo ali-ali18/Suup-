@@ -153,6 +153,7 @@ function whatYouHaveSection(input: {
   memoryTools: boolean;
   web: { search: boolean; read: boolean };
   sendFile: boolean;
+  createDocument: boolean;
 }): string {
   const lines: string[] = [];
   const { machine, connectors } = input;
@@ -174,6 +175,11 @@ function whatYouHaveSection(input: {
   if (input.sendFile) {
     lines.push(
       "- `send_file`: when you make a file for the user (a PDF, a document, a spreadsheet, an image), send it with `send_file`; it appears as a card under your message. Never repeat its name or path in your text: one short line is enough.",
+    );
+  }
+  if (input.createDocument) {
+    lines.push(
+      "- `create_document`: for a PDF, Word (docx) or Excel (xlsx) file, use `create_document` with the content and the format, not the terminal or Python: Suup does the design and checks the file. It appears as a card under your message; never repeat its name in your text, one short line is enough.",
     );
   }
   if (connectors !== undefined) {
@@ -320,6 +326,8 @@ export interface SystemPromptOptions {
   web?: { search: boolean; read: boolean };
   /** The model is offered `send_file`: it is told to hand files to the user with it. */
   sendFile?: boolean;
+  /** The model is offered `create_document`: it is told to build PDF, Word and Excel files with it. */
+  createDocument?: boolean;
   /** The section that lists the connector tools that are searched, not loaded (fixed per run). */
   toolIndex?: string | undefined;
 }
@@ -404,6 +412,7 @@ ${memoryLine}- Never claim to have done something the tool results do not show. 
       memoryTools,
       web: options.web ?? { search: false, read: false },
       sendFile: options.sendFile === true,
+      createDocument: options.createDocument === true,
     }),
     rules.length === 0
       ? ""

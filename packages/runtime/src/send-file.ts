@@ -1,4 +1,4 @@
-import { SEND_FILE_TOOL_NAME } from "@suup/core";
+import { CREATE_DOCUMENT_TOOL_NAME, SEND_FILE_TOOL_NAME } from "@suup/core";
 
 /** The built-in tools that give a bot files on its machine (with `shell`, "a machine"). */
 export const FILE_TOOL_NAMES = [
@@ -17,7 +17,15 @@ export const FILE_TOOL_NAMES = [
  */
 export function withSendFileTool<C extends { allowedTools: string[] }>(botCfg: C): C {
   const tools = botCfg.allowedTools;
-  if (tools.includes(SEND_FILE_TOOL_NAME)) return botCfg;
-  const hasMachine = tools.includes("shell") || FILE_TOOL_NAMES.some((n) => tools.includes(n));
-  return hasMachine ? { ...botCfg, allowedTools: [...tools, SEND_FILE_TOOL_NAME] } : botCfg;
+  const hasMachine =
+    tools.includes("shell") ||
+    tools.includes(SEND_FILE_TOOL_NAME) ||
+    FILE_TOOL_NAMES.some((n) => tools.includes(n));
+  if (!hasMachine) return botCfg;
+  // `create_document` builds a PDF, Word or Excel file and delivers it by the same seam, so every
+  // bot that can send a file is offered it too (the bot's own images come from its workspace).
+  const missing = [SEND_FILE_TOOL_NAME, CREATE_DOCUMENT_TOOL_NAME].filter(
+    (n) => !tools.includes(n),
+  );
+  return missing.length === 0 ? botCfg : { ...botCfg, allowedTools: [...tools, ...missing] };
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { call, createRig, eventsOfType, use } from "../testing/index.js";
 import { ESCALATE_DESCRIPTION } from "./control-tools.js";
-import { buildSystemPrompt } from "./prompts.js";
+import { buildSystemPrompt, buildSystemPromptParts } from "./prompts.js";
 
 // The bot knows what its tools draw in the chat (owner, 24/11/2026: hiding output the model paid for
 // is waste; the fix is at the source). These lines must not be dropped by a later edit.
@@ -51,5 +51,31 @@ describe("the bot is told what the file card shows", () => {
     const prompt = buildSystemPrompt({ name: "A", personality: "" }, undefined, { sendFile: true });
     expect(prompt).toContain("it appears as a card under your message");
     expect(prompt).toContain("Never repeat its name or path in your text");
+  });
+});
+
+describe("the bot is told to use create_document for PDF, Word and Excel", () => {
+  it("the prompt line: not the terminal or Python, a card, one short line", () => {
+    const prompt = buildSystemPrompt({ name: "A", personality: "" }, undefined, {
+      sendFile: true,
+      createDocument: true,
+    });
+    expect(prompt).toContain("`create_document`");
+    expect(prompt).toContain("not the terminal or Python");
+    expect(prompt).toContain("never repeat its name in your text");
+  });
+
+  it("the shared prefix (the cache) is the same with and without the tool", () => {
+    const bot = { name: "A", personality: "x" };
+    const without = buildSystemPromptParts(bot, undefined, { sendFile: true });
+    const withTool = buildSystemPromptParts(bot, undefined, {
+      sendFile: true,
+      createDocument: true,
+    });
+    expect(withTool.stableLength).toBe(without.stableLength);
+    expect(withTool.text.slice(0, withTool.stableLength)).toBe(
+      without.text.slice(0, without.stableLength),
+    );
+    expect(without.text).not.toContain("create_document");
   });
 });

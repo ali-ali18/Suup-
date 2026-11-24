@@ -118,6 +118,8 @@ export const SILENT_TOOLS: ReadonlySet<string> = new Set([
   // Handing a file over is the file card under the bot's message, never a row too (owner,
   // 24/11/2026: the file must not appear twice in the thread).
   "send_file",
+  // The same for a document Suup builds (`create_document`): only the card under the message.
+  "create_document",
 ]);
 
 export const toolLabel = (name: string): string => TOOL_LABEL[name] ?? name;

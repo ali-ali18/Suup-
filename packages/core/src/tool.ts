@@ -1,4 +1,5 @@
 import type { z } from "zod";
+import type { DocumentMaker } from "./documents.js";
 import type { FileSender } from "./files.js";
 import type { OutboundMessage } from "./outbound.js";
 import type { RiskLevel } from "./risk.js";
@@ -234,6 +235,8 @@ export interface ToolContext {
   web?: WebAccess;
   /** Present when the run can hand files to the user's chat (`send_file`); see `files.ts`. */
   files?: FileSender;
+  /** Present when the run can build documents (`create_document`); see `documents.ts`. */
+  documents?: DocumentMaker;
   /** The id of the call being executed (the loop sets it): what makes a tool's effect idempotent. */
   callId?: string;
   /**

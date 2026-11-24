@@ -14,6 +14,7 @@ import { webReadTool } from "./web-read.js";
 import { webSearchTool } from "./web-search.js";
 import { writeFileTool } from "./write-file.js";
 
+export { createDocumentTool } from "./create-document.js";
 export { editFileTool } from "./edit-file.js";
 export { forgetTool } from "./forget.js";
 export { decodeEntities, type HtmlText, htmlToText } from "./html-to-text.js";

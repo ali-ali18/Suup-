@@ -1,5 +1,6 @@
 export * from "./answers.js";
 export * from "./approvals/index.js";
+export * from "./documents.js";
 export {
   APPROVAL_DECISIONS,
   type ApprovalDecision,

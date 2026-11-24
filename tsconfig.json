@@ -17,6 +17,9 @@
       "path": "packages/tools"
     },
     {
+      "path": "packages/documents"
+    },
+    {
       "path": "packages/connectors"
     },
     {
