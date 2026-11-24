@@ -104,8 +104,8 @@ function BotEntry({
   const label = status === "" ? bot.name : `${bot.name} — ${status}`;
   // O bot trabalhando (`data-working`): o rosto continua o rosto (docs/DESIGN.md §6).
   const working = ["working", "thinking", "resuming", "queued"].includes(display.chip ?? "");
-  // The rail draws the big face (owner's reference, 24/11/2026: about 65% of its 68 px square).
-  const size = variant === "tile" ? "tile" : variant === "rail" ? "lg" : "row";
+  // The rail draws the face at the size of a row (42 px): "lg" filled the whole square (owner, 24/11/2026: "ainda estão gigantes").
+  const size = variant === "tile" ? "tile" : "row";
   const openMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     onMenu(bot, e.clientX, e.clientY);
