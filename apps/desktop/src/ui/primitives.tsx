@@ -10,6 +10,7 @@ import {
   useRef,
 } from "react";
 import { cx } from "../lib/cx.js";
+import { BUTTON_DISABLED, Button } from "./button.js";
 import { Field, FieldCaption, FieldDescription, FieldMessage } from "./field.js";
 import { Input, Textarea } from "./input.js";
 import { Tip } from "./tooltip.js";
@@ -67,10 +68,11 @@ export function Pill({
   ...rest
 }: PillProps) {
   return (
-    <button
+    <Button
       type={type ?? "button"}
       className={cx(
-        "inline-flex items-center justify-center gap-2 rounded-pill border text-label font-label whitespace-nowrap transition-[background-color,opacity] disabled:opacity-40",
+        "inline-flex items-center justify-center gap-2 rounded-pill border text-label font-label whitespace-nowrap transition-[background-color,opacity]",
+        BUTTON_DISABLED,
         PILL_SIZE[size],
         PILL_TONE[tone],
         attach !== undefined && PILL_ATTACH[attach],
@@ -80,7 +82,7 @@ export function Pill({
     >
       {icon}
       {children}
-    </button>
+    </Button>
   );
 }
 
@@ -122,11 +124,12 @@ export function RoundButton({
 }: RoundButtonProps) {
   return (
     <Tip label={label}>
-      <button
+      <Button
         type={type ?? "button"}
         aria-label={label}
         className={cx(
-          "inline-flex flex-none items-center justify-center rounded-pill border disabled:opacity-40",
+          "inline-flex flex-none items-center justify-center rounded-pill border",
+          BUTTON_DISABLED,
           ROUND_SIZE[size],
           ROUND_TONE[tone],
           className,
@@ -134,7 +137,7 @@ export function RoundButton({
         {...rest}
       >
         {children}
-      </button>
+      </Button>
     </Tip>
   );
 }
@@ -310,7 +313,7 @@ export function IconButton({
   ...rest
 }: { label: string } & ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
-    <button
+    <Button
       type={type ?? "button"}
       aria-label={label}
       className={cx(
@@ -320,7 +323,7 @@ export function IconButton({
       {...rest}
     >
       {children}
-    </button>
+    </Button>
   );
 }
 

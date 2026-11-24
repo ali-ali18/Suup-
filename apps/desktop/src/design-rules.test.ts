@@ -407,6 +407,27 @@ describe("a base dos componentes: cópias do shadcn base-maia sobre Base UI (doc
     expect(read(join(SRC, "ui", "secret-input.tsx"))).toContain("<Input");
   });
 
+  it("lote 4, botão: Pill, RoundButton e IconButton desenham pelo Button do Base UI; só o ocupado fica focável", () => {
+    const button = read(join(SRC, "ui", "button.tsx"));
+    expect(button).toContain('from "@base-ui/react/button"');
+    expect(button).toContain("focusableWhenDisabled={busy}");
+    expect(button).not.toContain("cva(");
+    const primitives = read(join(SRC, "ui", "primitives.tsx"));
+    for (const name of ["Pill", "RoundButton", "IconButton"]) {
+      const from = primitives.indexOf(`export function ${name}`);
+      const body = primitives.slice(from, primitives.indexOf("\n}\n", from));
+      expect(body, name).toContain("<Button");
+      expect(body, name).not.toContain("<button");
+    }
+    // the public props stay
+    expect(primitives).toContain("tone?: PillTone;");
+    expect(primitives).toContain("label: string;");
+    // never `focusableWhenDisabled` outside the busy rule: a plain disabled button stays `disabled`
+    for (const file of files(SRC, /\.tsx$/).filter((f) => !f.endsWith(".test.tsx")))
+      if (!file.endsWith("button.tsx"))
+        expect(read(file), rel(file)).not.toContain("focusableWhenDisabled");
+  });
+
   it("lote 1: o interruptor, a dica e o popover são as cópias sobre o Base UI", () => {
     const sw = read(join(SRC, "ui", "switch.tsx"));
     expect(sw).toContain('from "@base-ui/react/switch"');
