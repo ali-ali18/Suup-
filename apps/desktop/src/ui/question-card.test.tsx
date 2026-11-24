@@ -25,11 +25,14 @@ const quiz: Question[] = [
 const options = () => screen.getAllByTestId("question-option");
 
 describe("QuestionCard: one choice", () => {
-  it("shows the question, letter chips and no footer; a click answers", () => {
+  it("only the options, title only, letter chips and no footer; a click answers", () => {
     const onSubmit = vi.fn();
     render(<QuestionCard questions={single} onSubmit={onSubmit} />);
-    expect(screen.getByText("Qual banco?")).toBeTruthy();
-    expect(options().map((o) => o.textContent)).toEqual(["APostgresrobusto", "BSQLite"]);
+    // The bubble above says the question: in the card it is only for screen readers.
+    expect(screen.getByTestId("question-text").className).toContain("sr-only");
+    // The title only: the description the bot gave ("robusto") is not drawn.
+    expect(options().map((o) => o.textContent)).toEqual(["APostgres", "BSQLite"]);
+    expect(screen.queryByText("robusto")).toBeNull();
     expect(screen.queryByRole("button", { name: /Pular|Avançar|Enviar|Voltar/ })).toBeNull();
     fireEvent.click(options()[1] as HTMLElement);
     expect(onSubmit).toHaveBeenCalledExactlyOnceWith("SQLite");
@@ -90,6 +93,13 @@ describe("QuestionCard: several choices in one question", () => {
 });
 
 describe("QuestionCard: a questionnaire", () => {
+  it("a questionnaire shows the question of each page (the bubble lists them all)", () => {
+    render(<QuestionCard questions={quiz} onSubmit={vi.fn()} />);
+    const text = screen.getByTestId("question-text");
+    expect(text.textContent).toBe("Qual banco?");
+    expect(text.className).not.toContain("sr-only");
+  });
+
   it("pages with dots, Pular/Avançar then Voltar/Avançar, Enviar on the last page", () => {
     const onSubmit = vi.fn();
     render(<QuestionCard questions={quiz} onSubmit={onSubmit} />);

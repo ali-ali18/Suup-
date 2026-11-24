@@ -1,6 +1,14 @@
 import type { DecideTeamBody, Run } from "@suup/api";
 import { ArrowDown } from "lucide-react";
-import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  type ReactNode,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useServices } from "../../app/context.js";
 import { useSettings } from "../../app/settings-store.js";
 import { FRIENDLY_FAILURE } from "../../data/derive.js";
@@ -174,16 +182,26 @@ export function MessageList({
                   />
                 );
               case "bot":
-                // A question with choices is a card; an open one is an ordinary bubble.
+                // A question with choices: the bot's bubble with the question, then, ALWAYS apart
+                // and under it, the card of options (owner, 24/11/2026). An open question is only
+                // the bubble.
                 return isChoiceCard(item) && item.ask !== undefined ? (
-                  <BotMessage key={item.key}>
-                    <QuestionCard
-                      questions={item.ask.questions}
-                      answer={item.ask.answer ?? (item.ask.open ? undefined : "")}
-                      autoFocus={item.ask.open}
-                      onSubmit={onAnswer}
+                  <Fragment key={item.key}>
+                    <BotMessage
+                      text={item.text}
+                      position={positions.get(item.key)}
+                      openUrl={platform.openUrl}
+                      favicons={favicons}
                     />
-                  </BotMessage>
+                    <BotMessage>
+                      <QuestionCard
+                        questions={item.ask.questions}
+                        answer={item.ask.answer ?? (item.ask.open ? undefined : "")}
+                        autoFocus={item.ask.open}
+                        onSubmit={onAnswer}
+                      />
+                    </BotMessage>
+                  </Fragment>
                 ) : (
                   <BotMessage
                     key={item.key}

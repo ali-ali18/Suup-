@@ -365,6 +365,26 @@ describe("chat cards share one chrome and one collapsed row", () => {
     );
   });
 
+  it("a question with options is ALWAYS apart: the bot's bubble, then the card of options under it, titles only", () => {
+    const list = read(join(SRC, "features", "chat", "MessageList.tsx"));
+    // The bubble with the question's text comes first, and the card in its own row after it.
+    const at = list.indexOf("isChoiceCard(item) && item.ask !== undefined");
+    const branch = list.slice(at, list.indexOf("</Fragment>", at));
+    expect(branch).toContain("text={item.text}");
+    expect(branch.indexOf("text={item.text}")).toBeLessThan(branch.indexOf("<QuestionCard"));
+    expect(branch.split("<BotMessage").length - 1).toBe(2);
+    // The same in Pendências.
+    const pending = read(join(SRC, "features", "pending", "PendingScreen.tsx"));
+    expect(pending.indexOf('data-testid="pending-text"')).toBeLessThan(
+      pending.indexOf("<QuestionCard"),
+    );
+    // The card draws the title of an option and never its description.
+    const card = read(join(SRC, "ui", "question-card.tsx"));
+    expect(card).not.toContain(".description");
+    // One question is not repeated in the card (the bubble says it).
+    expect(card).toContain('count === 1 && "sr-only"');
+  });
+
   it("the expand chevron is hidden at rest and shown on hover and on keyboard focus", () => {
     const src = read(join(SRC, "ui", "action-card.tsx"));
     const chevron = src.slice(src.indexOf("const CHEVRON ="), src.indexOf("const CHEVRON =") + 220);

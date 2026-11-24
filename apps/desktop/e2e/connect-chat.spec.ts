@@ -158,11 +158,21 @@ test.describe("connect and chat", () => {
     await send(page, "CASE-OPTIONS escolha uma cor");
     const card = page.getByTestId("question-card");
     await expect(card).toHaveAttribute("data-state", "open");
-    await expect(card).toContainText("Qual cor você prefere?");
-    await expect(card.getByTestId("question-option")).toHaveText([
-      "AAzulA cor do mar",
-      "BVerdeA cor da mata",
-    ]);
+    // The question is the bot's bubble; the card of options is apart, right under it (owner,
+    // 24/11/2026), with the titles only (the descriptions the bot gave are not drawn).
+    const question = page
+      .getByTestId("message-bot")
+      .filter({ hasText: "Qual cor você prefere?" })
+      .locator('[data-testid="bubble-bot"]');
+    await expect(question).toBeVisible();
+    await expect(question.getByTestId("question-card")).toHaveCount(0);
+    const qBox = await question.boundingBox();
+    const cBox = await card.boundingBox();
+    expect(cBox?.y ?? 0).toBeGreaterThan((qBox?.y ?? 0) + (qBox?.height ?? 0));
+    // In the card the question is only for screen readers: the bubble above says it.
+    await expect(card.getByTestId("question-text")).toHaveClass(/sr-only/);
+    await expect(card.getByTestId("question-option")).toHaveText(["AAzul", "BVerde"]);
+    await expect(card).not.toContainText("A cor do mar");
     await expect(card.getByRole("radiogroup")).toBeVisible();
     // While it is open the composer invites a free answer, and the bot is marked as having a doubt.
     await expect(page.getByLabel("Mensagem", { exact: true })).toHaveAttribute(
@@ -183,7 +193,7 @@ test.describe("connect and chat", () => {
     ).toBeVisible();
     await expect(card).toHaveAttribute("data-state", "answered");
     await expect(card.locator('[data-testid="question-option"][aria-checked="true"]')).toHaveText(
-      "BVerdeA cor da mata",
+      "BVerde",
     );
     await expect(page.getByLabel("Mensagem", { exact: true })).toHaveAttribute(
       "placeholder",

@@ -37,11 +37,15 @@ export function userIsTyping(active: Element | null = document.activeElement): b
 }
 
 /**
- * A question of the bot as a card (like the owner's reference): the question in bold, a muted
- * helper line, options as rows with a letter chip. One choice answers on click; several choices, or
- * several questions, use a footer with page dots and Voltar / Pular / Avançar (Enviar on the last
- * page). The answer is plain text (`buildAnswerText`); once there is a reply the card shows what was
- * chosen, dimmed.
+ * The options of a question of the bot, as a card ALWAYS apart from the message (owner, 24/11/2026:
+ * "o card de perguntas deve sempre vir separado, nunca integrado na mensagem"): the bot's bubble
+ * says the question, and this card, under it, has the options as rows with a letter chip and the
+ * TITLE only ("só o title é suficiente": a description the bot gave is not drawn). With one
+ * question its text is not repeated (it stays only for screen readers); a questionnaire of several
+ * shows the question of each page. One choice answers on click; several choices, or several
+ * questions, use a footer with page dots and Voltar / Pular / Avançar (Enviar on the last page). The
+ * answer is plain text (`buildAnswerText`); once there is a reply the card shows what was chosen,
+ * dimmed.
  */
 export function QuestionCard({
   questions,
@@ -124,23 +128,23 @@ export function QuestionCard({
   };
 
   const renderQuestion = (q: Question, qi: number, readOnly: boolean) => {
-    const options = [
-      ...(q.options ?? []).map((o) => ({
-        key: o.label,
-        label: o.label,
-        description: o.description,
-      })),
-    ];
+    // The title only: the description of an option is never drawn (owner, 24/11/2026).
+    const options = (q.options ?? []).map((o) => ({ key: o.label, label: o.label }));
     if (q.allowOther === true && q.options !== undefined)
-      options.push({ key: OTHER, label: "Outra resposta", description: undefined });
+      options.push({ key: OTHER, label: "Outra resposta" });
     const chosenBefore = parsed?.[qi]?.chosen ?? [];
     const multiple = q.multiple === true;
     const selected = picks[qi] ?? [];
     return (
       <div className="flex flex-col gap-2" key={`${rootId}-${qi}`} data-testid="question-block">
         <p
-          className="text-title font-title wrap-anywhere whitespace-pre-wrap"
+          className={cx(
+            "text-title font-title wrap-anywhere whitespace-pre-wrap",
+            // One question: the bubble above already says it.
+            count === 1 && "sr-only",
+          )}
           id={`${rootId}-q${qi}`}
+          data-testid="question-text"
         >
           {q.question}
         </p>
@@ -152,7 +156,7 @@ export function QuestionCard({
           <div
             role={multiple ? "group" : "radiogroup"}
             aria-labelledby={`${rootId}-q${qi}`}
-            className="mt-2 flex flex-col gap-1"
+            className={cx("flex flex-col gap-1", count > 1 && "mt-2")}
           >
             {options.map((o, oi) => {
               const on = readOnly ? chosenBefore.includes(o.label) : selected.includes(o.key);
@@ -180,12 +184,7 @@ export function QuestionCard({
                   >
                     {letter(oi)}
                   </span>
-                  <span className="flex min-w-0 flex-col">
-                    <span className="text-body wrap-anywhere">{o.label}</span>
-                    {o.description !== undefined && o.description !== "" && (
-                      <span className="text-small text-text-muted">{o.description}</span>
-                    )}
-                  </span>
+                  <span className="min-w-0 text-body wrap-anywhere">{o.label}</span>
                 </button>
               );
             })}

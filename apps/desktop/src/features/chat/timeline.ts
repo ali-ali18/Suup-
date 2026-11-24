@@ -242,14 +242,16 @@ export function isChoiceCard(item: TimelineItem): boolean {
 /** The sender of a text bubble, or null for anything that is not one (cards, lines, separators). */
 function bubbleSender(item: TimelineItem): "user" | "bot" | null {
   if (item.kind === "user") return "user";
-  if (item.kind === "bot" && !isChoiceCard(item)) return "bot";
+  // A question with choices is the bot's bubble (its text) AND, under it, the card of options.
+  if (item.kind === "bot") return "bot";
   return null;
 }
 
 /**
  * The groups of consecutive text bubbles from the same sender, by item key. Anything that is not a
  * text bubble (a card, an action row, a separator — which is also what a long time gap becomes —,
- * a notice, the working indicator) breaks the group and is not in the result. Pure: the component
+ * a notice, the working indicator) breaks the group and is not in the result. A question with
+ * choices is a bubble (its text) followed by the card of options, so it is the LAST of its group. Pure: the component
  * only reads the position.
  */
 export function bubblePositions(items: readonly TimelineItem[]): Map<string, BubblePosition> {
@@ -270,6 +272,11 @@ export function bubblePositions(items: readonly TimelineItem[]): Map<string, Bub
     if (who === null || who !== sender) close();
     sender = who;
     if (who !== null) run.push(item.key);
+    // The card of options goes right under the question's bubble: it ends the group.
+    if (isChoiceCard(item)) {
+      close();
+      sender = null;
+    }
   }
   close();
   return result;

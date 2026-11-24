@@ -593,7 +593,14 @@ describe("bubblePositions: consecutive text bubbles of one sender form a group",
     expect(positions).toEqual({ a: "first", b: "last", c: "first", d: "middle", e: "last" });
     expect(positions).not.toHaveProperty("k");
     // Every kind of card or line breaks it, even a lone bubble around it.
-    expect(of([bot("a"), choice("q"), bot("b")])).toEqual({ a: "single", b: "single" });
+    // A question with choices is its bubble, then the card of options apart: the bubble ends the
+    // group it joins, and the card breaks it before the next bubble.
+    expect(of([bot("a"), choice("q"), bot("b")])).toEqual({ a: "first", q: "last", b: "single" });
+    expect(of([user("u"), choice("q"), choice("r")])).toEqual({
+      u: "single",
+      q: "single",
+      r: "single",
+    });
     expect(
       of([
         bot("a"),
