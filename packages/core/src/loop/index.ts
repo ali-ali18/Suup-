@@ -42,6 +42,7 @@ export {
   CREATE_ROUTINE_TOOL_NAME,
   formatClock,
   MEMORY_TOOL_NAMES,
+  OWN_ROUTINES_PROMPT_MAX,
   renderRoutineRef,
   renderStateReminder,
   WEB_READ_TOOL_NAME,

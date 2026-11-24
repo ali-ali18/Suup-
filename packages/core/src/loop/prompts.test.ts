@@ -282,6 +282,48 @@ describe("system prompt: what you have", () => {
   });
 });
 
+describe("system prompt: your routines", () => {
+  const bot = { name: "Ada", personality: "" };
+  const lembrete = {
+    id: "rot-1",
+    name: "Lembrete: trabalhos e prova",
+    schedule: "todo dia às 20:00, até 30/11/2026",
+    timeZone: "America/Sao_Paulo",
+    status: "active" as const,
+  };
+
+  it("lists the routines an earlier run set up, with the ids only for the tools", () => {
+    const prompt = buildSystemPrompt(
+      bot,
+      {
+        ...base,
+        ownRoutines: {
+          items: [lembrete, { ...lembrete, id: "rot-2", name: "Água", status: "paused" }],
+          more: 3,
+        },
+      },
+      { routines: true },
+    );
+    expect(prompt).toContain(
+      '## Your routines\n\nYour routines as this run started; they are real, set up by the user or by an earlier run of yours: the earlier turns of this conversation are text only, without the tool calls behind them, so not seeing a tool result there does not mean it was not done.\n\n- "Lembrete: trabalhos e prova": todo dia às 20:00, até 30/11/2026 (America/Sao_Paulo); active; id rot-1\n- "Água": todo dia às 20:00, até 30/11/2026 (America/Sao_Paulo); PAUSED; id rot-2\n- and 3 more (`list_routines` lists them all)\n\nThe ids are for your tools',
+    );
+    expect(prompt).toContain("never show them to the user");
+    // before creating, the bot checks the list; it never claims what no tool result shows
+    expect(prompt).toContain(
+      'Before creating one, look at "Your routines" (or call `list_routines`): if one already does what the user asked, change that one with `update_routine` instead of creating another.',
+    );
+  });
+
+  it("says so when there is none, and has no section in a run that did not load them", () => {
+    expect(
+      buildSystemPrompt(bot, { ...base, ownRoutines: { items: [], more: 0 } }, { routines: true }),
+    ).toContain(
+      "## Your routines\n\nYour routines as this run started; they are real, set up by the user or by an earlier run of yours: the earlier turns of this conversation are text only, without the tool calls behind them, so not seeing a tool result there does not mean it was not done.\n\nYou have no routines yet.",
+    );
+    expect(buildSystemPrompt(bot, base, { routines: true })).not.toContain("## Your routines");
+  });
+});
+
 describe("system prompt: the welcome", () => {
   const bot = { name: "Tutor faculdade", personality: "Ajuda com estudos." };
 

@@ -13,9 +13,13 @@ import {
   formatClock,
   INTERVAL_UNITS,
   isKnownTimeZone,
+  OWN_ROUTINES_PROMPT_MAX,
+  type OwnRoutines,
   type RoutineRunFacts,
+  routineNameKey,
   SCHEDULE_KINDS,
   type Schedule,
+  sameSchedule,
   scheduleSchema,
   WEEKDAYS,
 } from "@suup/core";
@@ -115,6 +119,53 @@ function routineLine(r: Routine): string {
       ? ""
       : `; last: ${r.lastFire.status}${r.lastFire.missedCount > 0 ? ` (missed ×${r.lastFire.missedCount})` : ""}`;
   return `- ${JSON.stringify(r.name)} (id ${r.id}): ${scheduleWords(r)} (${r.timeZone}); ${status}${last}. Instruction: ${clip(r.instruction, 300)}`;
+}
+
+/**
+ * The routine of the bot that a new one would duplicate: one that is not ended, with the same name
+ * (`routineNameKey`, compared exactly) AND the same schedule in the same time zone (`sameSchedule`).
+ * Structure only: no text is interpreted.
+ */
+export function duplicateRoutineOf(
+  mine: readonly Pick<Routine, "id" | "name" | "schedule" | "timeZone" | "status">[],
+  wanted: { name: string; schedule: Schedule; timeZone: string },
+): Pick<Routine, "id" | "name" | "schedule" | "timeZone" | "status"> | undefined {
+  const key = routineNameKey(wanted.name);
+  return mine.find(
+    (r) =>
+      r.status !== "ended" &&
+      r.schedule !== null &&
+      r.timeZone === wanted.timeZone &&
+      routineNameKey(r.name) === key &&
+      sameSchedule(r.schedule, wanted.schedule),
+  );
+}
+
+/**
+ * The bot's own routines as a run starts (recorded in `context_loaded.ownRoutines`): the ones that
+ * are not ended, active first, capped at `OWN_ROUTINES_PROMPT_MAX`; the rest is counted.
+ */
+export async function ownRoutinesFor(
+  db: Db,
+  botId: string,
+  max: number = OWN_ROUTINES_PROMPT_MAX,
+): Promise<OwnRoutines> {
+  const live = (await listRoutines(db, { botId })).filter((r) => r.status !== "ended");
+  const ordered = [
+    ...live.filter((r) => r.status === "active"),
+    ...live.filter((r) => r.status !== "active"),
+  ];
+  const shown = ordered.slice(0, max);
+  return {
+    items: shown.map((r) => ({
+      id: r.id,
+      name: r.name,
+      schedule: scheduleWords(r),
+      timeZone: r.timeZone,
+      status: r.status === "active" ? ("active" as const) : ("paused" as const),
+    })),
+    more: ordered.length - shown.length,
+  };
 }
 
 function routineErrorText(error: RoutineError): string {
@@ -217,6 +268,18 @@ export function createRoutineTool(db: Db, userZone: UserZone) {
       }
       const read = readSchedule(schedule);
       if ("error" in read) return { isError: true, content: read.error };
+      // The same routine twice is never what the user wants: the model is told it already exists.
+      const twin = duplicateRoutineOf(await listRoutines(db, { botId: ctx.botId }), {
+        name,
+        schedule: read.schedule,
+        timeZone: zone,
+      });
+      if (twin !== undefined) {
+        return {
+          isError: true,
+          content: `Not created: you already have this routine, ${JSON.stringify(twin.name)} (id ${twin.id}), ${scheduleWords(twin)} (${twin.timeZone}), ${twin.status === "paused" ? "PAUSED" : "active"}. It was set up before and is real. Do not create it again: to change it, call update_routine with routine: "${twin.id}"${twin.status === "paused" ? " (paused: false resumes it)" : ""}; if it is already what the user asked, just tell them it is set up.`,
+        };
+      }
       try {
         const routine = await createRoutine(db, {
           botId: ctx.botId,

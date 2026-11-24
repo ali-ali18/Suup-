@@ -1,5 +1,6 @@
 import type {
   MachineInfo,
+  OwnRoutines,
   PlanStep,
   ReceptionKind,
   RoutineRunFacts,
@@ -57,7 +58,12 @@ export interface RunPromptContext {
   supervisor?: SupervisorRole;
   /** A routine opened the run (docs/ROTINAS.md): what fired it. */
   routine?: RoutineRunFacts;
+  /** The bot's own routines when the run started (a run that may create routines). */
+  ownRoutines?: OwnRoutines;
 }
+
+/** Most routines "Your routines" lists (the runtime caps the list; the rest is counted). */
+export const OWN_ROUTINES_PROMPT_MAX = 20;
 
 /** Most teammates, and longest description of each, the prompt lists (the rest is not named). */
 export const TEAM_PROMPT_MAX_BOTS = 30;
@@ -94,7 +100,7 @@ function knownTimeZone(timeZone: string): string {
 }
 
 /** How a bot that can create routines uses them (the owner's decision: created by talking). */
-export const ROUTINES_HOW = `- When the user asks for something recurring or for a later day ("check my calendar every day", "every Monday", "remind me tomorrow at 9"), create a routine with \`create_routine\`. If they did not say when, choose a sensible time yourself; then say in your message, in plain words, what you set up and when, and ask if they want another time (for example: "Combinado, vejo seu calendário todo dia às 8h. Quer outro horário?"). To change it, call \`update_routine\` when they say so. Never create a routine the user did not ask for. \`schedule_return\` is only for coming back once within the current task (a deploy that ends in 20 minutes); anything that repeats, or is for another day, is a routine.`;
+export const ROUTINES_HOW = `- When the user asks for something recurring or for a later day ("check my calendar every day", "every Monday", "remind me tomorrow at 9"), create a routine with \`create_routine\`. If they did not say when, choose a sensible time yourself; then say in your message, in plain words, what you set up and when, and ask if they want another time (for example: "Combinado, vejo seu calendário todo dia às 8h. Quer outro horário?"). To change it, call \`update_routine\` when they say so. Never create a routine the user did not ask for. Before creating one, look at "Your routines" (or call \`list_routines\`): if one already does what the user asked, change that one with \`update_routine\` instead of creating another. Never say you created or changed a routine unless the tool result of THIS run shows it, or it is in "Your routines". \`schedule_return\` is only for coming back once within the current task (a deploy that ends in 20 minutes); anything that repeats, or is for another day, is a routine.`;
 
 /** What the main bot is told about being the supervisor (docs/SUPERVISOR.md). */
 export const SUPERVISOR_PROMPT = `You are the supervisor of this team. The other bots talk to the user directly and do their own work; you know what they did because you read it:
@@ -191,6 +197,24 @@ function whatYouHaveSection(input: {
     );
   }
   return lines.length === 0 ? "" : `## What you have\n\n${lines.join("\n")}`;
+}
+
+/**
+ * The bot's own routines as the run started (docs/ROTINAS.md), so a new run knows what an earlier
+ * run set up: the history is text only. The id is for the tools; the user never sees it.
+ */
+function ownRoutinesSection(own: OwnRoutines): string {
+  const listed =
+    own.items.length === 0
+      ? "You have no routines yet."
+      : own.items
+          .map(
+            (r) =>
+              `- ${JSON.stringify(r.name)}: ${r.schedule} (${r.timeZone}); ${r.status === "paused" ? "PAUSED" : "active"}; id ${r.id}`,
+          )
+          .join("\n");
+  const more = own.more > 0 ? `\n- and ${own.more} more (\`list_routines\` lists them all)` : "";
+  return `## Your routines\n\nYour routines as this run started; they are real, set up by the user or by an earlier run of yours: the earlier turns of this conversation are text only, without the tool calls behind them, so not seeing a tool result there does not mean it was not done.\n\n${listed}${more}\n\nThe ids are for your tools (\`update_routine\`, \`delete_routine\`): never show them to the user. A routine you create or change in this run is not in this list; the tool result says it.`;
 }
 
 /** What a run opened by a routine is told (docs/ROTINAS.md). */
@@ -356,6 +380,7 @@ ${memoryLine}- Never claim to have done something the tool results do not show. 
       : context?.reception === "bot"
         ? RECEPTION_BOT
         : "",
+    context?.ownRoutines === undefined ? "" : ownRoutinesSection(context.ownRoutines),
     context?.routine === undefined ? "" : routineSection(context.routine),
     secretsSection,
     options.toolIndex ?? "",

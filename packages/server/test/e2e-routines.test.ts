@@ -26,9 +26,39 @@ const createCall = (marker: string) => ({
   },
 });
 
+// The reminder of the owner's report: a daily routine with an end date a year from now.
+const lembreteUntil = `${new Date().getUTCFullYear() + 1}-11-30`;
+const lembreteCall = {
+  name: "create_routine",
+  args: {
+    name: "Lembrete: trabalhos e prova",
+    instruction: "Lembre o usuário dos trabalhos de POO e Teologia e das provas.",
+    schedule: { kind: "daily", time: "20:00", until: lembreteUntil },
+  },
+};
+
 const SCRIPTS = {
   roteiro: {
     cases: [
+      {
+        // The second message of the chat: the model, seeing only the text of its earlier answer,
+        // "corrects" itself and calls create_routine again with the same routine (the owner's case).
+        whenObjectiveContains: "LEMBRETE-2",
+        agent: [
+          s({ text: "(o passo 0 é a resposta da primeira mensagem, no histórico)" }),
+          s({ calls: [lembreteCall] }),
+          s({ text: "O lembrete já está criado: todo dia às 20:00." }),
+        ],
+        autoReview: [verdict("run", "Você pediu este lembrete.")],
+      },
+      {
+        whenObjectiveContains: "LEMBRETE-1",
+        agent: [
+          s({ calls: [lembreteCall] }),
+          s({ text: "Combinado! Criei um lembrete todo dia às 20:00." }),
+        ],
+        autoReview: [verdict("run", "Você pediu este lembrete.")],
+      },
       {
         whenObjectiveContains: "CRIAR-AUTO",
         agent: [
@@ -196,6 +226,55 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("routines through the API"), { timeou
     expect(after.state).toBe("Avisei do dentista.");
     expect(after.lastFire?.id).toBe(fire?.id);
     expect(new Date(after.nextRunAt as string).getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it("a second run knows the routine an earlier run created: listed in its prompt, a duplicate is refused", async () => {
+    const { api } = w.started;
+    await api.userSettings.update({ timeZone: "America/Sao_Paulo", source: "device" });
+    const bot = await api.bots.create({ name: "Estudo", modelId: "model-x" });
+    const conversation = await api.bots.openConversation(bot.id);
+    const first = await api.conversations.send(conversation.id, "LEMBRETE-1 me lembra das provas");
+    expect((await finished(first.run.id)).status).toBe("done");
+    const [created, ...none] = await api.routines.list({ botId: bot.id });
+    expect(none).toEqual([]);
+    expect(created).toMatchObject({ name: "Lembrete: trabalhos e prova", status: "active" });
+    await until(async () => {
+      const items = (await api.conversations.messages(conversation.id)).items;
+      return items.length >= 2 ? items : undefined;
+    }, "the first answer");
+
+    const second = await api.conversations.send(conversation.id, "LEMBRETE-2 pesquisa a PUC");
+    expect((await finished(second.run.id)).status).toBe("done");
+    // only ONE routine: the second create_routine was refused as a duplicate
+    const routines = await api.routines.list({ botId: bot.id });
+    expect(routines.map((r) => r.id)).toEqual([created?.id]);
+    const events = (await api.runs.events(second.run.id, { limit: 500 })).items;
+    // the run started knowing its routines (recorded once, for resume and replay)
+    expect(events.find((e) => e.type === "context_loaded")?.payload).toMatchObject({
+      ownRoutines: {
+        items: [
+          {
+            id: created?.id,
+            name: "Lembrete: trabalhos e prova",
+            schedule: `todo dia às 20:00, até 30/11/${lembreteUntil.slice(0, 4)}`,
+            timeZone: "America/Sao_Paulo",
+            status: "active",
+          },
+        ],
+        more: 0,
+      },
+    });
+    const request = events.find((e) => e.type === "model_request")?.payload as { system: string };
+    expect(request.system).toContain("## Your routines");
+    expect(request.system).toContain(
+      `- "Lembrete: trabalhos e prova": todo dia às 20:00, até 30/11/${lembreteUntil.slice(0, 4)} (America/Sao_Paulo); active; id ${created?.id}`,
+    );
+    const call = events.find((e) => e.type === "tool_call")?.payload as { callId: string };
+    const result = events.find(
+      (e) => e.type === "tool_result" && (e.payload as { callId: string }).callId === call.callId,
+    )?.payload as { isError: boolean; content: string };
+    expect(result.isError).toBe(true);
+    expect(result.content).toContain("you already have this routine");
   });
 
   it("in 'Perguntar tudo', creating a routine is a card in Portuguese; approving creates it", async () => {
