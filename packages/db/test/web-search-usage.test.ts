@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { getWebSearchUsage, recordWebSearchUsage } from "../src/index.js";
 import { DATABASE_URL, dbSuiteName, useIsolatedDb } from "./helpers.js";
 
-describe.skipIf(!DATABASE_URL)(dbSuiteName("web search usage (migration 0030)"), () => {
+describe.skipIf(!DATABASE_URL)(dbSuiteName("web search usage (migration 0031)"), () => {
   const ctx = useIsolatedDb();
 
   it("counts the searches each engine answered, per month, and nothing else", async () => {

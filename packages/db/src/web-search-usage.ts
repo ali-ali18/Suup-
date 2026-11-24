@@ -1,5 +1,5 @@
 // Owns the count of searches each general web engine answered in a month (table
-// `web_search_usage`, migration 0030). Only a number per engine and month: never the query, never a
+// `web_search_usage`, migration 0031). Only a number per engine and month: never the query, never a
 // result. The month is written by `@suup/web` (`2026-11`); this module keeps what it is given.
 import type { Db } from "./client.js";
 
