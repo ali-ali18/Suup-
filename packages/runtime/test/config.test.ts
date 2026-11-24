@@ -33,6 +33,19 @@ describe("configuration: valid files", () => {
     expect(config.reviewer?.model).toBe("model-x");
   });
 
+  it("accepts the Dokploy example file: no fixed proxy address (the gateway is found), a public URL, the vault", () => {
+    const text = readFileSync(
+      new URL("../../../suup.config.dokploy.example.json", import.meta.url),
+      "utf8",
+    );
+    const config = parseConfig(JSON.parse(text), "suup.config.dokploy.example.json");
+    expect(config.sandbox.kind).toBe("docker");
+    expect(JSON.parse(text).sandbox.network.proxy).toBeUndefined();
+    expect(JSON.parse(text).web.search.proxy).toBeUndefined();
+    expect(config.server?.publicUrl).toBe("https://agent.kodea.com.br");
+    expect(config.vault?.keyEnv).toBe("SUUP_VAULT_KEY");
+  });
+
   it("accepts the minimum: one provider, one model, a sandbox", () => {
     const config = parseConfig(
       rawConfig({

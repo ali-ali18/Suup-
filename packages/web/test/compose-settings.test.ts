@@ -19,6 +19,8 @@ describe("the committed files agree with the code", () => {
     const tag = SEARXNG_IMAGE.slice(SEARXNG_IMAGE.lastIndexOf(":") + 1);
     expect(read("../../../docker-compose.yml")).toContain(tag);
     expect(read("../../../docker-compose.prod.yml")).toContain(tag);
+    // O Dokploy: quem baixa a imagem no Docker isolado é o script do serviço `images`.
+    expect(read("../../../docker/dokploy/build-images.sh")).toContain(SEARXNG_IMAGE);
     expect(tag).not.toBe("latest");
   });
 });

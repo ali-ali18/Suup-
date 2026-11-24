@@ -165,6 +165,6 @@ O app desenha (seção "Rede" na edição do bot, `runsIn` e hosts dos conectore
 ## Não verificado / adiado
 
 - O modo `container` foi provado com Docker real em **Linux**, com o worker como processo do host falando só pela porta publicada em `127.0.0.1` (`packages/sandbox/test/egress-container.test.ts`, `packages/runtime/test/connector-egress-container.test.ts`, `apps/sidecar/test/embedded.test.ts`). **Não foi exercitado no Windows com Docker Desktop** (porta publicada, firewall, WSL 2 contra Hyper-V); veja a pesquisa, "Adendo: proxy em contêiner".
-- O caminho de produção com o worker em contêiner (Compose, IP fixo na rede interna) foi escrito e validado só com `docker compose config`; a ponta a ponta com Docker dentro de Docker não foi exercida.
+- O caminho de produção com o worker em contêiner (Compose, IP fixo na rede interna) foi escrito e validado só com `docker compose config`; a ponta a ponta com Docker dentro de Docker não foi exercida. O arranjo do Dokploy ([DEPLOY-DOKPLOY.md](DEPLOY-DOKPLOY.md): worker na rede de um contêiner `docker:dind`, proxy no gateway da rede interna criada lá dentro, modo `process`) foi exercitado localmente com o `suup doctor` (sem saída direta e recusa de host fora da lista, ambos ok); uma execução de bot nele, não.
 - Limite de volume/taxa por host, um contêiner por bot, e inspeção de SNI/Host dentro do túnel não existem.
 - O botão "Permitir para este bot" no cartão (decisão do dono).

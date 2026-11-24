@@ -2,6 +2,8 @@
 
 Como pôr o Suup para rodar de verdade: Postgres, servidor da API, worker e a máquina dos bots numa VPS com Docker, e o app de desktop falando com ele. A API está em [API.md](API.md); a configuração, em [CONFIGURACAO.md](CONFIGURACAO.md).
 
+**VPS gerenciada pelo Dokploy, com outros projetos nela?** Use o [DEPLOY-DOKPLOY.md](DEPLOY-DOKPLOY.md) (`docker-compose.dokploy.yml`): lá o Suup tem um Docker próprio (Docker dentro de Docker) e **não** recebe o socket do Docker do host, que este guia monta no worker e que daria ao Suup o controle dos contêineres dos outros projetos. Este guia continua valendo para uma VPS só do Suup.
+
 ## O que sobe
 
 ```
@@ -116,7 +118,7 @@ O worker comanda a máquina dos bots com `docker exec`, o que exige falar com o 
 
 - O worker é o código do Suup, não o código dos bots: os comandos dos bots rodam **dentro** da máquina dos bots, que **não** recebe o socket e é um contêiner endurecido. O risco real é uma falha no worker, ou nas bibliotecas dele, ser explorada.
 - O **servidor da API não recebe o socket** (é o que fica na frente da rede). É por isso que o `doctor` do servidor não confere a máquina dos bots: peça ao worker.
-- Mantenha a VPS dedicada ao Suup (nada mais de valor nela), com o sistema e o Docker atualizados e as portas fechadas (item acima).
+- Mantenha a VPS dedicada ao Suup (nada mais de valor nela), com o sistema e o Docker atualizados e as portas fechadas (item acima). Numa VPS com outros projetos, use o [DEPLOY-DOKPLOY.md](DEPLOY-DOKPLOY.md), sem o socket do host.
 - Para reduzir ainda mais: Docker em modo *rootless* no host, ou um *proxy de socket* com permissões restritas (só `exec`, `inspect`, `start`, `volume create`, `run`) entre o worker e o daemon. Nenhum dos dois vem pronto aqui.
 
 ## Rede dos bots
