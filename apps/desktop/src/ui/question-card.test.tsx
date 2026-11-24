@@ -25,11 +25,12 @@ const quiz: Question[] = [
 const options = () => screen.getAllByTestId("question-option");
 
 describe("QuestionCard: one choice", () => {
-  it("only the options, title only, letter chips and no footer; a click answers", () => {
+  it("the question as the title, the options by title only, letter chips and no footer; a click answers", () => {
     const onSubmit = vi.fn();
     render(<QuestionCard questions={single} onSubmit={onSubmit} />);
-    // The bubble above says the question: in the card it is only for screen readers.
-    expect(screen.getByTestId("question-text").className).toContain("sr-only");
+    // The question is ALWAYS the card's visible title.
+    expect(screen.getByTestId("question-text").textContent).toBe("Qual banco?");
+    expect(screen.getByTestId("question-text").className).not.toContain("sr-only");
     // The title only: the description the bot gave ("robusto") is not drawn.
     expect(options().map((o) => o.textContent)).toEqual(["APostgres", "BSQLite"]);
     expect(screen.queryByText("robusto")).toBeNull();
@@ -68,6 +69,27 @@ describe("QuestionCard: one choice", () => {
     fireEvent.change(input, { target: { value: "  MySQL  " } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(onSubmit).toHaveBeenCalledExactlyOnceWith("MySQL");
+  });
+});
+
+describe("QuestionCard: the X (answer in the chat)", () => {
+  it("an open card with onDismiss has the X at the top; a click calls it; answered, no X", () => {
+    const onDismiss = vi.fn();
+    const { unmount } = render(
+      <QuestionCard questions={single} onSubmit={vi.fn()} onDismiss={onDismiss} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Fechar e responder no chat" }));
+    expect(onDismiss).toHaveBeenCalledOnce();
+    unmount();
+    render(
+      <QuestionCard questions={single} answer="SQLite" onSubmit={vi.fn()} onDismiss={onDismiss} />,
+    );
+    expect(screen.queryByTestId("question-dismiss")).toBeNull();
+  });
+
+  it("without onDismiss (Pendências) there is no X", () => {
+    render(<QuestionCard questions={single} onSubmit={vi.fn()} />);
+    expect(screen.queryByTestId("question-dismiss")).toBeNull();
   });
 });
 
@@ -186,6 +208,10 @@ describe("QuestionCard: answered", () => {
 describe("focus", () => {
   it("moves into the card when it appears, unless the user is typing", () => {
     const first = render(<QuestionCard questions={single} autoFocus onSubmit={vi.fn()} />);
+    // The card takes it, not an option (nothing looks chosen); the first arrow lands on A, a letter answers.
+    const card = screen.getByTestId("question-card");
+    expect(document.activeElement).toBe(card);
+    fireEvent.keyDown(card, { key: "ArrowDown" });
     expect(document.activeElement).toBe(options()[0]);
     first.unmount();
     const box = document.createElement("textarea");

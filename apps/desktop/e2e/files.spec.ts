@@ -41,10 +41,10 @@ test.describe("files in the chat, collapsed rows, the question apart", () => {
     await expect(page.getByTestId("chat-log")).not.toContainText("/workspace");
     await expect(card).not.toContainText("application/pdf");
 
-    // The call that handed it over is a file row named by the file, not by the tool.
-    await expect(
-      page.getByTestId("action-card").filter({ hasText: "Entregar historia_pucpr.pdf no chat" }),
-    ).toContainText("Arquivo");
+    // The file appears ONCE: the card. The call that handed it over is no row (nor in a fold).
+    await expect(page.getByTestId("chat-log").getByText("historia_pucpr.pdf")).toHaveCount(1);
+    await expect(page.getByTestId("action-card")).toHaveCount(2);
+    await expect(page.getByTestId("chat-log")).not.toContainText("Entregar");
     // The terminal rows of the run are ONE collapsed line each: no command, no output in view.
     const rows = page.getByTestId("action-card");
     await expect(rows.first()).toHaveAttribute("data-state", "done");
@@ -75,23 +75,53 @@ test.describe("files in the chat, collapsed rows, the question apart", () => {
     await expect(rows.nth(0)).toHaveAttribute("data-expanded", "false");
   });
 
-  test("a question with options: the bubble says it, the card apart under it has the titles", async ({
+  test("a question: the bot's words in the bubble, the question as the card's title, the X and the hint", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     world = await startWorld();
     await openWithBot(page, world, "Cores");
-    await send(page, "CASE-OPTIONS escolha uma cor");
+    await send(page, "CASE-ASKCTX faça o PDF da PUCPR");
     const card = page.getByTestId("question-card");
     await expect(card).toHaveAttribute("data-state", "open");
+    // The bubble: the bot's context, which does not repeat the question.
     const bubble = page
       .getByTestId("message-bot")
-      .filter({ hasText: "Qual cor você prefere?" })
+      .filter({ hasText: "A busca na web está fora do ar" })
       .locator('[data-testid="bubble-bot"]');
     await expect(bubble).toBeVisible();
-    await expect(card.getByTestId("question-option")).toHaveText(["AAzul", "BVerde"]);
+    await expect(bubble).not.toContainText("Como você prefere seguir?");
+    // The card: the question as its visible title, options by title, the X; the hint outside it.
+    await expect(card.getByTestId("question-text")).toBeVisible();
+    await expect(card.getByTestId("question-text")).toHaveText("Como você prefere seguir?");
+    await expect(page.getByTestId("chat-log").getByText("Como você prefere seguir?")).toHaveCount(
+      1,
+    );
+    await expect(card.getByTestId("question-option")).toHaveText([
+      "AEsperar e tentar de novo",
+      "BMandar um link da PUCPR",
+      "CPDF sem fontes",
+    ]);
+    const hint = page.getByTestId("question-hint");
+    await expect(hint).toHaveText("Ou responda no chat abaixo");
+    await expect(card.getByTestId("question-hint")).toHaveCount(0);
+    expect(await hint.evaluate((el) => el.tagName)).toBe("P");
+    // No ring on an option at load: the card holds the focus.
+    await expect(card).toBeFocused();
     await page.evaluate(() => document.fonts.ready);
     await page.mouse.move(0, 0);
     await page.screenshot({ path: "screenshots/1440x900@2x/pergunta-separada.png" });
+
+    // The X: the card goes away, the composer takes the focus, and typing answers.
+    await card.getByRole("button", { name: "Fechar e responder no chat" }).click();
+    await expect(page.getByTestId("question-card")).toHaveCount(0);
+    await expect(page.getByTestId("question-hint")).toHaveCount(0);
+    const composer = page.getByLabel("Mensagem", { exact: true });
+    await expect(composer).toBeFocused();
+    await composer.fill("Pode fazer sem fontes mesmo.");
+    await composer.press("Enter");
+    await expect(page.getByTestId("message-bot").filter({ hasText: "Combinado." })).toBeVisible();
+    // Answered, the card is back in the history, dimmed (typed: nothing marked).
+    await expect(page.getByTestId("question-card")).toHaveAttribute("data-state", "answered");
   });
 });

@@ -37,8 +37,10 @@ test.describe("dynamic bubbles", () => {
     await add("bot", "Terceira, a última do grupo");
     await add("user", "uma só minha");
     await add("bot", "Antes do cartão");
-    await add("bot", "Escolha uma cor", {
+    // The bot's words besides the question (`lead`) are its bubble; the question is the card's title.
+    await add("bot", "Escolha uma cor\n\nQual cor?", {
       questions: [{ question: "Qual cor?", options: [{ label: "Azul" }, { label: "Verde" }] }],
+      lead: "Escolha uma cor",
     });
     await add("bot", "Depois do cartão");
     await add("bot", "Fim");

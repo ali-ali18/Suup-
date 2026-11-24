@@ -361,7 +361,7 @@ describe("chat cards share one chrome and one collapsed row", () => {
     );
     // Another conversation starts with nothing open.
     expect(read(join(SRC, "features", "chat", "ChatScreen.tsx"))).toContain(
-      "if (convId !== null) setExpanded(new Set());",
+      "setExpanded(new Set());",
     );
   });
 
@@ -387,24 +387,47 @@ describe("chat cards share one chrome and one collapsed row", () => {
     );
   });
 
-  it("a question with options is ALWAYS apart: the bot's bubble, then the card of options under it, titles only", () => {
+  it("a question with options is ALWAYS a card apart whose visible title is the question; never shown twice; titles only", () => {
+    const card = read(join(SRC, "ui", "question-card.tsx"));
+    // HARD RULE (owner, 24/11/2026): the card's title is ALWAYS the question, visible, on every
+    // page; nothing hides it.
+    expect(card).toContain('data-testid="question-text"');
+    expect(card).toContain("{q.question}");
+    expect(card).not.toContain("sr-only");
+    // The card draws the title of an option and never its description.
+    expect(card).not.toContain(".description");
+    // No hard ring on an option at load: the card takes the focus, the option's is a soft fill for the keyboard.
+    expect(card).toContain("focusOnAppearance(ref.current)");
+    expect(card).toContain("focus-visible:outline-none");
+    expect(card).toContain("focus-visible:bg-hover");
     const list = read(join(SRC, "features", "chat", "MessageList.tsx"));
-    // The bubble with the question's text comes first, and the card in its own row after it.
     const at = list.indexOf("isChoiceCard(item) && item.ask !== undefined");
     const branch = list.slice(at, list.indexOf("</Fragment>", at));
-    expect(branch).toContain("text={item.text}");
-    expect(branch.indexOf("text={item.text}")).toBeLessThan(branch.indexOf("<QuestionCard"));
-    expect(branch.split("<BotMessage").length - 1).toBe(2);
+    // A bubble only with what the bot wrote BESIDES the question, as the server declares it
+    // (`question.lead`): the app never compares texts to hide anything.
+    expect(branch).toContain("item.ask.lead !== undefined &&");
+    expect(branch).toContain("text={item.ask.lead}");
+    expect(branch).not.toContain("text={item.text}");
+    expect(branch.indexOf("text={item.ask.lead}")).toBeLessThan(branch.indexOf("<QuestionCard"));
+    const timeline = read(join(SRC, "features", "chat", "timeline.ts"));
+    expect(timeline).toContain("message.question.lead");
+    expect(timeline).not.toContain("questionLead");
     // The same in Pendências.
     const pending = read(join(SRC, "features", "pending", "PendingScreen.tsx"));
-    expect(pending.indexOf('data-testid="pending-text"')).toBeLessThan(
-      pending.indexOf("<QuestionCard"),
+    expect(pending).toContain("ask.question.lead !== undefined &&");
+    // The X at the top right: close the card and answer in the chat (only an open card has it).
+    expect(card).toContain('aria-label="Fechar e responder no chat"');
+    expect(card).toContain("!readOnly && onDismiss !== undefined");
+    // Under the card, OUTSIDE it: a plain muted line, not a button nor a link.
+    const hint = list.slice(
+      list.indexOf('data-testid="question-hint"') - 120,
+      list.indexOf("Ou responda no chat abaixo") + 40,
     );
-    // The card draws the title of an option and never its description.
-    const card = read(join(SRC, "ui", "question-card.tsx"));
-    expect(card).not.toContain(".description");
-    // One question is not repeated in the card (the bubble says it).
-    expect(card).toContain('count === 1 && "sr-only"');
+    expect(hint).toContain("<p");
+    expect(hint).toContain("text-text-muted");
+    expect(hint).not.toContain("onClick");
+    expect(hint).not.toContain("<button");
+    expect(hint).not.toContain("tabIndex");
   });
 
   it("the expand chevron is hidden at rest and shown on hover and on keyboard focus", () => {
@@ -1471,6 +1494,12 @@ describe("o chat não mostra pesquisa na web nem erro cru de ferramenta (docs/DE
     const silent = derive.slice(derive.indexOf("export const SILENT_TOOLS"));
     for (const tool of ["web_search", "web_read", "web_fetch"])
       expect(silent.slice(0, silent.indexOf("]);"))).toContain(`"${tool}"`);
+  });
+
+  it("entregar um arquivo não é linha: o cartão do arquivo embaixo da mensagem é o único (dono, 24/11/2026)", () => {
+    const derive = read(join(SRC, "data", "derive.ts"));
+    const silent = derive.slice(derive.indexOf("export const SILENT_TOOLS"));
+    expect(silent.slice(0, silent.indexOf("]);"))).toContain('"send_file"');
   });
 
   it("uma chamada que falhou diz isso numa frase, nunca o texto de erro da ferramenta", () => {

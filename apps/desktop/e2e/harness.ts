@@ -130,6 +130,29 @@ export const SCRIPTS = {
         ],
       },
       {
+        // A question with context: the bot's words (the bubble) and the question (the card's title).
+        whenObjectiveContains: "CASE-ASKCTX",
+        agent: [
+          s({
+            text: "A busca na web está fora do ar agora e a Wikipédia não liberou a leitura. Posso seguir de três jeitos.",
+            calls: [
+              {
+                name: "escalate",
+                args: {
+                  question: "Como você prefere seguir?",
+                  options: [
+                    { label: "Esperar e tentar de novo", description: "Volto em uma hora." },
+                    { label: "Mandar um link da PUCPR" },
+                    { label: "PDF sem fontes" },
+                  ],
+                },
+              },
+            ],
+          }),
+          s({ text: "Combinado." }),
+        ],
+      },
+      {
         whenObjectiveContains: "CASE-OPTIONS",
         agent: [
           s({

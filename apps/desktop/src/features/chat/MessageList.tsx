@@ -41,6 +41,8 @@ export function MessageList({
   hasOlder,
   onLoadOlder,
   onAnswer,
+  dismissed,
+  onDismissQuestion,
   onDecideTeam,
   onInspect,
   expanded,
@@ -57,6 +59,10 @@ export function MessageList({
   onLoadOlder(): Promise<boolean>;
   /** The answer to a question (plain text): it is sent as the user's message. */
   onAnswer(text: string): void;
+  /** Keys of the open questions whose card the user closed (to answer by typing in the chat). */
+  dismissed?: ReadonlySet<string>;
+  /** The X of an open question: the card goes away and the composer takes the focus. */
+  onDismissQuestion?(key: string): void;
   /** The user's decision on a team card. Resolves when the server has answered. */
   onDecideTeam(
     messageId: string,
@@ -183,25 +189,42 @@ export function MessageList({
                   />
                 );
               case "bot":
-                // A question with choices: the bot's bubble with the question, then, ALWAYS apart
-                // and under it, the card of options (owner, 24/11/2026). An open question is only
-                // the bubble.
+                // A question with choices: the card, ALWAYS apart, with the question as its title
+                // (owner, 24/11/2026). A bubble above it only when the bot wrote more than the
+                // question (`ask.lead`), so the question is never shown twice. An open question
+                // (no options) is only the bubble.
                 return isChoiceCard(item) && item.ask !== undefined ? (
                   <Fragment key={item.key}>
-                    <BotMessage
-                      text={item.text}
-                      position={positions.get(item.key)}
-                      openUrl={platform.openUrl}
-                      favicons={favicons}
-                    />
-                    <BotMessage>
-                      <QuestionCard
-                        questions={item.ask.questions}
-                        answer={item.ask.answer ?? (item.ask.open ? undefined : "")}
-                        autoFocus={item.ask.open}
-                        onSubmit={onAnswer}
+                    {item.ask.lead !== undefined && (
+                      <BotMessage
+                        text={item.ask.lead}
+                        position={positions.get(item.key)}
+                        openUrl={platform.openUrl}
+                        favicons={favicons}
                       />
-                    </BotMessage>
+                    )}
+                    {!(item.ask.open && dismissed?.has(item.key) === true) && (
+                      <BotMessage>
+                        <QuestionCard
+                          questions={item.ask.questions}
+                          answer={item.ask.answer ?? (item.ask.open ? undefined : "")}
+                          autoFocus={item.ask.open}
+                          onSubmit={onAnswer}
+                          {...(item.ask.open && onDismissQuestion !== undefined
+                            ? { onDismiss: () => onDismissQuestion(item.key) }
+                            : {})}
+                        />
+                        {item.ask.open && (
+                          // Outside the card: the chat answers too (any text is the answer).
+                          <p
+                            className="pl-5 text-small text-text-muted"
+                            data-testid="question-hint"
+                          >
+                            Ou responda no chat abaixo
+                          </p>
+                        )}
+                      </BotMessage>
+                    )}
                   </Fragment>
                 ) : (
                   <BotMessage

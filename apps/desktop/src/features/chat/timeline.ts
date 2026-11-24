@@ -26,6 +26,11 @@ export type TimelineItem =
         /** The run still waits for the reply. */
         open: boolean;
         tieBreak: boolean;
+        /**
+         * What the bot wrote besides the question (`message.question.lead`, from the server), for a
+         * bubble above the card; absent when the bot only asked: the card, titled by the question.
+         */
+        lead?: string;
       };
     }
   /** The files the bot handed over with the message just before (`send_file`): one card each. */
@@ -221,6 +226,8 @@ export function buildTimeline(
           answer: reply?.text,
           open: reply === undefined && run?.status === "waiting_user",
           tieBreak: message.question.reason === "review_tie_break",
+          // What the bot wrote besides the question, as the server declares it (never compared).
+          ...(message.question.lead === undefined ? {} : { lead: message.question.lead }),
         },
       });
     }
@@ -248,8 +255,9 @@ export function isChoiceCard(item: TimelineItem): boolean {
 /** The sender of a text bubble, or null for anything that is not one (cards, lines, separators). */
 function bubbleSender(item: TimelineItem): "user" | "bot" | null {
   if (item.kind === "user") return "user";
-  // A question with choices is the bot's bubble (its text) AND, under it, the card of options.
-  if (item.kind === "bot") return "bot";
+  // A question with choices is the card alone, or (when the bot wrote more than the question) its
+  // bubble and, under it, the card.
+  if (item.kind === "bot") return isChoiceCard(item) && item.ask?.lead === undefined ? null : "bot";
   return null;
 }
 
@@ -257,7 +265,8 @@ function bubbleSender(item: TimelineItem): "user" | "bot" | null {
  * The groups of consecutive text bubbles from the same sender, by item key. Anything that is not a
  * text bubble (a card, an action row, a separator — which is also what a long time gap becomes —,
  * a notice, the working indicator) breaks the group and is not in the result. A question with
- * choices is a bubble (its text) followed by the card of options, so it is the LAST of its group. Pure: the component
+ * choices is the card alone (not in the result), or, when the bot wrote more than the question, a
+ * bubble followed by the card, so that bubble is the LAST of its group. Pure: the component
  * only reads the position.
  */
 export function bubblePositions(items: readonly TimelineItem[]): Map<string, BubblePosition> {
@@ -278,7 +287,7 @@ export function bubblePositions(items: readonly TimelineItem[]): Map<string, Bub
     if (who === null || who !== sender) close();
     sender = who;
     if (who !== null) run.push(item.key);
-    // The card of options goes right under the question's bubble: it ends the group.
+    // The card goes right under the bubble of the bot's words: it ends the group.
     if (isChoiceCard(item)) {
       close();
       sender = null;

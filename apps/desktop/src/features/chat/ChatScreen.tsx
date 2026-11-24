@@ -190,9 +190,20 @@ function ChatForBot({ botId }: { botId: string }) {
   );
   // What the user opened, in THIS conversation: another chat starts with every row collapsed.
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  // The questions whose card the user closed with its X, to answer in the chat (this conversation,
+  // this session): the card goes away while it waits; answered, it is back in the history.
+  const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set());
+  const [composerFocus, setComposerFocus] = useState(0);
   useEffect(() => {
-    if (convId !== null) setExpanded(new Set());
+    if (convId !== null) {
+      setExpanded(new Set());
+      setDismissed(new Set());
+    }
   }, [convId]);
+  const dismissQuestion = useCallback((key: string) => {
+    setDismissed((current) => new Set(current).add(key));
+    setComposerFocus((n) => n + 1);
+  }, []);
   const toggle = useCallback(
     (key: string) =>
       setExpanded((current) => {
@@ -270,6 +281,8 @@ function ChatForBot({ botId }: { botId: string }) {
         aria-label={`Conversa com ${bot.name}`}
       >
         <MessageList
+          dismissed={dismissed}
+          onDismissQuestion={dismissQuestion}
           head={
             <button
               type="button"
@@ -351,6 +364,7 @@ function ChatForBot({ botId }: { botId: string }) {
             disabledReason={archived ? "Este bot está arquivado" : "Abrindo a conversa…"}
             restore={restore}
             prefill={prefill}
+            focusRequest={composerFocus}
             onTextChange={(text) => {
               if (text.trim() === "") setRoutineRef(null);
             }}

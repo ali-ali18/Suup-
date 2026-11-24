@@ -518,6 +518,32 @@ describe("buildTimeline: approval cards and secure forms among the bot's actions
   });
 });
 
+describe("buildTimeline: a question's bubble is only what the bot wrote besides it", () => {
+  const base = {
+    conversationId: "c",
+    authorBotId: "b",
+    runId: null,
+    status: null,
+    createdAt: new Date(2026, 10, 24, 14, 0).toISOString(),
+  };
+  const questions = [{ question: "Qual cor?", options: [{ label: "Azul" }, { label: "Verde" }] }];
+  const ask = (question: object) =>
+    buildTimeline(
+      [{ ...base, id: "q", seq: 1, authorKind: "bot", text: "Qual cor?", question }] as never,
+      {},
+      [],
+      new Date(2026, 10, 24, 15, 0),
+    ).find((i) => i.kind === "bot");
+  it("no lead from the server: the card alone (its title is the question)", () => {
+    const item = ask({ questions });
+    expect(item?.kind === "bot" && item.ask?.lead).toBe(undefined);
+  });
+  it("the lead the server declares is the bubble", () => {
+    const item = ask({ questions, lead: "A busca está fora do ar." });
+    expect(item?.kind === "bot" && item.ask?.lead).toBe("A busca está fora do ar.");
+  });
+});
+
 describe("buildTimeline: the files a bot handed over", () => {
   it("come right under their message, as one card item that breaks the bubbles", () => {
     const file = {
@@ -624,14 +650,16 @@ describe("bubblePositions: consecutive text bubbles of one sender form a group",
     expect(positions).toEqual({ a: "first", b: "last", c: "first", d: "middle", e: "last" });
     expect(positions).not.toHaveProperty("k");
     // Every kind of card or line breaks it, even a lone bubble around it.
-    // A question with choices is its bubble, then the card of options apart: the bubble ends the
-    // group it joins, and the card breaks it before the next bubble.
-    expect(of([bot("a"), choice("q"), bot("b")])).toEqual({ a: "first", q: "last", b: "single" });
-    expect(of([user("u"), choice("q"), choice("r")])).toEqual({
-      u: "single",
-      q: "single",
-      r: "single",
-    });
+    // A question with choices whose text is only the question is the card alone: it breaks the group.
+    expect(of([bot("a"), choice("q"), bot("b")])).toEqual({ a: "single", b: "single" });
+    // With words of the bot besides the question, they are a bubble that ends its group.
+    const withLead = (key: string) => {
+      const item = choice(key);
+      return item.kind === "bot" && item.ask !== undefined
+        ? ({ ...item, ask: { ...item.ask, lead: "Antes, um aviso." } } as TimelineItem)
+        : item;
+    };
+    expect(of([bot("a"), withLead("q"), bot("b")])).toEqual({ a: "first", q: "last", b: "single" });
     expect(
       of([
         bot("a"),
