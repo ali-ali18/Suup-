@@ -115,6 +115,7 @@ import {
 import { DEFAULT_HISTORY_CHARS, loadRunContext } from "./run-context.js";
 import { applyStatusEffects, finishRun } from "./run-end.js";
 import { createScriptedProvider } from "./scripted-provider.js";
+import { FILE_TOOL_NAMES, withSendFileTool } from "./send-file.js";
 import {
   delegateTool,
   type ReviewOutcome,
@@ -803,19 +804,6 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
       ? { ...botCfg, allowedTools: [...botCfg.allowedTools, requestNetworkAccessTool.name] }
       : botCfg;
 
-  /**
-   * A bot with a machine (a terminal or files) can always hand a file it made to the user's chat
-   * (`send_file`, a read: the file goes to the user's own chat). Built in and always loaded, like the
-   * network tool, so a bot created before the tool existed has it too. One function for the run and
-   * for the measurement.
-   */
-  const withSendFileTool = <C extends { allowedTools: string[] }>(botCfg: C): C =>
-    !botCfg.allowedTools.includes(sendFileTool.name) &&
-    (botCfg.allowedTools.includes("shell") ||
-      FILE_TOOL_NAMES.some((name) => botCfg.allowedTools.includes(name)))
-      ? { ...botCfg, allowedTools: [...botCfg.allowedTools, sendFileTool.name] }
-      : botCfg;
-
   /** How the connector tools of a bot reach its model (see `docs/CONFIGURACAO.md`, `toolSearch`). */
   const toolSearchSetup = (
     candidates: BotConnectorCandidate[],
@@ -1426,7 +1414,6 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
  * `provider`) instead of the whole program refusing to start.
  */
 /** The tools that give a bot files on its machine (the names are declared by the tools). */
-const FILE_TOOL_NAMES = ["read_file", "write_file", "edit_file", "list_files", "search_files"];
 
 function unavailableProvider(id: string, message: string): Provider {
   return {

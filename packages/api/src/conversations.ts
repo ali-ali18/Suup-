@@ -1,7 +1,7 @@
-import { FILE_KINDS } from "@suup/core/files";
 import { z } from "zod";
 import { botColorSchema, botSchema } from "./bots.js";
 import { boolQuery, intQuery, isoDate, list, uuid } from "./common.js";
+import { FILE_KINDS } from "./files.js";
 import { runSchema } from "./runs.js";
 
 /** A choice offered with a question. The answer is still plain text: the label, or free text. */
