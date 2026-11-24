@@ -1679,6 +1679,11 @@ describe("ajustes do dono de 23/11/2026 (docs/DESIGN.md §2, §4a, §4c, §5, §
       expect(tokens).toContain(token);
     expect(avatar).toContain("bg-star-badge text-star-glyph");
     expect(avatar).toContain("maskImage: notch");
+    expect(avatar).toContain("FACE_BLEED");
+    // the list of bots never starts under the top fade (the owner: "Ficou cortado!"), pinned tile included
+    const sidebarSource = read(join(SRC, "features", "shell", "Sidebar.tsx"));
+    expect(sidebarSource.match(/overflow-y-auto py-fade/g)?.length).toBe(2);
+    expect(sidebarSource).not.toContain("overflow-y-auto py-2");
     // the corner: working > unread > the star, and the sidebar feeds the first two
     expect(avatar).toContain('if (s.working === true) return "working";');
     const sidebar = read(join(SRC, "features", "shell", "Sidebar.tsx"));

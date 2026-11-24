@@ -84,12 +84,28 @@ export function cornerStatus(s: {
 }
 
 /**
+ * How far the face's layer reaches past the avatar's box on every side, as a fraction of the box.
+ * The engine frames some shapes (the sparkle, the star, the flower, the crystal...) a little bigger
+ * than the box, so a mask that ends AT the box would cut them flat. The layer is bigger than the box
+ * and the mask is only the notch; everything outside the notch is opaque, so nothing else is cut.
+ */
+export const FACE_BLEED = 0.35;
+const percent = (fraction: number) => `${Math.round(fraction * 1e4) / 100}%`;
+/** The layer's inset (negative) and padding that put its content box exactly over the avatar's box. */
+const FACE_LAYER = {
+  inset: percent(-FACE_BLEED),
+  padding: percent(FACE_BLEED / (1 + 2 * FACE_BLEED)),
+} as const;
+
+/**
  * The notch: a radial mask that opens a circle, a little bigger than the mark, in the lower right
- * corner of the face. Built from the tokens' names, so the numbers live only in tokens.css.
+ * corner of the AVATAR (the mask lives on the face's layer, which is `FACE_BLEED` bigger than the
+ * box on every side). Built from the tokens' names, so the numbers live only in tokens.css.
  */
 export function cornerMask(sizeToken: string, gapToken: string): string {
   const r = `var(${sizeToken}) / 2`;
-  return `radial-gradient(circle at calc(100% - ${r}) calc(100% - ${r}), transparent calc(${r} + var(${gapToken})), var(--color-mask) calc(${r} + var(${gapToken}) + 0.5px))`;
+  const edge = percent((1 + FACE_BLEED) / (1 + 2 * FACE_BLEED));
+  return `radial-gradient(circle at calc(${edge} - ${r}) calc(${edge} - ${r}), transparent calc(${r} + var(${gapToken})), var(--color-mask) calc(${r} + var(${gapToken}) + 0.5px))`;
 }
 
 const DOT_TEXT = { working: "Trabalhando", unread: "Mensagem não lida" } as const;
@@ -164,8 +180,20 @@ export function Avatar({
     >
       {/* The face, notched where the star sits (a mask, not a ring): it is the same for every style. */}
       <span
-        className="inline-flex size-full items-center justify-center"
-        style={notch === undefined ? undefined : { maskImage: notch, WebkitMaskImage: notch }}
+        className="absolute box-border inline-flex items-center justify-center"
+        data-face-layer=""
+        style={{
+          inset: FACE_LAYER.inset,
+          padding: FACE_LAYER.padding,
+          ...(notch === undefined
+            ? {}
+            : {
+                maskImage: notch,
+                WebkitMaskImage: notch,
+                maskRepeat: "no-repeat",
+                WebkitMaskRepeat: "no-repeat",
+              }),
+        }}
         data-testid={notch === undefined ? undefined : "avatar-notch"}
       >
         {spec.pixel !== undefined ? (

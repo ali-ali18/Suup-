@@ -489,7 +489,7 @@ export function Sidebar() {
           </div>
           <div className="relative flex min-h-0 w-full flex-1 flex-col">
             <div
-              className="flex min-h-0 w-full flex-1 animate-fade-in flex-col items-center gap-0.5 overflow-y-auto py-2"
+              className="flex min-h-0 w-full flex-1 animate-fade-in flex-col items-center gap-0.5 overflow-y-auto py-fade"
               role="group"
               aria-label="Bots"
             >
@@ -517,7 +517,7 @@ export function Sidebar() {
             </RoundButton>
           </div>
           <div className="relative flex min-h-0 flex-1 flex-col">
-            <div className="flex min-h-0 flex-1 animate-fade-in flex-col gap-4 overflow-y-auto py-2">
+            <div className="flex min-h-0 flex-1 animate-fade-in flex-col gap-4 overflow-y-auto py-fade">
               {layout.pinned.length > 0 && (
                 <section aria-label="Fixados" data-testid="pinned-section">
                   <div

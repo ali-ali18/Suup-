@@ -112,7 +112,9 @@ export function WorkingIndicator({
         if (leaving && e.target === e.currentTarget && e.propertyName === "opacity") onLeft?.();
       }}
     >
-      <div className="min-h-0 animate-fade-in overflow-hidden">
+      {/* The collapse needs overflow-hidden; the padding (undone by the negative margin, so the layout
+          is the same) keeps it from cutting the face, which the engine frames a little past its box. */}
+      <div className="-m-3 mr-0 min-h-0 animate-fade-in overflow-hidden p-3 pr-0">
         <div
           className="flex min-h-avatar-md items-center gap-3"
           {...(leaving ? { "aria-hidden": true } : { role: "status" })}

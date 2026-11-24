@@ -1,6 +1,6 @@
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { Avatar, type AvatarSize, cornerMask, cornerStatus } from "./avatar.js";
+import { Avatar, type AvatarSize, cornerMask, cornerStatus, FACE_BLEED } from "./avatar.js";
 
 afterEach(cleanup);
 
@@ -70,6 +70,29 @@ describe("the star of the main bot", () => {
     cleanup();
     // no mark, no notch: the face is whole
     expect(draw({}).querySelector('[data-testid="avatar-notch"]')).toBeNull();
+  });
+
+  it("the notch never cuts the face anywhere else: a bigger layer, anchored at the avatar's corner, no repeat", () => {
+    // Owner, 24/11/2026 ("Ficou cortado!"): a mask that ends at the avatar's box flat-cuts the shapes
+    // the engine frames a little bigger than the box. The layer reaches FACE_BLEED past the box on
+    // every side, its content box is the avatar's box, and the mask opens only the corner circle.
+    for (const size of ["row", "lg", "tile", "xl"] as const) {
+      const root = draw({ supervisor: true, size });
+      const layer = root.querySelector<HTMLElement>('[data-testid="avatar-notch"]');
+      expect(layer?.style.inset).toBe(`${-FACE_BLEED * 100}%`);
+      expect(layer?.style.padding).toBe(
+        `${Math.round((FACE_BLEED / (1 + 2 * FACE_BLEED)) * 1e4) / 100}%`,
+      );
+      expect(layer?.style.maskRepeat).toBe("no-repeat");
+      // the circle sits at the avatar's lower right corner (in the layer's own coordinates)
+      expect(layer?.style.maskImage).toContain("circle at calc(79.41% - ");
+      cleanup();
+    }
+    expect(FACE_BLEED).toBeGreaterThanOrEqual(0.3);
+    // a face without a mark has the same layer (so the face is the same size with and without it)
+    const plain = draw({ size: "tile" }).querySelector<HTMLElement>("[data-face-layer]");
+    expect(plain?.style.inset).toBe(`${-FACE_BLEED * 100}%`);
+    expect(plain?.style.maskImage).toBe("");
   });
 
   it("is the same for the shapes, the pixel mascots and the 3D ones", () => {
