@@ -331,6 +331,7 @@ describe("buildTimeline: approval cards and secure forms, where they were asked"
       runId: run.id,
       name: "GH_TOKEN",
       reason: null,
+      hosts: [],
       startedAt: local(14, 4),
       state: "open",
     };

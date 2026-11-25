@@ -158,6 +158,7 @@ import {
   type Secret,
   type SecretRequest,
   type SetSecretBody,
+  type SetSecretHostsBody,
   secretListSchema,
   secretRequestSchema,
   secretSchema,
@@ -411,6 +412,8 @@ export interface SuupClient {
     list(): Promise<Secret[]>;
     /** Creates or replaces a secret (write-only). */
     set(name: string, body: SetSecretBody): Promise<Secret>;
+    /** Replaces the sites a secret may be sent to (empty: blocked). The value is not touched. */
+    setHosts(name: string, body: SetSecretHostsBody): Promise<Secret>;
     remove(name: string): Promise<void>;
     grant(name: string, botId: string): Promise<Secret>;
     revoke(name: string, botId: string): Promise<Secret>;
@@ -843,6 +846,7 @@ export function createClient(options: ClientOptions): SuupClient {
       status: () => call("GET", "/v1/vault", vaultStatusSchema),
       list: async () => (await call("GET", "/v1/secrets", secretListSchema)).items,
       set: (name, body) => call("PUT", `/v1/secrets/${id(name)}`, secretSchema, { body }),
+      setHosts: (name, body) => call("PATCH", `/v1/secrets/${id(name)}`, secretSchema, { body }),
       remove: async (name) => {
         await call("DELETE", `/v1/secrets/${id(name)}`, deletedSchema);
       },

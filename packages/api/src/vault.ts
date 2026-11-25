@@ -20,6 +20,10 @@ export const secretSchema = z.object({
   createdAt: isoDate,
   updatedAt: isoDate,
   lastUsedAt: isoDate.nullable(),
+  /** The sites the secret may be sent to (the owner declared them). */
+  hosts: z.array(z.string()),
+  /** No site declared: the secret cannot be used anywhere until the owner says where it may go. */
+  blocked: z.boolean(),
 });
 export type Secret = z.infer<typeof secretSchema>;
 export const secretListSchema = z.object({ items: z.array(secretSchema) });
@@ -44,6 +48,11 @@ export const setSecretBodySchema = z.object({
   description: z.string().max(500).optional(),
   /** Bots to let use it right away. */
   grantBotIds: z.array(uuid).max(50).optional(),
+  /**
+   * The sites this secret may be sent to: plain DNS names (`api.exemplo.com`), no scheme, port, path,
+   * wildcard or IP address. Omitted: a new secret stays blocked, and an existing one keeps its sites.
+   */
+  hosts: z.array(z.string().min(1).max(253)).max(20).optional(),
 });
 export type SetSecretBody = z.input<typeof setSecretBodySchema>;
 
@@ -54,6 +63,8 @@ export const secretRequestSchema = z.object({
   name: z.string(),
   /** What the bot says it is for. */
   reason: z.string().nullable(),
+  /** The sites the bot SUGGESTS (the form shows them to confirm or change). */
+  hosts: z.array(z.string()),
 });
 export type SecretRequest = z.infer<typeof secretRequestSchema>;
 
@@ -62,6 +73,8 @@ export const answerSecretRequestBodySchema = z.object({
   value: z.string().min(8).max(16_384).optional(),
   declined: z.boolean().optional(),
   description: z.string().max(500).optional(),
+  /** The sites the USER confirmed (at least one with a value): what the vault keeps, never the bot's word. */
+  hosts: z.array(z.string().min(1).max(253)).max(20).optional(),
 });
 export type AnswerSecretRequestBody = z.input<typeof answerSecretRequestBodySchema>;
 
@@ -77,6 +90,12 @@ export type AnswerSecretRequestResult = z.infer<typeof answerSecretRequestResult
  * kept WITH the plugin, outside the owner's vault, and never granted to a bot. Write-only, like a
  * secret: the value goes in and nothing in the API brings it back.
  */
+/** Replaces the sites a secret may be sent to (empty: blocked). */
+export const setSecretHostsBodySchema = z.object({
+  hosts: z.array(z.string().min(1).max(253)).max(20),
+});
+export type SetSecretHostsBody = z.input<typeof setSecretHostsBodySchema>;
+
 export const setPluginCredentialBodySchema = z.object({
   /** The key or token. At least 8 characters. It is never returned. */
   value: z.string().min(8).max(16_384),

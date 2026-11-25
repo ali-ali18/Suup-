@@ -1,7 +1,7 @@
 // Owns `request_secret`: the bot asks the user for a credential. The run pauses like an
 // `escalate`; the user answers through the secure form (which writes straight to the vault), and
 // the only thing the model ever gets back is that the secret is now available.
-import { SECRET_NAME_PATTERN } from "../secrets.js";
+import { normalizeSecretHost, SECRET_NAME_PATTERN } from "../secrets.js";
 import { ROUTINE_NO_QUESTIONS } from "./control-calls.js";
 import { renderArgIssues, requestSecretInputSchema } from "./control-tools.js";
 import { type ControlCall, ensureToolCall, record, recordResult } from "./recording.js";
@@ -22,7 +22,20 @@ export async function handleRequestSecret(
     });
     return;
   }
-  const { name, reason } = parsed.data;
+  const { name, reason, hosts } = parsed.data;
+  const suggested: string[] = [];
+  for (const host of hosts) {
+    const normalized = normalizeSecretHost(host);
+    if (normalized === undefined) {
+      await recordResult(ctx, call.id, {
+        outcome: "invalid_args",
+        isError: true,
+        content: `"${host}" is not a valid host for request_secret: give only the site name, in lower case, such as api.github.com (no https://, port, path, wildcard or IP address).`,
+      });
+      return;
+    }
+    if (!suggested.includes(normalized)) suggested.push(normalized);
+  }
   if (!SECRET_NAME_PATTERN.test(name)) {
     await recordResult(ctx, call.id, {
       outcome: "invalid_args",
@@ -60,6 +73,12 @@ export async function handleRequestSecret(
   // No result is recorded: the user's answer will be it. The loop pauses at the next safe point.
   await record(ctx, {
     type: "secret_requested",
-    payload: { callId: call.id, name, ...(reason === undefined ? {} : { reason }) },
+    payload: {
+      callId: call.id,
+      name,
+      ...(reason === undefined ? {} : { reason }),
+      // Only what the bot SUGGESTS: the user's confirmed list is what the vault keeps.
+      hosts: suggested,
+    },
   });
 }

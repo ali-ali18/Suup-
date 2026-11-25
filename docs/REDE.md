@@ -31,6 +31,10 @@ Ver e mexer: `suup network list <bot>`, `suup network allow <bot> <host>`, `suup
 
 **Permitir para sempre (para este bot) não é decisão de cartão:** pela regra do dono (docs/REGRAS.md, seção 3), uma regra permanente só nasce de um ato explícito do usuário, não de um cartão comum. Quem quer o host fixo usa `suup network allow` (ou a tela de rede, quando existir). Se o dono quiser o botão dividido "Permitir para este bot" neste cartão (como o de destinatário), é uma exceção a decidir; o ponto de encaixe é o mesmo da decisão `allowRecipient`.
 
+## A lista do bot e a lista de um segredo são duas coisas (KOD-30)
+
+A lista de hosts deste documento diz **para onde a máquina do bot pode falar** (o proxy). A lista de endereços de **um segredo** ([COFRE.md](COFRE.md), "Cada segredo diz para onde pode ir") diz **para onde aquele valor pode ir**, e vale por cima: um host liberado para a máquina do bot **não** libera nenhum segredo para ele. O `web_fetch` com segredo confere o host da URL **e de cada redirecionamento** contra a lista do segredo antes de mandar qualquer coisa; um comando de `shell` com um marcador de segredo nem roda (o destino de um comando não se conhece). Liberar um host novo para a máquina (`request_network_access`) continua sendo só isso.
+
 ## Modelo de ameaça, honestamente
 
 O que isto **impede**: um comando (ou um pacote instalado, ou uma página que injetou instruções) falar com um servidor qualquer na internet; falar com a rede interna, o host ou o serviço de metadados; usar a rede sem passar pela lista; ver variáveis do servidor (não existem no contêiner).

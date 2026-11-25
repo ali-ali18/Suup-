@@ -3,7 +3,12 @@ import { makeEvent, makeRun } from "../test-fixtures.js";
 import { DECLINED_PREFIX, openSecretRequest, secretRequestsOf } from "./secret-requests.js";
 
 const asked = (seq: number, name = "GH_TOKEN", reason?: string) =>
-  makeEvent(seq, "secret_requested", { callId: `c${seq}`, name, ...(reason ? { reason } : {}) });
+  makeEvent(seq, "secret_requested", {
+    callId: `c${seq}`,
+    name,
+    ...(reason ? { reason } : {}),
+    hosts: ["api.github.com"],
+  });
 const answered = (seq: number, callId: string, content: string) =>
   makeEvent(seq, "tool_result", { callId, content, isError: false });
 
@@ -16,6 +21,7 @@ describe("secret requests of a run", () => {
         callId: "c3",
         name: "GH_TOKEN",
         reason: "para dar push",
+        hosts: ["api.github.com"],
         state: "open",
       }),
     ]);

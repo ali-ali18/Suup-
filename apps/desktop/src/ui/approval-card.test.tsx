@@ -110,6 +110,29 @@ describe("ApprovalCard waiting for you", () => {
     );
   });
 
+  it("a call with a secret says where the secret would go (a fact the server gives)", () => {
+    show({
+      approval: makeApproval({
+        tool: "web_fetch",
+        args: {
+          url: "https://api.github.com/user",
+          headers: { Authorization: "Bearer {{secret:GH_TOKEN}}" },
+        },
+        secrets: ["GH_TOKEN"],
+        secretHost: "api.github.com",
+      }),
+    });
+    const row = screen.getByTestId("approval-secret-host");
+    expect(row.textContent).toContain("O segredo vai para");
+    expect(row.textContent).toContain("api.github.com");
+    expect(screen.getAllByTestId("secret-seal")[0]?.textContent).toBe("{{secret:GH_TOKEN}}");
+  });
+
+  it("no secret, or a destination the server could not read: no such row", () => {
+    show({ approval: makeApproval({ secrets: [], secretHost: "api.github.com" }) });
+    expect(screen.queryByTestId("approval-secret-host")).toBeNull();
+  });
+
   it("long content is collapsed and opens with a button; the setting can show it whole", () => {
     const content = Array.from({ length: 30 }, (_, i) => `linha ${i + 1}`).join("\n");
     const approval = makeApproval({ tool: "write_file", args: { path: "a.txt", content } });

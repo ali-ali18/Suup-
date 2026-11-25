@@ -91,7 +91,7 @@ export async function freshBot(
     description: "Bot de teste.",
     personality: "Seja objetivo.",
     modelId: "model-x",
-    allowedTools: ["shell", "read_file", "write_file", "edit_file"],
+    allowedTools: ["shell", "read_file", "write_file", "edit_file", "web_fetch"],
     ...extra,
   });
 }

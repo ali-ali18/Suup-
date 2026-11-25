@@ -1,4 +1,6 @@
 import { readFile } from "node:fs/promises";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import {
   createBot,
@@ -9,7 +11,7 @@ import {
   listApprovals,
   listRunEvents,
 } from "@suup/db";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   answerSecretRequest,
   createRuntime,
@@ -18,6 +20,7 @@ import {
   pendingSecretRequest,
   type Runtime,
 } from "../src/index.js";
+import { checkVaultAndApprovals } from "../src/vault/doctor.js";
 import { DATABASE_URL, dbSuiteName, useIsolatedDb } from "./db.js";
 import { rawConfig, tempDir, writeJson } from "./helpers.js";
 
@@ -40,6 +43,26 @@ async function dump(db: Db, schema: string): Promise<string> {
 describe.skipIf(!DATABASE_URL)(dbSuiteName("approvals and the vault, end to end"), () => {
   const ctx = useIsolatedDb();
 
+  // A local site the bot calls with the secret: it keeps what it received (to prove the real value
+  // arrived) and echoes it back (to prove the result the model reads has it scrubbed). The host is
+  // `localhost`: a secret goes only to a site NAME the user declared, never to an IP address.
+  let site: Server;
+  let siteUrl = "";
+  const received: string[] = [];
+  beforeAll(async () => {
+    site = createServer((req, res) => {
+      received.push(String(req.headers.authorization));
+      res.writeHead(200, { "content-type": "text/plain" });
+      res.end(`auth=${req.headers.authorization}`);
+    });
+    await new Promise<void>((resolve) => site.listen(0, "127.0.0.1", resolve));
+    siteUrl = `http://localhost:${(site.address() as AddressInfo).port}`;
+  });
+  afterAll(async () => {
+    site.closeAllConnections();
+    await new Promise<void>((resolve) => site.close(() => resolve()));
+  });
+
   async function open(script: unknown, extra: Record<string, unknown> = {}) {
     const dir = await tempDir();
     await writeJson(join(dir, "script.json"), script);
@@ -52,7 +75,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("approvals and the vault, end to end"
       name: `bot-${Math.random().toString(16).slice(2, 8)}`,
       modelProvider: "script",
       modelId: "model-s",
-      allowedTools: ["shell", "write_file", "read_file"],
+      allowedTools: ["shell", "write_file", "read_file", "web_fetch"],
     });
     return { runtime, dir, bot };
   }
@@ -72,21 +95,27 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("approvals and the vault, end to end"
     });
 
   it("a secret used in a run never shows up in the database: not in events, results, cards or messages", async () => {
-    const { runtime, dir, bot } = await open({
+    const { runtime, bot } = await open({
       agent: [
         {
           calls: [
             {
               id: "c1",
-              name: "shell",
-              args: { command: 'echo "token={{secret:API_TOKEN}}" | tee used.txt' },
+              name: "web_fetch",
+              args: {
+                url: `${siteUrl}/echo`,
+                headers: { Authorization: "Bearer {{secret:API_TOKEN}}" },
+              },
             },
           ],
         },
         { text: "Used the token." },
       ],
     });
-    await runtime.vault.set("API_TOKEN", VALUE, { description: "The API of the tests" });
+    await runtime.vault.set("API_TOKEN", VALUE, {
+      description: "The API of the tests",
+      hosts: ["localhost"],
+    });
     await runtime.vault.grant("API_TOKEN", bot.id);
     const run = await runtime.createRun({ botId: bot.id, objective: "Call the API" });
 
@@ -94,33 +123,33 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("approvals and the vault, end to end"
     expect(await work(runtime, run.id)).toBe("waiting_approval");
     const [card] = await listApprovals(runtime.db, { runId: run.id, status: "pending", limit: 5 });
     expect(card).toMatchObject({
-      tool: "shell",
+      tool: "web_fetch",
       level: "external_irreversible",
       secrets: ["API_TOKEN"],
+      // The card says where the secret would go.
+      secretHost: "localhost",
     });
     expect(JSON.stringify(card?.args)).toContain("{{secret:API_TOKEN}}");
     expect(JSON.stringify(card)).not.toContain(VALUE);
-    await expect(
-      readFile(join(dir, "workspace", "bots", bot.id, "used.txt"), "utf8"),
-    ).rejects.toThrow();
+    expect(received).toEqual([]);
 
     // 2. The user approves; the run goes on and uses the real value.
     await decideApproval(runtime.db, card?.id as string, { decision: "approved" });
     expect((await getRun(runtime.db, run.id))?.status).toBe("queued");
     expect(await work(runtime, run.id)).toBe("done");
-    const used = await readFile(join(dir, "workspace", "bots", bot.id, "used.txt"), "utf8");
-    expect(used.trim()).toBe(`token=${VALUE}`); // the command received the value
+    expect(received).toEqual([`Bearer ${VALUE}`]); // the site received the value
 
     // 3. What the model and the log hold is the placeholder and the mark, never the value.
     const events = await listRunEvents(runtime.db, run.id, { limit: 1000 });
     const result = events.find((e) => e.type === "tool_result");
     expect(result?.payload.content).toContain("[REDACTED:API_TOKEN]");
     expect(events.find((e) => e.type === "tool_call")?.payload.args).toEqual({
-      command: 'echo "token={{secret:API_TOKEN}}" | tee used.txt',
+      url: `${siteUrl}/echo`,
+      headers: { Authorization: "Bearer {{secret:API_TOKEN}}" },
     });
     const loaded = events.find((e) => e.type === "context_loaded");
     expect(loaded?.payload.secrets).toEqual([
-      { name: "API_TOKEN", description: "The API of the tests" },
+      { name: "API_TOKEN", description: "The API of the tests", hosts: ["localhost"] },
     ]);
 
     // 4. The acceptance criterion of the phase: a scan of the whole database finds no value.
@@ -257,7 +286,11 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("approvals and the vault, end to end"
             {
               id: "c1",
               name: "request_secret",
-              args: { name: "DB_PASSWORD", reason: "to open the database" },
+              args: {
+                name: "DB_PASSWORD",
+                reason: "to open the database",
+                hosts: ["db.exemplo.com", "evil.exemplo.com"],
+              },
             },
           ],
         },
@@ -270,15 +303,28 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("approvals and the vault, end to end"
       name: "DB_PASSWORD",
       reason: "to open the database",
       botId: bot.id,
+      // What the bot SUGGESTED: only a suggestion.
+      hosts: ["db.exemplo.com", "evil.exemplo.com"],
     });
     const password = "correct-horse-battery-staple-9";
-    await answerSecretRequest(runtime, run.id, { value: password });
+    // Without the sites the USER confirmed, nothing is saved (the secret would be blocked).
+    await expect(answerSecretRequest(runtime, run.id, { value: password })).rejects.toThrow(
+      /endereços/,
+    );
+    expect((await runtime.vault.list()).filter((x) => x.name === "DB_PASSWORD")).toEqual([]);
+    await answerSecretRequest(runtime, run.id, { value: password, hosts: ["DB.exemplo.com."] });
+    // Only what the user confirmed is kept (normalized), never the bot's suggestion.
+    expect(
+      (await runtime.vault.list())
+        .filter((x) => x.name === "DB_PASSWORD")
+        .map((x) => [x.name, x.hosts]),
+    ).toEqual([["DB_PASSWORD", ["db.exemplo.com"]]]);
     expect(await pendingSecretRequest(runtime, run.id)).toBeNull();
     expect(await work(runtime, run.id)).toBe("done");
 
     const events = await listRunEvents(runtime.db, run.id, { limit: 1000 });
     expect(String(events.find((e) => e.type === "tool_result")?.payload.content)).toBe(
-      "The secret DB_PASSWORD is now available. Use it as {{secret:DB_PASSWORD}}.",
+      "The secret DB_PASSWORD is now available. Use it as {{secret:DB_PASSWORD}} in a web_fetch header or address, and only for db.exemplo.com (the sites the user confirmed): a call to any other site is refused, whatever the user approves.",
     );
     expect((await runtime.vault.infoFor(bot.id)).map((s) => s.name)).toEqual(["DB_PASSWORD"]);
     expect((await dump(runtime.db, ctx.schema)).includes(password)).toBe(false);
@@ -288,15 +334,15 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("approvals and the vault, end to end"
   it("a secret the bot was not granted is refused, and the bot is told only that it is unavailable", async () => {
     const { runtime, bot } = await open({
       agent: [
-        { calls: [{ id: "c1", name: "shell", args: { command: "echo {{secret:NOT_MINE}}" } }] },
+        {
+          calls: [{ id: "c1", name: "web_fetch", args: { url: `${siteUrl}/{{secret:NOT_MINE}}` } }],
+        },
         { text: "ok" },
       ],
     });
-    await runtime.vault.set("NOT_MINE", "someone-elses-secret-1");
+    await runtime.vault.set("NOT_MINE", "someone-elses-secret-1", { hosts: ["localhost"] });
     const run = await runtime.createRun({ botId: bot.id, objective: "x" });
-    expect(await work(runtime, run.id)).toBe("waiting_approval");
-    const [card] = await listApprovals(runtime.db, { runId: run.id, status: "pending", limit: 5 });
-    await decideApproval(runtime.db, card?.id as string, { decision: "approved" });
+    // Refused before any card: there is nothing to approve.
     expect(await work(runtime, run.id)).toBe("done");
     const events = await listRunEvents(runtime.db, run.id, { limit: 1000 });
     const result = events.find((e) => e.type === "tool_result");
@@ -304,5 +350,109 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("approvals and the vault, end to end"
     expect(String(result?.payload.content)).toContain("NOT_MINE is not available");
     expect(JSON.stringify(events)).not.toContain("someone-elses-secret-1");
     await runtime.close();
+  });
+
+  describe("a secret goes only where the user declared", () => {
+    const callFor = (url: string, extra: Record<string, unknown> = {}) => ({
+      agent: [
+        {
+          calls: [
+            {
+              id: "c1",
+              name: "web_fetch",
+              args: { url, headers: { Authorization: "Bearer {{secret:API_TOKEN}}" } },
+            },
+          ],
+        },
+        { text: "done" },
+      ],
+      ...extra,
+    });
+    const outcomeOf = async (runtime: Runtime, runId: string) => {
+      const events = await listRunEvents(runtime.db, runId, { limit: 1000 });
+      return {
+        cards: events.filter((e) => e.type === "approval_requested").length,
+        result: events.find((e) => e.type === "tool_result"),
+      };
+    };
+
+    it("another host is refused before the value is read, even with an exact allow rule and in auto-review", async () => {
+      received.length = 0;
+      const { runtime, bot } = await open(callFor(`http://outro.localhost:1/x`));
+      await runtime.vault.set("API_TOKEN", VALUE, { hosts: ["localhost"] });
+      await runtime.vault.grant("API_TOKEN", bot.id);
+      // The user's own rule allows exactly this call, and the mode is the automatic review.
+      await createRule(runtime.db, {
+        botId: bot.id,
+        tool: "web_fetch",
+        effect: "allow",
+        matchers: [{ field: "url", value: "http://outro.localhost:1/x" }],
+      });
+      const run = await runtime.createRun({ botId: bot.id, objective: "x" });
+      expect(await work(runtime, run.id)).toBe("done");
+      const { cards, result } = await outcomeOf(runtime, run.id);
+      expect(cards).toBe(0);
+      expect(result?.payload.isError).toBe(true);
+      expect(String(result?.payload.content)).toContain("outro.localhost");
+      expect(String(result?.payload.content)).toContain("may only be sent to localhost");
+      expect(
+        JSON.stringify(await listRunEvents(runtime.db, run.id, { limit: 1000 })),
+      ).not.toContain(VALUE);
+      expect(received).toEqual([]);
+      await runtime.close();
+    });
+
+    it("a secret with no hosts declared (an old one) is blocked everywhere, and the doctor says so", async () => {
+      const { runtime, bot } = await open(callFor(`${siteUrl}/x`));
+      // An old secret: written before the sites existed (replacing a value keeps the sites, so start clean).
+      await runtime.vault.remove("API_TOKEN");
+      await runtime.vault.set("API_TOKEN", VALUE);
+      await runtime.vault.grant("API_TOKEN", bot.id);
+      const run = await runtime.createRun({ botId: bot.id, objective: "x" });
+      expect(await work(runtime, run.id)).toBe("done");
+      const { cards, result } = await outcomeOf(runtime, run.id);
+      expect(cards).toBe(0);
+      expect(String(result?.payload.content)).toContain("API_TOKEN has no addresses declared");
+      expect(received).toEqual([]);
+      const checks = await checkVaultAndApprovals(runtime);
+      const hosts = checks.find((c) => c.component === "Cofre (endereços)");
+      expect(hosts?.ok).toBe(false);
+      expect(hosts?.detail).toContain("API_TOKEN");
+      await runtime.vault.setHosts("API_TOKEN", ["localhost"]);
+      expect(
+        (await checkVaultAndApprovals(runtime)).find((c) => c.component === "Cofre (endereços)")
+          ?.ok,
+      ).toBe(true);
+      await runtime.close();
+    });
+
+    it("a secret in a shell command is refused without running it", async () => {
+      const { runtime, bot, dir } = await open({
+        agent: [
+          {
+            calls: [
+              {
+                id: "c1",
+                name: "shell",
+                args: { command: 'echo "token={{secret:API_TOKEN}}" > used.txt' },
+              },
+            ],
+          },
+          { text: "ok" },
+        ],
+      });
+      await runtime.vault.set("API_TOKEN", VALUE, { hosts: ["localhost"] });
+      await runtime.vault.grant("API_TOKEN", bot.id);
+      const run = await runtime.createRun({ botId: bot.id, objective: "x" });
+      expect(await work(runtime, run.id)).toBe("done");
+      const { cards, result } = await outcomeOf(runtime, run.id);
+      expect(cards).toBe(0);
+      expect(result?.payload.isError).toBe(true);
+      expect(String(result?.payload.content)).toContain("shell");
+      await expect(
+        readFile(join(dir, "workspace", "bots", bot.id, "used.txt"), "utf8"),
+      ).rejects.toThrow();
+      await runtime.close();
+    });
   });
 });

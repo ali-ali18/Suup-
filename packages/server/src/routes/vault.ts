@@ -1,4 +1,9 @@
-import { answerSecretRequestBodySchema, secretNameSchema, setSecretBodySchema } from "@suup/api";
+import {
+  answerSecretRequestBodySchema,
+  secretNameSchema,
+  setSecretBodySchema,
+  setSecretHostsBodySchema,
+} from "@suup/api";
 import { type Db, getBot, getRun, getSecretMeta, type SecretMeta } from "@suup/db";
 import { answerSecretRequest, pendingSecretRequest } from "@suup/runtime";
 import { HttpError } from "../errors.js";
@@ -53,8 +58,22 @@ export const vaultRoutes: Route[] = [
       }
       await vault.set(name, body.value, {
         ...(body.description === undefined ? {} : { description: body.description }),
+        ...(body.hosts === undefined ? {} : { hosts: body.hosts }),
       });
       for (const botId of body.grantBotIds ?? []) await vault.grant(name, botId);
+      return { body: toSecretDto(await ownedMeta(db, name)) };
+    },
+  },
+  {
+    // Only the sites: the value is not touched. Empty list: the secret is blocked.
+    method: "PATCH",
+    pattern: "/v1/secrets/:name",
+    async handler(ctx) {
+      const name = nameOf(ctx.params.name ?? "");
+      const body = ctx.body(setSecretHostsBodySchema);
+      const { vault, db } = ctx.runtime;
+      await ownedMeta(db, name);
+      await vault.setHosts(name, body.hosts);
       return { body: toSecretDto(await ownedMeta(db, name)) };
     },
   },

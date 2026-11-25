@@ -153,6 +153,15 @@ async function handleTool(
     });
     return false;
   }
+  // A secret goes only where the user declared, whatever any rule, mode or approval would say: the
+  // call is refused before the gate, so no card asks for something that can never run.
+  if (logged === undefined && ctx.deps.secrets !== undefined) {
+    const refusal = await tools.refuseSecretDestination?.(call.name, call.args, ctx.deps.secrets);
+    if (refusal !== undefined) {
+      await deny(ctx, call, refusal);
+      return false;
+    }
+  }
   // A call identical to one the user approved too late: the gate still speaks first (deny wins),
   // and the grant only replaces the card it would have asked for.
   const grant = logged === undefined ? grantFor(ctx, call) : undefined;

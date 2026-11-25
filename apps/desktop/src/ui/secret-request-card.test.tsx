@@ -15,6 +15,7 @@ function show(over: Partial<SecretRequestCardProps> = {}) {
     <SecretRequestCard
       name="GH_TOKEN"
       reason="para dar push"
+      suggestedHosts={["api.github.com"]}
       botName="Ajudante"
       state="open"
       expanded={false}
@@ -72,7 +73,7 @@ describe("the secure form", () => {
     show({ onSubmit });
     type(VALUE);
     fireEvent.click(screen.getByTestId("secret-save"));
-    expect(onSubmit).toHaveBeenCalledExactlyOnceWith(VALUE);
+    expect(onSubmit).toHaveBeenCalledExactlyOnceWith(VALUE, ["api.github.com"]);
     expect(field().value).toBe("");
     expect(field().type).toBe("password");
     // On its way: everything waits.
@@ -108,7 +109,7 @@ describe("the secure form", () => {
     show({ onSubmit });
     type("curto");
     fireEvent.keyDown(field(), { key: "Enter" });
-    expect(onSubmit).toHaveBeenCalledExactlyOnceWith("curto");
+    expect(onSubmit).toHaveBeenCalledExactlyOnceWith("curto", ["api.github.com"]);
     await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("pelo menos 8"));
     expect(screen.getByRole("alert").textContent).not.toContain("curto");
     expect(field().value).toBe("");
@@ -187,5 +188,36 @@ describe("a request already answered", () => {
     );
     fireEvent.click(screen.getByRole("button", { expanded: true }));
     expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
+  describe("the sites the secret may go to", () => {
+    const hosts = () => screen.getByLabelText("Endereços permitidos") as HTMLTextAreaElement;
+
+    it("starts with what the bot suggested, said as a suggestion to check", () => {
+      show({ suggestedHosts: ["api.github.com", "uploads.github.com"] });
+      expect(hosts().value).toBe("api.github.com\nuploads.github.com");
+      expect(screen.getByText(/Ajudante sugeriu estes sites\. Confira/)).toBeTruthy();
+    });
+
+    it("what is saved is what the person confirms, never the bot's suggestion", async () => {
+      const { onSubmit } = show({ suggestedHosts: ["evil.example.com"] });
+      fireEvent.change(hosts(), { target: { value: "API.GitHub.com\n\napi.github.com, x.test" } });
+      type(VALUE);
+      fireEvent.click(screen.getByTestId("secret-save"));
+      expect(onSubmit).toHaveBeenCalledExactlyOnceWith(VALUE, ["api.github.com", "x.test"]);
+    });
+
+    it("an empty or invalid list is explained and nothing is sent (the value stays in the field)", () => {
+      const { onSubmit } = show({ suggestedHosts: [] });
+      expect(screen.getByText(/não disse para onde/)).toBeTruthy();
+      type(VALUE);
+      fireEvent.click(screen.getByTestId("secret-save"));
+      expect(screen.getByRole("alert").textContent).toContain("Diga para onde o segredo pode ir");
+      fireEvent.change(hosts(), { target: { value: "https://api.github.com/x" } });
+      fireEvent.click(screen.getByTestId("secret-save"));
+      expect(screen.getByRole("alert").textContent).toContain("não é um endereço válido");
+      expect(onSubmit).not.toHaveBeenCalled();
+      expect(field().value).toBe(VALUE);
+    });
   });
 });

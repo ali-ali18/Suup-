@@ -55,6 +55,8 @@ export const approvalSchema = z.object({
   summary: z.string(),
   /** The secrets the call uses (names). */
   secrets: z.array(z.string()),
+  /** The site the secrets would be sent to (read by the server from the call's destination), or `null`. */
+  secretHost: z.string().nullable().optional(),
   source: z.enum(POLICY_SOURCES),
   /** Set only when the call is a message to another person; the card is the message card then. */
   outbound: approvalOutboundSchema.nullable(),

@@ -2109,3 +2109,31 @@ describe('"Crie seu bot" no palco e a paleta dos bots (docs/DESIGN.md §3d, §4,
     expect(sidebar).toContain('data-testid="rail-empty-create"');
   });
 });
+
+describe("para onde um segredo pode ir (docs/DESIGN.md, §1)", () => {
+  const src = (...parts: string[]) => read(join(SRC, ...parts));
+
+  it("o formulário do chat e o diálogo do Cofre pedem os endereços, e o cartão de aprovação diz para onde o segredo iria", () => {
+    expect(src("ui", "hosts-field.tsx")).toContain("Endereços permitidos");
+    expect(src("ui", "secret-request-card.tsx")).toContain("<HostsField");
+    expect(src("features", "settings", "VaultSettings.tsx")).toContain("<HostsField");
+    expect(src("ui", "approval-card.tsx")).toContain("approval-secret-host");
+    expect(src("ui", "approval-card.tsx")).toContain("O segredo vai para");
+  });
+
+  it("o app manda o que a pessoa confirmou e nunca a sugestão do bot; a lista vazia é explicada antes de enviar", () => {
+    const card = src("ui", "secret-request-card.tsx");
+    // O campo começa na sugestão, e o que vai ao servidor sai do texto do campo.
+    expect(card).toContain("suggestedHosts.join");
+    expect(card).toContain("onSubmit(value, parseHosts(hosts))");
+    expect(card).toContain("hostsProblem(hosts)");
+    expect(src("lib", "secret-form.ts")).toContain("Sem isso ele fica bloqueado");
+  });
+
+  it("a lista do Cofre diz, com as palavras do dono, que um segredo sem endereço está bloqueado", () => {
+    const vault = src("features", "settings", "VaultSettings.tsx");
+    expect(vault).toContain("Bloqueado até você dizer para onde ele pode ir");
+    expect(vault).toContain("Dizer para onde pode ir");
+    expect(vault).toContain("vault-blocked-notice");
+  });
+});

@@ -52,6 +52,16 @@ export interface ToolInvoker {
     ctx: ToolContext,
     opts?: InvokeOptions,
   ): Promise<ToolInvocation>;
+  /**
+   * Whether a call that names secrets may go where it is going (the hosts the user declared for each
+   * secret). Asked BEFORE the gate, so a call that would be refused never shows a card. The refusal
+   * is for the model; `undefined`: nothing against it. `invoke` checks again.
+   */
+  refuseSecretDestination?(
+    name: string,
+    rawArgs: unknown,
+    access: Pick<SecretAccess, "hostsOf">,
+  ): Promise<string | undefined>;
 }
 
 /**

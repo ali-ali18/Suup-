@@ -196,7 +196,7 @@ describe.skipIf(!DATABASE_URL)(
         // The default of a tool that classifies each call: where the commands run decides.
         risk: "external_irreversible",
         dynamicRisk: true,
-        acceptsSecrets: true,
+        acceptsSecrets: false,
         externalOutput: false,
       });
       expect(tools.items.find((t) => t.name === "web_fetch")).toMatchObject({

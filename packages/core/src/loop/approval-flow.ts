@@ -181,6 +181,7 @@ export async function askGate(
           level: verdict.level,
           summary: verdict.summary,
           secrets: verdict.secrets,
+          ...(verdict.secretHost === undefined ? {} : { secretHost: verdict.secretHost }),
           source: verdict.source,
           ...(verdict.outbound === undefined ? {} : { outbound: verdict.outbound }),
           ...(verdict.expiresAt === undefined ? {} : { expiresAt: verdict.expiresAt }),

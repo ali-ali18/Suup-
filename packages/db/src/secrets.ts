@@ -2,6 +2,7 @@
 // ever holds ciphertext: encrypting and decrypting happen outside it (`@suup/runtime`, with a key
 // that never touches the database), so nothing in this module can read a secret value. The API
 // reads names and metadata through `listSecrets`; there is deliberately no "get value" function.
+import { normalizeSecretHost } from "@suup/core";
 import { z } from "zod";
 import type { Db } from "./client.js";
 
@@ -18,6 +19,11 @@ export interface SecretMeta {
   lastUsedAt: Date | null;
   /** The plugin that keeps this secret (a connector, `search:<engine>`), or null for the owner's own. */
   managedBy: string | null;
+  /**
+   * The hosts the owner said this secret may be sent to (normalized, sorted). Empty: the secret is
+   * BLOCKED until the owner declares one. Not used by a plugin's secret (`managedBy` set).
+   */
+  hosts: string[];
 }
 
 /** A stored secret with its ciphertext, for the one module that can decrypt it. */
@@ -41,6 +47,7 @@ interface MetaRow {
   updated_at: Date;
   last_used_at: Date | null;
   managed_by: string | null;
+  hosts: string[] | null;
 }
 
 function mapMeta(row: MetaRow): SecretMeta {
@@ -54,6 +61,7 @@ function mapMeta(row: MetaRow): SecretMeta {
     updatedAt: row.updated_at,
     lastUsedAt: row.last_used_at,
     managedBy: row.managed_by,
+    hosts: row.hosts ?? [],
   };
 }
 
@@ -85,18 +93,47 @@ export interface PutSecretInput {
   keyId: string;
   /** Set only by the connector that keeps the secret (its exact name). */
   managedBy?: string | undefined;
+  /** Omitted: keeps the hosts of an existing secret (none for a new one: it starts blocked). */
+  hosts?: readonly string[] | undefined;
+}
+
+/** Thrown when a host is not a plain DNS name (a scheme, port, path, wildcard or IP address). */
+export class SecretHostInvalidError extends Error {
+  override readonly name = "SecretHostInvalidError";
+  constructor(readonly host: string) {
+    super(
+      `"${host}" não é um endereço válido: use só o nome do site, em letras minúsculas (por exemplo api.exemplo.com), sem https://, porta, caminho, curinga (*) ou número de IP.`,
+    );
+  }
+}
+
+/** Normalizes a list of hosts (lower case, no trailing dot, no repeats). Throws `SecretHostInvalidError`. */
+export function checkSecretHosts(hosts: readonly string[]): string[] {
+  const out = new Set<string>();
+  for (const host of hosts) {
+    const normalized = normalizeSecretHost(host);
+    if (normalized === undefined) throw new SecretHostInvalidError(host);
+    out.add(normalized);
+  }
+  return [...out].sort();
 }
 
 const META = (db: Db) => db.sql`
   select s.id, s.name, s.description, s.key_id, s.created_at, s.updated_at, s.last_used_at, s.managed_by,
          (select coalesce(array_agg(g.bot_id::text order by g.granted_at), '{}')
-            from secret_grants g where g.secret_id = s.id) as granted
+            from secret_grants g where g.secret_id = s.id) as granted,
+         (select coalesce(array_agg(h.host order by h.host), '{}')
+            from secret_hosts h where h.secret_id = s.id) as hosts
   from secrets s`;
 
 /** Creates the secret, or replaces its value (grants are kept). Returns the metadata. */
 export async function putSecret(db: Db, input: PutSecretInput): Promise<SecretMeta> {
   const name = nameSchema.parse(input.name);
   const managedBy = input.managedBy ?? null;
+  const hosts = input.hosts === undefined ? undefined : checkSecretHosts(input.hosts);
+  if (hosts !== undefined && hosts.length > 0 && managedBy !== null) {
+    throw new Error("a plugin's secret does not take a list of hosts");
+  }
   const rows = await db.sql`
     insert into secrets (name, description, nonce, ciphertext, key_id, managed_by)
     values (${name}, ${input.description ?? ""}, ${input.nonce}, ${input.ciphertext}, ${input.keyId}, ${managedBy})
@@ -109,9 +146,67 @@ export async function putSecret(db: Db, input: PutSecretInput): Promise<SecretMe
     returning id`;
   // A name kept by a connector is never overwritten by the owner (and the reverse).
   if (rows.length === 0) throw new SecretManagedError(name);
+  if (hosts !== undefined) await writeHosts(db, name, hosts);
   const meta = await getSecretMeta(db, name);
   if (meta === null) throw new Error("secret vanished after insert");
   return meta;
+}
+
+async function writeHosts(db: Db, name: string, hosts: readonly string[]): Promise<void> {
+  await db.sql.begin(async (sql) => {
+    const [row] =
+      await sql`select id from secrets where name = ${name} and managed_by is null for update`;
+    if (row === undefined) return;
+    const id = row.id as string;
+    await sql`delete from secret_hosts where secret_id = ${id}`;
+    for (const host of hosts) {
+      await sql`insert into secret_hosts (secret_id, host) values (${id}, ${host})`;
+    }
+  });
+}
+
+/**
+ * Replaces the hosts of an owner's secret (the whole list; empty blocks it). Throws
+ * `SecretHostInvalidError`, `SecretManagedError` (a plugin's) or `SecretNotFoundError`.
+ */
+export async function setSecretHosts(
+  db: Db,
+  name: string,
+  hosts: readonly string[],
+): Promise<SecretMeta> {
+  const checked = checkSecretHosts(hosts);
+  const meta = await getSecretMeta(db, name);
+  if (meta === null) throw new SecretNotFoundError(name);
+  if (meta.managedBy !== null) throw new SecretManagedError(name);
+  await writeHosts(db, name, checked);
+  const next = await getSecretMeta(db, name);
+  if (next === null) throw new SecretNotFoundError(name);
+  return next;
+}
+
+/**
+ * The hosts of each named secret, for the check that runs before a secret is used. A name that
+ * does not exist is left out; one with no hosts maps to an empty list. A plugin's secret is
+ * left out (it never travels in a bot's call).
+ */
+export async function getSecretHosts(
+  db: Db,
+  names: readonly string[],
+  botId?: string,
+): Promise<Record<string, string[]>> {
+  if (names.length === 0) return {};
+  // With `botId`, only the secrets that bot was granted (the same rule as resolving the value).
+  const granted =
+    botId === undefined
+      ? db.sql``
+      : db.sql`and exists (select 1 from secret_grants g where g.secret_id = s.id and g.bot_id = ${z.uuid().parse(botId)})`;
+  const rows = await db.sql<{ name: string; hosts: string[] }[]>`
+    select s.name,
+           (select coalesce(array_agg(h.host order by h.host), '{}')
+              from secret_hosts h where h.secret_id = s.id) as hosts
+    from secrets s
+    where s.name in ${db.sql(names as string[])} and s.managed_by is null ${granted}`;
+  return Object.fromEntries(rows.map((r) => [r.name, r.hosts]));
 }
 
 export async function getSecretMeta(db: Db, name: string): Promise<SecretMeta | null> {
@@ -249,6 +344,8 @@ export async function adoptSecret(db: Db, name: string, managedBy: string): Prom
     const [row] = rows;
     if (row === undefined) return false;
     await sql`delete from secret_grants where secret_id = ${row.id as string}`;
+    // A plugin knows its own hosts: the owner's list of sites is not used for its secret.
+    await sql`delete from secret_hosts where secret_id = ${row.id as string}`;
     return true;
   });
 }
@@ -262,13 +359,15 @@ export async function revokeSecret(db: Db, name: string, botId: string): Promise
   return rows.length > 0;
 }
 
-/** The secrets a bot may use, as the model is told about them: names and descriptions. */
+/** The secrets a bot may use, as the model is told about them: names, descriptions and the hosts each may go to. */
 export async function listSecretInfoForBot(
   db: Db,
   botId: string,
-): Promise<{ name: string; description: string }[]> {
-  return db.sql<{ name: string; description: string }[]>`
-    select s.name, s.description
+): Promise<{ name: string; description: string; hosts: string[] }[]> {
+  return db.sql<{ name: string; description: string; hosts: string[] }[]>`
+    select s.name, s.description,
+           (select coalesce(array_agg(h.host order by h.host), '{}')
+              from secret_hosts h where h.secret_id = s.id) as hosts
     from secrets s join secret_grants g on g.secret_id = s.id
     where g.bot_id = ${botId} and s.managed_by is null order by s.name`;
 }

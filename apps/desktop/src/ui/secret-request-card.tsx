@@ -2,9 +2,10 @@ import { KeyRound, LoaderCircle, ShieldCheck } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { SecretRequestState } from "../data/secret-requests.js";
 import { modalOpen } from "../lib/focus.js";
-import type { SecretOutcome } from "../lib/secret-form.js";
+import { hostsProblem, parseHosts, type SecretOutcome } from "../lib/secret-form.js";
 import { ActionCard, ActionLabel } from "./action-card.js";
 import { DecisionCard } from "./decision-card.js";
+import { HostsField } from "./hosts-field.js";
 import { Pill } from "./primitives.js";
 import { userIsTyping } from "./question-card.js";
 import { SecretInput, type SecretInputHandle } from "./secret-input.js";
@@ -15,8 +16,10 @@ export interface SecretRequestCardProps {
   reason: string | null;
   botName: string;
   state: SecretRequestState;
-  /** Sends the value, straight to the vault. The card keeps no copy of it. */
-  onSubmit(value: string): Promise<SecretOutcome<unknown>>;
+  /** The sites the bot SUGGESTED (the person confirms or changes them in the form). */
+  suggestedHosts: readonly string[];
+  /** Sends the value, straight to the vault, with the sites the PERSON confirmed. The card keeps no copy of the value. */
+  onSubmit(value: string, hosts: string[]): Promise<SecretOutcome<unknown>>;
   onDecline(): Promise<SecretOutcome<unknown>>;
   autoFocus?: boolean;
   expanded: boolean;
@@ -43,6 +46,7 @@ function OpenForm({
   name,
   reason,
   botName,
+  suggestedHosts,
   onSubmit,
   onDecline,
   autoFocus,
@@ -54,6 +58,9 @@ function OpenForm({
   // Only whether the field is empty (a boolean from its change event), never what is in it.
   const [empty, setEmpty] = useState(true);
   const [done, setDone] = useState<"provided" | "declined" | undefined>(undefined);
+  // What the bot suggested is only where the field starts: what is saved is what is here on Enviar.
+  const [hosts, setHosts] = useState(suggestedHosts.join("\n"));
+  const [hostsError, setHostsError] = useState<string | undefined>(undefined);
 
   // The form appears: the focus goes to the field (the person was asked for exactly this), unless
   // they are typing something else.
@@ -64,11 +71,17 @@ function OpenForm({
   const save = async () => {
     const value = field.current?.take() ?? "";
     if (value === "") return;
+    const wrong = hostsProblem(hosts);
+    if (wrong !== undefined) {
+      setHostsError(wrong);
+      return;
+    }
+    setHostsError(undefined);
     // Gone from the field before anything else happens: from here the value only travels.
     field.current?.clear();
     setBusy("save");
     setError(undefined);
-    const outcome = await onSubmit(value);
+    const outcome = await onSubmit(value, parseHosts(hosts));
     setBusy(null);
     if (outcome.ok) setDone("provided");
     else setError(outcome.message);
@@ -172,6 +185,20 @@ function OpenForm({
           error={error}
           onEmptyChange={setEmpty}
           onEnter={() => void save()}
+        />
+        <HostsField
+          value={hosts}
+          onChange={(text) => {
+            setHosts(text);
+            setHostsError(undefined);
+          }}
+          error={hostsError}
+          disabled={waiting}
+          hint={
+            suggestedHosts.length > 0
+              ? `${botName} sugeriu estes sites. Confira: vale o que estiver aqui, e o segredo nunca vai para outro lugar.`
+              : `${botName} não disse para onde. Escreva os sites para onde o segredo pode ir.`
+          }
         />
       </form>
     </DecisionCard>

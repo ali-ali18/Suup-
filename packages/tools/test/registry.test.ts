@@ -79,8 +79,13 @@ describe("builtin tools", () => {
     const info = Object.fromEntries(
       builtinTools.map((t) => [t.name, [t.secretFields ?? [], t.externalOutput === true]]),
     );
-    expect(info.shell).toEqual([["command"], false]);
+    // A secret never goes in a shell command: its destination is unknown (docs/COFRE.md).
+    expect(info.shell).toEqual([[], false]);
     expect(info.web_fetch).toEqual([["url", "headers.*"], true]);
+    expect(builtinTools.find((t) => t.name === "web_fetch")?.secretDestination).toBe("url");
+    expect(
+      builtinTools.filter((t) => t.secretDestination !== undefined).map((t) => t.name),
+    ).toEqual(["web_fetch"]);
     expect(info.write_file).toEqual([[], false]);
     // Search and read carry no secret and bring everything from outside.
     expect(info.web_search).toEqual([[], true]);

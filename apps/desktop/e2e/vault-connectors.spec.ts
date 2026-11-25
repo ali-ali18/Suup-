@@ -58,6 +58,10 @@ test.describe("secret requests and the vault", () => {
     const input = form.getByTestId("secret-input");
     // The NAME is the label of the field, the reassurance is in the footer, and Enviar waits for text.
     await expect(form.getByLabel("E2E_TOKEN")).toBeVisible();
+    // The sites the secret may go to: the bot's suggestion is only where the field starts.
+    const hosts = form.getByLabel("Endereços permitidos");
+    await expect(hosts).toHaveValue("api.sugerido.test");
+    await expect(form).toContainText("Cofreiro sugeriu estes sites");
     await expect(form).toContainText("Guardado no cofre; o bot nunca vê o valor.");
     await expect(form.getByTestId("secret-save")).toBeDisabled();
     // The field: password type, no completion, no spellcheck; the focus is on it; reveal is off.
@@ -72,6 +76,18 @@ test.describe("secret requests and the vault", () => {
     await expect(page.getByTestId("pending-counter")).toHaveText("1");
     await input.fill(VALUE);
     await expect(form.getByTestId("secret-save")).toBeEnabled();
+    // An empty or malformed list is explained and nothing leaves the form.
+    await hosts.fill("");
+    await form.getByTestId("secret-save").click();
+    await expect(form.getByRole("alert")).toContainText("Diga para onde o segredo pode ir");
+    await hosts.fill("https://api.exemplo.com/x");
+    await form.getByTestId("secret-save").click();
+    await expect(form.getByRole("alert")).toContainText("não é um endereço válido");
+    expect(await world.api.vault.list()).toEqual(
+      expect.not.arrayContaining([expect.objectContaining({ name: "E2E_TOKEN" })]),
+    );
+    await expect(input).toHaveValue(VALUE);
+    await hosts.fill("LocalHost");
     await reveal.click();
     await expect(input).toHaveAttribute("type", "text");
     await form.getByRole("button", { name: "Esconder o valor" }).click();
@@ -82,6 +98,10 @@ test.describe("secret requests and the vault", () => {
     // The chat shows only that the secret is available, and the bot goes on and uses it.
     await expect(page.getByTestId("secret-card")).toContainText("Segredo E2E_TOKEN disponível");
     await expect(page.getByTestId("secret-card")).toHaveAttribute("data-state", "done");
+    // Using it asks first, and the card says where the secret would go (what the person confirmed).
+    const approval = page.getByTestId("approval-card");
+    await expect(approval.getByTestId("approval-secret-host")).toContainText("localhost");
+    await approval.getByTestId("approval-approve").click();
     await expect(botMessage(page, "Recebi o segredo e usei.")).toBeVisible();
     // The command is no row in the chat (steps live in the Inspector); what it printed is in the run's log.
     await expect(page.getByTestId("action-card")).toHaveCount(0);
@@ -107,6 +127,8 @@ test.describe("secret requests and the vault", () => {
     const secrets = await world.api.vault.list();
     expect(JSON.stringify(secrets)).not.toContain(VALUE);
     expect(secrets.find((s) => s.name === "E2E_TOKEN")?.grantedBotIds).toEqual([bot]);
+    // What was kept is what the person confirmed, not what the bot suggested.
+    expect(secrets.find((s) => s.name === "E2E_TOKEN")?.hosts).toEqual(["localhost"]);
     // After a reload the card is one line, and still says only that.
     await page.reload();
     await botItem(page, "Cofreiro").click();
@@ -154,6 +176,15 @@ test.describe("secret requests and the vault", () => {
     await dialog.getByLabel("Para que serve (opcional)").fill("token da tela de teste");
     const input = dialog.getByTestId("secret-input");
     await expect(input).toHaveAttribute("type", "password");
+    // A secret of the owner says where it may go: without a site it is not saved (the value stays).
+    await input.fill(VALUE);
+    await dialog.getByTestId("secret-write").click();
+    await expect(dialog.getByRole("alert")).toContainText("Diga para onde o segredo pode ir");
+    await expect(input).toHaveValue(VALUE);
+    await dialog.getByLabel("Endereços permitidos").fill("https://api.exemplo.com");
+    await dialog.getByTestId("secret-write").click();
+    await expect(dialog.getByRole("alert")).toContainText("não é um endereço válido");
+    await dialog.getByLabel("Endereços permitidos").fill("API.exemplo.com\noutra.exemplo.com");
     // Too short: explained, never echoed.
     await input.fill("curto");
     await dialog.getByTestId("secret-write").click();
@@ -163,6 +194,8 @@ test.describe("secret requests and the vault", () => {
     await dialog.getByTestId("secret-write").click();
     const row = page.getByTestId("secret-row").filter({ hasText: "TELA_TOKEN" });
     await expect(row).toBeVisible();
+    await expect(row).toContainText("Pode ir para api.exemplo.com, outra.exemplo.com");
+    await expect(page.getByTestId("vault-blocked-notice")).toHaveCount(0);
     await expect(row).toContainText("token da tela de teste");
     await expect(row).toContainText("Nunca usado");
     await expect(row).toContainText("nenhum bot pode usar");
@@ -186,10 +219,21 @@ test.describe("secret requests and the vault", () => {
     // Replace the value: the grants stay.
     await row.getByTestId("secret-replace").click();
     const replace = page.getByRole("dialog", { name: "Trocar o valor de TELA_TOKEN" });
+    // The sites it may go to start as they were.
+    await expect(replace.getByLabel("Endereços permitidos")).toHaveValue(
+      "api.exemplo.com\noutra.exemplo.com",
+    );
     await replace.getByTestId("secret-input").fill(`${VALUE}-novo`);
     await replace.getByTestId("secret-write").click();
     await expect(replace).toHaveCount(0);
     await expect(row).toContainText("1 bot pode usar");
+    // Changing only the sites, from the open row: the value is not asked for.
+    await row.getByLabel("Endereços permitidos").fill("so-esta.exemplo.com");
+    await row.getByTestId("secret-hosts-save").click();
+    await expect(row).toContainText("Pode ir para so-esta.exemplo.com");
+    expect((await world.api.vault.list()).find((s) => s.name === "TELA_TOKEN")?.hosts).toEqual([
+      "so-esta.exemplo.com",
+    ]);
     // Nothing on the screen or in the API has any value.
     expect(await page.content()).not.toContain(VALUE);
     expect(JSON.stringify(await world.api.vault.list())).not.toContain(VALUE);
@@ -203,6 +247,34 @@ test.describe("secret requests and the vault", () => {
     await page.getByTestId("secret-delete-confirm").click();
     await expect(page.getByTestId("secret-row").filter({ hasText: "TELA_TOKEN" })).toHaveCount(0);
     expect((await world.api.vault.list()).some((s) => s.name === "TELA_TOKEN")).toBe(false);
+  });
+
+  test("an old secret with no sites is blocked: the screen says so and lets the person declare where it may go", async ({
+    page,
+  }) => {
+    // Written before the sites existed: no hosts, so no bot can use it anywhere.
+    await world.api.vault.set("VELHO_TOKEN", { value: `${VALUE}-velho` });
+    await openApp(page, world);
+    await openSettings(page, "Cofre");
+    const row = page.getByTestId("secret-row").filter({ hasText: "VELHO_TOKEN" });
+    await expect(row).toContainText("Bloqueado até você dizer para onde ele pode ir");
+    await expect(page.getByTestId("vault-blocked-notice")).toContainText("bloqueado");
+    // The action says what to do, in plain words, and opens the place to do it.
+    await row.getByRole("button", { name: "Dizer para onde pode ir" }).click();
+    const hosts = row.getByLabel("Endereços permitidos");
+    await hosts.fill("*.exemplo.com");
+    await row.getByTestId("secret-hosts-save").click();
+    await expect(row).toContainText("não é um endereço válido");
+    await hosts.fill("api.velho.exemplo.com");
+    await row.getByTestId("secret-hosts-save").click();
+    await expect(row).toContainText("Pode ir para api.velho.exemplo.com");
+    await expect(row).not.toContainText("Bloqueado");
+    await expect(page.getByTestId("vault-blocked-notice")).toHaveCount(0);
+    expect((await world.api.vault.list()).find((s) => s.name === "VELHO_TOKEN")).toMatchObject({
+      hosts: ["api.velho.exemplo.com"],
+      blocked: false,
+    });
+    await world.api.vault.remove("VELHO_TOKEN");
   });
 });
 

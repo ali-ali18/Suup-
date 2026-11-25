@@ -19,6 +19,8 @@ export interface SecretRequestItem {
   runId: string;
   name: string;
   reason: string | null;
+  /** The sites the bot SUGGESTED (a suggestion only: the form shows them to be confirmed). */
+  hosts: string[];
   /** When it was asked (ISO), to place the card among the messages. */
   startedAt: string;
   state: SecretRequestState;
@@ -51,6 +53,9 @@ export function secretRequestsOf(
         runId,
         name,
         reason: str(p.reason) ?? null,
+        hosts: Array.isArray(p.hosts)
+          ? p.hosts.filter((host): host is string => typeof host === "string")
+          : [],
         startedAt: event.createdAt,
         state: run?.status === "waiting_user" ? "open" : "closed",
       };

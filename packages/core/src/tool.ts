@@ -240,6 +240,11 @@ export interface ToolContext {
   /** The id of the call being executed (the loop sets it): what makes a tool's effect idempotent. */
   callId?: string;
   /**
+   * Set when the call carries a secret: the hosts that EVERY secret of the call may be sent to
+   * (their intersection, normalized). A tool that follows redirects must stop at a host outside it.
+   */
+  secretHosts?: readonly string[];
+  /**
    * The URLs this run has seen (normalized) and where each came from (the user's messages, search
    * results, links of pages read), as the loop derives them from the log. `web_read` uses it to
    * say how its address was cleared.
@@ -324,6 +329,14 @@ export interface Tool<I = unknown> {
    * the real value in at the moment of execution; a placeholder anywhere else is refused.
    */
   secretFields?: readonly string[];
+  /**
+   * The argument that holds the DESTINATION of the call, as a top-level key of the input whose value
+   * is an absolute http(s) URL (`url`). A secret goes only to a host the user declared for it
+   * (docs/COFRE.md), and this is where the registry reads that host from. A tool that accepts
+   * secret placeholders but declares no destination (a shell command: where it sends data is
+   * unknown) is refused whenever the call names a secret.
+   */
+  secretDestination?: string;
   /**
    * The output comes from outside the system (web pages, files fetched from elsewhere, the output
    * of programs that may have fetched them). The registry labels it as untrusted data. A result

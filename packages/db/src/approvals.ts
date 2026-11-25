@@ -32,6 +32,8 @@ export interface Approval {
   level: RiskLevel;
   summary: string;
   secrets: string[];
+  /** The host the call's secrets would be sent to, when the tool declares its destination. */
+  secretHost: string | null;
   source: PolicySource;
   /** The tool's declaration that this call is a message to another person; `null` for every other call. */
   outbound: OutboundMessage | null;
@@ -63,6 +65,7 @@ interface ApprovalRow {
   level: RiskLevel;
   summary: string;
   secrets: string[];
+  secret_host: string | null;
   source: PolicySource;
   outbound: OutboundMessage | null;
   status: ApprovalStatus;
@@ -89,6 +92,7 @@ function mapApproval(row: ApprovalRow): Approval {
     level: row.level,
     summary: row.summary,
     secrets: row.secrets,
+    secretHost: row.secret_host,
     source: row.source,
     outbound: row.outbound,
     status: row.status,
@@ -116,7 +120,7 @@ function isStale(row: Pick<ApprovalRow, "status" | "waited_ms" | "stale_after_ms
 
 const SELECT = (db: Db) => db.sql`
   select a.id, a.run_id, a.bot_id, r.conversation_id, a.call_id, a.tool, a.args, a.level,
-         a.summary, a.secrets, a.source, a.outbound, a.status, a.reason, a.rule_id, a.review_reason, a.written_rule_id, a.expires_at,
+         a.summary, a.secrets, a.secret_host, a.source, a.outbound, a.status, a.reason, a.rule_id, a.review_reason, a.written_rule_id, a.expires_at,
          a.decided_at, a.created_at, a.waited_ms, a.stale_after_ms
   from approvals a join runs r on r.id = a.run_id`;
 
@@ -150,6 +154,7 @@ export async function projectApprovalRequested(
     level: RiskLevel;
     summary: string;
     secrets: string[];
+    secretHost?: string;
     source: PolicySource;
     outbound?: OutboundMessage;
     expiresAt?: string;
@@ -159,9 +164,9 @@ export async function projectApprovalRequested(
   // The rule id comes from the event log; a value that is not an id is left out, not trusted.
   const writtenRuleId = z.uuid().safeParse(p.writtenRuleId).data ?? null;
   await tx.sql`
-    insert into approvals (id, run_id, bot_id, call_id, tool, args, level, summary, secrets, source, outbound, expires_at, review_reason, written_rule_id)
+    insert into approvals (id, run_id, bot_id, call_id, tool, args, level, summary, secrets, secret_host, source, outbound, expires_at, review_reason, written_rule_id)
     select ${p.approvalId}, r.id, r.bot_id, ${p.callId}, ${p.tool}, ${tx.sql.json(p.args)},
-           ${p.level}, ${p.summary}, ${p.secrets}::text[], ${p.source},
+           ${p.level}, ${p.summary}, ${p.secrets}::text[], ${p.secretHost ?? null}, ${p.source},
            ${p.outbound === undefined ? null : tx.sql.json(p.outbound)}, ${p.expiresAt ?? null},
            ${p.reason === undefined ? null : p.reason.slice(0, 1000)}, ${writtenRuleId}
     from runs r where r.id = ${runId}
