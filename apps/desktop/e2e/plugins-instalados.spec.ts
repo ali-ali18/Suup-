@@ -100,6 +100,7 @@ test.describe("plugins: the installed list, the plugin's page and the search eng
   let world: World;
   test.beforeAll(async () => {
     world = await startWorld({ scripts: { ...SCRIPTS, roteiro } });
+    await freshBot(world, "Bot de teste");
   });
   test.afterAll(async () => {
     await world?.stop();

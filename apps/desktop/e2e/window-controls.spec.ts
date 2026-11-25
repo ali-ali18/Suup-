@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { DATABASE_URL, SKIP_REASON, startWorld, type World } from "./harness.js";
+import { freshBot } from "./helpers.js";
 import { installTauriMock } from "./tauri-mock.js";
 
 // The window controls drawn by the app (minimize, maximize, close), inside the top right corner like
@@ -15,6 +16,7 @@ test.describe("window controls", () => {
   let world: World;
   test.beforeAll(async () => {
     world = await startWorld();
+    await freshBot(world, "Bot de teste");
   });
   test.afterAll(async () => {
     await world?.stop();

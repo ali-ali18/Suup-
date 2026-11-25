@@ -7,7 +7,7 @@ import {
   startFakeOAuthMcp,
 } from "../../../packages/connectors/dist/testing/index.js";
 import { DATABASE_URL, SKIP_REASON, startWorld, type World } from "./harness.js";
-import { openApp } from "./helpers.js";
+import { freshBot, openApp } from "./helpers.js";
 import { installTauriMock } from "./tauri-mock.js";
 
 // The connectors screen against a real server (docs/DESIGN.md §5d): the list is the server's
@@ -104,6 +104,7 @@ test.describe("the connectors screen, wired to the server's gallery", () => {
     world = await startWorld({
       connectorCatalog: [...CONNECTOR_CATALOG.map(offlineGithub), fakeEntry(fake)],
     });
+    await freshBot(world, "Bot de teste");
   });
   test.afterAll(async () => {
     await world?.stop();
@@ -266,6 +267,7 @@ test.describe("OAuth on a VPS with its public address", () => {
       connectorCatalog: [...CONNECTOR_CATALOG, fakeEntry(fake)],
       publicAddress: true,
     });
+    await freshBot(world, "Bot de teste");
   });
   test.afterAll(async () => {
     await world?.stop();

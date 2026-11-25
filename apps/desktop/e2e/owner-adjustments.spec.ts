@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { DATABASE_URL, SKIP_REASON, startWorld, type World } from "./harness.js";
-import { botItem, freshBot } from "./helpers.js";
+import { botItem, freshBot, principalBot } from "./helpers.js";
 import { installTauriMock } from "./tauri-mock.js";
 
 // The owner's interface items of 23-24/11/2026 (docs/DESIGN.md §1 "Nada seco", §2 max width, §4a,
@@ -24,6 +24,7 @@ test.describe("owner adjustments", () => {
   let world: World;
   test.beforeAll(async () => {
     world = await startWorld();
+    await principalBot(world);
     await freshBot(world, "Estudo de Leitura", { color: "azul", avatar: "mascot:blob" });
     await freshBot(world, "Dev de Exemplo", { color: "amarelo", avatar: "mascot:cloud" });
   });

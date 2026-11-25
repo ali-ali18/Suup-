@@ -1,12 +1,13 @@
 import { expect, test } from "@playwright/test";
 import { DATABASE_URL, SKIP_REASON, startWorld, type World } from "./harness.js";
-import { connect, openWithBot, send, userBubbles } from "./helpers.js";
+import { connect, openWithBot, principalBot, send, userBubbles } from "./helpers.js";
 
 test.describe("connect and chat", () => {
   test.skip(DATABASE_URL === undefined, SKIP_REASON);
   let world: World;
   test.beforeAll(async () => {
     world = await startWorld();
+    await principalBot(world);
   });
   test.afterAll(async () => {
     await world?.stop();
@@ -18,15 +19,17 @@ test.describe("connect and chat", () => {
     await connect(page, world, "um-token-errado-um-token-errado-um-token-errado");
     await expect(page.getByTestId("connect-error")).toContainText("token");
     await expect(page.getByTestId("sidebar")).toHaveCount(0);
-    // A server that is not there at all says so too.
+    // A server that is not there at all says so too (the address step is checked first).
+    await page.getByRole("button", { name: "Voltar" }).click();
     await page.getByLabel("Endereço do servidor").fill("http://127.0.0.1:9");
-    await page.getByLabel("Token").fill(world.token);
-    await page.getByRole("button", { name: "Conectar" }).click();
+    await page.getByRole("button", { name: "Continuar" }).click();
     await expect(page.getByTestId("connect-error")).toContainText(
       "Não consegui falar com o servidor",
     );
     // The right one.
     await page.getByLabel("Endereço do servidor").fill(world.serverUrl);
+    await page.getByRole("button", { name: "Continuar" }).click();
+    await page.getByLabel("Token").fill(world.token);
     await page.getByRole("button", { name: "Conectar" }).click();
     await expect(page.getByTestId("sidebar")).toBeVisible();
     await expect(page.getByTestId("bot-item").filter({ hasText: "Principal" })).toBeVisible();

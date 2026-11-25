@@ -24,6 +24,11 @@ export interface MockOptions {
    * comes back (the app would close and reopen).
    */
   update?: { enabled?: boolean; version?: string };
+  /**
+   * The device has never seen the entrance (`true`): the welcome comes first. By default the
+   * welcome and the connectors step count as already seen, so the other tests reach the app.
+   */
+  welcome?: boolean;
 }
 
 /**
@@ -44,6 +49,10 @@ export async function installTauriMock(
         value === null
           ? localStorage.removeItem(`mock.${key}`)
           : localStorage.setItem(`mock.${key}`, value);
+      if (options.welcome !== true) {
+        localStorage.setItem("suup.welcomeDone", "1");
+        localStorage.setItem("suup.connectorsStepDone", "1");
+      }
       const w = window as unknown as Record<string, unknown>;
       const callbacks = new Map<number, unknown>();
       let nextCallback = 1;

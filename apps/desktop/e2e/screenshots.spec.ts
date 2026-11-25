@@ -41,6 +41,7 @@ test.describe("screenshots", () => {
   async function seed(): Promise<World & { dir: string }> {
     // `networkTool`: the isolated machine has the tool that asks for a host (the card is real).
     const world = await startWorld({ networkTool: true });
+    await freshBot(world, "Bot de teste");
     const dir = await mkdtemp(join(tmpdir(), "suup-shots-"));
     const base = {
       modelId: "model-x",
@@ -566,6 +567,7 @@ test.describe("screenshots", () => {
     }) => {
       // The default server: commands on its own machine (no isolation), tool search on.
       const world = await startWorld({ toolSearch: { minTools: 5, minDefinitionTokens: 1 } });
+      await freshBot(world, "Bot de teste");
       await freshBot(world, "Pesquisador", { allowedTools: [] });
       const finder = (await world.api.bots.list()).find((b) => b.name === "Pesquisador")
         ?.id as string;
@@ -635,6 +637,7 @@ test.describe("screenshots", () => {
       browser,
     }) => {
       const world = await startWorld();
+      await freshBot(world, "Bot de teste");
       const context = await browser.newContext({
         viewport: size.viewport,
         deviceScaleFactor: size.scale,
