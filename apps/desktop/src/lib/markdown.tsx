@@ -2,6 +2,7 @@ import { Link2 } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { cx } from "./cx.js";
 import { faviconUrl, parseLink } from "./links.js";
+import type { FadeSink } from "./live-fade.js";
 
 export { parseLink, safeHref } from "./links.js";
 
@@ -110,22 +111,37 @@ export function renderInline(
   text: string,
   openUrl?: (url: string) => void,
   favicons = false,
+  fade?: FadeSink,
 ): ReactNode[] {
+  // The text of the answer being written: each piece that just arrived gets its own element.
+  const plain = (s: string): ReactNode =>
+    fade === undefined
+      ? s
+      : fade.wrap(s).map((p) =>
+          typeof p === "string" ? (
+            p
+          ) : (
+            <span key={p.id} className="ui-live-in">
+              {p.text}
+            </span>
+          ),
+        );
   const out: ReactNode[] = [];
   let last = 0;
   let key = 0;
   for (const match of text.matchAll(INLINE)) {
     const index = match.index ?? 0;
-    if (index > last) out.push(text.slice(last, index));
+    if (index > last) out.push(plain(text.slice(last, index)));
     const token = match[0];
     if (match[1] !== undefined)
       out.push(
         <code key={key++} className="rounded-chip bg-raised px-1.5 py-px">
-          {token.slice(1, -1)}
+          {plain(token.slice(1, -1))}
         </code>,
       );
-    else if (match[2] !== undefined) out.push(<strong key={key++}>{token.slice(2, -2)}</strong>);
-    else if (match[3] !== undefined) out.push(<em key={key++}>{token.slice(1, -1)}</em>);
+    else if (match[2] !== undefined)
+      out.push(<strong key={key++}>{plain(token.slice(2, -2))}</strong>);
+    else if (match[3] !== undefined) out.push(<em key={key++}>{plain(token.slice(1, -1))}</em>);
     else {
       const link = /^\[([^\]]+)\]\(([^)\s]+)\)$/.exec(token);
       const label = link?.[1] ?? token;
@@ -150,13 +166,13 @@ export function renderInline(
             }}
           >
             <LinkMark src={favicons ? faviconUrl(safe) : null} />
-            {label}
+            {plain(label)}
           </a>,
         );
     }
     last = index + token.length;
   }
-  if (last < text.length) out.push(text.slice(last));
+  if (last < text.length) out.push(plain(text.slice(last)));
   return out;
 }
 
@@ -167,10 +183,13 @@ export function Markdown({
   text,
   openUrl,
   favicons = false,
+  fade,
 }: {
   text: string;
   openUrl?: (url: string) => void;
   favicons?: boolean;
+  /** Only for the answer being written: the new text fades in (`useLiveFade`). */
+  fade?: FadeSink;
 }) {
   return (
     <div className="flex min-w-0 flex-col gap-3 text-body wrap-anywhere">
@@ -180,13 +199,13 @@ export function Markdown({
           case "p":
             return (
               <p key={key} className="wrap-anywhere whitespace-pre-wrap">
-                {renderInline(block.text, openUrl, favicons)}
+                {renderInline(block.text, openUrl, favicons, fade)}
               </p>
             );
           case "h":
             return (
               <p key={key} className="font-title">
-                {renderInline(block.text, openUrl, favicons)}
+                {renderInline(block.text, openUrl, favicons, fade)}
               </p>
             );
           case "ul":
@@ -194,7 +213,7 @@ export function Markdown({
               <ul key={key} className={cx(LIST, "list-disc")}>
                 {block.items.map((item, j) => (
                   // biome-ignore lint/suspicious/noArrayIndexKey: static
-                  <li key={j}>{renderInline(item, openUrl, favicons)}</li>
+                  <li key={j}>{renderInline(item, openUrl, favicons, fade)}</li>
                 ))}
               </ul>
             );
@@ -203,7 +222,7 @@ export function Markdown({
               <ol key={key} className={cx(LIST, "my-[1em] list-decimal")}>
                 {block.items.map((item, j) => (
                   // biome-ignore lint/suspicious/noArrayIndexKey: static
-                  <li key={j}>{renderInline(item, openUrl, favicons)}</li>
+                  <li key={j}>{renderInline(item, openUrl, favicons, fade)}</li>
                 ))}
               </ol>
             );

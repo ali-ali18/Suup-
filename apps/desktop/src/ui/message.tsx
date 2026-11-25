@@ -1,5 +1,6 @@
 import type { HTMLAttributes, ReactNode } from "react";
 import { cx } from "../lib/cx.js";
+import { useLiveFade } from "../lib/live-fade.js";
 import { Markdown } from "../lib/markdown.js";
 import { Avatar } from "./avatar.js";
 
@@ -112,7 +113,8 @@ export function BotMessage({
   position?: BubblePosition | undefined;
   /**
    * The answer is still being written (KOD-34): the screen reader is not told of every piece
-   * (`aria-busy`, `aria-live="off"`) and a soft mark blinks at the end of the text. When the
+   * (`aria-busy`, `aria-live="off"`) and what arrives in each frame fades in (no mark at the end,
+   * no letter by letter; reduced motion: no animation). When the
    * recorded text replaces it the same bubble stays, and the text is read once, politely.
    */
   typing?: boolean;
@@ -121,6 +123,7 @@ export function BotMessage({
   openUrl?: (url: string) => void;
   favicons?: boolean;
 }) {
+  const fade = useLiveFade(text ?? "", typing && text !== undefined);
   return (
     <div
       className={cx("flex min-w-0 items-start", linked(position))}
@@ -133,9 +136,10 @@ export function BotMessage({
           <BotBubble className={linkCorners("bot", position)}>
             {/* Another element when it stops typing, so the final text is a new addition that the
                 log announces once; the bubble itself stays. */}
-            <div key={typing ? "typing" : "final"} className={typing ? "ui-typing" : undefined}>
+            <div key={typing ? "typing" : "final"}>
               <Markdown
                 text={text}
+                {...(fade === undefined ? {} : { fade })}
                 {...(openUrl === undefined ? {} : { openUrl })}
                 {...(favicons === undefined ? {} : { favicons })}
               />

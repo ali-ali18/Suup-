@@ -90,7 +90,7 @@ test.describe("the answer is typed in its bubble", () => {
     await watch(page);
     await send(page, "CASE-VIVO-SIMPLES oi");
 
-    // While it is typed: the bubble is busy, the log does not announce each piece, and a mark blinks.
+    // While it is typed: the bubble is busy, the log does not announce each piece, and no mark is drawn.
     const typing = page.locator('[data-testid="message-bot"][data-typing="true"]');
     await expect(typing).toBeVisible({ timeout: 60_000 });
     await expect(typing).toHaveAttribute("aria-busy", "true");
@@ -249,30 +249,77 @@ test.describe("the answer is typed in its bubble", () => {
     expect(await recorded(world, "Recusa")).toEqual([LIVE_TEXTS.resumo]);
   });
 
+  test("while the text is written: no mark at the end, and Pensando stays below the bubble", async ({
+    page,
+  }) => {
+    world = await startWorld();
+    await openWithBot(page, world, "Abaixo");
+    await send(page, "CASE-VIVO-SIMPLES posição");
+    const typing = page.locator('[data-testid="message-bot"][data-typing="true"]');
+    await expect(typing).toBeVisible({ timeout: 60_000 });
+    await expect
+      .poll(async () => ((await typing.textContent()) ?? "").length, { timeout: 30_000 })
+      .toBeGreaterThan(20);
+    // No mark: no ::after on the last element, no cursor class, nothing that blinks.
+    const marks = await page.evaluate(() => {
+      const root = document.querySelector('[data-testid="message-bot"][data-typing="true"]');
+      if (root === null) return null;
+      return [...root.querySelectorAll("*")].filter(
+        (el) =>
+          getComputedStyle(el, "::after").content !== "none" ||
+          getComputedStyle(el, "::before").content !== "none" ||
+          ["typing", "caret", "cursor"].some((n) => el.className.toString().includes(n)),
+      ).length;
+    });
+    expect(marks).toBe(0);
+    // "Pensando…" is below the bubble being written, never above it.
+    const working = page.getByTestId("working-wrap");
+    if ((await working.count()) > 0) {
+      const b = await typing.boundingBox();
+      const w = await working.boundingBox();
+      expect(b).not.toBeNull();
+      expect(w).not.toBeNull();
+      expect((w as { y: number }).y).toBeGreaterThanOrEqual(
+        (b as { y: number }).y + (b as { height: number }).height - 1,
+      );
+    }
+    await expect(page.getByTestId("message-bot")).not.toHaveAttribute("aria-busy", "true", {
+      timeout: 60_000,
+    });
+  });
+
   for (const reduced of [false, true]) {
-    test(`the mark at the end of the text ${reduced ? "does not blink with reduced motion" : "blinks"}`, async ({
+    test(`the new text fades in ${reduced ? "with no animation under reduced motion" : "softly"}`, async ({
       page,
     }) => {
       world = await startWorld();
       await openWithBot(page, world, "Quietinho");
       if (reduced) await page.emulateMedia({ reducedMotion: "reduce" });
-      const markOf = () =>
-        page.evaluate(() => {
-          const last = document.querySelector(
-            '[data-testid="message-bot"][data-typing="true"] .ui-typing > div > :last-child',
-          );
-          return last === null ? null : getComputedStyle(last, "::after").animationName;
-        });
-
+      // Every animation name any piece of the live text ever had, and the most pieces at once.
+      await page.evaluate(() => {
+        const seen = { names: new Set<string>(), most: 0 };
+        (window as unknown as { __fade: typeof seen }).__fade = seen;
+        setInterval(() => {
+          const root = document.querySelector('[data-testid="message-bot"][data-typing="true"]');
+          if (root === null) return;
+          const pieces = [...root.querySelectorAll(".ui-live-in")];
+          seen.most = Math.max(seen.most, pieces.length);
+          for (const el of pieces) seen.names.add(getComputedStyle(el).animationName);
+        }, 10);
+      });
       await send(page, "CASE-VIVO-SIMPLES movimento");
-      await expect.poll(markOf, { timeout: 60_000 }).not.toBeNull();
-      if (reduced) expect(await markOf()).toBe("none");
-      else expect(await markOf()).not.toBe("none");
-      // The words come the same way: reduced motion only stills the mark.
       await expect(page.getByTestId("message-bot")).toContainText(LIVE_TEXTS.simples, {
         timeout: 60_000,
       });
       await expect(page.getByTestId("message-bot")).not.toHaveAttribute("aria-busy", "true");
+      const fade = await page.evaluate(() => {
+        const seen = (window as unknown as { __fade: { names: Set<string>; most: number } }).__fade;
+        return { names: [...seen.names], most: seen.most };
+      });
+      if (reduced) expect(fade.names.filter((n) => n !== "none")).toEqual([]);
+      else expect(fade.names).toContain("ui-live-in");
+      // The elements do not pile up: old pieces go back to plain text.
+      expect(fade.most).toBeLessThan(40);
     });
   }
 });
