@@ -193,18 +193,19 @@ describe("a request already answered", () => {
   describe("the sites the secret may go to", () => {
     const hosts = () => screen.getByLabelText("Endereços permitidos") as HTMLTextAreaElement;
 
-    it("starts with what the bot suggested, said as a suggestion to check", () => {
+    it("shows the sites the bot filled in, read-only (no field to type in)", () => {
       show({ suggestedHosts: ["api.github.com", "uploads.github.com"] });
-      expect(hosts().value).toBe("api.github.com\nuploads.github.com");
-      expect(screen.getByText(/Ajudante sugeriu estes sites\. Confira/)).toBeTruthy();
+      const shown = screen.getAllByTestId("secret-host").map((el) => el.textContent);
+      expect(shown).toEqual(["api.github.com", "uploads.github.com"]);
+      expect(screen.getByText("Vai ser usado em")).toBeTruthy();
+      expect(screen.queryByLabelText("Endereços permitidos")).toBeNull();
     });
 
-    it("what is saved is what the person confirms, never the bot's suggestion", async () => {
-      const { onSubmit } = show({ suggestedHosts: ["evil.example.com"] });
-      fireEvent.change(hosts(), { target: { value: "API.GitHub.com\n\napi.github.com, x.test" } });
+    it("sending confirms exactly the sites shown on the card", async () => {
+      const { onSubmit } = show({ suggestedHosts: ["api.github.com"] });
       type(VALUE);
       fireEvent.click(screen.getByTestId("secret-save"));
-      expect(onSubmit).toHaveBeenCalledExactlyOnceWith(VALUE, ["api.github.com", "x.test"]);
+      expect(onSubmit).toHaveBeenCalledExactlyOnceWith(VALUE, ["api.github.com"]);
     });
 
     it("an empty or invalid list is explained and nothing is sent (the value stays in the field)", () => {

@@ -58,10 +58,10 @@ test.describe("secret requests and the vault", () => {
     const input = form.getByTestId("secret-input");
     // The NAME is the label of the field, the reassurance is in the footer, and Enviar waits for text.
     await expect(form.getByLabel("E2E_TOKEN")).toBeVisible();
-    // The sites the secret may go to: the bot's suggestion is only where the field starts.
-    const hosts = form.getByLabel("Endereços permitidos");
-    await expect(hosts).toHaveValue("api.sugerido.test");
-    await expect(form).toContainText("Cofreiro sugeriu estes sites");
+    // Where the secret will be used: what the bot filled in, read-only (no field to type in).
+    await expect(form.getByTestId("secret-host")).toHaveText(["localhost"]);
+    await expect(form).toContainText("Vai ser usado em");
+    await expect(form.getByLabel("Endereços permitidos")).toHaveCount(0);
     await expect(form).toContainText("Guardado no cofre; o bot nunca vê o valor.");
     await expect(form.getByTestId("secret-save")).toBeDisabled();
     // The field: password type, no completion, no spellcheck; the focus is on it; reveal is off.
@@ -76,18 +76,6 @@ test.describe("secret requests and the vault", () => {
     await expect(page.getByTestId("pending-counter")).toHaveText("1");
     await input.fill(VALUE);
     await expect(form.getByTestId("secret-save")).toBeEnabled();
-    // An empty or malformed list is explained and nothing leaves the form.
-    await hosts.fill("");
-    await form.getByTestId("secret-save").click();
-    await expect(form.getByRole("alert")).toContainText("Diga para onde o segredo pode ir");
-    await hosts.fill("https://api.exemplo.com/x");
-    await form.getByTestId("secret-save").click();
-    await expect(form.getByRole("alert")).toContainText("não é um endereço válido");
-    expect(await world.api.vault.list()).toEqual(
-      expect.not.arrayContaining([expect.objectContaining({ name: "E2E_TOKEN" })]),
-    );
-    await expect(input).toHaveValue(VALUE);
-    await hosts.fill("LocalHost");
     await reveal.click();
     await expect(input).toHaveAttribute("type", "text");
     await form.getByRole("button", { name: "Esconder o valor" }).click();
@@ -98,7 +86,7 @@ test.describe("secret requests and the vault", () => {
     // The chat shows only that the secret is available, and the bot goes on and uses it.
     await expect(page.getByTestId("secret-card")).toContainText("Segredo E2E_TOKEN disponível");
     await expect(page.getByTestId("secret-card")).toHaveAttribute("data-state", "done");
-    // Using it asks first, and the card says where the secret would go (what the person confirmed).
+    // Using it asks first, and the card says where the secret would go (what the person confirmed by sending).
     const approval = page.getByTestId("approval-card");
     await expect(approval.getByTestId("approval-secret-host")).toContainText("localhost");
     await approval.getByTestId("approval-approve").click();

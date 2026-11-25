@@ -418,7 +418,7 @@ export const SCRIPTS = {
                   name: "E2E_TOKEN",
                   reason: "para acessar a API de teste",
                   // Only a suggestion: the person confirms (here, they change it to localhost).
-                  hosts: ["api.sugerido.test"],
+                  hosts: ["localhost"],
                 },
               },
             ],

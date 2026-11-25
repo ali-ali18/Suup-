@@ -5,7 +5,7 @@ import { modalOpen } from "../lib/focus.js";
 import { hostsProblem, parseHosts, type SecretOutcome } from "../lib/secret-form.js";
 import { ActionCard, ActionLabel } from "./action-card.js";
 import { DecisionCard } from "./decision-card.js";
-import { HostsField } from "./hosts-field.js";
+import { HostsField, HostsLine } from "./hosts-field.js";
 import { Pill } from "./primitives.js";
 import { userIsTyping } from "./question-card.js";
 import { SecretInput, type SecretInputHandle } from "./secret-input.js";
@@ -58,7 +58,8 @@ function OpenForm({
   // Only whether the field is empty (a boolean from its change event), never what is in it.
   const [empty, setEmpty] = useState(true);
   const [done, setDone] = useState<"provided" | "declined" | undefined>(undefined);
-  // What the bot suggested is only where the field starts: what is saved is what is here on Enviar.
+  // The sites the bot filled in are shown read-only and sent as they are; only when it gave none
+  // does the person type them.
   const [hosts, setHosts] = useState(suggestedHosts.join("\n"));
   const [hostsError, setHostsError] = useState<string | undefined>(undefined);
 
@@ -186,20 +187,21 @@ function OpenForm({
           onEmptyChange={setEmpty}
           onEnter={() => void save()}
         />
-        <HostsField
-          value={hosts}
-          onChange={(text) => {
-            setHosts(text);
-            setHostsError(undefined);
-          }}
-          error={hostsError}
-          disabled={waiting}
-          hint={
-            suggestedHosts.length > 0
-              ? `${botName} sugeriu estes sites. Confira: vale o que estiver aqui, e o segredo nunca vai para outro lugar.`
-              : `${botName} não disse para onde. Escreva os sites para onde o segredo pode ir.`
-          }
-        />
+        {suggestedHosts.length > 0 ? (
+          // The bot filled in where it will use the secret: shown, not typed (fewer mistakes).
+          <HostsLine hosts={suggestedHosts} />
+        ) : (
+          <HostsField
+            value={hosts}
+            onChange={(text) => {
+              setHosts(text);
+              setHostsError(undefined);
+            }}
+            error={hostsError}
+            disabled={waiting}
+            hint={`${botName} não disse para onde. Escreva os sites para onde o segredo pode ir.`}
+          />
+        )}
       </form>
     </DecisionCard>
   );
