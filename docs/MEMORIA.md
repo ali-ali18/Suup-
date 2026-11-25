@@ -2,6 +2,8 @@
 
 Como o harness lembra: o que é guardado, quem guarda, o que entra em toda execução, o que só se acha buscando e como você vê e corrige tudo. Definição de produto: seção 4.6 do `PLANO.md`; a conversa com o bot: seções 4.5 e 4.15. A pesquisa que embasa a escrita automática, a consolidação e a defesa contra envenenamento: [pesquisas/memoria-dos-agentes.md](pesquisas/memoria-dos-agentes.md).
 
+**Sempre à mão (decisão do dono, 25/11/2026).** As ferramentas de memória (`remember`, `recall`, `forget`, `search_conversations`) são oferecidas a todo bot em toda execução, mesmo que a lista concedida a ele não as traga; só a avaliação isolada, que roda sem memória, fica sem elas.
+
 ## As quatro camadas
 
 | Camada | O que é | Quem escreve | Quem enxerga | Como chega ao bot |

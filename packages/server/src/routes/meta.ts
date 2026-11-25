@@ -1,6 +1,6 @@
 import { doctorQuerySchema, type ModelInfo, type ToolInfo } from "@suup/api";
 import { MEMORY_TOOL_NAMES } from "@suup/core";
-import { runDoctorChecks } from "@suup/runtime";
+import { ALWAYS_ON_TOOL_NAMES, runDoctorChecks } from "@suup/runtime";
 import type { Route } from "../http.js";
 
 const CONTROL_TOOLS = ["plan", "finish", "escalate"];
@@ -65,10 +65,14 @@ export const metaRoutes: Route[] = [
         memory: (MEMORY_TOOL_NAMES as readonly string[]).includes(tool.name),
       }));
       // `request_secret` exists only where there is a vault to put the answer in.
-      const control =
-        ctx.runtime.vault.settings === undefined
-          ? CONTROL_TOOLS
-          : [...CONTROL_TOOLS, "request_secret"];
+      // Memory and the web are offered to every bot outside an isolated evaluation
+      // (`withAlwaysOnTools`), whatever its grant list says: they are listed here too.
+      const registered = new Set(items.map((t) => t.name));
+      const control = [
+        ...CONTROL_TOOLS,
+        ...(ctx.runtime.vault.settings === undefined ? [] : ["request_secret"]),
+        ...ALWAYS_ON_TOOL_NAMES.filter((name) => registered.has(name)),
+      ];
       return { body: { items, control } };
     },
   },

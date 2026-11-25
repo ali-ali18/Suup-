@@ -23,11 +23,14 @@ describe("system prompt", () => {
       expect(text).toContain("when that tool is offered");
       expect(text).toContain("without collecting the value");
       expect(text).toContain("alternative that does not expose it");
+      // the user is told how credentials travel (owner, 25/11/2026)
+      expect(text).toContain("never send passwords or sensitive data in chat");
+      expect(text).toContain("you send a secure form");
     }
   });
 
   it("is short enough to be followed", () => {
-    expect(words(buildSystemPrompt({ name: "Ada", personality: "" }))).toBeLessThanOrEqual(680);
+    expect(words(buildSystemPrompt({ name: "Ada", personality: "" }))).toBeLessThanOrEqual(710);
   });
 
   it("carries the bot's identity and the harness rules", () => {

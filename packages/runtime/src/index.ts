@@ -17,6 +17,7 @@ export {
   type XlsxCell,
   type XlsxInspection,
 } from "@suup/documents";
+export { ALWAYS_ON_TOOL_NAMES, withAlwaysOnTools } from "./always-on-tools.js";
 export {
   configPath,
   configSchema,
