@@ -1,7 +1,9 @@
 import type { SearchPlugin, SearchProvider } from "@suup/api";
 import { ChevronRight, Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useServices } from "../../app/context.js";
 import { cx } from "../../lib/cx.js";
+import { writeSearchKey } from "../../lib/secret-form.js";
 import { BulletList, MutedText, Pill } from "../../ui/primitives.js";
 import { Screen, ScreenBody, ScreenHeader } from "../../ui/screen.js";
 import { SecretDialog } from "../settings/VaultSettings.js";
@@ -110,6 +112,7 @@ export function SearchPluginPage({
   reload(): Promise<void>;
   autoStart: boolean;
 }) {
+  const { api } = useServices();
   const { provider, plugin } = entry;
   const [adding, setAdding] = useState(false);
   const started = useRef(false);
@@ -218,6 +221,7 @@ export function SearchPluginPage({
             title: `Chave do ${provider.label}`,
             steps: plugin.keySteps,
           }}
+          save={(value) => writeSearchKey(api.webSearch, provider.id, value)}
           onSaved={() => void reload()}
           onClose={() => setAdding(false)}
         />

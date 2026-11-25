@@ -71,3 +71,16 @@ export const answerSecretRequestResultSchema = z.object({
   provided: z.boolean(),
 });
 export type AnswerSecretRequestResult = z.infer<typeof answerSecretRequestResultSchema>;
+
+/**
+ * The credential of a plugin (the key of a search engine, the token of a gallery connector): it is
+ * kept WITH the plugin, outside the owner's vault, and never granted to a bot. Write-only, like a
+ * secret: the value goes in and nothing in the API brings it back.
+ */
+export const setPluginCredentialBodySchema = z.object({
+  /** The key or token. At least 8 characters. It is never returned. */
+  value: z.string().min(8).max(16_384),
+});
+export type SetPluginCredentialBody = z.input<typeof setPluginCredentialBodySchema>;
+
+export const pluginCredentialStoredSchema = z.object({ stored: z.literal(true) });

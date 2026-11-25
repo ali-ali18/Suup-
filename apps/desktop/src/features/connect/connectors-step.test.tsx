@@ -87,6 +87,7 @@ function setup(
     connectorCatalog: {
       list: vi.fn(async () => current),
       install: vi.fn(),
+      setToken: vi.fn(async () => {}),
       ...(extra.connectorCatalog as object),
     },
     webSearch: { get: vi.fn(async () => options.search ?? { enabled: true, providers: [] }) },
@@ -447,6 +448,14 @@ describe("connecting from the entrance", () => {
     fireEvent.change(field, { target: { value: "made_up_value_for_the_test" } });
     t.serve(fresh().map((i) => (i.entry.id === "github" ? item("github", "connected") : i)));
     fireEvent.click(within(dialog).getByTestId("secret-write"));
+    // the token goes to the connector's own route, never to the owner's vault
+    await waitFor(() =>
+      expect(t.api.connectorCatalog.setToken).toHaveBeenCalledWith(
+        "github",
+        "made_up_value_for_the_test",
+      ),
+    );
+    expect(t.api.vault.set).not.toHaveBeenCalled();
     await waitFor(() => expect(install).toHaveBeenCalledTimes(2));
     await waitFor(() =>
       expect(within(rowOf("github")).getByTestId("connector-state").textContent).toBe("Conectado"),

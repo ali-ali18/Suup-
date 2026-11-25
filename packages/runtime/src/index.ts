@@ -134,6 +134,7 @@ export {
   createNetworkService,
   type NetworkService,
 } from "./network/service.js";
+export { type PluginCredentials, searchKeyOwner } from "./plugin-credentials.js";
 export {
   PROPOSE_TEAM_TOOL,
   proposeTeamTool,

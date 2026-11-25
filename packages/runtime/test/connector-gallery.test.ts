@@ -490,6 +490,31 @@ describe.skipIf(!DATABASE_URL)(
       expect(await rt.connectors.get("github")).toBeNull();
     });
 
+    it("show_connect_card takes a search engine of the gallery by its exact id, only with add_key and no url", async () => {
+      const rt = await open();
+      const tool = showConnectCardTool(() => rt.connectors.gallery);
+      const ctx = {} as Parameters<typeof tool.execute>[1];
+      for (const id of ["tavily", "brave"]) {
+        const ok = await tool.execute({ connector: id, action: "add_key" }, ctx);
+        expect(ok.isError, id).not.toBe(true);
+        expect(String(ok.content)).toContain("The card is shown to the user (add_key)");
+      }
+      for (const action of ["connect", "authorize_app", "grant", "manage"] as const) {
+        const bad = await tool.execute({ connector: "tavily", action }, ctx);
+        expect(bad.isError, action).toBe(true);
+        expect(String(bad.content)).toContain("add_key");
+      }
+      const withUrl = await tool.execute(
+        { connector: "tavily", action: "add_key", url: "https://app.tavily.com/home" },
+        ctx,
+      );
+      expect(withUrl.isError).toBe(true);
+      // Exact id only: a different case or a neighbour is no search engine (and not a connector).
+      const unknown = await tool.execute({ connector: "Tavily", action: "add_key" }, ctx);
+      expect(unknown.isError).toBe(true);
+      expect(String(unknown.content)).toContain("propose_connector");
+    });
+
     it("show_connect_card only takes a link of a host the connector declares, https, no login", async () => {
       const rt = await open();
       const tool = showConnectCardTool(() => rt.connectors.gallery);

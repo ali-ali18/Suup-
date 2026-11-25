@@ -1,7 +1,9 @@
 import type { SearchProvider } from "@suup/api";
 import { Plus } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useServices } from "../../app/context.js";
 import { useReducedMotion } from "../../lib/reduced-motion.js";
+import { writeConnectorToken, writeSearchKey } from "../../lib/secret-form.js";
 import { galleryStart, STAGE_SURPRISED_MS, WELCOME_EXIT_MS } from "../../lib/welcome.js";
 import { Dialog, MutedText, Notice, Pill } from "../../ui/primitives.js";
 import { GalleryFrame } from "../../ui/welcome.js";
@@ -105,6 +107,7 @@ function EntryRow({
   pollMs: number;
   hooks: RowHooks;
 }) {
+  const { api } = useServices();
   const { item } = entry;
   const id = item.entry.id;
   const name = item.entry.name;
@@ -219,6 +222,7 @@ function EntryRow({
             title: `Token do ${name}`,
             steps: item.entry.auth.steps,
           }}
+          save={(value) => writeConnectorToken(api.connectorCatalog, item.entry.id, value)}
           onSaved={() => void connect.secretSaved()}
           onClose={connect.closeSecret}
         />
@@ -269,6 +273,7 @@ function EngineRow({
   reload(): Promise<void>;
   hooks: RowHooks;
 }) {
+  const { api } = useServices();
   const { provider, plugin } = entry;
   const [adding, setAdding] = useState(false);
   const canAdd = provider.state === "no_key" && provider.keyNames !== undefined;
@@ -314,6 +319,7 @@ function EngineRow({
             title: `Chave do ${provider.label}`,
             steps: plugin.keySteps,
           }}
+          save={(value) => writeSearchKey(api.webSearch, provider.id, value)}
           onSaved={() => {
             hooks.report(plugin.id, "done");
             void reload();

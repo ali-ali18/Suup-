@@ -71,17 +71,27 @@ describe.skipIf(!DATABASE_URL)(
       expect(await code(api.connectorCatalog.install("stackoverflow"))).toBe("conflict");
       expect(await code(api.connectorCatalog.install("nada-disso"))).toBe("not_found");
 
-      // A token entry: installed off; the token through the vault (the secure form); then on.
+      // A token entry: installed off; the token kept with the connector (the secure form); then on.
       const github = await api.connectorCatalog.install("github");
       expect(github).toMatchObject({ next: "secret", item: { status: "needs_secret" } });
-      await api.vault.set("GITHUB_TOKEN", { value: "ghp_made_up_for_the_api_test_42" });
+      await api.connectorCatalog.setToken("github", "ghp_made_up_for_the_api_test_42");
+      // The token is the connector's own: not in the owner's vault, not offered to any bot.
+      expect(await api.vault.list()).toEqual([]);
+      expect(
+        await code(api.connectorCatalog.setToken("notion", "ghp_made_up_for_the_api_test_42")),
+      ).toBe("not_found");
       const again = await api.connectorCatalog.install("github");
       expect(again).toMatchObject({ next: "none", item: { status: "connected" } });
       expect(again.connector.enabled).toBe(true);
       // A token connector has no OAuth to start.
       expect(await code(api.connectors.oauthStart("github"))).toBe("invalid_request");
+      // DELETE takes away only the token the connector keeps; removing the connector does too.
+      await api.connectorCatalog.removeToken("github");
+      expect(await code(api.connectorCatalog.removeToken("github"))).toBe("not_found");
+      await api.connectorCatalog.setToken("github", "ghp_made_up_for_the_api_test_43");
       await api.connectors.remove("github");
       await api.connectors.remove("notion");
+      expect(await w.started.runtime.vault.list({ includeManaged: true })).toEqual([]);
     });
 
     it("logs in with OAuth: start, browser, loopback callback, connected; a worker uses the tools; disconnect", async () => {
@@ -128,7 +138,7 @@ describe.skipIf(!DATABASE_URL)(
       for (const refresh of fake.validRefreshTokens()) expect(bodies).not.toContain(refresh);
       // The login is the connector's own: the owner's vault does not list it, nor accepts a grant.
       expect(bodies).not.toContain(oauthSecretNames("oauthfake").access);
-      expect((await api.vault.list()).map((s) => s.name)).toEqual(["GITHUB_TOKEN"]);
+      expect(await api.vault.list()).toEqual([]);
       const bot = await api.bots.create({ name: "concedido", modelId: "model-x" });
       await expect(api.vault.grant(oauthSecretNames("oauthfake").access, bot.id)).rejects.toThrow();
 

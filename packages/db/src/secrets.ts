@@ -16,7 +16,7 @@ export interface SecretMeta {
   createdAt: Date;
   updatedAt: Date;
   lastUsedAt: Date | null;
-  /** The connector that keeps this secret (its OAuth login), or null for the owner's own. */
+  /** The plugin that keeps this secret (a connector, `search:<engine>`), or null for the owner's own. */
   managedBy: string | null;
 }
 
@@ -66,12 +66,12 @@ export class SecretNotFoundError extends Error {
   }
 }
 
-/** The secret belongs to a connector's login: the owner's vault cannot touch it. */
+/** The secret belongs to a plugin (a connector's login or token, a search key): the owner's vault cannot touch it. */
 export class SecretManagedError extends Error {
   override readonly name = "SecretManagedError";
   constructor(readonly secretName: string) {
     super(
-      `O segredo ${secretName} é o login de um conector: o Suup cuida dele, e ele não pode ser editado nem concedido a um bot.`,
+      `O segredo ${secretName} é a credencial de um plugin (o login de um conector, o token dele ou a chave de uma busca): o Suup cuida dele, e ele não pode ser editado pelo cofre nem concedido a um bot.`,
     );
   }
 }
@@ -233,6 +233,24 @@ export async function grantSecret(db: Db, name: string, botId: string): Promise<
     if (meta === null) throw new SecretNotFoundError(name);
     if (meta.managedBy !== null) throw new SecretManagedError(name);
   }
+}
+
+/**
+ * Hands an owner's secret over to the plugin that uses it: marks it `managed_by` (exact name) and
+ * deletes its grants to bots, in one transaction. Only a secret with no mark moves; one that a
+ * plugin already keeps (this one or another) is left as it is. Idempotent. Returns whether it
+ * moved. The value is never touched.
+ */
+export async function adoptSecret(db: Db, name: string, managedBy: string): Promise<boolean> {
+  const mark = z.string().min(1).max(64).parse(managedBy);
+  return db.sql.begin(async (sql) => {
+    const rows = await sql`
+      update secrets set managed_by = ${mark} where name = ${name} and managed_by is null returning id`;
+    const [row] = rows;
+    if (row === undefined) return false;
+    await sql`delete from secret_grants where secret_id = ${row.id as string}`;
+    return true;
+  });
 }
 
 /** Takes the permission away. Returns whether the bot had it. */

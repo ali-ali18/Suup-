@@ -1,6 +1,8 @@
 // Owns answering a bot's `request_secret`: the user's value goes straight to the vault (never
 // through the model, the event log or the chat), the bot is granted the secret, and the run gets
 // the only thing the model may know: that the secret is now available (or that the user declined).
+// A name that is a PLUGIN's credential (a connector's token, a search engine's key) is the exception:
+// it is kept by the plugin, never granted, and the model is told the plugin keeps it.
 import { getRun, listRunEvents, postInbox } from "@suup/db";
 import { RuntimeError } from "./errors.js";
 import type { Runtime } from "./runtime.js";
@@ -71,6 +73,15 @@ export async function answerSecretRequest(
       text: `The user declined to provide the secret ${request.name}.`,
     });
     return { name: request.name, provided: false };
+  }
+  if (await runtime.pluginCredentials.setByName(request.name, answer.value)) {
+    // Exact name of a plugin's credential: kept with the plugin, never an owner's secret, never
+    // granted to the bot. Suup uses it; the bot does not.
+    await postInbox(runtime.db, runId, {
+      kind: "user_message",
+      text: `The credential ${request.name} was stored by the plugin that uses it. It is not a secret you can use: Suup uses it for you when you call that plugin, so do not reference {{secret:${request.name}}}.`,
+    });
+    return { name: request.name, provided: true };
   }
   await runtime.vault.set(request.name, answer.value, {
     ...(answer.description === undefined ? {} : { description: answer.description }),

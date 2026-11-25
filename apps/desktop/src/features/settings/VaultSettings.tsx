@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { sortedBots } from "../../app/selectors.js";
 import { orderedConnectors, orderedSecrets } from "../../data/reducers.js";
-import { nameProblem, writeSecret } from "../../lib/secret-form.js";
+import { nameProblem, type SecretOutcome, writeSecret } from "../../lib/secret-form.js";
 import { CheckInput } from "../../ui/choice.js";
 import {
   BulletList,
@@ -41,6 +41,7 @@ import { useTask } from "./use-task.js";
 export function SecretDialog({
   existing,
   preset,
+  save: saveValue,
   onClose,
   onSaved,
 }: {
@@ -51,8 +52,14 @@ export function SecretDialog({
    * declares the name and where to create it). The name is not typed; the steps are shown instead.
    */
   preset?: { name: string; title: string; steps: readonly string[] } | undefined;
+  /**
+   * Where the value goes instead of the owner's vault: a plugin keeps its own credential (the token
+   * of a connector, the key of a search engine), so its form writes through the plugin's route.
+   * The form looks the same.
+   */
+  save?(value: string): Promise<SecretOutcome<unknown>>;
   onClose(): void;
-  onSaved?(secret: Secret): void;
+  onSaved?(secret: Secret | undefined): void;
 }) {
   const { api, sync } = useServices();
   const bots = useData((s) => s.bots);
@@ -80,6 +87,10 @@ export function SecretDialog({
     field.current?.clear();
     let saved: Secret | undefined;
     const ok = await task.run(async () => {
+      if (saveValue !== undefined) {
+        const outcome = await saveValue(value);
+        return outcome.ok ? { ok: true } : { ok: false, message: outcome.message };
+      }
       const outcome = await writeSecret(api.vault, name, {
         value,
         ...(description.trim() === "" ? {} : { description: description.trim() }),
@@ -90,7 +101,7 @@ export function SecretDialog({
       sync.mergeSecretNow(outcome.result);
       return { ok: true };
     });
-    if (ok && saved !== undefined) {
+    if (ok) {
       onSaved?.(saved);
       onClose();
     }

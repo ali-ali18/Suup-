@@ -117,3 +117,38 @@ export async function writeSecret(
     return failure(error, input.value);
   }
 }
+
+/**
+ * Keeps the token of a gallery connector WITH the connector (`PUT /v1/connector-catalog/{id}/token`):
+ * not in the owner's vault, never granted to a bot. Never throws.
+ */
+export async function writeConnectorToken(
+  catalog: Pick<SuupClient["connectorCatalog"], "setToken">,
+  connectorId: string,
+  value: string,
+): Promise<SecretOutcome<undefined>> {
+  const problem = valueProblem(value);
+  if (problem !== undefined) return { ok: false, conflict: false, message: problem };
+  try {
+    await catalog.setToken(connectorId, value);
+    return { ok: true, result: undefined };
+  } catch (error) {
+    return failure(error, value);
+  }
+}
+
+/** Keeps the key of a search engine WITH the engine (`PUT /v1/web-search/providers/{id}/key`). Never throws. */
+export async function writeSearchKey(
+  webSearch: Pick<SuupClient["webSearch"], "setKey">,
+  engineId: string,
+  value: string,
+): Promise<SecretOutcome<undefined>> {
+  const problem = valueProblem(value);
+  if (problem !== undefined) return { ok: false, conflict: false, message: problem };
+  try {
+    await webSearch.setKey(engineId, value);
+    return { ok: true, result: undefined };
+  } catch (error) {
+    return failure(error, value);
+  }
+}

@@ -52,6 +52,8 @@ describe("the owner's rule: hand over the action, never directions", () => {
       "`propose_connector`",
       "`show_connect_card`",
       "`request_secret`",
+      "The key of a plugin",
+      "action `add_key`",
       "NEVER paste the link in your message",
       "Never tell the user to go look in Settings",
     ]) {
