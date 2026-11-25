@@ -30,6 +30,18 @@ async function show(p: Project, id: string) {
   };
 }
 
+/** The id of the welcome run the worker started for a bot (it is created in the background). */
+async function waitForWelcomeRun(p: Project, timeoutMs = 10_000): Promise<string> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const rows = await p.db.sql<{ id: string }[]>`
+      select id from runs where origin = 'reception' order by created_at limit 1`;
+    if (rows[0] !== undefined) return rows[0].id;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error("the worker never started the welcome run");
+}
+
 async function events(p: Project, id: string, extra: string[] = []) {
   const r = await p.suup(["inspect", id, "--json", ...extra]);
   expect(r.code).toBe(0);
@@ -717,6 +729,10 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup, end to end"), { timeout: 30_00
         // queue. Both detached runs must be finished before the interrupt, or the last assertion
         // depends on which one the worker got to first.
         await h.waitFor(`Execução ${secondId.slice(0, 8)}: concluída`);
+        // The worker also starts the welcome of the bot (docs/RECEPCAO.md) as a run of its own, and
+        // that run is queued behind the two above. The same rule applies: wait for it too.
+        const welcomeId = await waitForWelcomeRun(p);
+        await h.waitFor(`Execução ${welcomeId.slice(0, 8)}: concluída`);
         h.interrupt();
       },
     });
