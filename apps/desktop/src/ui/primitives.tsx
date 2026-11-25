@@ -37,6 +37,8 @@ const PILL_TONE = {
 /** `sm` is the pill of a row of settings (32 px), `md` the normal one (the control height). */
 const PILL_SIZE = {
   md: "h-control px-4.5",
+  /** The one big action of a whole screen (the "Continuar" of the connectors' gallery). */
+  lg: "h-12 px-8",
   sm: "h-8 px-4",
   /** A square pill with only an icon in it (the arrow of the split button). */
   icon: "size-control px-0",
@@ -343,6 +345,15 @@ export interface TextFieldProps {
   onEnter?(): void;
   hideLabel?: boolean;
   align?: "center";
+  /** The browser's hint for filling the field (`nickname`, ...). */
+  autoComplete?: string;
+  /** What the Enter key of a touch keyboard says (`done`, ...). */
+  enterKeyHint?: "enter" | "done" | "go" | "next" | "previous" | "search" | "send";
+  maxLength?: number;
+  /** The colour of the chat's input (`bg-raised`) instead of the page's (the welcome). */
+  raised?: boolean;
+  /** `lg`: the big field of "Crie seu bot" (taller, title-sized text). */
+  size?: "lg";
 }
 
 /** Text field (Figma v2/Campo): single or multiline, with focus and error states, on `Field` and `Input`. */
@@ -362,8 +373,18 @@ export function TextField({
   onEnter,
   hideLabel,
   align,
+  autoComplete,
+  enterKeyHint,
+  maxLength,
+  raised = false,
+  size,
 }: TextFieldProps) {
-  const look = { error: error !== undefined, ...(align === undefined ? {} : { align }) } as const;
+  const look = {
+    error: error !== undefined,
+    raised,
+    ...(size === undefined ? {} : { size }),
+    ...(align === undefined ? {} : { align }),
+  } as const;
   return (
     <Field invalid={error !== undefined} disabled={disabled} name={name}>
       <FieldCaption hidden={hideLabel}>{label}</FieldCaption>
@@ -383,6 +404,9 @@ export function TextField({
           value={value}
           placeholder={placeholder}
           autoFocus={autoFocus}
+          {...(autoComplete === undefined ? {} : { autoComplete })}
+          {...(enterKeyHint === undefined ? {} : { enterKeyHint })}
+          {...(maxLength === undefined ? {} : { maxLength })}
           onValueChange={onChange}
           onKeyDown={(e) => {
             if (e.key === "Enter" && onEnter !== undefined) {

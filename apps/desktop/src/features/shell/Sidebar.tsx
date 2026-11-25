@@ -214,6 +214,7 @@ function BotEntry({
 export function Sidebar() {
   const { api, sync, disconnect, mode } = useServices();
   const bots = useData((s) => s.bots);
+  const loaded = useData((s) => s.botsLoaded);
   const runs = useData((s) => s.runs);
   const conversations = useData((s) => s.conversations);
   const approvals = useData((s) => s.approvals);
@@ -221,6 +222,10 @@ export function Sidebar() {
   const sidebarWidth = useUi((s) => s.sidebarWidth);
   const view = useUi((s) => s.view);
   const selected = useUi((s) => s.selectedBotId);
+  // The account says the name the server has; "Você" until the person has said it.
+  const ownerName = useUi((s) => s.ownerName);
+  const ownerLabel = ownerName ?? "Você";
+  const ownerInitial = (Array.from(ownerLabel)[0] ?? "V").toLocaleUpperCase("pt-BR");
   const picked = useUi((s) => s.botPicked);
   const ui = useUi.getState;
   const selectBot = useUi((s) => s.selectBot);
@@ -238,6 +243,8 @@ export function Sidebar() {
   );
   // Only a bot the person chose is marked; the one the app opened by itself is not.
   const activeId = view === "chat" && picked ? selected : null;
+  // No bot at all (everyone archived): the list says so, and offers the way to make one.
+  const noBots = loaded && flat.length === 0;
   const tabStop = flat.some((b) => b.id === activeId) ? activeId : flat[0]?.id;
 
   const previewOf = (bot: Bot): string => {
@@ -399,14 +406,18 @@ export function Sidebar() {
             )}
             aria-hidden="true"
           >
-            V
+            {ownerInitial}
             {pending > 0 && (
               <BotBadge kind="question" data-testid="pending-counter">
                 {pending}
               </BotBadge>
             )}
           </span>
-          {variant === "bar" && <span className="truncate text-label font-label">Você</span>}
+          {variant === "bar" && (
+            <span className="truncate text-label font-label" data-testid="owner-name">
+              {ownerLabel}
+            </span>
+          )}
         </button>
       )}
     />
@@ -502,13 +513,27 @@ export function Sidebar() {
                     {section.bots.map((bot) => entry(bot, "rail"))}
                   </div>
                 ))}
+              {noBots && (
+                // No bot: the rail's only "+" is here, where the bots would be (the one at the bottom is hidden).
+                <RoundButton
+                  label="Criar bot"
+                  tone="raised"
+                  size="circle"
+                  onClick={ui().openNewBot}
+                  data-testid="rail-empty-create"
+                >
+                  <Plus size={22} aria-hidden="true" />
+                </RoundButton>
+              )}
             </div>
             <ScrollFade tone="sidebar" />
           </div>
           <div className="relative flex w-full flex-none flex-col items-center gap-1 pt-2">
-            <RoundButton label="Novo bot" tone="ghost" size="circle" onClick={ui().openNewBot}>
-              <Plus size={22} aria-hidden="true" />
-            </RoundButton>
+            {!noBots && (
+              <RoundButton label="Novo bot" tone="ghost" size="circle" onClick={ui().openNewBot}>
+                <Plus size={22} aria-hidden="true" />
+              </RoundButton>
+            )}
             <RoundButton
               label="Conectores"
               tone="ghost"
@@ -557,6 +582,17 @@ export function Sidebar() {
                   </div>
                 </section>
               ))}
+              {noBots && (
+                <div
+                  className="flex flex-1 flex-col items-center justify-center gap-3 px-3 text-center"
+                  data-testid="sidebar-empty"
+                >
+                  <MutedText as="p">Nenhum bot por aqui ainda</MutedText>
+                  <Pill tone="secondary" size="sm" onClick={ui().openNewBot}>
+                    Criar bot
+                  </Pill>
+                </div>
+              )}
               {layout.rest.length > 0 && (
                 <section aria-label="Bots" data-testid="rest-section">
                   <SidebarLabel>Bots</SidebarLabel>

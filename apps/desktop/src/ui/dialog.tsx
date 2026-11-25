@@ -116,42 +116,68 @@ export function DialogClose({ render }: { render: ReactElement<Record<string, un
   return <DialogPrimitive.Close render={render} />;
 }
 
-/** The plain dialog: a title, the X, a body that scrolls, and a footer of buttons at the right. */
+/**
+ * The plain dialog: a title, the X, a body that scrolls, and a footer of buttons at the right.
+ * `hero` puts a face (or a picture) in the middle above a centred title, the X in the corner
+ * (the offer of a supervisor); `initialFocus` names what takes the focus on opening (by default
+ * the first control, which is the X).
+ */
 export function Dialog({
   title,
   onClose,
   children,
   footer,
   wide,
+  hero,
+  initialFocus,
+  testId,
 }: {
   title: string;
   onClose(): void;
   children: ReactNode;
   footer?: ReactNode;
   wide?: boolean;
+  hero?: ReactNode;
+  initialFocus?: RefObject<HTMLElement | null>;
+  testId?: string;
 }) {
   const titleId = useId();
+  const close = (
+    <DialogClose
+      render={
+        <IconButton label="Fechar janela">
+          <X size={18} aria-hidden="true" />
+        </IconButton>
+      }
+    />
+  );
   return (
     <Modal
       onClose={onClose}
       labelledBy={titleId}
+      {...(initialFocus === undefined ? {} : { initialFocus })}
+      {...(testId === undefined ? {} : { testId })}
       className={cx(
         "flex max-h-[90vh] flex-col gap-4 overflow-hidden rounded-card border border-border-strong bg-surface p-6 shadow-popover",
         wide === true ? "w-dialog-wide" : "w-dialog",
       )}
     >
-      <div className="flex items-center justify-between gap-3">
-        <DialogPrimitive.Title id={titleId} className="text-title font-title">
-          {title}
-        </DialogPrimitive.Title>
-        <DialogClose
-          render={
-            <IconButton label="Fechar janela">
-              <X size={18} aria-hidden="true" />
-            </IconButton>
-          }
-        />
-      </div>
+      {hero === undefined ? (
+        <div className="flex items-center justify-between gap-3">
+          <DialogPrimitive.Title id={titleId} className="text-title font-title">
+            {title}
+          </DialogPrimitive.Title>
+          {close}
+        </div>
+      ) : (
+        <div className="relative flex flex-col items-center gap-3 text-center">
+          <div className="absolute top-0 right-0">{close}</div>
+          {hero}
+          <DialogPrimitive.Title id={titleId} className="text-title font-title">
+            {title}
+          </DialogPrimitive.Title>
+        </div>
+      )}
       {/* A tall form scrolls inside the dialog; the title and the buttons stay where they are. */}
       <div className="-m-0.5 min-h-0 flex-auto overflow-y-auto p-0.5">{children}</div>
       {footer !== undefined && <div className="flex flex-none justify-end gap-2">{footer}</div>}

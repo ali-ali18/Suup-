@@ -2,10 +2,13 @@ import { useEffect, useLayoutEffect, useMemo } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { sortedBots } from "../../app/selectors.js";
 import { useUi } from "../../app/ui-store.js";
+import { syncOwnerName } from "../../lib/owner-name.js";
 import { ChatScreen } from "../chat/ChatScreen.js";
 import { InspectorScreen } from "../inspector/InspectorScreen.js";
 import { MemoryScreen } from "../memory/MemoryScreen.js";
 import { NewBotDialog } from "../new-bot/NewBotDialog.js";
+import { NoBots } from "../new-bot/NoBots.js";
+import { SupervisorOffer } from "../new-bot/SupervisorOffer.js";
 import { CommandPalette, ShortcutsDialog } from "../palette/CommandPalette.js";
 import { PendingScreen } from "../pending/PendingScreen.js";
 import { ConnectorsScreen } from "../plugins/ConnectorsScreen.js";
@@ -29,7 +32,20 @@ export function Shell() {
   const groupBotId = useUi((s) => s.groupBotId);
   const settingsOpen = useUi((s) => s.settingsOpen);
   const list = useMemo(() => sortedBots(bots), [bots]);
-  useUpdateChecks(useServices().platform.updater);
+  const { api, platform } = useServices();
+  useUpdateChecks(platform.updater);
+
+  // Connected: the name typed in the welcome goes to the server (only if it has none), and the
+  // account of the sidebar says the name the server has.
+  useEffect(() => {
+    let current = true;
+    void syncOwnerName(api).then((name) => {
+      if (current) useUi.getState().setOwnerName(name);
+    });
+    return () => {
+      current = false;
+    };
+  }, [api]);
 
   // Nothing selected yet (or the selected bot vanished): the main bot, else the first.
   useEffect(() => {
@@ -78,7 +94,9 @@ export function Shell() {
             {banner}
           </div>
         )}
-        {view === "chat" && <ChatScreen />}
+        {/* A team with no bot (all archived): a friendly line and the way to make one. A new
+            account makes its first bot in the entrance, before the app. */}
+        {view === "chat" && (loaded && list.length === 0 ? <NoBots /> : <ChatScreen />)}
         {view === "pending" && <PendingScreen />}
         {view === "memory" && <MemoryScreen />}
         {view === "inspector" && <InspectorScreen />}
@@ -89,6 +107,7 @@ export function Shell() {
       <UpdateNotice />
       {settingsOpen && <SettingsDialog />}
       {newBotOpen && <NewBotDialog />}
+      <SupervisorOffer />
       {groupBotId !== null && <GroupDialog />}
       {paletteOpen && <CommandPalette />}
       {shortcutsOpen && <ShortcutsDialog />}

@@ -86,10 +86,15 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup server, end to end"), { timeout
         await handle.waitFor("Servidor no ar em", 30_000);
         const api = createClient({ baseUrl: `http://127.0.0.1:${port}`, token });
         expect(await api.health()).toEqual({ status: "ok" });
-        // The main bot was created at start, and the embedded worker answers.
-        const [main] = await api.bots.list();
-        expect(main?.name).toBe("Principal");
-        const conversation = await api.bots.openConversation(main?.id as string);
+        // The server starts with no bots; the user makes the first one, and the embedded worker answers.
+        expect(await api.bots.list()).toEqual([]);
+        const [model] = await api.models.list();
+        const main = await api.bots.create({
+          name: "Principal",
+          modelId: model?.id as string,
+          allowedTools: (await api.tools.list()).items.map((t) => t.name),
+        });
+        const conversation = await api.bots.openConversation(main.id);
         await api.conversations.send(conversation.id, "OI-SERVIDOR");
         const deadline = Date.now() + 30_000;
         for (;;) {
@@ -108,7 +113,6 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup server, end to end"), { timeout
     expect(result.code).toBe(0);
     expect(result.stdout).toContain(`http://127.0.0.1:${port}`);
     expect(result.stdout).toContain("com o worker");
-    expect(result.stdout).toContain("Bot principal criado");
     // No token anywhere in what it prints.
     expect(result.stdout + result.stderr).not.toContain(token);
     // Binding to loopback by default: no warning about exposure.

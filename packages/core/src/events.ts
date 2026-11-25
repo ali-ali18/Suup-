@@ -443,6 +443,11 @@ export const runEventSchema = z.discriminatedUnion("type", [
        * so the system prompt is byte-identical on every request and a replay says the same.
        */
       now: z.exactOptional(runClockSchema),
+      /**
+       * The name the user chose to be called by (their settings), read once at the start of the
+       * run. Absent when they have not said one (a run recorded before it existed too).
+       */
+      ownerName: z.exactOptional(z.string().min(1).max(200)),
       /** The other active bots of the user, loaded once per run. */
       team: z.exactOptional(z.array(teammateSchema)),
       /** What the bot's machine is in this run. */

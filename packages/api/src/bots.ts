@@ -2,32 +2,40 @@ import { z } from "zod";
 import { boolQuery, isoDate, list, uuid } from "./common.js";
 import { runStatusSchema } from "./runs.js";
 
+/** The user's bubble text: white on every colour. */
+const USER_BUBBLE_TEXT = "#ffffff";
+
 /**
- * The closed palette a bot's mascot and conversation may be painted with. The server stores only
- * these ids (never CSS). Every entry carries its colours, chosen so the contrast of each text colour
- * on its fill is at least 4.5:1 (a test checks it; the app never computes colours):
- * - `fill` / `onFill`: the mascot's body (and the send button) and what is drawn on it;
- * - `userBubbleFill` / `userBubbleOnFill`: the user's bubble in a conversation with that bot. It
- *   is the bot's colour, except for the white bot: its bubble is a neutral grey with light text.
+ * The closed palette a bot's mascot and conversation may be painted with, in the order the app
+ * shows it (the owner's reference of 24/11/2026; amber keeps the id `amarelo`). The server stores
+ * only these ids (never CSS). Every entry carries its colours:
+ * - `fill` / `onFill`: the mascot's body (and the send button) and what is drawn on it; chosen so
+ *   the contrast of `onFill` on `fill` is at least 4.5:1 (a test checks it; the app never computes
+ *   colours);
+ * - `userBubbleFill` / `userBubbleOnFill`: the user's bubble in a conversation with that bot. It is
+ *   the bot's colour, except for the white bot: its bubble is a neutral grey. The text is white on
+ *   every colour (owner's decision, 24/11/2026), so on the light colours (amber, turquoise, green...)
+ *   it is below 4.5:1: the colours are not darkened to make up for it.
  */
 export const BOT_PALETTE = {
-  laranja: entry("laranja", "#ff6700", "#0b0b0c"),
-  azul: entry("azul", "#1084fe", "#0b0b0c"),
-  verde: entry("verde", "#00c972", "#0b0b0c"),
-  roxo: entry("roxo", "#9364f5", "#0b0b0c"),
-  rosa: entry("rosa", "#ff5c8a", "#0b0b0c"),
-  amarelo: entry("amarelo", "#ffc53d", "#0b0b0c"),
-  cinza: entry("cinza", "#8d8d92", "#0b0b0c"),
-  grafite: entry("grafite", "#3b3b3f", "#ffffff"),
   branco: {
     ...entry("branco", "#ffffff", "#0b0b0c"),
     userBubbleFill: "#3a3a3c",
-    userBubbleOnFill: "#f5f5f5",
   },
+  marrom: entry("marrom", "#a3683e", "#ffffff"),
+  vermelho: entry("vermelho", "#ff3347", "#0b0b0c"),
+  laranja: entry("laranja", "#ff6a13", "#0b0b0c"),
+  amarelo: entry("amarelo", "#ff9f0a", "#0b0b0c"),
+  verde: entry("verde", "#12c46a", "#0b0b0c"),
+  turquesa: entry("turquesa", "#13b8a6", "#0b0b0c"),
+  azul: entry("azul", "#1a84ff", "#0b0b0c"),
+  roxo: entry("roxo", "#9b5cf6", "#0b0b0c"),
+  rosa: entry("rosa", "#ff3d97", "#0b0b0c"),
+  cinza: entry("cinza", "#7c7c80", "#0b0b0c"),
 } as const;
 
 function entry<Id extends string>(id: Id, fill: string, onFill: string) {
-  return { id, fill, onFill, userBubbleFill: fill, userBubbleOnFill: onFill } as {
+  return { id, fill, onFill, userBubbleFill: fill, userBubbleOnFill: USER_BUBBLE_TEXT } as {
     id: Id;
     fill: string;
     onFill: string;

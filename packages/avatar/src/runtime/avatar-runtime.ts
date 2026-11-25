@@ -57,7 +57,9 @@ export type AvatarRuntime = {
   /** Where the avatar looks, as a vector with each axis in -1..1; `null` returns to wandering. */
   setGaze(vector: { x: number; y: number } | null): void;
   /** A short "poke" reaction at an optional point (-1..1 per axis). */
-  poke(x?: number, y?: number): void;
+  poke(x?: number, y?: number, strength?: number): void;
+  /** One full turn on its own axis (yaw 0 to 360), ending facing front; `seconds` defaults to 0.9. */
+  spin(seconds?: number): void;
   blink(): void;
   /** Switches the still-pose mode on or off at runtime (e.g. a user preference change). */
   setReducedMotion(reduced: boolean): void;
@@ -143,8 +145,11 @@ export function createAvatarRuntime(
     setGaze(vector) {
       engine.setGaze(vector);
     },
-    poke(x = 0, y = 0) {
-      engine.poke(x, y);
+    poke(x = 0, y = 0, strength = 1) {
+      engine.poke(x, y, strength);
+    },
+    spin(seconds) {
+      engine.spin(seconds);
     },
     blink() {
       engine.blink();

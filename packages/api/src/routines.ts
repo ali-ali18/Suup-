@@ -125,18 +125,43 @@ export const runRoutineResultSchema = z.object({ fire: routineFireSchema });
 /**
  * `GET`/`PATCH /v1/user-settings`. The user's time zone is what routines and "now" mean, never the
  * server's: the app sends the zone of the user's computer (`source: "device"`), which fills the
- * blank but never replaces one the user chose in Configurações (`source: "user"`).
+ * blank but never replaces one the user chose in Configurações (`source: "user"`). `ownerName` is
+ * the name the user chose to be called by (free text, `null` until they say it); the bots read it
+ * once per run.
  */
 export const userSettingsSchema = z.object({
   timeZone: z.string().nullable(),
   timeZoneSource: z.enum(["device", "user", "config"]).nullable(),
+  ownerName: z.string().nullable(),
 });
 export type UserSettings = z.infer<typeof userSettingsSchema>;
 
-export const updateUserSettingsBodySchema = z.strictObject({
-  timeZone: z
-    .string()
-    .refine(isKnownTimeZone, "não é um fuso horário IANA (por exemplo America/Sao_Paulo)"),
-  source: z.enum(["device", "user"]),
-});
+/** Longest name of the user (a name is free text: only its size is checked, never its format). */
+export const OWNER_NAME_MAX_LENGTH = 60;
+
+/**
+ * The PATCH body: `ownerName` and/or the pair `timeZone` + `source` (at least one of them).
+ * `ownerNameIfEmpty: true` writes the name only when the server has none yet, so an app that
+ * connects to a server which already knows the user never overwrites it. The name is trimmed and
+ * kept as typed (no case change, no format check).
+ */
+export const updateUserSettingsBodySchema = z
+  .strictObject({
+    timeZone: z
+      .string()
+      .refine(isKnownTimeZone, "não é um fuso horário IANA (por exemplo America/Sao_Paulo)")
+      .optional(),
+    source: z.enum(["device", "user"]).optional(),
+    ownerName: z.string().trim().min(1).max(OWNER_NAME_MAX_LENGTH).optional(),
+    ownerNameIfEmpty: z.boolean().optional(),
+  })
+  .refine((body) => (body.timeZone === undefined) === (body.source === undefined), {
+    message: "timeZone e source vão juntos",
+  })
+  .refine((body) => body.ownerName !== undefined || body.timeZone !== undefined, {
+    message: "Informe ownerName ou timeZone com source.",
+  })
+  .refine((body) => body.ownerNameIfEmpty === undefined || body.ownerName !== undefined, {
+    message: "ownerNameIfEmpty só vale junto com ownerName.",
+  });
 export type UpdateUserSettingsBody = z.input<typeof updateUserSettingsBodySchema>;

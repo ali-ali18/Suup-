@@ -76,6 +76,10 @@ export const STATE_TABLE = {
   scared: { clips: ["Idle_D"], face: "surprised" },
   // comemoração
   celebrate: { clips: ["Rotation_A"], face: "happy" },
+  // uma dancinha curta e sempre a mesma (Done_B, 1,8 s), sorrindo: o "Continuar" da boas-vindas
+  cheer: { clips: ["Done_B"], face: "happy" },
+  // rosto feliz parado, sem dança: o bot que sorri (o mouse passa por cima dele)
+  smile: { clips: ["Idle_B", "Idle_D"], compactClips: ["Idle_B"], face: "happy" },
   approving: { clips: ["Rotation_C"], next: "idle" },
   // morphs de indicador
   orbit: { clips: ["Idle_B"], morph: "orbit" },

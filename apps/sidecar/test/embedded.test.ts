@@ -214,9 +214,14 @@ describe.skipIf(!CAN_RUN)(
 
       const api = createClient({ baseUrl: ready.url, token: TOKEN });
       expect(await api.health()).toEqual({ status: "ok" });
-      const [main] = await api.bots.list();
-      expect(main?.name).toBe("Principal");
-      const conversation = await api.bots.openConversation(main?.id as string);
+      // The server starts with no bots; the first one is the user's to make.
+      expect(await api.bots.list()).toEqual([]);
+      const main = await api.bots.create({
+        name: "Principal",
+        modelId: "model-x",
+        allowedTools: (await api.tools.list()).items.map((t) => t.name),
+      });
+      const conversation = await api.bots.openConversation(main.id);
       await api.conversations.send(conversation.id, "OI-EMBUTIDO");
       const deadline = Date.now() + 60_000;
       for (;;) {
@@ -536,8 +541,12 @@ describe.skipIf(!CAN_RUN || process.env.SUUP_DOCKER_TESTS !== "1")(
         if (readyLine?.event !== "ready") return;
         expect(readyLine.isolation).toEqual({ mode: "docker", reason: null, detail: null });
         const api = createClient({ baseUrl: readyLine.url, token: TOKEN });
-        const [main] = await api.bots.list();
-        const conversation = await api.bots.openConversation(main?.id as string);
+        const main = await api.bots.create({
+          name: "Principal",
+          modelId: "model-x",
+          allowedTools: (await api.tools.list()).items.map((t) => t.name),
+        });
+        const conversation = await api.bots.openConversation(main.id);
         await api.conversations.send(conversation.id, "ROTEIRO-DOCKER");
         const until = Date.now() + 120_000;
         for (;;) {

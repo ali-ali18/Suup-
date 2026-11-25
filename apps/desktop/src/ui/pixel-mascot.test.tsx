@@ -158,7 +158,7 @@ describe("PixelMascot", () => {
     const { container } = render(ui({ still: true, color: "azul" }));
     expect(root(container).dataset.color).toBe("azul");
     const fills = new Set(canvas.last().map((r) => r.style));
-    expect(fills.has("#1084ff") || fills.has("#1084fe")).toBe(true);
+    expect(fills.has("#1a84ff")).toBe(true);
     expect(fills.has("#2fb36b")).toBe(false);
   });
 

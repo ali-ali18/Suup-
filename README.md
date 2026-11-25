@@ -118,7 +118,7 @@ curl -s localhost:8787/health                                     # {"status":"o
 curl -s -H "Authorization: Bearer $SUUP_SERVER_TOKEN" localhost:8787/v1/bots | jq
 ```
 
-`suup server` (sem `--with-worker`) é só a API: as execuções precisam de `suup worker` em outro processo, e pausar, interromper e cancelar pela API funcionam entre os dois por meio do banco. Ao subir, o servidor acerta o que ficou pendente de execuções que terminaram sem aviso e cria o bot principal se não houver nenhum. As origens do app (Tauri) vão em `server.allowedOrigins` ([docs/CONFIGURACAO.md](docs/CONFIGURACAO.md)). **Fora do seu computador**, ponha um proxy com TLS na frente: o servidor fala HTTP puro.
+`suup server` (sem `--with-worker`) é só a API: as execuções precisam de `suup worker` em outro processo, e pausar, interromper e cancelar pela API funcionam entre os dois por meio do banco. Ao subir, o servidor acerta o que ficou pendente de execuções que terminaram sem aviso. Ele não cria bot nenhum: a pessoa faz o primeiro no app, e o bot principal (o supervisor) só existe se ela ligar. As origens do app (Tauri) vão em `server.allowedOrigins` ([docs/CONFIGURACAO.md](docs/CONFIGURACAO.md)). **Fora do seu computador**, ponha um proxy com TLS na frente: o servidor fala HTTP puro.
 
 ### Produção numa VPS
 

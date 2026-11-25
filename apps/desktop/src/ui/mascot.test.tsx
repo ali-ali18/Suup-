@@ -84,7 +84,7 @@ describe("Mascot: still image", () => {
     expect(el.dataset.mascot).toBe("leaf");
     expect(el.dataset.color).toBe("laranja");
     expect(el.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
-    expect(el.innerHTML.toLowerCase()).toContain("#ff6700");
+    expect(el.innerHTML.toLowerCase()).toContain("#ff6a13");
     expect(ticker.stats().entries).toBe(0);
   });
 
@@ -125,7 +125,89 @@ describe("Mascot: still image", () => {
   });
 });
 
+describe("Mascot: the colour changes while the bot is on screen (`repaint`)", () => {
+  const body = (container: HTMLElement) => container.querySelector("svg > g > use");
+
+  it("repaints the body only: the SVG, the character and its running animation stay", () => {
+    const { clock, ticker, ui } = setup();
+    const { container, rerender } = render(
+      ui({ size: "xl", color: "branco", state: "smiling", repaint: true }),
+    );
+    clock.run(400);
+    const svg = container.querySelector("svg");
+    expect(body(container)?.getAttribute("fill")).toBe("#ffffff");
+    for (const [color, fill] of [
+      ["turquesa", "#13b8a6"],
+      ["rosa", "#ff3d97"],
+      ["marrom", "#a3683e"],
+    ] as const) {
+      rerender(ui({ size: "xl", color, state: "smiling", repaint: true }));
+      // The very same SVG (nothing was recreated) in the new colour, still smiling and registered.
+      expect(container.querySelector("svg")).toBe(svg);
+      expect(body(container)?.getAttribute("fill")).toBe(fill);
+      expect(root(container).dataset.color).toBe(color);
+      expect(root(container).dataset.state).toBe("smiling");
+      expect(ticker.stats().entries).toBe(1);
+      clock.run(100);
+    }
+  });
+
+  it("without `repaint` a new colour is a new character (the SVG is drawn again)", () => {
+    const { clock, ui } = setup();
+    const { container, rerender } = render(ui({ size: "xl", color: "azul" }));
+    clock.run(200);
+    const svg = container.querySelector("svg");
+    rerender(ui({ size: "xl", color: "rosa" }));
+    expect(container.querySelector("svg")).not.toBe(svg);
+    expect(root(container).innerHTML.toLowerCase()).toContain("#ff3d97");
+  });
+
+  it("a still mascot is drawn in its colour from the start", () => {
+    const { ui } = setup({ reducedMotion: true });
+    const { container, rerender } = render(ui({ color: "verde", repaint: true }));
+    expect(root(container).innerHTML.toLowerCase()).toContain("#12c46a");
+    rerender(ui({ color: "roxo", repaint: true }));
+    expect(root(container).innerHTML.toLowerCase()).toContain("#9b5cf6");
+  });
+});
+
 describe("Mascot: animated", () => {
+  it("`spin` turns the body once per new key and `poke` pokes it (the stage's bot)", () => {
+    const { clock, ui } = setup();
+    const { container, rerender } = render(
+      ui({ size: "xl", breathe: false, gaze: { x: 0, y: 0 } }),
+    );
+    clock.run(600);
+    const at = () => root(container).innerHTML;
+    // Key 0 is "none yet": nothing turns.
+    rerender(ui({ size: "xl", breathe: false, gaze: { x: 0, y: 0 }, spin: { key: 0, ms: 1400 } }));
+    clock.run(300);
+    const before = at();
+    rerender(ui({ size: "xl", breathe: false, gaze: { x: 0, y: 0 }, spin: { key: 1, ms: 1400 } }));
+    clock.run(300);
+    expect(at()).not.toBe(before);
+    // Still turning past the engine's own 0.9 s: the asked time is the one that counts.
+    clock.run(600);
+    const turning = at();
+    clock.run(100);
+    expect(at()).not.toBe(turning);
+    clock.run(1500);
+    const settled = at();
+    clock.run(300);
+    expect(at()).toBe(settled);
+    rerender(
+      ui({
+        size: "xl",
+        breathe: false,
+        gaze: { x: 0, y: 0 },
+        spin: { key: 1, ms: 1400 },
+        poke: { key: 1, x: 0.5, y: 0 },
+      }),
+    );
+    clock.run(60);
+    expect(at()).not.toBe(settled);
+  });
+
   it("registers in the shared ticker, moves, and leaves it on unmount", () => {
     const { clock, ticker, ui } = setup();
     const { container, unmount } = render(ui({ size: "xl", state: "thinking" }));

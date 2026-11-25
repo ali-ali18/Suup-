@@ -215,6 +215,18 @@ describe("cutucada", () => {
     expect(e.snapshot().scaleX).toBe(1);
   });
 
+  it("`strength` amolece o tranco: um toque leve balança bem menos", () => {
+    const squashOf = (strength: number) => {
+      const e = engine("poke-soft");
+      e.poke(1, 0, strength);
+      let max = 0;
+      for (let i = 0; i < 40; i++) max = Math.max(max, e.advance(16).scaleX - 1);
+      return max;
+    };
+    expect(squashOf(0.35)).toBeLessThan(squashOf(1) * 0.5);
+    expect(squashOf(0.35)).toBeGreaterThan(0);
+  });
+
   it("troca a expressão por ~1,6 s e volta ao neutro", () => {
     const e = engine("expr");
     expect(e.character.currentExpression).toBe("neutral");
@@ -361,6 +373,21 @@ describe("clipes de repouso, giro e trabalho", () => {
     run(e, 500, 16);
     expect(e.snapshot().orientation.yaw).toBe(0);
     expect(e.isSettled()).toBe(true);
+  });
+
+  it("spin(seconds): a volta dura o tempo pedido e termina de frente", () => {
+    const e = engine("spin-long");
+    e.spin(1.4);
+    let max = 0;
+    for (let i = 0; i < 100; i++) max = Math.max(max, e.advance(16).orientation.yaw);
+    expect(max).toBeGreaterThan(340);
+    // Still turning past the default 0.9 s (the half-way point of 1.4 s is 0.7 s).
+    const mid = engine("spin-mid");
+    mid.spin(1.4);
+    run(mid, 1000, 8);
+    expect(mid.snapshot().orientation.yaw).toBeGreaterThan(5);
+    run(mid, 600, 8);
+    expect(mid.snapshot().orientation.yaw).toBe(0);
   });
 
   it("trabalhando: toca os clipes Working_*; ao parar volta ao repouso e assenta", () => {

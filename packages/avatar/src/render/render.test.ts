@@ -113,6 +113,28 @@ describe("renderer", () => {
     expect(eye.cy - topY).toBeGreaterThan(eye.bend * 0.8);
   });
 
+  it("o arco feliz não afina: a espessura é a mesma no traço inteiro, e as pontas são redondas", () => {
+    const eye = stillFrame("blob", "happy").eyes[0];
+    const pts = eyePoints(eye);
+    const at = (i: number): [number, number] => [pts[2 * i] as number, pts[2 * i + 1] as number];
+    // Ordem dos pontos: ponta (12), lado de cima (10), ponta (12), lado de baixo (10).
+    const top = Array.from({ length: 10 }, (_, i) => at(12 + i));
+    const bottom = Array.from({ length: 10 }, (_, i) => at(34 + i));
+    // Cada ponto de um lado está a uma largura do outro lado (a menor distância).
+    for (const [x, y] of top) {
+      const nearest = Math.min(...bottom.map(([bx, by]) => Math.hypot(bx - x, by - y)));
+      expect(nearest).toBeGreaterThan(eye.width * 0.9);
+    }
+    // A ponta é meia-volta de raio meia largura: todo ponto dela fica a ~width/2 do centro dela.
+    const tip = Array.from({ length: 12 }, (_, i) => at(i));
+    const [ax, ay] = tip[0] as [number, number];
+    const [bx, by] = tip[11] as [number, number];
+    const center = [(ax + bx) / 2, (ay + by) / 2] as const;
+    for (const [x, y] of tip.slice(1, 11)) {
+      expect(Math.hypot(x - center[0], y - center[1])).toBeGreaterThan(eye.width * 0.4);
+    }
+  });
+
   it("o olho direito é o espelho do esquerdo nas expressões simétricas", () => {
     const f = stillFrame("hex", "sad");
     const [l, r] = f.eyes;

@@ -46,16 +46,19 @@ describe.skipIf(!DATABASE_URL)(
       supervisorEveryMs: 100,
     });
 
-    it("starts at the owner's defaults: review on at 03:00, morning at 08:00, no cost cap", async () => {
+    it("starts at the owner's defaults: review on at 03:00, morning at 08:00, no cost cap; with no main bot it is quiet", async () => {
       const { api } = w.started;
+      // The supervisor is optional: the server starts with no bots, so nobody is the main one.
       expect(await api.supervisor.settings.get()).toMatchObject({
         reviewEnabled: true,
         reviewTime: "03:00",
         morningTime: "08:00",
         costCapUsd: null,
         timeZone: "America/Sao_Paulo",
-        model: { available: true },
+        model: { available: false, id: null },
       });
+      expect(await api.bots.list()).toEqual([]);
+      expect(await api.supervisor.reviews()).toEqual([]);
     });
 
     it("changes only what is sent, accepts null for no cap and no morning message, and refuses the rest in Portuguese", async () => {

@@ -1,5 +1,5 @@
 import { Monitor, Server } from "lucide-react";
-import { ChoiceCard, WelcomeCard } from "../../ui/welcome.js";
+import { ChoiceCard, StageForm } from "../../ui/welcome.js";
 
 /**
  * First open of the app (nothing saved on this device): where the Suup server runs. One brain at a
@@ -8,7 +8,7 @@ import { ChoiceCard, WelcomeCard } from "../../ui/welcome.js";
  */
 export function FirstRunScreen({ onLocal, onVps }: { onLocal(): void; onVps(): void }) {
   return (
-    <WelcomeCard
+    <StageForm
       title="Bem-vindo ao Suup"
       subtitle="Onde o Suup deve rodar? Dá para trocar depois, mas os dois não se sincronizam."
       testId="first-run"
@@ -28,6 +28,6 @@ export function FirstRunScreen({ onLocal, onVps }: { onLocal(): void; onVps(): v
         testId="choose-vps"
         onSelect={onVps}
       />
-    </WelcomeCard>
+    </StageForm>
   );
 }

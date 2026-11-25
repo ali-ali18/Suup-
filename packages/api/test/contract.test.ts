@@ -200,26 +200,41 @@ describe("bot palette", () => {
     return (hi + 0.05) / (lo + 0.05);
   };
 
-  it("every colour's text colour reads on it with at least 4.5:1", () => {
+  it("the mascot's text colour reads on every colour with at least 4.5:1", () => {
     for (const [id, entry] of Object.entries(BOT_PALETTE)) {
       expect(contrast(entry.fill, entry.onFill), id).toBeGreaterThanOrEqual(4.5);
-      expect(
-        contrast(entry.userBubbleFill, entry.userBubbleOnFill),
-        `${id} (user bubble)`,
-      ).toBeGreaterThanOrEqual(4.5);
       expect(entry.id).toBe(id);
     }
   });
 
-  it("the user's bubble is the bot's colour, except for the white bot: a neutral grey with light text", () => {
+  it("the colours come in the owner's order, with no grafite", () => {
+    expect(BOT_COLORS).toEqual([
+      "branco",
+      "marrom",
+      "vermelho",
+      "laranja",
+      "amarelo",
+      "verde",
+      "turquesa",
+      "azul",
+      "roxo",
+      "rosa",
+      "cinza",
+    ]);
+    expect(BOT_COLORS).not.toContain("grafite");
+    expect(botColorSchema.safeParse("grafite").success).toBe(false);
+  });
+
+  it("the user's bubble is the bot's colour with white text; the white bot gets a neutral grey", () => {
+    // The owner asked for white text on every colour (24/11/2026), so the bubble is not held to
+    // 4.5:1 on the light colours: the colours are not darkened to make up for it.
     for (const [id, entry] of Object.entries(BOT_PALETTE)) {
-      if (id === "branco") continue;
-      expect([entry.userBubbleFill, entry.userBubbleOnFill]).toEqual([entry.fill, entry.onFill]);
+      expect(entry.userBubbleOnFill, id).toBe("#ffffff");
+      if (id !== "branco") expect(entry.userBubbleFill).toBe(entry.fill);
     }
     expect(BOT_PALETTE.branco.fill).toBe("#ffffff");
     expect(BOT_PALETTE.branco.userBubbleFill).toBe("#3a3a3c");
     expect(luminance(BOT_PALETTE.branco.userBubbleFill)).toBeLessThan(0.1);
-    expect(luminance(BOT_PALETTE.branco.userBubbleOnFill)).toBeGreaterThan(0.8);
   });
 
   it("the ids are the closed set the schema accepts", () => {

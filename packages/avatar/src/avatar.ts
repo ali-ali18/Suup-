@@ -60,6 +60,12 @@ export function createCharacter(input: CreateCharacterInput): AvatarCharacter {
 export type RenderStillOptions = {
   /** Width and height in px. Without it the SVG scales with its container. */
   size?: number;
+  /**
+   * Paint the eyes in the character's own eye colour instead of cutting them out. For a mascot
+   * drawn with an outline around its silhouette (a filter): cut-out eyes are holes, and the outline
+   * would ring them too.
+   */
+  paintEyes?: boolean;
 };
 
 /**
@@ -77,6 +83,7 @@ export function renderStill(
     shape: isShape(character.shape) ? character.shape : "blob",
     expression: face ? normalizeExpression(face) : "neutral",
     color: character.color,
+    ...(options.paintEyes === true ? { eyeColor: character.eyeColor } : {}),
     ...(options.size !== undefined ? { size: options.size } : {}),
     id: `av-${character.id.replace(/[^a-zA-Z0-9_-]/g, "") || "x"}`,
   });

@@ -23,6 +23,7 @@ import {
   migrate,
   RoutineError,
   runRoutineNow,
+  setOwnerName,
   setRoutineState,
   setRunStatus,
   setUserTimeZone,
@@ -456,6 +457,25 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("routines (migration 0026)"), () => {
     ).rejects.toMatchObject({ code: "invalid_time_zone" });
   });
 
+  it("the user's name: trimmed and kept as typed, 'only if empty' keeps the first, a bad size is refused", async () => {
+    expect((await getUserSettings(ctx.db)).ownerName).toBeNull();
+    expect((await setOwnerName(ctx.db, { name: "  ana maria  " })).ownerName).toBe("ana maria");
+    expect((await setOwnerName(ctx.db, { name: "Outra", onlyIfEmpty: true })).ownerName).toBe(
+      "ana maria",
+    );
+    expect((await setOwnerName(ctx.db, { name: "Ana" })).ownerName).toBe("Ana");
+    // the zone and the name live in the same row without touching each other
+    await setUserTimeZone(ctx.db, { timeZone: SP, source: "user" });
+    expect(await getUserSettings(ctx.db)).toMatchObject({ timeZone: SP, ownerName: "Ana" });
+    await expect(setOwnerName(ctx.db, { name: "   " })).rejects.toMatchObject({
+      code: "invalid_owner_name",
+    });
+    await expect(setOwnerName(ctx.db, { name: "x".repeat(61) })).rejects.toMatchObject({
+      code: "invalid_owner_name",
+    });
+    expect((await getUserSettings(ctx.db)).ownerName).toBe("Ana");
+  });
+
   it("the sources of a run: the pages its tools declared and the tools that answered, each once", async () => {
     const bot = await newBot("Fontes");
     const run = await createRun(ctx.db, { botId: bot.id, origin: "routine", objective: "x" });
@@ -510,6 +530,8 @@ describe.skipIf(!DATABASE_URL)(
         "0031_web_search_usage.sql",
         "0032_secrets_managed_by.sql",
         "0033_routine_events.sql",
+        "0034_user_owner_name.sql",
+        "0035_bot_color_palette.sql",
       ]);
       for (const file of held) await rm(join(dir, file));
       await migrate(ctx.db, dir);
@@ -550,6 +572,8 @@ describe.skipIf(!DATABASE_URL)(
         "0031_web_search_usage.sql",
         "0032_secrets_managed_by.sql",
         "0033_routine_events.sql",
+        "0034_user_owner_name.sql",
+        "0035_bot_color_palette.sql",
       ]);
       for (const file of held) await rm(join(dir, file));
       await migrate(ctx.db, dir);

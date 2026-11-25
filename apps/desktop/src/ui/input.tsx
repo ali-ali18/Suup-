@@ -1,8 +1,8 @@
 /*
  * Our copy of the shadcn `input` of the base-maia style (shadcn CLI 4.23.0, preset b3XoIU6DI0,
  * 24/11/2026), on Base UI's Input: the line of a form (a pill, one control high) and, as `Textarea`,
- * the rounded box. Rewritten to our tokens (docs/DESIGN.md §2a): our border, our focus line, our
- * danger colour. Inside a `Field` (`ui/field.tsx`) Base UI ties it to its label and its messages.
+ * the rounded box. Rewritten to our tokens (docs/DESIGN.md §2a): our border (stronger on hover and
+ * on focus, as the chat's input; no ring and never the white line), our danger colour. Inside a `Field` (`ui/field.tsx`) Base UI ties it to its label and its messages.
  */
 import { Field as FieldPrimitive } from "@base-ui/react/field";
 import { Input as InputPrimitive } from "@base-ui/react/input";
@@ -14,7 +14,7 @@ import { cx } from "../lib/cx.js";
  * bordered variant and the rows of the settings: a screen never writes these classes again.
  */
 const FIELD_CONTROL =
-  "w-full min-w-0 border text-text placeholder:text-text-muted focus-visible:border-border-strong focus-visible:outline-2 focus-visible:outline-focus focus-visible:outline-offset-0";
+  "w-full min-w-0 border text-text placeholder:text-text-muted transition-[border-color] focus-visible:border-border-strong focus-visible:outline-none";
 
 /** The control of a field: a line (a pill, one control high) or a text area (a rounded box). */
 export function fieldControlClass(
@@ -22,8 +22,8 @@ export function fieldControlClass(
     multiline?: boolean;
     error?: boolean;
     align?: "center";
-    /** `sm`: a field of a settings row (32 px, small text). */
-    size?: "sm";
+    /** `sm`: a field of a settings row (32 px, small text); `lg`: the big field of "Crie seu bot" (56 px, title text). */
+    size?: "sm" | "lg";
     /** Room at the end for a button inside the field (the eye), in monospace (a secret). */
     secret?: boolean;
     /** Room at the start for the magnifier inside the field (`SearchField`). */
@@ -36,18 +36,23 @@ export function fieldControlClass(
     FIELD_CONTROL,
     options.raised === true ? "bg-raised" : "bg-bg",
     options.multiline === true
-      ? "resize-y rounded-row px-4 py-2.5"
+      ? cx("resize-y rounded-row", options.size === "lg" ? "px-5 py-4" : "px-4 py-2.5")
       : cx(
           "rounded-pill py-0",
-          options.size === "sm" ? "h-8" : "h-control",
+          options.size === "sm" ? "h-8" : options.size === "lg" ? "h-14" : "h-control",
           options.secret === true
             ? "pr-11 pl-4 font-mono"
             : options.search === true
               ? "pr-4 pl-11"
-              : "px-4",
+              : options.size === "lg"
+                ? "px-5"
+                : "px-4",
         ),
-    options.size === "sm" ? "text-small" : "text-body",
-    options.error === true ? "border-danger-text" : "border-border",
+    options.size === "sm" ? "text-small" : options.size === "lg" ? "text-title" : "text-body",
+    // Hover: the field's own border gets stronger (owner, 24/11/2026); an error keeps its red.
+    options.error === true
+      ? "border-danger-text"
+      : "border-border enabled:hover:border-border-strong",
     options.align === "center" && "text-center",
   );
 }

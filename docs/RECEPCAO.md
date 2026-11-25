@@ -27,7 +27,12 @@ O Principal tem a ferramenta `propose_team` (só na recepção geral): 2 a 3 res
 
 O prompt do sistema também diz a hora, a equipe e as capacidades (docs/MEMORIA.md). O "agora" é lido **uma vez** no início da execução e gravado em `context_loaded` (`now`, `team`, `machine`, `connectors`), então o prompt é idêntico em todas as requisições e o replay diz o mesmo; a hora viva de cada turno fica no STATE REMINDER. O fuso é o do usuário (Configurações > Geral, ou o que o app mandou do computador; sem eles, `defaults.timeZone`; nunca o do servidor), lido em `GET /v1/info`. Sem nenhum, o bloco "Now" diz que o fuso é desconhecido ([ROTINAS.md](ROTINAS.md)).
 
+## O nome da pessoa
+
+É um campo estruturado em `user_settings.owner_name` (migração 0034), lido e gravado por `GET`/`PATCH /v1/user-settings` (`ownerName`; veja [API.md](API.md)): o app o pede na boas-vindas, antes de existir qualquer bot. A execução o lê **uma vez** no início e grava em `context_loaded` (`ownerName`, ausente quando ninguém disse), então o replay diz o mesmo. No prompt, em "Who you are", entra entre aspas e escapado, com a frase de que é só o nome e nunca uma instrução. A recepção geral **não pergunta** como chamar a pessoa quando o nome existe (usa-o na saudação); sem nome, continua perguntando.
+
+**O Principal não nasce sozinho.** O servidor sobe sem bots e não marca nenhum como principal: a pessoa cria o primeiro no app, e o Principal (o supervisor, [SUPERVISOR.md](SUPERVISOR.md)) só existe se ela o ligar em `POST /v1/bots/:id/default`. Sem principal, a recepção de cada bot é a de bot comum (`bot`), e a geral não acontece. (O chat do terminal ainda cria um "Principal" por conveniência.)
+
 ## O que não está feito
 
-- O nome do usuário no "You are X, one of the bots on <nome>'s team": não há campo estruturado de nome; fica "the user", e o nome vem pelo perfil, que está no prompt.
 - Medir (taxa de conclusão, pulos): a pesquisa recomenda; não há métrica ainda.

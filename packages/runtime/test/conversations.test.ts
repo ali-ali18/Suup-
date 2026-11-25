@@ -14,6 +14,7 @@ import {
   listRunEvents,
   postInbox,
   requeueStaleRuns,
+  setOwnerName,
 } from "@suup/db";
 import { describe, expect, it } from "vitest";
 import {
@@ -187,6 +188,26 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("conversation engine"), () => {
       await expect(
         sendMessage(runtime, { botId: bot.id, text: "muda", routineRef: theirs.id }),
       ).rejects.toMatchObject({ code: "invalid_input" });
+      await runtime.close();
+    });
+  });
+
+  describe("the name of the user", () => {
+    it("is read once at the start of the run and recorded in context_loaded; absent while nobody said it", async () => {
+      const runtime = await open({ agent: [{ text: "Oi." }, { text: "Oi de novo." }] });
+      const bot = await newBot(runtime);
+      const first = await sendMessage(runtime, { botId: bot.id, text: "Oi" });
+      await work(runtime, first.run.id);
+      const loadedOf = async (runId: string) =>
+        (await listRunEvents(runtime.db, runId)).find((e) => e.type === "context_loaded")
+          ?.payload as { ownerName?: string };
+      expect(await loadedOf(first.run.id)).not.toHaveProperty("ownerName");
+      await setOwnerName(runtime.db, { name: "Marina" });
+      const second = await sendMessage(runtime, { botId: bot.id, text: "E agora?" });
+      await work(runtime, second.run.id);
+      expect((await loadedOf(second.run.id)).ownerName).toBe("Marina");
+      // the earlier run keeps saying what it said
+      expect(await loadedOf(first.run.id)).not.toHaveProperty("ownerName");
       await runtime.close();
     });
   });

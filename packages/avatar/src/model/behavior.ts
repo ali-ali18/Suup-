@@ -161,12 +161,12 @@ export class StateMachine {
   }
 
   /** Dispara um giro de 360° (ex.: quando `spinSignal` muda). */
-  spin(): void {
-    this.character.spin();
+  spin(seconds?: number): void {
+    this.character.spin(seconds);
   }
 
-  poke(x: number, y: number): void {
-    this.character.poke(x, y);
+  poke(x: number, y: number, strength = 1): void {
+    this.character.poke(x, y, strength);
     this.pokeTimes = this.pokeTimes.filter((t) => this.clock - t <= B.angryWindowS);
     this.pokeTimes.push(this.clock);
     if (this.pokeTimes.length >= B.angryPokes || this.angryLeft > 0) {

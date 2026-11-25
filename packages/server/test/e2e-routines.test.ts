@@ -225,7 +225,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("routines through the API"), { timeou
     });
     expect(
       await api.userSettings.update({ timeZone: "America/Sao_Paulo", source: "device" }),
-    ).toEqual({ timeZone: "America/Sao_Paulo", timeZoneSource: "device" });
+    ).toEqual({ timeZone: "America/Sao_Paulo", timeZoneSource: "device", ownerName: null });
     expect(await api.info()).toEqual({
       timeZone: "America/Sao_Paulo",
       timeZoneSource: "device",
@@ -234,6 +234,45 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("routines through the API"), { timeou
     expect(await code(api.userSettings.update({ timeZone: "Marte/Olympus", source: "user" }))).toBe(
       "invalid_request",
     );
+  });
+
+  it("the user's name: null at first, kept as typed, and 'only if empty' never overwrites it", async () => {
+    const { api } = w.started;
+    expect((await api.userSettings.get()).ownerName).toBeNull();
+    // the old call, with the zone only, is exactly what it was (the name stays null)
+    expect(
+      await api.userSettings.update({ timeZone: "America/Sao_Paulo", source: "user" }),
+    ).toEqual({
+      timeZone: "America/Sao_Paulo",
+      timeZoneSource: "user",
+      ownerName: null,
+    });
+    // trimmed, no case change, no format check
+    expect((await api.userSettings.update({ ownerName: "  marina d'Ávila  " })).ownerName).toBe(
+      "marina d'Ávila",
+    );
+    // a device that connects later never replaces the name the server already knows
+    expect(
+      (await api.userSettings.update({ ownerName: "Outra", ownerNameIfEmpty: true })).ownerName,
+    ).toBe("marina d'Ávila");
+    // without the flag the user's own edit replaces it; zone and name travel together too
+    expect(
+      await api.userSettings.update({
+        ownerName: "Marina",
+        timeZone: "America/Sao_Paulo",
+        source: "user",
+      }),
+    ).toEqual({ timeZone: "America/Sao_Paulo", timeZoneSource: "user", ownerName: "Marina" });
+    expect(await code(api.userSettings.update({ ownerName: "   " }))).toBe("invalid_request");
+    expect(await code(api.userSettings.update({ ownerName: "x".repeat(61) }))).toBe(
+      "invalid_request",
+    );
+    expect(await code(api.userSettings.update({}))).toBe("invalid_request");
+    expect(await code(api.userSettings.update({ timeZone: "America/Sao_Paulo" }))).toBe(
+      "invalid_request",
+    );
+    expect(await code(api.userSettings.update({ ownerNameIfEmpty: true }))).toBe("invalid_request");
+    expect((await api.userSettings.get()).ownerName).toBe("Marina");
   });
 
   it("asked in the chat, created by the bot (auto-review lets it), fired once in its own run", async () => {

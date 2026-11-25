@@ -1,4 +1,4 @@
-import type { Message } from "@suup/api";
+import type { Message, SuupClient } from "@suup/api";
 import { appendMessage } from "@suup/db";
 import { describe, expect, it } from "vitest";
 import { DATABASE_URL, dbSuiteName, until, useWorld } from "./world.js";
@@ -153,6 +153,17 @@ describe.skipIf(!DATABASE_URL)(
       }, `question ${nth}`);
       await w.started.api.conversations.send(conversationId, text);
     };
+    // The server creates no bot and marks none as main: the user does, so the test does too.
+    const mainBot = async (api: SuupClient) => {
+      const found = (await api.bots.list()).find((b) => b.isDefault);
+      if (found !== undefined) return found;
+      const created = await api.bots.create({
+        name: "Principal",
+        modelId: "model-x",
+        allowedTools: ["remember", "recall"],
+      });
+      return api.bots.setDefault(created.id);
+    };
     const runsOf = async (botId: string) =>
       (await w.started.api.runs.list({ botId, limit: 50 })).items;
     const eventsOf = async (
@@ -167,7 +178,7 @@ describe.skipIf(!DATABASE_URL)(
 
     it("the main bot welcomes once, in one conversation, with its questions one at a time", async () => {
       const { api } = w.started;
-      const main = (await api.bots.list()).find((b) => b.isDefault);
+      const main = await mainBot(api);
       expect(main).toBeDefined();
       const mainId = main?.id as string;
       const second = await w.startServer();
@@ -249,7 +260,7 @@ describe.skipIf(!DATABASE_URL)(
 
     it("creates only the ticked bots, through the normal path, and each new bot has its own welcome", async () => {
       const { api } = w.started;
-      const main = (await api.bots.list()).find((b) => b.isDefault);
+      const main = await mainBot(api);
       const conversation = await api.bots.openConversation(main?.id as string);
       const card = (await messagesOf(conversation.id)).find((m) => m.team !== undefined);
       expect(card).toBeDefined();
@@ -300,7 +311,7 @@ describe.skipIf(!DATABASE_URL)(
 
     it("'Agora não' creates nothing, and the card is decided once", async () => {
       const { api } = w.started;
-      const main = (await api.bots.list()).find((b) => b.isDefault);
+      const main = await mainBot(api);
       const conversation = await api.bots.openConversation(main?.id as string);
       const card = await appendMessage(w.db, {
         conversationId: conversation.id,
@@ -332,7 +343,7 @@ describe.skipIf(!DATABASE_URL)(
     it("redo starts the welcome again, and is refused while it runs", async () => {
       const { api } = w.started;
       // The welcome of the main bot, redone.
-      const main = (await api.bots.list()).find((b) => b.isDefault);
+      const main = await mainBot(api);
       const conversation = await api.bots.openConversation(main?.id as string);
       await until(
         async () =>

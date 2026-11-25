@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
+import { STAGE_TRAVEL_MS, WELCOME_EXIT_MS } from "./lib/welcome.js";
 
 // The checkable part of docs/DESIGN.md: rules a test can read from the source, so the next card
 // or screen cannot drift without a red test.
@@ -1246,13 +1247,125 @@ describe("routines: no schedule form, rows edge to edge, the detail in the panel
 describe("telas antes do app (docs/DESIGN.md 3d)", () => {
   const screen = (name: string): string => read(join(SRC, "features", "connect", name));
 
-  it("todas usam o cartão calmo de ui/welcome.tsx, sem lista de classes própria", () => {
-    for (const name of ["ConnectScreen.tsx", "FirstRunScreen.tsx", "LocalScreen.tsx"]) {
+  it("todas usam as peças de ui/welcome.tsx (o cartão calmo ou a coluna da esquerda), sem lista de classes própria", () => {
+    const frame = {
+      "ConnectScreen.tsx": "StageForm",
+      "FirstRunScreen.tsx": "StageForm",
+      "LocalScreen.tsx": "WelcomeCard",
+    };
+    for (const [name, piece] of Object.entries(frame)) {
       const source = screen(name);
-      expect(source, name).toContain("WelcomeCard");
+      expect(source, name).toContain(`<${piece}`);
       expect(source, name).not.toContain("className=");
       expect(source, name).not.toContain("<select");
     }
+  });
+
+  it("a escolha de servidor e o conectar: formulário à esquerda, um bot só (o do palco) à direita, Voltar é uma seta no topo (dono, 24/11/2026)", () => {
+    for (const name of ["ConnectScreen.tsx", "FirstRunScreen.tsx"]) {
+      const source = screen(name);
+      // Two bots would break the "same bot" of the welcome: these screens draw none.
+      expect(source, name).not.toContain("WelcomeCard");
+      expect(source, name).not.toContain("<Avatar");
+      expect(source, name).not.toContain("<Mascot");
+    }
+    const connect = screen("ConnectScreen.tsx");
+    // One step at a time (owner, 24/11/2026): the arrow goes back a step, then out (`onBack`).
+    expect(connect).toContain("onBack={back}");
+    expect(connect).toContain('step === "token"');
+    expect(connect).not.toContain("Voltar");
+    const frame = read(join(SRC, "ui", "welcome.tsx"));
+    expect(frame).toContain("<RoundButton");
+    expect(frame).toContain("<ArrowLeft");
+    expect(frame).toContain('label="Voltar"');
+    expect(frame).toContain('data-testid="connect-back"');
+    // Centred in what the bot leaves, and ABOVE the bot's layer: the screen lets the clicks through
+    // where it is empty and only the form takes them (owner, 24/11/2026: the bot took the field's).
+    expect(frame).toContain("justify-center");
+    expect(frame).toContain("stageFormRight");
+    expect(frame).toContain("pointer-events-none relative z-20");
+    expect(frame).toContain('"pointer-events-auto flex flex-col"');
+    expect(frame).toContain("w-connect gap-4");
+    // The window's own strip (to drag it) is at the top: with the custom frame the arrow goes below it.
+    expect(frame).toContain("framed:top-10");
+  });
+
+  it("a galeria de conectores da entrada: o bot no centro, a turma só pelo motor, a grade com degradê e nada escrito à mão (dono, 24/11/2026)", () => {
+    const step = screen("ConnectorsStep.tsx");
+    // The frame is the gallery's; the bot is the stage's (never a second main one), the crew too.
+    expect(step).toContain("<GalleryFrame");
+    expect(step).not.toContain("<StageForm");
+    expect(step).not.toContain("<Avatar");
+    expect(step).not.toContain("<Mascot");
+    expect(step).not.toContain("WelcomeCard");
+    expect(step).toContain("stage.gallery(true)");
+    // The cards are a grid of 3, 2 and 1 columns.
+    for (const cols of ["grid-cols-3", "compact:grid-cols-2", "narrow:grid-cols-1"]) {
+      expect(step).toContain(cols);
+    }
+    const frame = read(join(SRC, "ui", "welcome.tsx"));
+    const gallery = frame.slice(frame.indexOf("export function GalleryFrame"));
+    expect(gallery).toContain("<ScrollFade");
+    expect(gallery).toContain("max-h-gallery-list");
+    expect(gallery).toContain("max-w-screen-max");
+    expect(gallery).toContain("pointer-events-none relative z-20");
+    expect(gallery).toContain("pointer-events-auto");
+    expect(gallery).toContain("text-center");
+    // The button is outside the box that scrolls, and always on.
+    expect(gallery.indexOf("{footer}")).toBeGreaterThan(gallery.indexOf("<ScrollFade"));
+    // Optional, with no "Pular" of its own and no arrow back.
+    expect(step).toContain('data-testid="connectors-continue"');
+    expect(step).not.toContain("Pular");
+    expect(step).not.toContain("onBack");
+    expect(step).not.toContain("disabled={");
+    // The list is the server's (the data of the Conectores screen): no connector is named here,
+    // and the connecting is the screen's own (`useConnect`), never a loose field for a key.
+    expect(step).toContain("usePlugins()");
+    expect(step).toContain("useConnect(");
+    expect(step).toContain("<SecretDialog");
+    for (const id of ["github", "notion", "linear", "figma", "composio", "firecrawl", "brave"]) {
+      expect(step.toLowerCase(), id).not.toContain(`"${id}"`);
+    }
+    expect(step).not.toContain("<input");
+    expect(step).not.toContain("<TextField");
+    const tokens = read(join(SRC, "styles", "tokens.css"));
+    expect(tokens).toContain("--height-gallery-list:");
+    expect(read(join(SRC, "styles", "theme.css"))).toContain("@custom-variant compact");
+    // The crew: only the engine's `Mascot`, decoration (hidden, no pointer, no brain, no breathing),
+    // and fixed (nothing drawn at random).
+    const crew = read(join(SRC, "features", "welcome", "StageCrew.tsx"));
+    expect(crew.split("<Mascot").length - 1).toBe(1);
+    expect(crew).toContain('aria-hidden="true"');
+    expect(crew).toContain("pointer-events-none");
+    expect(crew).toContain("breathe={false}");
+    expect(crew).toContain('size="md"');
+    expect(crew).not.toContain("Math.random");
+    expect(crew).not.toContain("lively");
+    expect(read(join(SRC, "lib", "welcome.ts"))).not.toContain("Math.random");
+    // It shows once, on a new account, after the token and before "Crie seu bot".
+    const app = read(join(SRC, "app", "App.tsx"));
+    expect(app).toContain("entryAfterConnect(");
+    expect(app).toContain("markConnectorsStepDone()");
+    // A server on this computer has no connect screen before it: the bot is born in the gallery.
+    expect(app).toContain('if (kind === "connectors") return "gallery"');
+  });
+
+  it("o bot do palco: um só, do boas-vindas ao canto; giro e viagem no mesmo tempo, tamanho linear", () => {
+    const welcome = read(join(SRC, "features", "welcome", "WelcomeScreen.tsx"));
+    expect(welcome).not.toContain("<Avatar");
+    expect(welcome).not.toContain("<Mascot");
+    const bot = read(join(SRC, "features", "welcome", "StageBot.tsx"));
+    expect(bot.split("<Mascot").length - 1).toBe(1);
+    expect(bot).toContain("scale var(--duration-travel) linear");
+    expect(bot).toContain("translate var(--duration-travel) var(--ease-bot-in)");
+    const tokens = read(join(SRC, "styles", "tokens.css"));
+    const lib = read(join(SRC, "lib", "welcome.ts"));
+    expect(tokens).toContain(`--duration-travel: ${STAGE_TRAVEL_MS}ms;`);
+    expect(tokens).toContain(`--duration-welcome-out: ${WELCOME_EXIT_MS}ms;`);
+    expect(lib).toContain(`STAGE_TRAVEL_MS = ${STAGE_TRAVEL_MS}`);
+    // Reduced motion zeroes the trip and the fade (twice: the system's and the app's setting).
+    expect(tokens.split("--duration-travel: 0ms;").length - 1).toBe(2);
+    expect(tokens.split("--duration-welcome-out: 0ms;").length - 1).toBe(2);
   });
 
   it("a primeira abertura tem as duas escolhas e a chave é um campo secreto", () => {
@@ -1270,15 +1383,17 @@ describe("avatares: dois estilos, desenhados só pelo motor (docs/DESIGN.md, Mas
       .filter((f) => !f.endsWith("pixel-mascot.tsx") && read(f).includes("<PixelMascot"))
       .map(rel)
       .sort();
-    expect(users).toEqual(["features/new-bot/NewBotDialog.tsx", "ui/avatar.tsx"]);
+    expect(users).toEqual(["features/new-bot/bot-identity.tsx", "ui/avatar.tsx"]);
   });
 
   it("o 3D é um botão ao lado do estilo, só no pixel, fora do radiogroup, e a prévia o mostra", () => {
-    const code = read(join(SRC, "features", "new-bot", "NewBotDialog.tsx"));
+    const code =
+      read(join(SRC, "features", "new-bot", "bot-identity.tsx")) +
+      read(join(SRC, "features", "new-bot", "NewBotDialog.tsx"));
     expect(code).toContain('data-testid="newbot-pixel3d"');
     expect(code).toContain('{style === "pixel" && (');
     expect(code).toContain("avatarPixel3d: style === ");
-    expect(code).toContain("pixel3d={pixel3d}");
+    expect(code).toContain("pixel3d={identity.pixel3d}");
     for (const f of [
       "shell/Sidebar",
       "chat/ChatScreen",
@@ -1765,11 +1880,11 @@ describe("ajustes do dono de 23/11/2026 (docs/DESIGN.md §2, §4a, §4c, §5, §
   });
 
   it("criar bot: branco por padrão e contorno discreto do escolhido", () => {
-    const dialog = read(join(SRC, "features", "new-bot", "NewBotDialog.tsx"));
+    const dialog = read(join(SRC, "features", "new-bot", "bot-identity.tsx"));
     expect(dialog).toContain('DEFAULT_NEW_COLOR: BotColor = "branco"');
     expect(dialog).not.toContain("ring-text");
     // the mascot grid: no box behind the chosen one or on hover, wide cells (6 columns)
-    expect(dialog).toContain("grid grid-cols-6");
+    expect(dialog).toContain('6: "grid-cols-6"');
     expect(dialog).not.toContain('? "bg-raised" : "bg-transparent hover:bg-hover"');
     expect(dialog).toContain("hover:scale-105");
     expect(read(join(SRC, "styles", "tokens.css"))).toContain("var(--color-picked-ring)");
@@ -1913,5 +2028,77 @@ describe("a frase do bot trabalhando brilha (docs/DESIGN.md §3, dono 24/11/2026
     expect(util).toContain("prefers-reduced-motion: reduce");
     expect(util).toContain(':root[data-motion="reduce"] &');
     expect(util).toContain("color: var(--color-text-muted)");
+  });
+});
+
+describe('"Crie seu bot" no palco e a paleta dos bots (docs/DESIGN.md §3d, §4, §6, dono 24/11/2026)', () => {
+  it("o painel tem metade da janela, até 560 px, e o título da tela é um token maior que o dos cartões", () => {
+    const tokens = read(join(SRC, "styles", "tokens.css"));
+    expect(tokens).toContain("--width-create: min(560px, 100%)");
+    expect(read(join(SRC, "lib", "welcome.ts"))).toContain("export const CREATE_PANEL_PX = 560;");
+    const size = (name: string): number =>
+      Number.parseInt(tokens.split(`--text-${name}-size: `)[1] ?? "0", 10);
+    expect(size("screen-title")).toBeGreaterThan(size("heading"));
+    expect(read(join(SRC, "styles", "theme.css"))).toContain("--text-screen-title:");
+    const frame = read(join(SRC, "ui", "welcome.tsx"));
+    expect(frame).toContain("text-screen-title");
+    expect(frame).toContain("w-create");
+  });
+
+  it("os três passos usam a pílula primária grande, centralizada no painel, e o campo grande", () => {
+    const flow = read(join(SRC, "features", "new-bot", "CreateBotFlow.tsx"));
+    const times = (text: string) => flow.split(text).length - 1;
+    // Owner, 24/11/2026: the colours and "Continuar" centred under the (symmetrical) grid.
+    expect(times('className="self-center"')).toBe(3);
+    const identity = read(join(SRC, "features", "new-bot", "bot-identity.tsx"));
+    expect(identity).toContain("grid-cols-[repeat(5,auto)]");
+    expect(times('type="submit"')).toBe(3);
+    expect(times("<TextField")).toBe(2);
+    expect(times('size="lg"')).toBe(7);
+    expect(flow).toContain("<MascotGrid");
+    expect(flow).toContain("<ColorChoices");
+    // the whole grid, no box that cuts the last row under a fade
+    expect(flow).not.toContain("max-h-");
+    expect(flow).not.toContain("ScrollFade");
+  });
+
+  it("a paleta: onze cores na ordem do dono, sem grafite em lugar nenhum do app", () => {
+    const api = read(join(SRC, "..", "..", "..", "packages", "api", "src", "bots.ts"));
+    expect(api).not.toContain("grafite");
+    for (const file of files(SRC, /\.tsx?$/)) {
+      expect(read(file).includes("grafite"), rel(file)).toBe(false);
+    }
+  });
+
+  it("o balão do usuário tem texto branco em todas as cores (o contraste do balão não é conferido)", () => {
+    const api = read(join(SRC, "..", "..", "..", "packages", "api", "src", "bots.ts"));
+    expect(api).toContain('const USER_BUBBLE_TEXT = "#ffffff"');
+    const test = read(join(SRC, "..", "..", "..", "packages", "api", "test", "contract.test.ts"));
+    expect(test).not.toContain("(user bubble)");
+  });
+
+  it("o interruptor de um bot leva a cor dele (azul para o branco), pela variável do tema, sem valor solto", () => {
+    const sw = read(join(SRC, "ui", "switch.tsx"));
+    expect(sw).toContain('bot: "border-transparent data-checked:bg-bot-fill');
+    expect(sw).toContain('color === "branco" ? "azul" : color');
+    expect(sw).toContain('"--bot-fill": BOT_PALETTE[switchColor(color)].fill');
+    const flow = read(join(SRC, "features", "new-bot", "CreateBotFlow.tsx"));
+    expect(flow).toContain("color={identity.shownColor}");
+  });
+
+  it("trocar a cor só repinta: o personagem e o runtime não dependem dela quando o mascote repinta", () => {
+    const mascot = read(join(SRC, "ui", "mascot.tsx"));
+    expect(mascot).toContain("const bodyColor = repaint && animated ? REPAINT_BASE : fill;");
+    expect(mascot).toContain("[seed, uid, shape, bodyColor]");
+    const stage = read(join(SRC, "features", "welcome", "StageBot.tsx"));
+    expect(stage).toContain("repaint");
+    expect(stage).toContain("const shapeKey");
+  });
+
+  it("a barra lateral sem bots diz uma frase amigável e oferece criar um", () => {
+    const sidebar = read(join(SRC, "features", "shell", "Sidebar.tsx"));
+    expect(sidebar).toContain('data-testid="sidebar-empty"');
+    expect(sidebar).toContain("Nenhum bot por aqui ainda");
+    expect(sidebar).toContain('data-testid="rail-empty-create"');
   });
 });

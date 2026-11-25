@@ -185,8 +185,8 @@ export function createAvatarEngine(opts: EngineOptions) {
       // Olhar do mouse é movimento contínuo e suave: 30 fps bastam (60 fps a cada mexida custava CPU em celular).
       character.setGaze(vector, additive);
     },
-    poke(x = 0, y = 0): void {
-      behavior.poke(x, y);
+    poke(x = 0, y = 0, strength = 1): void {
+      behavior.poke(x, y, strength);
       touch();
     },
     blink(): void {
@@ -253,8 +253,8 @@ export function createAvatarEngine(opts: EngineOptions) {
     setResting(on: boolean): void {
       behavior.setResting(on);
     },
-    spin(): void {
-      behavior.spin();
+    spin(seconds?: number): void {
+      behavior.spin(seconds);
       touch();
     },
   };
