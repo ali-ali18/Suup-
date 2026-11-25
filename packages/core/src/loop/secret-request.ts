@@ -11,8 +11,6 @@ export async function handleRequestSecret(
   ctx: LoopContext,
   call: ControlCall,
   alone: boolean,
-  /** The text the model wrote in the turn of the call (what it says before the form). */
-  turnText = "",
 ): Promise<void> {
   await ensureToolCall(ctx, call);
   const parsed = requestSecretInputSchema.safeParse(call.args);
@@ -73,14 +71,11 @@ export async function handleRequestSecret(
     return;
   }
   // No result is recorded: the user's answer will be it. The loop pauses at the next safe point.
-  // What the bot said in the same turn is kept apart (`lead`): the chat draws it ABOVE the form, and
-  // the end of the run writes it as the bot's message. Never a text of the system.
-  const lead = turnText.trim();
+  // What the bot said in the same turn is already in the chat, as its own message (a part).
   await record(ctx, {
     type: "secret_requested",
     payload: {
       callId: call.id,
-      ...(lead === "" ? {} : { lead }),
       name,
       ...(reason === undefined ? {} : { reason }),
       // Only what the bot SUGGESTS: the user's confirmed list is what the vault keeps.

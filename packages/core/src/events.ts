@@ -691,7 +691,7 @@ export const runEventSchema = z.discriminatedUnion("type", [
     type: z.literal("secret_requested"),
     payload: z.object({
       callId: z.string(),
-      /** What the bot wrote in the turn of the call: the chat draws it above the form. */
+      /** Only in logs written before KOD-64 (the bot's words are a message of their own now). */
       lead: z.exactOptional(z.string()),
       name: z.string(),
       reason: z.exactOptional(z.string()),
@@ -910,9 +910,9 @@ export const runEventSchema = z.discriminatedUnion("type", [
       /** The `escalate` call this question came from. Absent for a review tie-break. */
       callId: z.exactOptional(z.string()),
       /**
-       * What the bot wrote in the same turn, besides the question (context, a short reason). The
-       * chat shows it as the bot's message above the card; the question is the card's title.
-       * Absent when the bot only called the tool.
+       * The harness's own words above the card (the progress check: what happened, what is done and
+       * what is left). The bot's words of the turn are NOT here: they are a message of their own
+       * (a part). Logs written before KOD-64 also carry the bot's words here; they are still read.
        */
       lead: z.exactOptional(z.string()),
       /**

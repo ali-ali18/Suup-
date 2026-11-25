@@ -110,10 +110,11 @@ export const messageSchema = z.object({
   /** Only on a bot (or system) message whose run sent files: the files, oldest first. */
   attachments: z.exactOptional(z.array(messageAttachmentSchema)),
   /**
-   * Only on a message the harness wrote once for an event of a run (its end, a question, a request
-   * for a secret). It is how the app ties a card to the words that belong to it (exact key).
+   * Only on a part: the words the bot wrote in a turn in which it also called tools. The `seq` of
+   * the run's `model_response` event that carried them. The cards of the same run (an approval, a
+   * secure form, a question) are placed against it by the `seq` of their own event, never by time.
    */
-  dedupeKey: z.exactOptional(z.string()),
+  eventSeq: z.exactOptional(z.number().int().positive()),
 });
 export type Message = z.infer<typeof messageSchema>;
 

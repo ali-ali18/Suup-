@@ -338,7 +338,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("conversation engine"), () => {
       await runtime.close();
     });
 
-    it("what the bot wrote besides the question is the message's lead, apart from the question (the card's title)", async () => {
+    it("what the bot wrote besides the question is a message of its own, before the question (the card's title)", async () => {
       const options = [{ label: "Azul" }, { label: "Verde" }];
       const runtime = await open({
         agent: [
@@ -352,13 +352,16 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("conversation engine"), () => {
       const bot = await newBot(runtime);
       const first = await sendMessage(runtime, { botId: bot.id, text: "Escolha uma cor" });
       await work(runtime, first.run.id);
-      const [ask] = await botMessages(runtime, first.message.conversationId);
-      expect(ask?.question).toEqual({
-        questions: [{ question: "Qual cor?", options }],
-        lead: "A busca está fora do ar.",
-      });
-      // Whoever reads only the text (the CLI, the history) gets both.
-      expect(ask?.text).toBe("A busca está fora do ar.\n\nQual cor?");
+      const [said, ask, ...rest] = await botMessages(runtime, first.message.conversationId);
+      expect(rest).toEqual([]);
+      expect(said).toMatchObject({ text: "A busca está fora do ar." });
+      expect(said?.eventSeq).toBeGreaterThan(0);
+      expect(said?.question).toBeUndefined();
+      // The question is the card alone: its title, with no words of the bot repeated in it.
+      expect(ask?.question).toEqual({ questions: [{ question: "Qual cor?", options }] });
+      expect(ask?.text).toBe("Qual cor?");
+      expect(ask?.eventSeq).toBeUndefined();
+      expect(said?.seq).toBeLessThan(ask?.seq ?? 0);
       await runtime.close();
     });
 
@@ -373,6 +376,108 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("conversation engine"), () => {
       });
       expect(note.queuedForRun).toBe(true);
       expect((await getRun(runtime.db, first.run.id))?.status).toBe("waiting_approval");
+      await runtime.close();
+    });
+  });
+
+  describe("the words of a turn with tools are messages of their own, in order (KOD-64)", () => {
+    const shell = { approvals: { levels: { shell: "write_reversible" } } };
+    const texts = async (runtime: Runtime, conversationId: string) =>
+      (await botMessages(runtime, conversationId)).map((m) => m.text);
+
+    it("text and a tool in one turn, then the final answer: the part once, the answer once, in order", async () => {
+      const runtime = await open(
+        {
+          agent: [
+            { text: "Vou olhar.", calls: [call("shell", { command: "echo oi" })] },
+            { text: "Olhei, está tudo certo." },
+          ],
+        },
+        shell,
+      );
+      const bot = await newBot(runtime);
+      const sent = await sendMessage(runtime, { botId: bot.id, text: "Olhe isto" });
+      await work(runtime, sent.run.id);
+      const messages = await botMessages(runtime, sent.message.conversationId);
+      expect(messages.map((m) => m.text)).toEqual(["Vou olhar.", "Olhei, está tudo certo."]);
+      expect(messages.map((m) => m.eventSeq === undefined)).toEqual([false, true]);
+      // A second pass over the end of the run writes nothing more.
+      await finishRun(runtime.db, sent.run.id);
+      expect(await texts(runtime, sent.message.conversationId)).toHaveLength(2);
+      await runtime.close();
+    });
+
+    it("plain text with no tool stays a single message", async () => {
+      const runtime = await open({ agent: [{ text: "Bom dia!" }] });
+      const bot = await newBot(runtime);
+      const sent = await sendMessage(runtime, { botId: bot.id, text: "Oi" });
+      await work(runtime, sent.run.id);
+      expect(await texts(runtime, sent.message.conversationId)).toEqual(["Bom dia!"]);
+      await runtime.close();
+    });
+
+    it("text and finish in the same turn: only the summary shows, even when the words are the same", async () => {
+      for (const [said, summary] of [
+        ["Terminei tudo.", "Terminei tudo."],
+        ["Quase lá, só conferir.", "Pronto, tudo conferido."],
+      ] as const) {
+        const runtime = await open({
+          agent: [{ text: said, calls: [call("finish", { summary })] }],
+        });
+        const bot = await newBot(runtime);
+        const sent = await sendMessage(runtime, { botId: bot.id, text: "Faça" });
+        await work(runtime, sent.run.id);
+        expect(await texts(runtime, sent.message.conversationId)).toEqual([summary]);
+        await runtime.close();
+      }
+    });
+
+    it("a worker that dies right after the response and a second one that finishes: each part once", async () => {
+      const runtime = await open(
+        {
+          agent: [
+            { text: "Vou olhar.", calls: [call("shell", { command: "echo oi" })] },
+            { text: "Terminei no segundo worker." },
+          ],
+        },
+        shell,
+      );
+      const bot = await newBot(runtime);
+      const sent = await sendMessage(runtime, { botId: bot.id, text: "Faça e termine" });
+      const { conversationId } = sent.message;
+      expect(await claimRun(runtime.db, sent.run.id, "worker-a")).not.toBeNull();
+      const deps = await runtime.buildDeps(sent.run.id, "worker-a");
+      await expect(
+        runLoop({ ...deps, store: new CrashingStore(deps.store, 6) }, sent.run.id),
+      ).rejects.toBeInstanceOf(SimulatedCrash);
+      // The part was written with the response, before the crash.
+      expect(await texts(runtime, conversationId)).toEqual(["Vou olhar."]);
+      await new Promise((r) => setTimeout(r, 30));
+      expect(await requeueStaleRuns(runtime.db, { olderThanMs: 1 })).toEqual([sent.run.id]);
+      await work(runtime, sent.run.id);
+      expect(await texts(runtime, conversationId)).toEqual([
+        "Vou olhar.",
+        "Terminei no segundo worker.",
+      ]);
+      await runtime.close();
+    });
+
+    it("a routine's run posts only its summary, never parts", async () => {
+      const runtime = await open(
+        {
+          agent: [
+            { text: "Vou olhar.", calls: [call("shell", { command: "echo oi" })] },
+            { text: "Feito." },
+          ],
+        },
+        shell,
+      );
+      const bot = await newBot(runtime);
+      const sent = await sendMessage(runtime, { botId: bot.id, text: "Qualquer coisa" });
+      await runtime.db.sql`update runs set origin = 'routine' where id = ${sent.run.id}`;
+      await work(runtime, sent.run.id);
+      const texts2 = await texts(runtime, sent.message.conversationId);
+      expect(texts2).not.toContain("Vou olhar.");
       await runtime.close();
     });
   });

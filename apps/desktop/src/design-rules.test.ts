@@ -2138,18 +2138,25 @@ describe("para onde um segredo pode ir (docs/DESIGN.md, §1)", () => {
   });
 });
 
-describe("a fala do turno vem antes do cartão (dono, 25/11/2026)", () => {
-  it("o app não escreve texto fixo junto do cartão de segredo e lê a fala só de dado declarado", () => {
+describe("a fala do turno é uma mensagem na ordem do registro (dono, 25/11/2026; KOD-64)", () => {
+  it("o app não escreve texto fixo junto do cartão de segredo e não lê a fala de dentro dos eventos", () => {
     const card = read(join(SRC, "ui/secret-request-card.tsx"));
     expect(card).not.toContain("Guardado no cofre");
-    const lead = read(join(SRC, "data/turn-lead.ts"));
-    // The call is found by its exact id, never by comparing or searching text.
-    expect(lead).toContain("b.id === callId");
-    for (const call of [".match(", ".includes(", ".test("]) expect(lead).not.toContain(call);
-  });
-  it("a linha do tempo põe a fala acima do cartão e pula a mensagem pela chave exata", () => {
+    // O remendo do `lead` saiu: a fala vem como mensagem própria, não do `model_response`.
+    expect(existsSync(join(SRC, "data/turn-lead.ts"))).toBe(false);
     const timeline = read(join(SRC, "features/chat/timeline.ts"));
-    expect(timeline).toContain("wordsOfCard.has(message.dedupeKey)");
-    expect(timeline).toContain("key: `lead-");
+    for (const gone of ["wordsOfCard", "turnLeadOf", "approvalLeads", "dedupeKey", "key: `lead-"]) {
+      expect(timeline).not.toContain(gone);
+    }
+  });
+  it("a linha do tempo ordena o cartão e a fala pelo seq do registro, nunca pelo relógio nem pelo texto", () => {
+    const timeline = read(join(SRC, "features/chat/timeline.ts"));
+    expect(timeline).toContain("card.seq < message.eventSeq");
+    const callSeq = read(join(SRC, "data/call-seq.ts"));
+    // O id da chamada é comparado exatamente; nenhum texto é procurado nem comparado.
+    for (const call of [".match(", ".includes(", ".test(", ".startsWith("]) {
+      expect(callSeq).not.toContain(call);
+      expect(timeline).not.toContain(call);
+    }
   });
 });

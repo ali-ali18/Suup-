@@ -127,7 +127,7 @@ export function toMessageDto(message: MessageRow): Message {
     ...(message.attachments === undefined
       ? {}
       : { attachments: message.attachments.map((a) => ({ ...a, kind: fileKindOf(a.mime) })) }),
-    ...(message.dedupeKey === undefined ? {} : { dedupeKey: message.dedupeKey }),
+    ...(message.eventSeq === undefined ? {} : { eventSeq: message.eventSeq }),
   };
 }
 

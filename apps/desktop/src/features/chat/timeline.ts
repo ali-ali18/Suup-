@@ -1,10 +1,10 @@
 import type { Approval, MessageAttachment, Question, Run, TeamProposal } from "@suup/api";
+import { callSeqKey } from "../../data/call-seq.js";
 import type { ConnectCardItem } from "../../data/connect-cards.js";
 import { isApprovedProposal } from "../../data/connect-cards.js";
 import { failureLine } from "../../data/derive.js";
 import type { SecretRequestItem } from "../../data/secret-requests.js";
 import type { LocalMessage } from "../../data/state.js";
-import type { TurnLead } from "../../data/turn-lead.js";
 import type { BubblePosition, UserMessageState } from "../../ui/message.js";
 
 export type TimelineItem =
@@ -59,6 +59,9 @@ const LIVE: ReadonlySet<Run["status"]> = new Set([
   "waiting_user",
 ]);
 
+/** `{ seq }` when there is one: the optional field is left out, never `undefined`. */
+const seqOf = (seq: number | undefined): { seq?: number } => (seq === undefined ? {} : { seq });
+
 const pad = (n: number) => String(n).padStart(2, "0");
 const timeOf = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 const dayStart = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
@@ -96,16 +99,16 @@ export function buildTimeline(
     secrets?: readonly SecretRequestItem[];
     connectCards?: readonly ConnectCardItem[];
     /**
-     * What the bot said in the turn of each approval's call, by approval id. The cards of connect
-     * and secret carry theirs (`lead`).
+     * The place of each call in its run's log (`callSeqsOf`), to order an approval against the
+     * words of its turn. The cards of connect and secret carry their own `seq`.
      */
-    approvalLeads?: Readonly<Record<string, TurnLead>>;
+    callSeqs?: Readonly<Record<string, number>>;
   } = {},
 ): TimelineItem[] {
   const items: TimelineItem[] = [];
   const opened = new Set<string>();
   // The cards that need (or needed) you, in the order they were asked.
-  type Placed = { at: string; runId: string } & (
+  type Placed = { at: string; runId: string; seq?: number } & (
     | { kind: "approval"; approval: Approval }
     | { kind: "secret"; request: SecretRequestItem }
     | { kind: "connect"; card: ConnectCardItem }
@@ -119,60 +122,59 @@ export function buildTimeline(
           kind: "approval",
           at: approval.createdAt,
           runId: approval.runId,
+          ...seqOf(extras.callSeqs?.[callSeqKey(approval.runId, approval.callId)]),
           approval,
         }),
       ),
     ...(extras.connectCards ?? []).map(
-      (card): Placed => ({ kind: "connect", at: card.at, runId: card.runId, card }),
+      (card): Placed => ({
+        kind: "connect",
+        at: card.at,
+        runId: card.runId,
+        ...seqOf(card.seq),
+        card,
+      }),
     ),
     ...(extras.secrets ?? []).map(
       (request): Placed => ({
         kind: "secret",
         at: request.startedAt,
         runId: request.runId,
+        seq: request.seq,
         request,
       }),
     ),
-  ].sort((a, b) => a.at.localeCompare(b.at));
+  ].sort(
+    // The cards of one run are in the order of its log; any other pair, in the order of the time.
+    (a, b) =>
+      a.runId === b.runId && a.seq !== undefined && b.seq !== undefined
+        ? a.seq - b.seq
+        : a.at.localeCompare(b.at),
+  );
   let previous: Date | undefined;
 
-  // The words the bot said in the turn of a card come ABOVE it (owner, 25/11/2026: in Grok the bot
-  // speaks and THEN the card appears). The messages of a run are written when it pauses or ends,
-  // after the card was asked, so the order of the log would put the words under the card; the card
-  // carries its own words (read from the events, by the exact id of the call) and is drawn as the
-  // bot's bubble followed by the card. A turn with two cards says its words once.
-  const spoken = new Set<string>();
-  const leadOf = (next: Placed): TurnLead | undefined =>
-    next.kind === "approval"
-      ? extras.approvalLeads?.[next.approval.id]
-      : next.kind === "connect"
-        ? next.card.lead
-        : next.request.lead;
-  // The messages the harness wrote with the same words as a card (the end of a run that asked for a
-  // secret writes the bot's lead as its message): found by their exact key, never by their text, and
-  // not drawn again.
-  const wordsOfCard = new Set(
-    (extras.secrets ?? []).flatMap((r) => (r.lead === undefined ? [] : [r.messageKey])),
-  );
+  // The words the bot writes in a turn that also calls tools are messages of their own (KOD-64,
+  // `docs/pesquisas/kod-64-...`): written with the turn, before the call that becomes the card.
+  // The chat is the messages and the cards in the order of the log: a card goes before the words
+  // that came AFTER it in its run (by `seq`: the card's call against `message.eventSeq`), never
+  // by time, which two writes can share. Anything the run wrote without a `seq` of its own (the
+  // question, the end) comes after every card of that run; the rest is placed by time.
+  const cardComesBefore = (card: Placed, message: LocalMessage): boolean => {
+    if (message.runId === card.runId && message.authorKind !== "user") {
+      if (message.eventSeq !== undefined && card.seq !== undefined)
+        return card.seq < message.eventSeq;
+      if (message.eventSeq === undefined) return true;
+    }
+    return card.at <= message.createdAt;
+  };
 
-  // The cards due before `until` (all that remains, when `until` is undefined).
-  const flush = (until?: string) => {
+  // The cards due before `message` (all that remains, with no message).
+  const flush = (message?: LocalMessage) => {
     while (waiting.length > 0) {
       const next = waiting[0] as Placed;
-      const ready = opened.has(next.runId) || until === undefined;
-      if (!ready || (until !== undefined && next.at > until)) break;
+      const ready = opened.has(next.runId) || message === undefined;
+      if (!ready || (message !== undefined && !cardComesBefore(next, message))) break;
       waiting.shift();
-      const lead = leadOf(next);
-      if (lead !== undefined && !spoken.has(lead.turn)) {
-        spoken.add(lead.turn);
-        const owner =
-          next.kind === "approval"
-            ? next.approval.id
-            : next.kind === "connect"
-              ? next.card.callId
-              : next.request.callId;
-        items.push({ kind: "bot", key: `lead-${owner}`, text: lead.text });
-      }
       if (next.kind === "approval")
         items.push({
           kind: "approval",
@@ -193,7 +195,7 @@ export function buildTimeline(
   messages.forEach((message, index) => {
     const at = new Date(message.createdAt);
     if (message.local === undefined) {
-      flush(message.createdAt);
+      flush(message);
       if (previous === undefined || dayStart(previous) !== dayStart(at)) {
         items.push({ kind: "separator", key: `sep-${message.id}`, text: dayLabel(at, now) });
       } else if (at.getTime() - previous.getTime() >= GAP_MS) {
@@ -235,9 +237,7 @@ export function buildTimeline(
         team: message.team,
       });
     } else if (message.question === undefined) {
-      // Its words are already drawn above the secure form they belong to.
-      if (message.dedupeKey === undefined || !wordsOfCard.has(message.dedupeKey))
-        items.push({ kind: "bot", key: message.id, text: message.text });
+      items.push({ kind: "bot", key: message.id, text: message.text });
     } else {
       // The reply is the next message of the user, even one still being sent: the card answers at once.
       const reply = messages.slice(index + 1).find((m) => m.authorKind === "user");

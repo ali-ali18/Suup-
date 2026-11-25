@@ -121,6 +121,7 @@ describe.skipIf(!DATABASE_URL)(
         (e) =>
           e.type === "message.created" &&
           e.data.message.authorKind === "bot" &&
+          e.data.message.eventSeq === undefined &&
           e.data.message.runId === runId,
         "the bot's final message",
       );
@@ -170,6 +171,7 @@ describe.skipIf(!DATABASE_URL)(
         (e) =>
           e.type === "message.created" &&
           e.data.message.authorKind === "bot" &&
+          e.data.message.eventSeq === undefined &&
           e.data.message.runId === runId,
         "the final message after the resume",
       );

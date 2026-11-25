@@ -533,15 +533,21 @@ describe.skipIf(!DATABASE_URL)(
         "0034_user_owner_name.sql",
         "0035_bot_color_palette.sql",
         "0036_secret_hosts.sql",
+        "0037_message_event_seq.sql",
       ]);
       for (const file of held) await rm(join(dir, file));
       await migrate(ctx.db, dir);
       const [bot] = await ctx.db.sql<{ id: string }[]>`
       insert into bots (name, model_provider, model_id) values ('b', 'p', 'm') returning id`;
-      const conversation = await createDirectConversation(ctx.db, bot?.id as string);
+      // Raw rows: the views of `createDirectConversation` read columns of newer migrations.
+      const [conversation] = await ctx.db.sql<{ id: string }[]>`
+      insert into conversations (kind) values ('direct') returning id`;
+      await ctx.db.sql`
+      insert into conversation_members (conversation_id, conversation_kind, bot_id)
+      values (${conversation?.id as string}, 'direct', ${bot?.id as string})`;
       await ctx.db.sql`
       insert into messages (conversation_id, seq, author_kind, text) values
-      (${conversation.id}, 1, 'user', 'oi')`;
+      (${conversation?.id as string}, 1, 'user', 'oi')`;
       expect(await migrate(ctx.db)).toEqual(held);
       const [row] = await ctx.db.sql<
         { routine_id: string | null }[]
@@ -576,15 +582,21 @@ describe.skipIf(!DATABASE_URL)(
         "0034_user_owner_name.sql",
         "0035_bot_color_palette.sql",
         "0036_secret_hosts.sql",
+        "0037_message_event_seq.sql",
       ]);
       for (const file of held) await rm(join(dir, file));
       await migrate(ctx.db, dir);
       const [bot] = await ctx.db.sql<{ id: string }[]>`
       insert into bots (name, model_provider, model_id) values ('b', 'p', 'm') returning id`;
-      const conversation = await createDirectConversation(ctx.db, bot?.id as string);
+      // Raw rows: the views of `createDirectConversation` read columns of newer migrations.
+      const [conversation] = await ctx.db.sql<{ id: string }[]>`
+      insert into conversations (kind) values ('direct') returning id`;
+      await ctx.db.sql`
+      insert into conversation_members (conversation_id, conversation_kind, bot_id)
+      values (${conversation?.id as string}, 'direct', ${bot?.id as string})`;
       await ctx.db.sql`
       insert into messages (conversation_id, seq, author_kind, text) values
-      (${conversation.id}, 1, 'user', 'oi')`;
+      (${conversation?.id as string}, 1, 'user', 'oi')`;
       expect(await migrate(ctx.db)).toEqual(held);
       const [old] = await ctx.db.sql<
         { routine_ref: string | null }[]
@@ -600,7 +612,7 @@ describe.skipIf(!DATABASE_URL)(
         now: NOW,
       });
       const mine = await appendMessage(ctx.db, {
-        conversationId: conversation.id,
+        conversationId: conversation?.id as string,
         authorKind: "user",
         text: "Editar a rotina “Manhã”: muda pra 7h",
         routineRef: routine.id,
@@ -610,7 +622,7 @@ describe.skipIf(!DATABASE_URL)(
       // only on a message of the user
       await expect(
         appendMessage(ctx.db, {
-          conversationId: conversation.id,
+          conversationId: conversation?.id as string,
           authorKind: "system",
           text: "x",
           routineRef: routine.id,
@@ -618,7 +630,7 @@ describe.skipIf(!DATABASE_URL)(
       ).rejects.toThrow();
       await expect(ctx.db.sql`
       insert into messages (conversation_id, seq, author_kind, text, routine_ref) values
-      (${conversation.id}, 9, 'system', 'x', ${routine.id})`).rejects.toThrow();
+      (${conversation?.id as string}, 9, 'system', 'x', ${routine.id})`).rejects.toThrow();
       // the routine goes, the message stays, without the reference
       await deleteRoutine(ctx.db, routine.id, "owner");
       const [after] = await ctx.db.sql<{ text: string; routine_ref: string | null }[]>`

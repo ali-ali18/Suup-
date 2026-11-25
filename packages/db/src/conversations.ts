@@ -138,7 +138,7 @@ async function toViews(db: Db, rows: ConversationRow[]): Promise<ConversationVie
     select m.conversation_id, count(*) as n
     from messages m join conversations c on c.id = m.conversation_id
     where m.conversation_id = any(${ids}::uuid[])
-      and m.author_kind <> 'user' and m.seq > c.last_read_seq
+      and m.author_kind <> 'user' and m.event_seq is null and m.seq > c.last_read_seq
     group by m.conversation_id`;
   const unreadBy = new Map(unread.map((u) => [u.conversation_id, Number(u.n)]));
   const membersBy = new Map<string, ConversationMember[]>();

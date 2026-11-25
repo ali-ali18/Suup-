@@ -330,7 +330,12 @@ describe.skipIf(!DATABASE_URL)(
       // Follow the run: the connection is reopened with the run's id and resumes where it was.
       f.sub.setRuns([sent.run.id]);
       const botMessage = await f.waitFor(
-        (e) => e.type === "message.created" && e.data.message.authorKind === "bot",
+        // The words of a turn with tools are messages of their own (they carry `eventSeq`): the
+        // answer is the one the end of the run writes.
+        (e) =>
+          e.type === "message.created" &&
+          e.data.message.authorKind === "bot" &&
+          e.data.message.eventSeq === undefined,
         "the bot's message",
       );
       expect(botMessage.event).toMatchObject({
@@ -428,7 +433,7 @@ describe.skipIf(!DATABASE_URL)(
       const f = follow(api);
       await f.waitFor((e) => e.type === "ready", "ready");
       const read = await api.conversations.markRead(conversation.id);
-      expect(read).toMatchObject({ unreadCount: 0, lastReadSeq: 2 });
+      expect(read).toMatchObject({ unreadCount: 0, lastReadSeq: 3 });
       await f.waitFor(
         (e) =>
           e.type === "conversation.updated" &&
@@ -440,10 +445,10 @@ describe.skipIf(!DATABASE_URL)(
       expect((await api.bots.get(bot.id)).unreadCount).toBe(0);
       // Reading up to an older message never unreads, and a number past the end is clamped.
       expect((await api.conversations.markRead(conversation.id, { upToSeq: 1 })).lastReadSeq).toBe(
-        2,
+        3,
       );
       expect((await api.conversations.markRead(conversation.id, { upToSeq: 99 })).lastReadSeq).toBe(
-        2,
+        3,
       );
     });
 
@@ -532,7 +537,10 @@ describe.skipIf(!DATABASE_URL)(
       expect(created).toBeLessThan(delivered.index);
       f.sub.setRuns([first.run.id]);
       await f.waitFor(
-        (e) => e.type === "message.created" && e.data.message.authorKind === "bot",
+        (e) =>
+          e.type === "message.created" &&
+          e.data.message.authorKind === "bot" &&
+          e.data.message.eventSeq === undefined,
         "the bot's answer",
       );
 
@@ -556,7 +564,10 @@ describe.skipIf(!DATABASE_URL)(
 
       const first = await api.conversations.send(conversation.id, "CASE-ASK escolha uma cor");
       const question = await f.waitFor(
-        (e) => e.type === "message.created" && e.data.message.authorKind === "bot",
+        (e) =>
+          e.type === "message.created" &&
+          e.data.message.authorKind === "bot" &&
+          e.data.message.question !== undefined,
         "the question as a bot message",
       );
       expect(question.event).toMatchObject({

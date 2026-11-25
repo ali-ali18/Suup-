@@ -100,6 +100,12 @@ export interface Message {
    * message that is its own words by this exact key.
    */
   dedupeKey?: string;
+  /**
+   * Present only on a part: the text the bot wrote in a turn that also called tools. The `seq` of
+   * the run's `model_response` event that carried it; the app orders the part against the cards of
+   * the same run by it (never by time).
+   */
+  eventSeq?: number;
 }
 
 export interface MessageRow {
@@ -118,6 +124,7 @@ export interface MessageRow {
   routine_ref: string | null;
   attachments: MessageAttachment[] | null;
   dedupe_key?: string | null;
+  event_seq?: number | null;
 }
 
 export function mapMessage(row: MessageRow): Message {
@@ -142,6 +149,7 @@ export function mapMessage(row: MessageRow): Message {
     ...(row.dedupe_key === null || row.dedupe_key === undefined
       ? {}
       : { dedupeKey: row.dedupe_key }),
+    ...(row.event_seq === null || row.event_seq === undefined ? {} : { eventSeq: row.event_seq }),
   };
 }
 
@@ -162,6 +170,7 @@ const MESSAGE_COLUMNS = [
   "routine_ref",
   "attachments",
   "dedupe_key",
+  "event_seq",
 ];
 
 const uuidSchema = z.uuid();
@@ -213,6 +222,8 @@ const appendSchema = z
     team: z.exactOptional(z.array(teamProposalItemSchema).min(1).max(5)),
     routineId: z.exactOptional(uuidSchema),
     routineRef: z.exactOptional(uuidSchema),
+    eventSeq: z.exactOptional(z.number().int().positive()),
+    attachFiles: z.exactOptional(z.boolean()),
   })
   .superRefine((m, ctx) => {
     if (m.routineRef !== undefined && m.authorKind !== "user") {
@@ -275,6 +286,14 @@ export interface AppendMessageInput {
   routineId?: string;
   /** User messages only: the routine the message is about (see `Message.routineRef`). */
   routineRef?: string;
+  /** A part of a turn: see `Message.eventSeq`. */
+  eventSeq?: number;
+  /**
+   * Whether the files the run sent that no message shows yet go with this message (default: yes
+   * for a bot or system message of a run). A part posted in the middle of a run says `false`: the
+   * files stay for the message that ends it.
+   */
+  attachFiles?: boolean;
 }
 
 /**
@@ -323,7 +342,7 @@ export async function appendMessageOnce(
     // The files the run sent that no message shows yet go with this one (a bot or system message
     // of the run), in the same transaction: whoever sees the message sees its files.
     const waiting =
-      m.authorKind !== "user" && m.runId !== undefined
+      m.authorKind !== "user" && m.runId !== undefined && m.attachFiles !== false
         ? await tx.sql<{ id: string; name: string; mime: string; size: number }[]>`
             select id, name, mime, size from files
             where run_id = ${m.runId} and message_id is null
@@ -337,7 +356,7 @@ export async function appendMessageOnce(
       size: f.size,
     }));
     const [row] = await tx.sql<MessageRow[]>`
-      insert into messages (conversation_id, seq, author_kind, author_bot_id, text, run_id, status, dedupe_key, question, team, routine_id, routine_ref, attachments, created_at)
+      insert into messages (conversation_id, seq, author_kind, author_bot_id, text, run_id, status, dedupe_key, question, team, routine_id, routine_ref, attachments, event_seq, created_at)
       values (
         ${m.conversationId},
         (select coalesce(max(seq), 0) + 1 from messages where conversation_id = ${m.conversationId}),
@@ -352,6 +371,7 @@ export async function appendMessageOnce(
         ${m.routineId ?? null},
         ${m.routineRef ?? null},
         ${attachments.length === 0 ? null : tx.sql.json(attachments)},
+        ${m.eventSeq ?? null},
         clock_timestamp()
       )
       returning ${tx.sql(MESSAGE_COLUMNS)}`;

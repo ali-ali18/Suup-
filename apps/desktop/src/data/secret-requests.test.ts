@@ -66,8 +66,8 @@ describe("secret requests of a run", () => {
   });
 });
 
-describe("the words of a secret request", () => {
-  it("the lead the server recorded rides on the card, with the key of the message written for it", () => {
+describe("the place of a secret request in its run's log", () => {
+  it("is the seq of the event; the card carries no words (they are a message of their own)", () => {
     const run = makeRun({ status: "waiting_user" });
     const [item] = secretRequestsOf(run, run.id, [
       makeEvent(7, "secret_requested", {
@@ -76,9 +76,7 @@ describe("the words of a secret request", () => {
         lead: " Preciso da chave. ",
       }),
     ]);
-    expect(item?.lead).toEqual({ text: "Preciso da chave.", turn: "secret:c7" });
-    expect(item?.messageKey).toBe(`run:${run.id}:secret:7`);
-    const [bare] = secretRequestsOf(run, run.id, [asked(8)]);
-    expect(bare).not.toHaveProperty("lead");
+    expect(item?.seq).toBe(7);
+    expect(item).not.toHaveProperty("lead");
   });
 });
