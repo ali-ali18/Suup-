@@ -3,7 +3,7 @@
 // the only thing the model may know: that the secret is now available (or that the user declined).
 // A name that is a PLUGIN's credential (a connector's token, a search engine's key) is the exception:
 // it is kept by the plugin, never granted, and the model is told the plugin keeps it.
-import { getRun, listRunEvents, postInbox } from "@suup/db";
+import { checkSecretHosts, getRun, listRunEvents, postInbox } from "@suup/db";
 import { RuntimeError } from "./errors.js";
 import type { Runtime } from "./runtime.js";
 
@@ -13,6 +13,8 @@ export interface PendingSecretRequest {
   callId: string;
   name: string;
   reason: string | null;
+  /** The sites the bot SUGGESTED. Only the ones the user confirms in the form are kept. */
+  hosts: string[];
 }
 
 /** The secret the run is waiting for, or `null` when it waits for something else (or nothing). */
@@ -28,7 +30,12 @@ export async function pendingSecretRequest(
   });
   let open: PendingSecretRequest | null = null;
   for (const event of events) {
-    const p = event.payload as { callId?: string; name?: string; reason?: string };
+    const p = event.payload as {
+      callId?: string;
+      name?: string;
+      reason?: string;
+      hosts?: string[];
+    };
     if (event.type === "secret_requested" && p.callId !== undefined && p.name !== undefined) {
       open = {
         runId,
@@ -36,6 +43,7 @@ export async function pendingSecretRequest(
         callId: p.callId,
         name: p.name,
         reason: p.reason ?? null,
+        hosts: p.hosts ?? [],
       };
     } else if (event.type === "escalated") {
       open = null;
@@ -51,6 +59,8 @@ export interface SecretAnswer {
   value?: string | undefined;
   declined?: boolean | undefined;
   description?: string | undefined;
+  /** The sites the user confirmed in the form: the only ones the vault keeps (never the bot's suggestion). */
+  hosts?: readonly string[] | undefined;
 }
 
 /**
@@ -83,13 +93,23 @@ export async function answerSecretRequest(
     });
     return { name: request.name, provided: true };
   }
+  // The sites come from the USER's form, never from what the bot suggested. An owner's secret
+  // without one would be blocked at once, so the form must have at least one.
+  const confirmed = answer.hosts === undefined ? [] : checkSecretHosts(answer.hosts);
+  if (confirmed.length === 0) {
+    throw new RuntimeError(
+      "invalid_input",
+      "Diga para quais endereços o segredo pode ir (por exemplo api.exemplo.com): sem isso ele ficaria bloqueado.",
+    );
+  }
   await runtime.vault.set(request.name, answer.value, {
     ...(answer.description === undefined ? {} : { description: answer.description }),
+    hosts: confirmed,
   });
   await runtime.vault.grant(request.name, request.botId);
   await postInbox(runtime.db, runId, {
     kind: "user_message",
-    text: `The secret ${request.name} is now available. Use it as {{secret:${request.name}}}.`,
+    text: `The secret ${request.name} is now available. Use it as {{secret:${request.name}}} in a web_fetch header or address, and only for ${confirmed.join(", ")} (the sites the user confirmed): a call to any other site is refused, whatever the user approves.`,
   });
   return { name: request.name, provided: true };
 }

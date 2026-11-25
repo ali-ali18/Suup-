@@ -4,6 +4,7 @@ import type { OutboundMessage } from "./outbound.js";
 import type { ToolSpec } from "./provider.js";
 import { classifyCall, maxRisk, type RiskLevel } from "./risk.js";
 import {
+  destinationHost,
   noRedaction,
   pathAllowed,
   placeholderSites,
@@ -64,6 +65,11 @@ export interface ToolAssessment {
   toolDescription: string;
   /** The secret names the arguments mention. */
   secrets: string[];
+  /**
+   * The host the secrets would be sent to (read from the argument the tool declares as its
+   * destination), for the approval card. Absent when the call has no secret or no readable destination.
+   */
+  secretHost?: string;
   /** Set only when the tool declares that the call is a message to another person. */
   outbound?: OutboundMessage;
 }
@@ -173,6 +179,11 @@ export class ToolRegistry {
     const parsed = tool.input.safeParse(rawArgs);
     if (!parsed.success) return undefined;
     const secrets = [...new Set(placeholderSites(rawArgs).flatMap((site) => site.names))];
+    const target =
+      secrets.length > 0 && tool.secretDestination !== undefined
+        ? (rawArgs as Record<string, unknown> | null)?.[tool.secretDestination]
+        : undefined;
+    const secretHost = typeof target === "string" ? destinationHost(target) : undefined;
     const env: ClassifyEnv = {
       executor: opts.executor,
       ...(opts.webSeen === undefined ? {} : { webSeen: opts.webSeen }),
@@ -188,8 +199,80 @@ export class ToolRegistry {
       summary: describeCall(tool, parsed.data, rawArgs, env),
       toolDescription: tool.description,
       secrets,
+      ...(secretHost === undefined ? {} : { secretHost }),
       ...(tool.outbound === undefined ? {} : { outbound: structuredClone(tool.outbound) }),
     };
+  }
+
+  /**
+   * Whether a call that names secrets may go where it is going, decided BEFORE any value is read
+   * and whatever an approval, a rule or a mode says. `undefined`: it may; otherwise the message
+   * for the model. Every secret of the call must have declared hosts, the tool must declare where
+   * its destination is, and that destination's host must be in the list of each secret.
+   */
+  async refuseSecretDestination(
+    name: string,
+    rawArgs: unknown,
+    access: Pick<SecretAccess, "hostsOf">,
+  ): Promise<string | undefined> {
+    const outcome = await this.#secretDestination(name, rawArgs, access);
+    return outcome.ok ? undefined : outcome.message;
+  }
+
+  async #secretDestination(
+    name: string,
+    rawArgs: unknown,
+    access: Pick<SecretAccess, "hostsOf">,
+  ): Promise<{ ok: true; hosts: string[] | undefined } | { ok: false; message: string }> {
+    const names = [...new Set(placeholderSites(rawArgs).flatMap((site) => site.names))];
+    if (names.length === 0) return { ok: true, hosts: undefined };
+    const tool = this.#tools.get(name)?.tool;
+    if (tool === undefined) return { ok: true, hosts: undefined };
+    const declared = tool.secretDestination;
+    if (declared === undefined) {
+      return {
+        ok: false,
+        message: `Tool "${name}" does not take secrets: Suup cannot tell where a ${name} call sends its data, and a secret only goes to an address the user declared for it. Nothing was run. Do not try another secret name or another way to send it; use web_fetch with the secret in a header, or ask the user.`,
+      };
+    }
+    const target = (rawArgs as Record<string, unknown> | null)?.[declared];
+    const host = typeof target === "string" ? destinationHost(target) : undefined;
+    if (host === undefined) {
+      return {
+        ok: false,
+        message: `A call to "${name}" that uses a secret needs a plain http(s) address (with a site name, written out, with no secret placeholder in the site name) in "${declared}", so Suup can check where the secret goes. Nothing was run.`,
+      };
+    }
+    let declaredHosts: Record<string, string[]>;
+    try {
+      declaredHosts = await access.hostsOf(names);
+    } catch (error) {
+      return {
+        ok: false,
+        message: `The addresses of the secrets could not be read (${errorMessage(error)}); tool "${name}" was not run.`,
+      };
+    }
+    let allowed: string[] | undefined;
+    for (const secret of names) {
+      const hosts = declaredHosts[secret];
+      if (hosts === undefined) {
+        return { ok: false, message: new SecretUnavailableError(secret).message };
+      }
+      if (hosts.length === 0) {
+        return {
+          ok: false,
+          message: `The secret ${secret} has no addresses declared yet, so it is blocked and cannot be sent anywhere. Nothing was run. Do not try another secret name or another way around this; ask the user to declare where ${secret} may go (Cofre in the app, or "suup vault hosts ${secret} --host <site>").`,
+        };
+      }
+      if (!hosts.includes(host)) {
+        return {
+          ok: false,
+          message: `The secret ${secret} may only be sent to ${hosts.join(", ")}, not to ${host}. Nothing was run. Do not try another secret name or another path to ${host}; if ${host} is really where it should go, ask the user to add that address to ${secret}.`,
+        };
+      }
+      allowed = allowed === undefined ? [...hosts] : allowed.filter((h) => hosts.includes(h));
+    }
+    return { ok: true, hosts: allowed ?? [] };
   }
 
   async invoke(
@@ -240,6 +323,7 @@ export class ToolRegistry {
     // Placeholders are only allowed in the fields the tool declared; the real values go in last,
     // so neither the validation messages nor `beforeExecute` ever see them.
     let runInput: unknown = input;
+    let secretHosts: string[] | undefined;
     const sites = placeholderSites(input);
     if (sites.length > 0) {
       const declared = tool.secretFields ?? [];
@@ -247,7 +331,7 @@ export class ToolRegistry {
       if (misplaced !== undefined) {
         return finish(
           "invalid_args",
-          `Tool "${name}" does not accept a secret placeholder in "${misplaced.path.join(".")}"${declared.length === 0 ? " (it accepts none)" : ` (allowed in: ${declared.join(", ")})`}. Write the value only where it is allowed.`,
+          `Tool "${name}" does not accept a secret placeholder in "${misplaced.path.join(".")}"${declared.length === 0 ? " (it accepts none)" : ` (allowed in: ${declared.join(", ")})`}. Write the value only where it is allowed. A secret is never put in a shell command; use web_fetch with the secret in a header or the address, or ask the user.`,
         );
       }
       if (opts.secrets === undefined) {
@@ -256,6 +340,10 @@ export class ToolRegistry {
           `Tool "${name}" names a secret, but no vault is configured for this run, so nothing was run.`,
         );
       }
+      // Before any value is read, and whatever the approval, the rules or the mode say.
+      const refusal = await this.#secretDestination(name, input, opts.secrets);
+      if (!refusal.ok) return finish("tool_error", refusal.message);
+      secretHosts = refusal.hosts;
       try {
         const values = await opts.secrets.resolve([...new Set(sites.flatMap((s) => s.names))]);
         runInput = substituteSecrets(input, values);
@@ -286,7 +374,12 @@ export class ToolRegistry {
     }
 
     const timeoutMs = tool.timeoutMs ?? this.#defaultTimeoutMs;
-    const run = await runWithLimits(tool, runInput, ctx, timeoutMs);
+    const run = await runWithLimits(
+      tool,
+      runInput,
+      secretHosts === undefined ? ctx : { ...ctx, secretHosts },
+      timeoutMs,
+    );
     switch (run.kind) {
       case "timeout":
         return finish(

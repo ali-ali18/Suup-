@@ -32,6 +32,7 @@ function makeTools(sent: string[]): Tool[] {
       input: z.object({ to: z.string(), body: z.string() }),
       risk: "external_irreversible",
       secretFields: ["body"],
+      secretDestination: "to",
       describe: ({ to }) => `Send a message to ${to}`,
       execute: async ({ to, body }) => {
         sent.push(`${to}|${body}`);
@@ -513,11 +514,18 @@ describe("secrets in the log", () => {
     const value = "sk-live-abcdef123456";
     const redactor = createRedactor({ API_TOKEN: value });
     const s = setup([
-      use(call("c1", "send", { to: "ana", body: "token {{secret:API_TOKEN}}" })),
+      use(
+        call("c1", "send", {
+          to: "https://api.exemplo.com/ana",
+          body: "token {{secret:API_TOKEN}}",
+        }),
+      ),
       say("done"),
     ]);
     const secrets = {
       redactor,
+      hostsOf: async (names: readonly string[]) =>
+        Object.fromEntries(names.map((n) => [n, ["api.exemplo.com"]])),
       resolve: async (names: readonly string[]) => Object.fromEntries(names.map((n) => [n, value])),
     };
     // Allowed by a rule so that the call runs now: what matters here is where the value ends up.
@@ -531,7 +539,7 @@ describe("secrets in the log", () => {
     });
     expect(await runLoop(s.rig.deps({ gate, secrets }), s.rig.runId)).toBe("done");
     // The tool received the real value...
-    expect(s.sent).toEqual([`ana|token ${value}`]);
+    expect(s.sent).toEqual([`https://api.exemplo.com/ana|token ${value}`]);
     // ...and no event or request holds it.
     expect(JSON.stringify(await s.rig.events())).not.toContain(value);
     expect(JSON.stringify(s.rig.provider.requests)).not.toContain(value);
@@ -540,12 +548,19 @@ describe("secrets in the log", () => {
 
   it("the card of a call that uses a secret shows the placeholder, and the call asks", async () => {
     const s = setup([
-      use(call("c1", "send", { to: "ana", body: "token {{secret:API_TOKEN}}" })),
+      use(
+        call("c1", "send", {
+          to: "https://api.exemplo.com/ana",
+          body: "token {{secret:API_TOKEN}}",
+        }),
+      ),
       say("done"),
     ]);
     expect(await loop(s)).toBe("waiting_approval");
     const [card] = requested(await s.rig.events());
     expect(card?.payload.secrets).toEqual(["API_TOKEN"]);
+    // The card says where the secret would go: the server reads it from the declared destination.
+    expect(card?.payload.secretHost).toBe("api.exemplo.com");
     expect(JSON.stringify(card?.payload.args)).toContain("{{secret:API_TOKEN}}");
   });
 });
@@ -554,6 +569,7 @@ describe("request_secret", () => {
   const secrets = {
     redactor: createRedactor(),
     resolve: async () => ({}),
+    hostsOf: async () => ({}),
   };
 
   it("is offered only to a run that has a vault", async () => {
@@ -571,7 +587,13 @@ describe("request_secret", () => {
 
   it("pauses like a question; the answer the model gets holds no value", async () => {
     const s = setup([
-      use(call("c1", "request_secret", { name: "GITHUB_TOKEN", reason: "to push the branch" })),
+      use(
+        call("c1", "request_secret", {
+          name: "GITHUB_TOKEN",
+          reason: "to push the branch",
+          hosts: ["API.github.com"],
+        }),
+      ),
       say("Got it."),
     ]);
     expect(await loop(s, { secrets })).toBe("waiting_user");
@@ -580,6 +602,7 @@ describe("request_secret", () => {
       callId: "c1",
       name: "GITHUB_TOKEN",
       reason: "to push the branch",
+      hosts: ["api.github.com"],
     });
     s.rig.store.postInbox(s.rig.runId, {
       kind: "user_message",
@@ -592,14 +615,59 @@ describe("request_secret", () => {
     expect(result?.payload.content).toContain("is now available");
   });
 
+  it("keeps what the bot wrote in the turn of the request (`lead`); nothing when it only asked", async () => {
+    const withText = setup([
+      use(
+        { type: "text", text: "  Preciso da sua chave.  " },
+        call("c1", "request_secret", { name: "TOKEN_X", hosts: ["api.x.test"] }),
+      ),
+    ]);
+    expect(await loop(withText, { secrets })).toBe("waiting_user");
+    expect(eventsOfType(await withText.rig.events(), "secret_requested")[0]?.payload).toEqual({
+      callId: "c1",
+      lead: "Preciso da sua chave.",
+      name: "TOKEN_X",
+      hosts: ["api.x.test"],
+    });
+    const bare = setup([
+      use(call("c1", "request_secret", { name: "TOKEN_X", hosts: ["api.x.test"] })),
+    ]);
+    expect(await loop(bare, { secrets })).toBe("waiting_user");
+    expect(
+      eventsOfType(await bare.rig.events(), "secret_requested")[0]?.payload,
+    ).not.toHaveProperty("lead");
+  });
+
   it("refuses a name that is not a secret name, and a call that is not alone", async () => {
-    const bad = setup([use(call("c1", "request_secret", { name: "not valid" })), say("ok")]);
+    const bad = setup([
+      use(call("c1", "request_secret", { name: "not valid", hosts: ["api.x.test"] })),
+      say("ok"),
+    ]);
     expect(await loop(bad, { secrets })).toBe("done");
     expect(eventsOfType(await bad.rig.events(), "tool_result")[0]?.payload.outcome).toBe(
       "invalid_args",
     );
+    // The hosts the bot suggests are only names: a URL, a port, a wildcard or an IP is refused.
+    for (const host of ["https://api.x.test", "api.x.test:8443", "*.x.test", "10.0.0.1"]) {
+      const odd = setup([
+        use(call("c1", "request_secret", { name: "TOKEN_X", hosts: [host] })),
+        say("ok"),
+      ]);
+      expect(await loop(odd, { secrets })).toBe("done");
+      expect(eventsOfType(await odd.rig.events(), "tool_result")[0]?.payload.outcome).toBe(
+        "invalid_args",
+      );
+    }
+    const none = setup([use(call("c1", "request_secret", { name: "TOKEN_X" })), say("ok")]);
+    expect(await loop(none, { secrets })).toBe("done");
+    expect(eventsOfType(await none.rig.events(), "tool_result")[0]?.payload.outcome).toBe(
+      "invalid_args",
+    );
     const crowd = setup([
-      use(call("c1", "request_secret", { name: "TOKEN_X" }), call("c2", "echo", { text: "x" })),
+      use(
+        call("c1", "request_secret", { name: "TOKEN_X", hosts: ["api.x.test"] }),
+        call("c2", "echo", { text: "x" }),
+      ),
       say("ok"),
     ]);
     expect(await loop(crowd, { secrets })).toBe("done");

@@ -76,9 +76,9 @@ Call it ALONE in its turn. The run pauses until the user replies; the reply come
 
 export const REQUEST_SECRET_DESCRIPTION = `Ask the user for a credential you need (an API token, a password) that is not in your list of secrets. The user types it into a secure form that stores it in the vault: you NEVER see the value, now or later. When the user answers, you are told only that the secret is now available (or that they declined).
 
-To USE a secret, write the placeholder \`{{secret:NAME}}\` where the value belongs, in a field of a tool that accepts it (for example inside a shell command or a request header). The harness puts the real value in at the moment of the action. Never try to read, print, store or repeat a secret value. A call that uses a secret may need the user's approval.
+To USE a secret, write \`{{secret:NAME}}\` in a header or the address of \`web_fetch\`; the harness puts the real value in at the moment of the action. Never try to read, print or repeat a value. A secret goes ONLY to the sites the user declares for it (never in a shell command), whatever the user approved; any other site is refused.
 
-Arguments: \`name\` (capital letters, digits and underscores, e.g. GITHUB_TOKEN) and \`reason\` (one sentence the user reads: what it is for). Call it ALONE in its turn; the run pauses until the user answers.`;
+Arguments: \`name\` (capital letters, digits, underscores, e.g. GITHUB_TOKEN), \`reason\` (one sentence for the user) and \`hosts\` (required: the site names it will be sent to, e.g. ["api.github.com"]; only the name, no https://, port or path). \`hosts\` is only your SUGGESTION: the user confirms or changes it in the form. Call it ALONE in its turn; the run pauses until the user answers.`;
 
 /** Largest wait a return may ask for, in minutes (defined with the guidance in prompts.ts). */
 export { MAX_RETURN_MINUTES };
@@ -113,6 +113,11 @@ export const scheduleReturnInputSchema = z.object({
 export const requestSecretInputSchema = z.object({
   name: z.string().describe("The secret's name, e.g. GITHUB_TOKEN."),
   reason: z.exactOptional(z.string()).describe("What it is for, in one sentence, for the user."),
+  hosts: z
+    .array(z.string().min(1).max(253))
+    .min(1)
+    .max(10)
+    .describe('Site names the secret will be sent to, e.g. ["api.github.com"]. A suggestion.'),
 });
 
 const planStepInput = z.object({

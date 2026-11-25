@@ -44,6 +44,7 @@ describe("a modal surface keeps the focus when the chat appears behind it", () =
     );
     render(
       <SecretRequestCard
+        suggestedHosts={[]}
         name="GH_TOKEN"
         reason={null}
         botName="Ajudante"

@@ -208,6 +208,8 @@ export function makeSecret(over: Partial<Secret> = {}): Secret {
     createdAt: iso(),
     updatedAt: iso(),
     lastUsedAt: null,
+    hosts: ["api.exemplo.com"],
+    blocked: false,
     ...over,
   };
 }

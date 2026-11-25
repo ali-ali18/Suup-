@@ -236,12 +236,13 @@ describe.skipIf(!DATABASE_URL)(
       // The bounds follow the estimate of 2.65 characters per token (it was 4: about 10 400 and
       // 2 600 then, 1.5 times more now). The four routine tools add about 1 700 to both;
       // `create_reminder` and the reminder guidance in the routine and return tools, about 450;
-      // `send_file`, about 250 (its check and `force`, about 150 more); `create_document`, about 1 000; `show_connect_card`, about 400.
+      // `send_file`, about 250 (its check and `force`, about 150 more); `create_document`, about 1 000; `show_connect_card`, about 400; `request_secret` asking for `hosts` and saying that a secret goes only to the sites the user declares (KOD-30), about 150.
       // The six always-on tools (memory and the web search and read) add about 6 000 to the loaded request.
+      // Measured after merging KOD-28 and KOD-30: 25 162 loaded, 13 464 searched (the bounds keep a small margin over them).
       expect(loaded.request.toolStats.estimatedTokens).toBeGreaterThan(21_000);
-      expect(loaded.request.toolStats.estimatedTokens).toBeLessThan(27_000);
+      expect(loaded.request.toolStats.estimatedTokens).toBeLessThan(26_000);
       expect(searched.request.toolStats.estimatedTokens).toBeGreaterThan(4_700);
-      expect(searched.request.toolStats.estimatedTokens).toBeLessThan(14_500);
+      expect(searched.request.toolStats.estimatedTokens).toBeLessThan(14_000);
       expect(loaded.catalog.mode).toBe("direct");
       expect(searched.catalog.mode).toBe("meta");
       expect(searched.catalog.connectorTools).toBeGreaterThanOrEqual(60);

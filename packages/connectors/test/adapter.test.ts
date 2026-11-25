@@ -207,7 +207,7 @@ describe("results", () => {
     const { registry } = await registryFor(m, spec);
     const redactor = createRedactor({ FAKE_API: value });
     const out = await registry.invoke("conn_fake__needs_secret", {}, ctx(), {
-      secrets: { redactor, resolve: async () => ({}) },
+      secrets: { redactor, resolve: async () => ({}), hostsOf: async () => ({}) },
     });
     expect(out.output.content).toContain("credential=[REDACTED:FAKE_API]");
     expect(out.output.content).not.toContain(value);

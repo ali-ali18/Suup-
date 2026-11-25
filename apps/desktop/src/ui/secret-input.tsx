@@ -27,9 +27,12 @@ export function SecretInput({
   ref,
   onEnter,
   onEmptyChange,
+  hideLabel,
   testId = "secret-input",
 }: {
   label: string;
+  /** The label only for screen readers, shown as the field's placeholder (a compact card). */
+  hideLabel?: boolean;
   disabled?: boolean;
   hint?: string | undefined;
   error?: string | undefined;
@@ -60,7 +63,7 @@ export function SecretInput({
   );
   return (
     <Field invalid={error !== undefined} disabled={disabled}>
-      <FieldCaption>{label}</FieldCaption>
+      <FieldCaption hidden={hideLabel === true}>{label}</FieldCaption>
       <div className="relative flex items-center">
         <Input
           ref={input}
@@ -75,6 +78,7 @@ export function SecretInput({
           data-1p-ignore="true"
           data-form-type="other"
           data-testid={testId}
+          {...(hideLabel === true ? { placeholder: label } : {})}
           autoFocus={autoFocus}
           onValueChange={(text) => onEmptyChange?.(text === "")}
           onKeyDown={(e) => {

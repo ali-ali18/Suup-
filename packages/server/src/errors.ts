@@ -6,6 +6,7 @@ import {
   RuleError,
   RunControlError,
   RunNotFoundError,
+  SecretHostInvalidError,
   SecretManagedError,
   SecretNotFoundError,
   WrittenRuleError,
@@ -151,7 +152,7 @@ export function toHttpError(error: unknown): HttpError {
       cause: error,
     });
   }
-  if (error instanceof SecretManagedError) {
+  if (error instanceof SecretHostInvalidError || error instanceof SecretManagedError) {
     return new HttpError("invalid_request", error.message, { cause: error });
   }
   if (error instanceof SecretNotFoundError) {

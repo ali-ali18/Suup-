@@ -39,13 +39,13 @@ export const shellTool = defineTool({
   // The command is arbitrary and is NOT parsed (no heuristic pretends to be security). What
   // decides is where it runs: on the isolated machine of the bot it can only change a disposable
   // machine; on the user's own computer (the `local` sandbox) it reaches everything. A command that
-  // carries a secret placeholder is raised to `external_irreversible` by the registry.
+  // carries a secret placeholder is refused: a command's destination is not known, and a secret only
+  // goes where the user declared (no `secretFields` here, on purpose; docs/COFRE.md).
   risk: "external_irreversible",
   classify: (_input, { executor }) =>
     executor.isolated === true ? "write_reversible" : "external_irreversible",
   describe: ({ command, cwd }) =>
     `Shell${cwd === undefined ? "" : ` in ${cwd}`}: ${command.length > 500 ? `${command.slice(0, 500)}…` : command}`,
-  secretFields: ["command"],
   // What a command prints may have come from the network, but labelling every output would change
   // what the model reads on every call: `untrustedOutputTools` in the configuration turns it on.
   timeoutMs: (SHELL_MAX_TIMEOUT_SECONDS + 15) * 1000,

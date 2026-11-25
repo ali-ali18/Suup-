@@ -9,8 +9,12 @@ import { DATABASE_URL, dbSuiteName, follow, until, useWorld } from "./world.js";
 const usage = { inputTokens: 500, outputTokens: 50 };
 const s = <T extends object>(step: T) => ({ ...step, usage });
 const shell = (command: string) => ({ name: "shell", args: { command } });
+const webFetch = (url: string) => ({ name: "web_fetch", args: { url } });
 
 const VALUE = "srv_live_Q1w2E3r4T5y6U7i8";
+
+/** What the bot writes in the turn of its request for a secret (the chat shows it above the form). */
+const ASK_SECRET_WORDS = "Preciso de uma chave para continuar.";
 
 const SCRIPTS = {
   roteiro: {
@@ -50,16 +54,51 @@ const SCRIPTS = {
       {
         whenObjectiveContains: "CASE-SECRET-USE",
         agent: [
-          s({ calls: [shell('echo "chave={{secret:SRV_TOKEN}}"')] }),
+          s({ calls: [webFetch("http://localhost:1/?k={{secret:SRV_TOKEN}}")] }),
           s({ text: "Usei a chave." }),
+        ],
+      },
+      {
+        // A host the secret was not declared for: refused before any card, whatever the user allowed.
+        whenObjectiveContains: "CASE-SECRET-ELSEWHERE",
+        agent: [
+          s({ calls: [webFetch("http://outro.localhost:1/?k={{secret:SRV_TOKEN}}")] }),
+          s({ text: "Recusado." }),
+        ],
+      },
+      {
+        // The terminal never carries a secret: its destination is unknown.
+        whenObjectiveContains: "CASE-SECRET-SHELL",
+        agent: [
+          s({ calls: [shell('echo "chave={{secret:SRV_TOKEN}}"')] }),
+          s({ text: "Recusado." }),
+        ],
+      },
+      {
+        // The bot says something in the turn of the request: that is its message, word for word.
+        whenObjectiveContains: "CASE-ASK-SECRET-QUIET",
+        agent: [
+          s({
+            calls: [
+              {
+                name: "request_secret",
+                args: { name: "QUIET_TOKEN", reason: "sem fala", hosts: ["api.pedido.test"] },
+              },
+            ],
+          }),
+          s({ text: "Pronto." }),
         ],
       },
       {
         whenObjectiveContains: "CASE-ASK-SECRET",
         agent: [
           s({
+            text: ASK_SECRET_WORDS,
             calls: [
-              { name: "request_secret", args: { name: "ASKED_TOKEN", reason: "para o teste" } },
+              {
+                name: "request_secret",
+                args: { name: "ASKED_TOKEN", reason: "para o teste", hosts: ["api.pedido.test"] },
+              },
             ],
           }),
           s({ text: "Obrigado, já posso usar." }),
@@ -82,7 +121,11 @@ describe.skipIf(!DATABASE_URL)(
     });
     const setup = async (name: string) => {
       const { api } = w.started;
-      const bot = await api.bots.create({ name, modelId: "model-x", allowedTools: ["shell"] });
+      const bot = await api.bots.create({
+        name,
+        modelId: "model-x",
+        allowedTools: ["shell", "web_fetch"],
+      });
       const conversation = await api.bots.openConversation(bot.id);
       const f = follow(api);
       await f.waitFor((e) => e.type === "ready", "ready");
@@ -444,12 +487,15 @@ describe.skipIf(!DATABASE_URL)(
         value: VALUE,
         description: "token do servidor de teste",
         grantBotIds: [bot.id],
+        hosts: ["API.Exemplo.com", "api.exemplo.com."],
       });
       expect(saved).toMatchObject({
         name: "SRV_TOKEN",
         description: "token do servidor de teste",
         grantedBotIds: [bot.id],
         lastUsedAt: null,
+        hosts: ["api.exemplo.com"],
+        blocked: false,
       });
       expect(JSON.stringify(saved)).not.toContain(VALUE);
       const listed = await api.vault.list();
@@ -474,10 +520,41 @@ describe.skipIf(!DATABASE_URL)(
       );
       expect((await api.vault.revoke("SRV_TOKEN", other.id)).grantedBotIds).toEqual([bot.id]);
       // Replacing keeps the grants; a bad name or a short value is refused.
-      expect((await api.vault.set("SRV_TOKEN", { value: `${VALUE}-2` })).grantedBotIds).toEqual([
-        bot.id,
-      ]);
+      const replaced = await api.vault.set("SRV_TOKEN", { value: `${VALUE}-2` });
+      expect(replaced.grantedBotIds).toEqual([bot.id]);
+      // ...and the sites it may go to (a value replaced with no sites in the body keeps them).
+      expect(replaced.hosts).toEqual(["api.exemplo.com"]);
       expect(await code(api.vault.set("srv_token", { value: VALUE }))).toBe("not_found");
+      // A site is only a DNS name: no scheme, port, path, wildcard or IP address.
+      for (const host of [
+        "https://api.exemplo.com",
+        "api.exemplo.com:443",
+        "*.exemplo.com",
+        "10.0.0.1",
+      ]) {
+        expect(await code(api.vault.set("BAD_HOST", { value: VALUE, hosts: [host] }))).toBe(
+          "invalid_request",
+        );
+        expect(await code(api.vault.setHosts("SRV_TOKEN", { hosts: [host] }))).toBe(
+          "invalid_request",
+        );
+      }
+      expect((await api.vault.list()).find((x) => x.name === "BAD_HOST")?.hosts ?? []).toEqual([]);
+      // Changing only the sites (PATCH), and emptying them blocks the secret.
+      expect(
+        (await api.vault.setHosts("SRV_TOKEN", { hosts: ["a.exemplo.com", "b.exemplo.com"] }))
+          .hosts,
+      ).toEqual(["a.exemplo.com", "b.exemplo.com"]);
+      expect(await api.vault.setHosts("SRV_TOKEN", { hosts: [] })).toMatchObject({
+        hosts: [],
+        blocked: true,
+      });
+      expect(await code(api.vault.setHosts("NO_SUCH_SECRET", { hosts: ["a.exemplo.com"] }))).toBe(
+        "not_found",
+      );
+      // A secret written with no sites is blocked, and the listing says so.
+      expect(await api.vault.set("OLD_ONE", { value: VALUE })).toMatchObject({ blocked: true });
+      await api.vault.remove("OLD_ONE");
       expect(await code(api.vault.set("SHORT_ONE", { value: "short" }))).toBe("invalid_request");
       expect(await code(api.vault.grant("NO_SUCH_SECRET", bot.id))).toBe("not_found");
       await api.vault.remove("SRV_TOKEN");
@@ -486,11 +563,17 @@ describe.skipIf(!DATABASE_URL)(
 
     it("a run that uses a secret asks first, shows the placeholder, and no response or frame carries the value", async () => {
       const { api, bot, conversation, f } = await setup("Usuario");
-      await api.vault.set("SRV_TOKEN", { value: VALUE, grantBotIds: [bot.id] });
+      await api.vault.set("SRV_TOKEN", {
+        value: VALUE,
+        grantBotIds: [bot.id],
+        hosts: ["localhost"],
+      });
       const sent = await api.conversations.send(conversation.id, "CASE-SECRET-USE");
       const card = await pendingOf(sent.run.id);
       expect(card.secrets).toEqual(["SRV_TOKEN"]);
-      expect(card.args).toEqual({ command: 'echo "chave={{secret:SRV_TOKEN}}"' });
+      // The card says where the secret would go (the server read it from the declared destination).
+      expect(card.secretHost).toBe("localhost");
+      expect(card.args).toEqual({ url: "http://localhost:1/?k={{secret:SRV_TOKEN}}" });
       await api.approvals.decide(card.id, { decision: "approve" });
       await until(
         async () => (await api.runs.get(sent.run.id)).status === "done" || undefined,
@@ -519,6 +602,37 @@ describe.skipIf(!DATABASE_URL)(
       f.close();
     });
 
+    it("a secret goes only where it was declared: another host, no host, and the shell are refused with no card", async () => {
+      const { api, f } = await setup("Destino");
+      await api.vault.set("SRV_TOKEN", { value: VALUE, hosts: ["localhost"] });
+      // One bot (and one conversation) per case: a scripted run continues where the chat left off.
+      const refusedOf = async (text: string, name: string) => {
+        const { bot, conversation } = await setup(name);
+        await api.vault.grant("SRV_TOKEN", bot.id);
+        const sent = await api.conversations.send(conversation.id, text);
+        await until(
+          async () => (await api.runs.get(sent.run.id)).status === "done" || undefined,
+          "done",
+        );
+        // No card was ever asked for: the call can never run.
+        expect(await api.approvals.list({ status: "pending", runId: sent.run.id })).toEqual([]);
+        const events = (await api.runs.events(sent.run.id, { limit: 1000 })).items;
+        expect(events.filter((e) => e.type === "approval_requested")).toEqual([]);
+        const result = events.find((e) => e.type === "tool_result");
+        expect(result?.payload.isError).toBe(true);
+        return String(result?.payload.content);
+      };
+      const elsewhere = await refusedOf("CASE-SECRET-ELSEWHERE", "Destino A");
+      expect(elsewhere).toContain("outro.localhost");
+      expect(elsewhere).toContain("may only be sent to localhost");
+      expect(elsewhere).not.toContain(VALUE);
+      expect(await refusedOf("CASE-SECRET-SHELL", "Destino B")).toContain("does not take secrets");
+      // Blocked (no hosts): refused even for the host it used to go to.
+      await api.vault.setHosts("SRV_TOKEN", { hosts: [] });
+      expect(await refusedOf("CASE-SECRET-USE", "Destino C")).toContain("no addresses declared");
+      f.close();
+    });
+
     it("request_secret: the app answers through the API and the bot learns only that it is available", async () => {
       const { api, bot, conversation, f } = await setup("Pedinte");
       const sent = await api.conversations.send(conversation.id, "CASE-ASK-SECRET");
@@ -532,17 +646,26 @@ describe.skipIf(!DATABASE_URL)(
         botId: bot.id,
         name: "ASKED_TOKEN",
         reason: "para o teste",
+        hosts: ["api.pedido.test"],
       });
-      // The bot's message in the chat says what it needs, without a form to type the value in.
-      const messages = await until(async () => {
-        const page = await api.conversations.messages(conversation.id);
-        return page.items.some((m) => m.text.includes("ASKED_TOKEN")) ? page.items : undefined;
-      }, "the bot's request in the chat");
-      expect(messages.find((m) => m.text.includes("ASKED_TOKEN"))?.authorKind).toBe("bot");
+      // The run recorded what the bot said in that turn, and the chat message is exactly it: no
+      // text of the system (the form is the card the app draws from the request).
+      const asked = (await api.runs.events(sent.run.id, { types: ["secret_requested"] })).items[0];
+      expect(asked?.payload.lead).toBe(ASK_SECRET_WORDS);
+      const page = await api.conversations.messages(conversation.id);
+      const said = page.items.filter((m) => m.authorKind === "bot");
+      expect(said.map((m) => m.text)).toEqual([ASK_SECRET_WORDS]);
+      expect(said[0]?.dedupeKey).toBe(`run:${sent.run.id}:secret:${asked?.seq}`);
 
       expect(await code(api.vault.answerRequest(sent.run.id, {}))).toBe("invalid_request");
+      // A value with no sites confirmed by the user is refused: the bot's suggestion is not enough.
+      expect(
+        await code(api.vault.answerRequest(sent.run.id, { value: "asked-token-value-4242" })),
+      ).toBe("invalid_request");
+      expect((await api.vault.list()).find((x) => x.name === "ASKED_TOKEN")).toBeUndefined();
       const answer = await api.vault.answerRequest(sent.run.id, {
         value: "asked-token-value-4242",
+        hosts: ["api.confirmado.test"],
       });
       expect(answer).toEqual({ name: "ASKED_TOKEN", provided: true });
       await until(
@@ -552,14 +675,31 @@ describe.skipIf(!DATABASE_URL)(
       expect(await api.vault.request(sent.run.id)).toBeNull();
       const result = (await api.runs.events(sent.run.id, { types: ["tool_result"] })).items[0];
       expect(result?.payload.content).toBe(
-        "The secret ASKED_TOKEN is now available. Use it as {{secret:ASKED_TOKEN}}.",
+        "The secret ASKED_TOKEN is now available. Use it as {{secret:ASKED_TOKEN}} in a web_fetch header or address, and only for api.confirmado.test (the sites the user confirmed): a call to any other site is refused, whatever the user approves.",
       );
-      expect((await api.vault.list()).find((x) => x.name === "ASKED_TOKEN")?.grantedBotIds).toEqual(
-        [bot.id],
-      );
+      const kept = (await api.vault.list()).find((x) => x.name === "ASKED_TOKEN");
+      expect(kept?.grantedBotIds).toEqual([bot.id]);
+      // What the user confirmed, not what the bot suggested.
+      expect(kept?.hosts).toEqual(["api.confirmado.test"]);
       expect(JSON.stringify(f.events)).not.toContain("asked-token-value-4242");
       // Nothing is waiting any more.
       expect(await code(api.vault.answerRequest(sent.run.id, { declined: true }))).toBe("conflict");
+      f.close();
+    });
+
+    it("request_secret without words in its turn: the form alone, no message of the bot", async () => {
+      const { api, conversation, f } = await setup("Pedinte Quieto");
+      const sent = await api.conversations.send(conversation.id, "CASE-ASK-SECRET-QUIET");
+      await until(
+        async () => (await api.runs.get(sent.run.id)).status === "waiting_user" || undefined,
+        "waiting_user",
+      );
+      expect((await api.vault.request(sent.run.id))?.name).toBe("QUIET_TOKEN");
+      const asked = (await api.runs.events(sent.run.id, { types: ["secret_requested"] })).items[0];
+      expect(asked?.payload).not.toHaveProperty("lead");
+      // The message of the pause is written with the status: nothing of the bot is there.
+      const page = await api.conversations.messages(conversation.id);
+      expect(page.items.filter((m) => m.authorKind === "bot")).toEqual([]);
       f.close();
     });
 

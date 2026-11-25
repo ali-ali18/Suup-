@@ -65,6 +65,7 @@ import { runsCommand, showCommand } from "./commands/runs.js";
 import { serverCommand } from "./commands/server.js";
 import {
   vaultGrant,
+  vaultHosts,
   vaultKeyGenerate,
   vaultList,
   vaultRemove,
@@ -119,6 +120,7 @@ export const COMMANDS: readonly CommandSpec[] = [
   vaultList,
   vaultRemove,
   vaultGrant,
+  vaultHosts,
   vaultRevoke,
   vaultRotate,
   vaultKeyGenerate,

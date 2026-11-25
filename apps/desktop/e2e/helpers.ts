@@ -91,7 +91,7 @@ export async function freshBot(
     description: "Bot de teste.",
     personality: "Seja objetivo.",
     modelId: "model-x",
-    allowedTools: ["shell", "read_file", "write_file", "edit_file"],
+    allowedTools: ["shell", "read_file", "write_file", "edit_file", "web_fetch"],
     ...extra,
   });
 }
@@ -141,4 +141,27 @@ export async function choose(page: Page, dropdown: Locator, label: string): Prom
   await dropdown.click();
   await page.getByRole("option", { name: label, exact: true }).click();
   await expect(page.getByRole("listbox")).toHaveCount(0);
+}
+
+/**
+ * The bot's words come ABOVE the card they belong to (owner, 25/11/2026): the bubble with `words`
+ * is a bot message before the card in the document, and sits higher on the screen.
+ */
+export async function expectWordsAbove(page: Page, words: string, card: Locator): Promise<void> {
+  const bubble = page.getByTestId("bubble-bot").filter({ hasText: words });
+  await expect(bubble).toHaveCount(1);
+  await expect(card).toBeVisible();
+  const before = await bubble.evaluate(
+    (el, target) => {
+      const other = target as Element;
+      return (el.compareDocumentPosition(other) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+    },
+    await card.elementHandle(),
+  );
+  expect(before).toBe(true);
+  const top = await bubble.boundingBox();
+  const under = await card.boundingBox();
+  expect((top?.y ?? Number.POSITIVE_INFINITY) + (top?.height ?? 0)).toBeLessThanOrEqual(
+    under?.y ?? Number.NEGATIVE_INFINITY,
+  );
 }

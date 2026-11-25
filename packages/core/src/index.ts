@@ -175,11 +175,13 @@ export {
 export * from "./schedule.js";
 export {
   createRedactor,
+  destinationHost,
   findPlaceholders,
   isSecretName,
   MIN_REDACTED_LENGTH,
   type MutableRedactor,
   noRedaction,
+  normalizeSecretHost,
   type PlaceholderSite,
   pathAllowed,
   placeholderFor,

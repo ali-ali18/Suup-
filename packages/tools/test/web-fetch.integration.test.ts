@@ -3,7 +3,8 @@ import type { AddressInfo } from "node:net";
 import { gzipSync } from "node:zlib";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildCurlCommand } from "../src/index.js";
-import { call } from "./helpers.js";
+import { fetchOnMachine } from "../src/web-fetch.js";
+import { call, makeContext } from "./helpers.js";
 import { localWorkspace } from "./local-helpers.js";
 
 const PAGE = `<!doctype html>
@@ -122,6 +123,10 @@ function route(req: IncomingMessage, res: ServerResponse): unknown {
       // Same port, other host name: also another origin.
       res.writeHead(302, { location: `${base.replace("127.0.0.1", "localhost")}/echo-auth` });
       return void res.end();
+    case "/redirect-other-port-localhost":
+      // Same DNS name, another port: another origin, but the same HOST.
+      res.writeHead(302, { location: `${otherBase.replace("127.0.0.1", "localhost")}/echo-auth` });
+      return void res.end();
     case "/long-text":
       return send(200, "text/plain", "z".repeat(150_000));
     default:
@@ -229,6 +234,52 @@ describe("web_fetch (LocalExecutor + local HTTP server)", () => {
     const file = await call(ex, "web_fetch", { url: `${base}/to-file`, headers });
     expect(file.outcome).toBe("tool_error");
     expect(file.output.content).not.toContain("root:");
+  });
+
+  it("with a secret in the call, a redirect goes on only to a host every secret may reach", async () => {
+    const ex = await localWorkspace();
+    const local = (path: string) => `${base.replace("127.0.0.1", "localhost")}${path}`;
+    const withSecret = (secretHosts: string[]) => ({ ...makeContext(ex), secretHosts });
+    // The secret is in the URL only (no custom header): it still counts.
+    const url = local("/redirect-same");
+    const same = await fetchOnMachine(url, undefined, withSecret(["localhost"]));
+    expect(same.ok).toBe(true);
+    // Another origin whose host is also on the list is followed.
+    otherAuth = [];
+    const allowed = await fetchOnMachine(
+      local("/redirect-other-port-localhost"),
+      { Authorization: "Bearer t0ken-for-this-site" },
+      withSecret(["localhost"]),
+    );
+    expect(allowed.ok).toBe(true);
+    expect(otherAuth).toEqual(["Bearer t0ken-for-this-site"]);
+    // A host outside the list (here an IP address, which no list can hold) stops the chain.
+    otherAuth = [];
+    const away = await fetchOnMachine(
+      local("/redirect-other"),
+      { Authorization: "Bearer t0ken-for-this-site" },
+      withSecret(["localhost"]),
+    );
+    expect(away.ok).toBe(false);
+    expect(away.ok ? "" : away.message).toContain("the secret in this call may not be sent there");
+    expect(away.ok ? "" : away.message).toContain("Do not try another secret name");
+    expect(otherAuth).toEqual([]);
+    // Nor is a list that does not have the new host enough.
+    const wrong = await fetchOnMachine(
+      local("/redirect-other-port-localhost"),
+      undefined,
+      withSecret(["api.exemplo.com"]),
+    );
+    expect(wrong.ok).toBe(false);
+    // And the address that runs is checked too, before anything is sent.
+    hits = [];
+    const first = await fetchOnMachine(
+      local("/echo-auth"),
+      undefined,
+      withSecret(["api.exemplo.com"]),
+    );
+    expect(first.ok).toBe(false);
+    expect(hits).toEqual([]);
   });
 
   it("without custom headers, a redirect to another site is followed as before", async () => {

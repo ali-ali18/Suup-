@@ -156,7 +156,12 @@ export const approvalDecisionSchema = z.enum(APPROVAL_DECISIONS);
 export type ApprovalDecision = z.infer<typeof approvalDecisionSchema>;
 
 /** A secret the bot may use, as the model is told about it: the name, never the value. */
-export const secretInfoSchema = z.object({ name: z.string(), description: z.string() });
+export const secretInfoSchema = z.object({
+  name: z.string(),
+  description: z.string(),
+  /** The sites the user declared for it. Empty: blocked until they declare one. */
+  hosts: z.exactOptional(z.array(z.string())),
+});
 export type SecretInfo = z.infer<typeof secretInfoSchema>;
 
 /** One concrete discrepancy named by the reviewer: what the work claims, what the evidence shows, where. */
@@ -628,6 +633,8 @@ export const runEventSchema = z.discriminatedUnion("type", [
       summary: z.string(),
       /** The secret names the call uses. */
       secrets: z.array(z.string()),
+      /** The host the secrets would be sent to, when the tool declares where its destination is. */
+      secretHost: z.exactOptional(z.string()),
       source: policySourceSchema,
       /** Present only when the tool declares the call as a message to another person. */
       outbound: z.exactOptional(outboundMessageSchema),
@@ -684,8 +691,12 @@ export const runEventSchema = z.discriminatedUnion("type", [
     type: z.literal("secret_requested"),
     payload: z.object({
       callId: z.string(),
+      /** What the bot wrote in the turn of the call: the chat draws it above the form. */
+      lead: z.exactOptional(z.string()),
       name: z.string(),
       reason: z.exactOptional(z.string()),
+      /** The hosts the bot SUGGESTS (normalized). Only what the user confirms in the form is saved. */
+      hosts: z.exactOptional(z.array(z.string())),
     }),
   }),
   z.object({

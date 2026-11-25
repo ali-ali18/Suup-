@@ -2,8 +2,10 @@ import { randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   adoptSecret,
+  checkSecretHosts,
   createBot,
   deleteSecret,
+  getSecretHosts,
   getSecretMeta,
   getSecretRowForBot,
   grantSecret,
@@ -14,8 +16,10 @@ import {
   putSecret,
   replaceSecretCipher,
   revokeSecret,
+  SecretHostInvalidError,
   SecretManagedError,
   SecretNotFoundError,
+  setSecretHosts,
 } from "../src/index.js";
 import { DATABASE_URL, dbSuiteName, useIsolatedDb } from "./helpers.js";
 
@@ -41,6 +45,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("the vault's rows"), () => {
       "createdAt",
       "description",
       "grantedBotIds",
+      "hosts",
       "id",
       "keyId",
       "lastUsedAt",
@@ -90,7 +95,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("the vault's rows"), () => {
     expect(await getSecretRowForBot(ctx.db, stranger.id, "SCOPED")).toBeNull();
     expect((await listSecretRowsForBot(ctx.db, allowed.id)).map((r) => r.name)).toEqual(["SCOPED"]);
     expect(await listSecretInfoForBot(ctx.db, allowed.id)).toEqual([
-      { name: "SCOPED", description: "d" },
+      { name: "SCOPED", description: "d", hosts: [] },
     ]);
     expect(await listSecretInfoForBot(ctx.db, stranger.id)).toEqual([]);
     expect(await revokeSecret(ctx.db, "SCOPED", allowed.id)).toBe(true);
@@ -186,5 +191,104 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("the vault's rows"), () => {
     expect(await adoptSecret(ctx.db, "TWICE", "search:tavily")).toBe(true);
     expect(await adoptSecret(ctx.db, "TWICE", "search:tavily")).toBe(false);
     expect((await getSecretMeta(ctx.db, "TWICE"))?.managedBy).toBe("search:tavily");
+  });
+
+  describe("the hosts a secret may go to", () => {
+    it("a new secret has none (it is blocked); hosts are normalized and replaced as a whole", async () => {
+      expect((await putSecret(ctx.db, { name: "HOSTLESS", ...cipher() })).hosts).toEqual([]);
+      const set = await setSecretHosts(ctx.db, "HOSTLESS", ["API.Exemplo.com.", "b.exemplo.com"]);
+      expect(set.hosts).toEqual(["api.exemplo.com", "b.exemplo.com"]);
+      // Replacing the value keeps the hosts; writing with hosts replaces them.
+      expect((await putSecret(ctx.db, { name: "HOSTLESS", ...cipher() })).hosts).toEqual([
+        "api.exemplo.com",
+        "b.exemplo.com",
+      ]);
+      expect(
+        (await putSecret(ctx.db, { name: "HOSTLESS", hosts: ["c.exemplo.com"], ...cipher() }))
+          .hosts,
+      ).toEqual(["c.exemplo.com"]);
+      expect((await setSecretHosts(ctx.db, "HOSTLESS", [])).hosts).toEqual([]);
+      expect((await listSecrets(ctx.db)).find((s) => s.name === "HOSTLESS")?.hosts).toEqual([]);
+    });
+
+    it("only a plain DNS name is a host: no scheme, port, path, wildcard, IP address or odd label", () => {
+      expect(checkSecretHosts(["A.b.test", "a.b.test", "localhost"])).toEqual([
+        "a.b.test",
+        "localhost",
+      ]);
+      for (const bad of [
+        "",
+        " ",
+        "https://a.b.test",
+        "a.b.test:8443",
+        "a.b.test/path",
+        "*.b.test",
+        "a b.test",
+        "10.0.0.1",
+        "0x7f.1",
+        "[::1]",
+        "a..b.test",
+        "-a.b.test",
+        "a-.b.test",
+        "a_b.test",
+        `${"x".repeat(64)}.test`,
+      ]) {
+        expect(() => checkSecretHosts([bad]), JSON.stringify(bad)).toThrow(SecretHostInvalidError);
+      }
+    });
+
+    it("the table itself refuses anything but a lower-case DNS name", async () => {
+      const meta = await putSecret(ctx.db, { name: "CHECKED", ...cipher() });
+      for (const bad of ["UPPER.test", "a b.test", "a.test/x", "*.a.test", ".a.test", "a.test."]) {
+        await expect(
+          ctx.db.sql`insert into secret_hosts (secret_id, host)
+                     select id, ${bad} from secrets where name = ${meta.name}`,
+        ).rejects.toThrow();
+      }
+    });
+
+    it("refuses to touch a plugin's secret, a missing one, and drops the hosts with an adopted one", async () => {
+      await putSecret(ctx.db, { name: "PLUGIN_OWNED", managedBy: "x", ...cipher() });
+      await expect(setSecretHosts(ctx.db, "PLUGIN_OWNED", ["a.b.test"])).rejects.toThrow(
+        SecretManagedError,
+      );
+      await expect(setSecretHosts(ctx.db, "NOT_THERE", ["a.b.test"])).rejects.toThrow(
+        SecretNotFoundError,
+      );
+      await putSecret(ctx.db, { name: "TO_ADOPT", hosts: ["a.b.test"], ...cipher() });
+      await adoptSecret(ctx.db, "TO_ADOPT", "github");
+      expect(await getSecretHosts(ctx.db, ["TO_ADOPT", "PLUGIN_OWNED"])).toEqual({});
+    });
+
+    it("answers the hosts of the named secrets only, and for a bot only the ones it was granted", async () => {
+      const bot = await newBot("hosts-bot");
+      const other = await newBot("hosts-other");
+      await putSecret(ctx.db, { name: "MINE", hosts: ["a.b.test"], ...cipher() });
+      await putSecret(ctx.db, { name: "BLOCKED_ONE", ...cipher() });
+      await putSecret(ctx.db, { name: "NOT_GRANTED", hosts: ["z.b.test"], ...cipher() });
+      await grantSecret(ctx.db, "MINE", bot.id);
+      await grantSecret(ctx.db, "BLOCKED_ONE", bot.id);
+      await grantSecret(ctx.db, "NOT_GRANTED", other.id);
+      expect(await getSecretHosts(ctx.db, [])).toEqual({});
+      expect(
+        await getSecretHosts(ctx.db, ["MINE", "BLOCKED_ONE", "NOT_GRANTED", "MISSING"], bot.id),
+      ).toEqual({
+        MINE: ["a.b.test"],
+        BLOCKED_ONE: [],
+      });
+      expect(await listSecretInfoForBot(ctx.db, bot.id)).toEqual([
+        { name: "BLOCKED_ONE", description: "", hosts: [] },
+        { name: "MINE", description: "", hosts: ["a.b.test"] },
+      ]);
+    });
+
+    it("deleting a secret takes its hosts with it", async () => {
+      await putSecret(ctx.db, { name: "DOOMED", hosts: ["a.b.test"], ...cipher() });
+      await deleteSecret(ctx.db, "DOOMED");
+      const [count] = await ctx.db.sql<
+        { n: string }[]
+      >`select count(*) as n from secret_hosts where host = 'a.b.test' and secret_id not in (select id from secrets)`;
+      expect(Number(count?.n)).toBe(0);
+    });
   });
 });

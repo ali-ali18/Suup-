@@ -95,13 +95,14 @@ export function SecretRequestRow({
     <SecretRequestCard
       name={request.name}
       reason={request.reason}
+      suggestedHosts={request.hosts}
       botName={bot?.name ?? "O bot"}
       state={request.state}
       expanded={resolvedOpen(clicked, key, resolved)}
       onToggle={() => onToggle(key)}
       {...(autoFocus === undefined ? {} : { autoFocus })}
-      onSubmit={async (value) => {
-        const outcome = await answerSecretRequest(api.vault, request.runId, { value });
+      onSubmit={async (value, hosts) => {
+        const outcome = await answerSecretRequest(api.vault, request.runId, { value, hosts });
         if (outcome.ok || outcome.conflict) refresh();
         return outcome;
       }}

@@ -15,6 +15,7 @@ import {
 import {
   type Db,
   deleteSecret,
+  getSecretHosts,
   getSecretRowByName,
   getSecretRowForBot,
   grantSecret,
@@ -26,6 +27,7 @@ import {
   replaceSecretCipher,
   revokeSecret,
   type SecretMeta,
+  setSecretHosts,
 } from "@suup/db";
 import { decrypt, encrypt, parseKey, VaultError, type VaultKey } from "./crypto.js";
 
@@ -79,8 +81,13 @@ export interface Vault {
   set(
     name: string,
     value: string,
-    options?: { description?: string; managedBy?: string },
+    options?: { description?: string; managedBy?: string; hosts?: readonly string[] },
   ): Promise<SecretMeta>;
+  /**
+   * Replaces the hosts an owner's secret may be sent to (empty: blocked). Throws
+   * `SecretHostInvalidError`, `SecretNotFoundError` or `SecretManagedError`.
+   */
+  setHosts(name: string, hosts: readonly string[]): Promise<SecretMeta>;
   /**
    * The owner's secrets: the ones for bots. What a connector keeps for its own login (OAuth
    * tokens, `managedBy` set) is left out unless `includeManaged` is asked for.
@@ -228,12 +235,14 @@ export function createVault(db: () => Db, env: Env, settings: VaultSettings | un
         name,
         ...(options.description === undefined ? {} : { description: options.description }),
         ...(options.managedBy === undefined ? {} : { managedBy: options.managedBy }),
+        ...(options.hosts === undefined ? {} : { hosts: options.hosts }),
         ...sealed,
       });
       // From this instant the value is scrubbed from everything this process writes.
       redactor.add(name, value);
       return meta;
     },
+    setHosts: (name, hosts) => setSecretHosts(db(), name, hosts),
     list: (options) => listSecrets(db(), options),
     async remove(name, options = {}) {
       const gone = await deleteSecret(db(), name, options.managedBy ?? null);
@@ -248,6 +257,7 @@ export function createVault(db: () => Db, env: Env, settings: VaultSettings | un
     accessFor(botId) {
       return {
         redactor,
+        hostsOf: (names) => getSecretHosts(db(), names, botId),
         async resolve(names) {
           const { all } = keyRing();
           const values: Record<string, string> = {};

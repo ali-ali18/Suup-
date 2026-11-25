@@ -93,6 +93,53 @@ export class SecretUnavailableError extends Error {
   }
 }
 
+const HOST_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789-.";
+
+/**
+ * A host a secret may be sent to, normalized: a DNS name in lower case, no trailing dot. Returns
+ * `undefined` for anything else: a scheme, a port, a path, a wildcard, an IP address, a name with
+ * an empty or over-long label. No pattern is involved: the string is read with the URL API and
+ * compared character by character. Both the declaration of a secret's hosts and the check of a
+ * call's destination go through here, so the two sides are always normalized the same way.
+ */
+export function normalizeSecretHost(input: string): string | undefined {
+  let text = input.trim().toLowerCase();
+  if (text.endsWith(".")) text = text.slice(0, -1);
+  if (text === "" || text.length > 253) return undefined;
+  for (const char of text) if (!HOST_CHARS.includes(char)) return undefined;
+  const labels = text.split(".");
+  for (const label of labels) {
+    if (label === "" || label.length > 63 || label.startsWith("-") || label.endsWith("-")) {
+      return undefined;
+    }
+  }
+  // An IPv4 address ends in a numeric label (the URL API reads "1.2.3.4" and "0x7f.1" alike).
+  const last = labels.at(-1) ?? "";
+  if ([...last].every((char) => char >= "0" && char <= "9")) return undefined;
+  let parsed: URL;
+  try {
+    parsed = new URL(`https://${text}/`);
+  } catch {
+    return undefined;
+  }
+  return parsed.hostname === text ? text : undefined;
+}
+
+/**
+ * The normalized host of a destination URL (the URL API; lower case, no trailing dot), or
+ * `undefined` when it is not an absolute http(s) URL with a DNS name.
+ */
+export function destinationHost(url: string): string | undefined {
+  let parsed: URL;
+  try {
+    parsed = new URL(url.trim());
+  } catch {
+    return undefined;
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return undefined;
+  return normalizeSecretHost(parsed.hostname);
+}
+
 /** What a run may do with secrets. The runtime provides it; tools never see it. */
 export interface SecretAccess {
   /**
@@ -100,6 +147,12 @@ export interface SecretAccess {
    * `SecretUnavailableError`. Every value it returns is known to `redactor` from then on.
    */
   resolve(names: readonly string[]): Promise<Record<string, string>>;
+  /**
+   * The hosts each secret may be sent to (normalized), as the user declared them. A name with none
+   * declared maps to an empty list (the secret is blocked); a name the bot cannot use is left
+   * out. Never returns a value, and is read BEFORE `resolve`.
+   */
+  hostsOf(names: readonly string[]): Promise<Record<string, string[]>>;
   readonly redactor: Redactor;
 }
 

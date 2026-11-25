@@ -6,7 +6,7 @@ import {
   pendingSecretRequest,
   VaultError,
 } from "@suup/runtime";
-import { list, str } from "../args.js";
+import { flag, list, str } from "../args.js";
 import type { CommandSpec, Ctx } from "../context.js";
 import { CommandError, EXIT_FAILED, EXIT_OK, UsageError } from "../errors.js";
 import { formatDateTime, oneLine } from "../format.js";
@@ -74,6 +74,12 @@ export const vaultSet: CommandSpec = {
       multiple: true,
       help: "Já libera o uso para este bot (repita para vários)",
     },
+    host: {
+      type: "string",
+      value: "endereço",
+      multiple: true,
+      help: "Site para onde o segredo pode ir, só o nome (api.exemplo.com); repita para vários. Sem isso o segredo fica bloqueado",
+    },
     run: {
       type: "string",
       value: "execução",
@@ -86,6 +92,8 @@ export const vaultSet: CommandSpec = {
     "  num terminal:  suup vault set GITHUB_TOKEN        (digite o valor; nada aparece na tela)",
     "  por um pipe:   pass show github | suup vault set GITHUB_TOKEN --bot ajudante",
     "O bot usa o segredo escrevendo {{secret:GITHUB_TOKEN}} onde o valor vai; só vê o nome, nunca o valor.",
+    "O segredo só vai para os sites que você declara com --host (um nome por vez, sem https://): suup vault set GITHUB_TOKEN --host api.github.com",
+    "Sem --host o segredo fica BLOQUEADO (nenhum bot o usa) até você declarar: suup vault hosts GITHUB_TOKEN --host api.github.com",
   ],
   async run(ctx) {
     const [name] = ctx.args.positionals as [string];
@@ -96,6 +104,7 @@ export const vaultSet: CommandSpec = {
     const value = await readSecretValue(ctx.io, `Valor de ${name} (não aparece): `, "vault set");
     const description = str(ctx.args, "description");
     const runRef = str(ctx.args, "run");
+    const hosts = list(ctx.args, "host");
     if (runRef !== undefined) {
       const target = await findRun(runtime.db, runRef);
       const request = await pendingSecretRequest(runtime, target.id);
@@ -104,9 +113,16 @@ export const vaultSet: CommandSpec = {
           `A execução ${target.id.slice(0, 8)} não está esperando o segredo ${name}${request === null ? "" : ` (ela pede ${request.name})`}.`,
         );
       }
+      if (hosts.length === 0) {
+        throw new UsageError(
+          `Diga para onde o segredo pode ir, com --host (o bot sugeriu: ${request.hosts.length === 0 ? "nada" : request.hosts.join(", ")}). Vale o que VOCÊ confirmar, não a sugestão.`,
+          "vault set",
+        );
+      }
       await guard(() =>
         answerSecretRequest(runtime, target.id, {
           value,
+          hosts,
           ...(description === undefined ? {} : { description }),
         }),
       );
@@ -121,13 +137,19 @@ export const vaultSet: CommandSpec = {
     const meta = await guard(async () => {
       const saved = await runtime.vault.set(name, value, {
         ...(description === undefined ? {} : { description }),
+        ...(hosts.length === 0 ? {} : { hosts }),
       });
       for (const bot of bots) await runtime.vault.grant(name, bot.id);
       return saved;
     });
-    if (ctx.json) ctx.out.data({ name: meta.name, keyId: meta.keyId });
+    if (ctx.json) ctx.out.data({ name: meta.name, keyId: meta.keyId, hosts: meta.hosts });
     else {
       ctx.out.line(`Segredo ${name} guardado (chave ${meta.keyId}).`);
+      ctx.out.line(
+        meta.hosts.length === 0
+          ? `Ele está BLOQUEADO: diga para onde pode ir com suup vault hosts ${name} --host api.exemplo.com`
+          : `Só pode ir para: ${meta.hosts.join(", ")}.`,
+      );
       if (bots.length === 0) {
         ctx.out.line(`Nenhum bot pode usá-lo ainda: suup vault grant ${name} --bot <bot>`);
       }
@@ -158,6 +180,8 @@ export const vaultList: CommandSpec = {
           createdAt: s.createdAt.toISOString(),
           updatedAt: s.updatedAt.toISOString(),
           lastUsedAt: s.lastUsedAt?.toISOString() ?? null,
+          hosts: s.hosts,
+          blocked: s.hosts.length === 0,
         })),
       );
       return EXIT_OK;
@@ -168,9 +192,10 @@ export const vaultList: CommandSpec = {
     }
     ctx.out.lines(
       renderTable(
-        ["NOME", "BOTS COM ACESSO", "ATUALIZADO", "ÚLTIMO USO", "PARA QUÊ"],
+        ["NOME", "PODE IR PARA", "BOTS COM ACESSO", "ATUALIZADO", "ÚLTIMO USO", "PARA QUÊ"],
         secrets.map((s) => [
           s.name,
+          s.hosts.length === 0 ? "(BLOQUEADO)" : s.hosts.join(", "),
           s.grantedBotIds.length === 0
             ? "(nenhum)"
             : s.grantedBotIds.map((id) => names.get(id) ?? id.slice(0, 8)).join(", "),
@@ -180,6 +205,60 @@ export const vaultList: CommandSpec = {
         ]),
       ),
     );
+    return EXIT_OK;
+  },
+};
+
+export const vaultHosts: CommandSpec = {
+  name: "vault hosts",
+  summary: "Mostra ou troca os sites para onde um segredo pode ir (o valor não é tocado)",
+  options: {
+    host: {
+      type: "string",
+      value: "endereço",
+      multiple: true,
+      help: "Site permitido, só o nome (api.exemplo.com); repita para vários. Troca a lista inteira",
+    },
+    block: {
+      type: "boolean",
+      help: "Esvazia a lista: o segredo fica bloqueado",
+    },
+  },
+  positionals: { names: ["NOME"] },
+  notes: [
+    "Sem opções, mostra a lista atual. Com --host, a lista passa a ser exatamente o que você deu.",
+    "O Suup recusa qualquer chamada que mande o segredo para outro site, mesmo com aprovação ou regra.",
+  ],
+  async run(ctx) {
+    const [name] = ctx.args.positionals as [string];
+    checkName(name, "vault hosts");
+    const hosts = list(ctx.args, "host");
+    const block = flag(ctx.args, "block");
+    if (block && hosts.length > 0) {
+      throw new UsageError("Use --host ou --block, não os dois.", "vault hosts");
+    }
+    const runtime = ctx.runtime();
+    const current = (await guard(() => runtime.vault.list())).find((s) => s.name === name);
+    if (current === undefined) {
+      throw new CommandError(`Segredo não encontrado: ${name}. Veja: suup vault list`);
+    }
+    const changing = block || hosts.length > 0;
+    const meta = changing
+      ? await guard(() => runtime.vault.setHosts(name, hosts)).catch((error: unknown) => {
+          if (error instanceof Error && error.name === "SecretHostInvalidError") {
+            throw new CommandError(error.message);
+          }
+          throw error;
+        })
+      : current;
+    if (ctx.json) ctx.out.data({ name, hosts: meta.hosts, blocked: meta.hosts.length === 0 });
+    else {
+      ctx.out.line(
+        meta.hosts.length === 0
+          ? `${name} está BLOQUEADO: nenhum bot consegue usá-lo. Libere com: suup vault hosts ${name} --host api.exemplo.com`
+          : `${name} só pode ir para: ${meta.hosts.join(", ")}.`,
+      );
+    }
     return EXIT_OK;
   },
 };

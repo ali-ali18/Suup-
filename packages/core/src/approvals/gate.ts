@@ -81,6 +81,8 @@ export interface GateVerdict {
   summary: string;
   /** The secret names the call uses. */
   secrets: string[];
+  /** The host the secrets would be sent to (for the card), when the tool declares its destination. */
+  secretHost?: string;
   /** The arguments as they will run. */
   args: JsonValue;
   /** Present only when the tool declares the call as a message to another person. */
@@ -271,6 +273,7 @@ export function createToolGate(options: ToolGateOptions): ToolGate {
         ...(decision.reason === undefined ? {} : { reason: decision.reason }),
         summary: assessed.summary,
         secrets: assessed.secrets,
+        ...(assessed.secretHost === undefined ? {} : { secretHost: assessed.secretHost }),
         args: assessed.args,
         ...(assessed.outbound === undefined ? {} : { outbound: assessed.outbound }),
         ...(record === undefined || call.recordedReview !== undefined ? {} : { review: record }),
@@ -414,6 +417,7 @@ export function createReplayGate(events: readonly { type: string; payload?: unkn
         level: p.level,
         summary: p.summary,
         secrets: p.secrets,
+        ...(p.secretHost === undefined ? {} : { secretHost: p.secretHost }),
         args: p.args,
         ...(p.outbound === undefined ? {} : { outbound: p.outbound }),
         ...(p.expiresAt === undefined ? {} : { expiresAt: p.expiresAt }),

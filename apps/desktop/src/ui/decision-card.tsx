@@ -26,6 +26,7 @@ export function DecisionCard({
   children,
   footerNote,
   footer,
+  compact,
 }: {
   testId: string;
   rootRef?: Ref<HTMLDivElement>;
@@ -42,13 +43,19 @@ export function DecisionCard({
   /** The muted line at the left of the footer. */
   footerNote?: ReactNode;
   footer: ReactNode;
+  /**
+   * The compact card (owner, 25/11/2026, the secret request): the icon beside the title, the
+   * paragraph under the title, no category row; less padding.
+   */
+  compact?: boolean;
 }) {
   return (
     <div
       ref={rootRef}
       className={cx(
         CARD_CHROME,
-        "flex flex-col gap-4 p-5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+        compact === true ? "flex flex-col gap-3 p-4" : "flex flex-col gap-4 p-5",
+        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
       )}
       data-testid={testId}
       data-state="needs-action"
@@ -57,21 +64,42 @@ export function DecisionCard({
       aria-busy={busy ? true : undefined}
       tabIndex={rootRef === undefined ? undefined : -1}
     >
-      <div className="flex items-center gap-2">
-        <IconBox>{icon}</IconBox>
-        <strong className="text-small font-title" data-testid="decision-category">
-          {category}
-        </strong>
-        {aside !== undefined && <span className="ml-auto text-small text-text-muted">{aside}</span>}
-      </div>
-      <div className="flex flex-col gap-1">
-        <p className="text-title font-title wrap-anywhere" data-testid="decision-title">
-          {title}
-        </p>
-        <p className="text-label text-text-muted" data-testid={ledeTestId ?? "decision-lede"}>
-          {lede}
-        </p>
-      </div>
+      {compact === true ? (
+        <div className="flex items-start gap-3">
+          <IconBox>{icon}</IconBox>
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <p className="text-label font-title wrap-anywhere" data-testid="decision-title">
+              {title}
+            </p>
+            <p
+              className="text-small wrap-anywhere text-text-muted"
+              data-testid={ledeTestId ?? "decision-lede"}
+            >
+              {lede}
+            </p>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="flex items-center gap-2">
+            <IconBox>{icon}</IconBox>
+            <strong className="text-small font-title" data-testid="decision-category">
+              {category}
+            </strong>
+            {aside !== undefined && (
+              <span className="ml-auto text-small text-text-muted">{aside}</span>
+            )}
+          </div>
+          <div className="flex flex-col gap-1">
+            <p className="text-title font-title wrap-anywhere" data-testid="decision-title">
+              {title}
+            </p>
+            <p className="text-label text-text-muted" data-testid={ledeTestId ?? "decision-lede"}>
+              {lede}
+            </p>
+          </div>
+        </>
+      )}
       {children !== undefined && <div className="min-w-0">{children}</div>}
       <div
         className="flex flex-wrap items-center justify-between gap-3"

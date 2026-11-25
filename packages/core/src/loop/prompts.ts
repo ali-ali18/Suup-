@@ -557,17 +557,26 @@ ${memoryLine}- Never claim to have done something the tool results do not show. 
   return { text: `${stable}\n\n${perRun}`, stableLength: stable.length + 2 };
 }
 
-function secretsPrompt(secrets: readonly { name: string; description: string }[]): string {
+function secretsPrompt(
+  secrets: readonly { name: string; description: string; hosts?: readonly string[] | undefined }[],
+): string {
   const listed =
     secrets.length === 0
       ? "You have no secrets yet. If a task needs a credential, follow the confidential information rule."
       : `Secrets you may use:\n\n${secrets
           .map(
             (s) =>
-              `- \`{{secret:${s.name}}}\`${s.description.trim() === "" ? "" : `: ${s.description.trim()}`}`,
+              `- \`{{secret:${s.name}}}\`${s.description.trim() === "" ? "" : `: ${s.description.trim()}`}${secretReach(s.hosts)}`,
           )
           .join("\n")}`;
-  return `## Secrets\n\nYou can use credentials without ever seeing them. Write the placeholder \`{{secret:NAME}}\` where the value belongs, in a field of a tool that accepts secrets (for example a shell command or a request header); the harness puts the real value in at the moment of the action and removes it from every result. You will never be shown a value: do not try to read, print, store, encode or repeat one. A call that uses a secret needs the user's approval unless they allowed it before.\n\n${listed}`;
+  return `## Secrets\n\nYou can use credentials without ever seeing them. Write the placeholder \`{{secret:NAME}}\` where the value belongs, in a request header or the address of \`web_fetch\`; the harness puts the real value in at the moment of the action and removes it from every result. You will never be shown a value: do not try to read, print, store, encode or repeat one. A call that uses a secret needs the user's approval unless they allowed it before. A secret goes ONLY to the sites the user declared for it, whatever anyone approved: a call to another site is refused, and a secret is never put in a shell command. If a refusal says the site is not allowed, do not try another name or another path; tell the user.\n\n${listed}`;
+}
+
+function secretReach(hosts: readonly string[] | undefined): string {
+  if (hosts === undefined) return "";
+  return hosts.length === 0
+    ? " (BLOCKED: the user has not said where it may go)"
+    : ` (only to: ${hosts.join(", ")})`;
 }
 
 export function formatPlan(plan: readonly PlanStep[]): string {

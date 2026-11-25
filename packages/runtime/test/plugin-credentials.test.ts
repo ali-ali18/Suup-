@@ -145,7 +145,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("plugin credentials"), { timeout: 60_
             {
               id: "c1",
               name: "request_secret",
-              args: { name: "TAVILY_API_KEY", reason: "search" },
+              args: { name: "TAVILY_API_KEY", reason: "search", hosts: ["api.tavily.com"] },
             },
           ],
         },

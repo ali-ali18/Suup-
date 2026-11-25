@@ -124,6 +124,7 @@ test.describe("screenshots", () => {
       value: "ghp_screenshot_value_000111",
       description: "push no repositório da loja",
       grantBotIds: [phase3Id("Nova"), phase3Id("Escriba")],
+      hosts: ["api.github.com"],
     });
     await api.vault.set("ERP_TOKEN", {
       value: "erp_screenshot_value_222333",

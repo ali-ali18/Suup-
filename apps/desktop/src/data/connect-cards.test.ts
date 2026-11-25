@@ -68,3 +68,25 @@ describe("the connect cards of a run", () => {
     expect(connectCardsOfConversation([run], {}, [approval])).toHaveLength(1);
   });
 });
+
+describe("the words of the turn of a connect card", () => {
+  it("come from the turn of the call (found by its exact id); no words, no lead", () => {
+    const withWords = connectCardsOf(run, [
+      makeEvent(1, "model_response", {
+        blocks: [
+          { type: "text", text: "Vou entrar na sua conta." },
+          { type: "tool_call", id: "a", name: "show_connect_card", args: {} },
+        ],
+      }),
+      call(2, "a", "show_connect_card", { connector: "composio" }),
+      result(3, "a"),
+      makeEvent(4, "model_response", {
+        blocks: [{ type: "tool_call", id: "b", name: "show_connect_card", args: {} }],
+      }),
+      call(5, "b", "show_connect_card", { connector: "composio" }),
+      result(6, "b"),
+    ]);
+    expect(withWords[0]?.lead).toEqual({ text: "Vou entrar na sua conta.", turn: `${run.id}:1` });
+    expect(withWords[1]).not.toHaveProperty("lead");
+  });
+});

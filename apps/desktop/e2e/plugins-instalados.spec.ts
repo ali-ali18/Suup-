@@ -7,7 +7,15 @@ import {
   startWorld,
   type World,
 } from "./harness.js";
-import { freshBot, openApp, openPluginPage, openSettings, selectBot, send } from "./helpers.js";
+import {
+  expectWordsAbove,
+  freshBot,
+  openApp,
+  openPluginPage,
+  openSettings,
+  selectBot,
+  send,
+} from "./helpers.js";
 import { installTauriMock } from "./tauri-mock.js";
 
 // Owner, 24/11/2026: Settings > Conectores is the "Instalado" list, a plugin is managed on ITS page,
@@ -45,6 +53,7 @@ const roteiro = {
       whenObjectiveContains: "CASE-HANDOVER-LINK",
       agent: [
         step({
+          text: "Perfeito, vou conectar a sua agenda.",
           calls: [
             {
               name: "show_connect_card",
@@ -82,6 +91,7 @@ const roteiro = {
       whenObjectiveContains: "CASE-PROPOSE",
       agent: [
         step({
+          text: "Vou pedir para instalar o Notion.",
           calls: [
             {
               name: "propose_connector",
@@ -313,6 +323,11 @@ test.describe("plugins: the installed list, the plugin's page and the search eng
     await expect(card.getByTestId("connect-card-after")).toHaveText(
       "Depois de autorizar, me avise.",
     );
+    // The bot's words of the turn are the bubble ABOVE the card; what it says after stays below.
+    await expectWordsAbove(page, "Perfeito, vou conectar a sua agenda.", card);
+    await expect(
+      page.getByTestId("bubble-bot").filter({ hasText: "Aqui está o cartão" }),
+    ).toHaveCount(1);
     await expect(page.getByTestId("chat")).not.toContainText("connect.composio.dev");
     await expect(page.getByTestId("chat")).not.toContainText("nao-mostrar");
     await page.screenshot({ path: `${SHOTS}/depois-5-cartao-composio.png` });
@@ -340,9 +355,12 @@ test.describe("plugins: the installed list, the plugin's page and the search eng
     const approval = page.getByTestId("approval-card");
     await expect(approval).toHaveAttribute("data-state", "needs-action");
     await expect(approval).not.toContainText("https://");
+    await expectWordsAbove(page, "Vou pedir para instalar o Notion.", approval);
     await approval.getByTestId("approval-approve").click();
     const card = page.getByTestId("connect-card");
     await expect(card).toBeVisible();
+    // The same words, said once, now above the connect card that replaced the approval.
+    await expectWordsAbove(page, "Vou pedir para instalar o Notion.", card);
     await expect(card.getByTestId("connect-card-primary")).toHaveText("Conectar");
     // No "Ferramenta · Aprovado · Instalar o conector…" row: the card is the result.
     await expect(page.getByTestId("chat")).not.toContainText("Instalar o conector");
