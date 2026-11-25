@@ -56,7 +56,6 @@ test.describe("first run: this computer or a VPS", () => {
       isolation: { mode: "local", reason: "docker_missing", detail: null },
     });
     await page.goto(world.appUrl);
-    await passWelcome(page);
     await page.getByTestId("choose-local").click();
     await page.getByTestId("key-later").click();
     await expect(page.getByTestId("sidebar")).toBeVisible();
