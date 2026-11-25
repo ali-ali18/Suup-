@@ -40,14 +40,14 @@ export async function passWelcome(page: Page, name = "Marina"): Promise<void> {
 export async function principalBot(world: World, name = "Principal"): Promise<void> {
   // Every tool the server has, as the first bot of the entrance gets them.
   const tools = (await world.api.tools.list()).items.map((tool) => tool.name);
-  const bot = await world.api.bots.create({
+  await world.api.bots.create({
     name,
     description: "Assistente da equipe.",
     personality: "Seja objetivo.",
     modelId: "model-x",
     allowedTools: tools,
+    makeDefault: true,
   });
-  await world.api.bots.setDefault(bot.id);
 }
 
 export async function openApp(page: Page, world: World): Promise<void> {

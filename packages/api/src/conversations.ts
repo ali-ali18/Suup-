@@ -206,7 +206,7 @@ export const markReadBodySchema = z.object({
 });
 export type MarkReadBody = z.input<typeof markReadBodySchema>;
 
-/** `POST /v1/bots/{id}/reception`: the open of a bot's chat asks for its welcome. */
+/** `POST /v1/bots/{id}/reception`: explicitly starts a bot's welcome if due. */
 export const receptionResultSchema = z.object({
   /** The direct conversation of the bot (created at the first call). */
   conversationId: uuid,

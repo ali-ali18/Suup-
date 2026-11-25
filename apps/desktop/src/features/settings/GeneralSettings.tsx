@@ -257,9 +257,7 @@ export function GeneralSettings({ title, titleId }: SectionProps) {
     useUi
       .getState()
       .toast(
-        result.ok
-          ? `Na próxima vez que você abrir a conversa com ${bot.name}, a recepção recomeça.`
-          : result.message,
+        result.ok ? `A recepção de ${bot.name} vai recomeçar.` : result.message,
         result.ok ? "info" : "error",
       );
   };

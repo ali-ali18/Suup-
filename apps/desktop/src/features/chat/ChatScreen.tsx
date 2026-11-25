@@ -117,8 +117,6 @@ function ChatForBot({ botId }: { botId: string }) {
       if (cancelled || conversation === undefined) return;
       watching = conversation.id;
       setConvId(conversation.id);
-      // The first open of the chat starts the bot's welcome (the server does it once).
-      void sync.startReceptionIfDue(bot, conversation);
       await sync.watchConversation(conversation.id);
     })();
     return () => {

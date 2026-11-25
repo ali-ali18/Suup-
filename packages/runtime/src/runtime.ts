@@ -48,6 +48,7 @@ import {
   insertFile,
   listBots,
   listConnectorsForBot,
+  listReceptionCandidates,
   PgRunQueue,
   PgRunStore,
   type Run,
@@ -110,7 +111,7 @@ import {
 import { createMemoryService } from "./memory-service.js";
 import { createNetworkService, type NetworkService } from "./network/service.js";
 import { createPluginCredentials, type PluginCredentials } from "./plugin-credentials.js";
-import { PROPOSE_TEAM_TOOL, proposeTeamTool } from "./reception.js";
+import { PROPOSE_TEAM_TOOL, proposeTeamTool, startBotReception } from "./reception.js";
 import {
   createReminderTool,
   createRoutineTool,
@@ -198,6 +199,10 @@ export interface CreateWorkerOptions {
   supervisorEveryMs?: number;
   /** How often the job that fires the due routines looks for them (ms). Default 15000. */
   routinesEveryMs?: number;
+  /** Automatic welcome discovery. Tests may disable it; enabled by default. */
+  reception?: boolean;
+  /** How often to discover pending welcomes (ms). Default 5000. */
+  receptionEveryMs?: number;
   onRunEnd?(end: RunEnd): void;
   onError?(error: unknown, context: string): void;
 }
@@ -1425,6 +1430,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
         opts.workerId ??
         `worker-${hostname()}-${process.pid}-${++workerCount}-${randomBytes(3).toString("hex")}`;
       const settings = { ...DEFAULT_WORKER, ...config.worker };
+      let receptionCursor: string | null = null;
       return new Worker({
         workerId,
         queue: new PgRunQueue(runtime.db, {
@@ -1452,6 +1458,34 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
           ? {}
           : {
               background: [
+                ...(opts.reception === false
+                  ? []
+                  : [
+                      {
+                        name: "reception",
+                        everyMs: opts.receptionEveryMs ?? 5_000,
+                        run: async (signal: AbortSignal) => {
+                          const models = config.models
+                            .filter((model) => runtime.keyStatus(model.provider).ok)
+                            .map((model) => ({ modelId: model.id, providerId: model.provider }));
+                          const candidates = await listReceptionCandidates(
+                            runtime.db,
+                            models,
+                            receptionCursor,
+                            3,
+                          );
+                          for (const id of candidates) {
+                            if (signal.aborted) break;
+                            receptionCursor = id;
+                            try {
+                              await startBotReception(runtime, id);
+                            } catch (error) {
+                              opts.onError?.(error, "reception");
+                            }
+                          }
+                        },
+                      },
+                    ]),
                 {
                   name: "memory-consolidation",
                   everyMs: opts.memoryEveryMs?.consolidation ?? 30_000,

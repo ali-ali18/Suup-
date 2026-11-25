@@ -106,13 +106,13 @@ As ferramentas que se pode liberar a um bot. `200 { "items": [ToolInfo], "contro
 |---|---|---|
 | `GET /v1/bots?includeArchived=true` | | `200 { items: [Bot] }`, o mais novo primeiro |
 | `GET /v1/bots/{id}` | | `200 Bot`; `404` |
-| `POST /v1/bots` | `{ name, modelId, description?, personality?, allowedTools?, limits?, avatar?, pinned?, groupName?, sortOrder?, color?, avatarStyle?, avatarPixel3d? }` | `201 Bot`; `400` (modelo ou ferramenta que não existem, nome vazio, cor fora da paleta, estilo que não é `shapes` nem `pixel`, `avatarPixel3d` que não é verdadeiro/falso, grupo vazio ou com mais de 60 caracteres) |
-| `PATCH /v1/bots/{id}` | qualquer subconjunto dos campos acima, pelo menos um (é por aqui que o app fixa, agrupa e pinta: `{ pinned }`, `{ groupName }`, `{ color }`; `null` limpa `groupName`, `sortOrder` e `color`) | `200 Bot`; `400`, `404` |
+| `POST /v1/bots` | `{ name, modelId, description?, personality?, allowedTools?, limits?, avatar?, pinned?, groupName?, sortOrder?, color?, avatarStyle?, avatarPixel3d?, makeDefault? }` | `201 Bot`; `makeDefault: true` cria e promove o Principal na mesma transação; `400` para entrada inválida |
+| `PATCH /v1/bots/{id}` | qualquer subconjunto dos campos de criação, exceto `makeDefault`, pelo menos um (é por aqui que o app fixa, agrupa e pinta: `{ pinned }`, `{ groupName }`, `{ color }`; `null` limpa `groupName`, `sortOrder` e `color`) | `200 Bot`; `400`, `404` |
 | `POST /v1/bots/{id}/archive` | | `200 Bot` (idempotente); `404` |
 | `POST /v1/bots/{id}/default` | | `200 Bot`; `404`; `409` se estiver arquivado |
 | `POST /v1/bots/{id}/conversation` | | `200 Conversation`: a conversa direta do bot, criada na primeira chamada; `404`; `409` se arquivado |
-| `POST /v1/bots/{id}/reception` | | `200 { conversationId, started, runId }`: começa a recepção do bot se ela é devida (conversa vazia e ainda não feita, ou "refazer"); idempotente, no máximo uma vez; `404`; `409` se arquivado |
-| `POST /v1/bots/{id}/reception/reset` | | `200 { reset: true }`: a próxima abertura recomeça a recepção; `409` com execução ativa |
+| `POST /v1/bots/{id}/reception` | | `200 { conversationId, started, runId }`: começa a recepção do bot se ela é devida (conversa vazia e ainda não feita, ou "refazer"); idempotente, no máximo uma vez; `404`; `409` se arquivado ou se o modelo estiver indisponível |
+| `POST /v1/bots/{id}/reception/reset` | | `200 { reset: true }`: o worker recomeça a recepção em segundo plano; `409` com execução ativa |
 | `POST /v1/messages/{id}/team` | `{ create: [{ index, avatar?, color? }] }` ou `{ dismiss: true }` | `200 { message, bots }`: decide o cartão de equipe (cria só os marcados, pelo mesmo caminho do `POST /v1/bots`); `409` se já decidido; `400` para escolha vazia ou repetida |
 | `GET /v1/info` | | `200 { timeZone, timeZoneSource, oauthCallback }`: `oauthCallback` diz onde o navegador volta do login OAuth de um conector (`loopback`: o ouvinte no computador do servidor; `public`: `server.publicUrl`). E o fuso **do usuário** (o escolhido em Configurações, `user`; o que o app mandou do computador, `device`; ou `defaults.timeZone`, `config`). `null` enquanto ninguém disse: **nunca** o fuso do processo do servidor ([ROTINAS.md](ROTINAS.md)) |
 | `POST /v1/bots/draft` | `{ description, modelId? }` | `200 { name, description, personality }`: uma proposta a partir de texto livre; **não cria nada**; `502` se o modelo falhar |

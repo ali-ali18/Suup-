@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Db } from "./client.js";
+import { type Db, withTransaction } from "./client.js";
 import { joinFragments } from "./sql-util.js";
 import { type Bot, type BotLimits, botLimitsSchema } from "./types.js";
 
@@ -83,7 +83,19 @@ export interface CreateBotInput {
 
 export type UpdateBotInput = Partial<CreateBotInput>;
 
-export async function createBot(db: Db, input: CreateBotInput): Promise<Bot> {
+export async function createBot(
+  db: Db,
+  input: CreateBotInput,
+  options: { makeDefault?: boolean } = {},
+): Promise<Bot> {
+  if (options.makeDefault === true) {
+    return withTransaction(db, async (tx) => {
+      const bot = await createBot(tx, input);
+      const promoted = await promoteDefaultBot(tx, bot.id);
+      if (promoted === null) throw new Error("new bot could not be made default");
+      return promoted;
+    });
+  }
   const limits = botLimitsSchema.parse(input.limits ?? {});
   const avatar = avatarSchema.parse(input.avatar ?? null);
   // Only named when given: databases from before migration 0025 (tests that build old schemas) have no column.
@@ -171,16 +183,19 @@ const DEFAULT_BOT_LOCK = "suup.default_bot";
  * bot, or `null` if it does not exist or is archived (an archived bot cannot be the default).
  */
 export async function setDefaultBot(db: Db, botId: string): Promise<Bot | null> {
-  return db.sql.begin(async (tx) => {
-    await tx`select pg_advisory_xact_lock(hashtext(${DEFAULT_BOT_LOCK}))`;
-    const [target] = await tx<{ id: string }[]>`
+  return withTransaction(db, (tx) => promoteDefaultBot(tx, botId));
+}
+
+async function promoteDefaultBot(db: Db, botId: string): Promise<Bot | null> {
+  const tx = db.sql;
+  await tx`select pg_advisory_xact_lock(hashtext(${DEFAULT_BOT_LOCK}))`;
+  const [target] = await tx<{ id: string }[]>`
       select id from bots where id = ${botId} and archived_at is null for no key update`;
-    if (!target) return null;
-    await tx`update bots set is_default = false where is_default and id <> ${botId}`;
-    const [row] = await tx<BotRow[]>`
+  if (!target) return null;
+  await tx`update bots set is_default = false where is_default and id <> ${botId}`;
+  const [row] = await tx<BotRow[]>`
       update bots set is_default = true where id = ${botId} returning *`;
-    return row ? mapBot(row) : null;
-  });
+  return row ? mapBot(row) : null;
 }
 
 /** The active bot marked as default, or `null` when none is. */

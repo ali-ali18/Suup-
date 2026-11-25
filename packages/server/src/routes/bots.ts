@@ -100,22 +100,26 @@ export const botRoutes: Route[] = [
       const body = ctx.body(createBotBodySchema);
       const { runtime } = ctx;
       const { model, provider } = modelOf(runtime, body.modelId);
-      const bot = await createBot(runtime.db, {
-        name: body.name,
-        ...(body.description === undefined ? {} : { description: body.description }),
-        ...(body.personality === undefined ? {} : { personality: body.personality }),
-        modelProvider: provider.id,
-        modelId: model.id,
-        allowedTools: checkTools(runtime, body.allowedTools ?? []),
-        ...(body.limits === undefined ? {} : { limits: body.limits }),
-        ...(body.avatar === undefined ? {} : { avatar: body.avatar }),
-        ...(body.pinned === undefined ? {} : { pinned: body.pinned }),
-        ...(body.groupName === undefined ? {} : { groupName: body.groupName }),
-        ...(body.sortOrder === undefined ? {} : { sortOrder: body.sortOrder }),
-        ...(body.color === undefined ? {} : { color: body.color }),
-        ...(body.avatarStyle === undefined ? {} : { avatarStyle: body.avatarStyle }),
-        ...(body.avatarPixel3d === undefined ? {} : { avatarPixel3d: body.avatarPixel3d }),
-      });
+      const bot = await createBot(
+        runtime.db,
+        {
+          name: body.name,
+          ...(body.description === undefined ? {} : { description: body.description }),
+          ...(body.personality === undefined ? {} : { personality: body.personality }),
+          modelProvider: provider.id,
+          modelId: model.id,
+          allowedTools: checkTools(runtime, body.allowedTools ?? []),
+          ...(body.limits === undefined ? {} : { limits: body.limits }),
+          ...(body.avatar === undefined ? {} : { avatar: body.avatar }),
+          ...(body.pinned === undefined ? {} : { pinned: body.pinned }),
+          ...(body.groupName === undefined ? {} : { groupName: body.groupName }),
+          ...(body.sortOrder === undefined ? {} : { sortOrder: body.sortOrder }),
+          ...(body.color === undefined ? {} : { color: body.color }),
+          ...(body.avatarStyle === undefined ? {} : { avatarStyle: body.avatarStyle }),
+          ...(body.avatarPixel3d === undefined ? {} : { avatarPixel3d: body.avatarPixel3d }),
+        },
+        { makeDefault: body.makeDefault === true },
+      );
       const summary = await getBotSummary(runtime.db, bot.id);
       return {
         status: 201,

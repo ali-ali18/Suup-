@@ -193,15 +193,19 @@ export async function ensureDefaultBot(
     return { bot: (await setDefaultBot(db, oldest.id)) ?? oldest, created: false };
   }
   const { model, provider } = runtime.resolveModel(options.modelId);
-  const bot = await createBot(db, {
-    name: options.name ?? DEFAULT_BOT_NAME,
-    description: DEFAULT_BOT_DESCRIPTION,
-    personality: options.personality ?? DEFAULT_BOT_PERSONALITY,
-    modelProvider: provider.id,
-    modelId: model.id,
-    allowedTools: runtime.tools.list().map((t) => t.name),
-  });
-  return { bot: (await setDefaultBot(db, bot.id)) ?? bot, created: true };
+  const bot = await createBot(
+    db,
+    {
+      name: options.name ?? DEFAULT_BOT_NAME,
+      description: DEFAULT_BOT_DESCRIPTION,
+      personality: options.personality ?? DEFAULT_BOT_PERSONALITY,
+      modelProvider: provider.id,
+      modelId: model.id,
+      allowedTools: runtime.tools.list().map((t) => t.name),
+    },
+    { makeDefault: true },
+  );
+  return { bot, created: true };
 }
 
 // ---------------------------------------------------------------------------------------------

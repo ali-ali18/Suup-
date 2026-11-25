@@ -72,6 +72,8 @@ export interface WorldOptions {
   supervisorEveryMs?: number;
   /** How often the worker looks for routines that came due (default: its own, 15 s). */
   routinesEveryMs?: number;
+  /** Enable automatic welcomes for tests that exercise them. */
+  reception?: boolean;
 }
 
 /**
@@ -170,6 +172,8 @@ export function useWorld(options: WorldOptions = {}): World {
 
     if (options.worker !== false) {
       world.worker = world.workerRuntime.createWorker({
+        reception: options.reception === true,
+        receptionEveryMs: 50,
         concurrency: 4,
         idleBackoff: { minMs: 15, maxMs: 80 },
         ...(options.memoryEveryMs === undefined ? {} : { memoryEveryMs: options.memoryEveryMs }),

@@ -756,6 +756,8 @@ export async function startWorld(
   const workerRuntime = await withNetworkTool(createRuntime(config, runtimeOptions));
   cleanups.unshift(() => workerRuntime.close());
   const worker: Worker = workerRuntime.createWorker({
+    reception: options.reception === true,
+    receptionEveryMs: 50,
     concurrency: 4,
     idleBackoff: { minMs: 15, maxMs: 80 },
     ...(options.wakeEveryMs === undefined ? {} : { wakeEveryMs: options.wakeEveryMs }),

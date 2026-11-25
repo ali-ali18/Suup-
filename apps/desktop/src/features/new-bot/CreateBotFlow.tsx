@@ -109,17 +109,19 @@ export function CreateBotFlow({ onCreated }: { onCreated(): void }) {
         personality,
         modelId: defaults.modelId,
         allowedTools: defaults.tools ?? defaults.toolInfo.map((t) => t.name),
+        makeDefault: supervisor,
         ...identity.body(),
       });
       sync.mergeBotNow(created);
       useUi.getState().selectBot(created.id);
-      if (supervisor) {
+      if (supervisor && !created.isDefault) {
+        // Older servers ignore makeDefault; preserve the previous promotion flow for them.
         try {
           sync.mergeBotNow(await api.bots.setDefault(created.id));
         } catch (e) {
           useUi.getState().toast(formError(e), "error");
         }
-      } else {
+      } else if (!supervisor) {
         // Made without the switch, and the team has no supervisor: the offer (it shows in the app).
         useUi.getState().offerSupervisor(created.id);
       }
