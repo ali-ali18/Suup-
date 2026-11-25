@@ -35,17 +35,19 @@ export function usePlugins() {
   const [loadError, setLoadError] = useState<string | undefined>(undefined);
 
   const reload = useCallback(async () => {
-    try {
-      setItems(await api.connectorCatalog.list());
+    // Both are read together and set together, so a card never draws from half of the data.
+    const [catalog, engines] = await Promise.allSettled([
+      api.connectorCatalog.list(),
+      api.webSearch.get(),
+    ]);
+    if (catalog.status === "fulfilled") {
+      setItems(catalog.value);
       setLoadError(undefined);
-    } catch (e) {
-      setLoadError(messageOf(e));
+    } else {
+      setLoadError(messageOf(catalog.reason));
     }
-    try {
-      setSearch(await api.webSearch.get());
-    } catch {
-      // The engines are an extra: the connectors still show.
-    }
+    // The engines are an extra: the connectors still show when they do not load.
+    if (engines.status === "fulfilled") setSearch(engines.value);
   }, [api]);
   // `connectorsByName` is only the trigger: a connector of the store changed, read the gallery again.
   useEffect(() => {

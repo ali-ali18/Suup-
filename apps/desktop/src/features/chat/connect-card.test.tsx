@@ -1,5 +1,10 @@
-import { type CatalogItem, catalogEntrySchema, type SuupClient } from "@suup/api";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  type CatalogItem,
+  catalogEntrySchema,
+  type SearchProvider,
+  type SuupClient,
+} from "@suup/api";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CONNECTOR_CATALOG } from "../../../../../packages/connectors/src/catalog.js";
 import { type Services, ServicesProvider } from "../../app/context.js";
@@ -175,5 +180,80 @@ describe("the connector card in the chat", () => {
       view: "connectors",
       plugin: { kind: "catalog", id: "composio" },
     });
+  });
+});
+
+describe("the card of a search engine without a key", () => {
+  const tavily = (state: SearchProvider["state"]): SearchProvider => ({
+    id: "tavily",
+    label: "Tavily",
+    position: 1,
+    state,
+    searchesThisMonth: 0,
+    keyNames: { secret: "TAVILY_API_KEY", env: "TAVILY_API_KEY" },
+    plugin: {
+      id: "tavily",
+      category: "Pesquisa na web",
+      description: "Pesquisa na web feita para agentes.",
+      notes: [],
+      keySteps: ["Crie uma conta grátis no site do Tavily."],
+    },
+  });
+
+  function setupSearch() {
+    let state: SearchProvider["state"] = "no_key";
+    const setKey = vi.fn(async () => {
+      state = "ready";
+    });
+    const api = {
+      connectorCatalog: { list: vi.fn(async () => []) },
+      webSearch: {
+        get: vi.fn(async () => ({ enabled: true, providers: [tavily(state)] })),
+        setKey,
+      },
+      vault: { set: vi.fn() },
+      connectors: { list: vi.fn(async () => []) },
+    };
+    const store = createDataStore();
+    const sync = new Sync({ api: api as unknown as SuupClient, store });
+    render(
+      <ServicesProvider
+        services={{ api, sync, data: store, platform: {}, mode: "local" } as unknown as Services}
+      >
+        <ConnectCard card={card({ connector: "tavily", action: "add_key" })} botName="Nova" />
+      </ServicesProvider>,
+    );
+    return api;
+  }
+
+  it("draws the plugin (logo, name, its line, 'Sem chave'), opens the secure form with its steps and keeps the key with the engine", async () => {
+    const api = setupSearch();
+    const button = await primary();
+    expect(button.textContent).toBe("Adicionar chave");
+    const cardEl = screen.getByTestId("connect-card");
+    expect(cardEl.textContent).toContain("Tavily");
+    expect(screen.getByTestId("connect-card-line").textContent).toBe(
+      "Pesquisa na web feita para agentes.",
+    );
+    expect(screen.getByTestId("connect-card-status").textContent).toBe("Sem chave");
+    // the engine's own look: its tile, never the generic plug
+    expect(cardEl.querySelector("img, svg")).not.toBeNull();
+    expect(document.body.textContent).not.toContain("TAVILY_API_KEY");
+    fireEvent.click(button);
+    const dialog = await screen.findByRole("dialog", { name: "Chave do Tavily" });
+    expect(within(dialog).getByTestId("secret-steps").textContent).toContain("conta grátis");
+    fireEvent.change(within(dialog).getByTestId("secret-input"), {
+      target: { value: "tvly-made-up" },
+    });
+    fireEvent.click(within(dialog).getByTestId("secret-write"));
+    await waitFor(() =>
+      expect(api.webSearch.setKey).toHaveBeenCalledWith("tavily", "tvly-made-up"),
+    );
+    expect(api.vault.set).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(screen.getByTestId("connect-card-status").textContent).toBe("Pronto"),
+    );
+    expect(screen.queryByTestId("connect-card-primary")).toBeNull();
+    expect(document.body.textContent).not.toContain("tvly-made-up");
   });
 });

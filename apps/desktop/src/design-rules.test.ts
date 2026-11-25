@@ -1074,6 +1074,13 @@ describe("the settings dialog: a modal with a left nav, groups of simple rows, n
     for (const label of ["Liberar para o", "Adicionar chave", "Gerenciar", "Expirou: peça outro"])
       expect(card, label).toContain(label);
     expect(card).toContain("sempre pergunta antes de fazer alterações. Desconecte quando quiser.");
+    // A search engine without a key is the plugin's card (owner, 25/11/2026), not the generic form.
+    expect(card).toContain("function SearchKeyCard");
+    expect(card).toContain("search?.providers.find((p) => p.id === card.connector");
+    expect(card).toContain("writeSearchKey(api.webSearch, provider.id, value)");
+    expect(card).toContain("searchLook(provider)");
+    expect(card).not.toContain("writeSecret");
+    expect(design).toContain("O cartão do plugin de busca no chat");
     // The link is never looked for in a text, and an approved proposal is no row of the tool.
     const cards = read(join(SRC, "data", "connect-cards.ts"));
     for (const searching of [".match(", ".test(", "RegExp", "http"]) {
