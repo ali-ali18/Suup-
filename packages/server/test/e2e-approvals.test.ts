@@ -13,6 +13,9 @@ const webFetch = (url: string) => ({ name: "web_fetch", args: { url } });
 
 const VALUE = "srv_live_Q1w2E3r4T5y6U7i8";
 
+/** What the bot writes in the turn of its request for a secret (the chat shows it above the form). */
+const ASK_SECRET_WORDS = "Preciso de uma chave para continuar.";
+
 const SCRIPTS = {
   roteiro: {
     cases: [
@@ -72,9 +75,25 @@ const SCRIPTS = {
         ],
       },
       {
+        // The bot says something in the turn of the request: that is its message, word for word.
+        whenObjectiveContains: "CASE-ASK-SECRET-QUIET",
+        agent: [
+          s({
+            calls: [
+              {
+                name: "request_secret",
+                args: { name: "QUIET_TOKEN", reason: "sem fala", hosts: ["api.pedido.test"] },
+              },
+            ],
+          }),
+          s({ text: "Pronto." }),
+        ],
+      },
+      {
         whenObjectiveContains: "CASE-ASK-SECRET",
         agent: [
           s({
+            text: ASK_SECRET_WORDS,
             calls: [
               {
                 name: "request_secret",
@@ -629,12 +648,14 @@ describe.skipIf(!DATABASE_URL)(
         reason: "para o teste",
         hosts: ["api.pedido.test"],
       });
-      // The bot's message in the chat says what it needs, without a form to type the value in.
-      const messages = await until(async () => {
-        const page = await api.conversations.messages(conversation.id);
-        return page.items.some((m) => m.text.includes("ASKED_TOKEN")) ? page.items : undefined;
-      }, "the bot's request in the chat");
-      expect(messages.find((m) => m.text.includes("ASKED_TOKEN"))?.authorKind).toBe("bot");
+      // The run recorded what the bot said in that turn, and the chat message is exactly it: no
+      // text of the system (the form is the card the app draws from the request).
+      const asked = (await api.runs.events(sent.run.id, { types: ["secret_requested"] })).items[0];
+      expect(asked?.payload.lead).toBe(ASK_SECRET_WORDS);
+      const page = await api.conversations.messages(conversation.id);
+      const said = page.items.filter((m) => m.authorKind === "bot");
+      expect(said.map((m) => m.text)).toEqual([ASK_SECRET_WORDS]);
+      expect(said[0]?.dedupeKey).toBe(`run:${sent.run.id}:secret:${asked?.seq}`);
 
       expect(await code(api.vault.answerRequest(sent.run.id, {}))).toBe("invalid_request");
       // A value with no sites confirmed by the user is refused: the bot's suggestion is not enough.
@@ -663,6 +684,22 @@ describe.skipIf(!DATABASE_URL)(
       expect(JSON.stringify(f.events)).not.toContain("asked-token-value-4242");
       // Nothing is waiting any more.
       expect(await code(api.vault.answerRequest(sent.run.id, { declined: true }))).toBe("conflict");
+      f.close();
+    });
+
+    it("request_secret without words in its turn: the form alone, no message of the bot", async () => {
+      const { api, conversation, f } = await setup("Pedinte Quieto");
+      const sent = await api.conversations.send(conversation.id, "CASE-ASK-SECRET-QUIET");
+      await until(
+        async () => (await api.runs.get(sent.run.id)).status === "waiting_user" || undefined,
+        "waiting_user",
+      );
+      expect((await api.vault.request(sent.run.id))?.name).toBe("QUIET_TOKEN");
+      const asked = (await api.runs.events(sent.run.id, { types: ["secret_requested"] })).items[0];
+      expect(asked?.payload).not.toHaveProperty("lead");
+      // The message of the pause is written with the status: nothing of the bot is there.
+      const page = await api.conversations.messages(conversation.id);
+      expect(page.items.filter((m) => m.authorKind === "bot")).toEqual([]);
       f.close();
     });
 

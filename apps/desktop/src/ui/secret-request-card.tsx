@@ -1,4 +1,4 @@
-import { KeyRound, LoaderCircle, ShieldCheck } from "lucide-react";
+import { KeyRound, LoaderCircle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { SecretRequestState } from "../data/secret-requests.js";
 import { modalOpen } from "../lib/focus.js";
@@ -145,12 +145,6 @@ function OpenForm({
       ]
         .filter((part) => part !== "")
         .join(" ")}
-      footerNote={
-        <span className="inline-flex items-center gap-2 [&>svg]:flex-none">
-          <ShieldCheck size={14} aria-hidden="true" />
-          Guardado no cofre; o bot nunca vê o valor.
-        </span>
-      }
       footer={
         <>
           <Pill

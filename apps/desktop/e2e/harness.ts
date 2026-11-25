@@ -411,6 +411,8 @@ export const SCRIPTS = {
         whenObjectiveContains: "CASE-SECRET",
         agent: [
           s({
+            // What the bot says in the turn of the request: the chat shows it ABOVE the form.
+            text: "Para usar a API de teste, preciso do seu token.",
             calls: [
               {
                 name: "request_secret",

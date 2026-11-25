@@ -691,6 +691,8 @@ export const runEventSchema = z.discriminatedUnion("type", [
     type: z.literal("secret_requested"),
     payload: z.object({
       callId: z.string(),
+      /** What the bot wrote in the turn of the call: the chat draws it above the form. */
+      lead: z.exactOptional(z.string()),
       name: z.string(),
       reason: z.exactOptional(z.string()),
       /** The hosts the bot SUGGESTS (normalized). Only what the user confirms in the form is saved. */

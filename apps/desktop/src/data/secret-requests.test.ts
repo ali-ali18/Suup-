@@ -65,3 +65,20 @@ describe("secret requests of a run", () => {
     expect(items[0]?.state).toBe("open");
   });
 });
+
+describe("the words of a secret request", () => {
+  it("the lead the server recorded rides on the card, with the key of the message written for it", () => {
+    const run = makeRun({ status: "waiting_user" });
+    const [item] = secretRequestsOf(run, run.id, [
+      makeEvent(7, "secret_requested", {
+        callId: "c7",
+        name: "GH_TOKEN",
+        lead: " Preciso da chave. ",
+      }),
+    ]);
+    expect(item?.lead).toEqual({ text: "Preciso da chave.", turn: "secret:c7" });
+    expect(item?.messageKey).toBe(`run:${run.id}:secret:7`);
+    const [bare] = secretRequestsOf(run, run.id, [asked(8)]);
+    expect(bare).not.toHaveProperty("lead");
+  });
+});

@@ -615,6 +615,29 @@ describe("request_secret", () => {
     expect(result?.payload.content).toContain("is now available");
   });
 
+  it("keeps what the bot wrote in the turn of the request (`lead`); nothing when it only asked", async () => {
+    const withText = setup([
+      use(
+        { type: "text", text: "  Preciso da sua chave.  " },
+        call("c1", "request_secret", { name: "TOKEN_X", hosts: ["api.x.test"] }),
+      ),
+    ]);
+    expect(await loop(withText, { secrets })).toBe("waiting_user");
+    expect(eventsOfType(await withText.rig.events(), "secret_requested")[0]?.payload).toEqual({
+      callId: "c1",
+      lead: "Preciso da sua chave.",
+      name: "TOKEN_X",
+      hosts: ["api.x.test"],
+    });
+    const bare = setup([
+      use(call("c1", "request_secret", { name: "TOKEN_X", hosts: ["api.x.test"] })),
+    ]);
+    expect(await loop(bare, { secrets })).toBe("waiting_user");
+    expect(
+      eventsOfType(await bare.rig.events(), "secret_requested")[0]?.payload,
+    ).not.toHaveProperty("lead");
+  });
+
   it("refuses a name that is not a secret name, and a call that is not alone", async () => {
     const bad = setup([
       use(call("c1", "request_secret", { name: "not valid", hosts: ["api.x.test"] })),

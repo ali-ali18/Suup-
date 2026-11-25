@@ -1,4 +1,5 @@
 import type { Run, RunEvent } from "@suup/api";
+import type { TurnLead } from "./turn-lead.js";
 
 // The bot's request for a credential (`request_secret`), as the chat draws it: from the run's events
 // (`secret_requested`, then the `tool_result` that answers it). Nothing here ever holds a value: the
@@ -24,6 +25,13 @@ export interface SecretRequestItem {
   /** When it was asked (ISO), to place the card among the messages. */
   startedAt: string;
   state: SecretRequestState;
+  /** What the bot said in the turn of the call (`secret_requested.lead`): drawn above the form. */
+  lead?: TurnLead;
+  /**
+   * The `dedupeKey` of the message the end of the run writes with that same lead (see
+   * `run-end.ts`): the chat draws the words once, above the form, and skips that message.
+   */
+  messageKey: string;
 }
 
 const str = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
@@ -48,6 +56,7 @@ export function secretRequestsOf(
       const callId = str(p.callId);
       const name = str(p.name);
       if (callId === undefined || name === undefined || byCall.has(callId)) continue;
+      const lead = str(p.lead)?.trim() ?? "";
       const item: SecretRequestItem = {
         callId,
         runId,
@@ -57,6 +66,8 @@ export function secretRequestsOf(
           ? p.hosts.filter((host): host is string => typeof host === "string")
           : [],
         startedAt: event.createdAt,
+        messageKey: `run:${runId}:secret:${event.seq}`,
+        ...(lead === "" ? {} : { lead: { text: lead, turn: `secret:${callId}` } }),
         state: run?.status === "waiting_user" ? "open" : "closed",
       };
       byCall.set(callId, item);

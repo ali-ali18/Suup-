@@ -74,7 +74,7 @@ export async function executeCalls(
         await handleEscalate(ctx, call, alone, turnText(pending));
         break;
       case "request_secret":
-        await handleRequestSecret(ctx, call, alone);
+        await handleRequestSecret(ctx, call, alone, turnText(pending));
         break;
       case "schedule_return":
         await handleScheduleReturn(ctx, call);

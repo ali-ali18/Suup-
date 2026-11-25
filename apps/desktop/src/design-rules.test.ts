@@ -2137,3 +2137,19 @@ describe("para onde um segredo pode ir (docs/DESIGN.md, §1)", () => {
     expect(vault).toContain("vault-blocked-notice");
   });
 });
+
+describe("a fala do turno vem antes do cartão (dono, 25/11/2026)", () => {
+  it("o app não escreve texto fixo junto do cartão de segredo e lê a fala só de dado declarado", () => {
+    const card = read(join(SRC, "ui/secret-request-card.tsx"));
+    expect(card).not.toContain("Guardado no cofre");
+    const lead = read(join(SRC, "data/turn-lead.ts"));
+    // The call is found by its exact id, never by comparing or searching text.
+    expect(lead).toContain("b.id === callId");
+    for (const call of [".match(", ".includes(", ".test("]) expect(lead).not.toContain(call);
+  });
+  it("a linha do tempo põe a fala acima do cartão e pula a mensagem pela chave exata", () => {
+    const timeline = read(join(SRC, "features/chat/timeline.ts"));
+    expect(timeline).toContain("wordsOfCard.has(message.dedupeKey)");
+    expect(timeline).toContain("key: `lead-");
+  });
+});
