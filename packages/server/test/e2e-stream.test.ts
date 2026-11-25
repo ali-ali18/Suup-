@@ -177,7 +177,7 @@ describe.skipIf(!DATABASE_URL)(
       expect(together).toEqual([changes[changes.length - 1]?.id]);
     });
 
-    it("starting a server settles runs that ended without their effects and makes sure a main bot exists", async () => {
+    it("starting a server settles runs that ended without their effects and creates no bot", async () => {
       const bot = await createBot(w.db, {
         name: "Órfã",
         modelProvider: "roteiro",
@@ -212,9 +212,10 @@ describe.skipIf(!DATABASE_URL)(
         { text: string }[]
       >`select text from messages where dedupe_key = ${`run:${run.id}:done`}`;
       expect(after.map((m) => m.text)).toEqual(["Resultado esquecido."]);
-      const defaults = (await second.api.bots.list()).filter((b) => b.isDefault);
-      expect(defaults).toHaveLength(1);
-      expect(defaults[0]?.name).toBe("Principal");
+      // The server marks no bot as the main one by itself (the supervisor is optional).
+      const bots = await second.api.bots.list();
+      expect(bots.map((b) => b.name)).toContain("Órfã");
+      expect(bots.filter((b) => b.isDefault)).toHaveLength(0);
     });
 
     it("tells a client that cannot resume to reload: too old, from another database, too much to replay", async () => {

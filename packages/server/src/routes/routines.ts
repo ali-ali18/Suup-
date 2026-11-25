@@ -1,4 +1,4 @@
-// `/v1/routines` (docs/ROTINAS.md) and `/v1/user-settings` (the user's time zone). The schedule is
+// `/v1/routines` (docs/ROTINAS.md) and `/v1/user-settings` (the user's time zone and name). The schedule is
 // structured fields, validated by the shared schema; the server computes the next run in the
 // routine's own zone.
 import {
@@ -17,6 +17,7 @@ import {
   deleteRoutine,
   getBot,
   getRoutine,
+  getUserSettings,
   listRoutineFires,
   listRoutines,
   listRunSources,
@@ -25,10 +26,12 @@ import {
   type RoutineFire,
   type RunSources,
   runRoutineNow,
+  setOwnerName,
   setUserTimeZone,
   UserSettingsError,
   updateRoutine,
 } from "@suup/db";
+import type { Runtime } from "@suup/runtime";
 import { HttpError } from "../errors.js";
 import type { Route } from "../http.js";
 
@@ -136,13 +139,19 @@ async function guarded<T>(work: () => Promise<T>): Promise<T> {
   }
 }
 
+/** The user's settings as the API says them: the zone (stored or configured) and the name. */
+async function userSettingsBody(runtime: Runtime) {
+  const zone = await runtime.userTimeZone();
+  const { ownerName } = await getUserSettings(runtime.db);
+  return { timeZone: zone.timeZone, timeZoneSource: zone.source, ownerName };
+}
+
 export const routineRoutes: Route[] = [
   {
     method: "GET",
     pattern: "/v1/user-settings",
     async handler(ctx) {
-      const zone = await ctx.runtime.userTimeZone();
-      return { body: { timeZone: zone.timeZone, timeZoneSource: zone.source } };
+      return { body: await userSettingsBody(ctx.runtime) };
     },
   },
   {
@@ -150,11 +159,15 @@ export const routineRoutes: Route[] = [
     pattern: "/v1/user-settings",
     async handler(ctx) {
       const body = ctx.body(updateUserSettingsBodySchema);
-      await guarded(() =>
-        setUserTimeZone(ctx.runtime.db, { timeZone: body.timeZone, source: body.source }),
-      );
-      const zone = await ctx.runtime.userTimeZone();
-      return { body: { timeZone: zone.timeZone, timeZoneSource: zone.source } };
+      if (body.timeZone !== undefined && body.source !== undefined) {
+        const input = { timeZone: body.timeZone, source: body.source };
+        await guarded(() => setUserTimeZone(ctx.runtime.db, input));
+      }
+      if (body.ownerName !== undefined) {
+        const input = { name: body.ownerName, onlyIfEmpty: body.ownerNameIfEmpty === true };
+        await guarded(() => setOwnerName(ctx.runtime.db, input));
+      }
+      return { body: await userSettingsBody(ctx.runtime) };
     },
   },
   {

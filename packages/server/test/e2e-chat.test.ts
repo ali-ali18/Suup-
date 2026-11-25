@@ -149,11 +149,16 @@ describe.skipIf(!DATABASE_URL)(
       return page.items;
     };
 
-    it("starts with the main bot, and lists the models and tools for the create form", async () => {
+    it("starts with no bots (the main bot is the user's choice), and lists the models and tools", async () => {
       const { api } = w.started;
-      const bots = await api.bots.list();
-      expect(bots).toHaveLength(1);
-      main = bots[0] as Bot;
+      expect(await api.bots.list()).toEqual([]);
+      const created = await api.bots.create({
+        name: "Principal",
+        modelId: "model-x",
+        allowedTools: ["shell", "remember", "recall"],
+      });
+      expect(created.isDefault).toBe(false);
+      main = await api.bots.setDefault(created.id);
       expect(main).toMatchObject({
         name: "Principal",
         isDefault: true,

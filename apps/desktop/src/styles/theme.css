@@ -12,6 +12,8 @@
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 @custom-variant light (&:where([data-theme="light"], [data-theme="light"] *));
 /* Appearance settings that reshape a piece (lib/settings.ts): the root carries them as data-*. */
+/* A middling window: the gallery of the entrance goes from 3 columns of cards to 2 (declared BEFORE `narrow`, so the narrower one wins). */
+@custom-variant compact (@media (max-width: 960px));
 /* The window is narrow (the settings dialog stacks its nav over its pane). */
 @custom-variant narrow (@media (max-width: 640px));
 @custom-variant bubble-neutral (:root[data-bubble="neutral"] &);
@@ -122,6 +124,8 @@
   --text-section--line-height: var(--text-section-line);
   --text-heading: var(--text-heading-size);
   --text-heading--line-height: var(--text-heading-line);
+  --text-screen-title: var(--text-screen-title-size);
+  --text-screen-title--line-height: var(--text-screen-title-line);
   --text-code: var(--text-code-size);
   --text-code--line-height: var(--text-code-line);
   --text-settings-title: var(--text-settings-title-size);
@@ -172,6 +176,8 @@
   --spacing-chat-head: var(--size-chat-head);
   --spacing-settings-height: var(--height-settings);
   --spacing-events: var(--height-events);
+  --spacing-entry-list: var(--height-entry-list);
+  --spacing-gallery-list: var(--height-gallery-list);
   --spacing-tile: var(--width-tile);
 
   /* Widths for w-*, max-w-*, min-w-*. */
@@ -190,6 +196,7 @@
   --container-empty-text: var(--width-empty-text);
   --container-input: var(--width-input);
   --container-connect: var(--width-connect);
+  --container-create: var(--width-create);
   --container-palette: var(--width-palette);
   --container-screen-narrow: var(--width-screen-narrow);
   --container-screen-wide: var(--width-screen-wide);
@@ -213,6 +220,34 @@
 
   @keyframes ui-fade-in {
     from {
+      opacity: 0;
+    }
+  }
+
+  /* The welcome (docs/DESIGN.md §3d): a line rises into place, the bot fades in and grows a
+     little, the screen fades out. Reduced motion zeroes the durations and the shift (tokens.css). */
+  --animate-line-in: ui-line-in var(--duration-line) var(--ease-enter) both;
+  --animate-bot-in: ui-bot-in var(--duration-bot-in) var(--ease-bot-in) both;
+  --animate-control-in: ui-fade-in var(--duration-base) var(--ease-enter) both;
+  --animate-welcome-out: ui-welcome-out var(--duration-welcome-out) ease-in-out both;
+
+  @keyframes ui-line-in {
+    from {
+      opacity: 0;
+      translate: 0 var(--shift-line);
+    }
+  }
+
+  @keyframes ui-bot-in {
+    from {
+      opacity: 0;
+      scale: var(--scale-enter);
+      translate: 0 var(--shift-bot);
+    }
+  }
+
+  @keyframes ui-welcome-out {
+    to {
       opacity: 0;
     }
   }

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { DATABASE_URL, SKIP_REASON, startWorld, type World } from "./harness.js";
-import { botItem, openApp, openSettings, selectBot, send } from "./helpers.js";
+import { botItem, openApp, openSettings, principalBot, selectBot, send } from "./helpers.js";
 
 // The welcome of a bot in the browser, against the real server and the scripted provider: the
 // main bot's general welcome (questions as cards, one at a time, then ONE team card), the welcome of
@@ -125,6 +125,7 @@ test.describe("the welcome of a bot", () => {
   let world: World;
   test.beforeAll(async () => {
     world = await startWorld({ scripts: SCRIPTS, reception: true });
+    await principalBot(world);
   });
   test.afterAll(async () => {
     await world?.stop();

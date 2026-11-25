@@ -14,6 +14,9 @@ export const AVATAR_STATES = [
   "paused",
   "sleeping",
   "celebrating",
+  "cheering",
+  "smiling",
+  "surprised",
   "pondering",
   "reading",
   "coding",
@@ -43,6 +46,12 @@ export const STATE_MAP: Readonly<Record<AvatarStateId, EngineState>> = {
   sleeping: "sleeping",
   /** Big celebration (spin). */
   celebrating: "celebrate",
+  /** A short happy dance, always the same one (`CHEER_MS` long), smiling the whole time. */
+  cheering: "cheer",
+  /** A happy face at rest: the resting clips, no dance (the bot smiling at the pointer). */
+  smiling: "smile",
+  /** Wide, round eyes (something was just confirmed or found); the body stays. */
+  surprised: "surprised",
   /** Working something out WITHOUT the indicator: the face stays, the eyes look up now and then. */
   pondering: "pondering",
   /** Reading (files, pages, memory): working clips, calm eyes. */

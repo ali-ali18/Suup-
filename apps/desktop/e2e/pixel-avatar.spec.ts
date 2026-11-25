@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { DATABASE_URL, SKIP_REASON, startWorld, type World } from "./harness.js";
-import { botItem, freshBot, openApp, selectBot } from "./helpers.js";
+import { botItem, freshBot, openApp, principalBot, selectBot } from "./helpers.js";
 
 // O segundo estilo de avatar: os mascotes pixelados do dono. Cria um bot pixel pelo app, vê na barra
 // lateral, confere que o desenho sai em pixels inteiros e tira capturas (barra e seletor) para
@@ -54,6 +54,8 @@ test.describe("avatar pixel", () => {
   let world: World;
   test.beforeAll(async () => {
     world = await startWorld();
+    // With a supervisor already marked, the app does not offer one after the bot this test makes.
+    await principalBot(world);
   });
   test.afterAll(async () => {
     await world?.stop();
@@ -141,7 +143,7 @@ test.describe("avatar pixel", () => {
       .toMatchObject({ avatar: "mascot:coruja", avatarStyle: "pixel", color: "rosa" });
     await expect(pixelOf(page, "Gatinho")).toHaveAttribute("data-mascot", "coruja");
     const tinted = await readCanvas(pixelOf(page, "Gatinho").locator("canvas"));
-    expect(tinted.colors.ff5c8a ?? 0).toBeGreaterThan(tinted.painted / 2);
+    expect(tinted.colors.ff3d97 ?? 0).toBeGreaterThan(tinted.painted / 2);
 
     // And back to the shapes.
     await page.getByTestId("bot-chip").click({ button: "right" });
@@ -217,6 +219,7 @@ test.describe("avatar pixel", () => {
   for (const size of SIZES) {
     test(`screenshots at ${size.dir}`, async ({ browser }) => {
       const shots = await startWorld();
+      await freshBot(shots, "Bot de teste");
       try {
         const names = [
           ["Folha", "folha", null],

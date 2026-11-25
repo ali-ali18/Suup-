@@ -54,10 +54,10 @@ Se você mudou um pacote que o app importa compilado (por exemplo `@suup/connect
 20. Agendar, rotinas, lembretes e rodar código são do **Suup**. Um conector só alcança apps externos.
 
 ### Git, PRs e custo
-21. **Nada de nome de modelo** em commits, títulos ou corpos de PR, nem no código. Só `docs/TESTES-REAIS.md` pode citar modelos.
+21. **Nada de nome de modelo** em commits, títulos ou corpos de PR, nem no código. Só `docs/TESTES-REAIS.md`, o `CLAUDE.md` e `.claude/agents/` podem citar modelos.
 22. **Nunca fazer merge** de PR sem pedido explícito do dono. PRs são abertos como rascunho.
 23. **Orçamento de testes com modelo de verdade:** US$ 15 no total, dos quais cerca de US$ 9,1 já foram gastos. Avise antes de chegar perto e nunca rode avaliação cara sem perguntar.
-24. **Cota do dono:** subagentes usam o modelo mais barato que dá conta (um modelo pequeno para pesquisa, um médio para código), **no máximo 3 ao mesmo tempo**. O que é simples, faça direto. A sessão principal revisa o que for sensível: segurança, segredos, banco, o loop do motor, permissões e aprovações.
+24. **Cota do dono:** pesquisa vai para o agente `pesquisa` (modelo pequeno) e código para o agente `codigo` (modelo médio), ambos em `.claude/agents/`; a revisão de falha crítica ou sensível fica com a sessão principal (o modelo maior). Os nomes exatos dos modelos estão no `CLAUDE.md`. **No máximo 3 subagentes ao mesmo tempo**. O que é simples, faça direto. A sessão principal revisa o que for sensível: segurança, segredos, banco, o loop do motor, permissões e aprovações.
 25. **Anote o que fizer:** ao terminar um item, marque-o em `docs/PENDENCIAS.md` ou `docs/MELHORIAS.md`, com o commit, no mesmo commit. Pesquisas e decisões vão para o Git na hora.
 26. **Seja honesto e avise:** diga o que está rodando e o que falhou, com a saída. Nunca diga "pronto" sem ter verificado. Na dúvida sobre uma decisão do dono, pergunte, em pt-BR, curto, sem jargão.
 

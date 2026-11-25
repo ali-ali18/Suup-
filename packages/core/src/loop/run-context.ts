@@ -71,6 +71,8 @@ export interface RunContextSnapshot {
   secrets?: SecretInfo[];
   /** When the run started and the user's time zone: taken once, recorded, never recomputed. */
   now?: RunClock;
+  /** The name the user chose to be called by, when they said one (read once, recorded). */
+  ownerName?: string;
   /** The user's other active bots (name and description). */
   team?: Teammate[];
   /** What the bot's machine is in this run (truthful). */

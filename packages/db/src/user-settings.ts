@@ -12,25 +12,29 @@ export interface UserSettings {
   /** The user's IANA zone; `null` until the app (or the user) said it. */
   timeZone: string | null;
   timeZoneSource: TimeZoneSource | null;
+  /** The name the user chose to be called by; `null` until they said it. Free text, kept as typed. */
+  ownerName: string | null;
   updatedAt: Date;
 }
 
 interface Row {
   time_zone: string | null;
   time_zone_source: TimeZoneSource | null;
+  owner_name: string | null;
   updated_at: Date;
 }
 
 const map = (row: Row): UserSettings => ({
   timeZone: row.time_zone,
   timeZoneSource: row.time_zone_source,
+  ownerName: row.owner_name,
   updatedAt: row.updated_at,
 });
 
 export class UserSettingsError extends Error {
   override name = "UserSettingsError";
   constructor(
-    readonly code: "invalid_time_zone",
+    readonly code: "invalid_time_zone" | "invalid_owner_name",
     message: string,
   ) {
     super(message);
@@ -39,8 +43,9 @@ export class UserSettingsError extends Error {
 
 export async function getUserSettings(db: Db): Promise<UserSettings> {
   const [row] = await db.sql<Row[]>`
-    select time_zone, time_zone_source, updated_at from user_settings where singleton`;
-  if (row === undefined) return { timeZone: null, timeZoneSource: null, updatedAt: new Date(0) };
+    select time_zone, time_zone_source, owner_name, updated_at from user_settings where singleton`;
+  if (row === undefined)
+    return { timeZone: null, timeZoneSource: null, ownerName: null, updatedAt: new Date(0) };
   return map(row);
 }
 
@@ -68,6 +73,33 @@ export async function setUserTimeZone(
       time_zone_source = excluded.time_zone_source
     where ${input.source} = 'user'
       or user_settings.time_zone_source is distinct from 'user'
-    returning time_zone, time_zone_source, updated_at`;
+    returning time_zone, time_zone_source, owner_name, updated_at`;
   return row === undefined ? getUserSettings(db) : map(row);
+}
+
+/** The longest name kept (the database enforces the same). */
+export const OWNER_NAME_MAX = 60;
+
+/**
+ * Sets the name of the user. The name is free text: it is trimmed and its size checked, nothing
+ * else (no format, no case change). With `onlyIfEmpty` an existing name is kept, so a device that
+ * connects never overwrites the name a server already has. Returns the final settings.
+ */
+export async function setOwnerName(
+  db: Db,
+  input: { name: string; onlyIfEmpty?: boolean },
+): Promise<UserSettings> {
+  const name = input.name.trim();
+  if (name.length < 1 || name.length > OWNER_NAME_MAX) {
+    throw new UserSettingsError(
+      "invalid_owner_name",
+      `O nome precisa ter de 1 a ${OWNER_NAME_MAX} caracteres.`,
+    );
+  }
+  await db.sql`
+    insert into user_settings (singleton, owner_name)
+    values (true, ${name})
+    on conflict (singleton) do update set owner_name = excluded.owner_name
+    where not ${input.onlyIfEmpty === true}::boolean or user_settings.owner_name is null`;
+  return getUserSettings(db);
 }

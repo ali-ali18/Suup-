@@ -15,6 +15,8 @@ const AVATAR_SIZE = {
   xl: "size-18.5 text-glyph-xl",
   preview: "size-30 text-glyph-xl",
   tile: "size-16.5 text-glyph-tile",
+  /** Whatever box the parent gives (the big bot of "Crie seu bot"). */
+  fill: "size-full text-glyph-xl",
 } as const;
 
 export type AvatarSize = keyof typeof AVATAR_SIZE;
@@ -29,6 +31,7 @@ const MASCOT_OF: Record<AvatarSize, MascotSize> = {
   xl: "xl",
   preview: "xl",
   tile: "tile",
+  fill: "xl",
 };
 
 /**
@@ -148,6 +151,10 @@ export interface AvatarProps {
   working?: boolean;
   /** The bot has a message you have not read: the blue dot (over the star, under "working"). */
   unread?: boolean;
+  /** Where the face looks (the welcome); see `Mascot`. Only the shapes style looks around. */
+  gaze?: { x: number; y: number } | null;
+  /** `false`: the face never breathes (the welcome); see `Mascot`. */
+  breathe?: boolean;
 }
 
 /** O rosto do bot: o mascote na cor dele (ou um emoji). */
@@ -165,6 +172,8 @@ export function Avatar({
   supervisor = false,
   working = false,
   unread = false,
+  gaze,
+  breathe,
 }: AvatarProps) {
   const spec = avatarOf(avatar, seed, avatarStyle);
   const corner = CORNER[size];
@@ -221,6 +230,8 @@ export function Avatar({
             seed={seed}
             still={still}
             lively={lively}
+            {...(gaze === undefined ? {} : { gaze })}
+            {...(breathe === undefined ? {} : { breathe })}
           />
         ) : (
           <span className="text-[1.1em] leading-none">{spec.text}</span>

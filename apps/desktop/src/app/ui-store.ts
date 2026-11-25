@@ -75,6 +75,13 @@ export interface UiState {
   editBotId: string | null;
   /** Which step the bot dialog opens on (the empty chat hint opens the second). */
   editBotStep: 1 | 2;
+  /** The bot just created that the supervisor offer is about (`null`: no offer open). */
+  supervisorOfferBotId: string | null;
+  offerSupervisor(botId: string): void;
+  closeSupervisorOffer(): void;
+  /** The name the server has for the person (the account of the sidebar says it); `null`: none yet. */
+  ownerName: string | null;
+  setOwnerName(name: string | null): void;
   sidebarCollapsed: boolean;
   /** A última largura aberta da barra lateral (continua guardada com ela recolhida). */
   sidebarWidth: number;
@@ -191,6 +198,11 @@ export const useUi = create<UiState>((set, get) => ({
   newBotOpen: false,
   editBotId: null,
   editBotStep: 1,
+  supervisorOfferBotId: null,
+  offerSupervisor: (supervisorOfferBotId) => set({ supervisorOfferBotId }),
+  closeSupervisorOffer: () => set({ supervisorOfferBotId: null }),
+  ownerName: null,
+  setOwnerName: (ownerName) => set({ ownerName }),
   sidebarCollapsed: readFlag(COLLAPSED_KEY),
   sidebarWidth: readWidth(SIDEBAR_SPEC),
   paletteOpen: false,
@@ -243,6 +255,8 @@ export const useUi = create<UiState>((set, get) => ({
       inspectorRunId: null,
       newBotOpen: false,
       editBotId: null,
+      supervisorOfferBotId: null,
+      ownerName: null,
       paletteOpen: false,
       shortcutsOpen: false,
       groupBotId: null,

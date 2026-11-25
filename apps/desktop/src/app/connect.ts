@@ -35,6 +35,16 @@ export function describeConnectError(error: unknown): string {
 }
 
 /**
+ * The first step of connecting (owner, 24/11/2026: one step at a time): is there a Suup server at
+ * this address? Only `/health`, no token yet. Throws the same `ApiError` as `connect`.
+ */
+export async function checkServer(serverUrl: string, platform: Platform): Promise<void> {
+  await platform.allowServer?.(serverUrl);
+  const api = createClient({ baseUrl: serverUrl, token: "", fetch: platform.fetch });
+  await api.health();
+}
+
+/**
  * Validates the address (`/health`) and the token (an authenticated call), then opens the stream.
  * Throws an `ApiError` the connect screen turns into a message.
  */

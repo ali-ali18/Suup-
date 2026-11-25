@@ -7,6 +7,7 @@ import {
   freshBot,
   openApp,
   openWithBot,
+  principalBot,
   selectBot,
   send,
   userBubbles,
@@ -17,6 +18,7 @@ test.describe("bots, sidebar, palette, memory", () => {
   let world: World;
   test.beforeAll(async () => {
     world = await startWorld();
+    await principalBot(world);
   });
   test.afterAll(async () => {
     await world?.stop();
@@ -350,9 +352,9 @@ test.describe("bots, sidebar, palette, memory", () => {
     await freshBot(world, "Branquinho", { color: "branco", avatar: "mascot:blob" });
     await openApp(page, world);
     const expected: [string, string, string][] = [
-      ["Azulado", "rgb(16, 132, 254)", "rgb(11, 11, 12)"],
-      ["Rosado", "rgb(255, 92, 138)", "rgb(11, 11, 12)"],
-      ["Branquinho", "rgb(58, 58, 60)", "rgb(245, 245, 245)"],
+      ["Azulado", "rgb(26, 132, 255)", "rgb(255, 255, 255)"],
+      ["Rosado", "rgb(255, 61, 151)", "rgb(255, 255, 255)"],
+      ["Branquinho", "rgb(58, 58, 60)", "rgb(255, 255, 255)"],
     ];
     for (const [name, bg, fg] of expected) {
       await selectBot(page, name);
@@ -377,7 +379,7 @@ test.describe("bots, sidebar, palette, memory", () => {
     await page.getByLabel("Mensagem", { exact: true }).fill("");
     await selectBot(page, "Azulado");
     await page.getByLabel("Mensagem", { exact: true }).fill("x");
-    await expect(sendButton()).toHaveCSS("background-color", "rgb(16, 132, 254)");
+    await expect(sendButton()).toHaveCSS("background-color", "rgb(26, 132, 255)");
   });
 
   test("the panel opens and closes from the bot chip; Atividade and Biblioteca are honest about what is not there yet", async ({
@@ -471,7 +473,7 @@ test.describe("bots, sidebar, palette, memory", () => {
     await expect(bubble).toBeVisible();
     await expect(userBubbles(page).last().locator('[data-testid="bubble-user"]')).toHaveCSS(
       "background-color",
-      "rgb(0, 201, 114)",
+      "rgb(18, 196, 106)",
     );
     const gap = await page.getByTestId("chat-log").evaluate((el) => getComputedStyle(el).rowGap);
     const width = (await page.getByTestId("chat-composer").boundingBox())?.width ?? 0;
@@ -573,8 +575,9 @@ test.describe("bots, sidebar, palette, memory", () => {
     await closeSettings(page);
     await page.getByTestId("owner-menu").click();
     await page.getByRole("menuitem", { name: "Desconectar" }).click();
-    await expect(page.getByRole("button", { name: "Conectar" })).toBeVisible();
+    // Disconnected, the entrance asks for the address again (the welcome was seen, so it is the first step).
+    await expect(page.getByLabel("Endereço do servidor")).toBeVisible();
     await page.reload();
-    await expect(page.getByRole("button", { name: "Conectar" })).toBeVisible();
+    await expect(page.getByLabel("Endereço do servidor")).toBeVisible();
   });
 });

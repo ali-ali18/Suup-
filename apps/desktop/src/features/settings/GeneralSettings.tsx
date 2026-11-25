@@ -231,7 +231,9 @@ export function GeneralSettings({ title, titleId }: SectionProps) {
   useEffect(() => {
     api.models.list().then(setModels, (e: unknown) => setError(friendlyError(e)));
   }, [api]);
-  const [zone, setZone] = useState<UserSettings | undefined>(undefined);
+  const [zone, setZone] = useState<Pick<UserSettings, "timeZone" | "timeZoneSource"> | undefined>(
+    undefined,
+  );
   const [zoneError, setZoneError] = useState<string | undefined>(undefined);
   useEffect(() => {
     api.info().then(

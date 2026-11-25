@@ -67,8 +67,8 @@ const both = (p: EyeParams): EyePair => [p, p];
 export const EXPRESSION_EYES: Record<Expression, EyePair> = {
   // cápsulas verticais
   neutral: both(eye({})),
-  // arcos "^ ^"
-  happy: both(eye({ length: 0.5, width: 0.14, rot: 0, bend: 0.3, dy: -0.1 })),
+  // arcos "^ ^", grossinhos e bem curvos (dono, 24/11/2026: os de 0.14 eram finos demais)
+  happy: both(eye({ length: 0.52, width: 0.22, rot: 0, bend: 0.36, dy: -0.1 })),
   // maiores e mais redondos
   surprised: both(eye({ length: 0.86, width: 0.42, dy: 0.03 })),
   // pontas de fora caídas ("/ \"), levemente mais baixos

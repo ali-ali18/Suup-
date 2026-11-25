@@ -1,7 +1,7 @@
 import type { CatalogItem, CatalogStatus } from "@suup/api";
 import { ChevronRight, LoaderCircle, Plus } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { useData, useServices } from "../../app/context.js";
+import { useData } from "../../app/context.js";
 import { useUi } from "../../app/ui-store.js";
 import { fold } from "../../data/botlist.js";
 import { cx } from "../../lib/cx.js";
@@ -24,7 +24,7 @@ import { type PluginLook, searchPlugins } from "./installed.js";
 import { ManualPluginPage } from "./ManualPlugin.js";
 import { type SearchEntry, SearchPluginPage, SearchRow } from "./SearchPlugin.js";
 import { type Connect, POLL_MS, useConnect } from "./use-connect.js";
-import { usePlugins } from "./use-plugins.js";
+import { useCanLogIn, usePlugins } from "./use-plugins.js";
 
 /**
  * Where an entry stands, in words (docs/FRONTEND.md, "Galeria de conectores"); the status itself is
@@ -46,7 +46,7 @@ const STATE_TEXT: Record<CatalogStatus | "waiting", string> = {
  * this computer; on a VPS only when it has its public address (`GET /v1/info`, `oauthCallback`).
  * An entry already logged in (connected, or off with its login) needs no new login.
  */
-function loginBlocked(item: CatalogItem, canLogIn: boolean): boolean {
+export function loginBlocked(item: CatalogItem, canLogIn: boolean): boolean {
   return (
     !canLogIn &&
     item.entry.auth.kind === "oauth" &&
@@ -56,11 +56,11 @@ function loginBlocked(item: CatalogItem, canLogIn: boolean): boolean {
 }
 
 /** Why a login cannot be offered: one friendly sentence (docs/DESIGN.md §5d). */
-const NEEDS_PUBLIC_ADDRESS =
+export const NEEDS_PUBLIC_ADDRESS =
   "Para conectar pelo login, a sua VPS precisa ter o endereço público configurado.";
 
 /** The main action of an entry as it stands; none: nothing to do from here. */
-function actionOf(item: CatalogItem, canLogIn: boolean): string | undefined {
+export function actionOf(item: CatalogItem, canLogIn: boolean): string | undefined {
   if (loginBlocked(item, canLogIn)) return undefined;
   switch (item.status) {
     case "available":
@@ -79,7 +79,7 @@ function actionOf(item: CatalogItem, canLogIn: boolean): string | undefined {
 }
 
 /** One entry of the server, with the look the app gives its id. */
-interface Entry {
+export interface Entry {
   item: CatalogItem;
   look: Appearance;
 }
@@ -92,7 +92,7 @@ const lookOf = (entry: Entry): PluginLook => ({
 });
 
 /** The tile of a gallery entry. */
-function GalleryIcon({ entry, size }: { entry: Entry; size: keyof typeof TILE }) {
+export function GalleryIcon({ entry, size }: { entry: Entry; size: keyof typeof TILE }) {
   return (
     <EntryIcon
       id={entry.item.entry.id}
@@ -104,7 +104,7 @@ function GalleryIcon({ entry, size }: { entry: Entry; size: keyof typeof TILE })
 }
 
 /** The small tag of where an entry stands: a dot and the words (the dot is the text's own grey). */
-function StateTag({
+export function StateTag({
   state,
   title,
 }: {
@@ -550,24 +550,12 @@ function ConnectorPage({
  * shows its page in this same screen. The look of each entry comes from `appearance.ts`, by its id.
  */
 export function ConnectorsScreen({ pollMs = POLL_MS }: { pollMs?: number } = {}) {
-  const { api, mode } = useServices();
   const openSettings = useUi((s) => s.openSettings);
   const chosen = useUi((s) => s.plugin);
   const openPlugin = useUi((s) => s.openPlugin);
   const { items, search, loadError, reload, connectorsByName } = usePlugins();
-  const [callback, setCallback] = useState<"loopback" | "public" | undefined>(undefined);
   const [query, setQuery] = useState("");
-
-  // Where the browser comes back from a login: the server on this computer always takes it; a VPS
-  // only with its public address (docs/CONECTORES.md, "OAuth do MCP").
-  useEffect(() => {
-    if (mode === "local") return;
-    api.info().then(
-      (info) => setCallback(info.oauthCallback),
-      () => setCallback(undefined),
-    );
-  }, [api, mode]);
-  const canLogIn = mode === "local" || callback === "public";
+  const canLogIn = useCanLogIn();
 
   // Esc goes back from a page to the list (unless a dialog is open on top).
   useEffect(() => {

@@ -984,7 +984,10 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
       !guarded || receptionKind !== undefined
         ? undefined
         : bot.isDefault !== true
-          ? "member"
+          ? // The supervisor is optional: a team with no main bot has nobody to tell them about.
+            (await getDefaultBot(handle)) === null
+            ? undefined
+            : "member"
           : run.origin === "delegation"
             ? undefined
             : "principal";
@@ -1088,6 +1091,8 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
                 .filter((other) => other.id !== bot.id)
                 .map((other) => ({ name: other.name, description: other.description }));
               const zone = (await userTimeZone()).timeZone;
+              // The name the user chose, read once here and recorded with the rest.
+              const ownerName = (await getUserSettings(handle)).ownerName;
               const facts = run.origin === "routine" ? await routineRunFacts(handle, id) : null;
               // The bot's routines, in a run that may create them: a new run knows what an
               // earlier one set up (the history is text only, without the tool calls behind it).
@@ -1102,6 +1107,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
                   zone === null
                     ? { iso: new Date().toISOString(), timeZone: "UTC", timeZoneKnown: false }
                     : { iso: new Date().toISOString(), timeZone: zone },
+                ...(ownerName === null ? {} : { ownerName }),
                 team,
                 machine: {
                   terminal: botCfg.allowedTools.includes("shell"),

@@ -61,6 +61,7 @@ test.describe("per-tool grants and the review of a definition", () => {
   let dir: string;
   test.beforeAll(async () => {
     world = await startWorld();
+    await freshBot(world, "Bot de teste");
     dir = await mkdtemp(join(tmpdir(), "suup-e2e-review-"));
   });
   test.afterAll(async () => {
@@ -350,6 +351,7 @@ test.describe("the network of a bot's machine", () => {
   let world: World;
   test.beforeAll(async () => {
     world = await startWorld();
+    await freshBot(world, "Bot de teste");
   });
   test.afterAll(async () => {
     await world?.stop();
@@ -420,6 +422,7 @@ test.describe("the card that asks for a host", () => {
   let world: World;
   test.beforeAll(async () => {
     world = await startWorld({ networkTool: true });
+    await freshBot(world, "Bot de teste");
   });
   test.afterAll(async () => {
     await world?.stop();
@@ -500,6 +503,7 @@ test.describe("tool search: the measure of the definitions, and the real tool in
   let world: World;
   test.beforeAll(async () => {
     world = await startWorld({ toolSearch: { minTools: 5, minDefinitionTokens: 1 } });
+    await freshBot(world, "Bot de teste");
   });
   test.afterAll(async () => {
     await world?.stop();

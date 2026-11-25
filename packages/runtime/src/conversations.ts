@@ -175,7 +175,8 @@ export interface EnsureDefaultBotOptions {
 }
 
 /**
- * Makes sure there is a main bot. Returns the default bot when one is marked; if none is marked
+ * Makes sure there is a main bot (a convenience of the terminal chat only: the server does not call
+ * it, its main bot is whatever the user turns on with `POST /v1/bots/:id/default`). Returns the default bot when one is marked; if none is marked
  * but there are active bots, the oldest one becomes the default (nothing is created); if there are
  * no active bots, creates "Principal" with every registered tool and marks it default. Idempotent.
  */

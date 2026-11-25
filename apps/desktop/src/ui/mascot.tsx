@@ -37,6 +37,9 @@ const SIZE_PX: Record<MascotSize, number> = { xs: 16, sm: 28, md: 36, lg: 56, xl
 /** Quanto tempo o rosto de "concluído" fica antes de voltar ao repouso. */
 export const DONE_HOLD_MS = 3500;
 
+/** The colour an animated mascot that repaints is made with: white gives the painted eyes (`resolveEyes`). */
+const REPAINT_BASE = BOT_PALETTE.branco.fill;
+
 /** No máximo estes avatares fazem o movimento contínuo de "trabalhando" ao mesmo tempo. */
 const BRAIN_BUDGET = createBrainBudget(3);
 
@@ -71,6 +74,31 @@ export interface MascotProps {
    * motor: lendo e programando se mexem diferente) mesmo pequeno. Sem isso, só os grandes.
    */
   lively?: boolean;
+  /**
+   * Where the face looks, as the engine's own gaze vector (x to the right, y down, -1 to 1): the
+   * welcome makes the bot look aside and back to the front. While it is given, the face does not
+   * follow the pointer; `null` lets it wander. Absent: the usual behaviour.
+   */
+  gaze?: { x: number; y: number } | null;
+  /** `false`: the body never breathes (the welcome, owner's decision of 24/11/2026). */
+  breathe?: boolean;
+  /**
+   * One turn on its own axis, ending facing front, lasting `ms`: every new `key` (above 0) makes
+   * one (the welcome's bot on its way to the corner). The still image never turns.
+   */
+  spin?: { key: number; ms: number };
+  /**
+   * A poke at a point (-1 to 1 on each axis): every new `key` (above 0) pokes once. `strength`
+   * (0 to 1, default 1) softens the jolt.
+   */
+  poke?: { key: number; x: number; y: number; strength?: number };
+  /**
+   * The colour changes while the bot is on screen (the bot being made): the body is only repainted,
+   * the character and the runtime are NOT recreated, so the animation in progress (a smile, a look)
+   * goes on instead of starting over. The eyes are painted (not cut out) so the face reads on any
+   * colour, as the white bot's always did. Only the animated mascot works this way.
+   */
+  repaint?: boolean;
 }
 
 /**
@@ -158,6 +186,11 @@ export function Mascot({
   still = false,
   picked = false,
   lively = false,
+  gaze,
+  breathe,
+  spin,
+  poke,
+  repaint = false,
 }: MascotProps) {
   const host = useContext(MascotHostContext);
   const systemReduced = useReducedMotion();
@@ -171,20 +204,41 @@ export function Mascot({
     handle: ReturnType<AvatarTicker["register"]>;
   } | null>(null);
   const latest = useRef(shown);
+  const gazeRef = useRef(gaze);
+  const gazeSet = gaze !== undefined;
 
   // O id do personagem também nomeia as máscaras do SVG: um por instância, senão duas caras do
   // mesmo bot na tela (barra lateral e cabeçalho) usariam a máscara uma da outra.
+  // `repaint`: the character is made once in the base colour (white: painted eyes) and the colour
+  // goes on the body afterwards, so changing it never recreates the character or its runtime.
+  const fill = BOT_PALETTE[color].fill;
+  const bodyColor = repaint && animated ? REPAINT_BASE : fill;
   const character = useMemo(
-    () => createCharacter({ id: `${seed}-${uid}`, shape, color: BOT_PALETTE[color].fill }),
-    [seed, uid, shape, color],
+    () => createCharacter({ id: `${seed}-${uid}`, shape, color: bodyColor }),
+    [seed, uid, shape, bodyColor],
   );
   // Animado: o SVG de repouso é só o esqueleto (o ticker escreve o resto); parado: o rosto do estado.
   const stillState: AvatarStateId = animated ? "idle" : shown;
-  const html = useMemo(() => renderStill(character, stillState), [character, stillState]);
+  // The picked mascot has an outline around its silhouette (a filter): its eyes are painted, never
+  // cut out, or the outline would ring the holes (owner, 24/11/2026: the eyes "bugged" on colours).
+  const html = useMemo(
+    () => renderStill(character, stillState, { paintEyes: picked }),
+    [character, stillState, picked],
+  );
 
   useLayoutEffect(() => {
     latest.current = shown;
+    gazeRef.current = gaze;
   });
+
+  // The body of an animated mascot that repaints: its fill is set here (the SVG is the skeleton).
+  useLayoutEffect(() => {
+    if (!repaint || !animated) return;
+    const body = root.current?.querySelector("svg > g > use");
+    if (body !== null && body !== undefined && body.getAttribute("fill") !== fill) {
+      body.setAttribute("fill", fill);
+    }
+  }, [repaint, animated, fill, html]);
 
   const px = SIZE_PX[size];
   const tickerOverride = host.ticker;
@@ -197,13 +251,13 @@ export function Mascot({
       state: latest.current,
       size: px,
       // Os pequenos só piscam e assentam; respirar e "trabalhar" ficam para os grandes.
-      breathe: lively || px >= 64,
+      breathe: breathe ?? (lively || px >= 64),
       brain: lively || px >= 56,
       budget: BRAIN_BUDGET,
     });
     const handle = (tickerOverride ?? getTicker()).register({
       ...runtime.tickerEntry((data) => paint(parts, data)),
-      follow: size === "xl" ? "always" : "off",
+      follow: size === "xl" && !gazeSet ? "always" : "off",
       getCenter: () => {
         const r = el.getBoundingClientRect();
         return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
@@ -211,17 +265,46 @@ export function Mascot({
       element: el,
     });
     live.current = { runtime, handle };
+    // A look asked for before the runtime existed (the first frame) is applied now.
+    const first = gazeRef.current;
+    if (first !== undefined) handle.interact(() => runtime.setGaze(first));
     return () => {
       handle.unregister();
       runtime.dispose();
       live.current = null;
     };
-  }, [animated, character, px, size, tickerOverride, lively]);
+  }, [animated, character, px, size, tickerOverride, lively, gazeSet, breathe]);
 
   useLayoutEffect(() => {
     const current = live.current;
     current?.handle.interact(() => current.runtime.setState(shown));
   }, [shown, animated, character, px, size, tickerOverride]);
+
+  const spinKey = spin?.key ?? 0;
+  const spinMs = spin?.ms;
+  useLayoutEffect(() => {
+    const current = live.current;
+    if (current === null || spinKey === 0 || spinMs === undefined) return;
+    current.handle.interact(() => current.runtime.spin(spinMs / 1000));
+  }, [spinKey, spinMs]);
+
+  const pokeKey = poke?.key ?? 0;
+  const pokeX = poke?.x;
+  const pokeY = poke?.y;
+  const pokeStrength = poke?.strength;
+  useLayoutEffect(() => {
+    const current = live.current;
+    if (current === null || pokeKey === 0) return;
+    current.handle.interact(() => current.runtime.poke(pokeX, pokeY, pokeStrength));
+  }, [pokeKey, pokeX, pokeY, pokeStrength]);
+
+  const gazeX = gaze?.x;
+  const gazeY = gaze?.y;
+  useLayoutEffect(() => {
+    const current = live.current;
+    if (current === null || gazeX === undefined || gazeY === undefined) return;
+    current.handle.interact(() => current.runtime.setGaze({ x: gazeX, y: gazeY }));
+  }, [gazeX, gazeY]);
 
   return (
     <span

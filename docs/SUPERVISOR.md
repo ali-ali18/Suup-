@@ -2,6 +2,10 @@
 
 Decisões do dono (21/11/2026) sobre o bot principal (o bot marcado como padrão, com uma estrela no avatar). Pesquisa que embasa o desenho: [pesquisas/fase-4-supervisor-e-delegacao.md](pesquisas/fase-4-supervisor-e-delegacao.md). Os outros bots continuam conversando direto com o usuário e fazendo o próprio trabalho; o Principal **sabe** o que foi feito porque lê, e **passa** trabalho quando o usuário pede.
 
+## O supervisor é opcional (decisão do dono, 24/11/2026)
+
+O servidor não cria o Principal nem marca um bot como principal por conta própria: sobe sem bots, e a pessoa liga o supervisor, se quiser, em `POST /v1/bots/:id/default`. Sem principal tudo funciona quieto: a revisão noturna e a mensagem da manhã não rodam, `GET /v1/supervisor/settings` diz que o modelo não está disponível ("Não há um bot principal."), os bots não ganham o bloco de "supervisionado", a recepção é a de bot comum, e o rascunho e o cartão de equipe usam o primeiro modelo da configuração.
+
 ## Revisão noturna ("uma vez por noite ele vê o que foi realizado nos outros e lembra")
 
 Um job do worker (`team-review`, a cada 60 s olha o relógio) roda `runNightlyReview` (`packages/runtime/src/supervisor.ts`).

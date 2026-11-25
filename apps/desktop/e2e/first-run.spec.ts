@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { DATABASE_URL, SKIP_REASON, startWorld, type World } from "./harness.js";
-import { openSettings } from "./helpers.js";
+import { freshBot, openSettings, passWelcome } from "./helpers.js";
 import { installTauriMock } from "./tauri-mock.js";
 
 // The first-run choice and Settings > Servidor, with the Tauri shell played by `tauri-mock.ts`
@@ -10,6 +10,8 @@ test.describe("first run: this computer or a VPS", () => {
   let world: World;
   test.beforeAll(async () => {
     world = await startWorld();
+    // The server already has a bot: the entrance goes to the app once connected.
+    await freshBot(world, "Primeiro");
   });
   test.afterAll(async () => {
     await world?.stop();
@@ -20,8 +22,12 @@ test.describe("first run: this computer or a VPS", () => {
   }) => {
     await installTauriMock(page, world, {
       isolation: { mode: "docker", reason: null, detail: null },
+      welcome: true,
     });
     await page.goto(world.appUrl);
+    // A device that never saw the welcome starts there; the first-run choice comes after it.
+    await expect(page.getByTestId("first-run")).toHaveCount(0);
+    await passWelcome(page);
     await expect(page.getByTestId("first-run")).toBeVisible();
     await expect(page.getByTestId("choose-local")).toContainText("Usar neste computador");
     await expect(page.getByTestId("choose-vps")).toContainText("Conectar à minha VPS");
@@ -75,8 +81,12 @@ test.describe("first run: this computer or a VPS", () => {
   });
 
   test("a start that fails says why, and retries on request", async ({ page }) => {
-    await installTauriMock(page, world, { failFirstStartWith: "A porta do banco está ocupada." });
+    await installTauriMock(page, world, {
+      failFirstStartWith: "A porta do banco está ocupada.",
+      welcome: true,
+    });
     await page.goto(world.appUrl);
+    await passWelcome(page);
     await page.getByTestId("choose-local").click();
     await page.getByTestId("key-later").click();
     // one friendly sentence and the way to the logs; the supervisor's reason stays in the logs
@@ -93,8 +103,9 @@ test.describe("first run: this computer or a VPS", () => {
   test("Trocar goes back to the choice; the VPS path connects with address and token", async ({
     page,
   }) => {
-    await installTauriMock(page, world);
+    await installTauriMock(page, world, { welcome: true });
     await page.goto(world.appUrl);
+    await passWelcome(page);
     await page.getByTestId("choose-local").click();
     await page.getByTestId("key-later").click();
     await expect(page.getByTestId("sidebar")).toBeVisible();
@@ -106,6 +117,7 @@ test.describe("first run: this computer or a VPS", () => {
     await page.getByTestId("choose-vps").click();
     await expect(page.getByTestId("connect-back")).toBeVisible();
     await page.getByLabel("Endereço do servidor").fill(world.serverUrl);
+    await page.getByRole("button", { name: "Continuar" }).click();
     await page.getByLabel("Token").fill(world.token);
     await page.getByRole("button", { name: "Conectar" }).click();
     await expect(page.getByTestId("sidebar")).toBeVisible();

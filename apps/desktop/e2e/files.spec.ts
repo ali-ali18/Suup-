@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
 import { DATABASE_URL, SKIP_REASON, startWorld, type World } from "./harness.js";
-import { openWithBot, send } from "./helpers.js";
+import { freshBot, openWithBot, send } from "./helpers.js";
 
 // The owner's items of 24/11/2026, in a real run of the app: the bot makes a document and hands it
 // over (the file card under its message, downloaded by the browser), the terminal rows of the run
@@ -20,6 +20,7 @@ test.describe("files in the chat, no tool rows, the question apart", () => {
   }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     world = await startWorld();
+    await freshBot(world, "Bot de teste");
     await openWithBot(page, world, "Pesquisa");
     await send(page, "CASE-FILE faça um PDF com a história da biblioteca da cidade");
 
@@ -72,6 +73,7 @@ test.describe("files in the chat, no tool rows, the question apart", () => {
   }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     world = await startWorld();
+    await freshBot(world, "Bot de teste");
     await openWithBot(page, world, "Cores");
     await send(page, "CASE-ASKCTX faça o PDF da biblioteca");
     const card = page.getByTestId("question-card");

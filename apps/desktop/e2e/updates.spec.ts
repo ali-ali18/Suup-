@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { DATABASE_URL, SKIP_REASON, startWorld, type World } from "./harness.js";
-import { openSettings } from "./helpers.js";
+import { freshBot, openSettings } from "./helpers.js";
 import { installTauriMock, type MockOptions } from "./tauri-mock.js";
 
 // The app's own update (docs/ATUALIZACAO.md, docs/DESIGN.md 3e), with the Tauri shell played by
@@ -12,6 +12,7 @@ test.describe("app updates", () => {
   let world: World;
   test.beforeAll(async () => {
     world = await startWorld();
+    await freshBot(world, "Bot de teste");
   });
   test.afterAll(async () => {
     await world?.stop();

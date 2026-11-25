@@ -249,6 +249,7 @@ async function ensureContext(ctx: LoopContext): Promise<void> {
       ...(snapshot.historyNote === undefined ? {} : { historyNote: snapshot.historyNote }),
       ...(snapshot.secrets === undefined ? {} : { secrets: snapshot.secrets }),
       ...(snapshot.now === undefined ? {} : { now: snapshot.now }),
+      ...(snapshot.ownerName === undefined ? {} : { ownerName: snapshot.ownerName }),
       ...(snapshot.team === undefined ? {} : { team: snapshot.team }),
       ...(snapshot.machine === undefined ? {} : { machine: snapshot.machine }),
       ...(snapshot.connectors === undefined ? {} : { connectors: snapshot.connectors }),

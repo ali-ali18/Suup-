@@ -1,7 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 import { SHAPE_IDS } from "@suup/avatar";
 import { DATABASE_URL, SKIP_REASON, startWorld, type World } from "./harness.js";
-import { botItem, freshBot, openApp, selectBot, send } from "./helpers.js";
+import { botItem, freshBot, openApp, principalBot, selectBot, send } from "./helpers.js";
 
 // Regression (owner, 24/11/2026: "Ficou cortado!"): the pinned tile cut the face. Two causes: the
 // notch mask ended AT the avatar's box, flat-cutting the shapes the engine frames a little bigger
@@ -14,6 +14,7 @@ test.skip(DATABASE_URL === undefined, SKIP_REASON);
 let world: World;
 test.beforeAll(async () => {
   world = await startWorld();
+  await principalBot(world);
 });
 test.afterAll(async () => {
   await world.stop();

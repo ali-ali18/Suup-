@@ -470,6 +470,8 @@ export type {
 } from "./types.js";
 export {
   getUserSettings,
+  OWNER_NAME_MAX,
+  setOwnerName,
   setUserTimeZone,
   type TimeZoneSource,
   type UserSettings,

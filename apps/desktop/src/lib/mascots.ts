@@ -135,7 +135,7 @@ function hash(text: string): number {
   return h;
 }
 
-/** As cores que um bot sem cor própria recebe (nunca branco nem grafite: essas são uma escolha). */
+/** As cores que um bot sem cor própria recebe (só as vivas; branco, marrom e cinza são uma escolha). */
 const DEFAULT_COLORS: readonly BotColor[] = ["laranja", "azul", "verde", "roxo", "rosa", "amarelo"];
 
 /** A cor com que o bot é pintado: a dele, ou uma escolhida a partir do id (sempre a mesma). */

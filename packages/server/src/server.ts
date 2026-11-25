@@ -9,7 +9,6 @@ import { streamQuerySchema } from "@suup/api";
 import { migrationStatus, pruneChangeLog } from "@suup/db";
 import {
   DEFAULT_SERVER,
-  ensureDefaultBot,
   OAUTH_CALLBACK_PATH,
   type Runtime,
   reconcileRunEffects,
@@ -79,8 +78,9 @@ export interface ServerOptions {
   eventRetentionMinutes?: number;
   /**
    * What the server does at start before it listens: settle the effects of runs that ended while
-   * no worker looked (`reconcileRunEffects`) and make sure a main bot exists (`ensureDefaultBot`,
-   * with the first model of the configuration). Default `true`.
+   * no worker looked (`reconcileRunEffects`). It creates no bot: the server starts with none and
+   * the user makes the first one in the app; the main bot (the supervisor) is optional and only
+   * exists when the user turns it on. Default `true`.
    */
   bootstrap?: boolean;
   /**
@@ -483,11 +483,6 @@ export function createServer(runtime: Runtime, options: ServerOptions): SuupServ
       });
       if (settled.length > 0) {
         log.info(`${settled.length} execução(ões) que terminaram sem aviso foram acertadas.`);
-      }
-      const first = runtime.config.models[0];
-      if (first !== undefined) {
-        const { bot, created } = await ensureDefaultBot(runtime, { modelId: first.id });
-        if (created) log.info(`Bot principal criado: ${bot.name} (${bot.id}).`);
       }
     }
     await hub.start();

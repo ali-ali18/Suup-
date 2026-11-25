@@ -378,6 +378,7 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
         profile: structuredClone(event.payload.profile),
         secrets: structuredClone(event.payload.secrets ?? []),
         ...(event.payload.now === undefined ? {} : { now: structuredClone(event.payload.now) }),
+        ...(event.payload.ownerName === undefined ? {} : { ownerName: event.payload.ownerName }),
         ...(event.payload.team === undefined ? {} : { team: structuredClone(event.payload.team) }),
         ...(event.payload.machine === undefined
           ? {}

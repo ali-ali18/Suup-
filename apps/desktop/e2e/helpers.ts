@@ -1,16 +1,53 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import type { World } from "./harness.js";
 
-/** Opens the app and connects with the world's token (the connection is kept in the tab). */
+/**
+ * Opens the app and connects with the world's token (the connection is kept in the tab), going
+ * through the entrance's steps: the address, then the token. By default the welcome and the
+ * connectors step count as already seen on this device (`entrance: true` leaves them to show).
+ */
 export async function connect(
   page: Page,
   world: World,
   token: string = world.token,
+  options: { entrance?: boolean } = {},
 ): Promise<void> {
+  if (options.entrance !== true) await markEntranceSeen(page);
   await page.goto(world.appUrl);
   await page.getByLabel("Endereço do servidor").fill(world.serverUrl);
+  await page.getByRole("button", { name: "Continuar" }).click();
   await page.getByLabel("Token").fill(token);
   await page.getByRole("button", { name: "Conectar" }).click();
+}
+
+/** This device has already seen the welcome and the connectors step (the entrance skips them). */
+export async function markEntranceSeen(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    localStorage.setItem("suup.welcomeDone", "1");
+    localStorage.setItem("suup.connectorsStepDone", "1");
+  });
+}
+
+/** The welcome of a new device: the name (required), then "Continuar"; resolves when the form is gone. */
+export async function passWelcome(page: Page, name = "Marina"): Promise<void> {
+  const form = page.getByTestId("welcome-form");
+  await form.getByPlaceholder("Seu nome").fill(name);
+  await form.getByRole("button", { name: "Continuar" }).click();
+  await expect(form).toHaveCount(0);
+}
+
+/** The server's supervisor: a bot of this name, marked as the principal one. */
+export async function principalBot(world: World, name = "Principal"): Promise<void> {
+  // Every tool the server has, as the first bot of the entrance gets them.
+  const tools = (await world.api.tools.list()).items.map((tool) => tool.name);
+  const bot = await world.api.bots.create({
+    name,
+    description: "Assistente da equipe.",
+    personality: "Seja objetivo.",
+    modelId: "model-x",
+    allowedTools: tools,
+  });
+  await world.api.bots.setDefault(bot.id);
 }
 
 export async function openApp(page: Page, world: World): Promise<void> {

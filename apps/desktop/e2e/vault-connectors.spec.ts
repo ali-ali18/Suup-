@@ -31,6 +31,7 @@ test.describe("secret requests and the vault", () => {
   let world: World;
   test.beforeAll(async () => {
     world = await startWorld();
+    await freshBot(world, "Bot de teste");
   });
   test.afterAll(async () => {
     await world?.stop();
@@ -210,6 +211,7 @@ test.describe("a server without a vault", () => {
   let world: World;
   test.beforeAll(async () => {
     world = await startWorld({ vault: false });
+    await freshBot(world, "Bot de teste");
   });
   test.afterAll(async () => {
     await world?.stop();
@@ -232,6 +234,7 @@ test.describe("connectors", () => {
   let world: World;
   test.beforeAll(async () => {
     world = await startWorld();
+    await freshBot(world, "Bot de teste");
   });
   test.afterAll(async () => {
     await world?.stop();

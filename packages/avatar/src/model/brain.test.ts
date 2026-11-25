@@ -302,6 +302,30 @@ describe("cérebro no motor", () => {
     expect(JSON.stringify(withBrain.snapshot())).not.toBe(JSON.stringify(without.snapshot()));
   });
 
+  it("`breathe: false` cala também a respiração do cérebro: o tamanho do corpo não pulsa", () => {
+    const scales = (brain: boolean) => {
+      const e = createAvatarEngine({ shape: "blob", seed: "sem-folego", breathe: false, brain });
+      e.setState("reading");
+      const out: number[] = [];
+      for (let t = 0; t < 4000; t += 16) out.push(Number(e.advance(16).scale.toFixed(4)));
+      return out;
+    };
+    expect(scales(true)).toEqual(scales(false));
+  });
+
+  it("`breathe: false` também ignora o inchar das animações (o Idle_B do sorriso): o corpo fica do mesmo tamanho", () => {
+    const e = createAvatarEngine({
+      shape: "blob",
+      seed: "sem-folego",
+      breathe: false,
+      brain: true,
+    });
+    e.setState("smile" as never);
+    const sizes = new Set<number>();
+    for (let t = 0; t < 8000; t += 16) sizes.add(Number(e.advance(16).scale.toFixed(4)));
+    expect([...sizes]).toEqual([1]);
+  });
+
   it("o estado define a família: lendo e programando se movem diferente com a mesma semente e o mesmo clipe", () => {
     const reading = make();
     const coding = make();

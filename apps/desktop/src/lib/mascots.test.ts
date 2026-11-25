@@ -66,18 +66,18 @@ describe("effectiveColor", () => {
       const color = effectiveColor(null, seed);
       expect(BOT_COLORS).toContain(color);
       expect(effectiveColor(null, seed)).toBe(color);
-      expect(["branco", "grafite", "cinza"]).not.toContain(color);
+      expect(["branco", "cinza"]).not.toContain(color);
     }
     expect(new Set(seeds.map((s) => effectiveColor(null, s))).size).toBeGreaterThan(1);
   });
 });
 
 describe("colorVars", () => {
-  it("the white bot's user bubble is a neutral grey; the others' is the bot's colour", () => {
+  it("the user bubble's text is white on every colour; the white bot's bubble is a neutral grey", () => {
     expect(colorVars("branco")).toMatchObject({
       "--bot-fill": "#ffffff",
       "--bot-bubble": "#3a3a3c",
-      "--bot-on-bubble": "#f5f5f5",
+      "--bot-on-bubble": "#ffffff",
     });
     expect(colorVars("azul")["--bot-bubble"]).toBe(colorVars("azul")["--bot-fill"]);
   });

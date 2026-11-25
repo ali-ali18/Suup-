@@ -166,9 +166,16 @@ export class Character {
   // outros
   private blinkT: number | null = null;
   private spinT: number | null = null;
+  /** Length of the running spin, in seconds (`T.spinS` unless the caller asked for another). */
+  private spinLength: number = T.spinS;
   private readonly shake = spring(0);
   private readonly emphasis = spring(0);
   private gazeGain = 1;
+  /**
+   * `breathe: false` silences every breath: the behaviour's and the brain's (whose `breath` used to
+   * swell the body even so; owner, 24/11/2026: the big bot of the welcome "breathing" looked bad).
+   */
+  private readonly breathes: boolean;
 
   // morph de indicador: o corpo vira radar, órbita, anel de progresso…
   private readonly indicator = new Indicator();
@@ -182,6 +189,7 @@ export class Character {
   private clipExpr: Expression = "neutral";
 
   constructor(opts: CharacterOptions) {
+    this.breathes = opts.breathe !== false;
     this.shape = opts.body;
     this.fromShape = opts.body;
     const outline = shapeOutline(opts.body);
@@ -327,17 +335,22 @@ export class Character {
     if (this.blinkT === null) this.blinkT = 0;
   }
 
-  /** Cutucada em (x, y) normalizado (-1..1): squash e olha para o ponto. */
-  poke(x: number, y: number): void {
+  /**
+   * Cutucada em (x, y) normalizado (-1..1): squash e olha para o ponto. `strength` (0..1, padrão 1)
+   * amolece o tranco: o bot grande da boas-vindas usa um toque leve, senão balança feito gelatina.
+   */
+  poke(x: number, y: number, strength = 1): void {
     const px = clamp(x, -1, 1);
     const py = clamp(y, -1, 1);
-    this.squash.velocity += T.pokeImpulse;
-    this.pushX.velocity -= px * T.pokePush;
-    this.pushY.velocity -= py * T.pokePush;
+    const k = clamp(strength, 0, 1);
+    this.squash.velocity += T.pokeImpulse * k;
+    this.pushX.velocity -= px * T.pokePush * k;
+    this.pushY.velocity -= py * T.pokePush * k;
     this.look({ x: px, y: py }, 0.8);
   }
 
-  spin(): void {
+  spin(seconds: number = T.spinS): void {
+    this.spinLength = seconds > 0 ? seconds : T.spinS;
     this.spinT = 0;
   }
 
@@ -407,7 +420,7 @@ export class Character {
     }
     if (this.spinT !== null) {
       this.spinT += h;
-      if (this.spinT >= T.spinS) this.spinT = null;
+      if (this.spinT >= this.spinLength) this.spinT = null;
     }
 
     // blends lentos
@@ -539,11 +552,14 @@ export class Character {
 
     const pose = this.player.pose;
     const unit = BODY_RADIUS_PX * this.currentFit();
-    const zoom = (pose.zoom / DEFAULT_ZOOM) * (1 + (brain ? brain.breath : 0));
+    // Without breath the body keeps its resting size: neither the brain's breath nor the swell some
+    // clips carry in their scale track (Idle_B goes 0.60 -> 0.64 -> 0.60, a breath of its own).
+    const zoom = this.breathes ? (pose.zoom / DEFAULT_ZOOM) * (1 + (brain ? brain.breath : 0)) : 1;
     const shake = this.shake.value;
     const shakeX = shake * T.shakeUnits * Math.sin(TAU * T.shakeHz * this.time);
     // Giro de comemoração (poke "spin"): yaw += 180 · (1 − cos πa).
-    const spin = this.spinT === null ? 0 : 180 * (1 - Math.cos(Math.PI * (this.spinT / T.spinS)));
+    const spin =
+      this.spinT === null ? 0 : 180 * (1 - Math.cos(Math.PI * (this.spinT / this.spinLength)));
     const orientation = this.orientation(pose.rot, gaze, spin);
     if (brain) {
       orientation.yaw += brain.yaw;

@@ -6,6 +6,7 @@ import {
   openApp,
   openSettings,
   openWithBot,
+  principalBot,
   selectBot,
   send,
 } from "./helpers.js";
@@ -57,6 +58,7 @@ test.describe("Memória", () => {
   let world: World;
   test.beforeAll(async () => {
     world = await startWorld({ scripts: SCRIPTS });
+    await principalBot(world);
   });
   test.afterAll(async () => {
     await world?.stop();

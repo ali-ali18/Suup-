@@ -43,6 +43,8 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("migration 0017: memory consolidation
       "0031_web_search_usage.sql",
       "0032_secrets_managed_by.sql",
       "0033_routine_events.sql",
+      "0034_user_owner_name.sql",
+      "0035_bot_color_palette.sql",
     ]);
     for (const file of held) await rm(join(dir, file));
     await migrate(ctx.db, dir);

@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { addJournalMemory, addMemory } from "@suup/db";
 import { DATABASE_URL, SKIP_REASON, startWorld, type World } from "./harness.js";
-import { botItem, openApp, openSettings, selectBot, send } from "./helpers.js";
+import { botItem, openApp, openSettings, principalBot, selectBot, send } from "./helpers.js";
 
 // The Principal as the supervisor, in the browser, against the real server and the scripted
 // provider: the delegation ("manda o Tutor...") and the result coming back, the nightly review with
@@ -109,6 +109,7 @@ test.describe("the Principal as the supervisor", () => {
   let world: World;
   test.beforeAll(async () => {
     world = await startWorld({ scripts: SCRIPTS, supervisorEveryMs: 200 });
+    await principalBot(world);
     // The review and the morning message are off until the test says so: nothing is due yet.
     await world.api.supervisor.settings.update({ reviewEnabled: false });
     await world.api.bots.create({

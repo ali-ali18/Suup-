@@ -129,6 +129,8 @@
   --font-weight-bold: 700; /* the browser's own bold: a heading or a name with no weight of its own */
   --text-heading-size: 22px;
   --text-heading-line: 28px;
+  --text-screen-title-size: 36px; /* the title of a step of "Crie seu bot": a screen of its own, not a card (owner, 24/11/2026) */
+  --text-screen-title-line: 44px;
   --text-code-size: 12px;
   --text-code-line: 18px;
   --text-badge-size: 10px; /* the count on a bot's badge */
@@ -189,6 +191,13 @@
   --width-empty-text: 280px;
   --width-input: 260px; /* the field of a settings row */
   --width-connect: min(440px, 100%); /* the card of the connect screen */
+  --height-gallery-list: 100%; /* the grid of connectors of the gallery fills the height the window has left and scrolls inside it (owner, 24/11/2026: a fixed box left a tall window half empty) */
+  /* the panel of "Crie seu bot": half of the window, wide, with the big bot on the other half (owner, 24/11/2026) */
+  --width-create: min(560px, 100%);
+  --height-entry-list: min(
+    360px,
+    45vh
+  ); /* the list of connectors of the entrance scrolls inside this */
   --width-palette: min(640px, 100%); /* the command palette */
   --width-screen-narrow: 760px; /* a block of a narrow screen (Pendências) */
   --width-screen-wide: 980px; /* the body of the inspector */
@@ -243,6 +252,25 @@
   /* The bot's live avatar leaving the chat when its answer arrives: a little longer than the
      base, so the face of "done" is seen while the row fades and closes (docs/DESIGN.md §3). */
   --duration-leave: 420ms;
+  /* The welcome (docs/DESIGN.md §3d; docs/pesquisas/entrada-de-apps-reais.md, the tokens of
+     Material 3 and Fluent 2): the bot enters first and slower (a larger element gets more time,
+     Fluent; Material's Medium4 with the emphasized decelerate curve), each line rises in Fluent's
+     "gentle" 250, the field and the button fade in with the "normal" 200, the screen leaves with
+     the "fast" 150 and the accelerate curve. The gaze is timed in the code (`lib/welcome.ts`). */
+  --duration-line: 250ms;
+  --duration-bot-in: 400ms;
+  --duration-exit: 150ms;
+  /* The words and the field leave the welcome, fading, while the bot sets off (`WELCOME_EXIT_MS`). */
+  --duration-welcome-out: 400ms;
+  /* The bot's trip to the corner, with its turn (`STAGE_TRAVEL_MS`): the same time for both, so it
+     arrives facing front. It moves with the entry curve and grows at a constant pace (linear). */
+  --duration-travel: 1400ms;
+  --shift-line: 8px; /* how far below a line starts */
+  --shift-bot: 16px; /* how far below the bot starts */
+  --scale-enter: 0.96; /* the bot grows from this a little */
+  --ease-enter: cubic-bezier(0, 0, 0, 1);
+  --ease-bot-in: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --ease-exit: cubic-bezier(1, 0, 1, 1);
 }
 
 :root[data-theme="light"] {
@@ -276,6 +304,14 @@
     --duration-fast: 0ms;
     --duration-base: 0ms;
     --duration-leave: 0ms;
+    --duration-line: 0ms;
+    --duration-bot-in: 0ms;
+    --duration-exit: 0ms;
+    --duration-welcome-out: 0ms;
+    --duration-travel: 0ms;
+    --shift-line: 0px;
+    --shift-bot: 0px;
+    --scale-enter: 1;
   }
 }
 
@@ -293,4 +329,12 @@
   --duration-fast: 0ms;
   --duration-base: 0ms;
   --duration-leave: 0ms;
+  --duration-line: 0ms;
+  --duration-bot-in: 0ms;
+  --duration-exit: 0ms;
+  --duration-welcome-out: 0ms;
+  --duration-travel: 0ms;
+  --shift-line: 0px;
+  --shift-bot: 0px;
+  --scale-enter: 1;
 }

@@ -43,6 +43,14 @@ describe("renderStill", () => {
     const character = createCharacter({ id: "x" });
     for (const state of AVATAR_STATES) expect(renderStill(character, state)).toContain("<svg");
   });
+
+  it("paintEyes: the eyes are painted, never holes (an outline around the silhouette would ring them)", () => {
+    const red = createCharacter({ id: "bot-1", shape: "blob", color: "#ff3347" });
+    expect(renderStill(red, "idle")).toContain("-holes");
+    const painted = renderStill(red, "idle", { paintEyes: true });
+    expect(painted).not.toContain("-holes");
+    expect(painted).toContain(red.eyeColor);
+  });
 });
 
 describe("createCharacter", () => {
@@ -101,6 +109,24 @@ describe("runtime", () => {
       expect(f.svg(32)).toContain('width="32"');
       expect(`${f.body}${f.eyes}${f.transform}`).not.toMatch(/NaN/);
     }
+  });
+
+  it("smiling keeps the happy face without the dance, and spin(seconds) reaches the runtime", () => {
+    const smile = createAvatarRuntime(createCharacter({ id: "smile" }), { state: "smiling" });
+    const idle = createAvatarRuntime(createCharacter({ id: "smile" }), { state: "idle" });
+    let a = smile.frame(0);
+    let b = idle.frame(0);
+    for (let t = 16; t < 600; t += 16) {
+      a = smile.frame(t);
+      b = idle.frame(t);
+    }
+    expect(a.eyes).not.toBe(b.eyes);
+    const turning = createAvatarRuntime(createCharacter({ id: "turn" }), { breathe: false });
+    const before = turning.frame(0).body;
+    turning.spin(1.2);
+    let changed = false;
+    for (let t = 16; t < 500; t += 16) changed = changed || turning.frame(t).body !== before;
+    expect(changed).toBe(true);
   });
 
   it("is deterministic for the same (state, time) inputs", () => {
