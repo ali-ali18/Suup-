@@ -33,6 +33,13 @@ describe("system prompt", () => {
     expect(words(buildSystemPrompt({ name: "Ada", personality: "" }))).toBeLessThanOrEqual(710);
   });
 
+  it("asks for one short sentence before an action that shows a card, and no more narration", () => {
+    const text = buildSystemPrompt({ name: "Ada", personality: "" });
+    expect(text).toContain(
+      "Before an action that shows a card (a question, a secret request, a connector, an approval), say in one sentence what you are about to do and why; do not narrate other calls.",
+    );
+  });
+
   it("carries the bot's identity and the harness rules", () => {
     expect(prompt).toContain("You are Ada, one of the bots on the user's personal team in Suup");
     expect(prompt).toContain("Dry and precise.");
