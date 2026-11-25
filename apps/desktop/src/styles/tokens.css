@@ -192,7 +192,10 @@
   --width-input: 260px; /* the field of a settings row */
   --width-connect: min(440px, 100%); /* the card of the connect screen */
   --height-gallery-list: 100%; /* the grid of connectors of the gallery fills the height the window has left and scrolls inside it (owner, 24/11/2026: a fixed box left a tall window half empty) */
-  --width-create: min(560px, 100%); /* the panel of "Crie seu bot": half of the window, wide, with the big bot on the other half (owner, 24/11/2026) */
+  --width-create: min(
+    560px,
+    100%
+  ); /* the panel of "Crie seu bot": half of the window, wide, with the big bot on the other half (owner, 24/11/2026) */
   --height-entry-list: min(
     360px,
     45vh

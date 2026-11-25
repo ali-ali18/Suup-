@@ -120,7 +120,10 @@ export function App() {
         // A server with no bot yet: the connectors come first (once, on this device), then "Crie
         // seu bot", and only then the app. A list that cannot be read is no reason to hold the app back.
         const bots = await services.api.bots.list().catch(() => null);
-        const next: Phase = { kind: entryAfterConnect(bots === null ? null : bots.length), services };
+        const next: Phase = {
+          kind: entryAfterConnect(bots === null ? null : bots.length),
+          services,
+        };
         // From the connect screen to the entrance's last steps: that screen fades out, the bot sets off after.
         if (next.kind !== "ready" && phaseRef.current.kind === "connect") {
           setLeavingConnect(true);
