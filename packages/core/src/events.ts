@@ -352,6 +352,7 @@ export type FailureOrigin = z.infer<typeof failureOriginSchema>;
 /** What a finished run hands back. `evidence` is present when it ended through `finish`. */
 export const runResultSchema = z.object({
   summary: z.string(),
+  parts: z.exactOptional(z.array(z.string().min(1)).min(1).max(20)),
   evidence: z.exactOptional(z.array(z.object({ criterion: z.string(), evidence: z.string() }))),
 });
 export type RunResult = z.infer<typeof runResultSchema>;
@@ -746,6 +747,7 @@ export const runEventSchema = z.discriminatedUnion("type", [
       /** The `finish` call this attempt answers. */
       callId: z.exactOptional(z.string()),
       summary: z.string(),
+      parts: z.exactOptional(z.array(z.string().min(1)).min(1).max(20)),
       /** Evidence per acceptance criterion. */
       evidence: z.array(z.object({ criterion: z.string(), evidence: z.string() })),
       accepted: z.boolean(),

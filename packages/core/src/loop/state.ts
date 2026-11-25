@@ -175,7 +175,11 @@ export interface RunState {
   /** When the run was parked, while it is. */
   parkedAt: Date | null;
   /** A `finish` was accepted but the run has not been closed yet. */
-  acceptedFinish: { summary: string; evidence: { criterion: string; evidence: string }[] } | null;
+  acceptedFinish: {
+    summary: string;
+    parts?: string[];
+    evidence: { criterion: string; evidence: string }[];
+  } | null;
   /** Unverified finishes already sent back to the bot to produce the evidence (at most one). */
   unverifiedSentBack: number;
   /** The harness already sent a plain-text end back asking for `finish` (criteria, no plan). */
@@ -685,6 +689,7 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
         accepted,
         rejectionReasons,
         summary,
+        parts,
         evidence,
         handedToUser,
         endsRun,
@@ -697,7 +702,12 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
           handedToUser: handedToUser === true,
         });
       }
-      if (accepted) state.acceptedFinish = { summary, evidence: structuredClone(evidence) };
+      if (accepted)
+        state.acceptedFinish = {
+          summary,
+          ...(parts === undefined ? {} : { parts: structuredClone(parts) }),
+          evidence: structuredClone(evidence),
+        };
       if (endsRun !== undefined) state.failedFinish = { ...endsRun };
       if (sentBack === true) state.unverifiedSentBack += 1;
       break;

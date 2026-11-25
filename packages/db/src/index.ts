@@ -252,6 +252,7 @@ export {
 export {
   type AppendMessageInput,
   appendMessage,
+  appendMessageBatchOnce,
   appendMessageOnce,
   getMessage,
   HIGHLIGHT_END,

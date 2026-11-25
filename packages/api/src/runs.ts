@@ -72,6 +72,7 @@ export type PlanStep = z.infer<typeof planStepSchema>;
 
 export const runResultSchema = z.object({
   summary: z.string(),
+  parts: z.exactOptional(z.array(z.string().min(1)).min(1).max(20)),
   evidence: z.array(z.object({ criterion: z.string(), evidence: z.string() })).optional(),
 });
 export type RunResult = z.infer<typeof runResultSchema>;

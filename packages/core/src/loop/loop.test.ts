@@ -50,6 +50,61 @@ function resultsIn(rig: Rig, index: number): Record<string, string> {
 }
 
 describe("runLoop: finishing", () => {
+  it("keeps explicit final parts in the log and result, with a summary for old readers", async () => {
+    const parts = [
+      "Resposta direta.",
+      "    código preservado\n    outra linha",
+      "Resposta direta.",
+    ];
+    const rig = createRig({ script: [use(call("f1", "finish", { summary: parts }))] });
+    expect(await rig.run()).toBe("done");
+    const events = await rig.events();
+    expect(eventsOfType(events, "finish_attempt")[0]?.payload).toMatchObject({
+      accepted: true,
+      summary: parts.join("\n\n"),
+      parts,
+    });
+    expect(
+      rebuildState(events.filter((event) => event.type !== "status_changed")).acceptedFinish,
+    ).toMatchObject({
+      summary: parts.join("\n\n"),
+      parts,
+    });
+    expect(rig.store.outcome(rig.runId).result).toMatchObject({
+      summary: parts.join("\n\n"),
+      parts,
+    });
+  });
+
+  it("rejects an empty or blank part rather than emitting a partial answer", async () => {
+    const rig = createRig({
+      script: [
+        use(call("bad1", "finish", { summary: [] })),
+        use(call("bad2", "finish", { summary: ["ok", "  "] })),
+        use(call("good", "finish", { summary: "Pronto." })),
+      ],
+    });
+    expect(await rig.run()).toBe("done");
+    expect(eventsOfType(await rig.events(), "finish_attempt")).toHaveLength(1);
+    expect(rig.store.outcome(rig.runId).result?.summary).toBe("Pronto.");
+  });
+
+  it("keeps rejected parts out of the result when the plan is still open", async () => {
+    const rig = createRig({
+      script: [
+        use(planCall("p", [s("a", "pending")])),
+        use(call("f1", "finish", { summary: ["Não entregar.", "Nem esta."] })),
+        use(planCall("p2", [s("a", "done")])),
+        use(call("f2", "finish", { summary: "Resultado verificado." })),
+      ],
+    });
+    expect(await rig.run()).toBe("done");
+    const attempts = eventsOfType(await rig.events(), "finish_attempt");
+    expect(attempts.map((attempt) => attempt.payload.accepted)).toEqual([false, true]);
+    expect(rig.store.outcome(rig.runId).result).toMatchObject({ summary: "Resultado verificado." });
+    expect(rig.store.outcome(rig.runId).result).not.toHaveProperty("parts");
+  });
+
   it("answers a simple question without a plan", async () => {
     const rig = createRig({ script: [say("Four.")], objective: "What is 2+2?" });
     expect(await rig.run()).toBe("done");

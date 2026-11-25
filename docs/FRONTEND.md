@@ -57,7 +57,7 @@ Ações: criar, editar, arquivar, tornar principal, listar (com ou sem arquivado
 | `status` | ver seção 4 | |
 | `paused` | verdadeiro/falso | **Você pausou a execução** (seções 4 e 6). Não é um estado novo: vem junto de `queued` ou `running` |
 | `failureOrigin`, `failureDetail` | texto | Só quando `status` é `failed` |
-| `result` | `{ summary, evidence[] }` | Só quando concluída |
+| `result` | `{ summary, evidence?, parts? }` | Só quando concluída; `parts` contém as partes finais, enquanto `summary` é o texto agregado para leitores existentes |
 | `turns` | número | Idas e vindas com o modelo |
 | `inputTokens`, `outputTokens` | número | |
 | `costUsd` | texto decimal | Ex.: `"0.034100"` |
@@ -109,7 +109,7 @@ Cada execução tem um log de eventos numerados (`seq`), só de acréscimo. É a
 | `plan_updated` | `plan` | Lista de checagem que se atualiza |
 | `user_message` | `text`, `inboxId?`, `linkedApprovalId?` | Sua mensagem, marcada como "lida pelo bot". `linkedApprovalId` existe quando ela chegou logo depois de uma recusa sua e antes do próximo turno do bot: o bot a leu como sendo sobre a ação recusada (o app não precisa desenhar nada diferente) |
 | `nudge` | `reason`, `text` | Aviso discreto: "o Suup pediu ao bot que continuasse" |
-| `finish_attempt` | `summary`, `evidence`, `accepted`, `rejectionReasons` | Conclusão aceita, ou "conclusão recusada" com os motivos |
+| `finish_attempt` | `summary`, `parts?`, `evidence`, `accepted`, `rejectionReasons` | Conclusão aceita, ou "conclusão recusada" com os motivos |
 | `review` | `verdict` (`approve`, `reject` ou `unverified`), `notes`, `discrepancies?` (num `reject`: lista de `{ claimed, shows, where }`, ao menos uma), `warning?` (só em logs antigos), `failed?` (`provider` ou `model`: a revisão falhou e o resultado é `unverified`) | Selo do revisor. `unverified`: o revisor não conseguiu verificar algo mesmo com as evidências, ou a revisão falhou; `notes` diz o quê, e a decisão vai para o dono (numa rotina, a execução termina não concluída) |
 | `review_reprompt` | `callId`, `args`, `reason` | O revisor reprovou sem apontar divergência concreta e foi perguntado de novo (no máximo uma vez por revisão); não é uma reprovação |
 | `review_evidence` | `round`, `callId`, `notes`, `requested` (`results`, `calls?`, `files`), `supplied`, `missing` (com `hint?`), `omitted?`, `budgetChars` | Aviso discreto ("o revisor pediu mais evidências"). Resultados de ferramenta e argumentos de chamada (`kind: tool_call`) vêm por referência (`ref` = id da chamada, o conteúdo já está no log); `omitted` lista o que só não coube no orçamento; arquivos trazem `content` e `hash`, para a retomada e o replay não dependerem do disco |

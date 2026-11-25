@@ -53,7 +53,7 @@ You may call plan in the same turn as other tools.`;
 export const FINISH_DESCRIPTION = `End the run. Call it only when the work is really finished AND verified. Call it ALONE in its turn, after you have seen the results of every other tool; a finish sent together with other tool calls is rejected (only a \`plan\` update placed BEFORE it in the same turn is allowed, e.g. marking the last step done).
 
 Arguments:
-- \`summary\`: what was done and what the outcome is, written for the user, in the user's language.
+- \`summary\`: what was done and what the outcome is, in the user's language. Give a string for a short answer or one continuous idea. Optionally give an array of self-contained messages for distinct intentions or topics (for example an answer followed by a useful qualification). Keep each list, table, or code block whole. Never repeat content already shown by a card. Do not split by paragraph count.
 - \`evidence\`: one entry for EACH acceptance criterion shown in the STATE REMINDER. Set \`criterion\` to the criterion's exact text (or its number, such as "1") and \`evidence\` to what you checked and observed: the command and its output, the file content you read back, the page you fetched. A restatement of the claim ("it works") is not evidence.
 
 The harness rejects the finish, and tells you every reason at once, if: the summary is empty, a plan step is still pending or in_progress, an acceptance criterion has no evidence, or an evidence text is empty. An independent reviewer may also reject it after comparing your evidence with what the tool results actually show. When rejected, fix what is wrong (do the missing work, update the plan, add real evidence) and call finish again; do not argue or resend it unchanged.
@@ -132,7 +132,20 @@ export const planInputSchema = z.object({
 });
 
 export const finishInputSchema = z.object({
-  summary: z.string().describe("What was done and the outcome, for the user."),
+  summary: z
+    .union([
+      z.string(),
+      z
+        .array(
+          z
+            .string()
+            .min(1)
+            .refine((part) => part.trim() !== "", "part must not be blank"),
+        )
+        .min(1)
+        .max(20),
+    ])
+    .describe("The answer for the user: one string, or an ordered array of complete parts."),
   evidence: z
     .array(
       z.object({

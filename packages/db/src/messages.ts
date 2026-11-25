@@ -285,47 +285,85 @@ export async function appendMessageOnce(
   input: AppendMessageInput,
 ): Promise<{ message: Message; created: boolean }> {
   const m = appendSchema.parse(input);
-  return withTransaction(db, async (tx) => {
-    const [conv] = await tx.sql<{ archived_at: Date | null }[]>`
-      select archived_at from conversations where id = ${m.conversationId} for no key update`;
-    if (!conv) throw new ConversationNotFoundError(m.conversationId);
-    if (conv.archived_at !== null) {
-      throw new ConversationRuleError("Cannot add messages to an archived conversation");
-    }
-    if (m.dedupeKey !== undefined) {
-      // The conversation row is locked: no other writer can insert this key until we commit.
-      const [existing] = await tx.sql<MessageRow[]>`
-        select ${tx.sql(MESSAGE_COLUMNS)} from messages
-        where conversation_id = ${m.conversationId} and dedupe_key = ${m.dedupeKey}`;
-      if (existing) return { message: mapMessage(existing), created: false };
-    }
-    if (m.authorBotId !== undefined) {
-      const [member] = await tx.sql<{ one: number }[]>`
-        select 1 as one from conversation_members
-        where conversation_id = ${m.conversationId} and bot_id = ${m.authorBotId}`;
-      if (!member) {
-        throw new ConversationRuleError(
-          `Bot ${m.authorBotId} is not a member of conversation ${m.conversationId}`,
-        );
+  return withTransaction(db, (tx) => appendMessageInTransaction(tx, m, true));
+}
+
+/** Append an outcome as one atomic, idempotent group; files belong to its last message. */
+export async function appendMessageBatchOnce(
+  db: Db,
+  inputs: readonly AppendMessageInput[],
+  options: { inTransaction?: boolean } = {},
+): Promise<boolean> {
+  const messages = inputs.map((input) => appendSchema.parse(input));
+  if (messages.length === 0) return false;
+  if (
+    messages.some(
+      (message) =>
+        message.conversationId !== messages[0]?.conversationId || message.dedupeKey === undefined,
+    )
+  ) {
+    throw new Error("message batch must have one conversation and a dedupe key per message");
+  }
+  const write = async (tx: Db): Promise<boolean> => {
+    for (let i = 0; i < messages.length; i++) {
+      const m = messages[i];
+      if (m === undefined) throw new Error("missing batch message");
+      const { created } = await appendMessageInTransaction(tx, m, i === messages.length - 1);
+      if (!created) {
+        if (i === 0) return false;
+        throw new Error("message batch is incomplete or conflicts with an existing key");
       }
     }
-    // The files the run sent that no message shows yet go with this one (a bot or system message
-    // of the run), in the same transaction: whoever sees the message sees its files.
-    const waiting =
-      m.authorKind !== "user" && m.runId !== undefined
-        ? await tx.sql<{ id: string; name: string; mime: string; size: number }[]>`
+    return true;
+  };
+  return options.inTransaction === true ? write(db) : withTransaction(db, write);
+}
+
+async function appendMessageInTransaction(
+  tx: Db,
+  m: z.output<typeof appendSchema>,
+  attachFiles: boolean,
+): Promise<{ message: Message; created: boolean }> {
+  const [conv] = await tx.sql<{ archived_at: Date | null }[]>`
+      select archived_at from conversations where id = ${m.conversationId} for no key update`;
+  if (!conv) throw new ConversationNotFoundError(m.conversationId);
+  if (conv.archived_at !== null) {
+    throw new ConversationRuleError("Cannot add messages to an archived conversation");
+  }
+  if (m.dedupeKey !== undefined) {
+    // The conversation row is locked: no other writer can insert this key until we commit.
+    const [existing] = await tx.sql<MessageRow[]>`
+        select ${tx.sql(MESSAGE_COLUMNS)} from messages
+        where conversation_id = ${m.conversationId} and dedupe_key = ${m.dedupeKey}`;
+    if (existing) return { message: mapMessage(existing), created: false };
+  }
+  if (m.authorBotId !== undefined) {
+    const [member] = await tx.sql<{ one: number }[]>`
+        select 1 as one from conversation_members
+        where conversation_id = ${m.conversationId} and bot_id = ${m.authorBotId}`;
+    if (!member) {
+      throw new ConversationRuleError(
+        `Bot ${m.authorBotId} is not a member of conversation ${m.conversationId}`,
+      );
+    }
+  }
+  // The files the run sent that no message shows yet go with this one (a bot or system message
+  // of the run), in the same transaction: whoever sees the message sees its files.
+  const waiting =
+    attachFiles && m.authorKind !== "user" && m.runId !== undefined
+      ? await tx.sql<{ id: string; name: string; mime: string; size: number }[]>`
             select id, name, mime, size from files
             where run_id = ${m.runId} and message_id is null
             order by created_at, id
             for update`
-        : [];
-    const attachments = waiting.map((f) => ({
-      id: f.id,
-      name: f.name,
-      mime: f.mime,
-      size: f.size,
-    }));
-    const [row] = await tx.sql<MessageRow[]>`
+      : [];
+  const attachments = waiting.map((f) => ({
+    id: f.id,
+    name: f.name,
+    mime: f.mime,
+    size: f.size,
+  }));
+  const [row] = await tx.sql<MessageRow[]>`
       insert into messages (conversation_id, seq, author_kind, author_bot_id, text, run_id, status, dedupe_key, question, team, routine_id, routine_ref, attachments, created_at)
       values (
         ${m.conversationId},
@@ -344,16 +382,15 @@ export async function appendMessageOnce(
         clock_timestamp()
       )
       returning ${tx.sql(MESSAGE_COLUMNS)}`;
-    if (!row) throw new Error("insert into messages returned no row");
-    if (attachments.length > 0) {
-      await tx.sql`
+  if (!row) throw new Error("insert into messages returned no row");
+  if (attachments.length > 0) {
+    await tx.sql`
         update files set message_id = ${row.id}
         where id = any(${attachments.map((a) => a.id)}::uuid[])`;
-    }
-    await tx.sql`
+  }
+  await tx.sql`
       update conversations set last_message_at = ${row.created_at} where id = ${m.conversationId}`;
-    return { message: mapMessage(row), created: true };
-  });
+  return { message: mapMessage(row), created: true };
 }
 
 export async function getMessage(db: Db, id: string): Promise<Message | null> {

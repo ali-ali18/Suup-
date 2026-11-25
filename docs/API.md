@@ -163,7 +163,7 @@ No cliente: `api.files.download(id)` devolve os bytes (`Uint8Array`) e `api.file
 
 ## Execuções
 
-`Run`: `id`, `botId`, `parentRunId`, `conversationId`, `origin` (`user`, `routine`, `delegation`, `proactive`), `objective`, `acceptanceCriteria`, `plan` (`[{ id, title, status, note? }]`), `status`, `paused`, `failureOrigin`, `failureDetail`, `result` (`{ summary, evidence? }` ou `null`), `turns`, `inputTokens`, `outputTokens`, `costUsd`, `traceId`, `createdAt`, `updatedAt`, `startedAt`, `finishedAt`. Os estados e as origens de falha são os de [FRONTEND.md](FRONTEND.md), seções 3 e 4.
+`Run`: `id`, `botId`, `parentRunId`, `conversationId`, `origin` (`user`, `routine`, `delegation`, `proactive`), `objective`, `acceptanceCriteria`, `plan` (`[{ id, title, status, note? }]`), `status`, `paused`, `failureOrigin`, `failureDetail`, `result` (`{ summary, evidence?, parts? }` ou `null`), `turns`, `inputTokens`, `outputTokens`, `costUsd`, `traceId`, `createdAt`, `updatedAt`, `startedAt`, `finishedAt`. Os estados e as origens de falha são os de [FRONTEND.md](FRONTEND.md), seções 3 e 4.
 
 **`paused`** é o que o estado não diz: `true` quando você pausou a execução. Com `status: "queued"`, ela está **parada, esperando `resume`** (nenhum worker a pega); com `"running"`, está a caminho de parar. Fica `false` de novo ao retomar e sempre que a execução termina ou passa a esperar você.
 

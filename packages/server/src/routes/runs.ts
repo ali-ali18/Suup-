@@ -80,7 +80,7 @@ export const runRoutes: Route[] = [
       const { db } = ctx.runtime;
       const run = await cancelRun(db, ctx.uuid("id"), {
         onStatusSet: async (tx, done) => {
-          await applyStatusEffects(tx, done);
+          await applyStatusEffects(tx, done, { inTransaction: true });
         },
       });
       // A run nobody holds (waiting for an approval) is cancelled right here: the conversation

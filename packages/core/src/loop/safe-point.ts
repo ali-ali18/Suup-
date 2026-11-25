@@ -36,8 +36,10 @@ export async function settle(ctx: LoopContext): Promise<RunStatus | "again" | un
     if (state.wait !== null) {
       await record(ctx, { type: "wait_cancelled", payload: { reason: "finished" } });
     }
-    const { summary, evidence } = state.acceptedFinish;
-    return end(ctx, "done", { result: { summary, evidence } });
+    const { summary, evidence, parts } = state.acceptedFinish;
+    return end(ctx, "done", {
+      result: { summary, evidence, ...(parts === undefined ? {} : { parts }) },
+    });
   }
   if (state.waiting?.kind === "approval") {
     // The user may have answered while the loop was getting here: then it does not pause at all.

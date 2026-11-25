@@ -2,6 +2,8 @@ import { join } from "node:path";
 import { type RunEnd, runLoop } from "@suup/core";
 import { CrashingStore, SimulatedCrash } from "@suup/core/testing";
 import {
+  appendMessage,
+  appendMessageBatchOnce,
   type Bot,
   claimRun,
   createBot,
@@ -9,6 +11,7 @@ import {
   getActiveConversationRun,
   getMessage,
   getRun,
+  insertFile,
   listMemories,
   listMessages,
   listRunEvents,
@@ -378,6 +381,101 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("conversation engine"), () => {
   });
 
   describe("what the conversation receives when a run ends, exactly once", () => {
+    it("writes ordered final parts once after a question and attaches files to the last part", async () => {
+      const parts = ["Resposta direta.", "    código\n    intacto", "Resposta direta."];
+      const runtime = await open({
+        agent: [
+          {
+            text: "Escolha uma opção.",
+            calls: [
+              call("escalate", {
+                question: "Qual cor?",
+                options: [{ label: "Azul" }, { label: "Verde" }],
+              }),
+            ],
+          },
+          { calls: [call("finish", { summary: parts })] },
+        ],
+      });
+      const bot = await newBot(runtime);
+      const first = await sendMessage(runtime, { botId: bot.id, text: "Escolha" });
+      const conversationId = first.message.conversationId;
+      await work(runtime, first.run.id);
+      const question = (await botMessages(runtime, conversationId))[0];
+      expect(question?.question?.lead).toBe("Escolha uma opção.");
+      expect(question?.question?.questions[0]?.question).toBe("Qual cor?");
+      await insertFile(runtime.db, {
+        botId: bot.id,
+        runId: first.run.id,
+        callId: "file",
+        name: "teste.txt",
+        mime: "text/plain",
+        content: new TextEncoder().encode("exemplo"),
+      });
+      await sendMessage(runtime, { conversationId, text: "Azul" });
+      await work(runtime, first.run.id);
+      const messages = await botMessages(runtime, conversationId);
+      expect(messages.map((m) => m.text)).toEqual(["Escolha uma opção.\n\nQual cor?", ...parts]);
+      expect(messages.slice(0, -1).every((m) => (m.attachments ?? []).length === 0)).toBe(true);
+      expect(messages.at(-1)?.attachments).toHaveLength(1);
+      expect((await getRun(runtime.db, first.run.id))?.result).toMatchObject({
+        summary: parts.join("\n\n"),
+        parts,
+      });
+      expect((await finishRun(runtime.db, first.run.id)).messageWritten).toBe(false);
+      await reconcileRunEffects(runtime.db);
+      expect((await botMessages(runtime, conversationId)).map((m) => m.id)).toEqual(
+        messages.map((m) => m.id),
+      );
+      await runtime.close();
+    });
+
+    it("does not add parts if an older worker already wrote the aggregate", async () => {
+      const runtime = await open({
+        agent: [{ calls: [call("finish", { summary: ["Uma", "Outra"] })] }],
+      });
+      const bot = await newBot(runtime);
+      const first = await sendMessage(runtime, { botId: bot.id, text: "Faça" });
+      await appendMessage(runtime.db, {
+        conversationId: first.message.conversationId,
+        authorKind: "bot",
+        authorBotId: bot.id,
+        text: "Uma\n\nOutra",
+        runId: first.run.id,
+        dedupeKey: `run:${first.run.id}:done`,
+      });
+      await work(runtime, first.run.id);
+      await finishRun(runtime.db, first.run.id);
+      expect((await botMessages(runtime, first.message.conversationId)).map((m) => m.text)).toEqual(
+        ["Uma\n\nOutra"],
+      );
+      await runtime.close();
+    });
+
+    it("rolls back the whole batch if a later key is already present", async () => {
+      const runtime = await open({ agent: [] });
+      const bot = await newBot(runtime);
+      const first = await sendMessage(runtime, { botId: bot.id, text: "Faça" });
+      const conversationId = first.message.conversationId;
+      const base = {
+        conversationId,
+        authorKind: "bot" as const,
+        authorBotId: bot.id,
+        runId: first.run.id,
+      };
+      await appendMessage(runtime.db, { ...base, text: "Já existe", dedupeKey: "batch:1" });
+      await expect(
+        appendMessageBatchOnce(runtime.db, [
+          { ...base, text: "Primeira", dedupeKey: "batch:0" },
+          { ...base, text: "Segunda", dedupeKey: "batch:1" },
+        ]),
+      ).rejects.toThrow("conflicts with an existing key");
+      expect((await botMessages(runtime, conversationId)).map((m) => m.text)).toEqual([
+        "Já existe",
+      ]);
+      await runtime.close();
+    });
+
     it("done: the final answer; failed and cancelled: a system message; waiting_user: the question", async () => {
       const runtime = await open({
         cases: [

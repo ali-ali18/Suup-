@@ -7,7 +7,7 @@ import {
 } from "@suup/core";
 import {
   addJournalMemory,
-  appendMessageOnce,
+  appendMessageBatchOnce,
   ConversationNotFoundError,
   ConversationRuleError,
   type Db,
@@ -131,6 +131,7 @@ async function outcomeMessage(
   authorKind: "bot" | "system";
   text: string;
   key: string;
+  parts?: string[];
   question?: MessageQuestion;
 } | null> {
   switch (run.status) {
@@ -141,6 +142,7 @@ async function outcomeMessage(
         authorKind: "bot",
         text: summary === "" ? "Concluí o que você pediu." : summary,
         key: `run:${run.id}:done`,
+        ...(parsed.success && parsed.data.parts !== undefined ? { parts: parsed.data.parts } : {}),
       };
     }
     case "waiting_user": {
@@ -256,21 +258,30 @@ async function scrubbedForJournal(run: Run, options: RunEndOptions): Promise<Run
  * `cancelRun`): a reader that sees the new status sees the message. Idempotent (same key as
  * `finishRun`, which writes it too if this never ran). Returns whether it was written now.
  */
-export async function writeOutcomeMessage(db: Db, run: Run): Promise<boolean> {
-  if (run.conversationId === null || run.conversationId === undefined) return false;
+export async function writeOutcomeMessage(
+  db: Db,
+  run: Run,
+  options: { inTransaction?: boolean } = {},
+): Promise<boolean> {
+  const conversationId = run.conversationId;
+  if (conversationId === null || conversationId === undefined) return false;
   const message = await outcomeMessage(db, run);
   if (message === null) return false;
   try {
-    const { created } = await appendMessageOnce(db, {
-      conversationId: run.conversationId,
-      authorKind: message.authorKind,
-      ...(message.authorKind === "bot" ? { authorBotId: run.botId } : {}),
-      text: message.text,
-      runId: run.id,
-      dedupeKey: message.key,
-      ...(message.question === undefined ? {} : { question: message.question }),
-    });
-    return created;
+    const texts = message.parts ?? [message.text];
+    return await appendMessageBatchOnce(
+      db,
+      texts.map((text, index) => ({
+        conversationId,
+        authorKind: message.authorKind,
+        ...(message.authorKind === "bot" ? { authorBotId: run.botId } : {}),
+        text,
+        runId: run.id,
+        dedupeKey: index === 0 ? message.key : `${message.key}:${index}`,
+        ...(message.question === undefined ? {} : { question: message.question }),
+      })),
+      options,
+    );
   } catch (error) {
     // An archived (or removed) conversation takes no more messages. That must never keep the run
     // from ending: this runs in the transaction that sets its status.
@@ -286,8 +297,12 @@ export async function writeOutcomeMessage(db: Db, run: Run): Promise<boolean> {
  * (`onStatusSet`): the bot's message and, when a welcome run ends, the end of the welcome. Whoever
  * sees the status sees both. Idempotent (`finishRun` repeats it).
  */
-export async function applyStatusEffects(db: Db, run: Run): Promise<boolean> {
-  const written = await writeOutcomeMessage(db, run);
+export async function applyStatusEffects(
+  db: Db,
+  run: Run,
+  options: { inTransaction?: boolean } = {},
+): Promise<boolean> {
+  const written = await writeOutcomeMessage(db, run, options);
   const terminal = run.status === "done" || run.status === "failed" || run.status === "cancelled";
   if (terminal && run.origin === "reception" && run.conversationId != null) {
     await finishReception(db, run.conversationId);

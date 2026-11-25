@@ -1,7 +1,7 @@
 import { expect, type Locator, test } from "@playwright/test";
 import { appendMessage } from "@suup/db";
 import { DATABASE_URL, SKIP_REASON, startWorld, type World } from "./harness.js";
-import { connect, freshBot, selectBot } from "./helpers.js";
+import { connect, freshBot, selectBot, send } from "./helpers.js";
 
 // Dynamic bubbles (docs/DESIGN.md, "Balões"): consecutive text bubbles of one sender link with a
 // small corner on the sender's side; cards never change their radius and break the group.
@@ -70,6 +70,42 @@ test.describe("dynamic bubbles", () => {
       .filter({ hasText: text })
       .locator('[data-testid="bubble-user"]');
 
+  test("a final answer with natural parts arrives once in separate bubbles and survives reload", async ({
+    page,
+  }) => {
+    world = await startWorld({
+      scripts: {
+        roteiro: {
+          agent: [
+            {
+              calls: [
+                {
+                  name: "finish",
+                  args: { summary: ["A resposta é esta.", "Há uma ressalva útil."] },
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+    await freshBot(world, "Nova", { color: "verde" });
+    await connect(page, world);
+    await selectBot(page, "Nova");
+    await send(page, "Explique isso");
+    await expect(
+      page.getByTestId("message-bot").filter({ hasText: "A resposta é esta." }),
+    ).toHaveCount(1);
+    await expect(
+      page.getByTestId("message-bot").filter({ hasText: "Há uma ressalva útil." }),
+    ).toHaveCount(1);
+    expect(await page.getByTestId("message-bot").count()).toBe(2);
+    await page.reload();
+    await selectBot(page, "Nova");
+    await expect(page.getByTestId("message-bot")).toHaveCount(2);
+    await page.screenshot({ path: "screenshots/bolhas/resposta-em-partes.png" });
+  });
+
   test("first, middle and last link on the bot's side; the far side and the ends stay round; cards keep their radius", async ({
     page,
   }) => {
@@ -100,6 +136,8 @@ test.describe("dynamic bubbles", () => {
     const card = page.getByTestId("question-card");
     await expect(card).toHaveCSS("border-radius", CARD);
     await expect(card).toHaveCSS("border-top-width", "1px");
+    await expect(page.getByText("Escolha uma cor", { exact: true })).toHaveCount(1);
+    await expect(page.getByText("Qual cor?", { exact: true })).toHaveCount(1);
     const cardRow = page
       .getByTestId("message-bot")
       .filter({ has: page.getByTestId("question-card") });

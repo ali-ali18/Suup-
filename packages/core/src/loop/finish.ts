@@ -39,6 +39,7 @@ const NOT_ALONE_FINISH =
 
 interface FinishArgs {
   summary: string;
+  parts?: string[];
   evidence: { criterion: string; evidence: string }[];
 }
 
@@ -57,7 +58,10 @@ export async function handleFinish(
     });
     return;
   }
-  const args = parsed.data;
+  const { summary, evidence } = parsed.data;
+  const args: FinishArgs = Array.isArray(summary)
+    ? { summary: summary.join("\n\n"), parts: summary, evidence }
+    : { summary, evidence };
 
   let attempt = ctx.state.finishAttempts.get(call.id);
   if (attempt === undefined) attempt = await decideFinish(ctx, call, args, alone);
@@ -100,6 +104,7 @@ async function decideFinish(
       payload: {
         callId: call.id,
         summary: args.summary,
+        ...(args.parts === undefined ? {} : { parts: args.parts }),
         evidence: args.evidence,
         accepted: false,
         rejectionReasons: reasons,
@@ -184,6 +189,7 @@ async function decideFinish(
     payload: {
       callId: call.id,
       summary: args.summary,
+      ...(args.parts === undefined ? {} : { parts: args.parts }),
       evidence: args.evidence,
       accepted: true,
       rejectionReasons: [],
