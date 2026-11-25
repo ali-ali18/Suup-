@@ -107,8 +107,15 @@ export function BotMessage({
   openUrl,
   favicons,
   position,
+  typing = false,
 }: {
   position?: BubblePosition | undefined;
+  /**
+   * The answer is still being written (KOD-34): the screen reader is not told of every piece
+   * (`aria-busy`, `aria-live="off"`) and a soft mark blinks at the end of the text. When the
+   * recorded text replaces it the same bubble stays, and the text is read once, politely.
+   */
+  typing?: boolean;
   text?: string;
   children?: ReactNode;
   openUrl?: (url: string) => void;
@@ -119,15 +126,20 @@ export function BotMessage({
       className={cx("flex min-w-0 items-start", linked(position))}
       data-testid="message-bot"
       data-bubble={position}
+      {...(typing ? { "aria-busy": true, "aria-live": "off" as const, "data-typing": "true" } : {})}
     >
       <div className="flex w-full max-w-reading min-w-0 flex-col gap-3">
         {text !== undefined && (
           <BotBubble className={linkCorners("bot", position)}>
-            <Markdown
-              text={text}
-              {...(openUrl === undefined ? {} : { openUrl })}
-              {...(favicons === undefined ? {} : { favicons })}
-            />
+            {/* Another element when it stops typing, so the final text is a new addition that the
+                log announces once; the bubble itself stays. */}
+            <div key={typing ? "typing" : "final"} className={typing ? "ui-typing" : undefined}>
+              <Markdown
+                text={text}
+                {...(openUrl === undefined ? {} : { openUrl })}
+                {...(favicons === undefined ? {} : { favicons })}
+              />
+            </div>
           </BotBubble>
         )}
         {children}

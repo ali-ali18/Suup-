@@ -2160,3 +2160,28 @@ describe("a fala do turno é uma mensagem na ordem do registro (dono, 25/11/2026
     }
   });
 });
+
+describe("o balão que está sendo escrito (docs/DESIGN.md §4, KOD-34, dono 25/11/2026)", () => {
+  it("o balão escreve com aria-busy e aria-live desligado, e a marca do fim fica parada com movimento reduzido", () => {
+    const message = read(join(SRC, "ui", "message.tsx"));
+    expect(message).toContain('"aria-busy": true');
+    expect(message).toContain('"aria-live": "off"');
+    const theme = read(join(SRC, "styles", "theme.css"));
+    const util = theme.slice(
+      theme.indexOf("@utility ui-typing"),
+      theme.indexOf("@utility ui-shimmer"),
+    );
+    expect(util).toContain("prefers-reduced-motion: reduce");
+    expect(util).toContain(':root[data-motion="reduce"] &');
+    expect(util).toContain("animation: none");
+  });
+
+  it("o texto ao vivo nunca entra nas mensagens: só em data.live, e a chave do balão passa à mensagem", () => {
+    const live = read(join(SRC, "data", "live.ts"));
+    expect(live).toContain("export const LIVE_SETTLE_MS = 3_000");
+    expect(live).not.toContain("upsertMessage");
+    expect(read(join(SRC, "features", "chat", "timeline.ts"))).toContain(
+      "extras.live?.keyOf[message.id]",
+    );
+  });
+});

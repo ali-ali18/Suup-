@@ -243,6 +243,7 @@ export function MessageList({
                     position={positions.get(item.key)}
                     openUrl={platform.openUrl}
                     favicons={favicons}
+                    typing={item.live === true}
                   />
                 );
               case "files":

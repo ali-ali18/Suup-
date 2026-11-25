@@ -730,3 +730,64 @@ describe("buildTimeline: the words of a turn and its card, in the order of the l
     expect([...bubblePositions(items).values()]).toEqual(["single", "first", "last", "single"]);
   });
 });
+
+describe("buildTimeline: the answer being typed", () => {
+  const conversationId = makeMessage().conversationId;
+  const RUN = "run-live";
+  const live = (
+    typing: { key: string; runId: string; call: number; text: string }[],
+    keyOf = {},
+  ) => ({
+    typing,
+    keyOf,
+  });
+  const user = makeMessage({
+    conversationId,
+    seq: 1,
+    authorKind: "user",
+    runId: RUN,
+    text: "oi",
+    createdAt: local(14, 1),
+  });
+  const run = makeRun({ id: RUN, status: "running" });
+
+  it("is a bot bubble marked live, at the end, before the working avatar", () => {
+    const items = buildTimeline([user], { [RUN]: run }, NOW, {
+      live: live([{ key: "live-a", runId: RUN, call: 5, text: "Olá, mun" }]),
+    });
+    expect(items.map((i) => i.kind)).toEqual(["separator", "user", "bot", "working"]);
+    expect(items[2]).toMatchObject({ kind: "bot", key: "live-a", text: "Olá, mun", live: true });
+  });
+
+  it("the recorded message keeps the key of the bubble it replaced and is no longer live", () => {
+    const part = makeMessage({
+      conversationId,
+      seq: 2,
+      authorKind: "bot",
+      authorBotId: "b1",
+      runId: RUN,
+      eventSeq: 9,
+      text: "Olá, mundo",
+      createdAt: local(14, 2),
+    });
+    const items = buildTimeline([user, part], { [RUN]: run }, NOW, {
+      live: live([], { [part.id]: "live-a" }),
+    });
+    const bot = items.find((i) => i.kind === "bot");
+    expect(bot).toMatchObject({ key: "live-a", text: "Olá, mundo" });
+    expect(bot).not.toHaveProperty("live");
+  });
+
+  it("goes before a card the same run asked later, and after one it asked earlier", () => {
+    const approval = (id: string, callId: string) =>
+      makeApproval({ id, runId: RUN, callId, createdAt: local(14, 3) });
+    const items = buildTimeline([user], { [RUN]: run }, NOW, {
+      approvals: [approval("old", "c-old"), approval("new", "c-new")],
+      callSeqs: { [`${RUN}:c-old`]: 3, [`${RUN}:c-new`]: 8 },
+      live: live([{ key: "live-a", runId: RUN, call: 5, text: "escrevendo" }]),
+    });
+    expect(
+      items.map((i) => (i.kind === "approval" ? `approval-${i.approval.id}` : i.kind)),
+    ).toEqual(["separator", "user", "approval-old", "bot", "approval-new", "working"]);
+  });
+});

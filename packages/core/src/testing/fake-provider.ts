@@ -1,5 +1,6 @@
 import type { Block } from "../messages.js";
 import {
+  FINISH_TOOL_NAME,
   type GenerateRequest,
   type GenerateResult,
   type Provider,
@@ -35,6 +36,8 @@ export interface FakeProviderOptions {
   capabilities?: Partial<ProviderCapabilities>;
   /** Split text blocks into deltas of this many characters (default: one delta per block). */
   textChunkSize?: number;
+  /** Wait this long after each chunk of text (and of a finish summary): lets a test watch it grow. */
+  chunkDelayMs?: number;
 }
 
 /**
@@ -49,6 +52,7 @@ export class FakeProvider implements Provider {
   readonly requests: RecordedRequest[] = [];
   readonly #steps: FakeStep[];
   readonly #textChunkSize: number | undefined;
+  readonly #chunkDelayMs: number;
   #next = 0;
 
   constructor(steps: FakeStep[], options: FakeProviderOptions = {}) {
@@ -61,6 +65,7 @@ export class FakeProvider implements Provider {
       ...options.capabilities,
     };
     this.#textChunkSize = options.textChunkSize;
+    this.#chunkDelayMs = options.chunkDelayMs ?? 0;
   }
 
   /** Number of `generate` calls so far. */
@@ -87,6 +92,19 @@ export class FakeProvider implements Provider {
     return this.#stream(step, recorded, signal);
   }
 
+  async #pause(signal: AbortSignal | undefined): Promise<void> {
+    if (this.#chunkDelayMs <= 0) return;
+    await new Promise<void>((resolve) => {
+      const done = () => {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", done);
+        resolve();
+      };
+      const timer = setTimeout(done, this.#chunkDelayMs);
+      signal?.addEventListener("abort", done, { once: true });
+    });
+  }
+
   async *#stream(
     step: FakeStep,
     recorded: RecordedRequest,
@@ -107,10 +125,23 @@ export class FakeProvider implements Provider {
         case "text":
           for (const chunk of chunks(block.text, this.#textChunkSize)) {
             yield { type: "text_delta", text: chunk };
+            await this.#pause(signal);
             checkAbort();
           }
           break;
         case "tool_call":
+          // Like the real adapters: the summary of `finish` is typed as it is written.
+          if (block.name === FINISH_TOOL_NAME) {
+            yield { type: "finish_start" };
+            const summary = (block.args as { summary?: unknown } | null)?.summary;
+            if (typeof summary === "string") {
+              for (const chunk of chunks(summary, this.#textChunkSize)) {
+                yield { type: "summary_delta", text: chunk };
+                await this.#pause(signal);
+                checkAbort();
+              }
+            }
+          }
           yield { type: "tool_call", id: block.id, name: block.name, args: block.args };
           break;
         case "provider_data":

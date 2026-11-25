@@ -16,6 +16,7 @@ import {
   type WrittenRule,
 } from "@suup/api";
 import { formError, friendlyError } from "../lib/friendly-error.js";
+import { expireLive, nextLiveExpiry } from "./live.js";
 import {
   addOptimisticMessage,
   applyStreamEvent,
@@ -163,6 +164,8 @@ export class Sync {
 
   stop(): void {
     this.stopped = true;
+    if (this.liveTimer !== undefined) clearTimeout(this.liveTimer);
+    this.liveTimer = undefined;
     this.sub?.close();
     this.sub = undefined;
     this.settleReady(false);
@@ -194,6 +197,25 @@ export class Sync {
     }
     this.notify(event);
     update(this.store, (s) => applyStreamEvent(s, event));
+    this.scheduleLiveExpiry();
+  }
+
+  private liveTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /** Wakes up when the next typed bubble without a recorded message runs out of time. */
+  private scheduleLiveExpiry(): void {
+    const at = nextLiveExpiry(this.store.getState());
+    if (this.liveTimer !== undefined) clearTimeout(this.liveTimer);
+    this.liveTimer = undefined;
+    if (at === undefined) return;
+    this.liveTimer = setTimeout(
+      () => {
+        this.liveTimer = undefined;
+        update(this.store, (s) => expireLive(s, Date.now()));
+        this.scheduleLiveExpiry();
+      },
+      Math.max(0, at - Date.now()),
+    );
   }
 
   /** What a bot-side event means for someone who is not looking: only questions and endings. */

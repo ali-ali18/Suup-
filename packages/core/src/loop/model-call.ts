@@ -12,6 +12,7 @@ import {
   type ToolChoice,
   type ToolSpec,
 } from "../provider.js";
+import { LiveText } from "./live.js";
 import { record } from "./recording.js";
 import type { ModelPricing } from "./reviewer.js";
 import type { LoopContext } from "./run-context.js";
@@ -83,27 +84,51 @@ export async function callModel(ctx: LoopContext, spec: CallSpec): Promise<CallO
     },
   });
 
+  // The typed text of the agent's answer only: never the reviewer, the summarizer or the check.
+  const liveFeed = spec.purpose === "agent" ? ctx.deps.live : undefined;
+  const call = ctx.state.lastSeq;
+
   for (let attempt = 1; ; attempt++) {
     const startedAt = now();
     let result: GenerateResult | undefined;
     let failure: ProviderError | undefined;
+    const live =
+      liveFeed === undefined
+        ? undefined
+        : new LiveText({
+            runId: ctx.runId,
+            call,
+            attempt,
+            feed: liveFeed,
+            redactor: ctx.deps.secrets?.redactor,
+            // Without a vault there is nothing to hide; with one the hold-back needs its redactor.
+          });
     try {
-      result = await generateAndCollect(spec.provider, {
-        model: spec.model.id,
-        system: spec.system,
-        ...(spec.systemCacheBreak === undefined ? {} : { systemCacheBreak: spec.systemCacheBreak }),
-        messages: spec.messages,
-        tools: spec.tools,
-        ...hostedField,
-        ...choiceField,
-        maxOutputTokens: spec.model.maxOutputTokens,
-        ...(ctx.signal === undefined ? {} : { signal: ctx.signal }),
-      });
+      result = await generateAndCollect(
+        spec.provider,
+        {
+          model: spec.model.id,
+          system: spec.system,
+          ...(spec.systemCacheBreak === undefined
+            ? {}
+            : { systemCacheBreak: spec.systemCacheBreak }),
+          messages: spec.messages,
+          tools: spec.tools,
+          ...hostedField,
+          ...choiceField,
+          maxOutputTokens: spec.model.maxOutputTokens,
+          ...(ctx.signal === undefined ? {} : { signal: ctx.signal }),
+        },
+        live === undefined ? undefined : (event) => live.onEvent(event),
+      );
     } catch (caught) {
       failure = toProviderError(caught);
     }
 
     if (result !== undefined) {
+      // The text is complete: what was held back goes out now, so the bubble is whole when the
+      // recorded message replaces it.
+      live?.complete();
       // Usage first: if the process dies before the response is logged, the money was still
       // spent, so over-counting is the right way to be wrong.
       await store.addUsage(ctx.runId, {
@@ -128,10 +153,18 @@ export async function callModel(ctx: LoopContext, spec: CallSpec): Promise<CallO
           },
         },
       });
+      live?.end("recorded");
       return { kind: "ok", result };
     }
 
     const error = failure as ProviderError;
+    live?.end(
+      error.kind === "aborted"
+        ? "aborted"
+        : attempt <= spec.retries && error.retryable
+          ? "retry"
+          : "failed",
+    );
     await record(ctx, {
       type: "model_error",
       payload: {

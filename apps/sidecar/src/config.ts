@@ -79,6 +79,9 @@ export function buildConfig(input: ConfigInput): Record<string, unknown> {
     sandbox,
     web: webConfig(input),
     worker: { concurrency: 4 },
+    // The server and its worker are one process here (`server --with-worker`): the answer being
+    // typed goes in memory, with no round trip through the database (KOD-34).
+    live: { crossProcess: false },
     defaults: { maxTurns: 50, maxCostUsd: 2, maxDurationMs: 1_800_000 },
     vault: { keyEnv: "SUUP_VAULT_KEY" },
     server: {

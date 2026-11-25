@@ -161,6 +161,12 @@ export interface Redactor {
   redact(text: string): string;
   /** A copy of `value` with every string (and key) scrubbed. */
   redactJson<T>(value: T): T;
+  /**
+   * The length of the longest text this redactor looks for (every encoded form counts), 0 when it
+   * knows none. Text shown before it is complete must hold back this many characters minus one,
+   * or a value cut between two pieces would get through.
+   */
+  longestNeedle(): number;
 }
 
 /** A redactor that can learn values and be emptied. */
@@ -216,6 +222,7 @@ export function createRedactor(initial: Readonly<Record<string, string>> = {}): 
   // By NAME: two secrets may share a value, and a name that gets a new value drops the old one.
   const entries = new Map<string, string[]>();
   let needles: { needle: string; mark: string }[] = [];
+  let longest = 0;
 
   const rebuild = () => {
     const byNeedle = new Map<string, string>();
@@ -229,6 +236,7 @@ export function createRedactor(initial: Readonly<Record<string, string>> = {}): 
     needles = [...byNeedle.entries()]
       .map(([needle, name]) => ({ needle, mark: redactionMark(name) }))
       .sort((a, b) => b.needle.length - a.needle.length);
+    longest = needles[0]?.needle.length ?? 0;
   };
 
   const redact = (text: string): string => {
@@ -269,6 +277,7 @@ export function createRedactor(initial: Readonly<Record<string, string>> = {}): 
   const self: MutableRedactor = {
     redact,
     redactJson,
+    longestNeedle: () => longest,
     add(name, value) {
       if (value.length < MIN_REDACTED_LENGTH) {
         if (entries.delete(name)) rebuild();
@@ -280,6 +289,7 @@ export function createRedactor(initial: Readonly<Record<string, string>> = {}): 
     clear() {
       entries.clear();
       needles = [];
+      longest = 0;
     },
     get size() {
       return entries.size;
@@ -293,6 +303,7 @@ export function createRedactor(initial: Readonly<Record<string, string>> = {}): 
 export const noRedaction: Redactor = {
   redact: (text) => text,
   redactJson: (value) => value,
+  longestNeedle: () => 0,
 };
 
 export type { JsonValue };

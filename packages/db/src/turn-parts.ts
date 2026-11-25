@@ -1,3 +1,4 @@
+import { CONVERSATION_ORIGINS, FINISH_TOOL_NAME } from "@suup/core";
 import { z } from "zod";
 import type { Db } from "./client.js";
 import { ConversationNotFoundError, ConversationRuleError } from "./conversations.js";
@@ -24,10 +25,10 @@ const blocksSchema = z.object({
 });
 
 /** The run that answers the user in a conversation: only those post parts. */
-const PART_ORIGINS: ReadonlySet<string> = new Set(["user", "reception"]);
+const PART_ORIGINS: ReadonlySet<string> = CONVERSATION_ORIGINS;
 
 /** The tool that ends the run with its own summary: a turn that calls it posts no part. */
-const FINISH_TOOL = "finish";
+const FINISH_TOOL = FINISH_TOOL_NAME;
 
 /** The key of one part: unique per run, event and block. */
 export function partKey(runId: string, eventSeq: number, blockIndex: number): string {

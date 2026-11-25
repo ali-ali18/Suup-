@@ -22,6 +22,7 @@ import type { InvokeOptions, ToolInvocation } from "../registry.js";
 import type { SecretAccess } from "../secrets.js";
 import type { Executor, MemoryService, NetworkAccess, ToolContext } from "../tool.js";
 import type { WebAccess } from "../web.js";
+import type { LiveFeed } from "./live.js";
 import type { ModelPricing, ReviewerConfig } from "./reviewer.js";
 import type { RunState } from "./state.js";
 import type { RunRecord, RunStore } from "./store.js";
@@ -175,6 +176,12 @@ export interface LoopDeps {
    * `user`. The tool is offered, or not, for the whole run.
    */
   allowReturns?: boolean;
+  /**
+   * Where the text of the agent's own answer goes while the model writes it (KOD-34). Set only for
+   * a conversation run that answers the user (`liveAllowed`); nothing is recorded through it.
+   * Never set for the reviewer, the summarizer or the progress check: `callModel` also checks.
+   */
+  live?: LiveFeed;
   now(): Date;
   sleep(ms: number): Promise<void>;
 }

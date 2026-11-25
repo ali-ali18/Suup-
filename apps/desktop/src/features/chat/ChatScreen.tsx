@@ -6,6 +6,7 @@ import { useUi } from "../../app/ui-store.js";
 import { callSeqsOf } from "../../data/call-seq.js";
 import { connectCardsOfConversation } from "../../data/connect-cards.js";
 import { deriveRunDisplay, planOf } from "../../data/derive.js";
+import { liveView } from "../../data/live.js";
 import {
   approvalsOfConversation,
   isTerminal,
@@ -85,6 +86,7 @@ function ChatForBot({ botId }: { botId: string }) {
   const conversations = useData((s) => s.conversations);
   const messagesByConversation = useData((s) => s.messages);
   const eventsByRun = useData((s) => s.events);
+  const liveBlocks = useData((s) => s.live);
   const approvals = useData((s) => s.approvals);
   const panelOpen = useUi((s) => s.panelOpen);
   const togglePanel = useUi((s) => s.togglePanel);
@@ -198,6 +200,11 @@ function ChatForBot({ botId }: { botId: string }) {
       ) as Record<string, number>,
     [conversationRuns, eventsByRun],
   );
+  // The answers being typed in this conversation (KOD-34): bubbles that the recorded text replaces.
+  const live = useMemo(
+    () => liveView(liveBlocks, new Set(conversationRuns.map((r) => r.id))),
+    [liveBlocks, conversationRuns],
+  );
   const items = useMemo(
     () =>
       buildTimeline(messages, runs, new Date(), {
@@ -205,8 +212,9 @@ function ChatForBot({ botId }: { botId: string }) {
         secrets: secretRequests,
         connectCards,
         callSeqs,
+        live,
       }),
-    [messages, runs, cards, secretRequests, connectCards, callSeqs],
+    [messages, runs, cards, secretRequests, connectCards, callSeqs, live],
   );
   // What the user opened, in THIS conversation: another chat starts with every row collapsed.
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());

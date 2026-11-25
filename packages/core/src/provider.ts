@@ -102,6 +102,16 @@ export type Usage = z.infer<typeof usageSchema>;
  */
 export type ProviderEvent =
   | { type: "text_delta"; text: string }
+  /**
+   * Live display only (never part of the result): the model started a call to the tool named
+   * `FINISH_TOOL_NAME`. Sent once per call, when the block starts (the name is compared exactly).
+   */
+  | { type: "finish_start" }
+  /**
+   * Live display only: characters of the `summary` argument of that call, already decoded, in order.
+   * `collect` ignores it; the complete call still arrives as `tool_call`.
+   */
+  | { type: "summary_delta"; text: string }
   | { type: "tool_call"; id: string; name: string; args: JsonValue }
   | { type: "provider_data"; data: JsonValue }
   | {
@@ -112,6 +122,9 @@ export type ProviderEvent =
       cacheWriteInputTokens?: number;
     }
   | { type: "done"; stopReason: StopReason; modelVersion: string };
+
+/** The control tool that ends a run with its summary (the one whose `summary` is typed live). */
+export const FINISH_TOOL_NAME = "finish";
 
 export interface GenerateResult {
   blocks: Block[];
@@ -196,6 +209,8 @@ export class ProviderError extends Error {
 export async function collect(
   stream: AsyncIterable<ProviderEvent>,
   provider = "unknown",
+  /** Sees every event as it arrives (live text). A throw here is ignored: it cannot fail the call. */
+  onEvent?: (event: ProviderEvent) => void,
 ): Promise<GenerateResult> {
   const blocks: Block[] = [];
   let text = "";
@@ -209,9 +224,19 @@ export async function collect(
   };
 
   for await (const event of stream) {
+    if (onEvent !== undefined) {
+      try {
+        onEvent(event);
+      } catch {
+        // live display is best effort
+      }
+    }
     switch (event.type) {
       case "text_delta":
         text += event.text;
+        break;
+      case "finish_start":
+      case "summary_delta":
         break;
       case "tool_call":
         flushText();
@@ -256,8 +281,9 @@ export async function collect(
 export function generateAndCollect(
   provider: Provider,
   req: GenerateRequest,
+  onEvent?: (event: ProviderEvent) => void,
 ): Promise<GenerateResult> {
-  return collect(provider.generate(req), provider.id);
+  return collect(provider.generate(req), provider.id, onEvent);
 }
 
 export const generateResultSchema = z.object({

@@ -16,6 +16,7 @@ import type {
   VaultStatus,
   WrittenRule,
 } from "@suup/api";
+import { applyLiveEvent } from "./live.js";
 import {
   type Connection,
   type DataState,
@@ -530,7 +531,17 @@ export function setConnection(state: DataState, connection: Connection): DataSta
 // ------------------------------------------------------------------ stream
 
 /** What one stream frame does to the state. `ready` and `resync` are for the sync layer. */
-export function applyStreamEvent(state: DataState, event: StreamEvent): DataState {
+export function applyStreamEvent(
+  state: DataState,
+  event: StreamEvent,
+  /** The time, for the one rule of the typed text that depends on it (`LIVE_SETTLE_MS`). */
+  now: number = Date.now(),
+): DataState {
+  // The answer being typed follows the same frames (and the messages that replace it).
+  return applyRecorded(applyLiveEvent(state, event, now), event);
+}
+
+function applyRecorded(state: DataState, event: StreamEvent): DataState {
   switch (event.type) {
     case "run.event":
       return mergeRunEvents(state, event.data.runId, [event.data.event]);
@@ -549,6 +560,8 @@ export function applyStreamEvent(state: DataState, event: StreamEvent): DataStat
       return mergeApproval(state, event.data.approval);
     case "ready":
     case "resync":
+    case "live.text":
+    case "live.end":
       return state;
   }
 }

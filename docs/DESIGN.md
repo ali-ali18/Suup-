@@ -233,6 +233,15 @@ O app de desktop se atualiza com o atualizador oficial do Tauri (docs/ATUALIZACA
 ## 4. Balões e links
 
 - [ ] Balão do bot: borda de 1 px, fundo de superfície. Balão do usuário: a cor do bot; se o bot é branco, cinza neutro. **O texto do balão do usuário é branco em todas as cores** (`userBubbleOnFill: "#ffffff"`; decisão do dono, 24/11/2026: ele pediu texto branco). Por isso, nas cores claras (amarelo, turquesa, verde, laranja...) o balão **fica abaixo de 4,5:1** de contraste; o dono decidiu assim e **as cores não são escurecidas para compensar**. O teste de contraste confere só o texto do mascote sobre o corpo (`onFill`), não o do balão.
+### Balão que está sendo escrito (KOD-34, decisão do dono, 25/11/2026)
+
+- [ ] A resposta do bot **aparece no balão enquanto é escrita**, como no ChatGPT, e isso vale para tudo: o texto de uma parte, o texto do fim e o resumo do `finish`. O texto vem do servidor (`live.text`); o app não inventa nada.
+- [ ] **O mesmo balão vira a mensagem gravada**: ao fim do turno o elemento fica, só o texto passa a ser o gravado (igual, depois de tirar os segredos). Sem piscar, sem balão duplicado, sem pular de lugar. A chave do elemento é a do texto ao vivo (`liveView.keyOf`).
+- [ ] Num turno com texto e `finish`, o texto some assim que o `finish` começa e o resumo é escrito no lugar: nunca fica na tela um texto que depois some no fim.
+- [ ] **Parar o bot**: o texto escrito até ali some e nada é gravado. Um texto que nenhuma mensagem gravada substitui (turno devolvido, `finish` recusado) some sozinho `LIVE_SETTLE_MS` (3 s) depois.
+- [ ] Marca no fim do texto enquanto escreve (`ui-typing`, um bloquinho que pulsa como o selo de "trabalhando"); com movimento reduzido (`prefers-reduced-motion` ou `data-motion="reduce"`) ela **fica parada**. Sem efeito de letra por letra.
+- [ ] Acessibilidade: o balão que escreve tem `aria-busy="true"` e `aria-live="off"` (o leitor de tela não lê cada pedaço); ao fim o texto gravado entra como um elemento novo dentro do mesmo balão, e a região `polite` do chat o lê **uma vez**. Nunca `assertive`.
+
 ### Balões: grupos, cantos, espaçamento, "cartões não contam"
 
 - [ ] **Grupo**: balões de **texto** seguidos do mesmo remetente. Num grupo, os cantos que tocam um vizinho do mesmo grupo usam o raio pequeno `--radius-bubble-link` (6 px, cerca de um quarto do raio cheio, medido na referência do dono); os demais cantos ficam com o raio cheio `--radius-bubble` (24 px). O balão sozinho é todo arredondado.

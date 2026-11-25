@@ -140,6 +140,7 @@ function setup(
     maxPendingBytes?: number;
     maxReplay?: number;
     batch?: number;
+    redactLive?: <T>(value: T) => T;
   } = {},
 ) {
   const source = new FakeSource();
@@ -507,5 +508,138 @@ describe("StreamHub", () => {
     await flush();
     expect(a.ids).toEqual([]);
     await hub.stop(); // idempotent
+  });
+});
+
+describe("StreamHub: the answer being typed", () => {
+  const RUN = "11111111-1111-4111-8111-111111111111";
+  const OTHER = "22222222-2222-4222-8222-222222222222";
+  const text = (offset: number, t: string, over: Record<string, unknown> = {}) => ({
+    type: "live.text",
+    runId: RUN,
+    call: 5,
+    attempt: 1,
+    block: 0,
+    offset,
+    text: t,
+    ...over,
+  });
+  /** The `live.text` frames a sink got, as `[offset, text]`. */
+  const typed = (sink: FakeSink) =>
+    [...sink.text.matchAll(/event: live\.text\ndata: (.+)\n/g)].map((m) => {
+      const d = JSON.parse(m[1] as string) as { offset: number; text: string };
+      return [d.offset, d.text];
+    });
+
+  it("relays a frame with no id to the clients that follow the run, and to nobody else", async () => {
+    const { hub } = setup();
+    await hub.start();
+    const mine = new FakeSink();
+    const other = new FakeSink();
+    await hub.connect({ sink: mine, runs: [RUN] });
+    await hub.connect({ sink: other, runs: [OTHER] });
+    hub.pushLive(text(0, "Olá"));
+    hub.pushLive(text(3, ", mundo"));
+    expect(typed(mine)).toEqual([
+      [0, "Olá"],
+      [3, ", mundo"],
+    ]);
+    expect(mine.ids).toEqual([]); // never an id: the Last-Event-ID stays the change log's
+    expect(typed(other)).toEqual([]);
+  });
+
+  it("a client that connects in the middle gets the text so far, whole, then the next pieces", async () => {
+    const { hub } = setup();
+    await hub.start();
+    hub.pushLive(text(0, "Olá"));
+    hub.pushLive(text(3, ", mun"));
+    const late = new FakeSink();
+    await hub.connect({ sink: late, runs: [RUN] });
+    expect(typed(late)).toEqual([[0, "Olá, mun"]]);
+    hub.pushLive(text(8, "do"));
+    expect(typed(late)).toEqual([
+      [0, "Olá, mun"],
+      [8, "do"],
+    ]);
+    const stranger = new FakeSink();
+    await hub.connect({ sink: stranger, runs: [OTHER] });
+    expect(typed(stranger)).toEqual([]);
+  });
+
+  it("forgets the text when the call ends, and says so", async () => {
+    const { hub } = setup();
+    await hub.start();
+    hub.pushLive(text(0, "abc"));
+    const sink = new FakeSink();
+    await hub.connect({ sink, runs: [RUN] });
+    hub.pushLive({ type: "live.end", runId: RUN, call: 5, attempt: 1, outcome: "recorded" });
+    expect(sink.types).toContain("live.end");
+    const later = new FakeSink();
+    await hub.connect({ sink: later, runs: [RUN] });
+    expect(typed(later)).toEqual([]);
+  });
+
+  it("a hole (a piece lost between processes) drops the block instead of showing wrong text", async () => {
+    const { hub } = setup();
+    await hub.start();
+    const sink = new FakeSink();
+    await hub.connect({ sink, runs: [RUN] });
+    hub.pushLive(text(0, "abc"));
+    hub.pushLive(text(40, "xyz")); // pieces 3..40 never arrived
+    expect(sink.text).toContain('"outcome":"dropped"');
+    const late = new FakeSink();
+    await hub.connect({ sink: late, runs: [RUN] });
+    expect(typed(late)).toEqual([]);
+  });
+
+  it("scrubs known secret values out of a frame (the second barrier)", async () => {
+    const { hub } = setup({
+      redactLive: (value) =>
+        JSON.parse(JSON.stringify(value).replaceAll("seg-redo-123", "[REDACTED:K]")),
+    });
+    await hub.start();
+    const sink = new FakeSink();
+    await hub.connect({ sink, runs: [RUN] });
+    hub.pushLive(text(0, "a chave é seg-redo-123 ok"));
+    expect(sink.text).not.toContain("seg-redo-123");
+    expect(typed(sink)).toEqual([[0, "a chave é [REDACTED:K] ok"]]);
+    const late = new FakeSink();
+    await hub.connect({ sink: late, runs: [RUN] });
+    expect(late.text).not.toContain("seg-redo-123");
+  });
+
+  it("ignores a frame that does not match the contract, and never throws", async () => {
+    const { hub } = setup();
+    await hub.start();
+    const sink = new FakeSink();
+    await hub.connect({ sink, runs: [RUN] });
+    const before = sink.text;
+    for (const bad of [
+      null,
+      5,
+      {},
+      { type: "live.text" },
+      { type: "other" },
+      text(0, "x", { runId: "nope" }),
+    ]) {
+      expect(() => hub.pushLive(bad)).not.toThrow();
+    }
+    expect(sink.text).toBe(before);
+  });
+
+  it("a slow client misses frames and the next one for that block goes out whole", async () => {
+    const { hub } = setup();
+    await hub.start();
+    const sink = new FakeSink();
+    await hub.connect({ sink, runs: [RUN] });
+    hub.pushLive(text(0, "um"));
+    sink.pendingBytes = 10_000_000;
+    hub.pushLive(text(2, " dois"));
+    sink.pendingBytes = 0;
+    hub.pushLive(text(7, " tres"));
+    expect(typed(sink)).toEqual([
+      [0, "um"],
+      [0, "um dois tres"],
+    ]);
   });
 });
