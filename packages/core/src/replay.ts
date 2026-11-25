@@ -580,6 +580,7 @@ export async function replayRun(
           secrets: {
             redactor: noRedaction,
             resolve: async () => ({}),
+            hostsOf: async () => ({}),
           },
         }
       : {}),

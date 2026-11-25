@@ -387,7 +387,10 @@ export {
   updateRunPlan,
 } from "./runs.js";
 export {
+  adoptSecret,
+  checkSecretHosts,
   deleteSecret,
+  getSecretHosts,
   getSecretMeta,
   getSecretRowByName,
   getSecretRowForBot,
@@ -401,10 +404,12 @@ export {
   putSecret,
   replaceSecretCipher,
   revokeSecret,
+  SecretHostInvalidError,
   SecretManagedError,
   type SecretMeta,
   SecretNotFoundError,
   type SecretRow,
+  setSecretHosts,
 } from "./secrets.js";
 export {
   advanceReviewCursors,

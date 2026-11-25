@@ -20,10 +20,19 @@ function ctx(overrides: Partial<ToolContext> = {}): ToolContext {
   };
 }
 
-function access(values: Record<string, string>): SecretAccess {
+/** `hosts`: where each secret may go (default: x.test, which the tests below call). */
+function access(
+  values: Record<string, string>,
+  hosts: Record<string, string[]> = {},
+): SecretAccess {
   const redactor = createRedactor();
   return {
     redactor,
+    async hostsOf(names) {
+      return Object.fromEntries(
+        names.filter((name) => name in values).map((name) => [name, hosts[name] ?? ["x.test"]]),
+      );
+    },
     async resolve(names) {
       const out: Record<string, string> = {};
       for (const name of names) {
@@ -49,6 +58,7 @@ describe("secrets in the registry", () => {
     }),
     risk: "read",
     secretFields: ["url", "headers.*"],
+    secretDestination: "url",
     async execute(input) {
       seen.push(input);
       // A careless tool that echoes what it received.
@@ -108,12 +118,21 @@ describe("secrets in the registry", () => {
 
   it("says plainly when the secret is not available, and when there is no vault", async () => {
     seen.length = 0;
-    const missing = await registry.invoke("call_api", { url: "{{secret:NOPE}}" }, ctx(), {
-      secrets: access({}),
-    });
+    const missing = await registry.invoke(
+      "call_api",
+      { url: "https://x.test/{{secret:NOPE}}" },
+      ctx(),
+      {
+        secrets: access({}),
+      },
+    );
     expect(missing.outcome).toBe("tool_error");
     expect(missing.output.content).toContain("secret NOPE is not available");
-    const none = await registry.invoke("call_api", { url: "{{secret:NOPE}}" }, ctx());
+    const none = await registry.invoke(
+      "call_api",
+      { url: "https://x.test/{{secret:NOPE}}" },
+      ctx(),
+    );
     expect(none.outcome).toBe("tool_error");
     expect(none.output.content).toContain("no vault");
     expect(seen).toHaveLength(0);
@@ -122,15 +141,171 @@ describe("secrets in the registry", () => {
   it("a vault failure never leaks into the message", async () => {
     const broken: SecretAccess = {
       redactor: createRedactor({ OTHER: VALUE }),
+      hostsOf: async () => ({ A: ["x.test"] }),
       resolve: async () => {
         throw new Error(`cannot decrypt, key was ${VALUE}`);
       },
     };
-    const result = await registry.invoke("call_api", { url: "{{secret:A}}" }, ctx(), {
-      secrets: broken,
-    });
+    const result = await registry.invoke(
+      "call_api",
+      { url: "https://x.test/{{secret:A}}" },
+      ctx(),
+      {
+        secrets: broken,
+      },
+    );
     expect(result.outcome).toBe("crashed");
     expect(result.output.content).not.toContain(VALUE);
+  });
+
+  describe("a secret goes only where the user declared", () => {
+    const run = (
+      url: string,
+      hosts: Record<string, string[]>,
+      extra: Record<string, string> = {},
+    ) =>
+      registry.invoke("call_api", { url, headers: extra }, ctx(), {
+        secrets: access({ API_TOKEN: VALUE }, hosts),
+      });
+
+    it("runs for a declared host, comparing the normalized name exactly", async () => {
+      seen.length = 0;
+      const ok = await run("https://API.Exemplo.com./v1?k={{secret:API_TOKEN}}", {
+        API_TOKEN: ["api.exemplo.com"],
+      });
+      expect(ok.outcome).toBe("ok");
+      expect(seen).toHaveLength(1);
+    });
+
+    it("refuses another host without resolving the value, naming both hosts", async () => {
+      seen.length = 0;
+      let resolved = false;
+      const secrets = access({ API_TOKEN: VALUE }, { API_TOKEN: ["api.exemplo.com"] });
+      const original = secrets.resolve;
+      secrets.resolve = async (names) => {
+        resolved = true;
+        return original(names);
+      };
+      const out = await registry.invoke(
+        "call_api",
+        { url: "https://outro.exemplo.com/x?k={{secret:API_TOKEN}}" },
+        ctx(),
+        { secrets, beforeExecute: async () => ({ allow: true }) },
+      );
+      expect(out.outcome).toBe("tool_error");
+      expect(out.output.content).toContain("outro.exemplo.com");
+      expect(out.output.content).toContain("api.exemplo.com");
+      expect(out.output.content).toContain("Do not try another secret name");
+      expect(out.output.content).not.toContain(VALUE);
+      expect(resolved).toBe(false);
+      expect(seen).toHaveLength(0);
+    });
+
+    it("does not take a look-alike for the declared host", async () => {
+      for (const url of [
+        "https://api.exemplo.com.atacante.test/?k={{secret:API_TOKEN}}",
+        "https://api.exemplo.com@atacante.test/?k={{secret:API_TOKEN}}",
+        "https://atacante.test/api.exemplo.com?k={{secret:API_TOKEN}}",
+        "https://sub.api.exemplo.com/?k={{secret:API_TOKEN}}",
+      ]) {
+        const out = await run(url, { API_TOKEN: ["api.exemplo.com"] });
+        expect(out.outcome, url).toBe("tool_error");
+      }
+    });
+
+    it("refuses a secret with no hosts declared (blocked)", async () => {
+      seen.length = 0;
+      const out = await run("https://api.exemplo.com/?k={{secret:API_TOKEN}}", { API_TOKEN: [] });
+      expect(out.outcome).toBe("tool_error");
+      expect(out.output.content).toContain("API_TOKEN has no addresses declared");
+      expect(seen).toHaveLength(0);
+    });
+
+    it("checks every secret of the call, and a destination it cannot read", async () => {
+      const secrets = access(
+        { A_KEY: VALUE, B_KEY: "another-secret-value" },
+        {
+          A_KEY: ["api.exemplo.com"],
+          B_KEY: ["outro.exemplo.com"],
+        },
+      );
+      const both = await registry.invoke(
+        "call_api",
+        { url: "https://api.exemplo.com/?a={{secret:A_KEY}}&b={{secret:B_KEY}}" },
+        ctx(),
+        { secrets },
+      );
+      expect(both.outcome).toBe("tool_error");
+      expect(both.output.content).toContain("B_KEY");
+      const hidden = await run("https://{{secret:API_TOKEN}}/x", {
+        API_TOKEN: ["api.exemplo.com"],
+      });
+      expect(hidden.outcome).toBe("tool_error");
+      expect(hidden.output.content).toContain("plain http(s) address");
+    });
+
+    it("refuses any secret in a tool that declares no destination (the shell)", async () => {
+      const shell = new ToolRegistry().register(
+        defineTool({
+          name: "shell_like",
+          description: "d",
+          input: z.object({ command: z.string() }),
+          risk: "external_irreversible",
+          secretFields: ["command"],
+          execute: async () => ({ content: "ran" }),
+        }),
+      );
+      const out = await shell.invoke(
+        "shell_like",
+        { command: "curl -H 'X: {{secret:API_TOKEN}}' https://api.exemplo.com" },
+        ctx(),
+        { secrets: access({ API_TOKEN: VALUE }, { API_TOKEN: ["api.exemplo.com"] }) },
+      );
+      expect(out.outcome).toBe("tool_error");
+      expect(out.output.content).toContain("does not take secrets");
+      expect(out.output.content).not.toContain(VALUE);
+    });
+
+    it("hands the allowed hosts (their intersection) to the tool, for redirects", async () => {
+      let seenHosts: readonly string[] | undefined;
+      const probe = new ToolRegistry().register(
+        defineTool({
+          name: "probe",
+          description: "d",
+          input: z.object({ url: z.string() }),
+          risk: "read",
+          secretFields: ["url"],
+          secretDestination: "url",
+          execute: async (_input, c) => {
+            seenHosts = c.secretHosts;
+            return { content: "ok" };
+          },
+        }),
+      );
+      const secrets = access(
+        { A_KEY: VALUE, B_KEY: "another-secret-value" },
+        {
+          A_KEY: ["a.test", "b.test"],
+          B_KEY: ["b.test", "c.test"],
+        },
+      );
+      await probe.invoke(
+        "probe",
+        { url: "https://b.test/?a={{secret:A_KEY}}&b={{secret:B_KEY}}" },
+        ctx(),
+        { secrets },
+      );
+      expect(seenHosts).toEqual(["b.test"]);
+    });
+
+    it("tells the card where the secret would go", () => {
+      const assessed = registry.assess(
+        "call_api",
+        { url: "https://api.exemplo.com/?k={{secret:API_TOKEN}}" },
+        { executor: new MemoryExecutor() },
+      );
+      expect(assessed?.secretHost).toBe("api.exemplo.com");
+    });
   });
 
   it("scrubs errors and the saved copy of a long output too", async () => {
@@ -144,7 +319,11 @@ describe("secrets in the registry", () => {
         execute: async () => ({ content: `${"x".repeat(200)} ${VALUE} ${"y".repeat(200)}` }),
       }),
     );
-    const secrets = { redactor: createRedactor({ T: VALUE }), resolve: async () => ({}) };
+    const secrets = {
+      redactor: createRedactor({ T: VALUE }),
+      resolve: async () => ({}),
+      hostsOf: async () => ({}),
+    };
     const result = await leaky.invoke("leaky", {}, ctx({ executor: files }), {
       secrets,
       maxOutputChars: 100,

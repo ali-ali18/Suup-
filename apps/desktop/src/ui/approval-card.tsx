@@ -264,6 +264,14 @@ function PendingCard({
         testId="approval-content"
         omitKeys={repeated}
       >
+        {/* Where the secret would go: read by the server from the destination the tool declares. */}
+        {approval.secrets.length > 0 &&
+          approval.secretHost !== undefined &&
+          approval.secretHost !== null && (
+            <ArgRow label="O segredo vai para" testId="approval-secret-host">
+              {approval.secretHost}
+            </ArgRow>
+          )}
         {ref !== null && (
           <>
             <ArgRow label="Conector" testId="approval-connector">

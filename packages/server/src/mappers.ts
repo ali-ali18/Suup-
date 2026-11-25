@@ -127,6 +127,7 @@ export function toMessageDto(message: MessageRow): Message {
     ...(message.attachments === undefined
       ? {}
       : { attachments: message.attachments.map((a) => ({ ...a, kind: fileKindOf(a.mime) })) }),
+    ...(message.dedupeKey === undefined ? {} : { dedupeKey: message.dedupeKey }),
   };
 }
 
@@ -219,6 +220,7 @@ export function toApprovalDto(approval: ApprovalRow): Approval {
     level: approval.level,
     summary: approval.summary,
     secrets: approval.secrets,
+    secretHost: approval.secretHost,
     source: approval.source,
     outbound:
       approval.outbound === null
@@ -279,6 +281,8 @@ export function toSecretDto(secret: SecretMeta): Secret {
     createdAt: iso(secret.createdAt),
     updatedAt: iso(secret.updatedAt),
     lastUsedAt: isoOrNull(secret.lastUsedAt),
+    hosts: secret.hosts,
+    blocked: secret.hosts.length === 0,
   };
 }
 

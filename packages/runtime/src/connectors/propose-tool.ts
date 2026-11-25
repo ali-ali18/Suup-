@@ -3,7 +3,12 @@
 // bot reach a connector; the transport is the entry's. Approved, the connector is installed OFF
 // (origin `proposal`) and stays off until the person logs in or gives the token in the gallery
 // (Configurações > Conectores). See docs/CONECTORES.md and docs/APROVACOES.md.
-import { type CatalogEntry, CONNECTOR_CATALOG, catalogEntry } from "@suup/connectors";
+import {
+  type CatalogEntry,
+  CONNECTOR_CATALOG,
+  catalogEntry,
+  SEARCH_PLUGIN_CATALOG,
+} from "@suup/connectors";
 import { defineTool } from "@suup/core";
 import { z } from "zod";
 import { RuntimeError } from "../errors.js";
@@ -180,7 +185,9 @@ const cardInput = z.object({
     .trim()
     .min(1)
     .max(64)
-    .describe("The exact name of an INSTALLED connector (for a gallery entry, its id)."),
+    .describe(
+      'The exact name of an INSTALLED connector (for a gallery entry, its id), or the id of a search engine of the gallery ("tavily", "brave") with action add_key.',
+    ),
   app: z
     .string()
     .trim()
@@ -216,13 +223,25 @@ export function showConnectCardTool(gallery: () => ConnectorGallery) {
   return defineTool({
     name: SHOW_CONNECT_CARD_TOOL,
     description:
-      "Shows the user a card with ONE button to connect, authorize an app, give a bot access, add a key or manage an installed connector. ALWAYS use it whenever you give the user a link or an action to connect, authorize or log in: never write such a link in a message. Pass the connect link the connector returned in `url` (it must belong to the connector's own service). The card is the whole message: do not repeat the link. Opening a link does not finish the connection: after it, check again with the connector's own tool (for Composio, COMPOSIO_MANAGE_CONNECTIONS).",
+      "Shows the user a card with ONE button to connect, authorize an app, give a bot access, add a key or manage an installed connector; for the key of a web search engine of the gallery (id `tavily` or `brave`), use action add_key and no url. ALWAYS use it whenever you give the user a link or an action to connect, authorize or log in: never write such a link in a message. Pass the connect link the connector returned in `url` (it must belong to the connector's own service). The card is the whole message: do not repeat the link. Opening a link does not finish the connection: after it, check again with the connector's own tool (for Composio, COMPOSIO_MANAGE_CONNECTIONS).",
     input: cardInput,
     risk: "read",
     ownOutput: true,
     describe: ({ connector, app }) => `Mostrar o cartão de ${app ?? connector}`,
     async execute({ connector, url, action, expiresAt }) {
       try {
+        // A search engine of the gallery (exact id): its card asks for its key and nothing else.
+        if (SEARCH_PLUGIN_CATALOG.some((e) => e.id === connector)) {
+          if (action !== "add_key" || url !== undefined) {
+            return {
+              isError: true,
+              content: `"${connector}" is a web search engine: its card only takes action "add_key", with no url. Call show_connect_card again that way.`,
+            };
+          }
+          return {
+            content: `The card is shown to the user (${action}). Do not write the link or repeat the card: wait for the user to act on it.`,
+          };
+        }
         const info = await gallery().connectCardInfo(connector);
         if (info === undefined) {
           return {

@@ -2,9 +2,10 @@ import { KeyRound, LoaderCircle, ShieldCheck } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { SecretRequestState } from "../data/secret-requests.js";
 import { modalOpen } from "../lib/focus.js";
-import type { SecretOutcome } from "../lib/secret-form.js";
+import { hostsProblem, parseHosts, type SecretOutcome } from "../lib/secret-form.js";
 import { ActionCard, ActionLabel } from "./action-card.js";
 import { DecisionCard } from "./decision-card.js";
+import { HostsField } from "./hosts-field.js";
 import { Pill } from "./primitives.js";
 import { userIsTyping } from "./question-card.js";
 import { SecretInput, type SecretInputHandle } from "./secret-input.js";
@@ -15,8 +16,10 @@ export interface SecretRequestCardProps {
   reason: string | null;
   botName: string;
   state: SecretRequestState;
-  /** Sends the value, straight to the vault. The card keeps no copy of it. */
-  onSubmit(value: string): Promise<SecretOutcome<unknown>>;
+  /** The sites the bot SUGGESTED (the person confirms or changes them in the form). */
+  suggestedHosts: readonly string[];
+  /** Sends the value, straight to the vault, with the sites the PERSON confirmed. The card keeps no copy of the value. */
+  onSubmit(value: string, hosts: string[]): Promise<SecretOutcome<unknown>>;
   onDecline(): Promise<SecretOutcome<unknown>>;
   autoFocus?: boolean;
   expanded: boolean;
@@ -28,6 +31,19 @@ const LINE: Record<Exclude<SecretRequestState, "open">, (name: string) => string
   declined: (name) => `Você recusou o segredo ${name}`,
   closed: (name) => `Pedido do segredo ${name} encerrado`,
 };
+
+/** The text without the dots and spaces it ends with (the card adds its own period). */
+function withoutEndDot(text: string): string {
+  let end = text.length;
+  while (end > 0 && (text[end - 1] === "." || text[end - 1] === " ")) end -= 1;
+  return text.slice(0, end);
+}
+
+/** "a", "a e b", "a, b e c": the sites in a sentence. */
+function listHosts(hosts: readonly string[]): string {
+  if (hosts.length <= 1) return hosts.join("");
+  return `${hosts.slice(0, -1).join(", ")} e ${hosts.at(-1)}`;
+}
 
 /**
  * The secure form: the bot asked for a credential. A password field (hidden, with a button to
@@ -43,6 +59,7 @@ function OpenForm({
   name,
   reason,
   botName,
+  suggestedHosts,
   onSubmit,
   onDecline,
   autoFocus,
@@ -54,6 +71,10 @@ function OpenForm({
   // Only whether the field is empty (a boolean from its change event), never what is in it.
   const [empty, setEmpty] = useState(true);
   const [done, setDone] = useState<"provided" | "declined" | undefined>(undefined);
+  // The sites the bot filled in are shown read-only and sent as they are; only when it gave none
+  // does the person type them.
+  const [hosts, setHosts] = useState(suggestedHosts.join("\n"));
+  const [hostsError, setHostsError] = useState<string | undefined>(undefined);
 
   // The form appears: the focus goes to the field (the person was asked for exactly this), unless
   // they are typing something else.
@@ -64,11 +85,17 @@ function OpenForm({
   const save = async () => {
     const value = field.current?.take() ?? "";
     if (value === "") return;
+    const wrong = hostsProblem(hosts);
+    if (wrong !== undefined) {
+      setHostsError(wrong);
+      return;
+    }
+    setHostsError(undefined);
     // Gone from the field before anything else happens: from here the value only travels.
     field.current?.clear();
     setBusy("save");
     setError(undefined);
-    const outcome = await onSubmit(value);
+    const outcome = await onSubmit(value, parseHosts(hosts));
     setBusy(null);
     if (outcome.ok) setDone("provided");
     else setError(outcome.message);
@@ -100,81 +127,103 @@ function OpenForm({
   }
   const waiting = busy !== null;
   return (
-    <DecisionCard
-      testId="secret-card"
-      rootRef={root}
-      groupLabel={`Pedido de segredo de ${botName}: ${name}`}
-      busy={waiting}
-      icon={<KeyRound size={14} />}
-      category="Segredos"
-      title={`${botName} pede um segredo`}
-      lede={
-        reason === null || reason === ""
-          ? "O valor vai direto para o cofre; o bot só fica sabendo que ele existe."
-          : `Motivo dado pelo bot: ${reason}`
-      }
-      footerNote={
-        <span className="inline-flex items-center gap-2 [&>svg]:flex-none">
-          <ShieldCheck size={14} aria-hidden="true" />
-          Guardado no cofre; o bot nunca vê o valor.
-        </span>
-      }
-      footer={
-        <>
-          <Pill
-            tone="quiet"
-            className="min-w-24"
-            disabled={waiting}
-            data-testid="secret-decline"
-            onClick={() => void decline()}
-          >
-            {busy === "decline" ? (
-              <>
-                <LoaderCircle size={16} className="animate-spin" aria-hidden="true" />
-                Recusando…
-              </>
-            ) : (
-              "Agora não"
-            )}
-          </Pill>
-          <Pill
-            tone="primary"
-            className="min-w-28"
-            disabled={waiting || empty}
-            data-testid="secret-save"
-            onClick={() => void save()}
-          >
-            {busy === "save" ? (
-              <>
-                <LoaderCircle size={16} className="animate-spin" aria-hidden="true" />
-                Enviando…
-              </>
-            ) : (
-              "Enviar"
-            )}
-          </Pill>
-        </>
-      }
-    >
-      <form
-        className="flex flex-col gap-2"
-        data-testid="secret-form"
-        autoComplete="off"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void save();
-        }}
+    <div className="flex flex-col gap-2">
+      <DecisionCard
+        testId="secret-card"
+        rootRef={root}
+        groupLabel={`Pedido de segredo de ${botName}: ${name}`}
+        busy={waiting}
+        icon={<KeyRound size={14} />}
+        category="Segredos"
+        compact
+        title={`${botName} pede um segredo`}
+        // The reason and where it will be used, in one paragraph (owner, 25/11/2026).
+        lede={[
+          reason === null || reason === ""
+            ? "O valor vai direto para o cofre; o bot só fica sabendo que ele existe."
+            : `Motivo dado pelo bot: ${withoutEndDot(reason)}.`,
+          suggestedHosts.length > 0 ? `Vai ser usado em ${listHosts(suggestedHosts)}.` : "",
+        ]
+          .filter((part) => part !== "")
+          .join(" ")}
+        footer={
+          <>
+            <Pill
+              tone="quiet"
+              className="min-w-24"
+              disabled={waiting}
+              data-testid="secret-decline"
+              onClick={() => void decline()}
+            >
+              {busy === "decline" ? (
+                <>
+                  <LoaderCircle size={16} className="animate-spin" aria-hidden="true" />
+                  Recusando…
+                </>
+              ) : (
+                "Agora não"
+              )}
+            </Pill>
+            <Pill
+              tone="primary"
+              className="min-w-28"
+              disabled={waiting || empty}
+              data-testid="secret-save"
+              onClick={() => void save()}
+            >
+              {busy === "save" ? (
+                <>
+                  <LoaderCircle size={16} className="animate-spin" aria-hidden="true" />
+                  Enviando…
+                </>
+              ) : (
+                "Enviar"
+              )}
+            </Pill>
+          </>
+        }
       >
-        <SecretInput
-          ref={field}
-          label={name}
-          disabled={waiting}
-          error={error}
-          onEmptyChange={setEmpty}
-          onEnter={() => void save()}
-        />
-      </form>
-    </DecisionCard>
+        <form
+          className="flex flex-col gap-2"
+          data-testid="secret-form"
+          autoComplete="off"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void save();
+          }}
+        >
+          <SecretInput
+            ref={field}
+            hideLabel
+            label={name}
+            disabled={waiting}
+            error={error}
+            onEmptyChange={setEmpty}
+            onEnter={() => void save()}
+          />
+          {suggestedHosts.length === 0 && (
+            <HostsField
+              value={hosts}
+              onChange={(text) => {
+                setHosts(text);
+                setHostsError(undefined);
+              }}
+              error={hostsError}
+              disabled={waiting}
+              hint={`${botName} não disse para onde. Escreva os sites para onde o segredo pode ir.`}
+            />
+          )}
+        </form>
+      </DecisionCard>
+      {/* Outside the card, just under it (owner, 25/11/2026): where the value goes. */}
+      <p
+        className="m-0 inline-flex items-center gap-2 px-1 text-small text-text-muted [&>svg]:flex-none"
+        data-testid="secret-safe-note"
+      >
+        <ShieldCheck size={14} aria-hidden="true" />
+        Guardado com segurança; o bot nunca vê o valor.
+      </p>
+    </div>
   );
 }
 

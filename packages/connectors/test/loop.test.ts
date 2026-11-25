@@ -168,6 +168,7 @@ describe("a bot using a connector, end to end", () => {
     const secrets = {
       redactor: createRedactor({ FAKE_API: value }),
       resolve: async () => ({}),
+      hostsOf: async () => ({}),
     };
     expect(await runLoop(s.rig.deps({ gate: s.gate, secrets }), s.rig.runId)).toBe("done");
     expect(JSON.stringify(await s.rig.events())).not.toContain(value);

@@ -1,11 +1,19 @@
 import type { Secret } from "@suup/api";
-import { KeyRound, Search, Users } from "lucide-react";
+import { Globe, KeyRound, Search, Users } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { sortedBots } from "../../app/selectors.js";
 import { orderedConnectors, orderedSecrets } from "../../data/reducers.js";
-import { nameProblem, writeSecret } from "../../lib/secret-form.js";
+import {
+  hostsProblem,
+  nameProblem,
+  parseHosts,
+  type SecretOutcome,
+  writeSecret,
+  writeSecretHosts,
+} from "../../lib/secret-form.js";
 import { CheckInput } from "../../ui/choice.js";
+import { HostsField } from "../../ui/hosts-field.js";
 import {
   BulletList,
   Dialog,
@@ -41,6 +49,7 @@ import { useTask } from "./use-task.js";
 export function SecretDialog({
   existing,
   preset,
+  save: saveValue,
   onClose,
   onSaved,
 }: {
@@ -51,8 +60,14 @@ export function SecretDialog({
    * declares the name and where to create it). The name is not typed; the steps are shown instead.
    */
   preset?: { name: string; title: string; steps: readonly string[] } | undefined;
+  /**
+   * Where the value goes instead of the owner's vault: a plugin keeps its own credential (the token
+   * of a connector, the key of a search engine), so its form writes through the plugin's route.
+   * The form looks the same.
+   */
+  save?(value: string): Promise<SecretOutcome<unknown>>;
   onClose(): void;
-  onSaved?(secret: Secret): void;
+  onSaved?(secret: Secret | undefined): void;
 }) {
   const { api, sync } = useServices();
   const bots = useData((s) => s.bots);
@@ -61,9 +76,13 @@ export function SecretDialog({
   const [name, setName] = useState(preset?.name ?? existing ?? "");
   const [description, setDescription] = useState("");
   const [grants, setGrants] = useState<string[]>([]);
-  const [problem, setProblem] = useState<{ field: "name" | "value"; text: string } | undefined>(
-    undefined,
-  );
+  // A secret of the owner says where it may go; a plugin's credential (a preset, or its own `save`) does not.
+  const needsHosts = preset === undefined && saveValue === undefined;
+  const known = useData((s) => (existing === undefined ? undefined : s.secrets[existing]));
+  const [hosts, setHosts] = useState((known?.hosts ?? []).join("\n"));
+  const [problem, setProblem] = useState<
+    { field: "name" | "value" | "hosts"; text: string } | undefined
+  >(undefined);
   const task = useTask();
   const blocked = vault !== null && !vault.ok;
 
@@ -76,12 +95,22 @@ export function SecretDialog({
       setProblem({ field: "name", text: nameError });
       return;
     }
+    const hostsError = needsHosts ? hostsProblem(hosts) : undefined;
+    if (hostsError !== undefined) {
+      setProblem({ field: "hosts", text: hostsError });
+      return;
+    }
     const value = field.current?.take() ?? "";
     field.current?.clear();
     let saved: Secret | undefined;
     const ok = await task.run(async () => {
+      if (saveValue !== undefined) {
+        const outcome = await saveValue(value);
+        return outcome.ok ? { ok: true } : { ok: false, message: outcome.message };
+      }
       const outcome = await writeSecret(api.vault, name, {
         value,
+        hosts: parseHosts(hosts),
         ...(description.trim() === "" ? {} : { description: description.trim() }),
         ...(existing === undefined && preset === undefined ? { grantBotIds: grants } : {}),
       });
@@ -90,7 +119,7 @@ export function SecretDialog({
       sync.mergeSecretNow(outcome.result);
       return { ok: true };
     });
-    if (ok && saved !== undefined) {
+    if (ok) {
       onSaved?.(saved);
       onClose();
     }
@@ -179,6 +208,17 @@ export function SecretDialog({
           onEnter={() => void save()}
           autoFocus={existing !== undefined || preset !== undefined}
         />
+        {needsHosts && (
+          <HostsField
+            value={hosts}
+            onChange={(text) => {
+              setHosts(text);
+              setProblem(undefined);
+            }}
+            error={problem?.field === "hosts" ? problem.text : undefined}
+            disabled={task.busy}
+          />
+        )}
         {preset === undefined && (
           <TextField
             label="Para que serve (opcional)"
@@ -229,6 +269,10 @@ export function VaultSettings({ title, titleId }: SectionProps) {
   const botList = useMemo(() => sortedBots(bots), [bots]);
   const [dialog, setDialog] = useState<{ existing: string | undefined } | null>(null);
   const [deleting, setDeleting] = useState<Secret | null>(null);
+  // The text of the "Endereços permitidos" editor of the secret being managed (one at a time).
+  const [hostsText, setHostsText] = useState("");
+  const [hostsError, setHostsError] = useState<string | undefined>(undefined);
+  const hostsSave = useTask();
   const [open, setOpen] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const grant = useTask();
@@ -240,6 +284,12 @@ export function VaultSettings({ title, titleId }: SectionProps) {
   }, [sync]);
 
   const blocked = vault !== null && !vault.ok;
+  const withoutHosts = secrets.filter((s) => s.hosts.length === 0);
+  const manage = (secret: Secret) => {
+    setOpen(secret.name);
+    setHostsText(secret.hosts.join("\n"));
+    setHostsError(undefined);
+  };
   // The filter is an exact substring over the names and descriptions already loaded (case folded).
   const needle = query.trim().toLowerCase();
   const shown =
@@ -277,6 +327,13 @@ export function VaultSettings({ title, titleId }: SectionProps) {
         <SettingsHint data-testid="vault-status">
           O valor só se escreve ou se troca: nunca é mostrado.
         </SettingsHint>
+        {withoutHosts.length > 0 && (
+          <Notice role="status" data-testid="vault-blocked-notice">
+            {withoutHosts.length === 1
+              ? "Um segredo está bloqueado: ele só volta a funcionar quando você disser para onde pode ir."
+              : `${withoutHosts.length} segredos estão bloqueados: eles só voltam a funcionar quando você disser para onde podem ir.`}
+          </Notice>
+        )}
         {secrets.length > 0 && (
           <div className="flex flex-wrap items-center justify-end gap-3">
             <label className="flex h-9 items-center gap-2 rounded-pill border border-border-strong px-4 text-text-muted focus-within:outline-2 focus-within:outline-focus">
@@ -313,6 +370,9 @@ export function VaultSettings({ title, titleId }: SectionProps) {
                     icon={KeyRound}
                     title={secret.name}
                     description={[
+                      secret.hosts.length === 0
+                        ? "Bloqueado até você dizer para onde ele pode ir"
+                        : `Pode ir para ${secret.hosts.join(", ")}`,
                       secret.description !== "" ? secret.description : undefined,
                       secret.lastUsedAt === null
                         ? "Nunca usado"
@@ -330,14 +390,54 @@ export function VaultSettings({ title, titleId }: SectionProps) {
                       <RowAction
                         aria-expanded={expanded}
                         data-testid="secret-grants-toggle"
-                        onClick={() => setOpen(expanded ? null : secret.name)}
+                        onClick={() => (expanded ? setOpen(null) : manage(secret))}
                       >
-                        Gerenciar
+                        {secret.hosts.length === 0 ? "Dizer para onde pode ir" : "Gerenciar"}
                       </RowAction>
                     }
                   />
                   {expanded && (
                     <SettingsFold>
+                      <SettingsGroup label="Para onde pode ir" icon={Globe} testId="secret-hosts">
+                        <div className="flex flex-col gap-3 p-4">
+                          <HostsField
+                            value={hostsText}
+                            onChange={(text) => {
+                              setHostsText(text);
+                              setHostsError(undefined);
+                            }}
+                            error={hostsError ?? hostsSave.error}
+                            disabled={hostsSave.busy}
+                          />
+                          <RowControl end>
+                            <RowAction
+                              disabled={hostsSave.busy}
+                              data-testid="secret-hosts-save"
+                              onClick={() => {
+                                const wrong = hostsProblem(hostsText);
+                                if (wrong !== undefined) {
+                                  setHostsError(wrong);
+                                  return;
+                                }
+                                void hostsSave
+                                  .run(async () => {
+                                    const outcome = await writeSecretHosts(
+                                      api.vault,
+                                      secret.name,
+                                      parseHosts(hostsText),
+                                    );
+                                    if (!outcome.ok) return { ok: false, message: outcome.message };
+                                    sync.mergeSecretNow(outcome.result);
+                                    return { ok: true };
+                                  })
+                                  .then((ok) => ok && setHostsText(""));
+                              }}
+                            >
+                              {hostsSave.busy ? "Guardando…" : "Guardar endereços"}
+                            </RowAction>
+                          </RowControl>
+                        </div>
+                      </SettingsGroup>
                       <SettingsGroup label="Quem pode usar" icon={Users} testId="secret-grants">
                         {botList.length === 0 && <SettingsRow title="Nenhum bot" />}
                         {botList.map((b) => {

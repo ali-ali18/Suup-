@@ -396,7 +396,11 @@ export const SCRIPTS = {
             calls: [
               {
                 name: "request_secret",
-                args: { name: "E2E_RECUSADO", reason: "para o teste de recusa" },
+                args: {
+                  name: "E2E_RECUSADO",
+                  reason: "para o teste de recusa",
+                  hosts: ["api.recusado.test"],
+                },
               },
             ],
           }),
@@ -407,14 +411,30 @@ export const SCRIPTS = {
         whenObjectiveContains: "CASE-SECRET",
         agent: [
           s({
+            // What the bot says in the turn of the request: the chat shows it ABOVE the form.
+            text: "Para usar a API de teste, preciso do seu token.",
             calls: [
               {
                 name: "request_secret",
-                args: { name: "E2E_TOKEN", reason: "para acessar a API de teste" },
+                args: {
+                  name: "E2E_TOKEN",
+                  reason: "para acessar a API de teste",
+                  // Only a suggestion: the person confirms (here, they change it to localhost).
+                  hosts: ["localhost"],
+                },
               },
             ],
           }),
-          s({ calls: [shell("echo token-recebido={{secret:E2E_TOKEN}}")] }),
+          // The terminal never carries a secret: only web_fetch does, and only to a site the person
+          // declared for it (the card says which).
+          s({
+            calls: [
+              {
+                name: "web_fetch",
+                args: { url: "http://localhost:1/?token-recebido={{secret:E2E_TOKEN}}" },
+              },
+            ],
+          }),
           s({ text: "Recebi o segredo e usei." }),
         ],
       },

@@ -3,7 +3,12 @@ import { makeEvent, makeRun } from "../test-fixtures.js";
 import { DECLINED_PREFIX, openSecretRequest, secretRequestsOf } from "./secret-requests.js";
 
 const asked = (seq: number, name = "GH_TOKEN", reason?: string) =>
-  makeEvent(seq, "secret_requested", { callId: `c${seq}`, name, ...(reason ? { reason } : {}) });
+  makeEvent(seq, "secret_requested", {
+    callId: `c${seq}`,
+    name,
+    ...(reason ? { reason } : {}),
+    hosts: ["api.github.com"],
+  });
 const answered = (seq: number, callId: string, content: string) =>
   makeEvent(seq, "tool_result", { callId, content, isError: false });
 
@@ -16,6 +21,7 @@ describe("secret requests of a run", () => {
         callId: "c3",
         name: "GH_TOKEN",
         reason: "para dar push",
+        hosts: ["api.github.com"],
         state: "open",
       }),
     ]);
@@ -57,5 +63,22 @@ describe("secret requests of a run", () => {
       answered(3, "x", "ok"),
     ]);
     expect(items[0]?.state).toBe("open");
+  });
+});
+
+describe("the words of a secret request", () => {
+  it("the lead the server recorded rides on the card, with the key of the message written for it", () => {
+    const run = makeRun({ status: "waiting_user" });
+    const [item] = secretRequestsOf(run, run.id, [
+      makeEvent(7, "secret_requested", {
+        callId: "c7",
+        name: "GH_TOKEN",
+        lead: " Preciso da chave. ",
+      }),
+    ]);
+    expect(item?.lead).toEqual({ text: "Preciso da chave.", turn: "secret:c7" });
+    expect(item?.messageKey).toBe(`run:${run.id}:secret:7`);
+    const [bare] = secretRequestsOf(run, run.id, [asked(8)]);
+    expect(bare).not.toHaveProperty("lead");
   });
 });

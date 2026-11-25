@@ -47,8 +47,9 @@ describe.skipIf(!DATABASE_URL)(
         secret: "TAVILY_API_KEY",
         env: "TAVILY_API_KEY",
       });
-      // The key goes in through the vault, and the next read sees it.
-      await api.vault.set("TAVILY_API_KEY", { value: TAVILY_KEY });
+      // The key is kept by the engine (not in the owner's vault), and the next read sees it.
+      await api.webSearch.setKey("tavily", TAVILY_KEY);
+      expect(await api.vault.list()).toEqual([]);
       const second = await api.webSearch.get();
       expect(second.providers.map((p) => `${p.id}:${p.state}`)).toEqual([
         "brave:ready",
@@ -57,6 +58,16 @@ describe.skipIf(!DATABASE_URL)(
       const text = JSON.stringify([first, second]);
       expect(text).not.toContain(TAVILY_KEY);
       expect(text).not.toContain(BRAVE_KEY);
+      // DELETE takes away only the key the engine keeps (Brave's comes from the environment).
+      await expect(api.webSearch.removeKey("brave")).rejects.toMatchObject({ code: "not_found" });
+      await expect(api.webSearch.setKey("wikipedia", TAVILY_KEY)).rejects.toMatchObject({
+        code: "not_found",
+      });
+      await api.webSearch.removeKey("tavily");
+      expect((await api.webSearch.get()).providers.map((p) => `${p.id}:${p.state}`)).toEqual([
+        "brave:ready",
+        "tavily:no_key",
+      ]);
     });
   },
 );

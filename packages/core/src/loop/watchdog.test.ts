@@ -322,7 +322,7 @@ describe("watchdog: the judge", () => {
     await runLoop(
       rig.deps({
         watchdog: { judge },
-        secrets: { redactor, resolve: async () => ({}) },
+        secrets: { redactor, resolve: async () => ({}), hostsOf: async () => ({}) },
       }),
       rig.runId,
     );

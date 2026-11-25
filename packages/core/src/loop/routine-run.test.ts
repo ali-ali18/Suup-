@@ -68,7 +68,11 @@ describe("a run opened by a routine", () => {
 
   it("keeps vault access but does not offer a secret request", async () => {
     const rig = createRig({ script: [say("ok")], origin: "routine" });
-    const secrets = { redactor: createRedactor(), resolve: async () => ({}) };
+    const secrets = {
+      redactor: createRedactor(),
+      resolve: async () => ({}),
+      hostsOf: async () => ({}),
+    };
     await runLoop(rig.deps({ secrets, loadRunContext: async () => context() }), rig.runId);
     const request = rig.provider.requests[0];
     expect(request?.tools.map((tool) => tool.name)).not.toContain("request_secret");

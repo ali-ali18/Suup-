@@ -146,7 +146,7 @@ async function outcomeMessage(
     case "waiting_user": {
       // The latest question the run asked: its position in the log makes the key, so each
       // question is written once however often the pause is observed.
-      const [asked] = await db.sql<{ seq: number; payload: { name?: string; reason?: string } }[]>`
+      const [asked] = await db.sql<{ seq: number; payload: { lead?: string } }[]>`
         select seq, payload from run_events
         where run_id = ${run.id} and type in ('escalated', 'secret_requested')
         order by seq desc limit 1`;
@@ -165,14 +165,13 @@ async function outcomeMessage(
         where run_id = ${run.id} and type = 'escalated'
         order by seq desc limit 1`;
       if (asked !== undefined && (question === undefined || asked.seq > question.seq)) {
-        // The bot asked for a credential: the message says so (the app draws the secure form from
-        // the run's `secret_requested` event); the value never goes through the chat.
-        const name = asked.payload.name ?? "";
-        return {
-          authorKind: "bot",
-          text: `Preciso do segredo ${name}${asked.payload.reason === undefined ? "" : ` (${asked.payload.reason})`}. Guarde-o no cofre pelo formulário seguro; eu nunca vejo o valor.`,
-          key: `run:${run.id}:secret:${asked.seq}`,
-        };
+        // The bot asked for a credential: the app draws the secure form from the run's
+        // `secret_requested` event (name, reason, where it will be used). The message is only what
+        // the bot wrote in that turn, word for word (owner, 25/11/2026: no text of the system with
+        // the card); when it wrote nothing there is no message.
+        const lead = asked.payload.lead?.trim() ?? "";
+        if (lead === "") return null;
+        return { authorKind: "bot", text: lead, key: `run:${run.id}:secret:${asked.seq}` };
       }
       const text = question?.payload.question?.trim();
       if (question === undefined || text === undefined || text === "") return null;

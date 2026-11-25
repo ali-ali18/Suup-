@@ -91,7 +91,12 @@ function setup(
       timeZoneSource: null,
       oauthCallback: options.oauthCallback ?? "loopback",
     })),
-    connectorCatalog: { list, install: vi.fn(), ...(extra.connectorCatalog as object) },
+    connectorCatalog: {
+      list,
+      install: vi.fn(),
+      setToken: vi.fn(async () => {}),
+      ...(extra.connectorCatalog as object),
+    },
     webSearch: { get: vi.fn(async () => options.search ?? { enabled: true, providers: [] }) },
     connectors: {
       list: vi.fn(async () => []),
@@ -539,10 +544,13 @@ describe("connecting with a token (the secure form)", () => {
     t.serve(fresh().map((i) => (i.entry.id === "github" ? item("github", "connected") : i)));
     fireEvent.click(within(dialog).getByTestId("secret-write"));
     await waitFor(() =>
-      expect(t.api.vault.set).toHaveBeenCalledWith("GITHUB_TOKEN", {
-        value: "ghp_made_up_value_for_the_test",
-      }),
+      expect(t.api.connectorCatalog.setToken).toHaveBeenCalledWith(
+        "github",
+        "ghp_made_up_value_for_the_test",
+      ),
     );
+    // the token is the connector's own: nothing goes to the owner's vault
+    expect(t.api.vault.set).not.toHaveBeenCalled();
     await waitFor(() => expect(install).toHaveBeenCalledTimes(2));
     await waitFor(() =>
       expect(within(page()).getByTestId("connector-state").textContent).toBe("Conectado"),

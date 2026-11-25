@@ -17,6 +17,7 @@ export {
   type XlsxCell,
   type XlsxInspection,
 } from "@suup/documents";
+export { ALWAYS_ON_TOOL_NAMES, withAlwaysOnTools } from "./always-on-tools.js";
 export {
   configPath,
   configSchema,
@@ -133,6 +134,7 @@ export {
   createNetworkService,
   type NetworkService,
 } from "./network/service.js";
+export { type PluginCredentials, searchKeyOwner } from "./plugin-credentials.js";
 export {
   PROPOSE_TEAM_TOOL,
   proposeTeamTool,

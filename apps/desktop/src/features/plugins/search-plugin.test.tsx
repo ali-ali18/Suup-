@@ -28,7 +28,10 @@ const provider = (over: Partial<SearchProvider> = {}): SearchProvider => ({
 const brave = provider({ id: "brave", label: "Brave Search", position: 1, state: "ready" });
 
 function setup(p: SearchProvider, autoStart = false) {
-  const api = { vault: { set: vi.fn(async (name: string) => makeSecret({ name })) } };
+  const api = {
+    vault: { set: vi.fn(async (name: string) => makeSecret({ name })) },
+    webSearch: { setKey: vi.fn(async () => {}) },
+  };
   const store = createDataStore();
   const sync = new Sync({ api: api as unknown as SuupClient, store });
   const reload = vi.fn(async () => {});
@@ -57,7 +60,7 @@ describe("the page of a search engine", () => {
     expect(document.body.textContent).not.toContain("TAVILY_API_KEY");
   });
 
-  it("'Adicionar chave' opens the secure form of the vault (steps from the catalog), and the key never shows", async () => {
+  it("'Adicionar chave' opens the secure form (the key goes to the engine, not the vault; steps from the catalog), and the key never shows", async () => {
     const t = setup(provider());
     fireEvent.click(screen.getByTestId("search-key"));
     const dialog = await screen.findByRole("dialog", { name: "Chave do Tavily" });
@@ -68,8 +71,9 @@ describe("the page of a search engine", () => {
     fireEvent.change(field, { target: { value: "tvly-made-up" } });
     fireEvent.click(within(dialog).getByTestId("secret-write"));
     await waitFor(() =>
-      expect(t.api.vault.set).toHaveBeenCalledWith("TAVILY_API_KEY", { value: "tvly-made-up" }),
+      expect(t.api.webSearch.setKey).toHaveBeenCalledWith("tavily", "tvly-made-up"),
     );
+    expect(t.api.vault.set).not.toHaveBeenCalled();
     await waitFor(() => expect(t.reload).toHaveBeenCalled());
     expect(document.body.textContent).not.toContain("tvly-made-up");
   });

@@ -4,6 +4,7 @@ import { isApprovedProposal } from "../../data/connect-cards.js";
 import { failureLine } from "../../data/derive.js";
 import type { SecretRequestItem } from "../../data/secret-requests.js";
 import type { LocalMessage } from "../../data/state.js";
+import type { TurnLead } from "../../data/turn-lead.js";
 import type { BubblePosition, UserMessageState } from "../../ui/message.js";
 
 export type TimelineItem =
@@ -94,15 +95,21 @@ export function buildTimeline(
     approvals?: readonly Approval[];
     secrets?: readonly SecretRequestItem[];
     connectCards?: readonly ConnectCardItem[];
+    /**
+     * What the bot said in the turn of each approval's call, by approval id. The cards of connect
+     * and secret carry theirs (`lead`).
+     */
+    approvalLeads?: Readonly<Record<string, TurnLead>>;
   } = {},
 ): TimelineItem[] {
   const items: TimelineItem[] = [];
   const opened = new Set<string>();
   // The cards that need (or needed) you, in the order they were asked.
-  type Placed =
-    | { kind: "approval"; at: string; runId: string; approval: Approval }
-    | { kind: "secret"; at: string; runId: string; request: SecretRequestItem }
-    | { kind: "connect"; at: string; runId: string; card: ConnectCardItem };
+  type Placed = { at: string; runId: string } & (
+    | { kind: "approval"; approval: Approval }
+    | { kind: "secret"; request: SecretRequestItem }
+    | { kind: "connect"; card: ConnectCardItem }
+  );
   const waiting: Placed[] = [
     // An approved proposal of a connector is drawn as its card, not as a row of the tool.
     ...(extras.approvals ?? [])
@@ -129,6 +136,25 @@ export function buildTimeline(
   ].sort((a, b) => a.at.localeCompare(b.at));
   let previous: Date | undefined;
 
+  // The words the bot said in the turn of a card come ABOVE it (owner, 25/11/2026: in Grok the bot
+  // speaks and THEN the card appears). The messages of a run are written when it pauses or ends,
+  // after the card was asked, so the order of the log would put the words under the card; the card
+  // carries its own words (read from the events, by the exact id of the call) and is drawn as the
+  // bot's bubble followed by the card. A turn with two cards says its words once.
+  const spoken = new Set<string>();
+  const leadOf = (next: Placed): TurnLead | undefined =>
+    next.kind === "approval"
+      ? extras.approvalLeads?.[next.approval.id]
+      : next.kind === "connect"
+        ? next.card.lead
+        : next.request.lead;
+  // The messages the harness wrote with the same words as a card (the end of a run that asked for a
+  // secret writes the bot's lead as its message): found by their exact key, never by their text, and
+  // not drawn again.
+  const wordsOfCard = new Set(
+    (extras.secrets ?? []).flatMap((r) => (r.lead === undefined ? [] : [r.messageKey])),
+  );
+
   // The cards due before `until` (all that remains, when `until` is undefined).
   const flush = (until?: string) => {
     while (waiting.length > 0) {
@@ -136,6 +162,17 @@ export function buildTimeline(
       const ready = opened.has(next.runId) || until === undefined;
       if (!ready || (until !== undefined && next.at > until)) break;
       waiting.shift();
+      const lead = leadOf(next);
+      if (lead !== undefined && !spoken.has(lead.turn)) {
+        spoken.add(lead.turn);
+        const owner =
+          next.kind === "approval"
+            ? next.approval.id
+            : next.kind === "connect"
+              ? next.card.callId
+              : next.request.callId;
+        items.push({ kind: "bot", key: `lead-${owner}`, text: lead.text });
+      }
       if (next.kind === "approval")
         items.push({
           kind: "approval",
@@ -198,7 +235,9 @@ export function buildTimeline(
         team: message.team,
       });
     } else if (message.question === undefined) {
-      items.push({ kind: "bot", key: message.id, text: message.text });
+      // Its words are already drawn above the secure form they belong to.
+      if (message.dedupeKey === undefined || !wordsOfCard.has(message.dedupeKey))
+        items.push({ kind: "bot", key: message.id, text: message.text });
     } else {
       // The reply is the next message of the user, even one still being sent: the card answers at once.
       const reply = messages.slice(index + 1).find((m) => m.authorKind === "user");

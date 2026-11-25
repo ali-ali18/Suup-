@@ -12,6 +12,7 @@ import {
   orderedMessages,
 } from "../../data/reducers.js";
 import { secretRequestsOf } from "../../data/secret-requests.js";
+import { approvalLeads } from "../../data/turn-lead.js";
 import { activityPhrase, chatActivityOf } from "../../lib/chat-activity.js";
 import { colorVars, themeColor } from "../../lib/mascots.js";
 import { Avatar } from "../../ui/avatar.js";
@@ -182,14 +183,28 @@ function ChatForBot({ botId }: { botId: string }) {
       ),
     [conversationRuns, eventsByRun, cards],
   );
+  const approvalLeadsOfCards = useMemo(
+    () =>
+      approvalLeads(
+        cards,
+        Object.fromEntries(
+          conversationRuns.map((r) => [
+            r.id,
+            eventsByRun[r.id] === undefined ? undefined : orderedEvents(eventsByRun[r.id]),
+          ]),
+        ),
+      ),
+    [conversationRuns, eventsByRun, cards],
+  );
   const items = useMemo(
     () =>
       buildTimeline(messages, runs, new Date(), {
         approvals: cards,
         secrets: secretRequests,
         connectCards,
+        approvalLeads: approvalLeadsOfCards,
       }),
-    [messages, runs, cards, secretRequests, connectCards],
+    [messages, runs, cards, secretRequests, connectCards, approvalLeadsOfCards],
   );
   // What the user opened, in THIS conversation: another chat starts with every row collapsed.
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());

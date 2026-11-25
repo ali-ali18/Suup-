@@ -154,9 +154,11 @@ import {
   type AnswerSecretRequestBody,
   type AnswerSecretRequestResult,
   answerSecretRequestResultSchema,
+  pluginCredentialStoredSchema,
   type Secret,
   type SecretRequest,
   type SetSecretBody,
+  type SetSecretHostsBody,
   secretListSchema,
   secretRequestSchema,
   secretSchema,
@@ -373,6 +375,13 @@ export interface SuupClient {
     list(): Promise<CatalogItem[]>;
     /** Installs the entry (off until the login or the token), or turns it on once its token is in the vault. */
     install(id: string): Promise<InstallResult>;
+    /**
+     * Keeps the token of a `token` entry with the connector (never in the owner's vault, never
+     * granted to a bot). Write-only.
+     */
+    setToken(id: string, value: string): Promise<void>;
+    /** Forgets the token the connector keeps. */
+    removeToken(id: string): Promise<void>;
   };
   network: {
     /** The hosts a bot's machine may reach (defaults, its own) and what the proxy refused lately. */
@@ -391,6 +400,10 @@ export interface SuupClient {
   webSearch: {
     /** The general search engines in the order they are tried, with where each stands this month. */
     get(): Promise<WebSearchSettings>;
+    /** Keeps the key of a general engine with the engine (never in the owner's vault). Write-only. */
+    setKey(id: string, value: string): Promise<void>;
+    /** Forgets the key the engine keeps. */
+    removeKey(id: string): Promise<void>;
   };
   vault: {
     /** Whether the server has a vault it can write to (the section and the key), and why not. */
@@ -399,6 +412,8 @@ export interface SuupClient {
     list(): Promise<Secret[]>;
     /** Creates or replaces a secret (write-only). */
     set(name: string, body: SetSecretBody): Promise<Secret>;
+    /** Replaces the sites a secret may be sent to (empty: blocked). The value is not touched. */
+    setHosts(name: string, body: SetSecretHostsBody): Promise<Secret>;
     remove(name: string): Promise<void>;
     grant(name: string, botId: string): Promise<Secret>;
     revoke(name: string, botId: string): Promise<Secret>;
@@ -790,6 +805,17 @@ export function createClient(options: ClientOptions): SuupClient {
       list: async () => (await call("GET", "/v1/connector-catalog", catalogListSchema)).items,
       install: (catalogId) =>
         call("POST", `/v1/connector-catalog/${id(catalogId)}/install`, installResultSchema, noBody),
+      setToken: async (catalogId, value) => {
+        await call(
+          "PUT",
+          `/v1/connector-catalog/${id(catalogId)}/token`,
+          pluginCredentialStoredSchema,
+          { body: { value } },
+        );
+      },
+      removeToken: async (catalogId) => {
+        await call("DELETE", `/v1/connector-catalog/${id(catalogId)}/token`, deletedSchema);
+      },
     },
     network: {
       forBot: (botId) => call("GET", `/v1/bots/${id(botId)}/network`, botNetworkSchema),
@@ -804,11 +830,23 @@ export function createClient(options: ClientOptions): SuupClient {
     },
     webSearch: {
       get: () => call("GET", "/v1/web-search", webSearchSchema),
+      setKey: async (engineId, value) => {
+        await call(
+          "PUT",
+          `/v1/web-search/providers/${id(engineId)}/key`,
+          pluginCredentialStoredSchema,
+          { body: { value } },
+        );
+      },
+      removeKey: async (engineId) => {
+        await call("DELETE", `/v1/web-search/providers/${id(engineId)}/key`, deletedSchema);
+      },
     },
     vault: {
       status: () => call("GET", "/v1/vault", vaultStatusSchema),
       list: async () => (await call("GET", "/v1/secrets", secretListSchema)).items,
       set: (name, body) => call("PUT", `/v1/secrets/${id(name)}`, secretSchema, { body }),
+      setHosts: (name, body) => call("PATCH", `/v1/secrets/${id(name)}`, secretSchema, { body }),
       remove: async (name) => {
         await call("DELETE", `/v1/secrets/${id(name)}`, deletedSchema);
       },

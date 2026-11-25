@@ -36,6 +36,18 @@ export async function checkVaultAndApprovals(runtime: Runtime): Promise<DoctorCh
           : `${status.reason}; ${verified.total} segredo(s) legíveis${verified.onOldKey > 0 ? `; ${verified.onOldKey} ainda na chave antiga (rode suup vault rotate)` : ""}`,
     });
   }
+  if (status.configured) {
+    const blocked = (await runtime.vault.list()).filter((secret) => secret.hosts.length === 0);
+    checks.push(
+      blocked.length === 0
+        ? { component: "Cofre (endereços)", ok: true, detail: "todo segredo diz para onde pode ir" }
+        : {
+            component: "Cofre (endereços)",
+            ok: false,
+            detail: `${blocked.length} segredo(s) BLOQUEADO(s) por não terem endereços declarados (nenhum bot consegue usá-los): ${blocked.map((secret) => secret.name).join(", ")}. Para cada um: suup vault hosts NOME --host api.exemplo.com (ou Configurações > Cofre no app).`,
+          },
+    );
+  }
   const pending = await listApprovals(runtime.db, { status: "pending", limit: 200 });
   checks.push({
     component: "Aprovações",

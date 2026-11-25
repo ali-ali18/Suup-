@@ -138,6 +138,8 @@ export function renderApprovalCard(card: {
   summary: string;
   args: unknown;
   secrets: readonly string[];
+  /** The site the secrets would be sent to, when the tool declares its destination. */
+  secretHost?: string | null;
   /** Why the card exists, when the automatic review said so. */
   reviewReason?: string | null;
 }): string[] {
@@ -151,7 +153,12 @@ export function renderApprovalCard(card: {
       : [`│ por que pergunta: ${card.reviewReason}`]),
     ...(card.secrets.length === 0
       ? []
-      : [`│ usa segredos: ${card.secrets.join(", ")} (o valor nunca é mostrado)`]),
+      : [
+          `│ usa segredos: ${card.secrets.join(", ")} (o valor nunca é mostrado)`,
+          ...(card.secretHost === undefined || card.secretHost === null
+            ? []
+            : [`│ o segredo seria enviado para: ${card.secretHost}`]),
+        ]),
     "│ conteúdo exato que será executado:",
     ...args.split("\n").map((line) => `│   ${line}`),
     "└",

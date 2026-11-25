@@ -7,7 +7,15 @@ import {
   startWorld,
   type World,
 } from "./harness.js";
-import { freshBot, openApp, openPluginPage, openSettings, selectBot, send } from "./helpers.js";
+import {
+  expectWordsAbove,
+  freshBot,
+  openApp,
+  openPluginPage,
+  openSettings,
+  selectBot,
+  send,
+} from "./helpers.js";
 import { installTauriMock } from "./tauri-mock.js";
 
 // Owner, 24/11/2026: Settings > Conectores is the "Instalado" list, a plugin is managed on ITS page,
@@ -32,9 +40,20 @@ const roteiro = {
       ],
     },
     {
+      // A search without a key: the bot hands over the plugin's card, not the generic secret form.
+      whenObjectiveContains: "CASE-HANDOVER-SEARCH-KEY",
+      agent: [
+        step({
+          calls: [{ name: "show_connect_card", args: { connector: "tavily", action: "add_key" } }],
+        }),
+        step({ text: "A busca precisa da chave do Tavily: o cartão está aí." }),
+      ],
+    },
+    {
       whenObjectiveContains: "CASE-HANDOVER-LINK",
       agent: [
         step({
+          text: "Perfeito, vou conectar a sua agenda.",
           calls: [
             {
               name: "show_connect_card",
@@ -72,6 +91,7 @@ const roteiro = {
       whenObjectiveContains: "CASE-PROPOSE",
       agent: [
         step({
+          text: "Vou pedir para instalar o Notion.",
           calls: [
             {
               name: "propose_connector",
@@ -161,7 +181,7 @@ test.describe("plugins: the installed list, the plugin's page and the search eng
     await world.api.connectors.remove("notion");
   });
 
-  test("Tavily and Brave are plugins in 'Pesquisa na web'; the page adds a key through the vault and the plugin becomes installed", async ({
+  test("Tavily and Brave are plugins in 'Pesquisa na web'; the page adds a key kept by the engine and the plugin becomes installed", async ({
     page,
   }) => {
     await openApp(page, world);
@@ -214,7 +234,9 @@ test.describe("plugins: the installed list, the plugin's page and the search eng
     await page.getByTestId("search-open-brave").click();
     await expect(page.getByTestId("connector-page")).toHaveAttribute("data-plugin", "brave");
     await expect(page.getByTestId("search-key")).toHaveText("Adicionar chave");
-    await world.api.vault.remove("TAVILY_API_KEY");
+    // the key is the engine's own: not in the owner's vault; clean it through the engine
+    expect((await world.api.vault.list()).map((s) => s.name)).not.toContain("TAVILY_API_KEY");
+    await world.api.webSearch.removeKey("tavily");
   });
 
   test("a bot hands over a card: the connector is installed but not given to it, and the owner fixes it in one click", async ({
@@ -250,6 +272,38 @@ test.describe("plugins: the installed list, the plugin's page and the search eng
     await world.api.connectors.remove("fake");
   });
 
+  test("a search without a key: the bot shows the Tavily card, the owner adds the key there and the card turns 'Pronto'", async ({
+    page,
+  }) => {
+    await freshBot(world, "Pesquisador");
+    await openApp(page, world);
+    await selectBot(page, "Pesquisador");
+    await send(page, "CASE-HANDOVER-SEARCH-KEY pesquise as novidades");
+    const card = page.getByTestId("connect-card");
+    await expect(card).toBeVisible();
+    await expect(card).toHaveAttribute("data-connector", "tavily");
+    await expect(card).toContainText("Tavily");
+    await expect(card.locator("img[data-logo='tavily']")).toHaveCount(1);
+    await expect(card.getByTestId("connect-card-status")).toHaveText("Sem chave");
+    // no generic secret form, no secret name, no address
+    await expect(page.getByTestId("secret-input")).toHaveCount(0);
+    await expect(card).not.toContainText("TAVILY_API_KEY");
+    await page.evaluate(() => document.fonts.ready);
+    await page.screenshot({ path: `${SHOTS}/depois-6-cartao-tavily-sem-chave.png` });
+    await card.getByTestId("connect-card-primary").click();
+    const dialog = page.getByRole("dialog", { name: "Chave do Tavily" });
+    await expect(dialog.getByTestId("secret-steps")).toContainText("mil buscas");
+    await dialog.getByTestId("secret-input").fill(KEY);
+    await dialog.getByTestId("secret-write").click();
+    await expect(dialog).toHaveCount(0);
+    await expect(card.getByTestId("connect-card-status")).toHaveText("Pronto");
+    await expect(card.getByTestId("connect-card-primary")).toHaveCount(0);
+    await expect(page.locator("body")).not.toContainText(KEY);
+    await page.screenshot({ path: `${SHOTS}/depois-7-cartao-tavily-pronto.png` });
+    expect((await world.api.vault.list()).map((s) => s.name)).not.toContain("TAVILY_API_KEY");
+    await world.api.webSearch.removeKey("tavily");
+  });
+
   test("a Composio authorize link is a card: a button, no address on screen; a link to another host is refused", async ({
     page,
   }) => {
@@ -269,6 +323,11 @@ test.describe("plugins: the installed list, the plugin's page and the search eng
     await expect(card.getByTestId("connect-card-after")).toHaveText(
       "Depois de autorizar, me avise.",
     );
+    // The bot's words of the turn are the bubble ABOVE the card; what it says after stays below.
+    await expectWordsAbove(page, "Perfeito, vou conectar a sua agenda.", card);
+    await expect(
+      page.getByTestId("bubble-bot").filter({ hasText: "Aqui está o cartão" }),
+    ).toHaveCount(1);
     await expect(page.getByTestId("chat")).not.toContainText("connect.composio.dev");
     await expect(page.getByTestId("chat")).not.toContainText("nao-mostrar");
     await page.screenshot({ path: `${SHOTS}/depois-5-cartao-composio.png` });
@@ -296,9 +355,12 @@ test.describe("plugins: the installed list, the plugin's page and the search eng
     const approval = page.getByTestId("approval-card");
     await expect(approval).toHaveAttribute("data-state", "needs-action");
     await expect(approval).not.toContainText("https://");
+    await expectWordsAbove(page, "Vou pedir para instalar o Notion.", approval);
     await approval.getByTestId("approval-approve").click();
     const card = page.getByTestId("connect-card");
     await expect(card).toBeVisible();
+    // The same words, said once, now above the connect card that replaced the approval.
+    await expectWordsAbove(page, "Vou pedir para instalar o Notion.", card);
     await expect(card.getByTestId("connect-card-primary")).toHaveText("Conectar");
     // No "Ferramenta · Aprovado · Instalar o conector…" row: the card is the result.
     await expect(page.getByTestId("chat")).not.toContainText("Instalar o conector");

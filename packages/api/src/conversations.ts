@@ -109,6 +109,11 @@ export const messageSchema = z.object({
   routineRef: z.exactOptional(z.object({ id: uuid })),
   /** Only on a bot (or system) message whose run sent files: the files, oldest first. */
   attachments: z.exactOptional(z.array(messageAttachmentSchema)),
+  /**
+   * Only on a message the harness wrote once for an event of a run (its end, a question, a request
+   * for a secret). It is how the app ties a card to the words that belong to it (exact key).
+   */
+  dedupeKey: z.exactOptional(z.string()),
 });
 export type Message = z.infer<typeof messageSchema>;
 

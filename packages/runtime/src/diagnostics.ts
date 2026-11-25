@@ -21,6 +21,7 @@ import {
   ToolRegistry,
 } from "@suup/core";
 import { type Db, getBot, getRun, listRunEvents, migrationStatus } from "@suup/db";
+import { withAlwaysOnTools } from "./always-on-tools.js";
 import { checkConnectors } from "./connectors/doctor.js";
 import {
   installedCatalogIds,
@@ -243,7 +244,13 @@ export async function replayRecordedRun(runtime: Runtime, runId: string): Promis
   let tools: ToolRegistry = runtime.tools;
   let botCfg = runtime.botConfig(bot);
   // A guarded run offers `send_file` to a bot with a machine (`withSendFileTool`, as `buildDeps`).
-  if (run.isolated !== true) botCfg = withSendFileTool(botCfg);
+  // Memory and search are always offered outside an isolated run (`withAlwaysOnTools`, as `buildDeps`).
+  if (run.isolated !== true) {
+    botCfg = withAlwaysOnTools(
+      withSendFileTool(botCfg),
+      runtime.tools.list().map((t) => t.name),
+    );
+  }
   if (run.isolated !== true && (run.origin === "user" || run.origin === "routine")) {
     tools = new ToolRegistry();
     for (const tool of runtime.tools.list()) tools.register(tool);

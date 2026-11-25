@@ -1,13 +1,15 @@
-import type { CatalogItem, Connector } from "@suup/api";
+import type { CatalogItem, Connector, SearchPlugin, SearchProvider } from "@suup/api";
 import { BadgeCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { useUi } from "../../app/ui-store.js";
 import type { ConnectCardItem } from "../../data/connect-cards.js";
 import { linkAllowed, linkExpired } from "../../lib/connect-link.js";
+import { writeConnectorToken, writeSearchKey } from "../../lib/secret-form.js";
 import { MutedText, Pill } from "../../ui/primitives.js";
 import { appearanceOf } from "../plugins/appearance.js";
 import { EntryIcon } from "../plugins/EntryIcon.js";
+import { PROVIDER_STATE_WORDS, searchLook } from "../plugins/installed.js";
 import { useConnect } from "../plugins/use-connect.js";
 import { usePlugins } from "../plugins/use-plugins.js";
 import { SecretDialog } from "../settings/VaultSettings.js";
@@ -78,9 +80,119 @@ function useCardAction(item: CatalogItem | undefined, reload: () => Promise<void
  * link is only a button: its address and query are never on screen.
  */
 export function ConnectCard({ card, botName }: { card: ConnectCardItem; botName: string }) {
-  const { platform, sync } = useServices();
+  const { items, search, loadError, reload } = usePlugins();
+  // A search engine of the gallery, by the exact id the server lists (`GET /v1/web-search`).
+  const provider = search?.providers.find((p) => p.id === card.connector && p.plugin !== null);
+  if (provider?.plugin != null) {
+    return <SearchKeyCard provider={provider} plugin={provider.plugin} reload={reload} />;
+  }
+  // Nothing is drawn until the server answered: a search engine must not flash as a connector.
+  if (items === null && search === undefined && loadError === undefined) return null;
+  return <ConnectorCard card={card} botName={botName} items={items} reload={reload} />;
+}
+
+/**
+ * The card of a web search engine whose key is missing (owner, 25/11/2026: "o cartão do plugin, não o
+ * formulário genérico"): the same card as a connector's, with the engine's logo, name and line from
+ * the server (`GET /v1/web-search`), its state in words and ONE button, "Adicionar chave", which opens
+ * the secure form with the plugin's own steps and keeps the key WITH the engine (never in the vault).
+ */
+function SearchKeyCard({
+  provider,
+  plugin,
+  reload,
+}: {
+  provider: SearchProvider;
+  plugin: SearchPlugin;
+  reload(): Promise<void>;
+}) {
+  const { api } = useServices();
   const openPlugin = useUi((s) => s.openPlugin);
-  const { items, reload } = usePlugins();
+  const [adding, setAdding] = useState(false);
+  const canAdd = provider.state === "no_key" && provider.keyNames !== undefined;
+  // The card follows the server while the key is missing (it may be added from the plugin's page).
+  useEffect(() => {
+    if (!canAdd) return;
+    const timer = setInterval(() => void reload(), REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [canAdd, reload]);
+  return (
+    <div
+      className="flex flex-col gap-2"
+      data-testid="connect-card"
+      data-connector={plugin.id}
+      data-kind="search"
+    >
+      <div
+        className="flex items-center gap-3 rounded-card border border-border bg-surface p-3"
+        data-action="add_key"
+      >
+        <EntryIcon id={plugin.id} name={provider.label} look={searchLook(provider)} size="lg" />
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="flex min-w-0 items-center gap-1.5 text-label font-label">
+            <span className="truncate">{provider.label}</span>
+            <BadgeCheck
+              size={14}
+              className="flex-none text-text-muted"
+              aria-label="Da galeria do Suup"
+            />
+          </span>
+          <span className="truncate text-small text-text-muted" data-testid="connect-card-line">
+            {plugin.description}
+          </span>
+          <span className="truncate text-small text-text-muted" data-testid="connect-card-status">
+            {PROVIDER_STATE_WORDS[provider.state]}
+          </span>
+        </div>
+        {canAdd ? (
+          <Pill
+            tone="primary"
+            size="sm"
+            data-testid="connect-card-primary"
+            onClick={() => setAdding(true)}
+          >
+            Adicionar chave
+          </Pill>
+        ) : (
+          <Pill
+            size="sm"
+            data-testid="connect-card-manage"
+            onClick={() => openPlugin({ kind: "search", id: plugin.id, autoStart: false })}
+          >
+            Gerenciar
+          </Pill>
+        )}
+      </div>
+      {adding && provider.keyNames !== undefined && (
+        <SecretDialog
+          existing={undefined}
+          preset={{
+            name: provider.keyNames.secret,
+            title: `Chave do ${provider.label}`,
+            steps: plugin.keySteps,
+          }}
+          save={(value) => writeSearchKey(api.webSearch, provider.id, value)}
+          onSaved={() => void reload()}
+          onClose={() => setAdding(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function ConnectorCard({
+  card,
+  botName,
+  items,
+  reload,
+}: {
+  card: ConnectCardItem;
+  botName: string;
+  items: CatalogItem[] | null;
+  reload(): Promise<void>;
+}) {
+  const { api, platform, sync } = useServices();
+  const openPlugin = useUi((s) => s.openPlugin);
   useEffect(() => {
     void sync.loadConnectors();
   }, [sync]);
@@ -232,6 +344,7 @@ export function ConnectCard({ card, botName }: { card: ConnectCardItem; botName:
             title: `Token do ${name}`,
             steps: item.entry.auth.steps,
           }}
+          save={(value) => writeConnectorToken(api.connectorCatalog, item.entry.id, value)}
           onSaved={() => void connect.secretSaved()}
           onClose={connect.closeSecret}
         />

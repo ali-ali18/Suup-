@@ -1074,6 +1074,13 @@ describe("the settings dialog: a modal with a left nav, groups of simple rows, n
     for (const label of ["Liberar para o", "Adicionar chave", "Gerenciar", "Expirou: peça outro"])
       expect(card, label).toContain(label);
     expect(card).toContain("sempre pergunta antes de fazer alterações. Desconecte quando quiser.");
+    // A search engine without a key is the plugin's card (owner, 25/11/2026), not the generic form.
+    expect(card).toContain("function SearchKeyCard");
+    expect(card).toContain("search?.providers.find((p) => p.id === card.connector");
+    expect(card).toContain("writeSearchKey(api.webSearch, provider.id, value)");
+    expect(card).toContain("searchLook(provider)");
+    expect(card).not.toContain("writeSecret");
+    expect(design).toContain("O cartão do plugin de busca no chat");
     // The link is never looked for in a text, and an approved proposal is no row of the tool.
     const cards = read(join(SRC, "data", "connect-cards.ts"));
     for (const searching of [".match(", ".test(", "RegExp", "http"]) {
@@ -2100,5 +2107,49 @@ describe('"Crie seu bot" no palco e a paleta dos bots (docs/DESIGN.md §3d, §4,
     expect(sidebar).toContain('data-testid="sidebar-empty"');
     expect(sidebar).toContain("Nenhum bot por aqui ainda");
     expect(sidebar).toContain('data-testid="rail-empty-create"');
+  });
+});
+
+describe("para onde um segredo pode ir (docs/DESIGN.md, §1)", () => {
+  const src = (...parts: string[]) => read(join(SRC, ...parts));
+
+  it("o formulário do chat e o diálogo do Cofre pedem os endereços, e o cartão de aprovação diz para onde o segredo iria", () => {
+    expect(src("ui", "hosts-field.tsx")).toContain("Endereços permitidos");
+    expect(src("ui", "secret-request-card.tsx")).toContain("<HostsField");
+    expect(src("features", "settings", "VaultSettings.tsx")).toContain("<HostsField");
+    expect(src("ui", "approval-card.tsx")).toContain("approval-secret-host");
+    expect(src("ui", "approval-card.tsx")).toContain("O segredo vai para");
+  });
+
+  it("o app manda o que a pessoa confirmou e nunca a sugestão do bot; a lista vazia é explicada antes de enviar", () => {
+    const card = src("ui", "secret-request-card.tsx");
+    // O campo começa na sugestão, e o que vai ao servidor sai do texto do campo.
+    expect(card).toContain("suggestedHosts.join");
+    expect(card).toContain("onSubmit(value, parseHosts(hosts))");
+    expect(card).toContain("hostsProblem(hosts)");
+    expect(src("lib", "secret-form.ts")).toContain("Sem isso ele fica bloqueado");
+  });
+
+  it("a lista do Cofre diz, com as palavras do dono, que um segredo sem endereço está bloqueado", () => {
+    const vault = src("features", "settings", "VaultSettings.tsx");
+    expect(vault).toContain("Bloqueado até você dizer para onde ele pode ir");
+    expect(vault).toContain("Dizer para onde pode ir");
+    expect(vault).toContain("vault-blocked-notice");
+  });
+});
+
+describe("a fala do turno vem antes do cartão (dono, 25/11/2026)", () => {
+  it("o app não escreve texto fixo junto do cartão de segredo e lê a fala só de dado declarado", () => {
+    const card = read(join(SRC, "ui/secret-request-card.tsx"));
+    expect(card).not.toContain("Guardado no cofre");
+    const lead = read(join(SRC, "data/turn-lead.ts"));
+    // The call is found by its exact id, never by comparing or searching text.
+    expect(lead).toContain("b.id === callId");
+    for (const call of [".match(", ".includes(", ".test("]) expect(lead).not.toContain(call);
+  });
+  it("a linha do tempo põe a fala acima do cartão e pula a mensagem pela chave exata", () => {
+    const timeline = read(join(SRC, "features/chat/timeline.ts"));
+    expect(timeline).toContain("wordsOfCard.has(message.dedupeKey)");
+    expect(timeline).toContain("key: `lead-");
   });
 });

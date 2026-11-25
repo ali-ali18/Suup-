@@ -57,14 +57,20 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup approvals, rules and vault, end
         {
           whenObjectiveContains: "CASE-SECRET",
           agent: [
-            { ...call("shell", { command: 'echo "k={{secret:CLI_TOKEN}}"' }) },
+            { ...call("web_fetch", { url: "http://localhost:1/?k={{secret:CLI_TOKEN}}" }) },
             { text: "Usei o segredo." },
           ],
         },
         {
           whenObjectiveContains: "CASE-ASK",
           agent: [
-            { ...call("request_secret", { name: "ASKED_SECRET", reason: "teste da CLI" }) },
+            {
+              ...call("request_secret", {
+                name: "ASKED_SECRET",
+                reason: "teste da CLI",
+                hosts: ["api.sugerido.test"],
+              }),
+            },
             { text: "Já tenho o segredo." },
           ],
         },
@@ -86,7 +92,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup approvals, rules and vault, end
         "--model",
         "model-x",
         "--tools",
-        "shell",
+        "shell,web_fetch",
       ]);
       expect(r.code, r.stdout + r.stderr).toBe(0);
     }
@@ -390,7 +396,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup approvals, rules and vault, end
       const set = await p.suup(
         ["vault", "set", "CLI_TOKEN", "--description", "token da CLI"]
           .slice(0, 3)
-          .concat(["--description", "token da CLI", "--bot", "aprova"]),
+          .concat(["--description", "token da CLI", "--bot", "aprova", "--host", "LocalHost"]),
         {
           ...withVault,
           input: `${VALUE}\n`,
@@ -398,12 +404,14 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup approvals, rules and vault, end
       );
       expect(set.code, set.stdout + set.stderr).toBe(0);
       expect(set.stdout).toContain("CLI_TOKEN");
+      expect(set.stdout).toContain("Só pode ir para: localhost");
       expect(set.stdout + set.stderr).not.toContain(VALUE);
 
       const listed = await p.suup(["vault", "list"], withVault);
       expect(listed.stdout).toContain("CLI_TOKEN");
       expect(listed.stdout).toContain("aprova");
       expect(listed.stdout).toContain("token da CLI");
+      expect(listed.stdout).toContain("localhost");
       expect(
         listed.stdout + (await p.suup(["vault", "list", "--json"], withVault)).stdout,
       ).not.toContain(VALUE);
@@ -445,6 +453,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup approvals, rules and vault, end
       const runId = idOf(r);
       expect(r.stdout).toContain("{{secret:CLI_TOKEN}}");
       expect(r.stdout).toContain("usa segredos: CLI_TOKEN");
+      expect(r.stdout).toContain("o segredo seria enviado para: localhost");
       const [card] = (await json(["approvals"])) as { id: string }[];
       await p.suup(["approve", prefix(card?.id, 8)], withVault);
       const resumed = await p.suup(["resume", runId], withVault);
@@ -493,19 +502,67 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup approvals, rules and vault, end
       });
       expect(wrong.code).toBe(1);
       expect(wrong.stderr).toContain("ASKED_SECRET");
-      const answered = await p.suup(["vault", "set", "ASKED_SECRET", "--run", runId.slice(0, 8)], {
+      // Without --host the answer is refused: the bot's suggestion is shown, but it does not count.
+      const noHost = await p.suup(["vault", "set", "ASKED_SECRET", "--run", runId.slice(0, 8)], {
         ...withVault,
         input: "asked-secret-value-777",
       });
+      expect(noHost.code).toBe(2);
+      expect(noHost.stderr).toContain("api.sugerido.test");
+      const answered = await p.suup(
+        [
+          "vault",
+          "set",
+          "ASKED_SECRET",
+          "--run",
+          runId.slice(0, 8),
+          "--host",
+          "api.confirmado.test",
+        ],
+        { ...withVault, input: "asked-secret-value-777" },
+      );
       expect(answered.code, answered.stdout + answered.stderr).toBe(0);
+      expect(
+        ((await json(["vault", "list"])) as { name: string; hosts: string[] }[]).find(
+          (x) => x.name === "ASKED_SECRET",
+        )?.hosts,
+      ).toEqual(["api.confirmado.test"]);
       expect(answered.stdout).not.toContain("asked-secret-value-777");
       const resumed = await p.suup(["resume", runId], withVault);
       expect(resumed.code, resumed.stdout + resumed.stderr).toBe(0);
       expect(await statusOf(runId)).toBe("done");
       const result = (await eventsOf(runId)).find((e) => e.type === "tool_result");
       expect(result?.payload.content).toBe(
-        "The secret ASKED_SECRET is now available. Use it as {{secret:ASKED_SECRET}}.",
+        "The secret ASKED_SECRET is now available. Use it as {{secret:ASKED_SECRET}} in a web_fetch header or address, and only for api.confirmado.test (the sites the user confirmed): a call to any other site is refused, whatever the user approves.",
       );
+    });
+
+    it("an old secret with no hosts is blocked: the list and the doctor say so, and `vault hosts` fixes it", async () => {
+      await p.suup(["vault", "set", "OLD_SECRET"], {
+        ...withVault,
+        input: "old-secret-value-1234",
+      });
+      const listed = await p.suup(["vault", "list"], withVault);
+      expect(listed.stdout).toContain("(BLOQUEADO)");
+      const doctor = await p.suup(["doctor"], withVault);
+      expect(doctor.stdout).toContain("BLOQUEADO");
+      expect(doctor.stdout).toContain("OLD_SECRET");
+      const bad = await p.suup(
+        ["vault", "hosts", "OLD_SECRET", "--host", "https://api.x.test"],
+        withVault,
+      );
+      expect(bad.code).toBe(1);
+      expect(bad.stderr).toContain("não é um endereço válido");
+      const fixed = await p.suup(
+        ["vault", "hosts", "OLD_SECRET", "--host", "api.x.test"],
+        withVault,
+      );
+      expect(fixed.code, fixed.stdout + fixed.stderr).toBe(0);
+      expect(fixed.stdout).toContain("api.x.test");
+      expect(
+        (await p.suup(["vault", "hosts", "OLD_SECRET", "--block"], withVault)).stdout,
+      ).toContain("BLOQUEADO");
+      await p.suup(["vault", "rm", "OLD_SECRET"], withVault);
     });
 
     it("rotates to a new key through the previous-key setting, and removes a secret", async () => {

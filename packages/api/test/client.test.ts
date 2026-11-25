@@ -196,7 +196,17 @@ describe("client", () => {
   it("the vault client has no call that reads a value, and its schema has no field for one", async () => {
     const { vault } = client(() => new Response("{}")).api;
     expect(Object.keys(vault).sort()).toEqual(
-      ["answerRequest", "grant", "list", "remove", "request", "revoke", "set", "status"].sort(),
+      [
+        "answerRequest",
+        "grant",
+        "list",
+        "remove",
+        "request",
+        "revoke",
+        "set",
+        "setHosts",
+        "status",
+      ].sort(),
     );
     const { secretSchema } = await import("../src/index.js");
     expect(Object.keys(secretSchema.shape)).not.toEqual(expect.arrayContaining(["value"]));

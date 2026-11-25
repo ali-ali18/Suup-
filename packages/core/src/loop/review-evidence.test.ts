@@ -368,6 +368,7 @@ describe("review: evidence and secrets", () => {
   const secrets = {
     redactor: createRedactor({ API_TOKEN: value }),
     resolve: async () => ({}),
+    hostsOf: async () => ({}),
   };
 
   it("a file the reviewer asks for is scrubbed in the event and in what the reviewer sees", async () => {
@@ -454,7 +455,7 @@ describe("review: evidence and secrets", () => {
     // O redator começa vazio: o log guarda o valor cru. Ele é ensinado só quando o revisor pede
     // a evidência; nem o evento de evidência nem o que o revisor recebe podem trazê-lo.
     const late = createRedactor();
-    const lateSecrets = { redactor: late, resolve: async () => ({}) };
+    const lateSecrets = { redactor: late, resolve: async () => ({}), hostsOf: async () => ({}) };
     const rig = createRig({
       script: [
         use(call("c1", "echo", { text: `${"x".repeat(400)} TOKEN=${value} END-ARGS` })),

@@ -477,6 +477,16 @@ export function createServer(runtime: Runtime, options: ServerOptions): SuupServ
         `O banco tem ${status.pending.length} migraç${status.pending.length === 1 ? "ão pendente" : "ões pendentes"} (${status.pending.join(", ")}). Rode: suup db migrate`,
       );
     }
+    // What the owner kept in the vault for a plugin (a connector's token, a search engine's key)
+    // moves to the plugin (docs/COFRE.md). Idempotent; a failure never stops the server.
+    try {
+      const adopted = await runtime.pluginCredentials.adoptAll();
+      if (adopted.length > 0) {
+        log.info(`${adopted.length} credencial(is) passaram a ficar com o plugin que as usa.`);
+      }
+    } catch (error) {
+      log.error("não foi possível passar as credenciais para os plugins", error);
+    }
     if (options.bootstrap !== false) {
       const settled = await reconcileRunEffects(database, {
         redact: (value) => runtime.redactJson(value),

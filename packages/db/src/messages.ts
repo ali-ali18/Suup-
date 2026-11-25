@@ -94,6 +94,12 @@ export interface Message {
   routineRef: string | null;
   /** Bot or system messages only: the files the run sent with it (`send_file`), oldest first. */
   attachments?: MessageAttachment[];
+  /**
+   * Present only on a message the harness wrote once for something that happened in a run (its end,
+   * a pause, a request for a secret): the key that makes it idempotent. The app links a card to the
+   * message that is its own words by this exact key.
+   */
+  dedupeKey?: string;
 }
 
 export interface MessageRow {
@@ -111,6 +117,7 @@ export interface MessageRow {
   routine_id: string | null;
   routine_ref: string | null;
   attachments: MessageAttachment[] | null;
+  dedupe_key?: string | null;
 }
 
 export function mapMessage(row: MessageRow): Message {
@@ -132,6 +139,9 @@ export function mapMessage(row: MessageRow): Message {
     ...(row.attachments === null || row.attachments === undefined || row.attachments.length === 0
       ? {}
       : { attachments: row.attachments }),
+    ...(row.dedupe_key === null || row.dedupe_key === undefined
+      ? {}
+      : { dedupeKey: row.dedupe_key }),
   };
 }
 
@@ -151,6 +161,7 @@ const MESSAGE_COLUMNS = [
   "routine_id",
   "routine_ref",
   "attachments",
+  "dedupe_key",
 ];
 
 const uuidSchema = z.uuid();

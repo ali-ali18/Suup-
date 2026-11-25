@@ -12,7 +12,7 @@ import { formError, friendlyError } from "./friendly-error.js";
 // message the screen shows (a refusal of the server is cleaned of it first). The result carries
 // only names and metadata. The callers keep no copy: the field is read once, cleared, and forgotten.
 
-type Vault = Pick<SuupClient["vault"], "answerRequest" | "set">;
+type Vault = Pick<SuupClient["vault"], "answerRequest" | "set" | "setHosts">;
 
 export const MIN_SECRET = 8;
 export const MAX_SECRET = 16_384;
@@ -30,6 +30,53 @@ export function scrubSecret(text: string, value: string): string {
 export function valueProblem(value: string): string | undefined {
   if (value.length < MIN_SECRET) return `O valor precisa ter pelo menos ${MIN_SECRET} caracteres.`;
   if (value.length > MAX_SECRET) return `O valor passa de ${MAX_SECRET} caracteres.`;
+  return undefined;
+}
+
+const HOST_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789-.";
+
+/** The sites typed in the "Endereços permitidos" field: one per line (or separated by commas), lower case, no repeats. */
+export function parseHosts(text: string): string[] {
+  const hosts: string[] = [];
+  for (const line of text.split("\n")) {
+    for (const part of line.split(",")) {
+      let host = part.trim().toLowerCase();
+      if (host.endsWith(".")) host = host.slice(0, -1);
+      if (host !== "" && !hosts.includes(host)) hosts.push(host);
+    }
+  }
+  return hosts;
+}
+
+/**
+ * What is wrong with one site as typed (a plain name such as api.exemplo.com), in a friendly
+ * sentence. A first look at the shape only: the server is the one that decides, with the same rules.
+ */
+export function hostProblem(host: string): string | undefined {
+  const bad = `“${host}” não é um endereço válido: escreva só o nome do site, como api.exemplo.com (sem https://, sem porta, sem caminho, sem * e sem número de IP).`;
+  if (host === "" || host.length > 253) return bad;
+  for (const char of host) if (!HOST_CHARS.includes(char)) return bad;
+  const labels = host.split(".");
+  for (const label of labels) {
+    if (label === "" || label.length > 63 || label.startsWith("-") || label.endsWith("-")) {
+      return bad;
+    }
+  }
+  const last = labels.at(-1) ?? "";
+  if ([...last].every((char) => char >= "0" && char <= "9")) return bad;
+  return undefined;
+}
+
+/** What is wrong with the whole list typed in the field (at least one site is needed), or nothing. */
+export function hostsProblem(text: string): string | undefined {
+  const hosts = parseHosts(text);
+  if (hosts.length === 0) {
+    return "Diga para onde o segredo pode ir (por exemplo api.exemplo.com). Sem isso ele fica bloqueado.";
+  }
+  for (const host of hosts) {
+    const problem = hostProblem(host);
+    if (problem !== undefined) return problem;
+  }
   return undefined;
 }
 
@@ -71,11 +118,11 @@ function failure(error: unknown, value: string): { ok: false; message: string; c
 export async function answerSecretRequest(
   vault: Pick<Vault, "answerRequest">,
   runId: string,
-  input: { value: string } | { declined: true },
+  input: { value: string; hosts: string[] } | { declined: true },
 ): Promise<SecretOutcome<AnswerSecretRequestResult>> {
   const value = "value" in input ? input.value : "";
   if ("value" in input) {
-    const problem = valueProblem(input.value);
+    const problem = valueProblem(input.value) ?? hostsProblem(input.hosts.join("\n"));
     if (problem !== undefined) return { ok: false, conflict: false, message: problem };
   }
   try {
@@ -98,13 +145,15 @@ export function nameProblem(name: string): string | undefined {
 export async function writeSecret(
   vault: Pick<Vault, "set">,
   name: string,
-  input: { value: string; description?: string; grantBotIds?: string[] },
+  input: { value: string; hosts: string[]; description?: string; grantBotIds?: string[] },
 ): Promise<SecretOutcome<Secret>> {
-  const problem = nameProblem(name) ?? valueProblem(input.value);
+  const problem =
+    nameProblem(name) ?? valueProblem(input.value) ?? hostsProblem(input.hosts.join("\n"));
   if (problem !== undefined) return { ok: false, conflict: false, message: problem };
   try {
     const result = await vault.set(name, {
       value: input.value,
+      hosts: input.hosts,
       ...(input.description === undefined || input.description === ""
         ? {}
         : { description: input.description }),
@@ -115,5 +164,55 @@ export async function writeSecret(
     return { ok: true, result };
   } catch (error) {
     return failure(error, input.value);
+  }
+}
+
+/** Replaces the sites a secret may go to (the value is not touched). Never throws. */
+export async function writeSecretHosts(
+  vault: Pick<Vault, "setHosts">,
+  name: string,
+  hosts: string[],
+): Promise<SecretOutcome<Secret>> {
+  const problem = hostsProblem(hosts.join("\n"));
+  if (problem !== undefined) return { ok: false, conflict: false, message: problem };
+  try {
+    return { ok: true, result: await vault.setHosts(name, { hosts }) };
+  } catch (error) {
+    return failure(error, "");
+  }
+}
+
+/**
+ * Keeps the token of a gallery connector WITH the connector (`PUT /v1/connector-catalog/{id}/token`):
+ * not in the owner's vault, never granted to a bot. Never throws.
+ */
+export async function writeConnectorToken(
+  catalog: Pick<SuupClient["connectorCatalog"], "setToken">,
+  connectorId: string,
+  value: string,
+): Promise<SecretOutcome<undefined>> {
+  const problem = valueProblem(value);
+  if (problem !== undefined) return { ok: false, conflict: false, message: problem };
+  try {
+    await catalog.setToken(connectorId, value);
+    return { ok: true, result: undefined };
+  } catch (error) {
+    return failure(error, value);
+  }
+}
+
+/** Keeps the key of a search engine WITH the engine (`PUT /v1/web-search/providers/{id}/key`). Never throws. */
+export async function writeSearchKey(
+  webSearch: Pick<SuupClient["webSearch"], "setKey">,
+  engineId: string,
+  value: string,
+): Promise<SecretOutcome<undefined>> {
+  const problem = valueProblem(value);
+  if (problem !== undefined) return { ok: false, conflict: false, message: problem };
+  try {
+    await webSearch.setKey(engineId, value);
+    return { ok: true, result: undefined };
+  } catch (error) {
+    return failure(error, value);
   }
 }

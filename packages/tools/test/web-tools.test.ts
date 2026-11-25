@@ -175,6 +175,8 @@ describe("web_search", () => {
         generalUnavailable: { cause },
       }).content;
     expect(say("no_key")).toContain("nenhuma chave de busca foi adicionada");
+    expect(say("no_key")).toContain('connector "tavily" e action "add_key"');
+    expect(say("no_key")).not.toContain("request_secret");
     expect(say("no_key")).not.toContain("sem cota");
     expect(say("limit")).toContain("limite de buscas por minuto");
     expect(say("unavailable")).toContain("A busca geral não respondeu agora.");

@@ -512,7 +512,11 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("delegation, end to end"), () => {
         agent: [
           {
             calls: [
-              { id: "s1", name: "shell", args: { command: 'echo "t={{secret:TUTOR_TOKEN}}"' } },
+              {
+                id: "s1",
+                name: "web_fetch",
+                args: { url: "http://localhost:1/?t={{secret:TUTOR_TOKEN}}" },
+              },
             ],
           },
           { text: "Feito com o token." },
@@ -551,7 +555,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("delegation, end to end"), () => {
         name,
         modelProvider: "script",
         modelId: "model-s",
-        allowedTools: ["shell", "write_file", "read_file"],
+        allowedTools: ["shell", "write_file", "read_file", "web_fetch"],
       });
     const principal = await mk("Principal");
     await setDefaultBot(runtime.db, principal.id);
@@ -669,6 +673,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("delegation, end to end"), () => {
     const { runtime, principal, tutor } = await open();
     await runtime.vault.set("TUTOR_TOKEN", "valor-secreto-do-tutor-123", {
       description: "token do tutor",
+      hosts: ["localhost"],
     });
     await runtime.vault.grant("TUTOR_TOKEN", tutor.id);
     const sent = await delegateFlow(runtime, principal);
@@ -684,7 +689,11 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("delegation, end to end"), () => {
       status: "pending",
       limit: 5,
     });
-    expect(card).toMatchObject({ tool: "shell", level: "external_irreversible" });
+    expect(card).toMatchObject({
+      tool: "web_fetch",
+      level: "external_irreversible",
+      secretHost: "localhost",
+    });
     expect(
       (await texts(runtime, sent.message.conversationId)).filter((t) => t.includes("terminou")),
     ).toEqual([]);

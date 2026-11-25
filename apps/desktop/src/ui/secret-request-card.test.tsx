@@ -15,6 +15,7 @@ function show(over: Partial<SecretRequestCardProps> = {}) {
     <SecretRequestCard
       name="GH_TOKEN"
       reason="para dar push"
+      suggestedHosts={["api.github.com"]}
       botName="Ajudante"
       state="open"
       expanded={false}
@@ -39,11 +40,19 @@ describe("the secure form", () => {
     expect(field().getAttribute("autocapitalize")).toBe("off");
     expect(field().hasAttribute("name")).toBe(false);
     expect(screen.getByText("Ajudante pede um segredo")).toBeTruthy();
-    expect(screen.getByText("Motivo dado pelo bot: para dar push")).toBeTruthy();
-    // Its NAME is the label of the field, and the footer promises what the vault does.
+    // The reason and where it will be used, in one paragraph.
+    expect(
+      screen.getByText("Motivo dado pelo bot: para dar push. Vai ser usado em api.github.com."),
+    ).toBeTruthy();
+    // Its NAME labels the field (for screen readers) and is its placeholder; the footer promises
+    // what the vault does. The compact card has no category row (the icon sits beside the title).
     expect(screen.getByLabelText("GH_TOKEN")).toBe(field());
-    expect(screen.getByText("Guardado no cofre; o bot nunca vê o valor.")).toBeTruthy();
-    expect(screen.getByText("Segredos")).toBeTruthy();
+    expect(field().getAttribute("placeholder")).toBe("GH_TOKEN");
+    // The notice is outside the card, just under it, with a shield (owner, 25/11/2026).
+    const note = screen.getByTestId("secret-safe-note");
+    expect(note.textContent).toBe("Guardado com segurança; o bot nunca vê o valor.");
+    expect(screen.getByTestId("secret-card").contains(note)).toBe(false);
+    expect(screen.queryByTestId("decision-category")).toBeNull();
   });
 
   it("the reveal button is off by default and only changes how the field is drawn", () => {
@@ -72,7 +81,7 @@ describe("the secure form", () => {
     show({ onSubmit });
     type(VALUE);
     fireEvent.click(screen.getByTestId("secret-save"));
-    expect(onSubmit).toHaveBeenCalledExactlyOnceWith(VALUE);
+    expect(onSubmit).toHaveBeenCalledExactlyOnceWith(VALUE, ["api.github.com"]);
     expect(field().value).toBe("");
     expect(field().type).toBe("password");
     // On its way: everything waits.
@@ -108,7 +117,7 @@ describe("the secure form", () => {
     show({ onSubmit });
     type("curto");
     fireEvent.keyDown(field(), { key: "Enter" });
-    expect(onSubmit).toHaveBeenCalledExactlyOnceWith("curto");
+    expect(onSubmit).toHaveBeenCalledExactlyOnceWith("curto", ["api.github.com"]);
     await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("pelo menos 8"));
     expect(screen.getByRole("alert").textContent).not.toContain("curto");
     expect(field().value).toBe("");
@@ -187,5 +196,37 @@ describe("a request already answered", () => {
     );
     fireEvent.click(screen.getByRole("button", { expanded: true }));
     expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
+  describe("the sites the secret may go to", () => {
+    const hosts = () => screen.getByLabelText("Endereços permitidos") as HTMLTextAreaElement;
+
+    it("says where the bot will use it in the paragraph, read-only (no field to type in)", () => {
+      show({ suggestedHosts: ["api.github.com", "uploads.github.com"] });
+      expect(screen.getByTestId("decision-lede").textContent).toContain(
+        "Vai ser usado em api.github.com e uploads.github.com.",
+      );
+      expect(screen.queryByLabelText("Endereços permitidos")).toBeNull();
+    });
+
+    it("sending confirms exactly the sites shown on the card", async () => {
+      const { onSubmit } = show({ suggestedHosts: ["api.github.com"] });
+      type(VALUE);
+      fireEvent.click(screen.getByTestId("secret-save"));
+      expect(onSubmit).toHaveBeenCalledExactlyOnceWith(VALUE, ["api.github.com"]);
+    });
+
+    it("an empty or invalid list is explained and nothing is sent (the value stays in the field)", () => {
+      const { onSubmit } = show({ suggestedHosts: [] });
+      expect(screen.getByText(/não disse para onde/)).toBeTruthy();
+      type(VALUE);
+      fireEvent.click(screen.getByTestId("secret-save"));
+      expect(screen.getByRole("alert").textContent).toContain("Diga para onde o segredo pode ir");
+      fireEvent.change(hosts(), { target: { value: "https://api.github.com/x" } });
+      fireEvent.click(screen.getByTestId("secret-save"));
+      expect(screen.getByRole("alert").textContent).toContain("não é um endereço válido");
+      expect(onSubmit).not.toHaveBeenCalled();
+      expect(field().value).toBe(VALUE);
+    });
   });
 });
