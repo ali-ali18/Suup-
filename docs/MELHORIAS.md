@@ -2,7 +2,7 @@
 
 Lista viva do que os testes reais, as avaliações e o uso mostraram que dá para melhorar no Suup. Cada item diz **de onde veio** (a evidência), **o que fazer** e o **estado**. Pedido do dono (23/11/2026): "vai anotando os pontos de melhoria".
 
-Estados: **aberto**, **em andamento**, **feito** (com o commit). A lista curta e priorizada do que falta está em [PENDENCIAS.md](PENDENCIAS.md).
+Os estados nas tabelas registram o andamento à época. Para status, prioridades e validação atuais, consulte o [projeto Suup no Linear](https://linear.app/kodea/project/suup-agente-de-ia-4d8c1fc041f1). O [KOD-27](https://linear.app/kodea/issue/KOD-27/adotar-o-linear-como-fonte-de-contexto-e-status-do-suup) registra a adoção do fluxo documentado em [`AGENTS.md`](../AGENTS.md).
 
 ## Motor (loop, prompts, ferramentas)
 

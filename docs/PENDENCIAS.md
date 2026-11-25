@@ -1,6 +1,6 @@
 # Pendências (24/11/2026)
 
-O que falta no Suup, em ordem de prioridade. Branch: `feat/ajustes-ui` (PR #12). Regras: [`AGENTS.md`](../AGENTS.md). O histórico com a evidência de cada item está em [`MELHORIAS.md`](MELHORIAS.md); ao terminar um item, marque-o lá e aqui, com o commit.
+Registro das pendências levantadas em 24/11/2026. Consulte o [projeto Suup no Linear](https://linear.app/kodea/project/suup-agente-de-ia-4d8c1fc041f1) para ver as prioridades e o andamento atuais. Ao retomar um item desta lista, procure o card correspondente e use o identificador antigo como referência. O histórico de melhorias está em [`MELHORIAS.md`](MELHORIAS.md).
 
 ## 1. Bugs vistos no PC do dono (primeiro)
 

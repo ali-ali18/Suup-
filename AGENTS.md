@@ -6,9 +6,16 @@ O Suup é um harness de agentes de código aberto (MIT): um app de desktop em Ta
 
 ## Onde começar
 
-- **Branch de trabalho:** `feat/ajustes-ui` (PR #12 do repositório `ali-ali18/Suup-`). Parta dela, nunca de `main`.
-- **O que falta fazer:** [`docs/PENDENCIAS.md`](docs/PENDENCIAS.md) é o ponto de partida. O histórico fica em [`docs/MELHORIAS.md`](docs/MELHORIAS.md) e o plano em [`docs/PLANO.md`](docs/PLANO.md).
+- **Branch de trabalho.** Use uma branch para o card a partir da `main` atualizada, salvo se o trabalho já tiver outra base definida.
+- **Contexto, prioridades e status.** Comece pelo [projeto Suup no Linear](https://linear.app/kodea/project/suup-agente-de-ia-4d8c1fc041f1). Consulte [`docs/PENDENCIAS.md`](docs/PENDENCIAS.md) e [`docs/MELHORIAS.md`](docs/MELHORIAS.md) para referências e histórico, e [`docs/PLANO.md`](docs/PLANO.md) para o plano.
 - **Mapa:** `packages/` guarda o motor e o servidor (core, runtime, db, server, tools, web, connectors, documents, sandbox, providers, avatar, api); `apps/desktop` é o app; `apps/cli` é a linha de comando; `evals/` são as avaliações.
+
+## Como acompanhar o trabalho no Linear
+
+1. **Antes de começar.** Todo bug, funcionalidade, mudança de documentação, pesquisa, decisão ou outra tarefa do Suup tem um card. Procure primeiro por um card existente. Se faltar, crie com contexto, resultado esperado e como verificar. Leia o card, os comentários e as dependências. Ao assumir, atualize para **In Progress**.
+2. **Durante o trabalho.** Atualize o card quando mudar o escopo, surgir um bloqueio, houver uma decisão ou sair um resultado de teste. Indique o que falta e de quem depende. Vincule pesquisas, commits e PRs conforme estiverem disponíveis. Registre as evidências sem credenciais ou dados pessoais.
+3. **Ao repassar.** Inclua o link do card e compartilhe o estado atual, as decisões relevantes e o que falta verificar. Quem recebe, seja pessoa ou IA, consulta o contexto no Linear e devolve o resultado ao card. Os papéis de pesquisa, implementação, revisão e consulta arquitetural estão em [`CLAUDE.md`](CLAUDE.md).
+4. **Ao entregar.** Use **In Review** quando a entrega estiver disponível para revisão ou validação. Registre os testes executados, o resultado e qualquer validação pendente. Use **Done** depois de cumprir os critérios e integrar a entrega quando aplicável. Se o Linear estiver indisponível, informe a limitação e sincronize as atualizações assim que o acesso voltar.
 
 ## Comandos
 
@@ -57,8 +64,8 @@ Se você mudou um pacote que o app importa compilado (por exemplo `@suup/connect
 21. **Nada de nome de modelo** em commits, títulos ou corpos de PR, nem no código. Só `docs/TESTES-REAIS.md`, o `CLAUDE.md` e `.claude/agents/` podem citar modelos.
 22. **Nunca fazer merge** de PR sem pedido explícito do dono. PRs são abertos como rascunho.
 23. **Orçamento de testes com modelo de verdade:** US$ 15 no total, dos quais cerca de US$ 9,1 já foram gastos. Avise antes de chegar perto e nunca rode avaliação cara sem perguntar.
-24. **Cota do dono:** pesquisa vai para o agente `pesquisa` (modelo pequeno) e código para o agente `codigo` (modelo médio), ambos em `.claude/agents/`; a revisão de falha crítica ou sensível fica com a sessão principal (o modelo maior). Os nomes exatos dos modelos estão no `CLAUDE.md`. **No máximo 3 subagentes ao mesmo tempo**. O que é simples, faça direto. A sessão principal revisa o que for sensível: segurança, segredos, banco, o loop do motor, permissões e aprovações.
-25. **Anote o que fizer:** ao terminar um item, marque-o em `docs/PENDENCIAS.md` ou `docs/MELHORIAS.md`, com o commit, no mesmo commit. Pesquisas e decisões vão para o Git na hora.
+24. **Cota do dono.** Siga os papéis do ambiente descritos em [`CLAUDE.md`](CLAUDE.md). Use no máximo 3 subagentes ao mesmo tempo. O que é simples, a sessão principal faz direto. A sessão principal revisa o que for sensível, como segurança, segredos, banco, o loop do motor, permissões e aprovações.
+25. **Anote o que fizer.** Mantenha o status e os vínculos de entrega no card do Linear. Registre no Git as pesquisas, decisões e mudanças na documentação técnica e vincule o material ao card.
 26. **Seja honesto e avise:** diga o que está rodando e o que falhou, com a saída. Nunca diga "pronto" sem ter verificado. Na dúvida sobre uma decisão do dono, pergunte, em pt-BR, curto, sem jargão.
 
 ## Decisões já tomadas (não reabrir)
