@@ -94,6 +94,9 @@ describe.skipIf(!DATABASE_URL)(
     it("the worker reviews the team once, writes the Principal's own note, keeps the history and posts the morning message", async () => {
       const { api, runtime } = w.started;
       const db = w.db;
+      // The review stays off while the team is set up: the worker checks every 100 ms, and with the
+      // main bot set and the hour past, it would review a team that is still half written.
+      await api.supervisor.settings.update({ reviewEnabled: false });
       const mk = (name: string) =>
         createBot(db, { name, modelProvider: "roteiro", modelId: "model-x" });
       const principal = await mk("Principal");
@@ -114,10 +117,14 @@ describe.skipIf(!DATABASE_URL)(
       const conversation = await createDirectConversation(db, principal.id);
       await db.sql`update conversations set reception = 'done' where id = ${conversation.id}`;
 
-      await api.supervisor.settings.update({ reviewTime: "00:00", morningTime: "00:00" });
-      // The test runs at any hour, so the worker already recorded a silent night before the team was
-      // there (an empty team has nothing to review): forget it, and the next pass reviews the team.
+      // The test runs at any hour, so the worker may have recorded a silent night before the team was
+      // there (an empty team has nothing to review): forget it, then turn the review on.
       await db.sql`delete from team_reviews`;
+      await api.supervisor.settings.update({
+        reviewEnabled: true,
+        reviewTime: "00:00",
+        morningTime: "00:00",
+      });
       const reviews = await until(async () => {
         const list = await api.supervisor.reviews();
         return list.some((r) => r.status === "done") ? list : undefined;
