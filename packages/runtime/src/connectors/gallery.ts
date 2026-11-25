@@ -24,7 +24,14 @@ import {
   type PendingLogin,
   revokeOAuth,
 } from "@suup/connectors";
-import { type Db, getConnector, getConnectorOAuth, setConnectorOAuthStatus } from "@suup/db";
+import {
+  adoptSecret,
+  type Db,
+  getConnector,
+  getConnectorOAuth,
+  listConnectors,
+  setConnectorOAuthStatus,
+} from "@suup/db";
 import { RuntimeError } from "../errors.js";
 import { VaultError } from "../vault/crypto.js";
 import type { Vault } from "../vault/service.js";
@@ -118,6 +125,25 @@ export interface ConnectorGallery {
   publicCallback(params: URLSearchParams): Promise<CallbackPage | undefined>;
   /** Revokes (when the server can), forgets the tokens and turns the connector off. */
   oauthDisconnect(connector: string): Promise<ConnectorView>;
+  /**
+   * The connector that keeps the vault secret of this exact name as its token (the `token` entry
+   * that declares it), or `undefined`. Exact comparison with the entries' `auth.secret`.
+   */
+  tokenOwner(secretName: string): string | undefined;
+  /**
+   * Keeps the token of a `token` entry WITH the connector (marked as its own: not in the owner's
+   * vault, never granted to a bot). Takes over an owner's secret of the same name first. Throws
+   * `RuntimeError` `connector_not_found` when the entry is not a ready token entry.
+   */
+  setToken(id: string, value: string): Promise<void>;
+  /** Forgets the token the connector keeps (and only that one). Returns whether there was one. */
+  removeToken(id: string): Promise<boolean>;
+  /**
+   * Hands the token of every INSTALLED token entry over to its connector: marks the owner's secret
+   * of that name as the connector's and drops its grants to bots. Idempotent; the migration of
+   * what existed before tokens were kept with the connector (run at start-up).
+   */
+  adoptTokens(): Promise<string[]>;
   close(): Promise<void>;
 }
 
@@ -179,6 +205,17 @@ export function createGallery(deps: {
   const { db, vault, service } = deps;
   const catalog = deps.catalog ?? CONNECTOR_CATALOG;
   const catalogEntry = (id: string): CatalogEntry | undefined => catalog.find((e) => e.id === id);
+  const tokenEntry = (
+    id: string,
+  ): (CatalogEntry & { auth: Extract<CatalogEntry["auth"], { kind: "token" }> }) | undefined => {
+    const entry = catalogEntry(id);
+    return entry !== undefined && entry.availability === "ready" && entry.auth.kind === "token"
+      ? (entry as CatalogEntry & { auth: Extract<CatalogEntry["auth"], { kind: "token" }> })
+      : undefined;
+  };
+  /** The names of every secret the vault holds, the connectors' own included. */
+  const heldSecrets = async (): Promise<Set<string>> =>
+    new Set((await vault.list({ includeManaged: true })).map((s) => s.name));
   const now = deps.now ?? Date.now;
   const ttl = deps.ttlMs ?? OAUTH_FLOW_TTL_MS;
   const flows = new Map<string, Flow>();
@@ -419,7 +456,7 @@ export function createGallery(deps: {
   const gallery: ConnectorGallery = {
     async list() {
       const views = await service.list();
-      const secrets = new Set((await vault.list()).map((s) => s.name));
+      const secrets = await heldSecrets();
       return Promise.all(catalog.map((e) => itemOf(e, views, secrets)));
     },
     async install(id, options = {}) {
@@ -434,7 +471,9 @@ export function createGallery(deps: {
         );
       }
       const origin = options.origin ?? "user";
-      const secrets = new Set((await vault.list()).map((s) => s.name));
+      // A token the owner had in the vault moves to the connector now (docs/COFRE.md).
+      if (entry.auth.kind === "token") await adoptSecret(db(), entry.auth.secret, entry.id);
+      const secrets = await heldSecrets();
       const hasSecret = entry.auth.kind === "token" && secrets.has(entry.auth.secret);
       const existing = await getConnector(db(), entry.id);
       if (existing !== null && existing.catalogId !== entry.id) {
@@ -469,7 +508,7 @@ export function createGallery(deps: {
         await service.update(entry.id, { enabled: true });
       }
       const views = await service.list();
-      const item = await itemOf(entry, views, new Set((await vault.list()).map((s) => s.name)));
+      const item = await itemOf(entry, views, await heldSecrets());
       const next =
         item.status === "needs_login"
           ? "login"
@@ -477,6 +516,42 @@ export function createGallery(deps: {
             ? "secret"
             : "none";
       return { item, next };
+    },
+    tokenOwner(secretName) {
+      return catalog.find((e) => e.auth.kind === "token" && e.auth.secret === secretName)?.id;
+    },
+    async setToken(id, value) {
+      const entry = tokenEntry(id);
+      if (entry === undefined) {
+        throw new RuntimeError(
+          "connector_not_found",
+          `A galeria não tem um conector com token ${id}.`,
+        );
+      }
+      await adoptSecret(db(), entry.auth.secret, entry.id);
+      await vault.set(entry.auth.secret, value, {
+        description: `Token do conector ${entry.id}, guardado pelo próprio conector.`,
+        managedBy: entry.id,
+      });
+    },
+    async removeToken(id) {
+      const entry = tokenEntry(id);
+      if (entry === undefined) {
+        throw new RuntimeError(
+          "connector_not_found",
+          `A galeria não tem um conector com token ${id}.`,
+        );
+      }
+      return vault.remove(entry.auth.secret, { managedBy: entry.id });
+    },
+    async adoptTokens() {
+      const adopted: string[] = [];
+      for (const connector of await listConnectors(db())) {
+        const entry = connector.catalogId === null ? undefined : tokenEntry(connector.catalogId);
+        if (entry === undefined || entry.id !== connector.name) continue;
+        if (await adoptSecret(db(), entry.auth.secret, entry.id)) adopted.push(entry.id);
+      }
+      return adopted;
     },
     async grantAll(connector, botId) {
       await service.grant(connector, botId, "all");

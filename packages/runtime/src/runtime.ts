@@ -108,6 +108,7 @@ import {
 } from "./memory-consolidation.js";
 import { createMemoryService } from "./memory-service.js";
 import { createNetworkService, type NetworkService } from "./network/service.js";
+import { createPluginCredentials, type PluginCredentials } from "./plugin-credentials.js";
 import { PROPOSE_TEAM_TOOL, proposeTeamTool } from "./reception.js";
 import {
   createReminderTool,
@@ -230,6 +231,11 @@ export interface Runtime {
    * process and closed by `close()`. Their tools join a run's registry only for the bots granted.
    */
   readonly connectors: ConnectorService;
+  /**
+   * The credentials of plugins (a gallery connector's token, a search engine's key): kept with the
+   * plugin, outside the owner's vault, never granted to a bot (docs/COFRE.md).
+   */
+  readonly pluginCredentials: PluginCredentials;
   /**
    * What one bot's requests carry as tool definitions: its built-in and control tools, its
    * connector tools (granted and approved), how they are offered (loaded, or searched) and the
@@ -438,6 +444,16 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     defaultHosts: networkConfig?.defaultHosts,
   });
   const networkName = networkConfig?.name ?? DEFAULT_NETWORK_NAME;
+  const searchKeys = createSearchKeys({
+    env,
+    vault,
+    settings: (id) =>
+      id === "tavily"
+        ? config.web?.search?.general?.tavily
+        : id === "brave"
+          ? config.web?.search?.general?.brave
+          : undefined,
+  });
   // Web search and page reading (docs/BUSCA.md): nothing starts until a tool asks for it.
   const web = createWebWiring(config.web, {
     ...(dockerPath === undefined ? {} : { dockerPath }),
@@ -445,16 +461,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     // Identical searches are answered from the database: it outlives a restart and is shared.
     searchCache: dbSearchCache(() => runtime.db),
     // The keys of the general engines: the environment variable of the configuration, then the vault.
-    searchKeys: createSearchKeys({
-      env,
-      vault,
-      settings: (id) =>
-        id === "tavily"
-          ? config.web?.search?.general?.tavily
-          : id === "brave"
-            ? config.web?.search?.general?.brave
-            : undefined,
-    }),
+    searchKeys,
     // How many searches each general engine answered this month (a count, never the query).
     searchUsage: dbSearchUsage(() => runtime.db),
   });
@@ -522,6 +529,12 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     ...(config.server?.publicUrl === undefined ? {} : { publicUrl: config.server.publicUrl }),
     ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
     ...(options.connectorCatalog === undefined ? {} : { catalog: options.connectorCatalog }),
+  });
+  const pluginCredentials = createPluginCredentials({
+    db: () => runtime.db,
+    vault,
+    gallery: () => connectors.gallery,
+    searchSecret: (id) => searchKeys.names?.(id)?.secret,
   });
   // Every tool call goes through the approval policy: the user's rules, the reviewer, then a card.
   // The gate asks the registry of the RUN (built-in tools plus the connector tools of its bot).
@@ -1208,6 +1221,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     tools,
     vault,
     connectors,
+    pluginCredentials,
     async toolReport(botId) {
       const bot = await getBot(runtime.db, botId);
       if (bot === null) throw new RuntimeError("bot_not_found", `Bot ${botId} não encontrado.`);

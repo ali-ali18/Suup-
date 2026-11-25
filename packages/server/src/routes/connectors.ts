@@ -3,6 +3,7 @@ import {
   connectorNameSchema,
   createConnectorBodySchema,
   grantConnectorBodySchema,
+  setPluginCredentialBodySchema,
   setToolOutboundBodySchema,
   setToolRiskBodySchema,
   updateConnectorBodySchema,
@@ -199,6 +200,27 @@ export const connectorRoutes: Route[] = [
           connector: toConnectorDto(connector),
         },
       };
+    },
+  },
+  {
+    // Write-only: the token of a `token` entry goes to the connector's own place (marked as its
+    // own, outside the owner's vault, never granted to a bot) and nothing brings it back.
+    method: "PUT",
+    pattern: "/v1/connector-catalog/:id/token",
+    async handler(ctx) {
+      const body = ctx.body(setPluginCredentialBodySchema);
+      await ctx.runtime.connectors.gallery.setToken(ctx.params.id ?? "", body.value);
+      return { body: { stored: true } };
+    },
+  },
+  {
+    // Takes away only the token the connector itself keeps.
+    method: "DELETE",
+    pattern: "/v1/connector-catalog/:id/token",
+    async handler(ctx) {
+      const gone = await ctx.runtime.connectors.gallery.removeToken(ctx.params.id ?? "");
+      if (!gone) throw new HttpError("not_found", "Este conector não tem um token guardado.");
+      return { body: { deleted: true } };
     },
   },
   {

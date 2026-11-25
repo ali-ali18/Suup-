@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
+  adoptSecret,
   createBot,
   deleteSecret,
   getSecretMeta,
@@ -161,5 +162,29 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("the vault's rows"), () => {
     expect(await deleteSecret(ctx.db, "SUUP_OAUTH_X_ACCESS")).toBe(false);
     expect(await deleteSecret(ctx.db, "SUUP_OAUTH_X_ACCESS", "y")).toBe(false);
     expect(await deleteSecret(ctx.db, "SUUP_OAUTH_X_ACCESS", "x")).toBe(true);
+  });
+
+  it("adopting hands an owner's secret to its plugin: marked, hidden, grants gone, value kept", async () => {
+    const bot = await newBot("adopt-owner");
+    const put = await putSecret(ctx.db, { name: "ADOPT_ME", ...cipher() });
+    await grantSecret(ctx.db, "ADOPT_ME", bot.id);
+    expect(await adoptSecret(ctx.db, "ADOPT_ME", "github")).toBe(true);
+    const meta = await getSecretMeta(ctx.db, "ADOPT_ME");
+    expect(meta).toMatchObject({ managedBy: "github", grantedBotIds: [], keyId: put.keyId });
+    expect((await listSecrets(ctx.db)).map((s) => s.name)).not.toContain("ADOPT_ME");
+    expect(await listSecretRowsForBot(ctx.db, bot.id)).toEqual([]);
+    expect(await getSecretRowForBot(ctx.db, bot.id, "ADOPT_ME")).toBeNull();
+  });
+
+  it("adopting is idempotent and never takes a secret another plugin keeps or one that is absent", async () => {
+    await putSecret(ctx.db, { name: "KEPT_BY_A", managedBy: "a", ...cipher() });
+    expect(await adoptSecret(ctx.db, "KEPT_BY_A", "b")).toBe(false);
+    expect((await getSecretMeta(ctx.db, "KEPT_BY_A"))?.managedBy).toBe("a");
+    expect(await adoptSecret(ctx.db, "KEPT_BY_A", "a")).toBe(false);
+    expect(await adoptSecret(ctx.db, "NOT_THERE", "a")).toBe(false);
+    await putSecret(ctx.db, { name: "TWICE", ...cipher() });
+    expect(await adoptSecret(ctx.db, "TWICE", "search:tavily")).toBe(true);
+    expect(await adoptSecret(ctx.db, "TWICE", "search:tavily")).toBe(false);
+    expect((await getSecretMeta(ctx.db, "TWICE"))?.managedBy).toBe("search:tavily");
   });
 });

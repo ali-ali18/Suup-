@@ -241,7 +241,8 @@ test.describe("the connectors screen, wired to the server's gallery", () => {
       "Ainda não consegui ver as ferramentas",
     );
     await expect(page.getByTestId("plugin-retry")).toHaveText("Tentar de novo");
-    expect((await world.api.vault.list()).map((s) => s.name)).toContain("GITHUB_TOKEN");
+    // the token is kept with the connector: never in the owner's vault
+    expect((await world.api.vault.list()).map((s) => s.name)).not.toContain("GITHUB_TOKEN");
     // the value is nowhere on the page
     expect(await page.content()).not.toContain(VALUE);
     // back to the list: "Meus conectores" shows what is connected

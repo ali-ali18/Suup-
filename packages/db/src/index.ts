@@ -386,6 +386,7 @@ export {
   updateRunPlan,
 } from "./runs.js";
 export {
+  adoptSecret,
   deleteSecret,
   getSecretMeta,
   getSecretRowByName,

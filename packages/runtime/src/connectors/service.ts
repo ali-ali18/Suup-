@@ -497,7 +497,7 @@ export function createConnectorService(options: {
   const checkSecrets = async (spec: ConnectorSpec): Promise<void> => {
     const names = secretNamesOf(spec);
     if (names.length === 0) return;
-    const have = new Set((await vault.list()).map((s) => s.name));
+    const have = new Set((await vault.list({ includeManaged: true })).map((s) => s.name));
     const missing = names.filter((n) => !have.has(n));
     if (missing.length > 0) {
       throw new RuntimeError(
@@ -510,7 +510,7 @@ export function createConnectorService(options: {
   const secretsReady = async (spec: ConnectorSpec): Promise<boolean> => {
     const names = secretNamesOf(spec);
     if (names.length === 0) return true;
-    const have = new Set((await vault.list()).map((s) => s.name));
+    const have = new Set((await vault.list({ includeManaged: true })).map((s) => s.name));
     return names.every((n) => have.has(n));
   };
 
@@ -615,6 +615,14 @@ export function createConnectorService(options: {
       if (stored?.oauth !== null && stored?.oauth !== undefined) {
         // The login goes with the connector (the tokens leave the vault).
         await forgetOAuth(db, vault, name);
+      }
+      // The token of a gallery entry goes with the connector too (it is the connector's own).
+      if (
+        stored?.catalogId !== null &&
+        stored?.catalogId !== undefined &&
+        stored.name === stored.catalogId
+      ) {
+        await gallery.removeToken(stored.catalogId).catch(() => false);
       }
       const gone = await deleteConnector(db(), name);
       await manager.invalidate(name);

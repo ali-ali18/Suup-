@@ -1,6 +1,6 @@
 # Cofre de segredos
 
-Guarda credenciais (tokens, senhas) para os bots usarem **sem nunca as verem**. Este documento diz como funciona e, com a mesma ênfase, o que o cofre **não** protege.
+Guarda credenciais (tokens, senhas) **do usuário** para os bots usarem **sem nunca as verem**. O Cofre é só do usuário: o que um conector ou um plugin de busca usa fica **com o plugin** (veja "Credencial de plugin", abaixo). Este documento diz como funciona e, com a mesma ênfase, o que o cofre **não** protege.
 
 ## Como funciona, em quatro frases
 
@@ -74,6 +74,19 @@ O login OAuth de um conector (`SUUP_OAUTH_<CONECTOR>_ACCESS`, `_REFRESH` e `_CLI
 
 A segurança não muda: continuam cifrados, o redator os conhece e nenhuma resposta traz o valor. (`suup doctor` ainda os conta em "segredos legíveis", porque confere a integridade de tudo o que está guardado.)
 
+### Credencial de plugin: fica com o plugin, não no Cofre
+
+Decisão do dono, 25/11/2026: a credencial de um conector ou de um plugin **fica com o plugin**, fora do Cofre do usuário, **nunca concedida a um bot**; só o próprio Suup a usa (para abrir a conexão, para chamar o motor). O mecanismo é o mesmo `managed_by`, e o dono da marca é exato:
+
+- **token de um conector da galeria** (`auth.kind === "token"`: GitHub `GITHUB_TOKEN`, Composio `COMPOSIO_API_KEY`, Firecrawl `FIRECRAWL_API_KEY`): a marca é o **id do conector** (`github`), o mesmo nome do conector instalado;
+- **chave de um motor da busca geral** (Tavily, Brave; o nome do segredo é o `secret` da configuração, por padrão `TAVILY_API_KEY` e `BRAVE_SEARCH_API_KEY`): a marca é `search:<id do motor>` (`search:tavily`), um espaço próprio que nunca colide com o nome de um conector (a coluna aceita até 64 caracteres).
+
+**Migração, sem digitar de novo.** Na partida do servidor (e quando um conector de token é instalado), o Suup passa para o plugin o que já estava no Cofre: marca o segredo do dono com esse **nome exato** e apaga as concessões dele a bots (`adoptSecret`, numa transação; só toca num segredo sem marca; idempotente; o valor não muda). O que não é de nenhum plugin continua do usuário. Só vale para conector da galeria **instalado** e motor com nome de segredo na configuração.
+
+**Gravar e ler.** A tela do plugin grava pelas rotas do próprio plugin (`PUT`/`DELETE /v1/web-search/providers/{id}/key` e `/v1/connector-catalog/{id}/token`, [API.md](API.md)), que usam a marca certa, nunca devolvem o valor e só apagam o que aquele dono guarda. A busca e o conector leem o valor marcado (`resolveForConnector`), e o estado do plugin ("Pronto", conectado) enxerga o segredo marcado. Remover o conector apaga o token dele, como já fazia com o login OAuth. Pelo Cofre, `suup vault set` com um desses nomes passa a ser recusado (`400`).
+
+**O bot.** Se um bot chama `request_secret` com o nome exato de uma credencial de plugin, o formulário grava como credencial **daquele plugin**, **sem conceder ao bot**, e o modelo é avisado de que a chave foi guardada pelo plugin (o bot não a usa; o Suup usa).
+
 ### Segredo em ação irreversível
 
 Uma chamada que contém um marcador é tratada como `external_irreversible`: **vira cartão**, a menos que você tenha uma regra que libere. O cartão mostra o marcador, nunca o valor. Para tornar o uso rotineiro, crie você mesmo uma regra de igualdade exata (Configurações > Permissões, ou `suup rules add`); o cartão não cria regras. (Veja [APROVACOES.md](APROVACOES.md).)
@@ -88,7 +101,7 @@ GET  /v1/runs/{id}/secret-request                     # API: o que a execução 
 POST /v1/runs/{id}/secret-request/answer { "value": "..." }   # ou { "declined": true }
 ```
 
-A resposta que o modelo recebe é só *"The secret NAME is now available. Use it as {{secret:NAME}}."* (ou que você recusou). **Atenção**: se você digitar o valor no *chat* em vez de usar o formulário, ele vira uma mensagem comum (o cofre não o conhece ainda); o cofre protege o que passa por ele.
+A resposta que o modelo recebe é só *"The secret NAME is now available. Use it as {{secret:NAME}}."* (ou que você recusou). Se o nome é o de uma credencial de plugin, ela é guardada pelo plugin e **não** é concedida (ver acima). **Atenção**: se você digitar o valor no *chat* em vez de usar o formulário, ele vira uma mensagem comum (o cofre não o conhece ainda); o cofre protege o que passa por ele.
 
 ## Redação: o valor não aparece em lugar nenhum
 

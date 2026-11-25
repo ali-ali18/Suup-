@@ -1,10 +1,11 @@
 import type { CatalogItem, CatalogStatus } from "@suup/api";
 import { ChevronRight, LoaderCircle, Plus } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { useData } from "../../app/context.js";
+import { useData, useServices } from "../../app/context.js";
 import { useUi } from "../../app/ui-store.js";
 import { fold } from "../../data/botlist.js";
 import { cx } from "../../lib/cx.js";
+import { writeConnectorToken } from "../../lib/secret-form.js";
 import {
   BulletList,
   Dialog,
@@ -391,6 +392,7 @@ function ConnectorPage({
   /** Whether the browser login can come back to the server (see `loginBlocked`). */
   canLogIn: boolean;
 }) {
+  const { api } = useServices();
   const { item, look } = entry;
   const connector = useData((s) =>
     item.connector === null ? undefined : s.connectors[item.connector],
@@ -511,6 +513,7 @@ function ConnectorPage({
             title: `Token do ${name}`,
             steps: item.entry.auth.steps,
           }}
+          save={(value) => writeConnectorToken(api.connectorCatalog, item.entry.id, value)}
           onSaved={() => void connect.secretSaved()}
           onClose={connect.closeSecret}
         />

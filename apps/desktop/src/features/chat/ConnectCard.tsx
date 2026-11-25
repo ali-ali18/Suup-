@@ -5,6 +5,7 @@ import { useData, useServices } from "../../app/context.js";
 import { useUi } from "../../app/ui-store.js";
 import type { ConnectCardItem } from "../../data/connect-cards.js";
 import { linkAllowed, linkExpired } from "../../lib/connect-link.js";
+import { writeConnectorToken } from "../../lib/secret-form.js";
 import { MutedText, Pill } from "../../ui/primitives.js";
 import { appearanceOf } from "../plugins/appearance.js";
 import { EntryIcon } from "../plugins/EntryIcon.js";
@@ -78,7 +79,7 @@ function useCardAction(item: CatalogItem | undefined, reload: () => Promise<void
  * link is only a button: its address and query are never on screen.
  */
 export function ConnectCard({ card, botName }: { card: ConnectCardItem; botName: string }) {
-  const { platform, sync } = useServices();
+  const { api, platform, sync } = useServices();
   const openPlugin = useUi((s) => s.openPlugin);
   const { items, reload } = usePlugins();
   useEffect(() => {
@@ -232,6 +233,7 @@ export function ConnectCard({ card, botName }: { card: ConnectCardItem; botName:
             title: `Token do ${name}`,
             steps: item.entry.auth.steps,
           }}
+          save={(value) => writeConnectorToken(api.connectorCatalog, item.entry.id, value)}
           onSaved={() => void connect.secretSaved()}
           onClose={connect.closeSecret}
         />

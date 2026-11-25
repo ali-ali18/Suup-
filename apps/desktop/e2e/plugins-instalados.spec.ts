@@ -161,7 +161,7 @@ test.describe("plugins: the installed list, the plugin's page and the search eng
     await world.api.connectors.remove("notion");
   });
 
-  test("Tavily and Brave are plugins in 'Pesquisa na web'; the page adds a key through the vault and the plugin becomes installed", async ({
+  test("Tavily and Brave are plugins in 'Pesquisa na web'; the page adds a key kept by the engine and the plugin becomes installed", async ({
     page,
   }) => {
     await openApp(page, world);
@@ -214,7 +214,9 @@ test.describe("plugins: the installed list, the plugin's page and the search eng
     await page.getByTestId("search-open-brave").click();
     await expect(page.getByTestId("connector-page")).toHaveAttribute("data-plugin", "brave");
     await expect(page.getByTestId("search-key")).toHaveText("Adicionar chave");
-    await world.api.vault.remove("TAVILY_API_KEY");
+    // the key is the engine's own: not in the owner's vault; clean it through the engine
+    expect((await world.api.vault.list()).map((s) => s.name)).not.toContain("TAVILY_API_KEY");
+    await world.api.webSearch.removeKey("tavily");
   });
 
   test("a bot hands over a card: the connector is installed but not given to it, and the owner fixes it in one click", async ({
