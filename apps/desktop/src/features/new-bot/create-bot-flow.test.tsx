@@ -31,7 +31,10 @@ function setup() {
     tools: { list: vi.fn(async () => ({ items: TOOLS })) },
     bots: {
       draft: vi.fn(async () => ({ personality: "Calma e direto." })),
-      create: vi.fn(async () => created),
+      create: vi.fn(async (body: { makeDefault?: boolean }) => ({
+        ...created,
+        isDefault: body.makeDefault === true,
+      })),
       setDefault: vi.fn(async () => ({ ...created, isDefault: true })),
     },
   };
@@ -205,8 +208,21 @@ describe("'Crie seu bot': making the bot", () => {
       fireEvent.click(screen.getByTestId("first-bot-create"));
     });
     await waitFor(() => expect(t.onCreated).toHaveBeenCalledTimes(1));
-    expect(t.api.bots.setDefault).toHaveBeenCalledTimes(1);
+    expect(t.api.bots.create).toHaveBeenCalledWith(expect.objectContaining({ makeDefault: true }));
+    expect(t.api.bots.setDefault).not.toHaveBeenCalled();
     expect(useUi.getState().supervisorOfferBotId).toBeNull();
+  });
+
+  it("promotes the supervisor with an older server that ignores the creation option", async () => {
+    const t = setup();
+    t.api.bots.create.mockImplementationOnce(async () =>
+      makeBot({ id: MADE_ID, name: "Duda", isDefault: false }),
+    );
+    await toTheLastStep(t);
+    fireEvent.click(screen.getByTestId("first-bot-supervisor"));
+    await act(async () => fireEvent.click(screen.getByTestId("first-bot-create")));
+    await waitFor(() => expect(t.onCreated).toHaveBeenCalledTimes(1));
+    expect(t.api.bots.setDefault).toHaveBeenCalledWith(MADE_ID);
   });
 
   it("the switch of a white bot is blue", () => {

@@ -5,6 +5,33 @@ import { type ConversationView, createDirectConversation } from "./conversations
 import { createRun } from "./runs.js";
 import type { Run } from "./types.js";
 
+/** Active bots whose direct conversation has not yet had its welcome. */
+export async function listReceptionCandidates(
+  db: Db,
+  models: readonly { modelId: string; providerId: string }[],
+  afterId: string | null,
+  limit: number,
+): Promise<string[]> {
+  if (models.length === 0) return [];
+  const rows = await db.sql<{ id: string }[]>`
+    select b.id from bots b
+    join jsonb_to_recordset(${db.sql.json([...models])}::jsonb)
+      as m("modelId" text, "providerId" text)
+      on m."modelId" = b.model_id and m."providerId" = b.model_provider
+    left join conversation_members cm on cm.bot_id = b.id and cm.conversation_kind = 'direct'
+    left join conversations c on c.id = cm.conversation_id
+    where b.archived_at is null and (
+      cm.conversation_id is null
+      or (c.archived_at is null and c.reception in ('pending', 'redo')
+        and not exists (select 1 from runs r where r.conversation_id = c.id
+          and r.origin in ('user', 'reception', 'delegation')
+          and r.status = any(${ACTIVE_RUN_STATUSES as unknown as string[]}::text[])))
+    )
+    order by case when ${afterId}::uuid is null or b.id > ${afterId}::uuid then 0 else 1 end, b.id
+    limit ${limit}`;
+  return rows.map((row) => row.id);
+}
+
 export interface StartReceptionResult {
   /** The direct conversation of the bot (created if it did not exist). */
   conversationId: string;

@@ -120,7 +120,7 @@ export type ListBotsQuery = { includeArchived?: boolean };
 export const botListSchema = list(botSchema);
 
 const nameField = z.string().trim().min(1).max(60);
-export const createBotBodySchema = z.object({
+const botFieldsSchema = z.object({
   name: nameField,
   description: z.exactOptional(z.string().max(400)),
   personality: z.exactOptional(z.string().max(20_000)),
@@ -137,9 +137,12 @@ export const createBotBodySchema = z.object({
   avatarStyle: z.exactOptional(avatarStyleSchema),
   avatarPixel3d: z.exactOptional(z.boolean()),
 });
+export const createBotBodySchema = botFieldsSchema.extend({
+  makeDefault: z.exactOptional(z.boolean()),
+});
 export type CreateBotBody = z.input<typeof createBotBodySchema>;
 
-export const updateBotBodySchema = createBotBodySchema
+export const updateBotBodySchema = botFieldsSchema
   .partial()
   .refine((body) => Object.keys(body).length > 0, "informe pelo menos um campo para alterar");
 export type UpdateBotBody = z.input<typeof updateBotBodySchema>;

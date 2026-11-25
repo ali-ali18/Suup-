@@ -134,6 +134,23 @@ test.describe("the welcome of a bot", () => {
   test("the main bot welcomes with cards, one at a time, then proposes a team the user ticks", async ({
     page,
   }) => {
+    const principal = (await world.api.bots.list()).find((bot) => bot.isDefault);
+    await expect
+      .poll(async () =>
+        (await world.api.runs.list({ botId: principal?.id as string, limit: 20 })).items.some(
+          (run) => run.origin === "reception",
+        ),
+      )
+      .toBe(true);
+    await expect
+      .poll(async () => {
+        const bot = await world.api.bots.get(principal?.id as string);
+        if (bot.conversationId === null) return false;
+        return (
+          await world.api.conversations.messages(bot.conversationId, { limit: 20 })
+        ).items.some((message) => message.authorKind === "bot");
+      })
+      .toBe(true);
     await openApp(page, world);
     await selectBot(page, "Principal");
 
@@ -279,9 +296,15 @@ test.describe("the welcome of a bot", () => {
     await page.screenshot({ path: shot("recepcao-configuracoes") });
     const row = page.getByTestId("reception-row").filter({ hasText: "Tutor da turma" });
     await row.getByTestId("reception-redo").click();
-    await expect(page.getByText("a recepção recomeça")).toBeVisible();
+    await expect(page.getByText("A recepção de Tutor da turma vai recomeçar.")).toBeVisible();
     const tutor = (await world.api.bots.list()).find((b) => b.name === "Tutor da turma");
-    const conversation = await world.api.conversations.get(tutor?.conversationId as string);
-    expect(conversation.reception).toBe("redo");
+    await expect
+      .poll(
+        async () =>
+          (await world.api.runs.list({ botId: tutor?.id as string, limit: 20 })).items.filter(
+            (run) => run.origin === "reception",
+          ).length,
+      )
+      .toBe(2);
   });
 });

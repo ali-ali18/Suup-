@@ -312,6 +312,7 @@ export {
 } from "./queue.js";
 export {
   finishReception,
+  listReceptionCandidates,
   resetReception,
   type StartReceptionResult,
   startReception,

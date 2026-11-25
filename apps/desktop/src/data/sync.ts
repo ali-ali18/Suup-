@@ -306,22 +306,7 @@ export class Sync {
     }
   }
 
-  /**
-   * The user opened the bot's chat: if its welcome is due (the conversation says `pending`, or the
-   * user asked to redo it), ask the server to start it. The server decides, once, whatever the
-   * number of windows (docs/RECEPCAO.md); the run and its messages arrive on the stream.
-   */
-  async startReceptionIfDue(bot: Bot, conversation: Conversation): Promise<void> {
-    if (conversation.reception !== "pending" && conversation.reception !== "redo") return;
-    try {
-      const result = await this.deps.api.bots.startReception(bot.id);
-      if (result.started) await this.refreshConversationRow(conversation.id);
-    } catch (error) {
-      this.fail(error);
-    }
-  }
-
-  /** "Refazer a recepção": the next open of the bot's chat starts the welcome again. */
+  /** "Refazer a recepção": the worker starts the welcome again. */
   async resetReception(bot: Bot): Promise<{ ok: true } | { ok: false; message: string }> {
     try {
       await this.deps.api.bots.resetReception(bot.id);

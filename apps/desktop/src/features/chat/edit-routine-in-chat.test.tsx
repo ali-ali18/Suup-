@@ -38,7 +38,6 @@ function setup() {
   const sync = {
     openBotConversation: async (bot: { conversationId: string | null }) =>
       store.getState().conversations[bot.conversationId as string],
-    startReceptionIfDue: async () => undefined,
     watchConversation: async () => undefined,
     unwatchConversation: () => undefined,
     follow: () => undefined,

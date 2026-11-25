@@ -53,7 +53,6 @@ function setup(over: Partial<Bot> = {}) {
   );
   const sync = {
     openBotConversation: async () => store.getState().conversations[CONV],
-    startReceptionIfDue: async () => undefined,
     watchConversation: async () => undefined,
     unwatchConversation: () => undefined,
     follow: () => undefined,

@@ -322,6 +322,10 @@ Decisões do dono (22/11/2026; [ROTINAS.md](ROTINAS.md)), como as tarefas do Gro
 - [ ] **O bot entrega a ação, nunca o caminho** (dono: "eu ter que sair caçando as coisas não ajuda em nada"): quando falta algo (conector não instalado, instalado e não conectado ou não liberado, app do Composio sem autorização, chave de busca), o bot mostra o cartão (`propose_connector`, `show_connect_card`) ou o formulário (`request_secret`) na hora, e **nunca** manda o dono para as Configurações. O link de conectar vai **sempre** num cartão, nunca colado numa mensagem. A regra está em `HAND_OVER_RULE` (`packages/core/src/loop/prompts.ts`, só nas execuções de conversa) e nos resultados das ferramentas.
 
 
+## Recepção em segundo plano
+
+- [ ] A recepção começa no worker sem abrir o chat; as mensagens e os cartões aparecem pelo fluxo existente quando a pessoa entra na conversa. "Refazer" também agenda a recepção sem exigir abrir o chat ([RECEPCAO.md](RECEPCAO.md)).
+
 ## 6. Mascotes
 
 - [ ] Só pelo motor `@suup/avatar` e pelas formas dele. Nenhuma forma ou rosto desenhado à mão. Única marca além do rosto: a estrela do Principal (§5), em volta do rosto (o rosto é recortado por máscara em `ui/avatar.tsx`, nunca dentro do motor; **só o círculo da estrela é recortado**: a camada do rosto é `FACE_BLEED` maior que a caixa em todos os lados, para a máscara não cortar a quina das formas que o motor enquadra um pouco maiores que a caixa; `e2e/avatar-fits.spec.ts` confere toda forma, no cartão e na linha), igual nas formas, no pixel e no 3D.

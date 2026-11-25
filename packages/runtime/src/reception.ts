@@ -1,4 +1,4 @@
-// The welcome of a bot (docs/RECEPCAO.md): started once, when the user first opens its chat, by a
+// The welcome of a bot (docs/RECEPCAO.md): started once in the background, by a
 // run the server opens itself; and the one tool the main bot has in it, `propose_team`.
 import { defineTool } from "@suup/core";
 import {
@@ -19,7 +19,7 @@ import type { Runtime } from "./runtime.js";
 export function receptionObjective(redo: boolean): string {
   return redo
     ? 'The user asked to redo your welcome. Do your first-conversation welcome again (see "First conversation" in your instructions). What you already know about them may have changed: confirm it instead of assuming it, and keep your memory correct (forget what is out of date).'
-    : 'The user just opened your chat for the first time. Do your first-conversation welcome (see "First conversation" in your instructions).';
+    : 'Do your first-conversation welcome (see "First conversation" in your instructions).';
 }
 
 export interface ReceptionStart {
@@ -42,6 +42,9 @@ export async function startBotReception(runtime: Runtime, botId: string): Promis
     throw new RuntimeError("bot_archived", `O bot "${bot.name}" (${bot.id}) está arquivado.`);
   }
   runtime.botConfig(bot); // refuses a bot whose model or provider the configuration lacks
+  if (!runtime.keyStatus(bot.modelProvider).ok) {
+    throw new RuntimeError("conflict", "O modelo do bot não está disponível agora.");
+  }
   try {
     return await startReception(runtime.db, bot.id, receptionObjective);
   } catch (error) {
@@ -54,7 +57,7 @@ export async function startBotReception(runtime: Runtime, botId: string): Promis
   }
 }
 
-/** "Refazer a recepção": the next open of the bot's chat starts the welcome again. */
+/** "Refazer a recepção": the background worker starts the welcome again. */
 export async function resetBotReception(runtime: Runtime, botId: string): Promise<void> {
   const bot = await getBot(runtime.db, botId);
   if (bot === null) throw new RuntimeError("bot_not_found", `Bot ${botId} não encontrado.`);
