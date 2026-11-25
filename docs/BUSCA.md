@@ -4,6 +4,8 @@ Pesquisa que fundamenta este desenho: [pesquisas/fase-4-busca-na-web.md](pesquis
 
 > "Não quero me prender a provedor." "Tem que ser 100% open, porque o projeto vai ser open."
 
+**Sempre à mão (decisão do dono, 25/11/2026).** `web_search` e `web_read` são oferecidas a todo bot em toda execução (uma rotina inclusive), mesmo que a lista concedida a ele não as traga, e sem mudar risco nem aprovação (o `web_read` de endereço novo continua pedindo cartão); só a avaliação isolada fica sem elas. O `web_fetch`, o terminal e os arquivos continuam por concessão.
+
 **Decisão do dono, 24/11/2026: o DuckDuckGo e o SearXNG saíram por inteiro.** O DuckDuckGo pedia captcha em quase toda busca no computador do dono (um bloqueador de robôs que só se contorna imitando um navegador, o que o Suup não faz), e o SearXNG existia só para ele. No lugar, a **busca geral é uma fila de APIs oficiais com troca automática**: Tavily primeiro, depois a Brave Search API. A busca geral **não precisa mais de Docker**.
 
 ## Regra do dono: o Suup não burla proteção de site

@@ -76,6 +76,7 @@ import {
   requestNetworkAccessTool,
   sendFileTool,
 } from "@suup/tools";
+import { withAlwaysOnTools } from "./always-on-tools.js";
 import {
   configuredTimeZone,
   DEFAULT_CONNECTOR_IMAGE,
@@ -965,7 +966,10 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
         botCfg = { ...cfg, allowedTools: [...cfg.allowedTools, ...names] };
         toolSearch = toolSearchSetup(offered.candidates, bot.modelId);
       }
-      botCfg = withSendFileTool(withNetworkTool(botCfg));
+      botCfg = withAlwaysOnTools(
+        withSendFileTool(withNetworkTool(botCfg)),
+        runTools.list().map((t) => t.name),
+      );
       connectorNames = [
         ...new Set((await listConnectorsForBot(handle, bot.id)).map((c) => c.name)),
       ];
@@ -1211,7 +1215,10 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     async toolReport(botId) {
       const bot = await getBot(runtime.db, botId);
       if (bot === null) throw new RuntimeError("bot_not_found", `Bot ${botId} não encontrado.`);
-      const cfg = withSendFileTool(withNetworkTool(botConfig(bot)));
+      const cfg = withAlwaysOnTools(
+        withSendFileTool(withNetworkTool(botConfig(bot))),
+        tools.list().map((t) => t.name),
+      );
       const offered = await connectors.toolsForBot(bot.id);
       const reg = newRegistry();
       const connectorNames = new Set<string>();
