@@ -48,8 +48,10 @@ describe("the secure form", () => {
     // what the vault does. The compact card has no category row (the icon sits beside the title).
     expect(screen.getByLabelText("GH_TOKEN")).toBe(field());
     expect(field().getAttribute("placeholder")).toBe("GH_TOKEN");
-    // No notice on the card (owner, 25/11/2026): only the title, the paragraph, the field, the buttons.
-    expect(screen.queryByText("Guardado no cofre; o bot nunca vê o valor.")).toBeNull();
+    // The notice is outside the card, just under it, with a shield (owner, 25/11/2026).
+    const note = screen.getByTestId("secret-safe-note");
+    expect(note.textContent).toBe("Guardado com segurança; o bot nunca vê o valor.");
+    expect(screen.getByTestId("secret-card").contains(note)).toBe(false);
     expect(screen.queryByTestId("decision-category")).toBeNull();
   });
 

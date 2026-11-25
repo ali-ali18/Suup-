@@ -1,4 +1,4 @@
-import { KeyRound, LoaderCircle } from "lucide-react";
+import { KeyRound, LoaderCircle, ShieldCheck } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { SecretRequestState } from "../data/secret-requests.js";
 import { modalOpen } from "../lib/focus.js";
@@ -127,93 +127,103 @@ function OpenForm({
   }
   const waiting = busy !== null;
   return (
-    <DecisionCard
-      testId="secret-card"
-      rootRef={root}
-      groupLabel={`Pedido de segredo de ${botName}: ${name}`}
-      busy={waiting}
-      icon={<KeyRound size={14} />}
-      category="Segredos"
-      compact
-      title={`${botName} pede um segredo`}
-      // The reason and where it will be used, in one paragraph (owner, 25/11/2026).
-      lede={[
-        reason === null || reason === ""
-          ? "O valor vai direto para o cofre; o bot só fica sabendo que ele existe."
-          : `Motivo dado pelo bot: ${withoutEndDot(reason)}.`,
-        suggestedHosts.length > 0 ? `Vai ser usado em ${listHosts(suggestedHosts)}.` : "",
-      ]
-        .filter((part) => part !== "")
-        .join(" ")}
-      footer={
-        <>
-          <Pill
-            tone="quiet"
-            className="min-w-24"
-            disabled={waiting}
-            data-testid="secret-decline"
-            onClick={() => void decline()}
-          >
-            {busy === "decline" ? (
-              <>
-                <LoaderCircle size={16} className="animate-spin" aria-hidden="true" />
-                Recusando…
-              </>
-            ) : (
-              "Agora não"
-            )}
-          </Pill>
-          <Pill
-            tone="primary"
-            className="min-w-28"
-            disabled={waiting || empty}
-            data-testid="secret-save"
-            onClick={() => void save()}
-          >
-            {busy === "save" ? (
-              <>
-                <LoaderCircle size={16} className="animate-spin" aria-hidden="true" />
-                Enviando…
-              </>
-            ) : (
-              "Enviar"
-            )}
-          </Pill>
-        </>
-      }
-    >
-      <form
-        className="flex flex-col gap-2"
-        data-testid="secret-form"
-        autoComplete="off"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void save();
-        }}
+    <div className="flex flex-col gap-2">
+      <DecisionCard
+        testId="secret-card"
+        rootRef={root}
+        groupLabel={`Pedido de segredo de ${botName}: ${name}`}
+        busy={waiting}
+        icon={<KeyRound size={14} />}
+        category="Segredos"
+        compact
+        title={`${botName} pede um segredo`}
+        // The reason and where it will be used, in one paragraph (owner, 25/11/2026).
+        lede={[
+          reason === null || reason === ""
+            ? "O valor vai direto para o cofre; o bot só fica sabendo que ele existe."
+            : `Motivo dado pelo bot: ${withoutEndDot(reason)}.`,
+          suggestedHosts.length > 0 ? `Vai ser usado em ${listHosts(suggestedHosts)}.` : "",
+        ]
+          .filter((part) => part !== "")
+          .join(" ")}
+        footer={
+          <>
+            <Pill
+              tone="quiet"
+              className="min-w-24"
+              disabled={waiting}
+              data-testid="secret-decline"
+              onClick={() => void decline()}
+            >
+              {busy === "decline" ? (
+                <>
+                  <LoaderCircle size={16} className="animate-spin" aria-hidden="true" />
+                  Recusando…
+                </>
+              ) : (
+                "Agora não"
+              )}
+            </Pill>
+            <Pill
+              tone="primary"
+              className="min-w-28"
+              disabled={waiting || empty}
+              data-testid="secret-save"
+              onClick={() => void save()}
+            >
+              {busy === "save" ? (
+                <>
+                  <LoaderCircle size={16} className="animate-spin" aria-hidden="true" />
+                  Enviando…
+                </>
+              ) : (
+                "Enviar"
+              )}
+            </Pill>
+          </>
+        }
       >
-        <SecretInput
-          ref={field}
-          hideLabel
-          label={name}
-          disabled={waiting}
-          error={error}
-          onEmptyChange={setEmpty}
-          onEnter={() => void save()}
-        />
-        {suggestedHosts.length === 0 && (
-          <HostsField
-            value={hosts}
-            onChange={(text) => {
-              setHosts(text);
-              setHostsError(undefined);
-            }}
-            error={hostsError}
+        <form
+          className="flex flex-col gap-2"
+          data-testid="secret-form"
+          autoComplete="off"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void save();
+          }}
+        >
+          <SecretInput
+            ref={field}
+            hideLabel
+            label={name}
             disabled={waiting}
-            hint={`${botName} não disse para onde. Escreva os sites para onde o segredo pode ir.`}
+            error={error}
+            onEmptyChange={setEmpty}
+            onEnter={() => void save()}
           />
-        )}
-      </form>
-    </DecisionCard>
+          {suggestedHosts.length === 0 && (
+            <HostsField
+              value={hosts}
+              onChange={(text) => {
+                setHosts(text);
+                setHostsError(undefined);
+              }}
+              error={hostsError}
+              disabled={waiting}
+              hint={`${botName} não disse para onde. Escreva os sites para onde o segredo pode ir.`}
+            />
+          )}
+        </form>
+      </DecisionCard>
+      {/* Outside the card, just under it (owner, 25/11/2026): where the value goes. */}
+      <p
+        className="m-0 inline-flex items-center gap-2 px-1 text-small text-text-muted [&>svg]:flex-none"
+        data-testid="secret-safe-note"
+      >
+        <ShieldCheck size={14} aria-hidden="true" />
+        Guardado com segurança; o bot nunca vê o valor.
+      </p>
+    </div>
   );
 }
 

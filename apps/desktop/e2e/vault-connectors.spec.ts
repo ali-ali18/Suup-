@@ -62,8 +62,12 @@ test.describe("secret requests and the vault", () => {
     // Where the secret will be used: what the bot filled in, read-only (no field to type in).
     await expect(form.getByTestId("decision-lede")).toContainText("Vai ser usado em localhost.");
     await expect(form.getByLabel("Endereços permitidos")).toHaveCount(0);
-    // No text of the system with the card; the bot's own words of that turn are the bubble above it.
-    await expect(form).not.toContainText("Guardado no cofre");
+    // The bot's own words of that turn are the bubble above it; the only notice of the system is
+    // the shield line outside the card, just under it.
+    await expect(form).not.toContainText("Guardado com segurança");
+    await expect(page.getByTestId("secret-safe-note")).toHaveText(
+      "Guardado com segurança; o bot nunca vê o valor.",
+    );
     await expectWordsAbove(page, "Para usar a API de teste, preciso do seu token.", form);
     await expect(page.getByTestId("chat")).not.toContainText("eu nunca vejo o valor");
     await expect(
