@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { GateCall, ToolGate } from "../approvals/gate.js";
 import { buildReviewMessage } from "../approvals/model-reviewer.js";
+import { createRedactor } from "../secrets.js";
 import { call, createRig, eventsOfType, say, testTools, use } from "../testing/index.js";
 import { defineTool } from "../tool.js";
 import { ROUTINE_NO_QUESTIONS } from "./control-calls.js";
@@ -63,6 +64,16 @@ describe("a run opened by a routine", () => {
     expect(system).toContain("is not the user's approval");
     const [loaded] = eventsOfType(await rig.events(), "context_loaded");
     expect(loaded?.payload.routine).toEqual(ROUTINE);
+  });
+
+  it("keeps vault access but does not offer a secret request", async () => {
+    const rig = createRig({ script: [say("ok")], origin: "routine" });
+    const secrets = { redactor: createRedactor(), resolve: async () => ({}) };
+    await runLoop(rig.deps({ secrets, loadRunContext: async () => context() }), rig.runId);
+    const request = rig.provider.requests[0];
+    expect(request?.tools.map((tool) => tool.name)).not.toContain("request_secret");
+    expect(request?.system).toContain("You can use credentials without ever seeing them");
+    expect(request?.system).toContain("without asking for confidential values");
   });
 
   it("refuses questions: nobody is watching live", async () => {

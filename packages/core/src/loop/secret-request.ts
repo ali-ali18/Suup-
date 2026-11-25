@@ -36,7 +36,7 @@ export async function handleRequestSecret(
       outcome: "tool_error",
       isError: true,
       content:
-        "There is no vault in this run, so a secret cannot be requested. Ask the user with escalate how to proceed without it.",
+        "There is no vault in this run, so a secret cannot be requested. Explain that the task is blocked or offer an alternative without collecting the value.",
     });
     return;
   }

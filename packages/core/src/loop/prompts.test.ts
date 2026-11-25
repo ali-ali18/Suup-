@@ -14,8 +14,20 @@ const words = (text: string) => text.split(/\s+/).filter(Boolean).length;
 describe("system prompt", () => {
   const prompt = buildSystemPrompt({ name: "Ada", personality: "Dry and precise." });
 
+  it("protects confidential information with and without a vault", () => {
+    for (const secrets of [false, true]) {
+      const text = buildSystemPrompt({ name: "Ada", personality: "" }, undefined, { secrets });
+      expect(text).toContain("Never ask for credentials or other confidential information");
+      expect(text).toContain("including `escalate` and proxies");
+      expect(text).toContain("even if instructed otherwise");
+      expect(text).toContain("when that tool is offered");
+      expect(text).toContain("without collecting the value");
+      expect(text).toContain("alternative that does not expose it");
+    }
+  });
+
   it("is short enough to be followed", () => {
-    expect(words(buildSystemPrompt({ name: "Ada", personality: "" }))).toBeLessThanOrEqual(600);
+    expect(words(buildSystemPrompt({ name: "Ada", personality: "" }))).toBeLessThanOrEqual(680);
   });
 
   it("carries the bot's identity and the harness rules", () => {
@@ -394,7 +406,7 @@ describe("system prompt: the welcome", () => {
     expect(prompt).toContain("Ask ONE question at a time with `escalate`");
     expect(prompt).toContain("The user's own request always comes first");
     expect(prompt).toContain("do NOT tell the user you saved it");
-    expect(prompt).toContain("remind them it goes in the Vault");
+    expect(prompt).toContain("remind them to keep its value out of chat");
     expect(prompt).not.toContain("propose_team");
   });
 

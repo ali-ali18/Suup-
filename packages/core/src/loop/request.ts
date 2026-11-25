@@ -39,7 +39,7 @@ export function fixedParts(ctx: LoopContext): {
   const deferred = new Set(catalog?.deferred.map((d) => d.name) ?? []);
   const offered = [
     ...controlToolSpecs({
-      secrets: ctx.deps.secrets !== undefined,
+      secrets: ctx.deps.secrets !== undefined && ctx.run.origin !== "routine",
       scheduleReturn: canScheduleReturn(ctx),
       toolSearch: catalog?.mode,
     }),

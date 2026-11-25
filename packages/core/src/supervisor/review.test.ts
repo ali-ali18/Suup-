@@ -90,3 +90,10 @@ describe("the answer", () => {
     expect(readReviewAnswer({ notes: [], morning_message: 3 })).toBeUndefined();
   });
 });
+
+it("does not request confidential values in the morning message", () => {
+  expect(TEAM_REVIEW_SYSTEM_PROMPT).toContain(
+    "Never ask for credentials or other confidential information",
+  );
+  expect(TEAM_REVIEW_SYSTEM_PROMPT).toContain("without collecting the value");
+});

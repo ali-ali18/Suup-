@@ -88,7 +88,7 @@ export class SecretUnavailableError extends Error {
   override readonly name = "SecretUnavailableError";
   constructor(readonly secretName: string) {
     super(
-      `secret ${secretName} is not available to this bot (it does not exist or was not granted); use request_secret to ask the user for it`,
+      `secret ${secretName} is not available to this bot (it does not exist or was not granted); if request_secret is offered, use it; otherwise explain the task is blocked or offer an alternative without collecting the value`,
     );
   }
 }
