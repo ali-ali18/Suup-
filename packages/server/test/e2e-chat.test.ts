@@ -186,7 +186,12 @@ describe.skipIf(!DATABASE_URL)(
         unavailableReason: expect.stringContaining("SUUP_TEST_MISSING_KEY"),
       });
       const tools = await api.tools.list();
-      expect(tools.control).toEqual(["plan", "finish", "escalate"]);
+      // the control tools, then memory and the web, offered to every bot (withAlwaysOnTools)
+      expect(tools.control.slice(0, 3)).toEqual(["plan", "finish", "escalate"]);
+      expect(tools.control).toEqual(
+        expect.arrayContaining(["remember", "recall", "forget", "search_conversations"]),
+      );
+      expect(tools.control).not.toContain("shell");
       expect(tools.items.map((t) => t.name)).toEqual(
         expect.arrayContaining(["shell", "read_file", "remember", "search_conversations"]),
       );

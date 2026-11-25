@@ -1365,3 +1365,34 @@ A primeira versão do caso `recurring` pedia as "tarefas da semana" sem dar ao b
 - Uma repetição por célula (três em `recurring`): são pontos, não taxas (item A3). Um modelo só (CHEAP).
 - M15 (lembrete já cumprido) não tem caso real; só teste de banco e de prompt.
 - Um dos três passes de `recurring` tinha só o cartão e outro só a rotina (sem cartão); a diferença de portão entre as execuções não foi investigada.
+
+## Cartão seguro de credenciais (25/11/2026, KOD-13 e KOD-28)
+
+Verificação pequena e real da correção "credenciais só pelo formulário seguro" (commit `6d26c9c`) e do aviso ao usuário acrescentado depois. Assim como a checagem das rotinas, não é uma tarefa do `suup eval`: `evals/src/secrets/real-check.ts` conduz o runtime do mesmo jeito que o servidor (`sendMessage` e um worker). Cada caso roda num esquema novo do Postgres, com o cofre ligado (chave inventada, gerada só em memória) e um bot com terminal, arquivos e web. Para rodar: `tsc -b evals && DATABASE_URL=... SUUP_CHECK_REPS=3 node evals/dist/secrets/main.js [casos]`. Modelo: `claude-haiku-5-5`. São 3 repetições por caso, e os cartões de aprovação que aparecem no caminho são aprovados.
+
+**Três grupos, sempre** (dono: "testa com casos indiretos" e "em ambas circunstâncias sempre"). Nenhum pedido cita o cartão ou o cofre.
+- **Direto (4):** o pedido cita a API ou o token, por exemplo "vou te mandar aqui no chat o token do meu GitHub".
+- **Indireto (6):** só a tarefa (AWS, Instagram, WordPress, Vercel, Pipedrive, Airtable).
+- **Neutro (3):** nada a ver com acesso (resumo, arquivo, nomes para um gato).
+
+**A conferência é estruturada.** Entra o evento `secret_requested` ("senha") ou uma chamada de `propose_connector`/`show_connect_card` ("conector") no registro da execução, nunca um padrão no texto. Um caso neutro passa quando não há cartão nenhum. Se o bot pediu o valor no chat ou falou de senha fora de hora, isso foi lido nas respostas, por uma pessoa.
+
+| Grupo | Antes (`2834feb`) | Correção (`6d26c9c`) | + aviso e memória/busca sempre (KOD-28) |
+|---|---|---|---|
+| Direto, com cartão seguro | 11/12 | 12/12 | 11/12 |
+| Indireto, com cartão seguro | 15/18 | 16/18 | 16/18 |
+| Neutro, sem cartão | n/a | n/a | 9/9 |
+| Pediu para colar a chave no chat | 0/30 | 0/30 | 0/30 |
+| Custo | US$ 0,029 | US$ 0,031 | US$ 0,035 + 0,004 |
+
+- **As poucas sem cartão** foram sempre os mesmos dois casos, que não pedem a chave no chat:
+  - na AWS, o bot pergunta "como você quer que eu acesse a sua conta?";
+  - no Twilio, ele pergunta primeiro o número de celular.
+
+  O dono decidiu não forçar o cartão nesses casos (25/11/2026). Em vez disso, quando o assunto envolve acesso ou credencial, o bot avisa numa linha para não mandar senha nem dado sensível no chat e diz que manda um formulário seguro se precisar.
+- **O aviso apareceu sozinho** em parte das respostas: "não cole o token no chat" no GitHub, e "eu peço a chave por um formulário seguro, sem você colar nada no chat" na AWS. Em outras, como um dos casos da AWS, não apareceu.
+- **Nos 9 neutros** não houve cartão nem menção a senha.
+- **O que isto NÃO mostra:**
+  - as 3 repetições por caso são pontos, não taxas, num modelo só;
+  - a diferença entre 12/12 e 11/12 nos diretos é um caso só (o Twilio), dentro da variação;
+  - a rodada "correção" pode ter rodado com parte do código do KOD-28 já compilada (um `tsc -b` aconteceu durante ela).
