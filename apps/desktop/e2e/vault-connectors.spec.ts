@@ -59,8 +59,7 @@ test.describe("secret requests and the vault", () => {
     // The NAME is the label of the field, the reassurance is in the footer, and Enviar waits for text.
     await expect(form.getByLabel("E2E_TOKEN")).toBeVisible();
     // Where the secret will be used: what the bot filled in, read-only (no field to type in).
-    await expect(form.getByTestId("secret-host")).toHaveText(["localhost"]);
-    await expect(form).toContainText("Vai ser usado em");
+    await expect(form.getByTestId("decision-lede")).toContainText("Vai ser usado em localhost.");
     await expect(form.getByLabel("Endereços permitidos")).toHaveCount(0);
     await expect(form).toContainText("Guardado no cofre; o bot nunca vê o valor.");
     await expect(form.getByTestId("secret-save")).toBeDisabled();

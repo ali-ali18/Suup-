@@ -5,7 +5,7 @@ import { modalOpen } from "../lib/focus.js";
 import { hostsProblem, parseHosts, type SecretOutcome } from "../lib/secret-form.js";
 import { ActionCard, ActionLabel } from "./action-card.js";
 import { DecisionCard } from "./decision-card.js";
-import { HostsField, HostsLine } from "./hosts-field.js";
+import { HostsField } from "./hosts-field.js";
 import { Pill } from "./primitives.js";
 import { userIsTyping } from "./question-card.js";
 import { SecretInput, type SecretInputHandle } from "./secret-input.js";
@@ -31,6 +31,19 @@ const LINE: Record<Exclude<SecretRequestState, "open">, (name: string) => string
   declined: (name) => `Você recusou o segredo ${name}`,
   closed: (name) => `Pedido do segredo ${name} encerrado`,
 };
+
+/** The text without the dots and spaces it ends with (the card adds its own period). */
+function withoutEndDot(text: string): string {
+  let end = text.length;
+  while (end > 0 && (text[end - 1] === "." || text[end - 1] === " ")) end -= 1;
+  return text.slice(0, end);
+}
+
+/** "a", "a e b", "a, b e c": the sites in a sentence. */
+function listHosts(hosts: readonly string[]): string {
+  if (hosts.length <= 1) return hosts.join("");
+  return `${hosts.slice(0, -1).join(", ")} e ${hosts.at(-1)}`;
+}
 
 /**
  * The secure form: the bot asked for a credential. A password field (hidden, with a button to
@@ -121,12 +134,17 @@ function OpenForm({
       busy={waiting}
       icon={<KeyRound size={14} />}
       category="Segredos"
+      compact
       title={`${botName} pede um segredo`}
-      lede={
+      // The reason and where it will be used, in one paragraph (owner, 25/11/2026).
+      lede={[
         reason === null || reason === ""
           ? "O valor vai direto para o cofre; o bot só fica sabendo que ele existe."
-          : `Motivo dado pelo bot: ${reason}`
-      }
+          : `Motivo dado pelo bot: ${withoutEndDot(reason)}.`,
+        suggestedHosts.length > 0 ? `Vai ser usado em ${listHosts(suggestedHosts)}.` : "",
+      ]
+        .filter((part) => part !== "")
+        .join(" ")}
       footerNote={
         <span className="inline-flex items-center gap-2 [&>svg]:flex-none">
           <ShieldCheck size={14} aria-hidden="true" />
@@ -181,16 +199,14 @@ function OpenForm({
       >
         <SecretInput
           ref={field}
+          hideLabel
           label={name}
           disabled={waiting}
           error={error}
           onEmptyChange={setEmpty}
           onEnter={() => void save()}
         />
-        {suggestedHosts.length > 0 ? (
-          // The bot filled in where it will use the secret: shown, not typed (fewer mistakes).
-          <HostsLine hosts={suggestedHosts} />
-        ) : (
+        {suggestedHosts.length === 0 && (
           <HostsField
             value={hosts}
             onChange={(text) => {

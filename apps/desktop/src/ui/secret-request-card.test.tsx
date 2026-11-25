@@ -40,11 +40,16 @@ describe("the secure form", () => {
     expect(field().getAttribute("autocapitalize")).toBe("off");
     expect(field().hasAttribute("name")).toBe(false);
     expect(screen.getByText("Ajudante pede um segredo")).toBeTruthy();
-    expect(screen.getByText("Motivo dado pelo bot: para dar push")).toBeTruthy();
-    // Its NAME is the label of the field, and the footer promises what the vault does.
+    // The reason and where it will be used, in one paragraph.
+    expect(
+      screen.getByText("Motivo dado pelo bot: para dar push. Vai ser usado em api.github.com."),
+    ).toBeTruthy();
+    // Its NAME labels the field (for screen readers) and is its placeholder; the footer promises
+    // what the vault does. The compact card has no category row (the icon sits beside the title).
     expect(screen.getByLabelText("GH_TOKEN")).toBe(field());
+    expect(field().getAttribute("placeholder")).toBe("GH_TOKEN");
     expect(screen.getByText("Guardado no cofre; o bot nunca vê o valor.")).toBeTruthy();
-    expect(screen.getByText("Segredos")).toBeTruthy();
+    expect(screen.queryByTestId("decision-category")).toBeNull();
   });
 
   it("the reveal button is off by default and only changes how the field is drawn", () => {
@@ -193,11 +198,11 @@ describe("a request already answered", () => {
   describe("the sites the secret may go to", () => {
     const hosts = () => screen.getByLabelText("Endereços permitidos") as HTMLTextAreaElement;
 
-    it("shows the sites the bot filled in, read-only (no field to type in)", () => {
+    it("says where the bot will use it in the paragraph, read-only (no field to type in)", () => {
       show({ suggestedHosts: ["api.github.com", "uploads.github.com"] });
-      const shown = screen.getAllByTestId("secret-host").map((el) => el.textContent);
-      expect(shown).toEqual(["api.github.com", "uploads.github.com"]);
-      expect(screen.getByText("Vai ser usado em")).toBeTruthy();
+      expect(screen.getByTestId("decision-lede").textContent).toContain(
+        "Vai ser usado em api.github.com e uploads.github.com.",
+      );
       expect(screen.queryByLabelText("Endereços permitidos")).toBeNull();
     });
 
