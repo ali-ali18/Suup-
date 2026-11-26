@@ -1,5 +1,13 @@
 import { listTasksQuerySchema, replyToTaskBodySchema } from "@suup/api";
-import { cancelRun, getRun, getTask, listTasks, replyToTask } from "@suup/db";
+import {
+  cancelRun,
+  getRun,
+  getTask,
+  listTasks,
+  markTaskRead,
+  replyToTask,
+  taskUnreadReplies,
+} from "@suup/db";
 import { applyStatusEffects, finishRun } from "@suup/runtime";
 import { HttpError } from "../errors.js";
 import type { Route } from "../http.js";
@@ -11,7 +19,8 @@ async function taskBody(ctx: Parameters<Route["handler"]>[0], taskId: string) {
   const task = await getTask(db, taskId);
   const run = task === null ? null : await getRun(db, task.runId);
   if (task === null || run === null) throw new HttpError("not_found", "Tarefa não encontrada.");
-  return toTaskDto(task, run);
+  const unread = await taskUnreadReplies(db, [task.id]);
+  return toTaskDto(task, run, unread.get(task.id) ?? 0);
 }
 
 export const taskRoutes: Route[] = [
@@ -26,10 +35,14 @@ export const taskRoutes: Route[] = [
         ...(query.conversationId === undefined ? {} : { conversationId: query.conversationId }),
         ...(query.botId === undefined ? {} : { botId: query.botId }),
       });
+      const unread = await taskUnreadReplies(
+        db,
+        tasks.map((t) => t.id),
+      );
       const items = [];
       for (const task of tasks) {
         const run = await getRun(db, task.runId);
-        if (run !== null) items.push(toTaskDto(task, run));
+        if (run !== null) items.push(toTaskDto(task, run, unread.get(task.id) ?? 0));
       }
       return { body: { items } };
     },
@@ -55,9 +68,22 @@ export const taskRoutes: Route[] = [
         status: 201,
         body: {
           message: toMessageDto(sent.message),
-          task: toTaskDto(sent.task, sent.run),
+          task: toTaskDto(sent.task, sent.run, 0),
         },
       };
+    },
+  },
+  {
+    // The person opened the task's own view: its replies count as read (the same cursor a chat
+    // has, on the task's conversation). Idempotent; the stream tells every open screen.
+    method: "POST",
+    pattern: "/v1/tasks/:id/read",
+    async handler(ctx) {
+      const id = ctx.uuid("id");
+      if ((await markTaskRead(ctx.runtime.db, id)) === null) {
+        throw new HttpError("not_found", "Tarefa não encontrada.");
+      }
+      return { body: await taskBody(ctx, id) };
     },
   },
   {
@@ -80,7 +106,7 @@ export const taskRoutes: Route[] = [
       if (run.status === "cancelled") {
         await finishRun(db, run.id, { redact: (value) => ctx.runtime.redactJson(value) });
       }
-      return { body: toTaskDto(task, (await getRun(db, task.runId)) ?? run) };
+      return { body: await taskBody(ctx, task.id) };
     },
   },
 ];

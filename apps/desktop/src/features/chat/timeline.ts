@@ -9,9 +9,17 @@ import type { LocalMessage } from "../../data/state.js";
 import type { BubblePosition, UserMessageState } from "../../ui/message.js";
 
 /** A task a bubble or a card comes from (KOD-68): what its label above says. */
-export type TaskRef = Pick<Task, "id" | "title" | "state">;
+export type TaskRef = Pick<Task, "id" | "title" | "state"> & {
+  /** The task brought replies the person has not seen: its label says "Novas respostas". */
+  unread: boolean;
+};
 
-const refOf = (task: Task): TaskRef => ({ id: task.id, title: task.title, state: task.state });
+const refOf = (task: Task): TaskRef => ({
+  id: task.id,
+  title: task.title,
+  state: task.state,
+  unread: task.unreadReplies > 0,
+});
 
 /**
  * The task a bot message comes from, by the structure the server declares and never by its text:

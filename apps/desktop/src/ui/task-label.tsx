@@ -1,6 +1,7 @@
 import type { TaskState } from "@suup/api";
 import { MessageCircle } from "lucide-react";
-import { TASK_STATE_TEXT } from "../data/task-text.js";
+import { NEW_REPLIES_TEXT, TASK_STATE_TEXT } from "../data/task-text.js";
+import { cx } from "../lib/cx.js";
 
 /**
  * The small label above a bubble or a card that comes from a task (KOD-68, docs/DESIGN.md,
@@ -12,14 +13,18 @@ export function TaskLabel({
   taskId,
   title,
   state,
+  unread = false,
   onOpen,
 }: {
   taskId: string;
   title: string;
   state: TaskState;
+  /** The task has replies the person has not seen: "Novas respostas" in the unread colour. */
+  unread?: boolean;
   onOpen(taskId: string): void;
 }) {
-  const text = `${title} · ${TASK_STATE_TEXT[state]}`;
+  const stateText = unread ? NEW_REPLIES_TEXT : TASK_STATE_TEXT[state];
+  const text = `${title} · ${stateText}`;
   return (
     <button
       type="button"
@@ -27,6 +32,7 @@ export function TaskLabel({
       data-testid="task-label"
       data-task={taskId}
       data-task-state={state}
+      data-task-unread={unread ? "true" : undefined}
       title={text}
       aria-label={`Abrir a tarefa: ${text}`}
       onClick={() => onOpen(taskId)}
@@ -55,7 +61,12 @@ export function TaskLabel({
           >
             {title}
           </span>
-          <span className="flex-none whitespace-pre">{` · ${TASK_STATE_TEXT[state]}`}</span>
+          <span
+            data-testid="task-label-state"
+            className={cx("flex-none whitespace-pre", unread && "text-status-unread")}
+          >
+            {` · ${stateText}`}
+          </span>
         </span>
       </span>
     </button>

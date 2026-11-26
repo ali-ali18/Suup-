@@ -10,6 +10,9 @@ export const TASK_STATE_TEXT: Record<TaskState, string> = {
   stopped: "Parada",
 };
 
+/** What the label of a task says in place of its state while it has replies you have not seen. */
+export const NEW_REPLIES_TEXT = "Novas respostas";
+
 /** "1 atualização", "3 atualizações", "Nenhuma atualização ainda". */
 export function updatesText(count: number): string {
   if (count <= 0) return "Nenhuma atualização ainda";

@@ -469,6 +469,7 @@ export {
   listTasks,
   MAX_OPEN_TASKS,
   MAX_TASK_SOURCE_MESSAGES,
+  markTaskRead,
   openTaskResult,
   pendingTaskResults,
   recentUserMessages,
@@ -477,6 +478,7 @@ export {
   TaskError,
   type TaskErrorCode,
   taskStartContext,
+  taskUnreadReplies,
 } from "./tasks.js";
 export {
   decideTeamProposal,

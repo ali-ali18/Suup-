@@ -279,6 +279,8 @@ export interface SuupClient {
     reply(id: string, text: string): Promise<ReplyToTaskResult>;
     /** Stops the task (the same cancellation as any run). */
     stop(id: string): Promise<Task>;
+    /** The task's own view was opened: its replies count as read (the label stops saying "Novas respostas"). */
+    markRead(id: string): Promise<Task>;
   };
   runs: {
     list(query?: ListRunsQuery): Promise<{ items: Run[]; hasMore: boolean }>;
@@ -710,6 +712,7 @@ export function createClient(options: ClientOptions): SuupClient {
           body: { text },
         }),
       stop: (taskId) => call("POST", `/v1/tasks/${id(taskId)}/stop`, taskSchema, noBody),
+      markRead: (taskId) => call("POST", `/v1/tasks/${id(taskId)}/read`, taskSchema, noBody),
     },
     supervisor: {
       settings: {

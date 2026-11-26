@@ -15,6 +15,10 @@
 --     `closed_at` marca que o fim da tarefa já foi tratado (o resultado entregue ao chat, ou nada a
 --     entregar porque o usuário a parou) e `closing_run_id` é o turno do chat que a entregou. Os dois
 --     são gravados numa transação com a linha da tarefa travada, o que torna a entrega uma só.
+--   * A leitura da tarefa (respostas novas, KOD-68) usa o cursor de leitura que toda conversa já tem
+--     (`conversations.last_read_seq`), o da conversa da própria tarefa: respostas novas são as
+--     mensagens do bot dela depois do cursor. Quando esse cursor ou a última mensagem dessa conversa
+--     mudam, a tarefa entra no diário de mudanças (o rótulo muda ao vivo).
 --
 -- Nada aqui usa expressão regular.
 
@@ -101,3 +105,27 @@ create constraint trigger runs_task_change_log_update
   for each row
   when (new.origin = 'task' and old.status is distinct from new.status)
   execute function change_log_task_runs();
+
+-- Respostas novas: a conversa de uma tarefa recebeu mensagem ou teve a leitura movida.
+create or replace function change_log_task_conversations() returns trigger language plpgsql as $$
+declare
+  v_task uuid;
+begin
+  select id into v_task from tasks where task_conversation_id = new.id;
+  if v_task is not null then
+    perform change_log_append('task', v_task::text, null, 'updated');
+  end if;
+  return null;
+end;
+$$;
+
+create constraint trigger task_conversations_change_log_update
+  after update on conversations
+  deferrable initially deferred
+  for each row
+  when (
+    new.kind = 'task'
+    and (old.last_message_at is distinct from new.last_message_at
+      or old.last_read_seq is distinct from new.last_read_seq)
+  )
+  execute function change_log_task_conversations();

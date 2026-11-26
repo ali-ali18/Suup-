@@ -25,6 +25,7 @@ import { Pill, RoundButton } from "../../ui/primitives.js";
 import { QuestionCard } from "../../ui/question-card.js";
 import { ScrollFade } from "../../ui/scroll-fade.js";
 import { TaskLabel } from "../../ui/task-label.js";
+import { TaskLink } from "../../ui/task-link.js";
 import { TeamCard } from "../../ui/team-card.js";
 import { ApprovalRow, SecretRequestRow } from "./ApprovalRows.js";
 import { ConnectCard } from "./ConnectCard.js";
@@ -267,6 +268,7 @@ export function MessageList({
                     favicons={favicons}
                     typing={item.live === true}
                     label={taskLabel(item.task, onOpenTask)}
+                    link={taskLink(item.task, onOpenTask)}
                   />
                 );
               case "files":
@@ -396,7 +398,21 @@ export function MessageList({
 /** The label of the task something comes from, when the screen can open the task (KOD-68). */
 function taskLabel(task: TaskRef | undefined, onOpen: ((taskId: string) => void) | undefined) {
   if (task === undefined || onOpen === undefined) return undefined;
-  return <TaskLabel taskId={task.id} title={task.title} state={task.state} onOpen={onOpen} />;
+  return (
+    <TaskLabel
+      taskId={task.id}
+      title={task.title}
+      state={task.state}
+      unread={task.unread}
+      onOpen={onOpen}
+    />
+  );
+}
+
+/** The link to the task inside the bubble of the message that opened it or brought its result. */
+function taskLink(task: TaskRef | undefined, onOpen: ((taskId: string) => void) | undefined) {
+  if (task === undefined || onOpen === undefined) return undefined;
+  return <TaskLink taskId={task.id} title={task.title} onOpen={onOpen} />;
 }
 
 /** How long the leaving row waits for its transition before going anyway (a safety net). */

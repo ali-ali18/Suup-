@@ -96,7 +96,7 @@ export function taskStateOf(status: RunRow["status"]): TaskState {
   }
 }
 
-export function toTaskDto(task: TaskRow, run: RunRow): Task {
+export function toTaskDto(task: TaskRow, run: RunRow, unreadReplies = 0): Task {
   return {
     id: task.id,
     botId: task.botId,
@@ -107,6 +107,7 @@ export function toTaskDto(task: TaskRow, run: RunRow): Task {
     closingRunId: task.closingRunId,
     title: task.title,
     state: taskStateOf(run.status),
+    unreadReplies,
     createdAt: iso(task.createdAt),
     updatedAt: iso(run.updatedAt),
     finishedAt: isoOrNull(run.finishedAt),

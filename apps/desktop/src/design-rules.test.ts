@@ -2248,6 +2248,16 @@ describe("tarefas (docs/DESIGN.md, 4d)", () => {
     for (const box of ["rounded-full", "shadow", "border-border", "bg-surface"]) {
       expect(label).not.toContain(box);
     }
+    // "Novas respostas" in the unread token, and the task link in the bubble: text colour, underlined.
+    expect(label).toContain("text-status-unread");
+    expect(read(join(SRC, "data/task-text.ts"))).toContain('"Novas respostas"');
+    const link = read(join(SRC, "ui/task-link.tsx"));
+    expect(link).toContain('data-testid="task-link"');
+    expect(link).toContain("MessageCircle");
+    expect(link).toContain("underline");
+    expect(link).toContain("text-inherit");
+    expect(link).not.toContain("text-link");
+    expect(read(join(SRC, "features/chat/TaskView.tsx"))).toContain("markTaskRead");
     expect(read(join(SRC, "features/chat/TaskView.tsx"))).toContain('"Adicione uma resposta"');
   });
 });

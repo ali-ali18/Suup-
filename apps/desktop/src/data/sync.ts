@@ -486,6 +486,19 @@ export class Sync {
     }
   }
 
+  /**
+   * The task's own view is on screen: its replies count as read (the label of the chat stops saying
+   * "Novas respostas"). Quiet on failure: the next open tries again.
+   */
+  async markTaskRead(taskId: string): Promise<void> {
+    try {
+      const task = await this.deps.api.tasks.markRead(taskId);
+      update(this.store, (s) => mergeTask(s, task));
+    } catch (error) {
+      this.fail(error);
+    }
+  }
+
   async loadConversationRuns(conversationId: string): Promise<void> {
     try {
       const page = await this.deps.api.runs.list({ conversationId, limit: 50 });

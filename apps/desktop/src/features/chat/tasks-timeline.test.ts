@@ -19,6 +19,7 @@ const task = (over: Partial<Task> = {}): Task => ({
   closingRunId: null,
   title: "Revisar o projeto",
   state: "working",
+  unreadReplies: 0,
   createdAt: at(14, 10),
   updatedAt: at(14, 10),
   finishedAt: null,
@@ -40,6 +41,19 @@ describe("the label of a task above what comes from it (KOD-68)", () => {
     expect(taskOfMessage(other, [t])).toBeUndefined();
     const user = makeMessage({ runId: "run-chat", authorKind: "user", createdAt: at(14, 12) });
     expect(taskOfMessage(user, [t])).toBeUndefined();
+  });
+
+  it("says the task has replies to read from the server's unread count, never from words", () => {
+    const quiet = task({ closingRunId: "run-close" });
+    const loud = task({ closingRunId: "run-close", unreadReplies: 2 });
+    const msg = bot({
+      seq: 3,
+      runId: "run-close",
+      createdAt: at(14, 40),
+      text: "Novas respostas?",
+    });
+    expect(taskOfMessage(msg, [quiet])).toMatchObject({ unread: false });
+    expect(taskOfMessage(msg, [loud])).toMatchObject({ unread: true });
   });
 
   it("puts the task on the item, a labelled bubble starts its own group, and a task card is labelled", () => {

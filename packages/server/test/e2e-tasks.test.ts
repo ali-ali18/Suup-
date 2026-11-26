@@ -150,6 +150,12 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("tasks through the API"), { timeout: 
     );
     // The chat is free and was not asked anything.
     expect(await botTexts(chatId)).not.toContain("Qual pasta devo usar?");
+    // The question is a reply the person has not seen: the task says so until its view is opened.
+    expect((await api.tasks.get(task.id)).unreadReplies).toBeGreaterThan(0);
+    expect((await api.tasks.list({ conversationId: chatId }))[0]?.unreadReplies).toBeGreaterThan(0);
+    const read = await api.tasks.markRead(task.id);
+    expect(read.unreadReplies).toBe(0);
+    expect((await api.tasks.get(task.id)).unreadReplies).toBe(0);
     const sent = await api.tasks.reply(task.id, "Use a pasta documentos.");
     expect(sent.message).toMatchObject({
       conversationId: task.taskConversationId,
@@ -157,6 +163,11 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("tasks through the API"), { timeout: 
       text: "Use a pasta documentos.",
     });
     await until(async () => (await api.tasks.get(task.id)).state === "done", "the task done");
+    // What the task said after the person read it counts again.
+    expect((await api.tasks.get(task.id)).unreadReplies).toBeGreaterThan(0);
+    await expect(api.tasks.markRead("00000000-0000-4000-8000-000000000000")).rejects.toMatchObject({
+      status: 404,
+    });
     expect(
       (await api.conversations.messages(task.taskConversationId)).items.map((m) => m.text),
     ).toEqual(

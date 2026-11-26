@@ -9,6 +9,7 @@
 // the task's own run, and the result goes back to the chat once.
 import { z } from "zod";
 import { type Db, withTransaction } from "./client.js";
+import { markConversationRead } from "./conversations.js";
 import { postInbox } from "./inbox.js";
 import { appendMessage, type Message } from "./messages.js";
 import { createRun, getRun } from "./runs.js";
@@ -476,4 +477,38 @@ export async function pendingTaskResults(
     if (run !== null) out.push({ task: mapTask(row), run });
   }
   return out;
+}
+
+/**
+ * How many replies of each task the person has not seen yet (KOD-68): the bot's messages in the
+ * task's own conversation after that conversation's read cursor (`conversations.last_read_seq`, the
+ * same cursor a chat has; the user's own messages and the run's event lines never count). A task
+ * with none is absent from the map.
+ */
+export async function taskUnreadReplies(
+  db: Db,
+  taskIds: readonly string[],
+): Promise<Map<string, number>> {
+  if (taskIds.length === 0) return new Map();
+  const ids = z.array(z.uuid()).parse([...taskIds]);
+  const rows = await db.sql<{ id: string; n: string }[]>`
+    select t.id, count(*) as n
+    from tasks t
+    join conversations c on c.id = t.task_conversation_id
+    join messages m on m.conversation_id = c.id
+    where t.id = any(${ids}::uuid[])
+      and m.author_kind <> 'user' and m.event_seq is null and m.seq > c.last_read_seq
+    group by t.id`;
+  return new Map(rows.map((r) => [r.id, Number(r.n)]));
+}
+
+/**
+ * The person opened the task's own view: everything in it counts as read. It never moves the cursor
+ * backwards and is idempotent. `null` for a task that does not exist.
+ */
+export async function markTaskRead(db: Db, taskId: string): Promise<Task | null> {
+  const task = await getTask(db, taskId);
+  if (task === null) return null;
+  await markConversationRead(db, task.taskConversationId);
+  return task;
 }

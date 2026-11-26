@@ -39,6 +39,12 @@ export const taskSchema = z.object({
   /** The name the person sees. */
   title: z.string(),
   state: taskStateSchema,
+  /**
+   * How many of the task's replies (the bot's messages in its own conversation) the person has not
+   * seen: the label above the bubble says "Novas respostas" while it is above 0, until the task's
+   * view is opened (`POST /v1/tasks/{id}/read`).
+   */
+  unreadReplies: z.number().int().nonnegative(),
   createdAt: isoDate,
   /** When the state last changed (the run's): a client keeps the newest version it saw. */
   updatedAt: isoDate,

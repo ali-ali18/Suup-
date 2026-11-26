@@ -39,7 +39,15 @@ O cartão de uma ação da tarefa pertence ao **chat que a pediu** (`approval.co
 
 ## Eventos
 
-`task.changed` no stream (`created` ou `updated`): a tarefa inteira, com o estado atual. Sai quando a tarefa nasce, quando a situação da execução muda e quando o resultado é entregue.
+`task.changed` no stream (`created` ou `updated`): a tarefa inteira, com o estado atual. Sai quando a tarefa nasce, quando a situação da execução muda, quando o resultado é entregue e quando a conversa da tarefa recebe mensagem ou tem a leitura movida.
+
+## Respostas novas (decisão do dono, 26/11/2026)
+
+O servidor guarda até onde a pessoa leu cada tarefa: é o cursor de leitura que toda conversa já tem (`conversations.last_read_seq`), o da conversa **da própria tarefa** (a migração `0040_tasks.sql` põe o gatilho do diário de mudanças). `Task.unreadReplies` é o número de mensagens do bot nessa conversa depois do cursor (as do usuário e as linhas de evento da execução não contam). Com `unreadReplies > 0` o rótulo do chat diz "· Novas respostas" no azul de não lida (`--color-status-unread`, o da bolinha do avatar) no lugar do estado. Abrir a tela da tarefa chama `POST /v1/tasks/{id}/read` (de novo a cada resposta que chega com a tela aberta) e o rótulo volta ao estado normal. O app só mostra o que o servidor diz.
+
+## O link da tarefa na mensagem (decisão do dono, 26/11/2026)
+
+No fim do balão da mensagem que **abriu** a tarefa e da que **entrega o resultado** o app desenha um link (ícone de balão de conversa só contorno + o nome, sublinhado, na cor do texto) que abre a tela da tarefa. Vem da **estrutura**, nunca do texto do modelo: a tarefa que o servidor ligou à execução do chat (`fromRunId`, as palavras escritas depois de ela abrir) ou ao turno do resultado (`closingRunId`), ambos em `Task`.
 
 ## Não existe (de propósito)
 

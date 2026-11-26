@@ -187,7 +187,7 @@ O app só desenha o que o backend oferece: a **estrela** no avatar do bot com `i
 
 ## 7c. Tarefas (KOD-68)
 
-O app só desenha o que a API de tarefas oferece ([TAREFAS.md](TAREFAS.md), [API.md](API.md)): no chat, o rótulo "↳ nome · estado" acima do balão que vem de uma tarefa (as palavras do bot depois de abri-la e o turno que entrega o resultado, ligados por `fromRunId`/`closingRunId`, nunca pelo texto) e acima do cartão de aprovação dela (`approval.runId` = `task.runId`); tocar no rótulo abre a tela da tarefa (título, estado, "N atualizações", as mensagens da conversa dela e a caixa "Adicione uma resposta" que escreve em `POST /v1/tasks/{id}/messages`). O estado vem de `Task.state`, mantido por `task.changed`. Sem página de Tarefas (KOD-66).
+O app só desenha o que a API de tarefas oferece ([TAREFAS.md](TAREFAS.md), [API.md](API.md)): no chat, o rótulo "↳ nome · estado" acima do balão que vem de uma tarefa (as palavras do bot depois de abri-la e o turno que entrega o resultado, ligados por `fromRunId`/`closingRunId`, nunca pelo texto) e acima do cartão de aprovação dela (`approval.runId` = `task.runId`); com `unreadReplies > 0` o estado do rótulo vira "Novas respostas" no azul de não lida até a tela da tarefa ser aberta (`POST /v1/tasks/{id}/read`); no fim do balão da mensagem que abriu a tarefa e da que entrega o resultado há o link da tarefa (mesma estrutura); tocar no rótulo ou no link abre a tela da tarefa (título, estado, "N atualizações", as mensagens da conversa dela e a caixa "Adicione uma resposta" que escreve em `POST /v1/tasks/{id}/messages`). O estado vem de `Task.state`, mantido por `task.changed`. Sem página de Tarefas (KOD-66).
 
 ## 8. O que entra depois
 

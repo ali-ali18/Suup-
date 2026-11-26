@@ -14,6 +14,7 @@ import {
   listActiveConversationRuns,
   listChanges,
   listRunEvents,
+  taskUnreadReplies,
 } from "@suup/db";
 import {
   toApprovalDto,
@@ -164,9 +165,9 @@ async function eventsOf(
     case "task": {
       const task = await getTask(db, change.ref);
       const run = task === null ? null : await getRun(db, task.runId);
-      return task === null || run === null
-        ? []
-        : [taskEvent(task, run, change.op === "created" ? "created" : "updated")];
+      if (task === null || run === null) return [];
+      const unread = (await taskUnreadReplies(db, [task.id])).get(task.id) ?? 0;
+      return [taskEvent(task, run, change.op === "created" ? "created" : "updated", unread)];
     }
     case "bot": {
       const summary = await getBotSummary(db, change.ref);
@@ -214,11 +215,12 @@ function taskEvent(
   task: Parameters<typeof toTaskDto>[0],
   run: Parameters<typeof toTaskDto>[1],
   change: "created" | "updated",
+  unread: number,
 ): WireEvent {
   return {
     type: "task.changed",
     key: `task:${task.id}`,
     version: run.updatedAt.getTime(),
-    data: { change, task: toTaskDto(task, run) },
+    data: { change, task: toTaskDto(task, run, unread) },
   };
 }

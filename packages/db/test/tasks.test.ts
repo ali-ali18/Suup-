@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   appendMessage,
   cancelRun,
+  changeLogBounds,
   createBot,
   createDirectConversation,
   createRun,
@@ -14,10 +15,12 @@ import {
   getRun,
   getTask,
   listApprovals,
+  listChanges,
   listConversations,
   listMessages,
   listTasks,
   MAX_OPEN_TASKS,
+  markTaskRead,
   openTaskResult,
   peekInboxEntries,
   pendingTaskResults,
@@ -28,6 +31,7 @@ import {
   setRunStatus,
   TaskError,
   taskStartContext,
+  taskUnreadReplies,
 } from "../src/index.js";
 import { DATABASE_URL, dbSuiteName, useIsolatedDb } from "./helpers.js";
 
@@ -195,6 +199,52 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("tasks of a bot (KOD-68)"), () => {
     await expect(replyToTask(ctx.db, task.id, "Ainda aí?")).rejects.toMatchObject({
       code: "finished",
     });
+  });
+
+  it("counts the replies of a task the person has not seen, and opening the task marks them read", async () => {
+    const c = await chat();
+    const { task, run } = await start(c);
+    expect((await taskUnreadReplies(ctx.db, [task.id])).get(task.id)).toBeUndefined();
+    const before = (await changeLogBounds(ctx.db)).newest;
+    await appendMessage(ctx.db, {
+      conversationId: task.taskConversationId,
+      authorKind: "bot",
+      authorBotId: c.bot.id,
+      text: "Qual pasta devo revisar primeiro?",
+      runId: run.id,
+    });
+    // The user's own words in the task view never count as a reply to read.
+    await replyToTask(ctx.db, task.id, "A src.");
+    expect((await taskUnreadReplies(ctx.db, [task.id])).get(task.id)).toBe(1);
+    // The change feed says the task changed (the label updates live).
+    const changes = (await listChanges(ctx.db, before)).filter(
+      (x) => x.kind === "task" && x.ref === task.id,
+    );
+    expect(changes.length).toBeGreaterThan(0);
+    // Another task's replies are separate.
+    const other = await start(c, "Outra tarefa");
+    expect((await taskUnreadReplies(ctx.db, [task.id, other.task.id])).get(other.task.id)).toBe(
+      undefined,
+    );
+    const mark = (await changeLogBounds(ctx.db)).newest;
+    expect(await markTaskRead(ctx.db, task.id)).toMatchObject({ id: task.id });
+    expect((await taskUnreadReplies(ctx.db, [task.id])).get(task.id)).toBeUndefined();
+    expect(
+      (await listChanges(ctx.db, mark)).some((x) => x.kind === "task" && x.ref === task.id),
+    ).toBe(true);
+    // A new reply after the cursor counts again; reading twice changes nothing.
+    await appendMessage(ctx.db, {
+      conversationId: task.taskConversationId,
+      authorKind: "bot",
+      authorBotId: c.bot.id,
+      text: "Obrigado, sigo com a src.",
+      runId: run.id,
+    });
+    expect((await taskUnreadReplies(ctx.db, [task.id])).get(task.id)).toBe(1);
+    await markTaskRead(ctx.db, task.id);
+    await markTaskRead(ctx.db, task.id);
+    expect((await taskUnreadReplies(ctx.db, [task.id])).get(task.id)).toBeUndefined();
+    expect(await markTaskRead(ctx.db, randomUUID())).toBeNull();
   });
 
   it("forwards to a task by message id (verbatim) or by the bot's own words, only from its chat", async () => {

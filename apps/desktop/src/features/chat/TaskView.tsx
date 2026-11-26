@@ -36,6 +36,11 @@ export function TaskView({ task, bot, onBack }: { task: Task; bot: Bot; onBack()
     return () => sync.unwatchConversation(task.taskConversationId);
   }, [sync, task.taskConversationId]);
 
+  // Opening the view (and every reply that arrives while it is open) counts as reading the task.
+  useEffect(() => {
+    if (task.unreadReplies > 0) void sync.markTaskRead(task.id);
+  }, [sync, task.id, task.unreadReplies]);
+
   const messages = useMemo(() => orderedMessages(slice), [slice]);
   const taskRuns = useMemo(
     () =>

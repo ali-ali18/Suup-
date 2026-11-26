@@ -116,10 +116,38 @@ test.describe("tasks of a bot", () => {
     await expect(label(page)).toHaveCount(1);
     // The task asks something: its question is for ITS view, not the chat; the label says it waits.
     await expect(label(page)).toHaveAttribute("data-task-state", "waiting_user");
-    await expect(label(page)).toHaveText("Revisar o projeto · Aguardando sua resposta");
+    // The task posted while you are in the chat: the label says "Novas respostas", in the unread
+    // blue (the colour of the avatar's dot), instead of the state, until you open the task.
+    await expect(label(page)).toHaveText("Revisar o projeto · Novas respostas");
+    await expect(label(page)).toHaveAttribute("data-task-unread", "true");
+    const unreadColour = await label(page)
+      .getByTestId("task-label-state")
+      .evaluate((el) => getComputedStyle(el).color);
+    expect(unreadColour).toBe("rgb(36, 150, 232)");
     await expect(
       page.getByTestId("message-bot").filter({ hasText: "Qual pasta devo revisar primeiro?" }),
     ).toHaveCount(0);
+    // The message that opened the task carries its link inside the bubble: the outline chat icon and
+    // the name, underlined, in the text colour (never blue).
+    const link = bubble.getByTestId("task-link");
+    await expect(link).toHaveCount(1);
+    await expect(link).toHaveText("Revisar o projeto");
+    const linkLook = await link.evaluate((el) => {
+      const name = el.querySelector("span") as HTMLElement;
+      return {
+        line: getComputedStyle(name).textDecorationLine,
+        colour: getComputedStyle(el).color,
+        text: getComputedStyle(el.closest("[data-testid=bubble-bot]") as HTMLElement).color,
+        icon: el.querySelector("svg") !== null,
+      };
+    });
+    expect(linkLook.line).toContain("underline");
+    expect(linkLook.colour).toBe(linkLook.text);
+    expect(linkLook.icon).toBe(true);
+    // The bubble's text is fully shown before the capture.
+    await expect(bubble).toContainText("O resultado volta aqui.");
+    await page.waitForTimeout(600);
+    await page.screenshot({ path: shot("novas-respostas") });
 
     // Geometry: the label is above the bubble, on its left edge, and is not a bubble itself.
     const lb = await label(page).boundingBox();
@@ -237,7 +265,16 @@ test.describe("tasks of a bot", () => {
     await expect(result.getByTestId("task-label")).toHaveText("Revisar o projeto · Concluída");
     // The opening bubble's label changed with the task, too.
     await expect(label(page).first()).toHaveAttribute("data-task-state", "done");
+    // Opening the task marked it read: no "Novas respostas" any more, anywhere.
+    await expect(page.locator("[data-task-unread]")).toHaveCount(0);
+    // The result message has the link too, and it opens the task's view.
+    const resultLink = result.getByTestId("task-link");
+    await expect(resultLink).toHaveText("Revisar o projeto");
     await page.screenshot({ path: shot("resultado-no-chat") });
+    await result.screenshot({ path: shot("link-na-mensagem") });
+    await resultLink.click();
+    await expect(page.getByTestId("task-view")).toBeVisible();
+    await page.getByTestId("task-back").click();
   });
 
   test("the approval card of a task appears in the chat that asked, with the name of the task above", async ({
@@ -259,7 +296,9 @@ test.describe("tasks of a bot", () => {
     await expect(
       page.getByTestId("message-bot").filter({ hasText: "A revisão terminou" }),
     ).toBeVisible();
-    await expect(page.getByTestId("task-label").last()).toContainText("Concluída");
+    // The task brought words you have not read: until you open it, the label says so.
+    await expect(page.getByTestId("task-label").last()).toContainText("Novas respostas");
+    await expect(page.getByTestId("task-label").last()).toHaveAttribute("data-task-state", "done");
   });
 
   test("a long task name is cut with an ellipsis and the state stays whole", async ({ page }) => {
@@ -269,18 +308,18 @@ test.describe("tasks of a bot", () => {
     await expect(tag).toHaveCount(1);
     await expect(tag).toHaveAttribute(
       "title",
-      "Implementar a revisão completa do projeto inteiro · Aguardando sua resposta",
+      "Implementar a revisão completa do projeto inteiro · Novas respostas",
     );
     await expect(tag).toHaveAttribute(
       "aria-label",
-      "Abrir a tarefa: Implementar a revisão completa do projeto inteiro · Aguardando sua resposta",
+      "Abrir a tarefa: Implementar a revisão completa do projeto inteiro · Novas respostas",
     );
     const name = tag.getByTestId("task-label-name");
     const cut = await name.evaluate((el) => el.scrollWidth > el.clientWidth);
     expect(cut).toBe(true);
     const lb = await tag.boundingBox();
     expect(lb?.height ?? 99).toBeLessThanOrEqual(24);
-    await expect(tag).toContainText("· Aguardando sua resposta");
+    await expect(tag).toContainText("· Novas respostas");
     await expect(
       page.getByTestId("message-bot").filter({ hasText: "o check principal ainda roda." }),
     ).toBeVisible();

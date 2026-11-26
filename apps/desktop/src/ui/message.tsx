@@ -110,8 +110,11 @@ export function BotMessage({
   position,
   typing = false,
   label,
+  link,
 }: {
   position?: BubblePosition | undefined;
+  /** At the end of the bubble: the link to the task the message opened or closed (KOD-68). */
+  link?: ReactNode;
   /** What goes above the bubble or the card: the label of the task it comes from (KOD-68). */
   label?: ReactNode;
   /**
@@ -153,6 +156,7 @@ export function BotMessage({
                 {...(favicons === undefined ? {} : { favicons })}
               />
             </div>
+            {link !== undefined && <div className="mt-2 flex min-w-0">{link}</div>}
           </BotBubble>
         )}
         {children}

@@ -186,8 +186,9 @@ Uma tarefa é uma execução do mesmo bot, em segundo plano, numa conversa próp
 | Método e caminho | Resposta |
 |---|---|
 | `GET /v1/tasks?conversationId=&botId=&limit=` | `200 { items: [Task] }`, as mais antigas primeiro |
-| `GET /v1/tasks/{id}` | `200 Task`; `404` |
+| `GET /v1/tasks/{id}` | `200 Task`; `404`. `Task.unreadReplies`: quantas mensagens do bot na conversa da tarefa vieram depois do cursor de leitura (0: nada novo) |
 | `POST /v1/tasks/{id}/messages` `{ text }` | `201 { message, task }`: vai direto para a caixa da execução da tarefa; `409` se ela já terminou |
+| `POST /v1/tasks/{id}/read` | `200 Task`: a tela da tarefa foi aberta, as respostas dela contam como lidas (o cursor de leitura da conversa da própria tarefa, o mesmo de um chat); `404`. Idempotente; o stream avisa as telas abertas |
 | `POST /v1/tasks/{id}/stop` | `200 Task`: cancela a execução; `409` se já terminou |
 
 Escrever na conversa de uma tarefa por `POST /v1/conversations/{id}/messages` dá `409`. Quem abre a tarefa é o bot, pela ferramenta `start_task`; não há `POST /v1/tasks`.
@@ -494,7 +495,7 @@ data: {"runId":"...","event":{"seq":7,"type":"tool_call","createdAt":"...","payl
 | `memory.changed` | `{ change, memory }` | `change`: `created`, **`pending`** (só para linhas de antes: o fluxo normal grava ativo e emite `created`/`updated`; um bot ou a consolidação nunca pede confirmação), `updated` (inclui confirmar e recusar: veja `memory.status`), `archived`, `restored`. Usar uma memória (o `recall` renovar `lastUsedAt`) **não** gera quadro |
 | `bot.updated` | `{ bot }` | Bot criado, editado, arquivado ou tornado principal |
 | `approval.changed` | `{ change, approval }` | Um cartão de aprovação apareceu (`created`) ou mudou de situação (`updated`: aprovado, negado, cancelado, expirado). Vai o `Approval` inteiro |
-| `task.changed` | `{ change, task }` | Uma tarefa nasceu (`created`) ou mudou (`updated`: a situação da execução, ou o resultado entregue ao chat). Vai a `Task` inteira |
+| `task.changed` | `{ change, task }` | Uma tarefa nasceu (`created`) ou mudou (`updated`: a situação da execução, ou o resultado entregue ao chat). Vai a `Task` inteira. Também sai quando a conversa da tarefa recebe mensagem ou tem a leitura movida (`unreadReplies`) |
 | `live.text` | `{ runId, call, attempt, block, offset, text }` | **A resposta do bot sendo escrita** (KOD-34). Efêmero: **sem `id`** (não mexe no `Last-Event-ID`), nunca gravado, nunca reenviado pelo log, e já sem os valores conhecidos do cofre. `call` é o `seq` do `model_request` da chamada; `block`, qual texto da chamada (o que se mostra, na ordem); `offset`, onde `text` começa dentro do texto do bloco. `offset: 0` **substitui** o bloco (é também o retrato que uma conexão nova recebe do que está sendo escrito). Um `offset` que não bate com o que se tem é um buraco: espere o próximo retrato |
 | `live.end` | `{ runId, call, attempt, block?, outcome }` | Acabou o texto: de um bloco (`block`, `outcome: "dropped"`: some) ou da chamada (`recorded`: a resposta foi gravada, a mensagem gravada toma o lugar do texto; `aborted`, `failed`, `retry`: o texto some e nada fica). Em `retry`, a nova tentativa vem com `attempt` maior |
 
