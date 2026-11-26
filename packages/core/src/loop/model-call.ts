@@ -40,6 +40,8 @@ export interface CallSpec {
   hostedToolSearch?: HostedToolSearch;
   toolChoice?: ToolChoice;
   retries: number;
+  /** The instant the request was built at (recorded in `model_request.at`); the agent's calls only. */
+  at?: Date;
   /**
    * Counts as a turn against the run's limit. The agent's calls always do; a review or
    * summarizer call does not, except the extra calls of the reviewer's evidence rounds.
@@ -81,6 +83,7 @@ export async function callModel(ctx: LoopContext, spec: CallSpec): Promise<CallO
       ...choiceField,
       maxOutputTokens: spec.model.maxOutputTokens,
       ...purposeField,
+      ...(spec.at === undefined ? {} : { at: spec.at.toISOString() }),
     },
   });
 

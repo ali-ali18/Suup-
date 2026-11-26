@@ -471,8 +471,12 @@ export async function replayRun(
   let appended = 0;
   const epoch = new Date(0);
   const timeAt = (position: number): Date => {
-    const at = recorded[Math.min(position, recorded.length - 1)]?.createdAt;
-    return at ?? epoch;
+    const event = recorded[Math.min(position, recorded.length - 1)];
+    // A request was built at the instant it recorded (`model_request.at`), not when it was stored.
+    if (event?.type === "model_request" && event.payload.at !== undefined) {
+      return new Date(event.payload.at);
+    }
+    return event?.createdAt ?? epoch;
   };
   const clock = () => timeAt(appended);
   const memory = new InMemoryRunStore({ clock });

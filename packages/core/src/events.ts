@@ -510,6 +510,12 @@ export const runEventSchema = z.discriminatedUnion("type", [
       maxOutputTokens: z.number().int().positive(),
       temperature: z.exactOptional(z.number()),
       purpose: z.exactOptional(modelCallPurposeSchema),
+      /**
+       * The instant (ISO) the agent's request was built at: the time the STATE REMINDER shows. The clock
+       * is an input of the request, so it is recorded, and a replay rebuilds the request at this
+       * instant instead of at the event's `createdAt` (a few ms later, possibly in the next minute).
+       */
+      at: z.exactOptional(z.string()),
       /** The hosted tool search asked of the provider (the specs marked `deferLoading` are searched). */
       hostedToolSearch: z.exactOptional(z.enum(["bm25", "regex"])),
       /** What the tool definitions of this request cost (estimated); see `toolDefinitionStats`. */
