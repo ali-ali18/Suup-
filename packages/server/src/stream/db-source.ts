@@ -9,6 +9,7 @@ import {
   getMemory,
   getMessage,
   getRun,
+  getTask,
   latestMemoryReviews,
   listActiveConversationRuns,
   listChanges,
@@ -22,11 +23,12 @@ import {
   toMessageDto,
   toRunDto,
   toRunEventDto,
+  toTaskDto,
 } from "../mappers.js";
 import type { ChangeSource, Notifier, Resolved, WireEvent } from "./hub.js";
 
 /** Kinds whose events are snapshots of the row: several changes in a batch need only the last. */
-const COALESCE = new Set<Change["kind"]>(["run", "conversation", "bot", "approval"]);
+const COALESCE = new Set<Change["kind"]>(["run", "conversation", "bot", "approval", "task"]);
 
 /**
  * The hub's view of the database: the change log as the source, and the rows it points at read
@@ -159,6 +161,13 @@ async function eventsOf(
             },
           ];
     }
+    case "task": {
+      const task = await getTask(db, change.ref);
+      const run = task === null ? null : await getRun(db, task.runId);
+      return task === null || run === null
+        ? []
+        : [taskEvent(task, run, change.op === "created" ? "created" : "updated")];
+    }
     case "bot": {
       const summary = await getBotSummary(db, change.ref);
       return summary === null
@@ -198,5 +207,18 @@ export function createPgNotifier(db: Db): Notifier {
       subscription = undefined;
       await current?.unlisten();
     },
+  };
+}
+
+function taskEvent(
+  task: Parameters<typeof toTaskDto>[0],
+  run: Parameters<typeof toTaskDto>[1],
+  change: "created" | "updated",
+): WireEvent {
+  return {
+    type: "task.changed",
+    key: `task:${task.id}`,
+    version: run.updatedAt.getTime(),
+    data: { change, task: toTaskDto(task, run) },
   };
 }

@@ -73,6 +73,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("migrate"), () => {
       "secret_hosts",
       "secrets",
       "supervisor_settings",
+      "tasks",
       "team_review_cursors",
       "team_reviews",
       "user_settings",
@@ -119,7 +120,7 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("migrate"), () => {
     const fresh = await ctx.db.sql`select 1`; // keep pool warm
     expect(fresh).toHaveLength(1);
     await ctx.db
-      .sql`drop table schema_migrations, files, routine_events, routine_fires, routines, user_settings, web_search_cache, web_search_usage, delegations, supervisor_settings, team_review_cursors, team_reviews, memory_consolidations, memory_reviews, memory_revisions, memory_settings, memories, messages, conversation_members, conversations, run_inbox, approvals, approval_rules, approval_settings, written_rules, secret_grants, secret_hosts, secrets, connector_discovery, connector_grants, connector_oauth, connector_pin_baselines, connector_tool_events, connector_tool_pins, connectors, network_events, network_hosts, run_events, runs, bots, extra_ok, change_log, change_log_state cascade`;
+      .sql`drop table schema_migrations, files, routine_events, routine_fires, routines, user_settings, web_search_cache, web_search_usage, delegations, tasks, supervisor_settings, team_review_cursors, team_reviews, memory_consolidations, memory_reviews, memory_revisions, memory_settings, memories, messages, conversation_members, conversations, run_inbox, approvals, approval_rules, approval_settings, written_rules, secret_grants, secret_hosts, secrets, connector_discovery, connector_grants, connector_oauth, connector_pin_baselines, connector_tool_events, connector_tool_pins, connectors, network_events, network_hosts, run_events, runs, bots, extra_ok, change_log, change_log_state cascade`;
     await ctx.db
       .sql`drop function set_updated_at(), run_events_append_only(), suup_search_query(text), suup_unaccent(text), suup_text_key(text), memories_set_text_key()`;
     const results = await Promise.all([migrate(ctx.db), migrate(ctx.db), migrate(ctx.db)]);

@@ -208,6 +208,12 @@ export async function getTaskByRun(db: Db, runId: string): Promise<Task | null> 
   return row === undefined ? null : mapTask(row);
 }
 
+export async function getTaskByClosingRun(db: Db, closingRunId: string): Promise<Task | null> {
+  const [row] = await db.sql<TaskRow[]>`
+    select * from tasks where closing_run_id = ${z.uuid().parse(closingRunId)}`;
+  return row === undefined ? null : mapTask(row);
+}
+
 export async function getTaskByConversation(
   db: Db,
   taskConversationId: string,

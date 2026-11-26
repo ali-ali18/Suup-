@@ -462,6 +462,7 @@ export {
   createTask,
   forwardToTask,
   getTask,
+  getTaskByClosingRun,
   getTaskByConversation,
   getTaskByRun,
   type ListTasksOptions,

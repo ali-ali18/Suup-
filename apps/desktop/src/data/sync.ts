@@ -13,6 +13,7 @@ import {
   type StreamEvent,
   type Subscription,
   type SuupClient,
+  type Task,
   type WrittenRule,
 } from "@suup/api";
 import { formError, friendlyError } from "../lib/friendly-error.js";
@@ -35,6 +36,8 @@ import {
   mergeRunEvents,
   mergeRuns,
   mergeSecret,
+  mergeTask,
+  mergeTasks,
   mergeWrittenRule,
   removeConnector,
   removeRule,
@@ -238,7 +241,9 @@ export class Sync {
     } else if (event.type === "run.updated") {
       const run = event.data.run;
       const before = state.runs[run.id];
+      // A task ends in its own view and in the chat's closing turn: that turn is what notifies.
       if (
+        run.origin !== "task" &&
         before !== undefined &&
         !isTerminal(before.status) &&
         (run.status === "done" || run.status === "failed")
@@ -392,6 +397,7 @@ export class Sync {
       this.loadConversationRuns(conversationId),
       this.refreshConversationRow(conversationId),
       this.loadConversationApprovals(conversationId),
+      this.loadConversationTasks(conversationId),
     ]);
   }
 
@@ -440,6 +446,43 @@ export class Sync {
     } catch (error) {
       this.fail(error);
       return false;
+    }
+  }
+
+  /** The tasks asked in a chat (KOD-68): their labels and their state. */
+  async loadConversationTasks(conversationId: string): Promise<void> {
+    try {
+      const items = await this.deps.api.tasks.list({ conversationId });
+      update(this.store, (s) => mergeTasks(s, items));
+    } catch (error) {
+      this.fail(error);
+    }
+  }
+
+  /**
+   * What the person wrote in a task's own view: it goes straight to the task. The message shows at
+   * once as sending, and is replaced by the stored one; a refusal brings the text back.
+   */
+  async replyToTask(task: Task, text: string): Promise<{ ok: true } | { ok: false; text: string }> {
+    const tempId = crypto.randomUUID();
+    update(this.store, (s) =>
+      addOptimisticMessage(s, {
+        tempId,
+        conversationId: task.taskConversationId,
+        text,
+        now: new Date().toISOString(),
+      }),
+    );
+    try {
+      const result = await this.deps.api.tasks.reply(task.id, text);
+      update(this.store, (s) =>
+        mergeTask(resolveOptimisticMessage(s, tempId, result.message), result.task),
+      );
+      return { ok: true };
+    } catch (error) {
+      update(this.store, (s) => rollbackOptimisticMessage(s, task.taskConversationId, tempId));
+      this.fail(error);
+      return { ok: false, text };
     }
   }
 

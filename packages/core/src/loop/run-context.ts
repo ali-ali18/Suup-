@@ -7,12 +7,15 @@ import type {
   ContextItem,
   MachineInfo,
   OwnRoutines,
+  RecentUserMessage,
   ReceptionKind,
   RoutineRef,
   RoutineRunFacts,
   RunClock,
   SecretInfo,
   SupervisorRole,
+  TaskResultFacts,
+  TaskRunFacts,
   Teammate,
 } from "../events.js";
 import type { FileSender } from "../files.js";
@@ -100,6 +103,12 @@ export interface RunContextSnapshot {
   routineRefs?: RoutineRef[];
   /** The bot's own routines when the run started (a run that may create routines; recorded). */
   ownRoutines?: OwnRoutines;
+  /** The run is a task (KOD-68): its name and the user's own words that ground it. */
+  task?: TaskRunFacts;
+  /** The run is the chat turn that receives the report of a finished task. */
+  taskResult?: TaskResultFacts;
+  /** The last messages of the user in a chat that may start a task, by id (recorded). */
+  recentUserMessages?: RecentUserMessage[];
   /** Compact the history past this share of the context window (the user's setting; recorded). */
   compactionThreshold?: number;
   /** Rules and profile facts left out because they did not fit the size cap (recorded). */

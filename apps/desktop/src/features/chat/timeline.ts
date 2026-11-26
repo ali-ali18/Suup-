@@ -1,4 +1,4 @@
-import type { Approval, MessageAttachment, Question, Run, TeamProposal } from "@suup/api";
+import type { Approval, MessageAttachment, Question, Run, Task, TeamProposal } from "@suup/api";
 import { callSeqKey } from "../../data/call-seq.js";
 import type { ConnectCardItem } from "../../data/connect-cards.js";
 import { isApprovedProposal } from "../../data/connect-cards.js";
@@ -8,6 +8,29 @@ import type { SecretRequestItem } from "../../data/secret-requests.js";
 import type { LocalMessage } from "../../data/state.js";
 import type { BubblePosition, UserMessageState } from "../../ui/message.js";
 
+/** A task a bubble or a card comes from (KOD-68): what its label above says. */
+export type TaskRef = Pick<Task, "id" | "title" | "state">;
+
+const refOf = (task: Task): TaskRef => ({ id: task.id, title: task.title, state: task.state });
+
+/**
+ * The task a bot message comes from, by the structure the server declares and never by its text:
+ * the message of the turn that delivered the task's result (`closingRunId`), or one of the run that
+ * opened the task, written after it opened (the bot's words about it: the newest task of that run).
+ */
+export function taskOfMessage(
+  message: Pick<LocalMessage, "runId" | "createdAt" | "authorKind">,
+  tasks: readonly Task[],
+): TaskRef | undefined {
+  if (message.authorKind !== "bot" || message.runId === null) return undefined;
+  const closing = tasks.find((t) => t.closingRunId === message.runId);
+  if (closing !== undefined) return refOf(closing);
+  const opened = tasks
+    .filter((t) => t.fromRunId === message.runId && t.createdAt <= message.createdAt)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  return opened === undefined ? undefined : refOf(opened);
+}
+
 export type TimelineItem =
   | { kind: "separator"; key: string; text: string }
   | { kind: "user"; key: string; text: string; state: UserMessageState }
@@ -15,6 +38,8 @@ export type TimelineItem =
       kind: "bot";
       key: string;
       text: string;
+      /** The task this message comes from: the bubble gets its label above (KOD-68). */
+      task?: TaskRef;
       /** The answer is still being written (KOD-34): the live text, not yet a recorded message. */
       live?: true;
       /** Present when the message is a question: what was asked, and whether it is still waiting. */
@@ -39,7 +64,7 @@ export type TimelineItem =
   /** The main bot's proposal of a team of bots: the card where the user ticks which to create. */
   | { kind: "team"; key: string; messageId: string; text: string; team: TeamProposal }
   /** An approval: the decision card while it waits for the user; decided, its one line. */
-  | { kind: "approval"; key: string; approval: Approval }
+  | { kind: "approval"; key: string; approval: Approval; task?: TaskRef }
   /** What the bot handed over to connect something: the card with the one button that fits. */
   | { kind: "connect"; key: string; card: ConnectCardItem }
   /** The bot asked for a credential: the secure form (or, once answered, one line). */
@@ -111,10 +136,14 @@ export function buildTimeline(
      * key a recorded message keeps from the bubble it replaced (the same element stays).
      */
     live?: LiveView;
+    /** The tasks asked in this chat: labels above what comes from them, and where their cards go. */
+    tasks?: readonly Task[];
   } = {},
 ): TimelineItem[] {
   const items: TimelineItem[] = [];
-  const opened = new Set<string>();
+  const tasks = extras.tasks ?? [];
+  // The run of a task never has a message of its own in this chat: its cards are placed by time.
+  const opened = new Set<string>(tasks.map((t) => t.runId));
   // The cards that need (or needed) you, in the order they were asked.
   type Placed = { at: string; runId: string; seq?: number } & (
     | { kind: "approval"; approval: Approval }
@@ -187,13 +216,15 @@ export function buildTimeline(
     }
   };
   const pushCard = (next: Placed) => {
-    if (next.kind === "approval")
+    if (next.kind === "approval") {
+      const task = tasks.find((t) => t.runId === next.approval.runId);
       items.push({
         kind: "approval",
         key: `approval-${next.approval.id}`,
         approval: next.approval,
+        ...(task === undefined ? {} : { task: refOf(task) }),
       });
-    else if (next.kind === "connect")
+    } else if (next.kind === "connect")
       items.push({ kind: "connect", key: `connect-${next.card.callId}`, card: next.card });
     else
       items.push({
@@ -259,10 +290,12 @@ export function buildTimeline(
       });
     } else if (message.question === undefined) {
       // A message that took the place of a typed bubble keeps the bubble's key: the same element.
+      const task = taskOfMessage(message, tasks);
       items.push({
         kind: "bot",
         key: extras.live?.keyOf[message.id] ?? message.id,
         text: message.text,
+        ...(task === undefined ? {} : { task }),
       });
     } else {
       // The reply is the next message of the user, even one still being sent: the card answers at
@@ -307,7 +340,14 @@ export function buildTimeline(
       waiting.shift();
       pushCard(next);
     }
-    items.push({ kind: "bot", key: bubble.key, text: bubble.text, live: true });
+    const closing = tasks.find((t) => t.closingRunId === bubble.runId);
+    items.push({
+      kind: "bot",
+      key: bubble.key,
+      text: bubble.text,
+      live: true,
+      ...(closing === undefined ? {} : { task: refOf(closing) }),
+    });
   }
   // Whatever is left (the run is still working, or no message opened it).
   flush();
@@ -357,7 +397,8 @@ export function bubblePositions(items: readonly TimelineItem[]): Map<string, Bub
   };
   for (const item of items) {
     const who = bubbleSender(item);
-    if (who === null || who !== sender) close();
+    // A bubble with the label of a task above it starts a group of its own (KOD-68).
+    if (who === null || who !== sender || (item.kind === "bot" && item.task !== undefined)) close();
     sender = who;
     if (who !== null) run.push(item.key);
     // The card goes right under the bubble of the bot's words: it ends the group.

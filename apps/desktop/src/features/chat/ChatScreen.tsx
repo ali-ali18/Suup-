@@ -12,6 +12,7 @@ import {
   isTerminal,
   orderedEvents,
   orderedMessages,
+  tasksOfConversation,
 } from "../../data/reducers.js";
 import { secretRequestsOf } from "../../data/secret-requests.js";
 import { activityPhrase, chatActivityOf } from "../../lib/chat-activity.js";
@@ -24,6 +25,7 @@ import { type MenuItem, type MenuSection, PopupMenu, popupKey } from "../../ui/m
 import { EmptyState } from "../../ui/primitives.js";
 import { Panel } from "../panel/Panel.js";
 import { MessageList } from "./MessageList.js";
+import { TaskView } from "./TaskView.js";
 import { buildTimeline } from "./timeline.js";
 
 export function ChatScreen() {
@@ -88,6 +90,9 @@ function ChatForBot({ botId }: { botId: string }) {
   const eventsByRun = useData((s) => s.events);
   const liveBlocks = useData((s) => s.live);
   const approvals = useData((s) => s.approvals);
+  const allTasks = useData((s) => s.tasks);
+  const openTaskId = useUi((s) => s.openTaskId);
+  const openTask = useUi((s) => s.openTask);
   const panelOpen = useUi((s) => s.panelOpen);
   const togglePanel = useUi((s) => s.togglePanel);
   const openInspector = useUi((s) => s.openInspector);
@@ -141,11 +146,23 @@ function ChatForBot({ botId }: { botId: string }) {
   const latest: Run | undefined = conversationRuns[conversationRuns.length - 1];
   const active = [...conversationRuns].reverse().find((r) => ACTIVE.has(r.status));
 
-  // The stream carries the events of the run that is on screen.
+  // The tasks asked in this chat (KOD-68): the labels above what comes from them, and the one whose
+  // own view is open (it takes the place of the chat).
+  const tasks = useMemo(
+    () => (convId === null ? [] : tasksOfConversation({ tasks: allTasks }, convId)),
+    [allTasks, convId],
+  );
+  const shownTask = openTaskId === null ? undefined : allTasks[openTaskId];
+  const taskOnScreen = shownTask !== undefined && shownTask.botId === botId ? shownTask : undefined;
+
+  // The stream carries the events of the run that is on screen (and of the task that is open).
   useEffect(() => {
-    sync.follow(latest === undefined ? [] : [latest.id]);
+    sync.follow([
+      ...(latest === undefined ? [] : [latest.id]),
+      ...(taskOnScreen === undefined ? [] : [taskOnScreen.runId]),
+    ]);
     return () => sync.follow([]);
-  }, [latest?.id, sync]);
+  }, [latest?.id, taskOnScreen?.runId, sync]);
 
   const events = useMemo(
     () => orderedEvents(latest === undefined ? undefined : eventsByRun[latest.id]),
@@ -211,8 +228,9 @@ function ChatForBot({ botId }: { botId: string }) {
         connectCards,
         callSeqs,
         live,
+        tasks,
       }),
-    [messages, runs, cards, secretRequests, connectCards, callSeqs, live],
+    [messages, runs, cards, secretRequests, connectCards, callSeqs, live, tasks],
   );
   // What the user opened, in THIS conversation: another chat starts with every row collapsed.
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
@@ -327,120 +345,125 @@ function ChatForBot({ botId }: { botId: string }) {
       data-testid="chat"
       data-bot={bot.name}
     >
-      <section
-        className="flex min-h-0 min-w-chat-min flex-[1_0_var(--width-chat-min)] flex-col"
-        aria-label={`Conversa com ${bot.name}`}
-      >
-        <MessageList
-          onDismissQuestion={dismissQuestion}
-          head={
-            <button
-              type="button"
-              className="group/chip inline-flex h-11 max-w-bot-chip items-center gap-2.5 rounded-pill border border-border-strong bg-bg py-0 pr-4 pl-2 text-label transition-colors hover:bg-hover"
-              aria-expanded={panelOpen}
-              aria-haspopup="menu"
-              aria-label={`${bot.name}. ${panelOpen ? "Fechar" : "Abrir"} o painel do bot. Menu de contexto para controlar a execução`}
-              data-testid="bot-chip"
-              data-run={display.chip ?? ""}
-              onClick={togglePanel}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                setMenu({ x: e.clientX, y: e.clientY, key: popupKey() });
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+      {taskOnScreen !== undefined ? (
+        <TaskView task={taskOnScreen} bot={bot} onBack={() => openTask(null)} />
+      ) : (
+        <section
+          className="flex min-h-0 min-w-chat-min flex-[1_0_var(--width-chat-min)] flex-col"
+          aria-label={`Conversa com ${bot.name}`}
+        >
+          <MessageList
+            onDismissQuestion={dismissQuestion}
+            head={
+              <button
+                type="button"
+                className="group/chip inline-flex h-11 max-w-bot-chip items-center gap-2.5 rounded-pill border border-border-strong bg-bg py-0 pr-4 pl-2 text-label transition-colors hover:bg-hover"
+                aria-expanded={panelOpen}
+                aria-haspopup="menu"
+                aria-label={`${bot.name}. ${panelOpen ? "Fechar" : "Abrir"} o painel do bot. Menu de contexto para controlar a execução`}
+                data-testid="bot-chip"
+                data-run={display.chip ?? ""}
+                onClick={togglePanel}
+                onContextMenu={(e) => {
                   e.preventDefault();
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  setMenu({ x: rect.left, y: rect.bottom + 4, key: popupKey() });
-                }
-              }}
-            >
+                  setMenu({ x: e.clientX, y: e.clientY, key: popupKey() });
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+                    e.preventDefault();
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setMenu({ x: rect.left, y: rect.bottom + 4, key: popupKey() });
+                  }
+                }}
+              >
+                <Avatar
+                  avatar={bot.avatar}
+                  avatarStyle={bot.avatarStyle}
+                  pixel3d={bot.avatarPixel3d}
+                  color={bot.color}
+                  seed={bot.id}
+                  size="sm"
+                  state={display.avatar}
+                  supervisor={bot.isDefault}
+                />
+                <span className="min-w-0 truncate font-label">{bot.name}</span>
+                {/* The chevron grows in on hover or focus, never pops (docs/DESIGN.md §1 "Nada seco"). */}
+                <ChevronRight
+                  size={16}
+                  aria-hidden="true"
+                  data-testid="bot-chip-chevron"
+                  className="-ml-2.5 w-0 flex-none -translate-x-1 opacity-0 transition-all duration-(--duration-base) ease-out group-hover/chip:ml-0 group-hover/chip:w-4 group-hover/chip:translate-x-0 group-hover/chip:opacity-100 group-focus-visible/chip:ml-0 group-focus-visible/chip:w-4 group-focus-visible/chip:translate-x-0 group-focus-visible/chip:opacity-100"
+                />
+              </button>
+            }
+            items={items}
+            botName={bot.name}
+            hasOlder={slice?.hasOlder ?? false}
+            onLoadOlder={() =>
+              convId === null ? Promise.resolve(false) : sync.loadOlderMessages(convId)
+            }
+            runs={runs}
+            onAnswer={(text, questionId) => void answer(text, questionId)}
+            onDecideTeam={(messageId, body) => sync.decideTeam(messageId, body)}
+            onInspect={openInspector}
+            onOpenTask={openTask}
+            expanded={expanded}
+            onToggle={toggle}
+            phrase={phrase}
+            activity={activity}
+            liveFace={(state) => (
               <Avatar
                 avatar={bot.avatar}
                 avatarStyle={bot.avatarStyle}
                 pixel3d={bot.avatarPixel3d}
                 color={bot.color}
                 seed={bot.id}
-                size="sm"
-                state={display.avatar}
-                supervisor={bot.isDefault}
+                size="md"
+                state={state}
+                lively
               />
-              <span className="min-w-0 truncate font-label">{bot.name}</span>
-              {/* The chevron grows in on hover or focus, never pops (docs/DESIGN.md §1 "Nada seco"). */}
-              <ChevronRight
-                size={16}
-                aria-hidden="true"
-                data-testid="bot-chip-chevron"
-                className="-ml-2.5 w-0 flex-none -translate-x-1 opacity-0 transition-all duration-(--duration-base) ease-out group-hover/chip:ml-0 group-hover/chip:w-4 group-hover/chip:translate-x-0 group-hover/chip:opacity-100 group-focus-visible/chip:ml-0 group-focus-visible/chip:w-4 group-focus-visible/chip:translate-x-0 group-focus-visible/chip:opacity-100"
-              />
-            </button>
-          }
-          items={items}
-          botName={bot.name}
-          hasOlder={slice?.hasOlder ?? false}
-          onLoadOlder={() =>
-            convId === null ? Promise.resolve(false) : sync.loadOlderMessages(convId)
-          }
-          runs={runs}
-          onAnswer={(text, questionId) => void answer(text, questionId)}
-          onDecideTeam={(messageId, body) => sync.decideTeam(messageId, body)}
-          onInspect={openInspector}
-          expanded={expanded}
-          onToggle={toggle}
-          phrase={phrase}
-          activity={activity}
-          liveFace={(state) => (
-            <Avatar
-              avatar={bot.avatar}
-              avatarStyle={bot.avatarStyle}
-              pixel3d={bot.avatarPixel3d}
-              color={bot.color}
-              seed={bot.id}
-              size="md"
-              state={state}
-              lively
-            />
-          )}
-          announce={announce}
-          empty={
-            needsPersonality ? (
-              <EventLineButton
-                data-testid="personality-hint"
-                onClick={() => openEditBot(bot.id, 2)}
-              >
-                {bot.name} ainda não tem uma personalidade. Descrever o que ele faz
-              </EventLineButton>
-            ) : undefined
-          }
-        />
-        <div
-          className="mx-auto w-full max-w-[calc(var(--width-content)+var(--space-5)*2)] flex-none px-5 pt-2 pb-5"
-          data-testid="chat-composer"
-        >
-          <Composer
-            placeholder={
-              openQuestion
-                ? "Digite sua resposta ou fale sobre outra coisa"
-                : `Mensagem para ${bot.name}`
+            )}
+            announce={announce}
+            empty={
+              needsPersonality ? (
+                <EventLineButton
+                  data-testid="personality-hint"
+                  onClick={() => openEditBot(bot.id, 2)}
+                >
+                  {bot.name} ainda não tem uma personalidade. Descrever o que ele faz
+                </EventLineButton>
+              ) : undefined
             }
-            disabled={archived || convId === null}
-            disabledReason={archived ? "Este bot está arquivado" : "Abrindo a conversa…"}
-            restore={restore}
-            prefill={prefill}
-            focusRequest={composerFocus}
-            onTextChange={(text) => {
-              if (text.trim() === "") setRoutineRef(null);
-            }}
-            attachment={
-              routineRef === null ? undefined : (
-                <DraftReference name={routineRef.name} onRemove={() => setRoutineRef(null)} />
-              )
-            }
-            onSend={sendDraft}
-            autoFocus
           />
-        </div>
-      </section>
+          <div
+            className="mx-auto w-full max-w-[calc(var(--width-content)+var(--space-5)*2)] flex-none px-5 pt-2 pb-5"
+            data-testid="chat-composer"
+          >
+            <Composer
+              placeholder={
+                openQuestion
+                  ? "Digite sua resposta ou fale sobre outra coisa"
+                  : `Mensagem para ${bot.name}`
+              }
+              disabled={archived || convId === null}
+              disabledReason={archived ? "Este bot está arquivado" : "Abrindo a conversa…"}
+              restore={restore}
+              prefill={prefill}
+              focusRequest={composerFocus}
+              onTextChange={(text) => {
+                if (text.trim() === "") setRoutineRef(null);
+              }}
+              attachment={
+                routineRef === null ? undefined : (
+                  <DraftReference name={routineRef.name} onRemove={() => setRoutineRef(null)} />
+                )
+              }
+              onSend={sendDraft}
+              autoFocus
+            />
+          </div>
+        </section>
+      )}
       {panelOpen && <Panel botId={bot.id} />}
       {menu !== null && (
         <PopupMenu

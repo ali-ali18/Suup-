@@ -66,6 +66,12 @@ export interface UiState {
   /** "Editar" on a routine: to the chat of its bot, with the draft and the routine bound to it. */
   editRoutineInChat(input: Omit<ChatPrefill, "nonce">): void;
   takeChatPrefill(): void;
+  /**
+   * The task whose own view is open in place of the chat (KOD-68, docs/TAREFAS.md); `null`: the chat.
+   * Another bot (or leaving the server) closes it: a task belongs to the chat of one bot.
+   */
+  openTaskId: string | null;
+  openTask(taskId: string | null): void;
   /** The run the inspector looks at. */
   inspectorRunId: string | null;
   /** Where "back" from the inspector goes. */
@@ -193,6 +199,8 @@ export const useUi = create<UiState>((set, get) => ({
       chatPrefill: { ...input, nonce: (s.chatPrefill?.nonce ?? 0) + 1 },
     })),
   takeChatPrefill: () => set({ chatPrefill: null }),
+  openTaskId: null,
+  openTask: (openTaskId) => set({ openTaskId }),
   inspectorRunId: null,
   inspectorFrom: "chat",
   newBotOpen: false,
@@ -253,6 +261,7 @@ export const useUi = create<UiState>((set, get) => ({
       selectedBotId: null,
       botPicked: false,
       inspectorRunId: null,
+      openTaskId: null,
       newBotOpen: false,
       editBotId: null,
       supervisorOfferBotId: null,
@@ -271,6 +280,8 @@ export const useUi = create<UiState>((set, get) => ({
       botPicked: true,
       // The detail of a routine belongs to the bot it was opened on.
       panelRoutineId: s.selectedBotId === botId ? s.panelRoutineId : null,
+      // ...and so does a task view: it belongs to the chat of the bot it was opened on.
+      openTaskId: s.selectedBotId === botId ? s.openTaskId : null,
     })),
   openPanel: (tab) => set((s) => ({ panelOpen: true, panelTab: tab ?? s.panelTab })),
   togglePanel: () => {

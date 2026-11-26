@@ -394,6 +394,13 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
         ...(event.payload.ownRoutines === undefined
           ? {}
           : { ownRoutines: structuredClone(event.payload.ownRoutines) }),
+        ...(event.payload.task === undefined ? {} : { task: structuredClone(event.payload.task) }),
+        ...(event.payload.taskResult === undefined
+          ? {}
+          : { taskResult: structuredClone(event.payload.taskResult) }),
+        ...(event.payload.recentUserMessages === undefined
+          ? {}
+          : { recentUserMessages: structuredClone(event.payload.recentUserMessages) }),
       };
       state.compactionThreshold = event.payload.compactionThreshold ?? null;
       // The user's earlier messages come before the objective (the history is text only).

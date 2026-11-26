@@ -42,6 +42,7 @@ import { networkRoutes } from "./routes/network.js";
 import { routineRoutes } from "./routes/routines.js";
 import { runRoutes } from "./routes/runs.js";
 import { supervisorRoutes } from "./routes/supervisor.js";
+import { taskRoutes } from "./routes/tasks.js";
 import { vaultRoutes } from "./routes/vault.js";
 import { webSearchRoutes } from "./routes/web-search.js";
 import { createDbSource, createPgNotifier } from "./stream/db-source.js";
@@ -155,6 +156,7 @@ export function createServer(runtime: Runtime, options: ServerOptions): SuupServ
     ...fileRoutes,
     ...memoryRoutes,
     ...supervisorRoutes,
+    ...taskRoutes,
     ...routineRoutes,
     ...approvalRoutes,
     ...networkRoutes,

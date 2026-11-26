@@ -80,3 +80,24 @@ create constraint trigger tasks_change_log_update
   for each row
   when (old.closed_at is distinct from new.closed_at)
   execute function change_log_tasks();
+
+-- O estado de uma tarefa é o da execução dela: quando a situação da execução muda, a tarefa também
+-- entra no diário de mudanças (uma linha por mudança: o stream não repete um id de evento).
+create or replace function change_log_task_runs() returns trigger language plpgsql as $$
+declare
+  v_task uuid;
+begin
+  select id into v_task from tasks where run_id = new.id;
+  if v_task is not null then
+    perform change_log_append('task', v_task::text, null, 'updated');
+  end if;
+  return null;
+end;
+$$;
+
+create constraint trigger runs_task_change_log_update
+  after update on runs
+  deferrable initially deferred
+  for each row
+  when (new.origin = 'task' and old.status is distinct from new.status)
+  execute function change_log_task_runs();

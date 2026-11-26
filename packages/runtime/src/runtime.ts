@@ -139,6 +139,7 @@ import {
   SUPERVISOR_TOOL_NAMES,
   teamRecallTool,
 } from "./supervisor.js";
+import { sendToTaskTool, startTaskTool, TASK_TOOL_NAMES } from "./tasks.js";
 import { createVault, DEFAULT_VAULT_KEY_ENV, type Vault } from "./vault/service.js";
 import { dbSearchCache } from "./web/search-cache.js";
 import { createSearchKeys } from "./web/search-keys.js";
@@ -1018,7 +1019,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
             (await getDefaultBot(handle)) === null
             ? undefined
             : "member"
-          : run.origin === "delegation"
+          : run.origin === "delegation" || run.origin === "task" || run.origin === "task_result"
             ? undefined
             : "principal";
     if (supervisor === "principal") {
@@ -1039,6 +1040,10 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
         ),
       );
       runTools.register(showConnectCardTool(() => connectors.gallery));
+      // Long work goes to a task of the bot itself (KOD-68): only a chat run is offered the tools
+      // (a task never opens a task, and the turn that reports one only answers).
+      runTools.register(startTaskTool(handle));
+      runTools.register(sendToTaskTool(handle));
       botCfg = {
         ...botCfg,
         allowedTools: [
@@ -1046,6 +1051,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
           ...ROUTINE_TOOL_NAMES,
           PROPOSE_CONNECTOR_TOOL,
           SHOW_CONNECT_CARD_TOOL,
+          ...TASK_TOOL_NAMES,
         ],
       };
     } else if (guarded && run.origin === "delegation") {
@@ -1271,12 +1277,15 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
         ),
       );
       reg.register(showConnectCardTool(() => connectors.gallery));
+      reg.register(startTaskTool(runtime.db));
+      reg.register(sendToTaskTool(runtime.db));
       const control = new Set<string>(CONTROL_TOOL_NAMES);
       const specs = reg.specs([
         ...cfg.allowedTools,
         ...ROUTINE_TOOL_NAMES,
         PROPOSE_CONNECTOR_TOOL,
         SHOW_CONNECT_CARD_TOOL,
+        ...TASK_TOOL_NAMES,
         ...connectorNames,
       ]);
       const builtin = specs.filter((s) => !connectorNames.has(s.name) && !control.has(s.name));

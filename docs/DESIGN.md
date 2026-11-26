@@ -255,6 +255,17 @@ O app de desktop se atualiza com o atualizador oficial do Tauri (docs/ATUALIZACA
 
 - [ ] Link: texto na cor normal, sublinhado, com glifo; favicon **desligado** por padrão (`favicons: "off"`, a busca sai do computador).
 
+## 4d. Tarefas (KOD-68, decisão do dono, 26/11/2026)
+
+Estrutura adaptada da referência do dono (inspiração, nunca cópia). Pesquisa: [pesquisas/kod-68-tarefas.md](pesquisas/kod-68-tarefas.md); comportamento: [TAREFAS.md](TAREFAS.md).
+
+- [ ] **Rótulo acima do balão**: todo balão do bot que vem de uma tarefa (as palavras do bot depois de abri-la e a mensagem que entrega o resultado) e todo cartão de aprovação dela têm, **acima**, uma linha pequena e apagada: seta `CornerDownRight` de 14 px + "**nome da tarefa · estado**" (`ui/task-label.tsx`, `data-testid="task-label"`, `data-task-state`). É um botão: tocar abre a tela da tarefa. Alinhado à borda esquerda do balão, uma linha, texto cortado com reticências; nunca pílula nem cor de alerta.
+- [ ] **Estados em pt-BR amigável** (`data/task-text.ts`): "Trabalhando…", "Aguardando sua resposta", "Aguardando sua aprovação", "Concluída", "Não concluída", "Parada". Vêm de `Task.state` (do servidor), nunca de texto.
+- [ ] **Balão com rótulo abre um grupo** de balões (não se liga ao anterior), como um cartão.
+- [ ] **A tela da tarefa** (`features/chat/TaskView.tsx`) ocupa o lugar do chat: a pílula de cima tem o avatar, o **título**, e embaixo "estado · N atualizações" (`updatesText`: número de mensagens do bot na conversa da tarefa), com o botão redondo "Voltar para a conversa" ao lado; depois as mensagens da tarefa (os mesmos balões e cartões do chat) e o compositor com o texto "**Adicione uma resposta**", que escreve direto na tarefa. Terminada a tarefa, o compositor fica desligado ("Esta tarefa terminou"). Os cartões de aprovação **não** aparecem aqui: ficam no chat que pediu.
+- [ ] Sem página nem aba de Tarefas (KOD-66).
+- [ ] `e2e/tasks.spec.ts` confere a geometria (rótulo acima do balão, na borda dele, uma linha; cabeçalho dentro da tela) e gera as capturas `screenshots/kod-68-*.png`.
+
 ## 5. Barra lateral
 
 - [ ] **Cor e destaque** (decisão do dono, 22/11/2026, a partir do estilo do Grok Bot): a barra lateral e o trilho usam `--color-sidebar` (um degrau mais escuro que a página: a hierarquia vem da luminosidade, não de borda nova). O bot selecionado ganha só um preenchimento calmo (`--color-sidebar-active`), sem borda e sem cor de destaque; o cartão do bot no hover usa o raio do cartão. A borda continua a nossa (1 px); os raios foram reduzidos um pouco na mesma decisão: cartão 24 para 18 px, linha 16 para 12 px, interno 14 para 10 px (o balão, o composer, a pílula e o balão ligado ficam como eram).

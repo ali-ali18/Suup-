@@ -24,11 +24,12 @@ import { BotMessage, EventLine, UserMessage } from "../../ui/message.js";
 import { Pill, RoundButton } from "../../ui/primitives.js";
 import { QuestionCard } from "../../ui/question-card.js";
 import { ScrollFade } from "../../ui/scroll-fade.js";
+import { TaskLabel } from "../../ui/task-label.js";
 import { TeamCard } from "../../ui/team-card.js";
 import { ApprovalRow, SecretRequestRow } from "./ApprovalRows.js";
 import { ConnectCard } from "./ConnectCard.js";
 import { FileRows } from "./FileRows.js";
-import { bubblePositions, isChoiceCard, type TimelineItem } from "./timeline.js";
+import { bubblePositions, isChoiceCard, type TaskRef, type TimelineItem } from "./timeline.js";
 
 const NEAR_BOTTOM = 80;
 const FAR_FROM_BOTTOM = 240;
@@ -49,6 +50,7 @@ export function MessageList({
   onDismissQuestion,
   onDecideTeam,
   onInspect,
+  onOpenTask,
   expanded,
   onToggle,
   phrase,
@@ -76,6 +78,8 @@ export function MessageList({
     body: DecideTeamBody,
   ): Promise<{ ok: true } | { ok: false; message: string }>;
   onInspect(runId: string): void;
+  /** Tapping the label of a task opens its own view (KOD-68). Without it, no label is drawn. */
+  onOpenTask?(taskId: string): void;
   /** Keys (call ids, fold ids, message ids) of what is expanded. */
   expanded: ReadonlySet<string>;
   onToggle(key: string): void;
@@ -262,6 +266,7 @@ export function MessageList({
                     openUrl={platform.openUrl}
                     favicons={favicons}
                     typing={item.live === true}
+                    label={taskLabel(item.task, onOpenTask)}
                   />
                 );
               case "files":
@@ -285,7 +290,7 @@ export function MessageList({
                 );
               case "approval":
                 return (
-                  <BotMessage key={item.key}>
+                  <BotMessage key={item.key} label={taskLabel(item.task, onOpenTask)}>
                     <ActionList>
                       <ApprovalRow
                         approval={item.approval}
@@ -386,6 +391,12 @@ export function MessageList({
       )}
     </div>
   );
+}
+
+/** The label of the task something comes from, when the screen can open the task (KOD-68). */
+function taskLabel(task: TaskRef | undefined, onOpen: ((taskId: string) => void) | undefined) {
+  if (task === undefined || onOpen === undefined) return undefined;
+  return <TaskLabel taskId={task.id} title={task.title} state={task.state} onOpen={onOpen} />;
 }
 
 /** How long the leaving row waits for its transition before going anyway (a safety net). */

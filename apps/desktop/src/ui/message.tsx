@@ -109,8 +109,11 @@ export function BotMessage({
   favicons,
   position,
   typing = false,
+  label,
 }: {
   position?: BubblePosition | undefined;
+  /** What goes above the bubble or the card: the label of the task it comes from (KOD-68). */
+  label?: ReactNode;
   /**
    * The answer is still being written (KOD-34): the screen reader is not told of every piece
    * (`aria-busy`, `aria-live="off"`) and what arrives in each frame fades in (no mark at the end,
@@ -136,6 +139,7 @@ export function BotMessage({
         : {})}
     >
       <div className="flex w-full max-w-reading min-w-0 flex-col gap-3">
+        {label}
         {/* No bubble until the first letter is revealed: an empty one would be a bare pill. */}
         {text !== undefined && !(writing && reveal.shown === "") && (
           <BotBubble className={linkCorners("bot", position)}>

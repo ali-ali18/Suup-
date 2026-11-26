@@ -2216,3 +2216,22 @@ describe("o balão que está sendo escrito (docs/DESIGN.md §4, KOD-34, dono 25/
     );
   });
 });
+
+describe("tarefas (docs/DESIGN.md, 4d)", () => {
+  it("the state of a task is said in the owner's words, and the label is a button above the bubble", () => {
+    const text = read(join(SRC, "data/task-text.ts"));
+    for (const word of [
+      "Trabalhando…",
+      "Aguardando sua resposta",
+      "Aguardando sua aprovação",
+      "Concluída",
+      "Parada",
+    ]) {
+      expect(text).toContain(word);
+    }
+    const label = read(join(SRC, "ui/task-label.tsx"));
+    expect(label).toContain('data-testid="task-label"');
+    expect(label).toContain("<button");
+    expect(read(join(SRC, "features/chat/TaskView.tsx"))).toContain('"Adicione uma resposta"');
+  });
+});

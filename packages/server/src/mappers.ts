@@ -15,6 +15,8 @@ import type {
   Run,
   RunEvent,
   Secret,
+  Task,
+  TaskState,
   WrittenRule,
 } from "@suup/api";
 import { fileKindOf, recipientMatchers } from "@suup/core";
@@ -37,6 +39,7 @@ import {
   type SecretMeta,
   type StoredRule,
   type StoredWrittenRule,
+  type Task as TaskRow,
 } from "./db-types.js";
 
 export const iso = (date: Date): string => date.toISOString();
@@ -68,6 +71,44 @@ export function toRunDto(run: RunRow): Run {
     createdAt: iso(run.createdAt),
     updatedAt: iso(run.updatedAt),
     startedAt: isoOrNull(run.startedAt),
+    finishedAt: isoOrNull(run.finishedAt),
+  };
+}
+
+/**
+ * Where a task is, from the state of its run (never stored): the run waiting for a return counts as
+ * working (it comes back by itself), and a cancelled run is a task the user stopped.
+ */
+export function taskStateOf(status: RunRow["status"]): TaskState {
+  switch (status) {
+    case "waiting_user":
+      return "waiting_user";
+    case "waiting_approval":
+      return "waiting_approval";
+    case "done":
+      return "done";
+    case "failed":
+      return "failed";
+    case "cancelled":
+      return "stopped";
+    default:
+      return "working";
+  }
+}
+
+export function toTaskDto(task: TaskRow, run: RunRow): Task {
+  return {
+    id: task.id,
+    botId: task.botId,
+    conversationId: task.conversationId,
+    taskConversationId: task.taskConversationId,
+    runId: task.runId,
+    fromRunId: task.fromRunId,
+    closingRunId: task.closingRunId,
+    title: task.title,
+    state: taskStateOf(run.status),
+    createdAt: iso(task.createdAt),
+    updatedAt: iso(run.updatedAt),
     finishedAt: isoOrNull(run.finishedAt),
   };
 }

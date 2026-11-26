@@ -9,6 +9,7 @@ import {
   SecretHostInvalidError,
   SecretManagedError,
   SecretNotFoundError,
+  TaskError,
   WrittenRuleError,
 } from "@suup/db";
 import { ConfigError, RuntimeError, VaultError } from "@suup/runtime";
@@ -167,6 +168,17 @@ export function toHttpError(error: unknown): HttpError {
         : unavailable.includes(error.code)
           ? "unavailable"
           : "internal_error",
+      error.message,
+      { cause: error },
+    );
+  }
+  if (error instanceof TaskError) {
+    return new HttpError(
+      error.code === "not_found"
+        ? "not_found"
+        : error.code === "invalid_messages"
+          ? "invalid_request"
+          : "conflict",
       error.message,
       { cause: error },
     );

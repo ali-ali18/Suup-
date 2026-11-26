@@ -126,7 +126,7 @@ export type Message = z.infer<typeof messageSchema>;
 
 export const conversationSchema = z.object({
   id: uuid,
-  kind: z.enum(["direct", "group"]),
+  kind: z.enum(["direct", "group", "task"]),
   title: z.string().nullable(),
   createdAt: isoDate,
   updatedAt: isoDate,

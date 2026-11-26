@@ -5,6 +5,7 @@ import { uuid } from "./common.js";
 import { conversationSchema, messageSchema } from "./conversations.js";
 import { memorySchema } from "./memory.js";
 import { runEventSchema, runSchema } from "./runs.js";
+import { taskSchema } from "./tasks.js";
 
 /**
  * The realtime stream (`GET /v1/stream`, Server-Sent Events). Each frame is
@@ -31,6 +32,7 @@ export const STREAM_EVENT_TYPES = [
   "memory.changed",
   "bot.updated",
   "approval.changed",
+  "task.changed",
   "live.text",
   "live.end",
 ] as const;
@@ -78,6 +80,8 @@ const frames = {
     change: z.enum(["created", "updated"]),
     approval: approvalSchema,
   }),
+  /** A task appeared, or its result was handed to the chat (KOD-68). The whole task is sent. */
+  "task.changed": z.object({ change: z.enum(["created", "updated"]), task: taskSchema }),
   /**
    * The bot's answer being written (KOD-34): ephemeral, never recorded, already scrubbed of known
    * secret values. `call` is the `seq` of the call's `model_request` event; `block` the position of
@@ -135,6 +139,11 @@ export const streamEventSchema = z.discriminatedUnion("type", [
     type: z.literal("approval.changed"),
     id: z.number().int(),
     data: frames["approval.changed"],
+  }),
+  z.object({
+    type: z.literal("task.changed"),
+    id: z.number().int(),
+    data: frames["task.changed"],
   }),
   z.object({
     type: z.literal("live.text"),

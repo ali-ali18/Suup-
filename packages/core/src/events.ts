@@ -268,6 +268,34 @@ export const routineRefSchema = z.object({
 export type RoutineRef = z.infer<typeof routineRefSchema>;
 
 /**
+ * What a task run starts from (KOD-68, docs/TAREFAS.md), recorded once in `context_loaded`: the name
+ * the user sees, and the messages of the user that ground the request, as the user wrote them (copied
+ * from the database by id, never reworded by the model). A task has no conversation history.
+ */
+export const taskRunFactsSchema = z.object({
+  title: z.string(),
+  userMessages: z.array(z.string()),
+});
+export type TaskRunFacts = z.infer<typeof taskRunFactsSchema>;
+
+/**
+ * The chat turn that receives the report of a finished task (the run's objective carries the report,
+ * wrapped as data): which task, and how it ended. Recorded once in `context_loaded`.
+ */
+export const taskResultFactsSchema = z.object({
+  title: z.string(),
+  outcome: z.enum(["done", "failed", "cancelled"]),
+});
+export type TaskResultFacts = z.infer<typeof taskResultFactsSchema>;
+
+/**
+ * The latest messages of the user in a chat that may start a task (id and text, newest last), so the
+ * bot can cite the ones that ground a task (`start_task`, `send_to_task`) by id. Recorded once.
+ */
+export const recentUserMessageSchema = z.object({ id: z.string(), text: z.string() });
+export type RecentUserMessage = z.infer<typeof recentUserMessageSchema>;
+
+/**
  * The bot's own routines as the run starts (docs/ROTINAS.md): name, schedule in words, time zone
  * and state, plus the id for the model. Told to the model in "Your routines", so a new run knows
  * what an earlier run already set up (the history carries text only, not the tool calls behind it).
@@ -480,6 +508,12 @@ export const runEventSchema = z.discriminatedUnion("type", [
        * Absent in a run recorded before it existed.
        */
       ownRoutines: z.exactOptional(ownRoutinesSchema),
+      /** Set when the run is a task (KOD-68): its name and the user's own words that ground it. */
+      task: z.exactOptional(taskRunFactsSchema),
+      /** Set when the run is the chat turn that receives the report of a finished task. */
+      taskResult: z.exactOptional(taskResultFactsSchema),
+      /** The last messages of the user in a chat that may start a task, by id. */
+      recentUserMessages: z.exactOptional(z.array(recentUserMessageSchema)),
       /**
        * The share of the context window past which this run compacts its history (the user's
        * setting at the start of the run). Recorded so that a replay compacts at the same point.

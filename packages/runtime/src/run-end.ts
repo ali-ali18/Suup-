@@ -19,6 +19,7 @@ import {
 } from "@suup/db";
 import { completeRoutineFire } from "./routines.js";
 import { returnDelegatedResult } from "./supervisor.js";
+import { deliverPendingTaskResults, deliverTaskResult } from "./tasks.js";
 
 /**
  * The sentence for a failed run. A limit (the cost or the time the owner set, or the progress
@@ -104,6 +105,20 @@ export function journalSummary(run: Run): string {
   }
   return clip(`${what}, ${outcome}`, 200);
 }
+
+/** The runs that are the foreground run of a chat: when one ends, the chat may take a waiting task report. */
+const CHAT_ORIGINS: ReadonlySet<string> = new Set([
+  "user",
+  "reception",
+  "delegation",
+  "task_result",
+]);
+
+/** The failure of a task, in the friendly sentence of the chat. */
+const taskFailureText = (run: Run): string =>
+  failureSentence((run.failureOrigin ?? "harness") as FailureOrigin, run.failureDetail, {
+    max: 300,
+  });
 
 /** Nomes das ferramentas de controle, para distinguir uma execução que só conversou. */
 const CONTROL_NAMES: string[] = [...CONTROL_TOOL_NAMES];
@@ -340,6 +355,13 @@ export async function finishRun(
     effects.rolledOver = await rolloverUnreadMessages(db, run.id);
     // A task another bot delegated to this one: its short result goes back to that bot's chat.
     if (run.origin === "delegation") await returnDelegatedResult(db, run);
+    // A task of this bot (KOD-68): its report goes back to the chat that asked for it, as a short turn
+    // (or waits, when the chat is busy). And a chat that just became free takes the reports that
+    // waited for it.
+    if (run.origin === "task") await deliverTaskResult(db, run, taskFailureText);
+    else if (run.conversationId != null && CHAT_ORIGINS.has(run.origin)) {
+      await deliverPendingTaskResults(db, taskFailureText, { conversationId: run.conversationId });
+    }
     // A routine's run: its result goes to the bot's chat, and the fire records it (docs/ROTINAS.md).
     if (run.origin === "routine") {
       const parsed = runResultSchema.safeParse(run.result);
@@ -401,6 +423,9 @@ export async function reconcileRunEffects(
         )
         or exists (
           select 1 from routine_fires f where f.run_id = r.id and f.finished_at is null
+        )
+        or exists (
+          select 1 from tasks tk where tk.run_id = r.id and tk.closed_at is null
         )
         or exists (
           select 1 from run_inbox i
