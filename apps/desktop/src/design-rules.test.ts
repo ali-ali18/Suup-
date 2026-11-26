@@ -2264,7 +2264,9 @@ describe("tarefas (docs/DESIGN.md, 4d)", () => {
     for (const id of [
       "task-panel",
       "task-head",
+      "task-pill",
       "task-title",
+      "task-finished",
       "task-state",
       "task-close",
       "task-request",
@@ -2275,6 +2277,8 @@ describe("tarefas (docs/DESIGN.md, 4d)", () => {
     }
     expect(panel).toContain('"Adicione uma resposta"');
     expect(panel).toContain("MenuButton");
+    expect(panel).toContain("rounded-pill border border-border-strong bg-bg");
+    expect(panel).not.toContain("rounded-bubble");
     expect(panel).toContain('testId: "task-stop"');
     // No page version: no data panel, no cost, no own question block, no steps, no updates count.
     for (const gone of ["Dados da tarefa", "costText", "A tarefa pergunta", "task-question"]) {

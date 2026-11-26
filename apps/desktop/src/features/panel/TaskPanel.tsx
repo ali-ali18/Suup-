@@ -17,7 +17,6 @@ import { EventLine } from "../../ui/message.js";
 import { RoundButton } from "../../ui/primitives.js";
 import { MessageList } from "../chat/MessageList.js";
 import { buildTimeline } from "../chat/timeline.js";
-import { PANEL_CLOSE } from "./Panel.js";
 
 /**
  * A task's own panel (KOD-68, docs/DESIGN.md 4d): the third column while a task is open, in the
@@ -111,24 +110,20 @@ export function TaskPanel({ task, bot }: { task: Task; bot: Bot }) {
       data-task={task.id}
       data-task-state={task.state}
     >
+      {/* One bar: the name in a pill like the bot's pill at the top of the chat, the state beside the
+          name inside it, and the menu and the close at the right, on the same line. */}
       <header
-        className="relative flex flex-none items-start gap-2 px-5 pt-12 pb-3"
+        className="grid flex-none grid-cols-[1fr_auto_1fr] items-center gap-2 px-4 pt-3 pb-3 framed:pr-head-end"
         data-testid="task-head"
         data-tauri-drag-region
       >
-        <RoundButton
-          label="Fechar a tarefa"
-          tone="outline"
-          size="xs"
-          className={PANEL_CLOSE}
-          onClick={close}
-          data-testid="task-close"
+        <span aria-hidden="true" />
+        <div
+          className="inline-flex h-11 max-w-bot-chip min-w-0 items-center gap-2 rounded-pill border border-border-strong bg-bg px-4 text-label"
+          data-testid="task-pill"
         >
-          <X size={14} aria-hidden="true" />
-        </RoundButton>
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <h2
-            className="truncate text-label font-label"
+            className="min-w-0 truncate text-label font-label"
             data-testid="task-title"
             title={task.title}
           >
@@ -136,7 +131,7 @@ export function TaskPanel({ task, bot }: { task: Task; bot: Bot }) {
           </h2>
           <span
             className={cx(
-              "text-small",
+              "flex-none text-small",
               task.unreadReplies > 0 ? "text-status-unread" : "text-text-muted",
             )}
             data-testid="task-state"
@@ -144,37 +139,48 @@ export function TaskPanel({ task, bot }: { task: Task; bot: Bot }) {
             {stateText}
           </span>
         </div>
-        {open && (
-          <MenuButton
-            label="Mais opções da tarefa"
-            icon={<Ellipsis size={16} aria-hidden="true" />}
-            width="normal"
-            items={[
-              {
-                id: "stop",
-                label: "Parar",
-                icon: Square,
-                danger: true,
-                testId: "task-stop",
-                onSelect: () => void sync.stopTask(task.id),
-              },
-            ]}
-          />
-        )}
+        <div className="flex items-center justify-end gap-1.5">
+          {open && (
+            <MenuButton
+              label="Mais opções da tarefa"
+              icon={<Ellipsis size={16} aria-hidden="true" />}
+              width="normal"
+              items={[
+                {
+                  id: "stop",
+                  label: "Parar",
+                  icon: Square,
+                  danger: true,
+                  testId: "task-stop",
+                  onSelect: () => void sync.stopTask(task.id),
+                },
+              ]}
+            />
+          )}
+          <RoundButton
+            label="Fechar a tarefa"
+            tone="outline"
+            size="xs"
+            onClick={close}
+            data-testid="task-close"
+          >
+            <X size={14} aria-hidden="true" />
+          </RoundButton>
+        </div>
       </header>
       {first !== undefined && (
         <div
-          className="flex flex-none flex-col items-start gap-1.5 px-5 pb-3"
+          className="flex flex-none flex-col items-start gap-2 px-5 pb-3"
           data-testid="task-request"
         >
           {task.sourceMessages.map((m) => (
-            <p
+            <blockquote
               key={m.id}
-              className="m-0 line-clamp-4 max-w-full rounded-bubble bg-raised px-3.5 py-2 text-body wrap-anywhere whitespace-pre-wrap"
+              className="m-0 line-clamp-3 max-w-full border-0 border-l-2 border-border-strong py-0.5 pl-3 text-small wrap-anywhere whitespace-pre-wrap text-text-muted"
               data-testid="task-request-text"
             >
               {m.text}
-            </p>
+            </blockquote>
           ))}
           <button
             type="button"
@@ -218,16 +224,23 @@ export function TaskPanel({ task, bot }: { task: Task; bot: Bot }) {
         }
         empty={<EventLine testId="task-empty">A tarefa ainda não trouxe atualizações.</EventLine>}
       />
-      <div className="flex-none px-4 pt-2 pb-4" data-testid="task-composer">
-        <Composer
-          placeholder="Adicione uma resposta"
-          disabled={!open}
-          disabledReason="Esta tarefa terminou"
-          restore={restore}
-          onSend={(text) => void send(text)}
-          autoFocus
-        />
-      </div>
+      {open ? (
+        <div className="flex-none px-4 pt-2 pb-4" data-testid="task-composer">
+          <Composer
+            placeholder="Adicione uma resposta"
+            restore={restore}
+            onSend={(text) => void send(text)}
+            autoFocus
+          />
+        </div>
+      ) : (
+        <p
+          className="m-0 flex-none px-5 pt-2 pb-5 text-center text-small text-text-muted"
+          data-testid="task-finished"
+        >
+          Esta tarefa terminou.
+        </p>
+      )}
     </aside>
   );
 }

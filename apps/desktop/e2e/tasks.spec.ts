@@ -254,11 +254,59 @@ test.describe("tasks of a bot", () => {
     await expect(view.getByTestId("task-state")).toHaveText("Aguardando sua resposta");
     await expect(view.getByTestId("task-close")).toBeVisible();
     await expect(view.getByTestId("task-stop")).toHaveCount(0);
+    // One single bar: the pill is centred in the panel (like the bot's pill in the chat), the state
+    // is inside it, and the menu and the close are on the same line at the right.
+    const pillBox = await view.getByTestId("task-pill").boundingBox();
+    const botPill = await page.getByTestId("bot-chip").boundingBox();
+    const panelBox = await view.boundingBox();
+    const closeBox = await view.getByTestId("task-close").boundingBox();
+    const menuBox = await view.getByRole("button", { name: "Mais opções da tarefa" }).boundingBox();
+    const stateBox = await view.getByTestId("task-state").boundingBox();
+    expect(
+      Math.abs(
+        (pillBox?.x ?? 0) +
+          (pillBox?.width ?? 0) / 2 -
+          ((panelBox?.x ?? 0) + (panelBox?.width ?? 0) / 2),
+      ),
+    ).toBeLessThanOrEqual(80);
+    expect(pillBox?.height).toBe(botPill?.height);
+    expect(Math.abs((pillBox?.y ?? 0) - (botPill?.y ?? 0))).toBeLessThanOrEqual(2);
+    expect((stateBox?.x ?? 0) >= (pillBox?.x ?? 0)).toBe(true);
+    expect(
+      (stateBox?.x ?? 0) + (stateBox?.width ?? 0) <= (pillBox?.x ?? 0) + (pillBox?.width ?? 0),
+    ).toBe(true);
+    expect(
+      Math.abs(
+        (closeBox?.y ?? 0) +
+          (closeBox?.height ?? 0) / 2 -
+          ((menuBox?.y ?? 0) + (menuBox?.height ?? 0) / 2),
+      ),
+    ).toBeLessThanOrEqual(2);
+    expect(
+      Math.abs(
+        (closeBox?.y ?? 0) +
+          (closeBox?.height ?? 0) / 2 -
+          ((pillBox?.y ?? 0) + (pillBox?.height ?? 0) / 2),
+      ),
+    ).toBeLessThanOrEqual(2);
+    expect((menuBox?.x ?? 0) + (menuBox?.width ?? 0) <= (closeBox?.x ?? 0)).toBe(true);
     await expect(page.getByText("Dados da tarefa")).toHaveCount(0);
     await expect(view.getByText("US$")).toHaveCount(0);
     // The message that opened the task, first, quoted, with a way to it in the chat.
     const quote = view.getByTestId("task-request");
     await expect(quote).toContainText("CASE-REVISAO revise o projeto inteiro, por favor");
+    // The request is a quiet quote (thin rule at the left, smaller muted text), not a chat bubble.
+    const quoteLook = await quote.getByTestId("task-request-text").evaluate((el) => {
+      const c = getComputedStyle(el);
+      return { bg: c.backgroundColor, left: c.borderLeftWidth, size: parseFloat(c.fontSize) };
+    });
+    expect(quoteLook.bg).toBe("rgba(0, 0, 0, 0)");
+    expect(parseFloat(quoteLook.left)).toBeGreaterThanOrEqual(2);
+    const bubbleSize = await view
+      .getByTestId("message-bot")
+      .first()
+      .evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+    expect(quoteLook.size).toBeLessThan(bubbleSize);
     const hb = await view.getByTestId("task-head").boundingBox();
     const qb0 = await quote.boundingBox();
     expect((qb0?.y ?? 0) >= (hb?.y ?? 0) + (hb?.height ?? 0) - 1).toBe(true);
@@ -301,7 +349,9 @@ test.describe("tasks of a bot", () => {
     await expect(
       view.getByTestId("message-bot").filter({ hasText: "Revisão pronta: três achados" }),
     ).toBeVisible();
-    await expect(view.getByPlaceholder("Esta tarefa terminou")).toBeDisabled();
+    // A finished task shows a quiet notice, no box to type in.
+    await expect(view.getByTestId("task-finished")).toHaveText("Esta tarefa terminou.");
+    await expect(view.getByRole("textbox")).toHaveCount(0);
     // Nothing to stop any more: no overflow menu.
     await expect(view.getByRole("button", { name: "Mais opções da tarefa" })).toHaveCount(0);
     await expect(page.locator("[data-flash]")).toHaveCount(0);
@@ -405,11 +455,12 @@ test.describe("tasks of a bot", () => {
     await expect(view.getByTestId("task-state")).toHaveText("Trabalhando…");
     await view.getByRole("button", { name: "Mais opções da tarefa" }).click();
     await page.waitForTimeout(500);
-    await page.screenshot({ path: shot("painel-menu") });
+    await page.screenshot({ path: shot("painel-rodando-menu") });
     await page.getByTestId("task-stop").click();
     await expect(view.getByTestId("task-state")).toHaveText("Parada");
     await expect(view.getByRole("button", { name: "Mais opções da tarefa" })).toHaveCount(0);
-    await expect(view.getByPlaceholder("Esta tarefa terminou")).toBeDisabled();
+    await expect(view.getByTestId("task-finished")).toBeVisible();
+    await expect(view.getByRole("textbox")).toHaveCount(0);
     await page.screenshot({ path: shot("painel-parada") });
   });
 });
