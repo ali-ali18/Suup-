@@ -4,7 +4,14 @@
 // A task is a run of the same bot with the origin `task`, in a conversation of its own. The rules
 // that matter are enforced in `@suup/db` (the limit of three, no task from a task, the cited
 // messages being the user's own); here the model is only told the criteria and what happened.
-import { defineTool, type OpenTaskFact, runResultSchema, wrapUntrusted } from "@suup/core";
+import {
+  defineTool,
+  type HandoffOutcome,
+  type HandoffRequest,
+  type OpenTaskFact,
+  runResultSchema,
+  wrapUntrusted,
+} from "@suup/core";
 import {
   closeTaskWithoutResult,
   createTask,
@@ -20,6 +27,7 @@ import {
   type Run,
   type Task,
   TaskError,
+  userMessagesOfRun,
 } from "@suup/db";
 import { z } from "zod";
 
@@ -105,15 +113,29 @@ export function startTaskTool(db: Db) {
     name: START_TASK_TOOL,
     description: `Opens a TASK: a background run of yourself, in its own view, for LONG work, while this chat stays free.
 
-Open a task for self-contained work that takes many steps and ends in a result you can hand back: researching a subject across several sources, reviewing a whole folder or a long document, implementing something with several files and tests, analysing a dataset in depth, browsing several pages of a site, writing a document with several sections. Rough band: work that would take you more than about 10 tool calls or a few minutes.
+Decide BEFORE your first tool call, by the effort the request needs:
+- More than about 5 tool calls, or more than about a minute of work: open a task, as your FIRST call. Do not start the work here and move it later; every call you make here first is repeated or wasted.
+- Up to about 5 calls and well under a minute: answer here, with no task.
 
-Answer here in the chat, with no task, for quick requests you can settle in a few tool calls (up to about 10): a question, a lookup, a summary of one thing, a short draft, one small change. Also stay in the chat when the work needs the user's back-and-forth at every step: a task works alone and asks only when it is stuck.
+Having a terminal, files or a browser here is NO reason to do long work in the chat: the task has the same tools as you. Running tests, editing several files, installing and building, reading a whole folder, researching across several pages: all of that is a task.
 
-Examples. Task: "compare these five frameworks and write me a recommendation with sources"; "review every file in this folder and list the problems"; "build a small CLI with tests"; "analyse this 40-column CSV and report what stands out". Chat: "what does this error mean?"; "rename this file"; "what is the capital of Peru?"; "summarise this paragraph".
+Open a task for self-contained work that ends in a result you can hand back: researching a subject across several sources, reviewing a whole folder or a long document, implementing something with several files and tests, analysing a dataset in depth, browsing several pages of a site, writing a document with several sections.
+
+Stay in the chat for quick requests: a question, a lookup, a summary of one thing, a short draft, one small change, one command and its output. Also stay in the chat when the work needs the user's back-and-forth at every step: a task works alone and asks only when it is stuck.
+
+One message, several requests: handle EACH one. Open one task per long request (two long requests are two tasks) and answer each quick one here, in the same turn. Before you end the turn, check that every request in the message was either answered or handed to a task; never answer only the first one, and never promise to do one later without opening its task.
+
+Examples.
+- "compare these five frameworks and write me a recommendation with sources" → task.
+- "run the test suite, fix what fails and tell me" → task (many terminal calls), even though you have a terminal.
+- "review every file in src/ and list the problems" → task.
+- "what does this error mean?" / "rename this file" / "what time is it in Tokyo?" → chat.
+- "what is 15% of 230, and write me a full market analysis of electric bikes in Brazil" → answer the percentage here AND open one task for the analysis.
+- "research flights to Lisbon and also review my CV in cv.md" → two tasks, one each.
 
 If the work needs a tool you do not have, open the task only if the task itself could do it with what you have; otherwise tell the user what is missing.
 
-The task does NOT see this conversation: it gets only your brief (objective, what is known, what to return, how far to go) and the user's messages you cite in \`userMessageIds\`, copied exactly. Before opening one, check "The tasks of this chat": if one of them already covers the work, pass the new detail to it with \`send_to_task\` instead of opening a duplicate. It returns at once; tell the user, do not wait or poll. At most ${MAX_OPEN_TASKS} tasks are open at once and a task cannot open another; if a call is refused, do not retry it: tell the user.`,
+The task does NOT see this conversation: it gets only your brief (objective, what is known, what to return, how far to go) and the user's messages you cite in \`userMessageIds\`, copied exactly. Before opening one, check "The tasks of this chat": if one of them already covers the work, pass the new detail to it with \`send_to_task\` instead of opening a duplicate. It returns at once; tell the user, do not wait, poll or schedule a return to check on it: its report comes back by itself. At most ${MAX_OPEN_TASKS} tasks are open at once and a task cannot open another; if a call is refused, do not retry it: tell the user.`,
     input: startTaskInput,
     risk: "write_reversible",
     ownOutput: true,
@@ -150,6 +172,60 @@ The task does NOT see this conversation: it gets only your brief (objective, wha
       }
     },
   });
+}
+
+/** The longest trail line, and how many lines the brief carries. */
+const TRAIL_LINE_MAX = 240;
+const TRAIL_MAX_LINES = 20;
+
+/** The task's name when the brake opens it: the first line of the user's message, clipped. */
+export function handoffTitle(objective: string): string {
+  const first = objective.trim().split("\n")[0]?.trim() ?? "";
+  const title = clip(first, 60);
+  return title.length >= 3 ? title : "Trabalho do chat";
+}
+
+/** The brief of a task the brake opened: the user's request stands, the done calls are listed. */
+export function handoffBrief(request: HandoffRequest): string {
+  const trail = request.trail
+    .slice(-TRAIL_MAX_LINES)
+    .map((e) => `- ${e.name} ${clip(e.args, TRAIL_LINE_MAX)}${e.isError ? " (failed)" : ""}`);
+  return composeBrief({
+    objective:
+      "Do what the user asked in their message(s), attached below exactly. The chat started this work and moved it here because it is long work.",
+    ...(trail.length === 0
+      ? {}
+      : {
+          known: `The chat already made these calls, oldest first. Their results are not here: read again what you need, and do not repeat a write that already succeeded.\n${trail.join("\n")}`,
+        }),
+    deliver:
+      "A short report for the chat: the result the user asked for, what you changed, and anything left for the user.",
+    scope:
+      "Do what the request asks and nothing more. Stop and ask the user only when you are stuck or a step needs their decision.",
+  });
+}
+
+/**
+ * The early brake's way to open the task (`LoopDeps.handoff.start`): the same `createTask` as
+ * `start_task`, with the run's own user messages cited, so the task gets the user's exact words.
+ */
+export function handoffStarter(db: Db): (request: HandoffRequest) => Promise<HandoffOutcome> {
+  return async (request) => {
+    try {
+      const sourceMessageIds = await userMessagesOfRun(db, request.run.id);
+      const out = await createTask(db, {
+        fromRunId: request.run.id,
+        title: handoffTitle(request.run.objective),
+        brief: handoffBrief(request),
+        sourceMessageIds,
+      });
+      return { started: true, taskId: out.task.id, title: out.task.title };
+    } catch (error) {
+      // Refused (the limit of open tasks, an archived bot…): the chat run goes on as it was.
+      if (error instanceof TaskError) return { started: false, reason: error.message };
+      throw error;
+    }
+  };
 }
 
 const sendToTaskInput = z

@@ -433,6 +433,20 @@ export function renderEvent(event: RawEvent, state: RenderState): string[] {
       return [`· hora do retorno: ${oneLine(e.payload.note, 160)}`];
     case "wait_cancelled":
       return [`· retorno cancelado (${WAIT_CANCEL_PT[e.payload.reason]})`];
+    case "handed_off":
+      return [
+        e.payload.outcome === "started"
+          ? `· trabalho longo passado para a tarefa "${oneLine(e.payload.title ?? "", 60)}" (${HANDOFF_TRIGGER_PT[e.payload.trigger]})`
+          : `· não deu para passar o trabalho para uma tarefa: ${oneLine(e.payload.reason ?? "", 100)}`,
+      ];
+    case "asks_checked":
+      return [
+        !e.payload.judged
+          ? "· conferência dos pedidos: o verificador não respondeu"
+          : e.payload.unhandled.length === 0
+            ? `· conferência dos pedidos: ${e.payload.asks.length} pedido(s), todos tratados`
+            : `· conferência dos pedidos: faltou ${e.payload.unhandled.map((a) => oneLine(a, 40)).join("; ")}`,
+      ];
   }
 }
 
@@ -525,10 +539,21 @@ export function summarizeEvent(event: RawEvent): string {
       return `${e.payload.at}${e.payload.delayMs === undefined ? "" : ` · ${Math.round(e.payload.delayMs / 1000)} s depois da hora`} · ${oneLine(e.payload.note, 80)}`;
     case "wait_cancelled":
       return WAIT_CANCEL_PT[e.payload.reason];
+    case "handed_off":
+      return `${e.payload.trigger} → ${e.payload.outcome} · passos ${e.payload.turns} · ${Math.round(e.payload.elapsedMs / 1000)} s${e.payload.taskId === undefined ? "" : ` · tarefa ${e.payload.taskId.slice(0, 8)}`}`;
+    case "asks_checked":
+      return e.payload.judged
+        ? `${e.payload.asks.length} pedido(s), ${e.payload.unhandled.length} sem tratar`
+        : "sem veredito";
     case "tool_catalog":
       return `${MODE_PT[e.payload.mode]}: ${e.payload.connectorTools} ferramenta(s) de conectores, ~${formatInt(e.payload.definitionTokens)} tok de definições${e.payload.deferred.length > 0 ? `, ${e.payload.deferred.length} adiada(s)` : ""}`;
   }
 }
+
+const HANDOFF_TRIGGER_PT = {
+  turns: "muitos passos no chat",
+  time: "muito tempo no chat",
+} as const;
 
 const WAIT_CANCEL_PT = {
   user_message: "o usuário escreveu",

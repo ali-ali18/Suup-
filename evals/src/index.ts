@@ -12,6 +12,23 @@ export {
   type RunBatteryOptions,
   runBattery,
 } from "./auto-review/index.js";
+export {
+  BASELINE,
+  CHAT_TASK_BOT_TOOLS,
+  CHAT_TASK_CASES,
+  CHAT_TASK_CATEGORIES,
+  type ChatTaskCase,
+  type ChatTaskCategory,
+  type ChatTaskCategorySummary,
+  type ChatTaskReport,
+  type ChatTaskResult,
+  type ChatTaskVariant,
+  formatChatTaskReport,
+  type OpenTaskSetup,
+  percentile,
+  type RunChatTasksOptions,
+  runChatTasks,
+} from "./chat-tasks/index.js";
 export { abntPdf, documentTasks, reportPdf, salesXlsx } from "./documents/index.js";
 export { stamp } from "./fmt.js";
 export { hardTasks } from "./hard/index.js";

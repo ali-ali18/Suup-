@@ -31,8 +31,15 @@ export {
   liveAllowed,
 } from "./live.js";
 export {
+  ASK_CHECK_TOOL,
+  type AskCheckDeps,
   type BotConfig,
   computeCost,
+  type HandoffDeps,
+  type HandoffOutcome,
+  type HandoffRequest,
+  type HandoffTrailEntry,
+  handedOffText,
   INTERRUPTED_RESULT,
   type LoopDeps,
   MAX_MODEL_RETRIES,
@@ -45,6 +52,7 @@ export {
   type RunLoopOptions,
   runLoop,
   type ToolInvoker,
+  unhandledAsksNudge,
 } from "./loop.js";
 export {
   APPROVALS_PROMPT_MARK,

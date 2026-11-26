@@ -19,6 +19,7 @@ import type {
   StatusChange,
   UsageDelta,
 } from "./loop/store.js";
+import type { AskCheckDeps, HandoffDeps, HandoffOutcome } from "./loop/run-context.js";
 import type { ProgressJudge } from "./loop/watchdog.js";
 import {
   type GenerateRequest,
@@ -530,6 +531,31 @@ export async function replayRun(
           },
         }
       : undefined;
+  // The early brake and the asks check ran as recorded: the brake fires at the same count with the
+  // same outcome, and the checker answers again from the recording (it shares the progress
+  // purpose with the judge, so both read one recorded sequence).
+  const recordedHandoff = recorded.find((e) => e.type === "handed_off");
+  const recordedAsks = recorded.find((e) => e.type === "asks_checked");
+  const recordedTaskTool = "start_task";
+  const handoff: HandoffDeps | undefined =
+    recordedHandoff?.type === "handed_off"
+      ? {
+          atTurns: recordedHandoff.payload.turns,
+          taskTool: recordedTaskTool,
+          start: async (): Promise<HandoffOutcome> =>
+            recordedHandoff.payload.outcome === "started"
+              ? {
+                  started: true,
+                  taskId: recordedHandoff.payload.taskId ?? "replay-task",
+                  title: recordedHandoff.payload.title ?? "",
+                }
+              : { started: false, reason: recordedHandoff.payload.reason ?? "" },
+        }
+      : undefined;
+  const askCheckDeps: AskCheckDeps | undefined =
+    recordedAsks?.type === "asks_checked" && judge !== undefined
+      ? { judge, taskTool: recordedTaskTool }
+      : undefined;
   const tools = new ReplayInvoker(recorded, {
     onMissing,
     ...(options.tools === undefined ? {} : { specs: options.tools }),
@@ -570,7 +596,11 @@ export async function replayRun(
     executor: new NoMachine(recorded),
     bot: options.bot,
     ...(reviewer === undefined ? {} : { reviewer }),
-    ...(judge === undefined ? {} : { watchdog: { judge } }),
+    ...(judge === undefined || !recorded.some((e) => e.type === "progress_check")
+      ? {}
+      : { watchdog: { judge } }),
+    ...(handoff === undefined ? {} : { handoff }),
+    ...(askCheckDeps === undefined ? {} : { askCheck: askCheckDeps }),
     ...(loadRunContext === undefined ? {} : { loadRunContext }),
     // A run recorded without approvals is replayed without them (nothing was gated then).
     gate: gated ? createReplayGate(recorded) : allowAllGate(),

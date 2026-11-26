@@ -1059,6 +1059,38 @@ export const runEventSchema = z.discriminatedUnion("type", [
     payload: z.object({ reason: z.enum(WAIT_CANCEL_REASONS) }),
   }),
   z.object({
+    /**
+     * The early brake of a chat run (docs/TAREFAS.md): the run kept working past the count of steps
+     * or the time of a quick answer, so the harness moved the work to a task of the same bot.
+     * `started`: the task exists and the chat run ends; `declined`: no task could be opened (the
+     * limit of open tasks) and the run goes on in the chat. Written once per run.
+     */
+    type: z.literal("handed_off"),
+    payload: z.object({
+      trigger: z.enum(["turns", "time"]),
+      turns: z.number().int().nonnegative(),
+      elapsedMs: z.number().int().nonnegative(),
+      outcome: z.enum(["started", "declined"]),
+      taskId: z.exactOptional(z.string()),
+      title: z.exactOptional(z.string()),
+      reason: z.exactOptional(z.string()),
+    }),
+  }),
+  z.object({
+    /**
+     * The check at the end of a chat run that offers tasks: a cheap model listed the user's asks
+     * and said which were neither answered nor handed to a task. With some left, the model was told
+     * once (a `nudge` follows). Written at most once per run.
+     */
+    type: z.literal("asks_checked"),
+    payload: z.object({
+      asks: z.array(z.string()),
+      unhandled: z.array(z.string()),
+      /** The checker answered in its format (false: it failed, and nothing was asked of the model). */
+      judged: z.boolean(),
+    }),
+  }),
+  z.object({
     type: z.literal("compacted"),
     payload: z.object({
       /** Replaces every message built from events up to and including `uptoSeq`. */

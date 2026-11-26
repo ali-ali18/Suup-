@@ -8,6 +8,7 @@ import {
   stoppedWithOpenStepsNudge,
   TRUNCATED_NUDGE,
 } from "./prompts.js";
+import { askCheck } from "./handoff.js";
 import { end, fail, nudge, transition } from "./recording.js";
 import type { LoopContext } from "./run-context.js";
 import type { PendingResponse } from "./state.js";
@@ -53,7 +54,9 @@ async function handleTextOnly(
     reason = "finish_required";
     nudgeText = FINISH_REQUIRED_NUDGE;
   } else if (!state.hasPlan) {
-    // A simple question (or criteria already asked for once): the text is the answer.
+    // A simple question (or criteria already asked for once): the text is the answer, once the
+    // asks of the user's message were all handled (a chat run that offers tasks).
+    if ((await askCheck(ctx, text)) === "nudged") return undefined;
     return end(ctx, "done", { result: { summary: text } });
   } else {
     reason = "stopped_without_finish";

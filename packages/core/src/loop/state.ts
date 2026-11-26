@@ -273,6 +273,10 @@ export interface RunState {
   routineNames: Map<string, string>;
   /** The share of the context window past which the run compacts (recorded in `context_loaded`). */
   compactionThreshold: number | null;
+  /** The early brake already looked at this chat run and acted (`handed_off`): never again. */
+  handoff: RunEventPayload<"handed_off"> | null;
+  /** The end-of-turn check of the user's asks already ran in this run (`asks_checked`). */
+  asksChecked: boolean;
 }
 
 export function createRunState(): RunState {
@@ -292,6 +296,8 @@ export function createRunState(): RunState {
     webSeen: new Map(),
     routineNames: new Map(),
     compactionThreshold: null,
+    handoff: null,
+    asksChecked: false,
     lastSeq: 0,
     responses: 0,
     pending: null,
@@ -834,6 +840,16 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
         event.seq,
       );
       state.noProgressStreak = 0;
+      break;
+
+    case "handed_off":
+      state.handoff = structuredClone(event.payload);
+      break;
+
+    case "asks_checked":
+      // The checker's answer (a side response) is used up.
+      state.sideResponse = null;
+      state.asksChecked = true;
       break;
 
     case "wait_cancelled":

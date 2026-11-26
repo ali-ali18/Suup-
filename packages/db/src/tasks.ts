@@ -286,6 +286,18 @@ export async function recentUserMessages(
   return rows.reverse();
 }
 
+/**
+ * The user's messages that started a chat run or reached it while it worked (id), oldest first,
+ * at most `MAX_TASK_SOURCE_MESSAGES`: what the early brake cites when it moves the work to a task.
+ */
+export async function userMessagesOfRun(db: Db, runId: string): Promise<string[]> {
+  const rows = await db.sql<{ id: string }[]>`
+    select id from messages
+    where run_id = ${z.uuid().parse(runId)} and author_kind = 'user'
+    order by seq desc limit ${MAX_TASK_SOURCE_MESSAGES}`;
+  return rows.map((r) => r.id).reverse();
+}
+
 /** Locks a task row and checks its run still works. */
 async function openTask(tx: Db, taskId: string): Promise<{ task: Task; run: Run }> {
   const [row] = await tx.sql<TaskRow[]>`select * from tasks where id = ${taskId}`;

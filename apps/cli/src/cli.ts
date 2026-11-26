@@ -27,6 +27,7 @@ import { dbMigrate } from "./commands/db.js";
 import { doctorCommand } from "./commands/doctor.js";
 import { evalCommand, evalHistory, evalList } from "./commands/eval.js";
 import { evalApprovals } from "./commands/eval-approvals.js";
+import { evalChatTasks } from "./commands/eval-chat-tasks.js";
 import { evalMemory, evalMemoryRecall } from "./commands/eval-memory.js";
 import { inspectCommand } from "./commands/inspect.js";
 import {
@@ -152,6 +153,7 @@ export const COMMANDS: readonly CommandSpec[] = [
   evalList,
   evalHistory,
   evalApprovals,
+  evalChatTasks,
   evalMemory,
   evalMemoryRecall,
 ];

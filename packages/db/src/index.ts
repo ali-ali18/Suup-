@@ -473,6 +473,7 @@ export {
   openTaskResult,
   pendingTaskResults,
   recentUserMessages,
+  userMessagesOfRun,
   replyToTask,
   type Task,
   TaskError,
