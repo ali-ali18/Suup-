@@ -64,7 +64,8 @@ describe("o ritmo da revelação do texto ao vivo", () => {
   it("uma fila grande é alcançada em poucas vezes o alvo, bem abaixo do ritmo base", () => {
     const text = "a".repeat(600);
     const seconds = secondsToCatchUp(text);
-    expect(seconds).toBeLessThan(3); // 600 characters, at most MAX_CHUNK a frame
+    expect(seconds).toBeLessThan(6.5); // 600 characters: 5 s at the 120 per second cap, plus the easing tail
+    expect(seconds).toBeGreaterThan(text.length / (MAX_CHUNK * 60) - 0.1); // gentle: never faster than the cap
     expect(seconds).toBeLessThan(text.length / BASE_CPS / 2);
   });
 

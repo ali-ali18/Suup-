@@ -12,28 +12,30 @@ export const FADE_MS = 180;
 
 /**
  * Comfortable reading speed when there is no backlog, in characters per second. A fast reader takes
- * in about 25 characters a second, a model streams 50 to 150, and ChatGPT-like reveals sit near
- * 80: slow enough to look written, fast enough not to hold the answer back.
+ * in about 25 characters a second and a model streams 50 to 150. The owner found 80 too fast when
+ * watching the recording (26/11/2026), so the base is 45: slow enough to follow each word as it
+ * appears, still quick enough that a sentence of 80 characters is whole in under two seconds.
  */
-export const BASE_CPS = 80;
+export const BASE_CPS = 45;
 
 /**
  * The backlog (received, not yet shown) is cleared in about this many seconds: the speed is
- * `backlog / CATCHUP_S`, so a burst of 600 characters is shown at 2000 per second at first and the
- * reveal is never far behind the model. 0.3 s is perceived as "right away" (under the 0.4 s that
- * Doherty's threshold calls instantaneous) yet still a visible, smooth reveal.
+ * `backlog / CATCHUP_S`, so a backlog of 120 characters is shown at 100 per second at first and
+ * the speed eases down as the queue drains, with no step. 1.2 s keeps the catch-up gentle (the
+ * previous 0.3 s made every burst look like a jump) and the reveal never lags far behind the model.
+ * The reveal may end a little after the model does: the swap to the recorded message waits for it.
  */
-export const CATCHUP_S = 0.3;
+export const CATCHUP_S = 1.2;
 
 /**
  * The most characters one frame may reveal. A piece is invisible when its fade starts, yet it
  * already takes its place: a big piece wraps to a new line and opens a line of empty room in the
  * bubble before its letters show (seen in the recorded video: bubble two lines taller than the text,
- * with 8 or more characters a frame). Four characters at 60 frames a second is 240 per second, three
- * times the base speed, so a backlog is still cleared quickly (600 characters in about 2.5 s) and the
- * room that is taken ahead of the letters is never more than a short word, for a few milliseconds.
+ * with 8 or more characters a frame). Two characters at 60 frames a second is 120 per second, under
+ * three times the base speed, so even a long backlog (600 characters in about 6 s) is cleared
+ * smoothly and the room that is taken ahead of the letters is never more than a short word.
  */
-export const MAX_CHUNK = 4;
+export const MAX_CHUNK = 2;
 
 /** The longest step of time counted in one frame (a hidden tab pauses the frames). */
 const MAX_DT_MS = 100;
