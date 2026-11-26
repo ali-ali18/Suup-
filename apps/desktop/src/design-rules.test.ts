@@ -2257,16 +2257,31 @@ describe("tarefas (docs/DESIGN.md, 4d)", () => {
     expect(link).toContain("underline");
     expect(link).toContain("text-inherit");
     expect(link).not.toContain("text-link");
-    expect(read(join(SRC, "features/chat/TaskView.tsx"))).toContain("markTaskRead");
-    // PREVIEW of the task page: the stop and back buttons, the quoted request, the question block
-    // above the composer, and the task's data in the right panel; no list of steps.
-    const view = read(join(SRC, "features/chat/TaskView.tsx"));
-    for (const id of ["task-stop", "task-back", "task-request", "task-question"]) {
-      expect(view).toContain(`data-testid="${id}"`);
+    // The task opens in the right panel (owner, 26/11/2026): header with the name, the state and the
+    // close, "Parar" in the overflow menu, the quoted request, and the box that writes to the task.
+    const panel = read(join(SRC, "features/panel/TaskPanel.tsx"));
+    expect(panel).toContain("markTaskRead");
+    for (const id of [
+      "task-panel",
+      "task-head",
+      "task-title",
+      "task-state",
+      "task-close",
+      "task-request",
+      "task-request-link",
+      "task-composer",
+    ]) {
+      expect(panel).toContain(`data-testid="${id}"`);
     }
-    expect(view).not.toContain("updatesText");
-    expect(view).not.toContain("Andamento");
-    expect(read(join(SRC, "features/panel/TaskPanel.tsx"))).toContain('data-testid="task-panel"');
-    expect(read(join(SRC, "features/chat/TaskView.tsx"))).toContain('"Adicione uma resposta"');
+    expect(panel).toContain('"Adicione uma resposta"');
+    expect(panel).toContain("MenuButton");
+    expect(panel).toContain('testId: "task-stop"');
+    // No page version: no data panel, no cost, no own question block, no steps, no updates count.
+    for (const gone of ["Dados da tarefa", "costText", "A tarefa pergunta", "task-question"]) {
+      expect(panel).not.toContain(gone);
+    }
+    expect(panel).not.toContain("updatesText");
+    expect(panel).not.toContain("Andamento");
+    expect(existsSync(join(SRC, "features/chat/TaskView.tsx"))).toBe(false);
   });
 });

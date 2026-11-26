@@ -24,8 +24,8 @@ import { DraftReference } from "../../ui/draft-reference.js";
 import { type MenuItem, type MenuSection, PopupMenu, popupKey } from "../../ui/menu.js";
 import { EmptyState } from "../../ui/primitives.js";
 import { Panel } from "../panel/Panel.js";
+import { TaskPanel } from "../panel/TaskPanel.js";
 import { MessageList } from "./MessageList.js";
-import { TaskView } from "./TaskView.js";
 import { buildTimeline } from "./timeline.js";
 
 export function ChatScreen() {
@@ -149,7 +149,7 @@ function ChatForBot({ botId }: { botId: string }) {
   const active = [...conversationRuns].reverse().find((r) => ACTIVE.has(r.status));
 
   // The tasks asked in this chat (KOD-68): the labels above what comes from them, and the one whose
-  // own view is open (it takes the place of the chat).
+  // own panel is open (the third column; the chat stays in the middle).
   const tasks = useMemo(
     () => (convId === null ? [] : tasksOfConversation({ tasks: allTasks }, convId)),
     [allTasks, convId],
@@ -159,15 +159,15 @@ function ChatForBot({ botId }: { botId: string }) {
 
   // "Ver na conversa" in a task's request: back in the chat, scroll to that bubble and flash it.
   useEffect(() => {
-    if (focusMessageId === null || taskOnScreen !== undefined) return;
+    if (focusMessageId === null) return;
     const target = document.querySelector<HTMLElement>(`[data-message="${focusMessageId}"]`);
     focusMessage(null);
     if (target === null) return;
     target.scrollIntoView({ block: "center" });
     target.dataset.flash = "true";
-    const timer = setTimeout(() => delete target.dataset.flash, 1600);
-    return () => clearTimeout(timer);
-  }, [focusMessageId, taskOnScreen, focusMessage]);
+    // Not cleared on cleanup: taking the request (`focusMessage(null)`) re-runs this effect at once.
+    setTimeout(() => delete target.dataset.flash, 1600);
+  }, [focusMessageId, focusMessage]);
 
   // The stream carries the events of the run that is on screen (and of the task that is open).
   useEffect(() => {
@@ -359,126 +359,126 @@ function ChatForBot({ botId }: { botId: string }) {
       data-testid="chat"
       data-bot={bot.name}
     >
-      {taskOnScreen !== undefined ? (
-        <TaskView task={taskOnScreen} bot={bot} onBack={() => openTask(null)} />
-      ) : (
-        <section
-          className="flex min-h-0 min-w-chat-min flex-[1_0_var(--width-chat-min)] flex-col"
-          aria-label={`Conversa com ${bot.name}`}
-        >
-          <MessageList
-            onDismissQuestion={dismissQuestion}
-            head={
-              <button
-                type="button"
-                className="group/chip inline-flex h-11 max-w-bot-chip items-center gap-2.5 rounded-pill border border-border-strong bg-bg py-0 pr-4 pl-2 text-label transition-colors hover:bg-hover"
-                aria-expanded={panelOpen}
-                aria-haspopup="menu"
-                aria-label={`${bot.name}. ${panelOpen ? "Fechar" : "Abrir"} o painel do bot. Menu de contexto para controlar a execução`}
-                data-testid="bot-chip"
-                data-run={display.chip ?? ""}
-                onClick={togglePanel}
-                onContextMenu={(e) => {
+      <section
+        className="flex min-h-0 min-w-chat-min flex-[1_0_var(--width-chat-min)] flex-col"
+        aria-label={`Conversa com ${bot.name}`}
+      >
+        <MessageList
+          onDismissQuestion={dismissQuestion}
+          head={
+            <button
+              type="button"
+              className="group/chip inline-flex h-11 max-w-bot-chip items-center gap-2.5 rounded-pill border border-border-strong bg-bg py-0 pr-4 pl-2 text-label transition-colors hover:bg-hover"
+              aria-expanded={panelOpen}
+              aria-haspopup="menu"
+              aria-label={`${bot.name}. ${panelOpen ? "Fechar" : "Abrir"} o painel do bot. Menu de contexto para controlar a execução`}
+              data-testid="bot-chip"
+              data-run={display.chip ?? ""}
+              onClick={togglePanel}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setMenu({ x: e.clientX, y: e.clientY, key: popupKey() });
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
                   e.preventDefault();
-                  setMenu({ x: e.clientX, y: e.clientY, key: popupKey() });
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
-                    e.preventDefault();
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    setMenu({ x: rect.left, y: rect.bottom + 4, key: popupKey() });
-                  }
-                }}
-              >
-                <Avatar
-                  avatar={bot.avatar}
-                  avatarStyle={bot.avatarStyle}
-                  pixel3d={bot.avatarPixel3d}
-                  color={bot.color}
-                  seed={bot.id}
-                  size="sm"
-                  state={display.avatar}
-                  supervisor={bot.isDefault}
-                />
-                <span className="min-w-0 truncate font-label">{bot.name}</span>
-                {/* The chevron grows in on hover or focus, never pops (docs/DESIGN.md §1 "Nada seco"). */}
-                <ChevronRight
-                  size={16}
-                  aria-hidden="true"
-                  data-testid="bot-chip-chevron"
-                  className="-ml-2.5 w-0 flex-none -translate-x-1 opacity-0 transition-all duration-(--duration-base) ease-out group-hover/chip:ml-0 group-hover/chip:w-4 group-hover/chip:translate-x-0 group-hover/chip:opacity-100 group-focus-visible/chip:ml-0 group-focus-visible/chip:w-4 group-focus-visible/chip:translate-x-0 group-focus-visible/chip:opacity-100"
-                />
-              </button>
-            }
-            items={items}
-            botName={bot.name}
-            hasOlder={slice?.hasOlder ?? false}
-            onLoadOlder={() =>
-              convId === null ? Promise.resolve(false) : sync.loadOlderMessages(convId)
-            }
-            runs={runs}
-            onAnswer={(text, questionId) => void answer(text, questionId)}
-            onDecideTeam={(messageId, body) => sync.decideTeam(messageId, body)}
-            onInspect={openInspector}
-            onOpenTask={openTask}
-            expanded={expanded}
-            onToggle={toggle}
-            phrase={phrase}
-            activity={activity}
-            liveFace={(state) => (
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setMenu({ x: rect.left, y: rect.bottom + 4, key: popupKey() });
+                }
+              }}
+            >
               <Avatar
                 avatar={bot.avatar}
                 avatarStyle={bot.avatarStyle}
                 pixel3d={bot.avatarPixel3d}
                 color={bot.color}
                 seed={bot.id}
-                size="md"
-                state={state}
-                lively
+                size="sm"
+                state={display.avatar}
+                supervisor={bot.isDefault}
               />
-            )}
-            announce={announce}
-            empty={
-              needsPersonality ? (
-                <EventLineButton
-                  data-testid="personality-hint"
-                  onClick={() => openEditBot(bot.id, 2)}
-                >
-                  {bot.name} ainda não tem uma personalidade. Descrever o que ele faz
-                </EventLineButton>
-              ) : undefined
-            }
-          />
-          <div
-            className="mx-auto w-full max-w-[calc(var(--width-content)+var(--space-5)*2)] flex-none px-5 pt-2 pb-5"
-            data-testid="chat-composer"
-          >
-            <Composer
-              placeholder={
-                openQuestion
-                  ? "Digite sua resposta ou fale sobre outra coisa"
-                  : `Mensagem para ${bot.name}`
-              }
-              disabled={archived || convId === null}
-              disabledReason={archived ? "Este bot está arquivado" : "Abrindo a conversa…"}
-              restore={restore}
-              prefill={prefill}
-              focusRequest={composerFocus}
-              onTextChange={(text) => {
-                if (text.trim() === "") setRoutineRef(null);
-              }}
-              attachment={
-                routineRef === null ? undefined : (
-                  <DraftReference name={routineRef.name} onRemove={() => setRoutineRef(null)} />
-                )
-              }
-              onSend={sendDraft}
-              autoFocus
+              <span className="min-w-0 truncate font-label">{bot.name}</span>
+              {/* The chevron grows in on hover or focus, never pops (docs/DESIGN.md §1 "Nada seco"). */}
+              <ChevronRight
+                size={16}
+                aria-hidden="true"
+                data-testid="bot-chip-chevron"
+                className="-ml-2.5 w-0 flex-none -translate-x-1 opacity-0 transition-all duration-(--duration-base) ease-out group-hover/chip:ml-0 group-hover/chip:w-4 group-hover/chip:translate-x-0 group-hover/chip:opacity-100 group-focus-visible/chip:ml-0 group-focus-visible/chip:w-4 group-focus-visible/chip:translate-x-0 group-focus-visible/chip:opacity-100"
+              />
+            </button>
+          }
+          items={items}
+          botName={bot.name}
+          hasOlder={slice?.hasOlder ?? false}
+          onLoadOlder={() =>
+            convId === null ? Promise.resolve(false) : sync.loadOlderMessages(convId)
+          }
+          runs={runs}
+          onAnswer={(text, questionId) => void answer(text, questionId)}
+          onDecideTeam={(messageId, body) => sync.decideTeam(messageId, body)}
+          onInspect={openInspector}
+          onOpenTask={openTask}
+          expanded={expanded}
+          onToggle={toggle}
+          phrase={phrase}
+          activity={activity}
+          liveFace={(state) => (
+            <Avatar
+              avatar={bot.avatar}
+              avatarStyle={bot.avatarStyle}
+              pixel3d={bot.avatarPixel3d}
+              color={bot.color}
+              seed={bot.id}
+              size="md"
+              state={state}
+              lively
             />
-          </div>
-        </section>
+          )}
+          announce={announce}
+          empty={
+            needsPersonality ? (
+              <EventLineButton
+                data-testid="personality-hint"
+                onClick={() => openEditBot(bot.id, 2)}
+              >
+                {bot.name} ainda não tem uma personalidade. Descrever o que ele faz
+              </EventLineButton>
+            ) : undefined
+          }
+        />
+        <div
+          className="mx-auto w-full max-w-[calc(var(--width-content)+var(--space-5)*2)] flex-none px-5 pt-2 pb-5"
+          data-testid="chat-composer"
+        >
+          <Composer
+            placeholder={
+              openQuestion
+                ? "Digite sua resposta ou fale sobre outra coisa"
+                : `Mensagem para ${bot.name}`
+            }
+            disabled={archived || convId === null}
+            disabledReason={archived ? "Este bot está arquivado" : "Abrindo a conversa…"}
+            restore={restore}
+            prefill={prefill}
+            focusRequest={composerFocus}
+            onTextChange={(text) => {
+              if (text.trim() === "") setRoutineRef(null);
+            }}
+            attachment={
+              routineRef === null ? undefined : (
+                <DraftReference name={routineRef.name} onRemove={() => setRoutineRef(null)} />
+              )
+            }
+            onSend={sendDraft}
+            autoFocus
+          />
+        </div>
+      </section>
+      {taskOnScreen !== undefined ? (
+        <TaskPanel task={taskOnScreen} bot={bot} />
+      ) : (
+        panelOpen && <Panel botId={bot.id} />
       )}
-      {panelOpen && <Panel botId={bot.id} />}
       {menu !== null && (
         <PopupMenu
           key={menu.key}
