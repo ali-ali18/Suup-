@@ -1,17 +1,19 @@
 import type { Bot, Run, Task } from "@suup/api";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, CornerUpLeft, Square } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
+import { useUi } from "../../app/ui-store.js";
 import { callSeqsOf } from "../../data/call-seq.js";
-import { deriveRunDisplay, planOf } from "../../data/derive.js";
+import { planOf } from "../../data/derive.js";
 import { liveView } from "../../data/live.js";
 import { orderedEvents, orderedMessages } from "../../data/reducers.js";
-import { TASK_STATE_TEXT, taskIsOpen, updatesText } from "../../data/task-text.js";
+import { NEW_REPLIES_TEXT, TASK_STATE_TEXT, taskIsOpen } from "../../data/task-text.js";
 import { activityPhrase, chatActivityOf } from "../../lib/chat-activity.js";
+import { cx } from "../../lib/cx.js";
 import { Avatar } from "../../ui/avatar.js";
 import { Composer } from "../../ui/composer.js";
 import { EventLine } from "../../ui/message.js";
-import { RoundButton } from "../../ui/primitives.js";
+import { Pill } from "../../ui/primitives.js";
 import { MessageList } from "./MessageList.js";
 import { buildTimeline } from "./timeline.js";
 
@@ -62,11 +64,9 @@ export function TaskView({ task, bot, onBack }: { task: Task; bot: Bot; onBack()
     () => buildTimeline(messages, taskRuns, new Date(), { callSeqs, live }),
     [messages, taskRuns, callSeqs, live],
   );
-  const updates = messages.filter((m) => m.authorKind === "bot").length;
   const open = taskIsOpen(task);
 
   const active = run !== undefined && taskIsOpen(task) ? run : undefined;
-  const display = deriveRunDisplay(active ?? null, active === undefined ? [] : events);
   const activity = chatActivityOf(active ?? null, active === undefined ? [] : events) ?? "thinking";
   const phrase = activityPhrase(
     activity,
@@ -92,6 +92,20 @@ export function TaskView({ task, bot, onBack }: { task: Task; bot: Bot; onBack()
     [sync, task],
   );
 
+  // What the task waits for the person to answer: the open question the run posted (structure:
+  // `message.question`), shown in its own block above the composer, never twice in the log.
+  const pending = items.findLast((i) => i.kind === "bot" && i.ask?.open === true);
+  const shownItems = useMemo(
+    () => (pending === undefined ? items : items.filter((i) => i !== pending)),
+    [items, pending],
+  );
+  const focusMessage = useUi((s) => s.focusMessage);
+  const showInChat = (messageId: string) => {
+    focusMessage(messageId);
+    onBack();
+  };
+  const stateText = task.unreadReplies > 0 ? NEW_REPLIES_TEXT : TASK_STATE_TEXT[task.state];
+
   return (
     <section
       className="flex min-h-0 min-w-chat-min flex-[1_0_var(--width-chat-min)] flex-col"
@@ -100,40 +114,78 @@ export function TaskView({ task, bot, onBack }: { task: Task; bot: Bot; onBack()
       data-task={task.id}
       data-task-state={task.state}
     >
-      <MessageList
-        head={
-          <div className="flex h-11 max-w-full min-w-0 items-center gap-2">
-            <RoundButton label="Voltar para a conversa" onClick={onBack} data-testid="task-back">
-              <ChevronLeft size={18} aria-hidden="true" />
-            </RoundButton>
-            <div
-              className="flex h-11 max-w-bot-chip min-w-0 items-center gap-2.5 rounded-pill border border-border-strong bg-bg py-0 pr-4 pl-2"
-              data-testid="task-head"
+      <header
+        className="flex flex-none flex-col gap-3 px-6 pt-5 pb-3 framed:pr-head-end"
+        data-testid="task-head"
+        data-tauri-drag-region
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+            <h2
+              className="truncate text-title font-label"
+              data-testid="task-title"
+              title={task.title}
             >
-              <Avatar
-                avatar={bot.avatar}
-                avatarStyle={bot.avatarStyle}
-                pixel3d={bot.avatarPixel3d}
-                color={bot.color}
-                seed={bot.id}
-                size="sm"
-                state={display.avatar}
-                supervisor={bot.isDefault}
-              />
-              <div className="flex min-w-0 flex-col">
-                <span className="truncate text-label font-label" data-testid="task-title">
-                  {task.title}
-                </span>
-                <span className="truncate text-small text-text-muted" data-testid="task-subtitle">
-                  <span data-testid="task-state">{TASK_STATE_TEXT[task.state]}</span>
-                  {" · "}
-                  <span data-testid="task-updates">{updatesText(updates)}</span>
-                </span>
-              </div>
-            </div>
+              {task.title}
+            </h2>
+            <span
+              className={cx(
+                "inline-flex w-fit items-center rounded-pill border border-border px-2.5 py-0.5 text-small",
+                task.unreadReplies > 0 ? "text-status-unread" : "text-text-muted",
+              )}
+              data-testid="task-state"
+            >
+              {stateText}
+            </span>
           </div>
-        }
-        items={items}
+          {open && (
+            <Pill
+              tone="danger"
+              icon={<Square size={14} aria-hidden="true" />}
+              onClick={() => void sync.stopTask(task.id)}
+              data-testid="task-stop"
+            >
+              Parar
+            </Pill>
+          )}
+          <Pill
+            tone="secondary"
+            icon={<ChevronLeft size={16} aria-hidden="true" />}
+            onClick={onBack}
+            data-testid="task-back"
+          >
+            Voltar ao chat
+          </Pill>
+        </div>
+        {task.sourceMessages.length > 0 && (
+          <blockquote
+            className="m-0 flex min-w-0 flex-col gap-1.5 border-0 border-l-2 border-border-strong py-0.5 pl-3"
+            data-testid="task-request"
+          >
+            <span className="text-small text-text-muted">Pedido</span>
+            {task.sourceMessages.map((m) => (
+              <p
+                key={m.id}
+                className="line-clamp-3 text-body wrap-anywhere whitespace-pre-wrap"
+                data-testid="task-request-text"
+              >
+                {m.text}
+              </p>
+            ))}
+            <button
+              type="button"
+              className="inline-flex w-fit cursor-pointer items-center gap-1.5 border-0 bg-transparent p-0 text-small text-text-muted underline underline-offset-3 hover:text-text"
+              data-testid="task-request-link"
+              onClick={() => showInChat((task.sourceMessages[0] as { id: string }).id)}
+            >
+              <CornerUpLeft size={14} aria-hidden="true" />
+              Ver na conversa
+            </button>
+          </blockquote>
+        )}
+      </header>
+      <MessageList
+        items={shownItems}
         botName={bot.name}
         hasOlder={slice?.hasOlder ?? false}
         onLoadOlder={() => sync.loadOlderMessages(task.taskConversationId)}
@@ -146,6 +198,7 @@ export function TaskView({ task, bot, onBack }: { task: Task; bot: Bot; onBack()
         onToggle={toggle}
         phrase={phrase}
         activity={activity}
+        hideIndicator={task.state === "waiting_user"}
         liveFace={(state) => (
           <Avatar
             avatar={bot.avatar}
@@ -164,9 +217,37 @@ export function TaskView({ task, bot, onBack }: { task: Task; bot: Bot; onBack()
         empty={<EventLine testId="task-empty">A tarefa ainda não trouxe atualizações.</EventLine>}
       />
       <div
-        className="mx-auto w-full max-w-[calc(var(--width-content)+var(--space-5)*2)] flex-none px-5 pt-2 pb-5"
+        className="mx-auto flex w-full max-w-[calc(var(--width-content)+var(--space-5)*2)] flex-none flex-col gap-3 px-5 pt-2 pb-5"
         data-testid="task-composer"
       >
+        {pending?.kind === "bot" && pending.ask !== undefined && open && (
+          <div
+            className="flex flex-col gap-2 rounded-card border border-border bg-raised px-4 py-3"
+            data-testid="task-question"
+          >
+            <span className="text-small text-text-muted">A tarefa pergunta</span>
+            {pending.ask.questions.map((q) => (
+              <div key={q.question} className="flex flex-col gap-2">
+                <p className="text-body wrap-anywhere whitespace-pre-wrap">{q.question}</p>
+                {q.options !== undefined && (
+                  <div className="flex flex-wrap gap-2">
+                    {q.options.map((o) => (
+                      <Pill
+                        key={o.label}
+                        tone="secondary"
+                        size="sm"
+                        onClick={() => void send(o.label)}
+                        data-testid="task-question-option"
+                      >
+                        {o.label}
+                      </Pill>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
         <Composer
           placeholder="Adicione uma resposta"
           disabled={!open}

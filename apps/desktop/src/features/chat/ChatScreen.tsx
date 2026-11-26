@@ -93,6 +93,8 @@ function ChatForBot({ botId }: { botId: string }) {
   const allTasks = useData((s) => s.tasks);
   const openTaskId = useUi((s) => s.openTaskId);
   const openTask = useUi((s) => s.openTask);
+  const focusMessageId = useUi((s) => s.focusMessageId);
+  const focusMessage = useUi((s) => s.focusMessage);
   const panelOpen = useUi((s) => s.panelOpen);
   const togglePanel = useUi((s) => s.togglePanel);
   const openInspector = useUi((s) => s.openInspector);
@@ -154,6 +156,18 @@ function ChatForBot({ botId }: { botId: string }) {
   );
   const shownTask = openTaskId === null ? undefined : allTasks[openTaskId];
   const taskOnScreen = shownTask !== undefined && shownTask.botId === botId ? shownTask : undefined;
+
+  // "Ver na conversa" in a task's request: back in the chat, scroll to that bubble and flash it.
+  useEffect(() => {
+    if (focusMessageId === null || taskOnScreen !== undefined) return;
+    const target = document.querySelector<HTMLElement>(`[data-message="${focusMessageId}"]`);
+    focusMessage(null);
+    if (target === null) return;
+    target.scrollIntoView({ block: "center" });
+    target.dataset.flash = "true";
+    const timer = setTimeout(() => delete target.dataset.flash, 1600);
+    return () => clearTimeout(timer);
+  }, [focusMessageId, taskOnScreen, focusMessage]);
 
   // The stream carries the events of the run that is on screen (and of the task that is open).
   useEffect(() => {

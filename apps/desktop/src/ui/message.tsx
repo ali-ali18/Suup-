@@ -68,17 +68,24 @@ export function UserMessage({
   text,
   state,
   position,
+  messageId,
 }: {
   text: string;
   state?: UserMessageState;
+  /** The id of the message: a task's request links back to this bubble (KOD-68). */
+  messageId?: string;
   position?: BubblePosition | undefined;
 }) {
   // The delivery state is data, not text: a message not confirmed yet is a little dimmer.
   const pending = state === "sending" || state === "sent";
   return (
     <div
-      className={cx("flex min-w-0 flex-col items-end gap-1", linked(position))}
+      className={cx(
+        "flex min-w-0 flex-col items-end gap-1 data-[flash=true]:bg-hover",
+        linked(position),
+      )}
       data-testid="message-user"
+      data-message={messageId}
       data-state={state ?? ""}
       data-bubble={position}
     >

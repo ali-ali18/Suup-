@@ -186,7 +186,7 @@ Uma tarefa é uma execução do mesmo bot, em segundo plano, numa conversa próp
 | Método e caminho | Resposta |
 |---|---|
 | `GET /v1/tasks?conversationId=&botId=&limit=` | `200 { items: [Task] }`, as mais antigas primeiro |
-| `GET /v1/tasks/{id}` | `200 Task`; `404`. `Task.unreadReplies`: quantas mensagens do bot na conversa da tarefa vieram depois do cursor de leitura (0: nada novo) |
+| `GET /v1/tasks/{id}` | `200 Task`; `404`. `Task.sourceMessages`: as mensagens do usuário em que a tarefa se baseia (as que o bot citou, ou, se não citou nenhuma, a mensagem do turno do chat que a abriu), `[{ id, text }]`, o "pedido" que a tela da tarefa cita. `Task.unreadReplies`: quantas mensagens do bot na conversa da tarefa vieram depois do cursor de leitura (0: nada novo) |
 | `POST /v1/tasks/{id}/messages` `{ text }` | `201 { message, task }`: vai direto para a caixa da execução da tarefa; `409` se ela já terminou |
 | `POST /v1/tasks/{id}/read` | `200 Task`: a tela da tarefa foi aberta, as respostas dela contam como lidas (o cursor de leitura da conversa da própria tarefa, o mesmo de um chat); `404`. Idempotente; o stream avisa as telas abertas |
 | `POST /v1/tasks/{id}/stop` | `200 Task`: cancela a execução; `409` se já terminou |

@@ -60,6 +60,7 @@ export function MessageList({
   announce,
   empty,
   head,
+  hideIndicator = false,
 }: {
   items: readonly TimelineItem[];
   runs: Record<string, Run>;
@@ -98,6 +99,8 @@ export function MessageList({
    */
   head?: ReactNode;
   empty?: ReactNode;
+  /** No working indicator (the task view says what it waits for in its own block). */
+  hideIndicator?: boolean;
 }) {
   const { platform } = useServices();
   const favicons = useSettings((s) => s.settings.favicons === "on");
@@ -216,6 +219,7 @@ export function MessageList({
                   <UserMessage
                     key={item.key}
                     text={item.text}
+                    messageId={item.key}
                     position={positions.get(item.key)}
                     {...(item.state === undefined ? {} : { state: item.state })}
                   />
@@ -352,7 +356,7 @@ export function MessageList({
                 return null;
             }
           })}
-          {live.shown !== null && (
+          {live.shown !== null && !hideIndicator && (
             // One element for the whole life of the run (keyed by it), so the face keeps its
             // motion when the run ends and the "done" expression plays while the row leaves.
             <WorkingIndicator

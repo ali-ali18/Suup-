@@ -499,6 +499,16 @@ export class Sync {
     }
   }
 
+  /** The "Parar" of a task's own view: the task ends as stopped and nothing goes to the chat. */
+  async stopTask(taskId: string): Promise<void> {
+    try {
+      const task = await this.deps.api.tasks.stop(taskId);
+      update(this.store, (s) => mergeTask(s, task));
+    } catch (error) {
+      this.fail(error);
+    }
+  }
+
   async loadConversationRuns(conversationId: string): Promise<void> {
     try {
       const page = await this.deps.api.runs.list({ conversationId, limit: 50 });

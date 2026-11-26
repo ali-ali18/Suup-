@@ -14,7 +14,6 @@ import {
   listActiveConversationRuns,
   listChanges,
   listRunEvents,
-  taskUnreadReplies,
 } from "@suup/db";
 import {
   toApprovalDto,
@@ -24,8 +23,9 @@ import {
   toMessageDto,
   toRunDto,
   toRunEventDto,
-  toTaskDto,
+  type toTaskDto,
 } from "../mappers.js";
+import { taskDtoOf } from "../task-dto.js";
 import type { ChangeSource, Notifier, Resolved, WireEvent } from "./hub.js";
 
 /** Kinds whose events are snapshots of the row: several changes in a batch need only the last. */
@@ -166,8 +166,14 @@ async function eventsOf(
       const task = await getTask(db, change.ref);
       const run = task === null ? null : await getRun(db, task.runId);
       if (task === null || run === null) return [];
-      const unread = (await taskUnreadReplies(db, [task.id])).get(task.id) ?? 0;
-      return [taskEvent(task, run, change.op === "created" ? "created" : "updated", unread)];
+      return [
+        taskEvent(
+          task,
+          run,
+          change.op === "created" ? "created" : "updated",
+          await taskDtoOf(db, task, run),
+        ),
+      ];
     }
     case "bot": {
       const summary = await getBotSummary(db, change.ref);
@@ -215,12 +221,12 @@ function taskEvent(
   task: Parameters<typeof toTaskDto>[0],
   run: Parameters<typeof toTaskDto>[1],
   change: "created" | "updated",
-  unread: number,
+  dto: ReturnType<typeof toTaskDto>,
 ): WireEvent {
   return {
     type: "task.changed",
     key: `task:${task.id}`,
     version: run.updatedAt.getTime(),
-    data: { change, task: toTaskDto(task, run, unread) },
+    data: { change, task: dto },
   };
 }

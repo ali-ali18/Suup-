@@ -9,6 +9,7 @@ import { RoundButton, Tabs } from "../../ui/primitives.js";
 import { ResizeHandle } from "../../ui/resize-handle.js";
 import { ActivityTab } from "./ActivityTab.js";
 import { RoutineDetail } from "./RoutineDetail.js";
+import { TaskPanel } from "./TaskPanel.js";
 
 const TABS = [
   { id: "activity", label: "Atividade" },
@@ -31,6 +32,8 @@ export function Panel({ botId }: { botId: string }) {
   const panelWidth = useUi((s) => s.panelWidth);
   const setPanelLayout = useUi((s) => s.setPanelLayout);
   const routineId = useUi((s) => s.panelRoutineId);
+  const openTaskId = useUi((s) => s.openTaskId);
+  const task = useData((s) => (openTaskId === null ? undefined : s.tasks[openTaskId]));
   const [now] = useState(() => new Date());
   if (bot === undefined) return null;
   const resize = (
@@ -51,6 +54,33 @@ export function Panel({ botId }: { botId: string }) {
     return (
       <aside className={frame} aria-label={`Painel de ${bot.name}`} data-testid="panel">
         <RoutineDetail key={routineId} botId={bot.id} routineId={routineId} />
+        {resize}
+      </aside>
+    );
+  }
+  // A task's own view is open: its data take the panel (PREVIEW, docs/DESIGN.md 4d).
+  if (task !== undefined && task.botId === bot.id) {
+    return (
+      <aside className={frame} aria-label={`Tarefa: ${task.title}`} data-testid="panel">
+        <div
+          className="relative flex flex-none flex-col gap-1 px-5 pt-12 pb-3"
+          data-tauri-drag-region
+        >
+          <RoundButton
+            label="Fechar o painel"
+            tone="outline"
+            size="xs"
+            className={PANEL_CLOSE}
+            onClick={togglePanel}
+            data-testid="panel-close"
+          >
+            <X size={14} aria-hidden="true" />
+          </RoundButton>
+          <h2 className="text-title font-label">Dados da tarefa</h2>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-2 pb-5">
+          <TaskPanel task={task} botName={bot.name} />
+        </div>
         {resize}
       </aside>
     );

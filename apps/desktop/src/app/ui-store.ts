@@ -72,6 +72,12 @@ export interface UiState {
    */
   openTaskId: string | null;
   openTask(taskId: string | null): void;
+  /**
+   * A message of the chat to scroll to and flash, once the chat is on screen ("Ver na conversa" in
+   * a task's request). The chat takes it and clears it.
+   */
+  focusMessageId: string | null;
+  focusMessage(messageId: string | null): void;
   /** The run the inspector looks at. */
   inspectorRunId: string | null;
   /** Where "back" from the inspector goes. */
@@ -201,6 +207,8 @@ export const useUi = create<UiState>((set, get) => ({
   takeChatPrefill: () => set({ chatPrefill: null }),
   openTaskId: null,
   openTask: (openTaskId) => set({ openTaskId }),
+  focusMessageId: null,
+  focusMessage: (focusMessageId) => set({ focusMessageId }),
   inspectorRunId: null,
   inspectorFrom: "chat",
   newBotOpen: false,

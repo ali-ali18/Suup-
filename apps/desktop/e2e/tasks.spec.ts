@@ -64,6 +64,17 @@ const SCRIPTS = {
         ],
       },
       {
+        whenObjectiveContains: "TAREFA-LONGA",
+        agent: [s({ text: "Esta resposta nunca deve chegar.", delayMs: 120_000 })],
+      },
+      {
+        whenObjectiveContains: "CASE-PARAR",
+        agent: [
+          open("Compilar o relatório mensal", "TAREFA-LONGA"),
+          s({ text: "Abri uma tarefa para compilar o relatório." }),
+        ],
+      },
+      {
         whenObjectiveContains: "CASE-REVISAO",
         agent: [
           open("Revisar o projeto", "TAREFA-REVISAO"),
@@ -237,14 +248,35 @@ test.describe("tasks of a bot", () => {
     await expect(view).toBeVisible();
     await expect(view.getByTestId("task-title")).toHaveText("Revisar o projeto");
     await expect(view.getByTestId("task-state")).toHaveText("Aguardando sua resposta");
-    await expect(view.getByTestId("task-updates")).toHaveText("2 atualizações");
+    // The header is a task page: the name, the state as a tag, and the two buttons at the side.
+    await expect(view.getByTestId("task-back")).toHaveText("Voltar ao chat");
+    await expect(view.getByTestId("task-stop")).toHaveText("Parar");
+    await expect(view.getByTestId("task-updates")).toHaveCount(0);
+    // The request that opened the task, quoted, with a way back to that bubble in the chat.
+    const quote = view.getByTestId("task-request");
+    await expect(quote).toContainText("CASE-REVISAO revise o projeto inteiro, por favor");
+    // The question the task waits on is its own block above the composer, not a bubble in the log,
+    // and the "Esperando a sua resposta…" line of the avatar is not drawn in this view.
+    const question = view.getByTestId("task-question");
+    await expect(question).toContainText("Qual pasta devo revisar primeiro?");
+    const qb = await question.boundingBox();
+    const cbox = await view.getByPlaceholder("Adicione uma resposta").boundingBox();
+    expect((qb?.y ?? 0) + (qb?.height ?? 0)).toBeLessThanOrEqual((cbox?.y ?? 0) + 1);
+    await expect(view.getByTestId("working-wrap")).toHaveCount(0);
+    // The right panel shows the task's data instead of the bot's settings.
+    const data = page.getByTestId("task-panel");
+    await expect(data).toBeVisible();
+    await expect(data.getByTestId("task-panel-started")).toContainText("hoje");
+    await expect(data.getByTestId("task-panel-approvals")).toContainText("Nenhuma");
+    await expect(data.getByTestId("task-panel-cost")).toContainText("US$");
+    await page.screenshot({ path: shot("tela-tarefa-pergunta") });
     await expect(
       view.getByTestId("message-bot").filter({ hasText: "Comecei a olhar o projeto." }),
     ).toBeVisible();
-    // An open question (no options) is the bot's bubble, as in any chat.
+    // The open question is only in its block, never also a bubble of the log.
     await expect(
       view.getByTestId("message-bot").filter({ hasText: "Qual pasta devo revisar primeiro?" }),
-    ).toBeVisible();
+    ).toHaveCount(0);
     // The chat is not on screen meanwhile (the view takes its place) and the box is the task's.
     await expect(page.getByTestId("chat-composer")).toHaveCount(0);
     const box = view.getByPlaceholder("Adicione uma resposta");
@@ -253,9 +285,18 @@ test.describe("tasks of a bot", () => {
     const vb = await view.boundingBox();
     const hb = await view.getByTestId("task-head").boundingBox();
     expect((hb?.x ?? 0) >= (vb?.x ?? 0)).toBe(true);
-    expect((hb?.y ?? 0) + (hb?.height ?? 0)).toBeLessThanOrEqual((vb?.y ?? 0) + 72);
+    expect((hb?.y ?? 0) + (hb?.height ?? 0)).toBeLessThanOrEqual((vb?.y ?? 0) + 240);
     expect((vb?.width ?? 0) <= 1440).toBe(true);
     await page.screenshot({ path: shot("tarefa-aberta") });
+
+    // "Ver na conversa": back in the chat, on the bubble of the request, flashed.
+    await quote.getByTestId("task-request-link").click();
+    await expect(view).toHaveCount(0);
+    await expect(
+      page.getByTestId("message-user").filter({ hasText: "CASE-REVISAO" }),
+    ).toHaveAttribute("data-flash", "true");
+    await label(page).first().click();
+    await expect(view).toBeVisible();
 
     // The reply goes straight to the task (no chat message), and the task finishes with it.
     await box.fill("Comece pela pasta src.");
@@ -269,7 +310,12 @@ test.describe("tasks of a bot", () => {
     ).toBeVisible();
     // A task that ended takes no reply.
     await expect(view.getByPlaceholder("Esta tarefa terminou")).toBeDisabled();
+    await expect(
+      view.getByTestId("message-bot").filter({ hasText: "Revisão pronta" }),
+    ).toContainText("o principal está no login.");
+    await page.waitForTimeout(500);
     await page.screenshot({ path: shot("tarefa-concluida") });
+    await page.screenshot({ path: shot("tela-tarefa-concluida") });
 
     // Back to the chat: the short message of the result, with the label of the finished task.
     await view.getByTestId("task-back").click();
@@ -319,6 +365,11 @@ test.describe("tasks of a bot", () => {
     // The task brought words you have not read: until you open it, the label says so.
     await expect(page.getByTestId("task-label").last()).toContainText("Novas respostas");
     await expect(page.getByTestId("task-label").last()).toHaveAttribute("data-task-state", "done");
+    // Its approvals are in the task's data panel, from the approvals the app already has.
+    await page.getByTestId("task-label").last().click();
+    const approvalsPanel = page.getByTestId("task-panel-approvals");
+    await expect(approvalsPanel.getByTestId("task-panel-approval")).toHaveCount(1);
+    await expect(approvalsPanel).toContainText("Aprovada");
   });
 
   test("a long task name is cut with an ellipsis and the state stays whole", async ({ page }) => {
@@ -351,5 +402,24 @@ test.describe("tasks of a bot", () => {
     await tag.focus();
     await page.keyboard.press("Enter");
     await expect(page.getByTestId("task-view")).toBeVisible();
+  });
+
+  test("Parar stops a working task from its own view", async ({ page }) => {
+    await openWithBot(page, world, "Parador");
+    await send(page, "CASE-PARAR compile o relatório");
+    await expect(label(page)).toHaveCount(1);
+    await label(page).click();
+    const view = page.getByTestId("task-view");
+    await expect(view).toBeVisible();
+    await expect(view.getByTestId("task-title")).toHaveText("Compilar o relatório mensal");
+    await expect(view.getByTestId("task-state")).toHaveText("Trabalhando…");
+    await expect(view.getByTestId("task-stop")).toBeEnabled();
+    await expect(page.getByTestId("task-panel")).toBeVisible();
+    await page.screenshot({ path: shot("tela-tarefa-trabalhando") });
+    await view.getByTestId("task-stop").click();
+    await expect(view.getByTestId("task-state")).toHaveText("Parada");
+    await expect(view.getByTestId("task-stop")).toHaveCount(0);
+    await expect(view.getByPlaceholder("Esta tarefa terminou")).toBeDisabled();
+    await page.screenshot({ path: shot("tela-tarefa-parada") });
   });
 });

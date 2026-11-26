@@ -20,6 +20,7 @@ const task = (over: Partial<Task> = {}): Task => ({
   title: "Revisar o projeto",
   state: "working",
   unreadReplies: 0,
+  sourceMessages: [],
   createdAt: at(14, 10),
   updatedAt: at(14, 10),
   finishedAt: null,

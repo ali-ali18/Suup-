@@ -2258,6 +2258,15 @@ describe("tarefas (docs/DESIGN.md, 4d)", () => {
     expect(link).toContain("text-inherit");
     expect(link).not.toContain("text-link");
     expect(read(join(SRC, "features/chat/TaskView.tsx"))).toContain("markTaskRead");
+    // PREVIEW of the task page: the stop and back buttons, the quoted request, the question block
+    // above the composer, and the task's data in the right panel; no list of steps.
+    const view = read(join(SRC, "features/chat/TaskView.tsx"));
+    for (const id of ["task-stop", "task-back", "task-request", "task-question"]) {
+      expect(view).toContain(`data-testid="${id}"`);
+    }
+    expect(view).not.toContain("updatesText");
+    expect(view).not.toContain("Andamento");
+    expect(read(join(SRC, "features/panel/TaskPanel.tsx"))).toContain('data-testid="task-panel"');
     expect(read(join(SRC, "features/chat/TaskView.tsx"))).toContain('"Adicione uma resposta"');
   });
 });

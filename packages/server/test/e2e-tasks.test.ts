@@ -150,6 +150,10 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("tasks through the API"), { timeout: 
     );
     // The chat is free and was not asked anything.
     expect(await botTexts(chatId)).not.toContain("Qual pasta devo usar?");
+    // The request the task view quotes: the user message that opened the task (by structure).
+    expect((await api.tasks.get(task.id)).sourceMessages.map((m) => m.text)).toEqual([
+      "CASE-PERGUNTA: organize as minhas pastas",
+    ]);
     // The question is a reply the person has not seen: the task says so until its view is opened.
     expect((await api.tasks.get(task.id)).unreadReplies).toBeGreaterThan(0);
     expect((await api.tasks.list({ conversationId: chatId }))[0]?.unreadReplies).toBeGreaterThan(0);

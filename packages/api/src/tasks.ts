@@ -45,6 +45,12 @@ export const taskSchema = z.object({
    * view is opened (`POST /v1/tasks/{id}/read`).
    */
   unreadReplies: z.number().int().nonnegative(),
+  /**
+   * The user messages of the chat that the task was started from, as the person wrote them (copied
+   * from the database by id when the task started, never reworded by the model): the task's own view
+   * quotes them as "the request". Empty when the bot cited none.
+   */
+  sourceMessages: z.array(z.object({ id: uuid, text: z.string() })),
   createdAt: isoDate,
   /** When the state last changed (the run's): a client keeps the newest version it saw. */
   updatedAt: isoDate,

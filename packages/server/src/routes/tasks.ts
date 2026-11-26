@@ -1,17 +1,10 @@
 import { listTasksQuerySchema, replyToTaskBodySchema } from "@suup/api";
-import {
-  cancelRun,
-  getRun,
-  getTask,
-  listTasks,
-  markTaskRead,
-  replyToTask,
-  taskUnreadReplies,
-} from "@suup/db";
+import { cancelRun, getRun, getTask, listTasks, markTaskRead, replyToTask } from "@suup/db";
 import { applyStatusEffects, finishRun } from "@suup/runtime";
 import { HttpError } from "../errors.js";
 import type { Route } from "../http.js";
-import { toMessageDto, toTaskDto } from "../mappers.js";
+import { toMessageDto } from "../mappers.js";
+import { taskDtoOf } from "../task-dto.js";
 
 /** The task as the API says it: the row, with the state of its run. */
 async function taskBody(ctx: Parameters<Route["handler"]>[0], taskId: string) {
@@ -19,8 +12,7 @@ async function taskBody(ctx: Parameters<Route["handler"]>[0], taskId: string) {
   const task = await getTask(db, taskId);
   const run = task === null ? null : await getRun(db, task.runId);
   if (task === null || run === null) throw new HttpError("not_found", "Tarefa não encontrada.");
-  const unread = await taskUnreadReplies(db, [task.id]);
-  return toTaskDto(task, run, unread.get(task.id) ?? 0);
+  return taskDtoOf(db, task, run);
 }
 
 export const taskRoutes: Route[] = [
@@ -35,14 +27,10 @@ export const taskRoutes: Route[] = [
         ...(query.conversationId === undefined ? {} : { conversationId: query.conversationId }),
         ...(query.botId === undefined ? {} : { botId: query.botId }),
       });
-      const unread = await taskUnreadReplies(
-        db,
-        tasks.map((t) => t.id),
-      );
       const items = [];
       for (const task of tasks) {
         const run = await getRun(db, task.runId);
-        if (run !== null) items.push(toTaskDto(task, run, unread.get(task.id) ?? 0));
+        if (run !== null) items.push(await taskDtoOf(db, task, run));
       }
       return { body: { items } };
     },
@@ -68,7 +56,7 @@ export const taskRoutes: Route[] = [
         status: 201,
         body: {
           message: toMessageDto(sent.message),
-          task: toTaskDto(sent.task, sent.run, 0),
+          task: await taskDtoOf(ctx.runtime.db, sent.task, sent.run),
         },
       };
     },
