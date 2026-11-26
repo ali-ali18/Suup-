@@ -32,7 +32,9 @@ function latency(results: readonly ChatTaskResult[], pick: (r: ChatTaskResult) =
 }
 
 export function formatChatTaskReport(report: ChatTaskReport): string[] {
-  const lines = [`Chat ou tarefa · variante ${VARIANT_PT[report.variant]} · modelo ${report.model}`];
+  const lines = [
+    `Chat ou tarefa · variante ${VARIANT_PT[report.variant]} · modelo ${report.model}`,
+  ];
   for (const summary of report.categories) {
     const before =
       summary.baseline === null
@@ -59,7 +61,9 @@ export function formatChatTaskReport(report: ChatTaskReport): string[] {
       `  conferência no fim achou pedidos esquecidos em: ${nudged.map((r) => r.id).join(", ")}`,
     );
   }
-  lines.push(`  latência até a primeira resposta: ${latency(report.results, (r) => r.firstReplyMs)}`);
+  lines.push(
+    `  latência até a primeira resposta: ${latency(report.results, (r) => r.firstReplyMs)}`,
+  );
   lines.push(`  latência até o fim do turno: ${latency(report.results, (r) => r.endMs)}`);
   for (const category of CHAT_TASK_CATEGORIES) {
     const own = report.results.filter((r) => r.category === category);

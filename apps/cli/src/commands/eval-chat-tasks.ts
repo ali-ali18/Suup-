@@ -64,7 +64,11 @@ export const evalChatTasks: CommandSpec = {
   name: COMMAND,
   summary: "Mede se o bot passa trabalho longo para uma tarefa sozinho (gasta dinheiro)",
   options: {
-    model: { type: "string", value: "modelo", help: "Modelo da configuração para os bots (obrigatório)" },
+    model: {
+      type: "string",
+      value: "modelo",
+      help: "Modelo da configuração para os bots (obrigatório)",
+    },
     variant: {
       type: "string",
       value: "a|b|ab",
@@ -80,7 +84,11 @@ export const evalChatTasks: CommandSpec = {
       value: "US$",
       help: `Teto de gasto somando as variantes, dividido igualmente (padrão ${DEFAULT_BUDGET_USD})`,
     },
-    out: { type: "string", value: "arquivo", help: "Grava o resultado completo, em JSON, neste arquivo" },
+    out: {
+      type: "string",
+      value: "arquivo",
+      help: "Grava o resultado completo, em JSON, neste arquivo",
+    },
     yes: { type: "boolean", help: "Confirma que o eval pode gastar até o teto" },
   },
   positionals: { names: [] },
@@ -91,13 +99,14 @@ export const evalChatTasks: CommandSpec = {
   ],
   async run(ctx) {
     const modelId = str(ctx.args, "model");
-    if (modelId === undefined) throw new UsageError("Passe --model com um modelo da configuração.", COMMAND);
+    if (modelId === undefined)
+      throw new UsageError("Passe --model com um modelo da configuração.", COMMAND);
     const variants = variantsOf(str(ctx.args, "variant"));
     const checkModel = str(ctx.args, "check-model");
     const budgetUsd = dollars(str(ctx.args, "budget-usd"));
     const { config, baseDir } = ctx.config();
     if (config.sandbox.kind !== "local") {
-      throw new CommandError("Este eval precisa de sandbox local (sandbox.kind = \"local\").");
+      throw new CommandError('Este eval precisa de sandbox local (sandbox.kind = "local").');
     }
     const machineRoot = isAbsolute(config.sandbox.root)
       ? config.sandbox.root
@@ -105,9 +114,12 @@ export const evalChatTasks: CommandSpec = {
     const probe = ctx.runtime();
     const { model } = probe.resolveModel(modelId);
     const key = probe.keyStatus(model.provider);
-    if (!key.ok) throw new CommandError(`O provedor "${model.provider}" não está pronto: ${key.reason}.`);
+    if (!key.ok)
+      throw new CommandError(`O provedor "${model.provider}" não está pronto: ${key.reason}.`);
     if (model.pricing === undefined) {
-      throw new CommandError(`Sem preço configurado para ${model.id}: o teto de gasto não valeria.`);
+      throw new CommandError(
+        `Sem preço configurado para ${model.id}: o teto de gasto não valeria.`,
+      );
     }
     const perVariant = budgetUsd / variants.length;
     ctx.out.line(

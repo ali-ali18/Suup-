@@ -153,7 +153,9 @@ export async function askCheck(ctx: LoopContext, answer: string): Promise<"ok" |
     provider: judge.provider,
     model: judge.model,
     system: ASK_CHECK_SYSTEM,
-    messages: [{ role: "user", blocks: [{ type: "text", text: askDigest(ctx, taskTool, answer) }] }],
+    messages: [
+      { role: "user", blocks: [{ type: "text", text: askDigest(ctx, taskTool, answer) }] },
+    ],
     tools: [askSpec()],
     ...(forced ? { toolChoice: { name: ASK_CHECK_TOOL } } : {}),
     retries: 0,
@@ -174,7 +176,10 @@ export async function askCheck(ctx: LoopContext, answer: string): Promise<"ok" |
       : undefined;
   if (parsed === undefined || !parsed.success) {
     // The checker failed: the answer stands as it is (the check never blocks a reply).
-    await record(ctx, { type: "asks_checked", payload: { asks: [], unhandled: [], judged: false } });
+    await record(ctx, {
+      type: "asks_checked",
+      payload: { asks: [], unhandled: [], judged: false },
+    });
     return "ok";
   }
   const asks = parsed.data.asks.map((a) => ({ ...a, ask: clip(a.ask.trim(), ASK_MAX) }));

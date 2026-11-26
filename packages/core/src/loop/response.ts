@@ -2,13 +2,13 @@
 // question, nudges for truncation, empty output or stopping with open steps, and the no-progress
 // guard), and handing tool calls over to execution.
 
+import { askCheck } from "./handoff.js";
 import {
   EMPTY_RESPONSE_NUDGE,
   FINISH_REQUIRED_NUDGE,
   stoppedWithOpenStepsNudge,
   TRUNCATED_NUDGE,
 } from "./prompts.js";
-import { askCheck } from "./handoff.js";
 import { end, fail, nudge, transition } from "./recording.js";
 import type { LoopContext } from "./run-context.js";
 import type { PendingResponse } from "./state.js";

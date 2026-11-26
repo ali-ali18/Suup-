@@ -473,13 +473,13 @@ export {
   openTaskResult,
   pendingTaskResults,
   recentUserMessages,
-  userMessagesOfRun,
   replyToTask,
   type Task,
   TaskError,
   type TaskErrorCode,
   taskStartContext,
   taskUnreadReplies,
+  userMessagesOfRun,
 } from "./tasks.js";
 export {
   decideTeamProposal,

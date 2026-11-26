@@ -13,7 +13,9 @@ describe("the chat-or-task cases (KOD-68)", () => {
     expect(CHAT_TASK_CASES.length).toBeLessThanOrEqual(40);
     expect(new Set(CHAT_TASK_CASES.map((c) => c.id)).size).toBe(CHAT_TASK_CASES.length);
     for (const category of CHAT_TASK_CATEGORIES) {
-      expect(CHAT_TASK_CASES.filter((c) => c.category === category).length).toBeGreaterThanOrEqual(6);
+      expect(CHAT_TASK_CASES.filter((c) => c.category === category).length).toBeGreaterThanOrEqual(
+        6,
+      );
     }
   });
 
@@ -34,7 +36,9 @@ describe("the chat-or-task cases (KOD-68)", () => {
   it("writes every folder a message points at, inside the case's own folder", () => {
     for (const c of CHAT_TASK_CASES) {
       for (const path of Object.keys(c.files ?? {})) {
-        expect(path.startsWith("/") || path.split("/").includes(".."), `${c.id}: ${path}`).toBe(false);
+        expect(path.startsWith("/") || path.split("/").includes(".."), `${c.id}: ${path}`).toBe(
+          false,
+        );
       }
     }
     // A case that reads what is there has files; one that only creates (the site, a note) may not.
@@ -81,9 +85,21 @@ describe("the report", () => {
         },
       ],
       categories: [
-        { category: "quick", passed: 0, total: 0, baseline: { passed: 7, total: 7 }, failedIds: [] },
+        {
+          category: "quick",
+          passed: 0,
+          total: 0,
+          baseline: { passed: 7, total: 7 },
+          failedIds: [],
+        },
         { category: "long", passed: 1, total: 1, baseline: { passed: 3, total: 6 }, failedIds: [] },
-        { category: "multi", passed: 0, total: 0, baseline: { passed: 1, total: 3 }, failedIds: [] },
+        {
+          category: "multi",
+          passed: 0,
+          total: 0,
+          baseline: { passed: 1, total: 3 },
+          failedIds: [],
+        },
         { category: "followup", passed: 0, total: 0, baseline: null, failedIds: [] },
       ],
       totalCostUsd: 0.01,

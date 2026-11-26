@@ -11,6 +11,7 @@ import {
   type ToolInvoker,
 } from "./loop/loop.js";
 import { APPROVALS_PROMPT_MARK } from "./loop/prompts.js";
+import type { AskCheckDeps, HandoffDeps, HandoffOutcome } from "./loop/run-context.js";
 import { canonicalJson } from "./loop/state.js";
 import type {
   ApprovalDecisionItem,
@@ -19,7 +20,6 @@ import type {
   StatusChange,
   UsageDelta,
 } from "./loop/store.js";
-import type { AskCheckDeps, HandoffDeps, HandoffOutcome } from "./loop/run-context.js";
 import type { ProgressJudge } from "./loop/watchdog.js";
 import {
   type GenerateRequest,

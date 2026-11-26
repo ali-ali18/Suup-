@@ -19,10 +19,10 @@ import { rebuildState } from "./state.js";
 import { LeaseLostError, type RunStatus } from "./store.js";
 import { watchdog } from "./watchdog.js";
 
+export { ASK_CHECK_TOOL, handedOffText, unhandledAsksNudge } from "./handoff.js";
 export { computeCost, MAX_MODEL_RETRIES } from "./model-call.js";
 export { INTERRUPTED_RESULT } from "./recording.js";
 export type { ModelPricing, ReviewerConfig } from "./reviewer.js";
-export { ASK_CHECK_TOOL, handedOffText, unhandledAsksNudge } from "./handoff.js";
 export type {
   AskCheckDeps,
   BotConfig,

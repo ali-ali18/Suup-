@@ -3,6 +3,7 @@ import { hostname } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import type { CatalogEntry, StdioLauncher } from "@suup/connectors";
 import {
+  type AskCheckDeps,
   type AutoReviewer,
   allowAllGate,
   type BotConfig,
@@ -13,12 +14,11 @@ import {
   createToolGate,
   DEFAULT_TOOL_SEARCH,
   type Executor,
+  type HandoffDeps,
   type LoopDeps,
   liveAllowed,
   type NativeToolSearch,
   type OutgoingFile,
-  type AskCheckDeps,
-  type HandoffDeps,
   type ProgressJudge,
   type Provider,
   ProviderError,

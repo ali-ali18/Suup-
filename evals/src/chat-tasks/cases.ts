@@ -59,7 +59,13 @@ export const BASELINE: Record<ChatTaskCategory, { passed: number; total: number 
 };
 
 const quick: ChatTaskCase[] = [
-  { id: "q-porcentagem", category: "quick", title: "conta simples", message: "Quanto é 18% de 2.350?", expect: { tasks: 0 } },
+  {
+    id: "q-porcentagem",
+    category: "quick",
+    title: "conta simples",
+    message: "Quanto é 18% de 2.350?",
+    expect: { tasks: 0 },
+  },
   {
     id: "q-let-const",
     category: "quick",
@@ -104,7 +110,13 @@ const quick: ChatTaskCase[] = [
     message: "Cria o arquivo {dir}/lembrete.txt com o texto 'ligar pro fornecedor às 15h'.",
     expect: { tasks: 0 },
   },
-  { id: "q-oi", category: "quick", title: "cumprimento", message: "Bom dia! Tudo certo por aí?", expect: { tasks: 0 } },
+  {
+    id: "q-oi",
+    category: "quick",
+    title: "cumprimento",
+    message: "Bom dia! Tudo certo por aí?",
+    expect: { tasks: 0 },
+  },
   {
     id: "q-versao",
     category: "quick",
@@ -120,7 +132,8 @@ const long: ChatTaskCase[] = [
     id: "l-testes",
     category: "long",
     title: "corrigir testes no terminal",
-    message: "O projeto em {dir} tem testes falhando. Roda os testes, descobre por que falham e corrige até passar tudo.",
+    message:
+      "O projeto em {dir} tem testes falhando. Roda os testes, descobre por que falham e corrige até passar tudo.",
     files: failingProject(),
     expect: { tasks: 1 },
   },
@@ -172,7 +185,8 @@ const long: ChatTaskCase[] = [
     id: "l-cobertura",
     category: "long",
     title: "escrever testes para 12 módulos",
-    message: "Revisa as 12 funções de {dir}/src, escreve testes pras que não têm e roda tudo até passar.",
+    message:
+      "Revisa as 12 funções de {dir}/src, escreve testes pras que não têm e roda tudo até passar.",
     files: untestedFunctions(),
     expect: { tasks: 1 },
   },
@@ -219,7 +233,8 @@ const multi: ChatTaskCase[] = [
     id: "m-tres-rapidas",
     category: "multi",
     title: "três rápidas",
-    message: "Me diz: a capital da Austrália, quanto é 12 x 14, e como se diz 'obrigado' em japonês.",
+    message:
+      "Me diz: a capital da Austrália, quanto é 12 x 14, e como se diz 'obrigado' em japonês.",
     expect: { tasks: 0 },
   },
   {
@@ -278,7 +293,8 @@ const followup: ChatTaskCase[] = [
       message: "Audita os 40 CSV de {dir}/vendas e me dá um relatório por arquivo.",
       title: "Auditar os CSV de vendas",
       brief: "Auditar os 40 CSV de {dir}/vendas e entregar um relatório por arquivo.",
-      answer: 'Abri a tarefa "Auditar os CSV de vendas". O relatório volta aqui quando ela terminar.',
+      answer:
+        'Abri a tarefa "Auditar os CSV de vendas". O relatório volta aqui quando ela terminar.',
     },
     message: "Ah, na auditoria dos CSV, ignora os arquivos de janeiro.",
     files: sales(),
@@ -346,7 +362,8 @@ const followup: ChatTaskCase[] = [
     before: {
       message: "Compara as 6 planilhas de estoque em {dir} e acha mudanças de preço acima de 10%.",
       title: "Relatório de estoque",
-      brief: "Comparar as 6 planilhas de estoque em {dir} e listar mudanças de preço acima de 10% mês a mês.",
+      brief:
+        "Comparar as 6 planilhas de estoque em {dir} e listar mudanças de preço acima de 10% mês a mês.",
       answer: 'Abri a tarefa "Relatório de estoque". O relatório volta aqui.',
     },
     message: "No relatório de estoque, usa 15% em vez de 10% como limite.",

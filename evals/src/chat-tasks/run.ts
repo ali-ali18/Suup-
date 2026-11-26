@@ -140,10 +140,7 @@ function follow(
         if (capped) return;
         const run = await getRun(runtime.db, runId);
         if (run === null || !OPEN.has(run.status)) return;
-        if (
-          run.turns >= limits.maxTurns ||
-          Date.now() - startedAt >= limits.maxSeconds * 1000
-        ) {
+        if (run.turns >= limits.maxTurns || Date.now() - startedAt >= limits.maxSeconds * 1000) {
           capped = true;
           await cancelRun(runtime.db, runId).catch(() => undefined);
         }
@@ -192,7 +189,8 @@ async function runCase(
     allowedTools: [...CHAT_TASK_BOT_TOOLS],
   });
   // The eval measures where the work goes, not the approvals: the bot's own tools run without a card.
-  for (const tool of CHAT_TASK_BOT_TOOLS) await createRule(db, { botId: bot.id, tool, effect: "allow" });
+  for (const tool of CHAT_TASK_BOT_TOOLS)
+    await createRule(db, { botId: bot.id, tool, effect: "allow" });
 
   let openTaskId: string | null = null;
   let conversationId: string;
@@ -275,7 +273,9 @@ async function runCase(
       problems.push(`abriu ${tasks.length} tarefa(s), esperado ${expectedTasks}`);
     }
     if (c.expect.forward !== undefined && forwarded !== c.expect.forward) {
-      problems.push(c.expect.forward ? "não repassou à tarefa aberta" : "repassou à tarefa sem motivo");
+      problems.push(
+        c.expect.forward ? "não repassou à tarefa aberta" : "repassou à tarefa sem motivo",
+      );
     }
     if (!capped && followed.status !== "done" && followed.status !== "waiting_user") {
       problems.push(`terminou como ${followed.status}`);
