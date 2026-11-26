@@ -35,7 +35,11 @@
 //     instance is a survivor of the old one. It is accepted only while this proxy has not handed out
 //     any generation yet (nobody newer can exist), as a fresh claim; after that it is refused, so a
 //     stale worker that comes back late can never beat the worker that already claimed. If it comes
-//     first it takes gen 1 and a new worker (gen 2) replaces it normally.
+//     first it takes gen 1 and a new worker (gen 2) replaces it normally. Survivors of the same
+//     older instance are ordered by what they held there: while the owner is itself a survivor, one
+//     whose old generation is HIGHER replaces it (the legitimate owner of the old proxy arrives
+//     after a stale one) and one with a lower or equal old generation is refused; a survivor of any
+//     other instance is refused. A fresh claim (a new process) clears that: it beats every survivor.
 //   Ordering is by the proxy's own counter, never by a clock. What it cannot order: two workers that
 //   both start while the proxy is down and both have no history; the later arrival wins (that is a
 //   plain "newest connects last" and there is nothing to tell them apart).
@@ -165,6 +169,8 @@ export class ControlServer implements EgressPolicy {
   /** The generation of each worker process that said hello, by the id it gave itself. */
   readonly #gens = new Map<string, number>();
   #workerGen = 0;
+  /** When the owner is a survivor of an older proxy instance: what it held there. */
+  #ownerHeld: { proxy: string; gen: number } | undefined;
 
   constructor(options: ControlServerOptions) {
     this.#o = options;
@@ -278,7 +284,13 @@ export class ControlServer implements EgressPolicy {
         : known;
     }
     if (held !== undefined && held.proxy === this.#id) return "late"; // we never gave it that
-    if (held !== undefined && this.#counter > 0) return "late"; // a survivor of an older proxy, late
+    if (held !== undefined && this.#counter > 0) {
+      // A survivor of an older proxy instance, after a claim here. It may only replace an owner that
+      // is itself a survivor of the SAME older instance and held a lower generation there.
+      const owner = this.#ownerHeld;
+      if (owner === undefined || owner.proxy !== held.proxy || held.gen <= owner.gen) return "late";
+    }
+    this.#ownerHeld = held; // undefined for a fresh claim: a new process beats any survivor
     this.#counter += 1;
     this.#gens.set(worker, this.#counter);
     return this.#counter;

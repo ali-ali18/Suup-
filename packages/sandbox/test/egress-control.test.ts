@@ -574,6 +574,83 @@ describe("control channel: the worker restarts", () => {
     expect((await get(fresh, second.proxyPort, "http://new.example.com/")).status).toBe(200);
   });
 
+  // Two survivors of the same old proxy: A is stale (old generation 1), B is the owner (old gen 2).
+  // A's link dropped at the swap, so A never heard `replaced`. The proxy restarts and both come back.
+  async function twoSurvivors(first: "stale" | "owner") {
+    const one = await boot();
+    const relayA = await relayTo(one.controlPort);
+    const relayB = await relayTo(one.controlPort);
+    const staleLog = logWatcher();
+    const ownerLog = logWatcher();
+    const stale = viaRelay(one, relayA.port, allow("old.example.com"), (t) => staleLog.log(t));
+    await stale.start(2000);
+    relayA.hold(); // the stale one will only be back when the test lets it
+    relayA.cutWorkerSide();
+    const owner = viaRelay(one, relayB.port, allow("new.example.com"), (t) => ownerLog.log(t));
+    await owner.start(2000); // takes over from the stale one: gen 2
+    relayB.hold();
+    relayB.cutAll();
+    relayA.cutAll();
+    const two = await boot(); // the proxy restarts
+    relayA.retarget(two.controlPort);
+    relayB.retarget(two.controlPort);
+    const base = logs.filter((t) => t.includes("servidor conectado")).length;
+    const connectedOnTwo = () => logsHave("servidor conectado", base + 1);
+    if (first === "stale") {
+      relayA.release();
+      await connectedOnTwo(); // the stale one is the owner for a moment
+      relayB.release();
+      await staleLog.when("assumiu"); // and the legitimate one replaces it
+      await logsHave("servidor conectado", base + 2);
+      for (let i = 0; i < 1000 && !owner.connected; i++) await new Promise((r) => setTimeout(r, 2));
+    } else {
+      relayB.release();
+      await connectedOnTwo();
+      relayA.release();
+      await staleLog.when("recusado");
+    }
+    return { two, stale, owner };
+  }
+
+  it("the proxy restarts: the stale survivor arrives first, the legitimate one replaces it", {
+    repeats: RACE_REPEATS,
+  }, async () => {
+    const { two, stale, owner } = await twoSurvivors("stale");
+    expect(stale.connected).toBe(false);
+    expect(owner.connected).toBe(true);
+    expect((await get(owner, two.proxyPort, "http://old.example.com/")).status).toBe(403);
+    expect((await get(owner, two.proxyPort, "http://new.example.com/")).status).toBe(200);
+  });
+
+  it("the proxy restarts: the legitimate survivor arrives first, the stale one is refused", {
+    repeats: RACE_REPEATS,
+  }, async () => {
+    const { two, stale, owner } = await twoSurvivors("owner");
+    expect(stale.connected).toBe(false);
+    expect(owner.connected).toBe(true);
+    expect((await get(owner, two.proxyPort, "http://old.example.com/")).status).toBe(403);
+    expect((await get(owner, two.proxyPort, "http://new.example.com/")).status).toBe(200);
+  });
+
+  it("the proxy restarts: a new process beats a survivor that is already the owner", {
+    repeats: RACE_REPEATS,
+  }, async () => {
+    const first = await boot();
+    const relay = await relayTo(first.controlPort);
+    const oldLog = logWatcher();
+    const old = viaRelay(first, relay.port, allow("old.example.com"), (t) => oldLog.log(t));
+    await old.start(2000);
+    const second = await boot();
+    relay.retarget(second.controlPort);
+    const base = logs.filter((t) => t.includes("servidor conectado")).length;
+    relay.cutAll();
+    await logsHave("servidor conectado", base + 1);
+    const fresh = worker(second, allow("new.example.com"));
+    await fresh.start(2000);
+    await oldLog.when("assumiu");
+    expect((await get(fresh, second.proxyPort, "http://old.example.com/")).status).toBe(403);
+  });
+
   it("a client reconnects by itself after the connection drops", async () => {
     const running = await boot();
     // a relay the test can cut: the client talks to it, it talks to the proxy's control port
