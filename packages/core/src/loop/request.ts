@@ -80,7 +80,10 @@ export function fixedParts(ctx: LoopContext): {
 }
 
 /** The request for the next turn: the rebuilt conversation plus the STATE REMINDER. */
-export function buildRequest(ctx: LoopContext): { messages: Message[]; problems: string[] } {
+export function buildRequest(
+  ctx: LoopContext,
+  at: Date,
+): { messages: Message[]; problems: string[] } {
   const state = ctx.state;
   const problems = validateConversation(state.messages);
   const last = state.messages[state.messages.length - 1];
@@ -103,7 +106,7 @@ export function buildRequest(ctx: LoopContext): { messages: Message[]; problems:
         // here, in the last user turn, so the system prompt never changes during the run.
         ...(state.context?.now === undefined
           ? {}
-          : { now: formatClock(ctx.deps.now(), state.context.now.timeZone) }),
+          : { now: formatClock(at, state.context.now.timeZone) }),
       }),
     });
   }

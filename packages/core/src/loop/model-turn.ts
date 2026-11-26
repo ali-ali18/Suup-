@@ -13,7 +13,9 @@ export async function modelTurn(ctx: LoopContext): Promise<RunStatus | undefined
   let overflowRetried = false;
   for (;;) {
     const { system, systemCacheBreak, tools, hostedToolSearch } = fixedParts(ctx);
-    const { messages, problems } = buildRequest(ctx);
+    // Read once: the time in the reminder is the one recorded with the request (`model_request.at`).
+    const at = ctx.deps.now();
+    const { messages, problems } = buildRequest(ctx, at);
     if (problems.length > 0) {
       return fail(
         ctx,
@@ -23,6 +25,7 @@ export async function modelTurn(ctx: LoopContext): Promise<RunStatus | undefined
     }
     const outcome = await callModel(ctx, {
       purpose: "agent",
+      at,
       provider,
       model: bot.model,
       system,

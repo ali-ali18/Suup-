@@ -17,6 +17,7 @@ import {
 import { historyMessages } from "./history.js";
 import type { RunContextSnapshot } from "./run-context.js";
 import { rebuildState } from "./state.js";
+import type { StoredEvent } from "./store.js";
 
 const turn = (role: "user" | "assistant", text: string): Message => ({
   role,
@@ -365,6 +366,64 @@ describe("the clock of a run", () => {
     } finally {
       Date.now = real;
     }
+  });
+
+  /** A recorded run of two requests, with the stored `createdAt` of each request moved by `shiftMs`. */
+  async function recordedWithStamp(
+    shiftMs: number,
+    keepAt: boolean,
+  ): Promise<{ events: StoredEvent[]; reminders: string[] }> {
+    const { rig } = rigWithContext(WITH_FACTS, {
+      script: [use(call("c1", "echo", { text: "x" })), say("Done.")],
+    });
+    // The request is built a few ms before a minute boundary (19:13:59.995 in the user's zone).
+    rig.clock.now = 1_700_000_039_995;
+    expect(await rig.run()).toBe("done");
+    const events = (await rig.events()).map((event) => {
+      if (event.type !== "model_request") return event;
+      const { at, ...rest } = event.payload;
+      return {
+        ...event,
+        payload: keepAt ? event.payload : rest,
+        createdAt: new Date(new Date(at ?? event.createdAt).getTime() + shiftMs),
+      } as StoredEvent;
+    });
+    const reminders = rig.provider.requests.map(
+      (r) => textOf(r.messages.at(-1)).split("Now (the current time):\n")[1]?.split("\n")[0] ?? "",
+    );
+    return { events, reminders };
+  }
+
+  it("records the instant each request was built at, and the reminder shows exactly that time", async () => {
+    const { events, reminders } = await recordedWithStamp(0, true);
+    const requests = eventsOfType(events, "model_request");
+    expect(requests.length).toBeGreaterThanOrEqual(2);
+    for (const request of requests)
+      expect(request.payload.at).toBe(request.createdAt.toISOString());
+    expect(reminders[0]).toContain("2023-11-14, 19:13 ");
+  });
+
+  it("a replay rebuilds the request at the recorded instant, even when the event was stored in the next minute", async () => {
+    // The event is stamped 90 s after the build (the database clock, a few ms later in real life).
+    const { events } = await recordedWithStamp(90_000, true);
+    const report = await replayRun(events, { bot: testBot() });
+    expect(report.requestDiffs).toEqual([]);
+    expect(report.identical).toBe(true);
+  });
+
+  it("a recording without `at` (made before it existed) is replayed at the event's createdAt", async () => {
+    const same = await recordedWithStamp(0, false);
+    for (const request of eventsOfType(same.events, "model_request")) {
+      expect(request.payload.at).toBeUndefined();
+    }
+    const report = await replayRun(same.events, { bot: testBot() });
+    expect(report.requestDiffs).toEqual([]);
+    expect(report.identical).toBe(true);
+    // The fallback is the stored time: a stamp in another minute is a visible difference.
+    const shifted = await recordedWithStamp(90_000, false);
+    const other = await replayRun(shifted.events, { bot: testBot() });
+    expect(other.requestDiffs.length).toBeGreaterThan(0);
+    expect(other.requestDiffs[0]?.changes.map((c) => c.field)).toEqual(["messages"]);
   });
 
   it("a run recorded before the clock existed has no clock block and no live time", async () => {
