@@ -356,6 +356,22 @@ test.describe("tasks of a bot", () => {
     await expect(page.locator("[data-task-unread]")).toHaveCount(0);
     await page.waitForTimeout(500);
     await page.screenshot({ path: shot("painel-pergunta") });
+    // The reply box of the panel lines up with the chat's: the same top, bottom and height (1 px).
+    const chatBox = await page.getByTestId("chat-composer").boundingBox();
+    const taskBox = await view.getByTestId("task-composer").boundingBox();
+    const chatField = await page.getByPlaceholder("Mensagem para Ajudante").boundingBox();
+    const taskField = await box.boundingBox();
+    for (const [a, b] of [
+      [chatBox, taskBox],
+      [chatField, taskField],
+    ] as const) {
+      expect(Math.abs((a?.y ?? 0) - (b?.y ?? 0))).toBeLessThanOrEqual(1);
+      expect(Math.abs((a?.height ?? 0) - (b?.height ?? 0))).toBeLessThanOrEqual(1);
+      expect(
+        Math.abs((a?.y ?? 0) + (a?.height ?? 0) - ((b?.y ?? 0) + (b?.height ?? 0))),
+      ).toBeLessThanOrEqual(1);
+    }
+    await page.screenshot({ path: shot("inputs-alinhados") });
 
     // The reply goes straight to the task (no chat message), and the task finishes with it.
     await box.fill("Comece pela pasta src.");
@@ -532,7 +548,42 @@ test.describe("tasks of a bot", () => {
       );
     const before = await faces();
     expect(new Set(Object.values(before)).size).toBe(3);
+    // One message opened three tasks: ONE LINK PER TASK in its bubble, stacked, and a label that
+    // names no single task ("3 tarefas"; no state, they differ).
+    const names = ["Compilar o relatório mensal", "Revisar o projeto", "Resumir as notas"];
+    const opener = page.getByTestId("message-bot").filter({ hasText: "Abri três tarefas." });
+    const links = opener.getByTestId("task-link");
+    await expect(links).toHaveCount(3);
+    expect(await links.allTextContents()).toEqual(names);
+    const lbs = await links.evaluateAll((els) =>
+      els.map((el) => {
+        const r = el.getBoundingClientRect();
+        return { x: r.x, y: r.y };
+      }),
+    );
+    expect(lbs[1]?.y ?? 0).toBeGreaterThan(lbs[0]?.y ?? 0);
+    expect(lbs[2]?.y ?? 0).toBeGreaterThan(lbs[1]?.y ?? 0);
+    expect(Math.abs((lbs[0]?.x ?? 0) - (lbs[2]?.x ?? 0))).toBeLessThanOrEqual(1);
+    const groupLabel = opener.getByTestId("task-label");
+    await expect(groupLabel.getByTestId("task-label-name")).toHaveText("3 tarefas");
+    await expect(groupLabel).toHaveAttribute("data-task-count", "3");
+    expect(await groupLabel.getAttribute("data-task")).toBeNull();
+    await expect(groupLabel.getByTestId("task-label-state")).toHaveCount(0);
+    for (const name of names) await expect(groupLabel).not.toContainText(name);
     await page.waitForTimeout(800);
+    {
+      const lb = await groupLabel.boundingBox();
+      const ob = await opener.boundingBox();
+      await page.screenshot({
+        path: shot("tres-tarefas"),
+        clip: {
+          x: Math.max(0, (lb?.x ?? 0) - 24),
+          y: Math.max(0, (lb?.y ?? 0) - 24),
+          width: Math.min(560, (ob?.width ?? 400) + 48),
+          height: (ob?.y ?? 0) + (ob?.height ?? 0) - (lb?.y ?? 0) + 48,
+        },
+      });
+    }
     await page.screenshot({ path: shot("aba-tarefas") });
     // The same task is the same face after a reload.
     await page.reload();
@@ -550,6 +601,16 @@ test.describe("tasks of a bot", () => {
     await expect(page.getByTestId("chat-composer")).toBeVisible();
     await panel.getByTestId("task-back").click();
     await expect(panel).toHaveCount(0);
+    await expect(page.getByTestId("tasks-tab")).toBeVisible();
+    // Each link of the bubble opens its own task.
+    for (const name of names) {
+      await opener.getByTestId("task-link").filter({ hasText: name }).click();
+      await expect(panel.getByTestId("task-title")).toHaveText(name);
+      await panel.getByTestId("task-back").click();
+      await expect(panel).toHaveCount(0);
+    }
+    // The label opens the list of tasks.
+    await groupLabel.click();
     await expect(page.getByTestId("tasks-tab")).toBeVisible();
   });
 

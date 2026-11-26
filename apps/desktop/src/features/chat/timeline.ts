@@ -39,6 +39,22 @@ export function taskOfMessage(
   return opened === undefined ? undefined : refOf(opened);
 }
 
+/**
+ * Every task the bot's message opened (the run that opened them is the message's, they existed when
+ * it was written), oldest first: a message may open several at once. `[]` for any other message.
+ */
+export function tasksOfMessage(
+  message: Pick<LocalMessage, "runId" | "createdAt" | "authorKind">,
+  tasks: readonly Task[],
+): TaskRef[] {
+  if (message.authorKind !== "bot" || message.runId === null) return [];
+  if (tasks.some((t) => t.closingRunId === message.runId)) return [];
+  return tasks
+    .filter((t) => t.fromRunId === message.runId && t.createdAt <= message.createdAt)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    .map(refOf);
+}
+
 export type TimelineItem =
   | { kind: "separator"; key: string; text: string }
   | { kind: "user"; key: string; text: string; state: UserMessageState }
@@ -48,6 +64,8 @@ export type TimelineItem =
       text: string;
       /** The task this message comes from: the bubble gets its label above (KOD-68). */
       task?: TaskRef;
+      /** The message opened several tasks: all of them (one link each, a label with the count). */
+      tasks?: readonly TaskRef[];
       /** The answer is still being written (KOD-34): the live text, not yet a recorded message. */
       live?: true;
       /** Present when the message is a question: what was asked, and whether it is still waiting. */
@@ -310,11 +328,13 @@ export function buildTimeline(
     } else if (message.question === undefined) {
       // A message that took the place of a typed bubble keeps the bubble's key: the same element.
       const task = taskOfMessage(message, tasks);
+      const opened = tasksOfMessage(message, tasks);
       items.push({
         kind: "bot",
         key: extras.live?.keyOf[message.id] ?? message.id,
         text: message.text,
         ...(task === undefined ? {} : { task }),
+        ...(opened.length > 1 ? { tasks: opened } : {}),
       });
     } else {
       // The reply is the next message of the user, even one still being sent: the card answers at

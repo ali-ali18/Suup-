@@ -97,6 +97,7 @@ function ChatForBot({ botId }: { botId: string }) {
   const focusMessage = useUi((s) => s.focusMessage);
   const panelOpen = useUi((s) => s.panelOpen);
   const togglePanel = useUi((s) => s.togglePanel);
+  const openPanel = useUi((s) => s.openPanel);
   const openInspector = useUi((s) => s.openInspector);
   const openEditBot = useUi((s) => s.openEditBot);
   const [convId, setConvId] = useState<string | null>(bot?.conversationId ?? null);
@@ -418,6 +419,10 @@ function ChatForBot({ botId }: { botId: string }) {
           onDecideTeam={(messageId, body) => sync.decideTeam(messageId, body)}
           onInspect={openInspector}
           onOpenTask={openTask}
+          onOpenTasks={() => {
+            openTask(null);
+            openPanel("tasks");
+          }}
           expanded={expanded}
           onToggle={toggle}
           phrase={phrase}

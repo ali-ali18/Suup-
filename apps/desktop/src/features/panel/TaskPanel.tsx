@@ -214,23 +214,24 @@ export function TaskPanel({ task, bot }: { task: Task; bot: Bot }) {
         }
         empty={<EventLine testId="task-empty">A tarefa ainda não trouxe atualizações.</EventLine>}
       />
-      {open ? (
-        <div className="flex-none px-4 pt-2 pb-4" data-testid="task-composer">
+      {/* The same wrapper as the chat's composer (px-5 pt-2 pb-5), so both boxes line up. */}
+      <div className="flex-none px-5 pt-2 pb-5" data-testid="task-composer">
+        {open ? (
           <Composer
             placeholder="Adicione uma resposta"
             restore={restore}
             onSend={(text) => void send(text)}
             autoFocus
           />
-        </div>
-      ) : (
-        <p
-          className="m-0 flex-none px-5 pt-2 pb-5 text-center text-small text-text-muted"
-          data-testid="task-finished"
-        >
-          Esta tarefa terminou.
-        </p>
-      )}
+        ) : (
+          <p
+            className="m-0 flex min-h-12 items-center justify-center text-center text-small text-text-muted"
+            data-testid="task-finished"
+          >
+            Esta tarefa terminou.
+          </p>
+        )}
+      </div>
     </aside>
   );
 }

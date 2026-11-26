@@ -2328,6 +2328,14 @@ describe("tarefas (docs/DESIGN.md, 4d)", () => {
     expect(panel).toContain('data-testid="task-back"');
     expect(panel).toContain('openPanel("tasks")');
     expect(existsSync(join(SRC, "features/shell/SidebarTasks.tsx"))).toBe(false);
+    // A message that opened several tasks: one link per task and a label with the count only.
+    const list = read(join(SRC, "features/chat/MessageList.tsx"));
+    expect(list).toContain("taskLinks");
+    expect(list).toContain("TasksLabel");
+    expect(read(join(SRC, "ui/task-label.tsx"))).toContain("export function TasksLabel");
+    expect(read(join(SRC, "features/chat/timeline.ts"))).toContain(
+      "export function tasksOfMessage",
+    );
     const face = read(join(SRC, "ui/task-avatar.tsx"));
     expect(face).toContain('data-testid="task-avatar"');
     expect(face).toContain("var(--bot-fill)");

@@ -24,7 +24,7 @@ import { BotMessage, EventLine, UserMessage } from "../../ui/message.js";
 import { Pill, RoundButton } from "../../ui/primitives.js";
 import { QuestionCard } from "../../ui/question-card.js";
 import { ScrollFade } from "../../ui/scroll-fade.js";
-import { TaskLabel } from "../../ui/task-label.js";
+import { TaskLabel, TasksLabel } from "../../ui/task-label.js";
 import { TaskLink } from "../../ui/task-link.js";
 import { TeamCard } from "../../ui/team-card.js";
 import { ApprovalRow, SecretRequestRow } from "./ApprovalRows.js";
@@ -52,6 +52,7 @@ export function MessageList({
   onDecideTeam,
   onInspect,
   onOpenTask,
+  onOpenTasks,
   expanded,
   onToggle,
   phrase,
@@ -82,6 +83,8 @@ export function MessageList({
   onInspect(runId: string): void;
   /** Tapping the label of a task opens its own view (KOD-68). Without it, no label is drawn. */
   onOpenTask?(taskId: string): void;
+  /** The label of a message that opened several tasks opens the bot's list of tasks. */
+  onOpenTasks?(): void;
   /** Keys (call ids, fold ids, message ids) of what is expanded. */
   expanded: ReadonlySet<string>;
   onToggle(key: string): void;
@@ -271,8 +274,16 @@ export function MessageList({
                     openUrl={platform.openUrl}
                     favicons={favicons}
                     typing={item.live === true}
-                    label={taskLabel(item.task, onOpenTask)}
-                    link={taskLink(item.task, onOpenTask)}
+                    label={
+                      item.tasks === undefined
+                        ? taskLabel(item.task, onOpenTask)
+                        : tasksLabel(item.tasks, onOpenTasks)
+                    }
+                    link={
+                      item.tasks === undefined
+                        ? taskLink(item.task, onOpenTask)
+                        : taskLinks(item.tasks, onOpenTask)
+                    }
                   />
                 );
               case "files":
@@ -410,6 +421,33 @@ function taskLabel(task: TaskRef | undefined, onOpen: ((taskId: string) => void)
       unread={task.unread}
       onOpen={onOpen}
     />
+  );
+}
+
+/** The label of a message that opened several tasks: how many, and their state when it is one. */
+function tasksLabel(tasks: readonly TaskRef[], onOpen: (() => void) | undefined) {
+  if (onOpen === undefined) return undefined;
+  const first = tasks[0];
+  const same = first !== undefined && tasks.every((t) => t.state === first.state);
+  return (
+    <TasksLabel
+      count={tasks.length}
+      {...(same ? { state: first.state } : {})}
+      unread={tasks.some((t) => t.unread)}
+      onOpen={onOpen}
+    />
+  );
+}
+
+/** One link per task, stacked, inside the bubble of the message that opened them. */
+function taskLinks(tasks: readonly TaskRef[], onOpen: ((taskId: string) => void) | undefined) {
+  if (onOpen === undefined) return undefined;
+  return (
+    <div className="flex min-w-0 flex-col gap-1.5" data-testid="task-links">
+      {tasks.map((t) => (
+        <TaskLink key={t.id} taskId={t.id} title={t.title} onOpen={onOpen} />
+      ))}
+    </div>
   );
 }
 

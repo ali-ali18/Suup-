@@ -44,19 +44,78 @@ export function TaskLabel({
   unread?: boolean;
   onOpen(taskId: string): void;
 }) {
-  const stateText = unread ? NEW_REPLIES_TEXT : TASK_STATE_TEXT[state];
-  const text = `${title} · ${stateText}`;
+  return (
+    <LabelShell
+      name={title}
+      stateText={unread ? NEW_REPLIES_TEXT : TASK_STATE_TEXT[state]}
+      unread={unread}
+      ariaLabel="Abrir a tarefa"
+      data={{ "data-task": taskId, "data-task-state": state }}
+      onClick={() => onOpen(taskId)}
+    />
+  );
+}
+
+/**
+ * The label above the bubble of a message that opened MORE THAN ONE task (KOD-68): it names no single
+ * task, only how many ("3 tarefas") and, when they all share one state, that state. Tapping it opens
+ * the bot's list of tasks.
+ */
+export function TasksLabel({
+  count,
+  state,
+  unread = false,
+  onOpen,
+}: {
+  count: number;
+  /** The state all the tasks share; absent when they differ. */
+  state?: TaskState;
+  unread?: boolean;
+  onOpen(): void;
+}) {
+  const stateText = unread ? NEW_REPLIES_TEXT : state === undefined ? null : TASK_STATE_TEXT[state];
+  return (
+    <LabelShell
+      name={`${count} tarefas`}
+      stateText={stateText}
+      unread={unread}
+      ariaLabel="Abrir a lista de tarefas"
+      data={{
+        "data-task-count": String(count),
+        ...(state === undefined ? {} : { "data-task-state": state }),
+      }}
+      onClick={onOpen}
+    />
+  );
+}
+
+/** The one-line label itself (the stroke, the chat icon, the name, and " · state" when there is one). */
+function LabelShell({
+  name,
+  stateText,
+  unread,
+  ariaLabel,
+  data,
+  onClick,
+}: {
+  name: string;
+  stateText: string | null;
+  unread: boolean;
+  ariaLabel: string;
+  data: Record<string, string>;
+  onClick(): void;
+}) {
+  const text = stateText === null ? name : `${name} · ${stateText}`;
   return (
     <button
       type="button"
       className="group relative -mb-1.5 inline-flex max-w-full min-w-0 cursor-pointer items-center self-start border-0 bg-transparent p-0 pl-9 text-small text-text-muted transition-colors outline-none hover:text-text focus-visible:text-text"
       data-testid="task-label"
-      data-task={taskId}
-      data-task-state={state}
+      {...data}
       data-task-unread={unread ? "true" : undefined}
       title={text}
-      aria-label={`Abrir a tarefa: ${text}`}
-      onClick={() => onOpen(taskId)}
+      aria-label={`${ariaLabel}: ${text}`}
+      onClick={onClick}
     >
       <ReplyStroke
         testId="task-label-stroke"
@@ -72,17 +131,21 @@ export function TaskLabel({
             data-testid="task-label-name"
             className="max-w-40 min-w-0 overflow-hidden text-ellipsis"
           >
-            {title}
+            {name}
           </span>
-          <span data-testid="task-label-dot" aria-hidden="true" className="flex-none">
-            ·
-          </span>
-          <span
-            data-testid="task-label-state"
-            className={cx("flex-none", unread && "text-status-unread")}
-          >
-            {stateText}
-          </span>
+          {stateText !== null && (
+            <>
+              <span data-testid="task-label-dot" aria-hidden="true" className="flex-none">
+                ·
+              </span>
+              <span
+                data-testid="task-label-state"
+                className={cx("flex-none", unread && "text-status-unread")}
+              >
+                {stateText}
+              </span>
+            </>
+          )}
         </span>
       </span>
     </button>
