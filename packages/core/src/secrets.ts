@@ -140,6 +140,75 @@ export function destinationHost(url: string): string | undefined {
   return normalizeSecretHost(parsed.hostname);
 }
 
+/**
+ * Where the values a connector (or Suup's own code) reads from the vault are going, said by whoever
+ * asks for them. The vault decides from it, before reading any value, whether each secret may go:
+ *
+ * - `host`: to this host (an HTTP connector's address, normalized; `undefined` when the address has
+ *   no site name, such as an IP address). A user's secret goes only if this host is in its list
+ *   (KOD-36, the same rule `web_fetch` follows since KOD-30). A plugin's secret (`managed_by`)
+ *   does not use the list: the gallery fixes where it goes.
+ * - `fixed`: Suup's own code sends them to a host written in its code or in the gallery (a search
+ *   engine, a connector's own OAuth login). No list is checked.
+ * - `unbound`: not bound to a host yet, and said so by name: the environment of a local process
+ *   (`stdio`), which has no single address, and an OAuth client secret, which goes to whatever
+ *   authorization server the connector's server names. No list is checked.
+ */
+export type SecretDestination =
+  | { kind: "host"; host: string | undefined }
+  | { kind: "fixed" }
+  | { kind: "unbound"; reason: "stdio_env" | "oauth_client_secret" };
+
+/**
+ * A secret refused before its value was read, because of where it was going: the person reads the
+ * message (in Portuguese), and nothing was sent.
+ */
+export class SecretDestinationRefusedError extends Error {
+  override readonly name = "SecretDestinationRefusedError";
+  constructor(
+    readonly secretName: string,
+    readonly host: string | undefined,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+/**
+ * Whether a user's secret may go to `host`, by exact equality with its declared list (both sides
+ * normalized by `normalizeSecretHost`, the host by `destinationHost`). Throws
+ * `SecretDestinationRefusedError` with a message for the person; returns when it may go. Used where
+ * the destination is chosen by a configuration, not by the model (a connector's address).
+ */
+export function checkSecretHost(
+  name: string,
+  hosts: readonly string[],
+  host: string | undefined,
+): void {
+  if (host === undefined) {
+    throw new SecretDestinationRefusedError(
+      name,
+      host,
+      `o endereço deste conector não tem um nome de site (um número de IP, por exemplo), então não há como conferir para onde o segredo ${name} iria. Ele não foi enviado. Use o nome do site no endereço do conector.`,
+    );
+  }
+  if (hosts.length === 0) {
+    throw new SecretDestinationRefusedError(
+      name,
+      host,
+      `o segredo ${name} ainda não tem endereços declarados, então está bloqueado e não foi enviado a ${host}. Diga para onde ele pode ir no Cofre do app, ou: suup vault hosts ${name} --host ${host}`,
+    );
+  }
+  if (!hosts.includes(host)) {
+    const all = [...hosts, host].map((h) => `--host ${h}`).join(" ");
+    throw new SecretDestinationRefusedError(
+      name,
+      host,
+      `o segredo ${name} só pode ir para ${hosts.join(", ")}, não para ${host} (o endereço deste conector), e não foi enviado. Se ${host} é mesmo o destino, acrescente esse endereço ao segredo no Cofre do app, ou: suup vault hosts ${name} ${all}`,
+    );
+  }
+}
+
 /** What a run may do with secrets. The runtime provides it; tools never see it. */
 export interface SecretAccess {
   /**

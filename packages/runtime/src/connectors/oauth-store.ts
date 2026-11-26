@@ -41,7 +41,9 @@ export function vaultOAuthStore(db: () => Db, vault: Vault, connector: string): 
   const readSecrets = async (): Promise<Record<string, string | undefined>> => {
     const have = new Set((await vault.list({ includeManaged: true })).map((s) => s.name));
     const wanted = Object.values(names).filter((n) => have.has(n));
-    const values = wanted.length === 0 ? {} : await vault.resolveForConnector(wanted);
+    // The connector's own login: Suup's OAuth code sends it to the server it logged in with.
+    const values =
+      wanted.length === 0 ? {} : await vault.resolveForConnector(wanted, { kind: "fixed" });
     known = { ...values };
     return values;
   };

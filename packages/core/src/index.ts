@@ -175,6 +175,7 @@ export {
 } from "./risk.js";
 export * from "./schedule.js";
 export {
+  checkSecretHost,
   createRedactor,
   destinationHost,
   findPlaceholders,
@@ -191,6 +192,8 @@ export {
   redactionMark,
   SECRET_NAME_PATTERN,
   type SecretAccess,
+  type SecretDestination,
+  SecretDestinationRefusedError,
   SecretUnavailableError,
   secretForms,
   substituteSecrets,

@@ -17,7 +17,12 @@ export {
   type SearchPluginEntry,
   searchPluginOf,
 } from "./catalog.js";
-export { MAX_TOOLS, type RawTool, type StdioLauncher } from "./connection.js";
+export {
+  MAX_TOOLS,
+  type RawTool,
+  type StdioLauncher,
+  secretDestinationOf,
+} from "./connection.js";
 export { ConnectorError, type ConnectorErrorKind } from "./errors.js";
 export {
   type CallOutcome,

@@ -12,6 +12,7 @@ import type {
   JsonSchemaValidator,
   jsonSchemaValidator,
 } from "@modelcontextprotocol/sdk/validation/types.js";
+import { destinationHost, type SecretDestination, SecretDestinationRefusedError } from "@suup/core";
 import { ConnectorError } from "./errors.js";
 import type { ConnectorSpec, ValueRef } from "./spec.js";
 import { oneLineClean } from "./text.js";
@@ -54,8 +55,12 @@ export interface StdioLauncher {
 
 export interface ConnectionDeps {
   launcher?: StdioLauncher | undefined;
-  /** Values of the vault secrets a connector refers to. Never logged. */
-  resolveSecrets(names: string[]): Promise<Record<string, string>>;
+  /**
+   * Values of the vault secrets a connector refers to, for `destination` (the host of an HTTP
+   * connector's address; a local process has none). Rejects, without reading any value, a user's
+   * secret whose list does not have that host. Never logged.
+   */
+  resolveSecrets(names: string[], destination: SecretDestination): Promise<Record<string, string>>;
   redact(text: string): string;
   connectTimeoutMs: number;
   fetch?: typeof fetch | undefined;
@@ -106,6 +111,18 @@ function resolveRef(
   return `${ref.prefix ?? ""}${value}`;
 }
 
+/**
+ * Where the secrets of a connector's own configuration (headers, environment) go: the host of an
+ * HTTP connector's address, read with the URL API like `web_fetch`'s destination. A local process
+ * has no single address: its environment is not bound to a host (yet).
+ */
+export function secretDestinationOf(spec: ConnectorSpec): SecretDestination {
+  if (spec.transport.kind === "http") {
+    return { kind: "host", host: destinationHost(spec.transport.url) };
+  }
+  return { kind: "unbound", reason: "stdio_env" };
+}
+
 /** Opens the connection: transport, handshake. Throws `ConnectorError`. */
 export async function openConnection(
   spec: ConnectorSpec,
@@ -119,8 +136,17 @@ export async function openConnection(
   let secrets: Record<string, string> = {};
   if (secretNames.length > 0) {
     try {
-      secrets = await deps.resolveSecrets([...new Set(secretNames)]);
+      secrets = await deps.resolveSecrets([...new Set(secretNames)], secretDestinationOf(spec));
     } catch (error) {
+      // Refused for where it was going: nothing was read, and the connection is not opened.
+      if (error instanceof SecretDestinationRefusedError) {
+        throw new ConnectorError(
+          spec.name,
+          "config",
+          `a conexão foi recusada: ${deps.redact(error.message)}`,
+          error,
+        );
+      }
       throw new ConnectorError(
         spec.name,
         "config",
