@@ -9,7 +9,7 @@ describe("the label and the link of a task (KOD-68)", () => {
     const { rerender } = render(
       <TaskLabel taskId="t1" title="Revisar o projeto" state="waiting_user" onOpen={onOpen} />,
     );
-    expect(screen.getByTestId("task-label-state").textContent).toContain("Aguardando sua resposta");
+    expect(screen.getByTestId("task-label-state").textContent).toBe("Aguardando sua resposta");
     expect(screen.getByTestId("task-label-state").className).not.toContain("text-status-unread");
     rerender(
       <TaskLabel
@@ -21,7 +21,7 @@ describe("the label and the link of a task (KOD-68)", () => {
       />,
     );
     const state = screen.getByTestId("task-label-state");
-    expect(state.textContent).toContain("Novas respostas");
+    expect(state.textContent).toBe("Novas respostas");
     expect(state.className).toContain("text-status-unread");
     expect(screen.getByTestId("task-label").getAttribute("aria-label")).toBe(
       "Abrir a tarefa: Revisar o projeto · Novas respostas",

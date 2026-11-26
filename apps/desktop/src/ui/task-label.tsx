@@ -28,7 +28,7 @@ export function TaskLabel({
   return (
     <button
       type="button"
-      className="group relative -mb-1.5 inline-flex max-w-full min-w-0 cursor-pointer items-center self-start border-0 bg-transparent p-0 pl-10 text-small text-text-muted transition-colors outline-none hover:text-text focus-visible:text-text"
+      className="group relative -mb-1.5 inline-flex max-w-full min-w-0 cursor-pointer items-center self-start border-0 bg-transparent p-0 pl-9 text-small text-text-muted transition-colors outline-none hover:text-text focus-visible:text-text"
       data-testid="task-label"
       data-task={taskId}
       data-task-state={state}
@@ -54,18 +54,21 @@ export function TaskLabel({
         className="flex min-w-0 items-center gap-1.5 rounded-row px-2 transition-colors group-hover:bg-hover group-focus-visible:bg-hover"
       >
         <MessageCircle size={14} aria-hidden="true" className="flex-none" />
-        <span className="flex min-w-0 items-baseline whitespace-nowrap">
+        <span className="flex min-w-0 items-baseline gap-1 whitespace-nowrap">
           <span
             data-testid="task-label-name"
             className="max-w-40 min-w-0 overflow-hidden text-ellipsis"
           >
             {title}
           </span>
+          <span data-testid="task-label-dot" aria-hidden="true" className="flex-none">
+            ·
+          </span>
           <span
             data-testid="task-label-state"
-            className={cx("flex-none whitespace-pre", unread && "text-status-unread")}
+            className={cx("flex-none", unread && "text-status-unread")}
           >
-            {` · ${stateText}`}
+            {stateText}
           </span>
         </span>
       </span>

@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 import { DATABASE_URL, SKIP_REASON, startWorld, type World } from "./harness.js";
 import { openWithBot, send } from "./helpers.js";
 
@@ -91,6 +91,17 @@ const SCRIPTS = {
 const shot = (name: string) => `screenshots/kod-68-${name}.png`;
 const label = (page: Page) => page.getByTestId("task-label");
 
+/** The gap name to dot equals the gap dot to state (within 1 px): the dot is its own element. */
+async function expectDotCentred(tag: Locator) {
+  const name = await tag.getByTestId("task-label-name").boundingBox();
+  const dot = await tag.getByTestId("task-label-dot").boundingBox();
+  const state = await tag.getByTestId("task-label-state").boundingBox();
+  const before = (dot?.x ?? 0) - ((name?.x ?? 0) + (name?.width ?? 0));
+  const after = (state?.x ?? 0) - ((dot?.x ?? 0) + (dot?.width ?? 0));
+  expect(before).toBeGreaterThan(0);
+  expect(Math.abs(before - after)).toBeLessThanOrEqual(1);
+}
+
 test.describe("tasks of a bot", () => {
   test.skip(DATABASE_URL === undefined, SKIP_REASON);
   test.describe.configure({ mode: "serial" });
@@ -118,7 +129,7 @@ test.describe("tasks of a bot", () => {
     await expect(label(page)).toHaveAttribute("data-task-state", "waiting_user");
     // The task posted while you are in the chat: the label says "Novas respostas", in the unread
     // blue (the colour of the avatar's dot), instead of the state, until you open the task.
-    await expect(label(page)).toHaveText("Revisar o projeto · Novas respostas");
+    await expect(label(page)).toHaveAttribute("title", "Revisar o projeto · Novas respostas");
     await expect(label(page)).toHaveAttribute("data-task-unread", "true");
     const unreadColour = await label(page)
       .getByTestId("task-label-state")
@@ -187,9 +198,13 @@ test.describe("tasks of a bot", () => {
       });
     expect(strokeLook.cap).toBe("round");
     expect(strokeLook.width).toBeGreaterThanOrEqual(2);
-    // A clear gap (about 8 px) between the stroke's right tip and the LEFT edge of the hover pill.
+    // A small gap (about 4 px) between the stroke's right tip and the LEFT edge of the hover pill.
     const pill = await label(page).getByTestId("task-label-body").boundingBox();
-    expect((pill?.x ?? 0) - ((sb?.x ?? 0) + (sb?.width ?? 0))).toBeGreaterThanOrEqual(6);
+    const pillGap = (pill?.x ?? 0) - ((sb?.x ?? 0) + (sb?.width ?? 0));
+    expect(pillGap).toBeGreaterThanOrEqual(2);
+    expect(pillGap).toBeLessThanOrEqual(6);
+    // The "·" has the same space before it as after it (full name).
+    await expectDotCentred(label(page));
     await page.screenshot({ path: shot("rotulo-no-chat") });
     // Hover: a gray background shows on the label's body (none at rest), with no layout shift.
     const body = label(page).getByTestId("task-label-body");
@@ -262,7 +277,10 @@ test.describe("tasks of a bot", () => {
       .filter({ hasText: "A revisão terminou: três achados" });
     await expect(result).toBeVisible();
     await expect(page.getByTestId("chat-log")).not.toContainText("Comece pela pasta src.");
-    await expect(result.getByTestId("task-label")).toHaveText("Revisar o projeto · Concluída");
+    await expect(result.getByTestId("task-label")).toHaveAttribute(
+      "title",
+      "Revisar o projeto · Concluída",
+    );
     // The opening bubble's label changed with the task, too.
     await expect(label(page).first()).toHaveAttribute("data-task-state", "done");
     // Opening the task marked it read: no "Novas respostas" any more, anywhere.
@@ -286,7 +304,7 @@ test.describe("tasks of a bot", () => {
     await expect(card).toBeVisible();
     // The label of the task is right above the card, and says the task waits for the approval.
     const tag = page.getByTestId("message-bot").filter({ has: card }).getByTestId("task-label");
-    await expect(tag).toHaveText("Gravar o relatório · Aguardando sua aprovação");
+    await expect(tag).toHaveAttribute("title", "Gravar o relatório · Aguardando sua aprovação");
     const tb = await tag.boundingBox();
     const cb = await card.boundingBox();
     expect((tb?.y ?? 0) + (tb?.height ?? 0)).toBeLessThanOrEqual((cb?.y ?? 0) + 1);
@@ -319,11 +337,13 @@ test.describe("tasks of a bot", () => {
     expect(cut).toBe(true);
     const lb = await tag.boundingBox();
     expect(lb?.height ?? 99).toBeLessThanOrEqual(24);
-    await expect(tag).toContainText("· Novas respostas");
+    await expect(tag.getByTestId("task-label-state")).toHaveText("Novas respostas");
     await expect(
       page.getByTestId("message-bot").filter({ hasText: "o check principal ainda roda." }),
     ).toBeVisible();
     await page.waitForTimeout(600);
+    // The same space on both sides of the "·" with the name cut by an ellipsis.
+    await expectDotCentred(tag);
     await page.screenshot({ path: shot("rotulo-nome-longo") });
     // Keyboard: Tab to the label and Enter opens the task's view.
     await tag.focus();
