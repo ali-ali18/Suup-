@@ -84,16 +84,16 @@ describe("the early brake of a chat run", () => {
     expect(handed?.payload).toMatchObject({ trigger: "turns", turns: 3, outcome: "started" });
     expect(requests).toHaveLength(1);
     expect(requests[0]?.trail.map((e) => e.name)).toEqual(["echo", "echo", "echo"]);
-    expect((await rig.record()).result).toMatchObject({
-      summary: handedOffText("Auditar os arquivos"),
-    });
+    const finished = eventsOfType(await rig.events(), "status_changed").at(-1)?.payload;
+    expect(finished?.result).toMatchObject({ summary: handedOffText("Auditar os arquivos") });
   });
 
   it("moves it after the set time, counted from the run's start", async () => {
     const rig = rigWith([...reads(8), say("done")]);
     let ticks = 0;
     const start = rig.clock.now;
-    const { deps } = brake({ atTurns: undefined, atMs: 60_000 });
+    const { deps: withTurns } = brake({ atMs: 60_000 });
+    const { atTurns: _byTurns, ...deps } = withTurns;
     // Each look at the clock is 25 s later: the minute passes after a few calls.
     const now = () => new Date(start + 25_000 * ticks++);
     expect(await run(rig, { handoff: deps, now })).toBe("done");
