@@ -145,8 +145,14 @@ test.describe("tasks of a bot", () => {
     expect(sb && ib).toBeTruthy();
     expect((sb?.x ?? 0) + (sb?.width ?? 0)).toBeLessThanOrEqual((ib?.x ?? 0) + 1);
     expect(Math.abs((sb?.x ?? 0) - (bb?.x ?? 0))).toBeLessThanOrEqual(40);
-    expect((sb?.y ?? 0) + (sb?.height ?? 0)).toBeGreaterThanOrEqual((bb?.y ?? 0) - 8);
-    expect((sb?.y ?? 0) + (sb?.height ?? 0)).toBeLessThanOrEqual((bb?.y ?? 0) + 8);
+    // It ends just above the bubble: never inside its box (bottom <= bubble top), and not far from it.
+    const strokeBottom = (sb?.y ?? 0) + (sb?.height ?? 0);
+    expect(strokeBottom).toBeLessThanOrEqual(bb?.y ?? 0);
+    expect(strokeBottom).toBeGreaterThanOrEqual((bb?.y ?? 0) - 6);
+    const strokeWidth = await label(page)
+      .getByTestId("task-label-stroke")
+      .evaluate((el) => parseFloat(getComputedStyle(el).borderLeftWidth));
+    expect(strokeWidth).toBeGreaterThanOrEqual(2);
     await page.screenshot({ path: shot("rotulo-no-chat") });
 
     // The chat stays free while the task waits: a new message gets its own answer.
@@ -252,6 +258,10 @@ test.describe("tasks of a bot", () => {
     const lb = await tag.boundingBox();
     expect(lb?.height ?? 99).toBeLessThanOrEqual(24);
     await expect(tag).toContainText("· Aguardando sua resposta");
+    await expect(
+      page.getByTestId("message-bot").filter({ hasText: "o check principal ainda roda." }),
+    ).toBeVisible();
+    await page.waitForTimeout(600);
     await page.screenshot({ path: shot("rotulo-nome-longo") });
     // Keyboard: Tab to the label and Enter opens the task's view.
     await tag.focus();

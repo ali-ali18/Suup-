@@ -34,7 +34,7 @@ export function TaskLabel({
       <span
         aria-hidden="true"
         data-testid="task-label-stroke"
-        className="absolute top-2.5 left-4 h-5 w-3 rounded-tl-[10px] border-t border-l border-current opacity-60"
+        className="absolute top-2 left-4 h-4 w-4 rounded-tl-row border-t-2 border-l-2 border-current opacity-60"
       />
       <MessageCircle size={14} aria-hidden="true" className="flex-none" />
       <span className="flex min-w-0 items-baseline whitespace-nowrap">
