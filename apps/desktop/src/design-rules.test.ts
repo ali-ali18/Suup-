@@ -2234,7 +2234,7 @@ describe("tarefas (docs/DESIGN.md, 4d)", () => {
     expect(label).toContain("<button");
     // One line, no box: a reply stroke, an outline chat icon (lucide), name cut with an ellipsis.
     expect(label).toContain("MessageCircle");
-    expect(label).toContain('data-testid="task-label-stroke"');
+    expect(label).toContain('testId="task-label-stroke"');
     expect(label).toContain('strokeLinecap="round"');
     expect(label).toContain("text-ellipsis");
     expect(label).toContain("bg-transparent");
@@ -2287,5 +2287,19 @@ describe("tarefas (docs/DESIGN.md, 4d)", () => {
     expect(panel).not.toContain("updatesText");
     expect(panel).not.toContain("Andamento");
     expect(existsSync(join(SRC, "features/chat/TaskView.tsx"))).toBe(false);
+    // The sidebar lists a bot's running or waiting tasks under it (owner, 26/11/2026, PREVIEW): the
+    // same curved stroke as the label, a face generated from the id (no raw colours), name and state.
+    const rows = read(join(SRC, "features/shell/SidebarTasks.tsx"));
+    expect(rows).toContain('testId="sidebar-task-stroke"');
+    for (const id of ["sidebar-tasks", "sidebar-task", "sidebar-task-name"]) {
+      expect(rows).toContain(`data-testid="${id}"`);
+    }
+    expect(rows).toContain("ReplyStroke");
+    expect(rows).toContain("SIDEBAR_TASKS_MAX = 3");
+    expect(read(join(SRC, "ui/task-label.tsx"))).toContain("export function ReplyStroke");
+    const face = read(join(SRC, "ui/task-avatar.tsx"));
+    expect(face).toContain('data-testid="task-avatar"');
+    expect(face).toContain("var(--bot-fill)");
+    expect(face).not.toContain('="#');
   });
 });

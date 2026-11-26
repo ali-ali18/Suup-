@@ -278,6 +278,7 @@ export class Sync {
       this.loadBots(),
       this.loadConversations(),
       this.loadRecentRuns(),
+      this.loadTasks(),
       ...[...this.watched].map((id) => this.refreshConversation(id)),
       ...this.followed.map((id) => this.loadRunEvents(id)),
       this.memoryWatched ? this.loadMemories() : Promise.resolve(),
@@ -446,6 +447,16 @@ export class Sync {
     } catch (error) {
       this.fail(error);
       return false;
+    }
+  }
+
+  /** The tasks of all the bots (KOD-68): the sidebar lists the ones that run or wait for you. */
+  async loadTasks(): Promise<void> {
+    try {
+      const items = await this.deps.api.tasks.list({});
+      update(this.store, (s) => mergeTasks(s, items));
+    } catch (error) {
+      this.fail(error);
     }
   }
 

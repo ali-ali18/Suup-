@@ -35,6 +35,7 @@ import { ResizeHandle } from "../../ui/resize-handle.js";
 import { ScrollFade } from "../../ui/scroll-fade.js";
 import { Separator } from "../../ui/separator.js";
 import { Tip } from "../../ui/tooltip.js";
+import { SidebarTasks } from "./SidebarTasks.js";
 
 /** How a bot's entry is laid out: a tile (pinned), a row (a list), or only the face (the rail). */
 const ENTRY_MAIN = {
@@ -316,20 +317,22 @@ export function Sidebar() {
   ];
 
   const entry = (bot: Bot, variant: EntryProps["variant"]) => (
-    <BotEntry
-      key={bot.id}
-      bot={bot}
-      variant={variant}
-      active={bot.id === activeId}
-      tabStop={bot.id === tabStop}
-      preview={previewOf(bot)}
-      onSelect={() => selectBot(bot.id)}
-      onMenu={(b, x, y) => setMenu({ bot: b, x, y, key: popupKey() })}
-      setRef={(el) => {
-        refs.current[bot.id] = el;
-      }}
-      onKeyDown={(e) => move(e, bot.id)}
-    />
+    <div key={bot.id} className="flex min-w-0 flex-col">
+      <BotEntry
+        bot={bot}
+        variant={variant}
+        active={bot.id === activeId}
+        tabStop={bot.id === tabStop}
+        preview={previewOf(bot)}
+        onSelect={() => selectBot(bot.id)}
+        onMenu={(b, x, y) => setMenu({ bot: b, x, y, key: popupKey() })}
+        setRef={(el) => {
+          refs.current[bot.id] = el;
+        }}
+        onKeyDown={(e) => move(e, bot.id)}
+      />
+      {variant === "row" && <SidebarTasks bot={bot} />}
+    </div>
   );
 
   // Three groups split by a line: the screens, the app, leaving (owner, 24/11/2026).

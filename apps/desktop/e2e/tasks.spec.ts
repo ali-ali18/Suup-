@@ -75,6 +75,18 @@ const SCRIPTS = {
         ],
       },
       {
+        whenObjectiveContains: "CASE-DUAS",
+        agent: [
+          s({
+            calls: [
+              ...open("Compilar o relatório mensal", "TAREFA-LONGA").calls,
+              ...open("Revisar o projeto", "TAREFA-REVISAO").calls,
+            ],
+          }),
+          s({ text: "Abri duas tarefas, uma compila e outra revisa." }),
+        ],
+      },
+      {
         whenObjectiveContains: "CASE-REVISAO",
         agent: [
           open("Revisar o projeto", "TAREFA-REVISAO"),
@@ -346,6 +358,8 @@ test.describe("tasks of a bot", () => {
       view.getByTestId("message-user").filter({ hasText: "Comece pela pasta src." }),
     ).toBeVisible();
     await expect(view.getByTestId("task-state")).toHaveText("Concluída");
+    // The sidebar: a finished task whose replies are read leaves the list under the bot.
+    await expect(page.getByTestId("sidebar-task")).toHaveCount(0);
     await expect(
       view.getByTestId("message-bot").filter({ hasText: "Revisão pronta: três achados" }),
     ).toBeVisible();
@@ -442,6 +456,67 @@ test.describe("tasks of a bot", () => {
     await tag.focus();
     await page.keyboard.press("Enter");
     await expect(page.getByTestId("task-panel")).toBeVisible();
+  });
+
+  test("the sidebar lists the running or waiting tasks of a bot, hung from it by the curved stroke", async ({
+    page,
+  }) => {
+    await openWithBot(page, world, "Dupla");
+    await send(page, "CASE-DUAS abra as duas tarefas");
+    const own = page.getByRole("list", { name: "Tarefas de Dupla" });
+    const rows = own.getByTestId("sidebar-task");
+    await expect(rows).toHaveCount(2);
+    await expect(own.getByTestId("sidebar-task-row")).toHaveCount(2);
+    await expect(rows.and(page.locator('[data-task-state="waiting_user"]'))).toHaveCount(1);
+    await expect(rows.and(page.locator('[data-task-state="working"]'))).toHaveCount(1);
+    // Each row hangs from the bot by the same curved stroke (round caps, 2 px), under the bot's row.
+    const strokes = own.getByTestId("sidebar-task-stroke");
+    await expect(strokes).toHaveCount(2);
+    const strokeLook = await strokes.first().evaluate((el) => {
+      const c = getComputedStyle(el);
+      return {
+        cap: c.strokeLinecap,
+        width: parseFloat(c.strokeWidth),
+        arc: el.querySelector("path")?.getAttribute("d") ?? "",
+      };
+    });
+    expect(strokeLook.cap).toBe("round");
+    expect(strokeLook.width).toBeGreaterThanOrEqual(2);
+    expect(strokeLook.arc).toContain("A12 12 0 0 0 13 16");
+    const botBox = await page.getByTestId("bot-item").filter({ hasText: "Dupla" }).boundingBox();
+    const firstRow = await own.getByTestId("sidebar-task-row").first().boundingBox();
+    expect((firstRow?.y ?? 0) >= (botBox?.y ?? 0) + (botBox?.height ?? 0) - 1).toBe(true);
+    // The task's face: generated from its id, so it is the same after a reload, and the two differ.
+    const faces = async () =>
+      rows.evaluateAll((els) =>
+        Object.fromEntries(
+          els.map((el) => {
+            const svg = el.querySelector("[data-testid=task-avatar]");
+            return [
+              el.getAttribute("data-task"),
+              `${svg?.getAttribute("data-face")}/${svg?.getAttribute("data-color")}`,
+            ];
+          }),
+        ),
+      );
+    const before = await faces();
+    expect(new Set(Object.values(before)).size).toBe(2);
+    await expect(
+      page.getByTestId("message-bot").filter({ hasText: "uma compila e outra revisa." }),
+    ).toBeVisible();
+    await page.waitForTimeout(600);
+    await page.screenshot({ path: shot("sidebar-tarefas") });
+    await page.reload();
+    await expect(rows).toHaveCount(2);
+    expect(await faces()).toEqual(before);
+    // Tapping a row opens the task in the panel on the right; the chat stays in the middle.
+    await rows.filter({ hasText: "Revisar o projeto" }).click();
+    const panel = page.getByTestId("task-panel");
+    await expect(panel).toBeVisible();
+    await expect(panel.getByTestId("task-title")).toHaveText("Revisar o projeto");
+    await expect(page.getByTestId("chat-composer")).toBeVisible();
+    await page.waitForTimeout(600);
+    await page.screenshot({ path: shot("sidebar-painel") });
   });
 
   test("Parar, in the overflow menu of the task panel, stops a working task", async ({ page }) => {
