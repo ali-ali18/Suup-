@@ -2,6 +2,8 @@ import { LeaseLostError } from "@suup/core";
 import { z } from "zod";
 import { projectApprovalRequested } from "./approvals.js";
 import type { Db } from "./client.js";
+import { lockConversationOfRun } from "./runs.js";
+import { hasParts, writeTurnParts } from "./turn-parts.js";
 import { type EventPayload, eventPayloadSchema, type RunEvent } from "./types.js";
 
 interface RunEventRow {
@@ -92,7 +94,15 @@ export async function appendRunEvent(
   opts: AppendRunEventOptions = {},
 ): Promise<RunEvent> {
   const body = withoutNul(eventPayloadSchema.parse(payload));
+  // The words the bot wrote beside its calls go to the conversation in this same transaction, so the
+  // conversation is locked BEFORE the run (the order everything else uses; see `lockConversationOfRun`).
+  const posts = type === "model_response" && hasParts(body);
   return db.sql.begin(async (tx) => {
+    if (posts)
+      await lockConversationOfRun(
+        { sql: tx as unknown as Db["sql"], close: async () => {} },
+        runId,
+      );
     const locked = await tx<{ locked_by: string | null }[]>`
       select locked_by from runs where id = ${runId} for no key update`;
     const lock = locked[0];
@@ -129,6 +139,19 @@ export async function appendRunEvent(
         runId,
         body,
       );
+    }
+    if (posts) {
+      const [run] = await tx<
+        { bot_id: string; conversation_id: string | null; origin: string }[]
+      >`select bot_id, conversation_id, origin from runs where id = ${runId}`;
+      if (run !== undefined) {
+        await writeTurnParts(
+          { sql: tx as unknown as Db["sql"], close: async () => {} },
+          { id: runId, botId: run.bot_id, conversationId: run.conversation_id, origin: run.origin },
+          row.seq,
+          body,
+        );
+      }
     }
     return mapRunEvent(row);
   });

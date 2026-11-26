@@ -58,7 +58,7 @@ const SELECT = (db: Db) => db.sql`
     c.id as conversation_id,
     coalesce((
       select count(*) from messages m
-      where m.conversation_id = c.id and m.author_kind <> 'user' and m.seq > c.last_read_seq
+      where m.conversation_id = c.id and m.author_kind <> 'user' and m.event_seq is null and m.seq > c.last_read_seq
     ), 0) as unread
   from bots b
   left join lateral (

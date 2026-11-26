@@ -166,6 +166,50 @@ export const SCRIPTS = {
         ],
       },
       {
+        // Text, then a request for a secret, then what the bot says once it has it.
+        whenObjectiveContains: "CASE-PARTS-SECRET",
+        agent: [
+          s({
+            text: "Antes de seguir, preciso de uma chave.",
+            calls: [
+              {
+                name: "request_secret",
+                args: { name: "E2E_PARTES", reason: "para o teste", hosts: ["localhost"] },
+              },
+            ],
+          }),
+          s({ text: "Recebi a chave." }),
+        ],
+      },
+      {
+        // The words of every turn, in the order they happened (KOD-64): text, a tool, text, a
+        // question card, text, a tool, and the answer. Each text is a bubble of its own.
+        whenObjectiveContains: "CASE-PARTS",
+        agent: [
+          s({
+            text: "Vou conferir a agenda.",
+            calls: [shell("echo agenda-conferida > agenda.txt")],
+          }),
+          s({
+            text: "Achei dois horários livres.",
+            calls: [
+              {
+                name: "escalate",
+                args: {
+                  question: "Qual horário você prefere?",
+                  options: [{ label: "Às nove" }, { label: "Às quinze" }],
+                },
+              },
+            ],
+          }),
+          s({
+            text: "Vou reservar o horário que você escolheu.",
+            calls: [shell("echo reservado >> agenda.txt")],
+          }),
+          s({ text: "Pronto, reservei." }),
+        ],
+      },
+      {
         whenObjectiveContains: "CASE-OPTIONS",
         agent: [
           s({

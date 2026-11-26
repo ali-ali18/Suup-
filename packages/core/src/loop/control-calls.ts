@@ -66,8 +66,6 @@ export async function handleEscalate(
   ctx: LoopContext,
   call: ControlCall,
   alone: boolean,
-  /** The text the model wrote in the turn of the call (what it says besides the question). */
-  turnText = "",
 ): Promise<void> {
   await ensureToolCall(ctx, call);
   const parsed = escalateInputSchema.safeParse(call.args);
@@ -108,14 +106,13 @@ export async function handleEscalate(
   // A plain question stays as it always was; anything richer is recorded as the questionnaire.
   const plain = questions.length === 1 && questions[0]?.options === undefined;
   // No result is recorded: the user's answer will be it. The loop pauses at the next safe point.
-  const lead = turnText.trim();
+  // What the bot wrote in the same turn is already in the chat, as its own message (a part).
   await record(ctx, {
     type: "escalated",
     payload: {
       question: text,
       ...(plain ? {} : { questions }),
       callId: call.id,
-      ...(lead === "" ? {} : { lead }),
     },
   });
 }

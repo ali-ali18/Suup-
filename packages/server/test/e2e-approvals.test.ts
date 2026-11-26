@@ -648,14 +648,15 @@ describe.skipIf(!DATABASE_URL)(
         reason: "para o teste",
         hosts: ["api.pedido.test"],
       });
-      // The run recorded what the bot said in that turn, and the chat message is exactly it: no
-      // text of the system (the form is the card the app draws from the request).
+      // What the bot said in that turn is a message of its own (a part, with the position of the
+      // response in the log), exactly its words: no text of the system, and the event does not
+      // copy it (the form is the card the app draws from the request).
       const asked = (await api.runs.events(sent.run.id, { types: ["secret_requested"] })).items[0];
-      expect(asked?.payload.lead).toBe(ASK_SECRET_WORDS);
+      expect(asked?.payload).not.toHaveProperty("lead");
       const page = await api.conversations.messages(conversation.id);
       const said = page.items.filter((m) => m.authorKind === "bot");
       expect(said.map((m) => m.text)).toEqual([ASK_SECRET_WORDS]);
-      expect(said[0]?.dedupeKey).toBe(`run:${sent.run.id}:secret:${asked?.seq}`);
+      expect(said[0]?.eventSeq).toBeLessThan(asked?.seq ?? 0);
 
       expect(await code(api.vault.answerRequest(sent.run.id, {}))).toBe("invalid_request");
       // A value with no sites confirmed by the user is refused: the bot's suggestion is not enough.

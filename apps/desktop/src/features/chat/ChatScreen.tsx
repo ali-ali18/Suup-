@@ -3,6 +3,7 @@ import { ChevronRight, CircleStop, CircleX, Pause, Pencil, Play, ScanSearch } fr
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { useUi } from "../../app/ui-store.js";
+import { callSeqsOf } from "../../data/call-seq.js";
 import { connectCardsOfConversation } from "../../data/connect-cards.js";
 import { deriveRunDisplay, planOf } from "../../data/derive.js";
 import {
@@ -12,7 +13,6 @@ import {
   orderedMessages,
 } from "../../data/reducers.js";
 import { secretRequestsOf } from "../../data/secret-requests.js";
-import { approvalLeads } from "../../data/turn-lead.js";
 import { activityPhrase, chatActivityOf } from "../../lib/chat-activity.js";
 import { colorVars, themeColor } from "../../lib/mascots.js";
 import { Avatar } from "../../ui/avatar.js";
@@ -183,18 +183,18 @@ function ChatForBot({ botId }: { botId: string }) {
       ),
     [conversationRuns, eventsByRun, cards],
   );
-  const approvalLeadsOfCards = useMemo(
+  const callSeqs = useMemo(
     () =>
-      approvalLeads(
-        cards,
-        Object.fromEntries(
-          conversationRuns.map((r) => [
+      Object.assign(
+        {},
+        ...conversationRuns.map((r) =>
+          callSeqsOf(
             r.id,
             eventsByRun[r.id] === undefined ? undefined : orderedEvents(eventsByRun[r.id]),
-          ]),
+          ),
         ),
-      ),
-    [conversationRuns, eventsByRun, cards],
+      ) as Record<string, number>,
+    [conversationRuns, eventsByRun],
   );
   const items = useMemo(
     () =>
@@ -202,9 +202,9 @@ function ChatForBot({ botId }: { botId: string }) {
         approvals: cards,
         secrets: secretRequests,
         connectCards,
-        approvalLeads: approvalLeadsOfCards,
+        callSeqs,
       }),
-    [messages, runs, cards, secretRequests, connectCards, approvalLeadsOfCards],
+    [messages, runs, cards, secretRequests, connectCards, callSeqs],
   );
   // What the user opened, in THIS conversation: another chat starts with every row collapsed.
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());

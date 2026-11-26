@@ -1,5 +1,4 @@
 import type { Approval, Run, RunEvent } from "@suup/api";
-import { type TurnLead, turnLeadOf } from "./turn-lead.js";
 
 // The connect cards of the chat (owner, 24/11/2026: "ele deveria ter usado um card!!!"): what a bot
 // hands over when something is missing to do the work (log in, authorize an app, give access, add a
@@ -37,8 +36,8 @@ export interface ConnectCardItem {
   /** When the link stops working (ISO), if the service said. */
   expiresAt?: string;
   action: ConnectCardAction;
-  /** What the bot said in the turn of the call: drawn above the card (never a text of the system). */
-  lead?: TurnLead;
+  /** Its place in the run's log (the `seq` of the call), to order it against the words of the turn. */
+  seq?: number;
 }
 
 const str = (value: unknown): string | undefined =>
@@ -51,7 +50,10 @@ export function connectCardsOf(
   run: Pick<Run, "id" | "botId">,
   events: readonly RunEvent[],
 ): ConnectCardItem[] {
-  const calls = new Map<string, { name: string; args: Record<string, unknown>; at: string }>();
+  const calls = new Map<
+    string,
+    { name: string; args: Record<string, unknown>; at: string; seq: number }
+  >();
   const failed = new Set<string>();
   const done: string[] = [];
   for (const event of events) {
@@ -61,7 +63,7 @@ export function connectCardsOf(
       const name = str(p.name);
       if (callId === undefined || (name !== SHOW_CONNECT_CARD && name !== PROPOSE_CONNECTOR))
         continue;
-      calls.set(callId, { name, args: record(p.args), at: event.createdAt });
+      calls.set(callId, { name, args: record(p.args), at: event.createdAt, seq: event.seq });
     } else if (event.type === "tool_result") {
       const callId = str(p.callId);
       if (callId === undefined || !calls.has(callId)) continue;
@@ -83,18 +85,17 @@ export function connectCardsOf(
     const app = call.name === SHOW_CONNECT_CARD ? str(call.args.app) : undefined;
     const url = call.name === SHOW_CONNECT_CARD ? str(call.args.url) : undefined;
     const expiresAt = call.name === SHOW_CONNECT_CARD ? str(call.args.expiresAt) : undefined;
-    const lead = turnLeadOf(run.id, events, callId);
     items.push({
       callId,
       runId: run.id,
       botId: run.botId,
       at: call.at,
+      seq: call.seq,
       connector,
       action,
       ...(app === undefined ? {} : { app }),
       ...(url === undefined ? {} : { url }),
       ...(expiresAt === undefined ? {} : { expiresAt }),
-      ...(lead === undefined ? {} : { lead }),
     });
   }
   return items;

@@ -145,11 +145,9 @@ async function outcomeMessage(
     }
     case "waiting_user": {
       // The latest question the run asked: its position in the log makes the key, so each
-      // question is written once however often the pause is observed.
-      const [asked] = await db.sql<{ seq: number; payload: { lead?: string } }[]>`
-        select seq, payload from run_events
-        where run_id = ${run.id} and type in ('escalated', 'secret_requested')
-        order by seq desc limit 1`;
+      // question is written once however often the pause is observed. What the bot wrote in the
+      // same turn is already in the chat as its own message (a part, written with the turn); a
+      // request for a secret has no message at all, the app draws the secure form from the events.
       const [question] = await db.sql<
         {
           seq: number;
@@ -164,21 +162,17 @@ async function outcomeMessage(
         select seq, payload from run_events
         where run_id = ${run.id} and type = 'escalated'
         order by seq desc limit 1`;
-      if (asked !== undefined && (question === undefined || asked.seq > question.seq)) {
-        // The bot asked for a credential: the app draws the secure form from the run's
-        // `secret_requested` event (name, reason, where it will be used). The message is only what
-        // the bot wrote in that turn, word for word (owner, 25/11/2026: no text of the system with
-        // the card); when it wrote nothing there is no message.
-        const lead = asked.payload.lead?.trim() ?? "";
-        if (lead === "") return null;
-        return { authorKind: "bot", text: lead, key: `run:${run.id}:secret:${asked.seq}` };
-      }
+      const [asked] = await db.sql<{ seq: number }[]>`
+        select seq from run_events
+        where run_id = ${run.id} and type = 'secret_requested'
+        order by seq desc limit 1`;
+      if (asked !== undefined && (question === undefined || asked.seq > question.seq)) return null;
       const text = question?.payload.question?.trim();
       if (question === undefined || text === undefined || text === "") return null;
-      // What the bot wrote besides the question (it may write nothing and only ask). The structured
-      // side carries it apart: the app draws it as the bubble and the question as the card's title,
-      // so nothing is drawn twice. `text` keeps both, for whoever reads only the text (the CLI, the
-      // history of later runs, a notification).
+      // `lead` is only the harness's own words now (the progress check says what happened, what is
+      // done and what is left); the bot's words of the turn are a part, already in the chat. The
+      // structured side carries it apart: the app draws it as the bubble and the question as the
+      // card's title. `text` keeps both, for whoever reads only the text (the CLI, the history).
       const lead = question.payload.lead?.trim() ?? "";
       return {
         authorKind: "bot",

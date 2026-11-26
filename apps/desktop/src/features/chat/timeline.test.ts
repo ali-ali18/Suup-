@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SecretRequestItem } from "../../data/secret-requests.js";
-import { approvalLeads } from "../../data/turn-lead.js";
-import { makeApproval, makeEvent, makeMessage, makeRun } from "../../test-fixtures.js";
+import { makeApproval, makeMessage, makeRun } from "../../test-fixtures.js";
 import type { BubblePosition } from "../../ui/message.js";
 import { bubblePositions, buildTimeline, dayLabel, type TimelineItem } from "./timeline.js";
 
@@ -334,7 +333,7 @@ describe("buildTimeline: approval cards and secure forms, where they were asked"
       reason: null,
       hosts: [],
       startedAt: local(14, 4),
-      messageKey: `run:${run.id}:secret:4`,
+      seq: 4,
       state: "open",
     };
     const card = makeApproval({ runId: run.id, createdAt: local(14, 2) });
@@ -594,126 +593,140 @@ describe("buildTimeline: the connector card", () => {
   });
 });
 
-describe("buildTimeline: what the bot said in the turn of a card comes ABOVE it (owner, 25/11/2026)", () => {
+describe("buildTimeline: the words of a turn and its card, in the order of the log (KOD-64)", () => {
   const run = makeRun({ status: "waiting_user" });
   const conversationId = makeMessage().conversationId;
+  const AT = local(14, 2); // every write of the turn shares ONE instant: only the seq can order them
   const opener = makeMessage({ conversationId, seq: 1, createdAt: local(14, 0), runId: run.id });
-  const bot = (seq: number, minute: number, over: Partial<ReturnType<typeof makeMessage>> = {}) =>
+  const part = (seq: number, eventSeq: number, text: string) =>
     makeMessage({
       conversationId,
       seq,
-      createdAt: local(14, minute),
+      createdAt: AT,
       authorKind: "bot",
       authorBotId: run.botId,
       runId: run.id,
-      ...over,
+      text,
+      eventSeq,
+    });
+  const final = (seq: number, text: string) =>
+    makeMessage({
+      conversationId,
+      seq,
+      createdAt: local(14, 9),
+      authorKind: "bot",
+      authorBotId: run.botId,
+      runId: run.id,
+      text,
     });
   const texts = (items: TimelineItem[]) =>
     items
       .map((i) => (i.kind === "bot" ? `bot:${i.text}` : i.kind))
       .filter((k) => k !== "separator");
-  const secret = (lead?: { text: string; turn: string }): SecretRequestItem => ({
+  const secret = (seq: number): SecretRequestItem => ({
     callId: "s1",
     runId: run.id,
     name: "GH_TOKEN",
     reason: null,
     hosts: [],
-    startedAt: local(14, 2),
-    messageKey: `run:${run.id}:secret:7`,
+    startedAt: AT,
+    seq,
     state: "open",
-    ...(lead === undefined ? {} : { lead }),
   });
 
-  it("secret: the words are a bubble before the form, and the message written for them is not drawn twice", () => {
-    // The end of the run writes the same words as a message, later than the form was asked.
-    const written = bot(2, 3, {
-      text: "Preciso da sua chave.",
-      dedupeKey: `run:${run.id}:secret:7`,
-    });
-    const items = buildTimeline([opener, written], { [run.id]: run }, NOW, {
-      secrets: [secret({ text: "Preciso da sua chave.", turn: "secret:s1" })],
-    });
-    expect(texts(items)).toEqual(["user", "bot:Preciso da sua chave.", "secret", "working"]);
-  });
-
-  it("secret: the words of the NEXT turn (a later message) stay below the form", () => {
-    const later = bot(2, 9, { text: "Pronto, já uso a chave.", dedupeKey: `run:${run.id}:done` });
-    const items = buildTimeline([opener, later], { [run.id]: { ...run, status: "done" } }, NOW, {
-      secrets: [secret({ text: "Preciso da sua chave.", turn: "secret:s1" })],
-    });
+  it("text, card, text: the card sits between the words of its turn and the words of the next, with equal times", () => {
+    const items = buildTimeline(
+      [opener, part(2, 3, "Vou pedir a chave."), part(3, 9, "Agora sim.")],
+      { [run.id]: run },
+      NOW,
+      { secrets: [secret(5)] },
+    );
     expect(texts(items)).toEqual([
       "user",
-      "bot:Preciso da sua chave.",
+      "bot:Vou pedir a chave.",
       "secret",
-      "bot:Pronto, já uso a chave.",
+      "bot:Agora sim.",
+      "working",
     ]);
   });
 
-  it("secret: no words, only the form", () => {
-    const items = buildTimeline([opener], { [run.id]: run }, NOW, { secrets: [secret()] });
-    expect(texts(items)).toEqual(["user", "secret", "working"]);
+  it("the words of a turn never go below the card of that same turn, whatever the order of the times", () => {
+    // The card is dated BEFORE the words (a clock that disagrees): the seq still decides.
+    const earlier = { ...secret(5), startedAt: local(13, 59) };
+    const items = buildTimeline(
+      [opener, part(2, 3, "Vou pedir a chave.")],
+      { [run.id]: run },
+      NOW,
+      { secrets: [earlier] },
+    );
+    expect(texts(items)).toEqual(["user", "bot:Vou pedir a chave.", "secret", "working"]);
   });
 
-  it("connect: the words, then the card, then the result the bot gives afterwards", () => {
+  it("approval: the card is placed by the seq of its call, found by the exact call id", () => {
+    const a = makeApproval({ runId: run.id, callId: "x1", createdAt: AT });
+    const items = buildTimeline(
+      [opener, part(2, 3, "Vou rodar."), part(3, 9, "Rodei.")],
+      { [run.id]: run },
+      NOW,
+      { approvals: [a], callSeqs: { [`${run.id}:x1`]: 5 } },
+    );
+    expect(texts(items)).toEqual(["user", "bot:Vou rodar.", "approval", "bot:Rodei.", "working"]);
+  });
+
+  it("connect: words, card, then the words of the next turn", () => {
     const card = {
       callId: "k1",
       runId: run.id,
       botId: run.botId,
-      at: local(14, 2),
+      at: AT,
+      seq: 5,
       connector: "composio",
       action: "connect" as const,
-      lead: { text: "Vou entrar na sua conta Google.", turn: `${run.id}:3` },
     };
-    const after = bot(2, 8, { text: "Conectado." });
-    const items = buildTimeline([opener, after], { [run.id]: { ...run, status: "done" } }, NOW, {
-      connectCards: [card],
-    });
+    const items = buildTimeline(
+      [opener, part(2, 3, "Vou entrar na sua conta."), part(3, 9, "Conectado.")],
+      { [run.id]: { ...run, status: "running" } },
+      NOW,
+      { connectCards: [card] },
+    );
     expect(texts(items)).toEqual([
       "user",
-      "bot:Vou entrar na sua conta Google.",
+      "bot:Vou entrar na sua conta.",
       "connect",
       "bot:Conectado.",
-    ]);
-    const noWords = buildTimeline([opener], { [run.id]: run }, NOW, {
-      connectCards: [{ ...card, lead: undefined } as never],
-    });
-    expect(texts(noWords)).toEqual(["user", "connect", "working"]);
-  });
-
-  it("approval: the words of the turn of the call above the card; two cards of one turn say them once", () => {
-    const a = makeApproval({ runId: run.id, callId: "x1", createdAt: local(14, 2) });
-    const b = makeApproval({ runId: run.id, callId: "x2", createdAt: local(14, 3) });
-    const events = [
-      makeEvent(3, "model_response", {
-        blocks: [
-          { type: "text", text: "  Vou rodar os dois comandos.  " },
-          { type: "tool_call", id: "x1", name: "run_command", args: {} },
-          { type: "tool_call", id: "x2", name: "run_command", args: {} },
-        ],
-      }),
-    ];
-    const leads = approvalLeads([a, b], { [run.id]: events });
-    const items = buildTimeline([opener], { [run.id]: run }, NOW, {
-      approvals: [a, b],
-      approvalLeads: leads,
-    });
-    expect(texts(items)).toEqual([
-      "user",
-      "bot:Vou rodar os dois comandos.",
-      "approval",
-      "approval",
       "working",
     ]);
-    // A run whose events are not loaded, or a turn with no words: only the card.
-    expect(approvalLeads([a], {})).toEqual({});
-    expect(
-      approvalLeads([a], {
-        [run.id]: [
-          makeEvent(3, "model_response", {
-            blocks: [{ type: "tool_call", id: "x1", name: "n", args: {} }],
-          }),
-        ],
-      }),
-    ).toEqual({});
+  });
+
+  it("the message that ends the run (no seq of its own) comes after every card of its run", () => {
+    const items = buildTimeline(
+      [opener, part(2, 3, "Vou olhar."), final(3, "Pronto.")],
+      { [run.id]: { ...run, status: "done" } },
+      NOW,
+      { secrets: [{ ...secret(5), state: "provided" }] },
+    );
+    expect(texts(items)).toEqual(["user", "bot:Vou olhar.", "secret", "bot:Pronto."]);
+  });
+
+  it("a card with no seq (the events of its run are not loaded) falls back to the time", () => {
+    const a = makeApproval({ runId: run.id, createdAt: local(14, 1) });
+    const items = buildTimeline(
+      [opener, { ...part(2, 3, "Depois."), createdAt: local(14, 5) }],
+      { [run.id]: { ...run, status: "done" } },
+      NOW,
+      { approvals: [a] },
+    );
+    expect(texts(items)).toEqual(["user", "approval", "bot:Depois."]);
+  });
+
+  it("two parts in a row are one group of bubbles; the card breaks it", () => {
+    const items = buildTimeline(
+      [opener, part(2, 3, "Um."), part(3, 4, "Dois."), part(4, 9, "Três.")],
+      { [run.id]: { ...run, status: "done" } },
+      NOW,
+      { secrets: [{ ...secret(6), state: "provided" }] },
+    );
+    // The user's line, then "Um." and "Dois." as one group, then "Três." after the card.
+    expect([...bubblePositions(items).values()]).toEqual(["single", "first", "last", "single"]);
   });
 });

@@ -75,6 +75,8 @@ function messageJson(message: Message) {
     runId: message.runId,
     status: message.status,
     createdAt: message.createdAt.toISOString(),
+    // Only on the words the bot wrote in a turn that also called tools (a part, before the answer).
+    ...(message.eventSeq === undefined ? {} : { eventSeq: message.eventSeq }),
   };
 }
 
@@ -185,12 +187,22 @@ export const chatCommand: CommandSpec = {
     };
 
     /**
-     * The question of a run that waits for the user is the bot's message, written by the worker
-     * right after the run pauses: wait a moment for it, so the person sees it before the prompt.
+     * What a pause of the run (a question, a parked return) leaves in the chat is the bot's message
+     * written by the worker right after it pauses: wait a moment for it, so the person sees it
+     * before the prompt. The words of the turns before it (parts, `eventSeq`) may be already there,
+     * so they do not end the wait. A request for a secret has no message at all: the log says so.
      */
     const showQuestion = async () => {
       for (let i = 0; i < 40; i++) {
-        if ((await showNew()).length > 0) return;
+        const fresh = await showNew();
+        if (fresh.some((m) => m.eventSeq === undefined)) return;
+        const run = await getActiveConversationRun(db, conversation.id);
+        if (run !== null) {
+          const asked = (await readEvents(db, run.id))
+            .filter((e) => e.type === "escalated" || e.type === "secret_requested")
+            .at(-1);
+          if (asked?.type === "secret_requested") return;
+        }
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
     };

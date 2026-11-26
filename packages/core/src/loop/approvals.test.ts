@@ -615,7 +615,7 @@ describe("request_secret", () => {
     expect(result?.payload.content).toContain("is now available");
   });
 
-  it("keeps what the bot wrote in the turn of the request (`lead`); nothing when it only asked", async () => {
+  it("does not copy what the bot wrote in the turn into the event (it is a message of its own)", async () => {
     const withText = setup([
       use(
         { type: "text", text: "  Preciso da sua chave.  " },
@@ -625,7 +625,6 @@ describe("request_secret", () => {
     expect(await loop(withText, { secrets })).toBe("waiting_user");
     expect(eventsOfType(await withText.rig.events(), "secret_requested")[0]?.payload).toEqual({
       callId: "c1",
-      lead: "Preciso da sua chave.",
       name: "TOKEN_X",
       hosts: ["api.x.test"],
     });

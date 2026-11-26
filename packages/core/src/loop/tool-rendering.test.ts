@@ -24,7 +24,7 @@ describe("the bot is told what the question card shows", () => {
     expect(a.slice(0, a.indexOf("## Who you are"))).toBe(b.slice(0, b.indexOf("## Who you are")));
   });
 
-  it("what the bot wrote in the turn of the question is kept apart (`lead`); nothing when it only asked", async () => {
+  it("what the bot wrote in the turn of the question is not copied into the event (it is a message of its own)", async () => {
     const question = "Qual cor você prefere?";
     const withText = createRig({
       script: [
@@ -38,7 +38,6 @@ describe("the bot is told what the question card shows", () => {
     expect(eventsOfType(await withText.events(), "escalated")[0]?.payload).toEqual({
       question,
       callId: "c1",
-      lead: "A busca está fora do ar.",
     });
     const bare = createRig({ script: [use(call("c1", "escalate", { question }))] });
     await bare.run();

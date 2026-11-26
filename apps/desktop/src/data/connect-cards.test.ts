@@ -69,9 +69,9 @@ describe("the connect cards of a run", () => {
   });
 });
 
-describe("the words of the turn of a connect card", () => {
-  it("come from the turn of the call (found by its exact id); no words, no lead", () => {
-    const withWords = connectCardsOf(run, [
+describe("the place of a connect card in its run's log", () => {
+  it("is the seq of its call, so the words of the same turn can be ordered against it", () => {
+    const [card] = connectCardsOf(run, [
       makeEvent(1, "model_response", {
         blocks: [
           { type: "text", text: "Vou entrar na sua conta." },
@@ -80,13 +80,8 @@ describe("the words of the turn of a connect card", () => {
       }),
       call(2, "a", "show_connect_card", { connector: "composio" }),
       result(3, "a"),
-      makeEvent(4, "model_response", {
-        blocks: [{ type: "tool_call", id: "b", name: "show_connect_card", args: {} }],
-      }),
-      call(5, "b", "show_connect_card", { connector: "composio" }),
-      result(6, "b"),
     ]);
-    expect(withWords[0]?.lead).toEqual({ text: "Vou entrar na sua conta.", turn: `${run.id}:1` });
-    expect(withWords[1]).not.toHaveProperty("lead");
+    expect(card?.seq).toBe(2);
+    expect(card).not.toHaveProperty("lead");
   });
 });
