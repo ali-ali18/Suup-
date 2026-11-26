@@ -296,6 +296,26 @@ export const recentUserMessageSchema = z.object({ id: z.string(), text: z.string
 export type RecentUserMessage = z.infer<typeof recentUserMessageSchema>;
 
 /**
+ * The tasks of the chat a chat run is in, as the run starts (KOD-68): the ones still open and the
+ * ones that ended recently (marked by `state`), so the bot can pass something on to a running task
+ * by id (`send_to_task`) and never opens a duplicate. Read from the database and recorded once.
+ */
+export const OPEN_TASK_STATES = [
+  "working",
+  "waiting_user",
+  "waiting_approval",
+  "done",
+  "failed",
+  "stopped",
+] as const;
+export const openTaskFactSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  state: z.enum(OPEN_TASK_STATES),
+});
+export type OpenTaskFact = z.infer<typeof openTaskFactSchema>;
+
+/**
  * The bot's own routines as the run starts (docs/ROTINAS.md): name, schedule in words, time zone
  * and state, plus the id for the model. Told to the model in "Your routines", so a new run knows
  * what an earlier run already set up (the history carries text only, not the tool calls behind it).
@@ -514,6 +534,8 @@ export const runEventSchema = z.discriminatedUnion("type", [
       taskResult: z.exactOptional(taskResultFactsSchema),
       /** The last messages of the user in a chat that may start a task, by id. */
       recentUserMessages: z.exactOptional(z.array(recentUserMessageSchema)),
+      /** The tasks of this chat, open and recently ended (a chat run of the user). */
+      openTasks: z.exactOptional(z.array(openTaskFactSchema)),
       /**
        * The share of the context window past which this run compacts its history (the user's
        * setting at the start of the run). Recorded so that a replay compacts at the same point.

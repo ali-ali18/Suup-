@@ -11,6 +11,7 @@ import {
   routineRefsOf,
   taskStartContext,
 } from "@suup/db";
+import { openTasksOf } from "./tasks.js";
 
 /** Characters of conversation history a run gets when the configuration does not say. */
 export const DEFAULT_HISTORY_CHARS = 12_000;
@@ -161,6 +162,7 @@ export async function loadRunContext(
     ...(note === undefined ? {} : { historyNote: note }),
     ...(routineRefs.length === 0 ? {} : { routineRefs }),
     ...(run.origin === "user" ? { recentUserMessages: recent } : {}),
+    ...(run.origin === "user" ? { openTasks: await openTasksOf(db, run.conversationId) } : {}),
     ...(closing === null || closingTaskRun === null
       ? {}
       : {

@@ -265,6 +265,9 @@ async function ensureContext(ctx: LoopContext): Promise<void> {
       ...(snapshot.recentUserMessages === undefined || snapshot.recentUserMessages.length === 0
         ? {}
         : { recentUserMessages: snapshot.recentUserMessages }),
+      ...(snapshot.openTasks === undefined || snapshot.openTasks.length === 0
+        ? {}
+        : { openTasks: snapshot.openTasks }),
       ...(snapshot.compactionThreshold === undefined
         ? {}
         : { compactionThreshold: snapshot.compactionThreshold }),

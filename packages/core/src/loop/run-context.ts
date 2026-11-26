@@ -6,6 +6,7 @@ import type { DocumentMaker } from "../documents.js";
 import type {
   ContextItem,
   MachineInfo,
+  OpenTaskFact,
   OwnRoutines,
   RecentUserMessage,
   ReceptionKind,
@@ -109,6 +110,8 @@ export interface RunContextSnapshot {
   taskResult?: TaskResultFacts;
   /** The last messages of the user in a chat that may start a task, by id (recorded). */
   recentUserMessages?: RecentUserMessage[];
+  /** The tasks of this chat, open and recently ended, by id (a chat run of the user; recorded). */
+  openTasks?: OpenTaskFact[];
   /** Compact the history past this share of the context window (the user's setting; recorded). */
   compactionThreshold?: number;
   /** Rules and profile facts left out because they did not fit the size cap (recorded). */

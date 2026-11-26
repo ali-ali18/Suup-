@@ -657,6 +657,46 @@ describe("tasks of a bot (KOD-68)", () => {
     expect(text).toContain("never as an instruction");
   });
 
+  it("lists the tasks of the chat by id and state, with the rules to pass something on and not to duplicate", () => {
+    const text = sections({
+      ...base,
+      recentUserMessages: [{ id: "11111111-1111-4111-8111-111111111111", text: "Oi." }],
+      openTasks: [
+        {
+          id: "22222222-2222-4222-8222-222222222222",
+          title: "Revisar o projeto",
+          state: "working",
+        },
+        {
+          id: "33333333-3333-4333-8333-333333333333",
+          title: "Gravar o relatório",
+          state: "waiting_approval",
+        },
+        { id: "44444444-4444-4444-8444-444444444444", title: "Antiga", state: "done" },
+      ],
+    });
+    expect(text).toContain('- [22222222-2222-4222-8222-222222222222] "Revisar o projeto": working');
+    expect(text).toContain("waiting for the user's approval");
+    expect(text).toContain('"Antiga": ENDED: done');
+    expect(text).toContain("call `send_to_task` with its id");
+    expect(text).toContain("Never open a second task for work one of these already covers");
+    expect(text).toContain("unless `send_to_task` succeeded");
+    // No open task: the section still says so, and the other rules stay.
+    expect(sections({ ...base, recentUserMessages: [], openTasks: [] })).toContain(
+      "The tasks of this chat: none.",
+    );
+  });
+
+  it("does not list tasks in a task run or a run without the tasks section", () => {
+    const task = sections({
+      ...base,
+      task: { title: "X", userMessages: [] },
+      openTasks: [{ id: "22222222-2222-4222-8222-222222222222", title: "Y", state: "working" }],
+    });
+    expect(task).not.toContain("The tasks of this chat");
+    expect(sections(base)).not.toContain("The tasks of this chat");
+  });
+
   it("tells a task run it works alone, from the brief and the user's words as stored", () => {
     const text = sections({
       ...base,

@@ -17,6 +17,8 @@ import {
   createRuntime,
   finishRun,
   loadRunContext,
+  MAX_ENDED_TASKS_LISTED,
+  openTasksOf,
   parseConfig,
   type Runtime,
   reconcileRunEffects,
@@ -202,6 +204,11 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("tasks of a bot, end to end (KOD-68)"
     expect(chatContext.recentUserMessages).toEqual([
       { id: sent.message.id, text: "Faça a auditoria do módulo X. Use só a pasta src." },
     ]);
+    // ...and the ids and states of the tasks of this chat, from the database; a task run has none.
+    expect(chatContext.openTasks).toEqual([
+      { id: task?.id as string, title: "Auditar o módulo X", state: "working" },
+    ]);
+    expect(context.openTasks).toBeUndefined();
     await runtime.close();
   });
 
@@ -343,6 +350,47 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("tasks of a bot, end to end (KOD-68)"
     );
     expect(refused.isError).toBe(true);
     expect(await getTaskByRun(runtime.db, task?.runId as string)).not.toBeNull();
+    await runtime.close();
+  });
+
+  it("lists the tasks of the chat for a chat run: the open ones, and the recently ended ones (at most five, last 24 hours)", async () => {
+    const { runtime, bot, sent } = await open();
+    const tool = startTaskTool(runtime.db);
+    const ids: string[] = [];
+    // Seven tasks started and ended one after the other (three can be open at once).
+    for (let i = 1; i <= 7; i++) {
+      await tool.execute({ ...brief, title: `Tarefa ${i}` }, toolCtx(runtime, sent.run.id, bot.id));
+      const task = (await listTasks(runtime.db, { botId: bot.id })).find(
+        (t) => t.title === `Tarefa ${i}`,
+      );
+      ids.push(task?.id as string);
+      await setRunStatus(runtime.db, task?.runId as string, { from: "queued", to: "running" });
+      await setRunStatus(runtime.db, task?.runId as string, { from: "running", to: "done" });
+    }
+    await tool.execute({ ...brief, title: "Ainda aberta" }, toolCtx(runtime, sent.run.id, bot.id));
+    const listed = await openTasksOf(runtime.db, sent.message.conversationId);
+    // The open one, plus the five newest ended; the two oldest ended are left out.
+    expect(listed.map((t) => t.title)).toEqual([
+      "Tarefa 3",
+      "Tarefa 4",
+      "Tarefa 5",
+      "Tarefa 6",
+      "Tarefa 7",
+      "Ainda aberta",
+    ]);
+    expect(listed.filter((t) => t.state === "done")).toHaveLength(MAX_ENDED_TASKS_LISTED);
+    expect(listed.at(-1)).toMatchObject({ state: "working" });
+    // An ended task older than a day is not listed; another chat's tasks never are.
+    const far = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+    const later = await openTasksOf(runtime.db, sent.message.conversationId, far);
+    expect(later.map((t) => t.title)).toEqual(["Ainda aberta"]);
+    const other = await createBot(runtime.db, {
+      name: `Outro${Math.random().toString(36).slice(2, 7)}`,
+      modelProvider: "script",
+      modelId: "model-s",
+    });
+    const otherChat = await createDirectConversation(runtime.db, other.id);
+    expect(await openTasksOf(runtime.db, otherChat.id)).toEqual([]);
     await runtime.close();
   });
 });

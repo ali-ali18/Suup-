@@ -4,7 +4,7 @@
 // A task is a run of the same bot with the origin `task`, in a conversation of its own. The rules
 // that matter are enforced in `@suup/db` (the limit of three, no task from a task, the cited
 // messages being the user's own); here the model is only told the criteria and what happened.
-import { defineTool, runResultSchema, wrapUntrusted } from "@suup/core";
+import { defineTool, type OpenTaskFact, runResultSchema, wrapUntrusted } from "@suup/core";
 import {
   closeTaskWithoutResult,
   createTask,
@@ -12,6 +12,7 @@ import {
   forwardToTask,
   getRun,
   getTaskByRun,
+  listTasks,
   MAX_OPEN_TASKS,
   MAX_TASK_SOURCE_MESSAGES,
   openTaskResult,
@@ -102,9 +103,17 @@ export function composeBrief(input: {
 export function startTaskTool(db: Db) {
   return defineTool({
     name: START_TASK_TOOL,
-    description: `Opens a TASK: a background run of yourself, in its own view, for LONG work, while this chat stays free. Answer in the chat, with no task, when the request is quick: a question, a summary, a short draft, a lookup. Open a task when the work is long: implement or change code, review a project, research a subject across many sources, browse a site, anything of many steps or minutes (when in doubt and it will take more than a couple of minutes, open one).
+    description: `Opens a TASK: a background run of yourself, in its own view, for LONG work, while this chat stays free.
 
-The task does NOT see this conversation: it gets only your brief (objective, what is known, what to return, how far to go) and the user's messages you cite in \`userMessageIds\`, copied exactly. It returns at once; tell the user, do not wait or poll. At most ${MAX_OPEN_TASKS} tasks are open at once and a task cannot open another; if a call is refused, do not retry it: tell the user.`,
+Open a task for self-contained work that takes many steps and ends in a result you can hand back: researching a subject across several sources, reviewing a whole folder or a long document, implementing something with several files and tests, analysing a dataset in depth, browsing several pages of a site, writing a document with several sections. Rough band: work that would take you more than about 10 tool calls or a few minutes.
+
+Answer here in the chat, with no task, for quick requests you can settle in a few tool calls (up to about 10): a question, a lookup, a summary of one thing, a short draft, one small change. Also stay in the chat when the work needs the user's back-and-forth at every step: a task works alone and asks only when it is stuck.
+
+Examples. Task: "compare these five frameworks and write me a recommendation with sources"; "review every file in this folder and list the problems"; "build a small CLI with tests"; "analyse this 40-column CSV and report what stands out". Chat: "what does this error mean?"; "rename this file"; "what is the capital of Peru?"; "summarise this paragraph".
+
+If the work needs a tool you do not have, open the task only if the task itself could do it with what you have; otherwise tell the user what is missing.
+
+The task does NOT see this conversation: it gets only your brief (objective, what is known, what to return, how far to go) and the user's messages you cite in \`userMessageIds\`, copied exactly. Before opening one, check "The tasks of this chat": if one of them already covers the work, pass the new detail to it with \`send_to_task\` instead of opening a duplicate. It returns at once; tell the user, do not wait or poll. At most ${MAX_OPEN_TASKS} tasks are open at once and a task cannot open another; if a call is refused, do not retry it: tell the user.`,
     input: startTaskInput,
     risk: "write_reversible",
     ownOutput: true,
@@ -281,4 +290,60 @@ export async function deliverPendingTaskResults(
     if (turn !== null) opened.push(turn);
   }
   return opened;
+}
+
+// ---------------------------------------------------------------------------------------------
+// What a chat run is told about the tasks of its chat
+
+/** How long an ended task stays in the list the chat bot is shown, and the most that are listed. */
+export const ENDED_TASK_WINDOW_MS = 24 * 60 * 60 * 1000;
+export const MAX_ENDED_TASKS_LISTED = 5;
+
+/** Where a task is, from the state of its run (the same reading the API has). */
+function taskStateOfRun(status: Run["status"]): OpenTaskFact["state"] {
+  switch (status) {
+    case "waiting_user":
+      return "waiting_user";
+    case "waiting_approval":
+      return "waiting_approval";
+    case "done":
+      return "done";
+    case "failed":
+      return "failed";
+    case "cancelled":
+      return "stopped";
+    default:
+      return "working";
+  }
+}
+
+/**
+ * The tasks of a chat as a chat run starts (recorded in `context_loaded.openTasks`, so a resume and
+ * a replay read the same): every task still open, then the ones that ended in the last 24 hours (at
+ * most five, the newest), oldest first. Read from the database; nothing here reads text.
+ */
+export async function openTasksOf(
+  db: Db,
+  conversationId: string,
+  now: Date = new Date(),
+): Promise<OpenTaskFact[]> {
+  const rows = await listTasks(db, { conversationId });
+  const listed: { fact: OpenTaskFact; ended: Date | null }[] = [];
+  for (const task of rows) {
+    const run = await getRun(db, task.runId);
+    if (run === null) continue;
+    const state = taskStateOfRun(run.status);
+    const ended = state === "done" || state === "failed" || state === "stopped";
+    listed.push({
+      fact: { id: task.id, title: task.title, state },
+      ended: ended ? (run.finishedAt ?? run.updatedAt) : null,
+    });
+  }
+  const open = listed.filter((t) => t.ended === null);
+  const recent = listed
+    .filter((t) => t.ended !== null && now.getTime() - t.ended.getTime() <= ENDED_TASK_WINDOW_MS)
+    .sort((a, b) => (b.ended as Date).getTime() - (a.ended as Date).getTime())
+    .slice(0, MAX_ENDED_TASKS_LISTED);
+  const keep = new Set([...open, ...recent].map((t) => t.fact.id));
+  return listed.filter((t) => keep.has(t.fact.id)).map((t) => t.fact);
 }
