@@ -2177,8 +2177,17 @@ describe("o balão que está sendo escrito (docs/DESIGN.md §4, KOD-34, dono 25/
     expect(util).toContain("prefers-reduced-motion: no-preference");
     expect(util).toContain(':root:not([data-motion="reduce"]) &');
     expect(util).toContain("ease-out");
+    expect(util).toContain("130ms");
     expect(util).not.toContain("infinite");
     expect(util).not.toContain("::after");
+    // Letters appear progressively: an adaptive pace, only the revealed prefix is drawn, and the
+    // movement setting turns the gradual reveal off.
+    const fade = read(join(SRC, "lib", "live-fade.ts"));
+    expect(fade).toContain("requestAnimationFrame");
+    expect(fade).toContain("export const BASE_CPS");
+    expect(fade).toContain("export const CATCHUP_S");
+    expect(fade).toContain("readReducedMotion()");
+    expect(message).toContain("reveal.shown");
   });
 
   it("o texto ao vivo nunca entra nas mensagens: só em data.live, e a chave do balão passa à mensagem", () => {

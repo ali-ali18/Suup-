@@ -272,13 +272,13 @@
   }
 }
 
-/* The text of an answer being written (KOD-34): what arrives in each frame fades in, soft, ease-out;
-   what is already there stays still. No mark, no blinking. Reduced motion (the system's or the
+/* The text of an answer being written (KOD-34): each letter revealed fades in, soft, ease-out, in
+   about 130 ms (text not yet revealed is not drawn at all); what is already there stays still. No mark, no blinking. Reduced motion (the system's or the
    app's): no animation, the text is just there. */
 @utility ui-live-in {
   @media (prefers-reduced-motion: no-preference) {
     :root:not([data-motion="reduce"]) & {
-      animation: ui-live-in 200ms ease-out both;
+      animation: ui-live-in 130ms ease-out both;
     }
   }
 }

@@ -38,11 +38,14 @@ test.describe("the words of a turn are bubbles, in the order of the log", () => 
 
     const card = page.getByTestId("question-card");
     await expect(card).toHaveAttribute("data-state", "open", { timeout: 60_000 });
-    expect(await sequence(page)).toEqual([
-      "bubble:Vou conferir a agenda.",
-      "bubble:Achei dois horários livres.",
-      "question-card",
-    ]);
+    // The words are revealed progressively, so wait for the last bubble to be complete.
+    await expect
+      .poll(() => sequence(page), { timeout: 15_000 })
+      .toEqual([
+        "bubble:Vou conferir a agenda.",
+        "bubble:Achei dois horários livres.",
+        "question-card",
+      ]);
     await page.evaluate(() => document.fonts.ready);
     await page.mouse.move(0, 0);
     await page.screenshot({ path: "screenshots/1440x900@2x/partes-texto-cartao.png" });
@@ -58,7 +61,7 @@ test.describe("the words of a turn are bubbles, in the order of the log", () => 
       "bubble:Vou reservar o horário que você escolheu.",
       "bubble:Pronto, reservei.",
     ];
-    expect(await sequence(page)).toEqual(expected);
+    await expect.poll(() => sequence(page), { timeout: 15_000 }).toEqual(expected);
     await page.evaluate(() => document.fonts.ready);
     await page.mouse.move(0, 0);
     await page.screenshot({ path: "screenshots/1440x900@2x/partes-texto-cartao-texto.png" });
@@ -96,10 +99,9 @@ test.describe("the words of a turn are bubbles, in the order of the log", () => 
 
     const form = page.getByTestId("secret-form");
     await expect(form).toBeVisible({ timeout: 60_000 });
-    expect(await sequence(page)).toEqual([
-      "bubble:Antes de seguir, preciso de uma chave.",
-      "secret-form",
-    ]);
+    await expect
+      .poll(() => sequence(page), { timeout: 15_000 })
+      .toEqual(["bubble:Antes de seguir, preciso de uma chave.", "secret-form"]);
     await page.evaluate(() => document.fonts.ready);
     await page.mouse.move(0, 0);
     await page.screenshot({ path: "screenshots/1440x900@2x/partes-texto-segredo.png" });

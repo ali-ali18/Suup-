@@ -1,6 +1,6 @@
 import type { HTMLAttributes, ReactNode } from "react";
 import { cx } from "../lib/cx.js";
-import { useLiveFade } from "../lib/live-fade.js";
+import { useLiveReveal } from "../lib/live-fade.js";
 import { Markdown } from "../lib/markdown.js";
 import { Avatar } from "./avatar.js";
 
@@ -123,23 +123,27 @@ export function BotMessage({
   openUrl?: (url: string) => void;
   favicons?: boolean;
 }) {
-  const fade = useLiveFade(text ?? "", typing && text !== undefined);
+  const reveal = useLiveReveal(text ?? "", typing && text !== undefined);
+  // Still written: typed, or the recorded text taking over has not finished its reveal.
+  const writing = text !== undefined && reveal.live;
   return (
     <div
       className={cx("flex min-w-0 items-start", linked(position))}
       data-testid="message-bot"
       data-bubble={position}
-      {...(typing ? { "aria-busy": true, "aria-live": "off" as const, "data-typing": "true" } : {})}
+      {...(writing
+        ? { "aria-busy": true, "aria-live": "off" as const, "data-typing": "true" }
+        : {})}
     >
       <div className="flex w-full max-w-reading min-w-0 flex-col gap-3">
         {text !== undefined && (
           <BotBubble className={linkCorners("bot", position)}>
             {/* Another element when it stops typing, so the final text is a new addition that the
                 log announces once; the bubble itself stays. */}
-            <div key={typing ? "typing" : "final"}>
+            <div key={writing ? "typing" : "final"}>
               <Markdown
-                text={text}
-                {...(fade === undefined ? {} : { fade })}
+                text={writing ? reveal.shown : text}
+                {...(reveal.sink === undefined ? {} : { fade: reveal.sink })}
                 {...(openUrl === undefined ? {} : { openUrl })}
                 {...(favicons === undefined ? {} : { favicons })}
               />

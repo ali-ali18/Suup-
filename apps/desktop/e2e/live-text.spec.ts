@@ -12,6 +12,10 @@ interface Seen {
   states: { node: number; text: string; busy: boolean; live: boolean }[];
   /** The most bot bubbles on screen at the same time. */
   mostAtOnce: number;
+  /** Fading pieces seen with no text in them (they would be a preview of nothing). */
+  emptyPieces: number;
+  /** The most fading pieces at once in one bubble. */
+  mostPieces: number;
 }
 
 /** Starts watching the chat for bot bubbles (before the message is sent). */
@@ -19,14 +23,18 @@ async function watch(page: Page): Promise<void> {
   await page.evaluate(() => {
     const ids = new WeakMap<Element, number>();
     let next = 1;
-    const seen: Seen = { states: [], mostAtOnce: 0 };
+    const seen: Seen = { states: [], mostAtOnce: 0, emptyPieces: 0, mostPieces: 0 };
     (window as unknown as { __seen: Seen }).__seen = seen;
     const look = () => {
       const bubbles = [...document.querySelectorAll('[data-testid="message-bot"]')];
       seen.mostAtOnce = Math.max(seen.mostAtOnce, bubbles.length);
       for (const el of bubbles) {
         if (!ids.has(el)) ids.set(el, next++);
-        const text = (el.querySelector('[data-testid="bubble-bot"]')?.textContent ?? "").trim();
+        const bubble = el.querySelector('[data-testid="bubble-bot"]');
+        const pieces = [...(bubble?.querySelectorAll(".ui-live-in") ?? [])];
+        seen.mostPieces = Math.max(seen.mostPieces, pieces.length);
+        seen.emptyPieces += pieces.filter((p) => (p.textContent ?? "") === "").length;
+        const text = (bubble?.textContent ?? "").trim();
         if (text === "") continue;
         const state = {
           node: ids.get(el) as number,
@@ -65,6 +73,8 @@ async function recorded(world: World, bot: string): Promise<string[]> {
 function growth(seen: Seen, node: number): string[] {
   return seen.states.filter((s) => s.node === node).map((s) => s.text);
 }
+
+const TYPED_CHUNK = 9; // the chunk size of `typed` in harness.ts
 
 async function shot(page: Page, name: string): Promise<void> {
   await page.evaluate(() => document.fonts.ready);
@@ -110,11 +120,19 @@ test.describe("the answer is typed in its bubble", () => {
     const nodes = [...new Set(seen.states.map((s) => s.node))];
     expect(nodes).toHaveLength(1); // one element for the whole answer, typed and recorded
     const steps = growth(seen, nodes[0] as number);
-    // At least three different lengths, each one a start of the next: it grew, it never shrank.
-    expect(new Set(steps.map((t) => t.length)).size).toBeGreaterThanOrEqual(3);
-    for (let i = 1; i < steps.length; i++) {
-      expect((steps[i] as string).startsWith(steps[i - 1] as string)).toBe(true);
+    // Each state is a start of the next (it grew, never shrank) and always a start of the text that
+    // was received: nothing that was not revealed yet is on screen, not even transparent.
+    for (let i = 0; i < steps.length; i++) {
+      expect(LIVE_TEXTS.simples.startsWith(steps[i] as string)).toBe(true);
+      if (i > 0) expect((steps[i] as string).startsWith(steps[i - 1] as string)).toBe(true);
     }
+    // The reveal is gradual: many more steps than the frames that carried the text.
+    const frames = Math.ceil(LIVE_TEXTS.simples.length / TYPED_CHUNK);
+    expect(new Set(steps.map((t) => t.length)).size).toBeGreaterThan(frames);
+    // Every fading piece holds revealed text (the bubble's text is the revealed prefix above), and
+    // few pieces exist at a time: the rest went back to plain text.
+    expect(seen.emptyPieces).toBe(0);
+    expect(seen.mostPieces).toBeLessThan(40);
     expect(seen.mostAtOnce).toBe(1); // never drawn twice
     // It ends equal to what the server recorded, and that is one message.
     const messages = await recorded(world, "Falante");
@@ -295,6 +313,7 @@ test.describe("the answer is typed in its bubble", () => {
       world = await startWorld();
       await openWithBot(page, world, "Quietinho");
       if (reduced) await page.emulateMedia({ reducedMotion: "reduce" });
+      await watch(page);
       // Every animation name any piece of the live text ever had, and the most pieces at once.
       await page.evaluate(() => {
         const seen = { names: new Set<string>(), most: 0 };
@@ -318,6 +337,17 @@ test.describe("the answer is typed in its bubble", () => {
       });
       if (reduced) expect(fade.names.filter((n) => n !== "none")).toEqual([]);
       else expect(fade.names).toContain("ui-live-in");
+      // Reduced motion: the text is what was received, with no gradual reveal: every state seen is a
+      // whole number of received chunks (or the end). Otherwise it is gradual: other lengths too.
+      const seen = await seenOf(page);
+      const lengths = new Set(seen.states.map((st) => st.text.length));
+      const chunked = new Set<number>();
+      for (let n = TYPED_CHUNK; n < LIVE_TEXTS.simples.length + TYPED_CHUNK; n += TYPED_CHUNK) {
+        chunked.add(LIVE_TEXTS.simples.slice(0, n).trim().length);
+      }
+      const wholeChunks = [...lengths].every((n) => chunked.has(n));
+      if (reduced) expect(wholeChunks).toBe(true);
+      else expect(lengths.size).toBeGreaterThan(Math.ceil(LIVE_TEXTS.simples.length / TYPED_CHUNK));
       // The elements do not pile up: old pieces go back to plain text.
       expect(fade.most).toBeLessThan(40);
     });
