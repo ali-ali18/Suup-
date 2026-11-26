@@ -2232,6 +2232,14 @@ describe("tarefas (docs/DESIGN.md, 4d)", () => {
     const label = read(join(SRC, "ui/task-label.tsx"));
     expect(label).toContain('data-testid="task-label"');
     expect(label).toContain("<button");
+    // One line, no box: a reply stroke, an outline chat icon (lucide), name cut with an ellipsis.
+    expect(label).toContain("MessageCircle");
+    expect(label).toContain('data-testid="task-label-stroke"');
+    expect(label).toContain("text-ellipsis");
+    expect(label).toContain("bg-transparent");
+    for (const box of ["rounded-full", "shadow", "border-border", "bg-surface"]) {
+      expect(label).not.toContain(box);
+    }
     expect(read(join(SRC, "features/chat/TaskView.tsx"))).toContain('"Adicione uma resposta"');
   });
 });

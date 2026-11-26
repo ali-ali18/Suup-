@@ -4,7 +4,7 @@ import { openWithBot, send } from "./helpers.js";
 
 // Tasks of a bot (KOD-68, docs/TAREFAS.md), in the browser, against the real server and the scripted
 // provider: the bot opens a task for the long work, the chat stays free, a label above the bubble
-// says "↳ name · state", tapping it opens the task's own view (header, messages, the box "Adicione
+// says "name · state" (one line, a reply stroke and a chat icon at its left), tapping it opens the task's own view (header, messages, the box "Adicione
 // uma resposta" that writes straight to the task), and when the task ends the chat gets a short
 // message. The cards of a task are decided in the chat, with the label of the task above them.
 // The screenshots are for the design review against docs/DESIGN.md.
@@ -71,6 +71,13 @@ const SCRIPTS = {
         ],
       },
       {
+        whenObjectiveContains: "CASE-LONGO",
+        agent: [
+          open("Implementar a revisão completa do projeto inteiro", "TAREFA-REVISAO"),
+          s({ text: "O CI ainda não terminou: o build passou e o check principal ainda roda." }),
+        ],
+      },
+      {
         whenObjectiveContains: "CASE-ARQUIVO",
         agent: [
           open("Gravar o relatório", "TAREFA-ARQUIVO"),
@@ -121,6 +128,25 @@ test.describe("tasks of a bot", () => {
     expect((lb?.y ?? 0) + (lb?.height ?? 0)).toBeLessThanOrEqual((bb?.y ?? 0) + 1);
     expect(Math.abs((lb?.x ?? 0) - (bb?.x ?? 0))).toBeLessThanOrEqual(8);
     expect(lb?.height ?? 99).toBeLessThanOrEqual(24);
+    // One line, no box: transparent background, no border, text smaller than the message's.
+    const look = await label(page).evaluate((el) => {
+      const c = getComputedStyle(el);
+      return { bg: c.backgroundColor, border: c.borderTopWidth, size: parseFloat(c.fontSize) };
+    });
+    expect(look.bg).toBe("rgba(0, 0, 0, 0)");
+    expect(look.border).toBe("0px");
+    const msgSize = await bubble
+      .getByTestId("bubble-bot")
+      .evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+    expect(look.size).toBeLessThan(msgSize);
+    // The reply stroke is at the left, inside the label, and ends right above the bubble's top-left.
+    const sb = await label(page).getByTestId("task-label-stroke").boundingBox();
+    const ib = await label(page).locator("svg").boundingBox();
+    expect(sb && ib).toBeTruthy();
+    expect((sb?.x ?? 0) + (sb?.width ?? 0)).toBeLessThanOrEqual((ib?.x ?? 0) + 1);
+    expect(Math.abs((sb?.x ?? 0) - (bb?.x ?? 0))).toBeLessThanOrEqual(40);
+    expect((sb?.y ?? 0) + (sb?.height ?? 0)).toBeGreaterThanOrEqual((bb?.y ?? 0) - 8);
+    expect((sb?.y ?? 0) + (sb?.height ?? 0)).toBeLessThanOrEqual((bb?.y ?? 0) + 8);
     await page.screenshot({ path: shot("rotulo-no-chat") });
 
     // The chat stays free while the task waits: a new message gets its own answer.
@@ -205,5 +231,31 @@ test.describe("tasks of a bot", () => {
       page.getByTestId("message-bot").filter({ hasText: "A revisão terminou" }),
     ).toBeVisible();
     await expect(page.getByTestId("task-label").last()).toContainText("Concluída");
+  });
+
+  test("a long task name is cut with an ellipsis and the state stays whole", async ({ page }) => {
+    await openWithBot(page, world, "Comprido");
+    await send(page, "CASE-LONGO confira o CI");
+    const tag = label(page);
+    await expect(tag).toHaveCount(1);
+    await expect(tag).toHaveAttribute(
+      "title",
+      "Implementar a revisão completa do projeto inteiro · Aguardando sua resposta",
+    );
+    await expect(tag).toHaveAttribute(
+      "aria-label",
+      "Abrir a tarefa: Implementar a revisão completa do projeto inteiro · Aguardando sua resposta",
+    );
+    const name = tag.getByTestId("task-label-name");
+    const cut = await name.evaluate((el) => el.scrollWidth > el.clientWidth);
+    expect(cut).toBe(true);
+    const lb = await tag.boundingBox();
+    expect(lb?.height ?? 99).toBeLessThanOrEqual(24);
+    await expect(tag).toContainText("· Aguardando sua resposta");
+    await page.screenshot({ path: shot("rotulo-nome-longo") });
+    // Keyboard: Tab to the label and Enter opens the task's view.
+    await tag.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByTestId("task-view")).toBeVisible();
   });
 });
