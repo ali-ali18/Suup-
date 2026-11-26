@@ -149,6 +149,8 @@ function makeTool(
     input,
     risk: level,
     classify: () => level,
+    // The same connector tool (whatever the arguments: the reviewer judges each call again).
+    grantKey: () => name,
     // Declared by the USER in the connector's settings, never taken from the server.
     ...(outbound === undefined ? {} : { outbound }),
     describe: (args) =>

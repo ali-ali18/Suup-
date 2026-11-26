@@ -64,6 +64,8 @@ export interface GateCall {
   webSeen?: ReadonlyMap<string, WebUrlSource> | undefined;
   /** The routines the user's messages are about: id to name (see `ClassifyEnv.routineNames`). */
   routineNames?: ReadonlyMap<string, string> | undefined;
+  /** The grants the user's approved cards left for this run (from the log): the same action needs no card. */
+  sessionGrants?: readonly { approvalId: string; tool: string; key: string }[] | undefined;
   /** The refusals the model reviewer already gave in this run (read from the log). */
   reviewBlocks?: { total: number; consecutive: number } | undefined;
   /** A review of THIS call already in the log (a resumed run): it is used, the model is not asked again. */
@@ -95,6 +97,13 @@ export interface GateVerdict {
   writtenRuleId?: string;
   /** What the model reviewer said about this call, to be recorded (not set when the log has it). */
   review?: ApprovalReview;
+  /**
+   * Set on an `ask`: approving this card may leave a grant for the rest of the run, under this key
+   * (`Tool.grantKey`). Only when the reviewer said the call can be undone.
+   */
+  grantKey?: string;
+  /** Set on an `allow` that an earlier approved card's grant made (the card was not needed). */
+  sessionGrant?: { approvalId: string };
 }
 
 /** What the loop asks before running a tool call. `null`: nothing to decide (no such tool, bad arguments). */
@@ -270,7 +279,40 @@ export function createToolGate(options: ToolGateOptions): ToolGate {
         floor,
         resolved,
       });
+      // The run's grant (an approved card of the same action) takes the place of a card, but only
+      // where the reviewer itself would have asked and says THIS call can be undone, and never
+      // against a rule of the user, a floor or the "ask all" mode (those decided before).
+      let sessionGrant: { approvalId: string } | undefined;
+      let grantKey: string | undefined;
+      if (
+        decision.outcome === "ask" &&
+        decision.source === "reviewer" &&
+        decision.writtenRuleId === undefined &&
+        record?.reversible === true &&
+        record.skipped === undefined &&
+        assessed.grantKey !== undefined &&
+        floor === undefined &&
+        early === undefined
+      ) {
+        const key = assessed.grantKey;
+        sessionGrant = call.sessionGrants?.find((g) => g.tool === call.name && g.key === key);
+        if (sessionGrant === undefined) grantKey = key;
+      }
+      if (sessionGrant !== undefined) {
+        return {
+          outcome: "allow",
+          source: "reviewer",
+          level,
+          reason: "Vale a aprovação que você deu antes, nesta execução.",
+          summary: assessed.summary,
+          secrets: assessed.secrets,
+          args: assessed.args,
+          ...(record === undefined || call.recordedReview !== undefined ? {} : { review: record }),
+          sessionGrant: { approvalId: sessionGrant.approvalId },
+        };
+      }
       return {
+        ...(grantKey === undefined ? {} : { grantKey }),
         outcome: decision.outcome,
         source: decision.source,
         level,
@@ -406,6 +448,17 @@ export function createReplayGate(events: readonly { type: string; payload?: unkn
         secrets: [],
         args: null,
       });
+    } else if (event.type === "approval_grant_used" && event.payload.kind === "session") {
+      // An approved card's grant for the run stood in for a card.
+      verdicts.set(event.payload.callId, {
+        outcome: "allow",
+        source: "reviewer",
+        level: "external_irreversible",
+        summary: "",
+        secrets: [],
+        args: null,
+        sessionGrant: { approvalId: event.payload.approvalId },
+      });
     } else if (event.type === "approval_grant_used") {
       // The gate said "ask" and a late approval's grant stood in for the card: nothing else was logged.
       verdicts.set(event.payload.callId, {
@@ -431,6 +484,7 @@ export function createReplayGate(events: readonly { type: string; payload?: unkn
         ...(p.expiresAt === undefined ? {} : { expiresAt: p.expiresAt }),
         ...(p.reason === undefined ? {} : { reason: p.reason }),
         ...(p.writtenRuleId === undefined ? {} : { writtenRuleId: p.writtenRuleId }),
+        ...(p.grantKey === undefined ? {} : { grantKey: p.grantKey }),
       });
     }
   }

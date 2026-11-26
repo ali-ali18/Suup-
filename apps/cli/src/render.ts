@@ -418,7 +418,13 @@ export function renderEvent(event: RawEvent, state: RenderState): string[] {
         `● aprovada tarde (esperou ${formatDuration(e.payload.waitedMs)}): a chamada não rodou; o bot foi avisado e a aprovação vale uma vez para a chamada idêntica`,
       ];
     case "approval_grant_used":
-      return [`● chamada idêntica à aprovada tarde: rodou sem novo cartão (${e.payload.tool})`];
+      return [
+        e.payload.kind === "session"
+          ? `● mesma ação que você aprovou antes nesta execução: rodou sem novo cartão (${e.payload.tool})`
+          : `● chamada idêntica à aprovada tarde: rodou sem novo cartão (${e.payload.tool})`,
+      ];
+    case "approval_session_grant":
+      return [`● aprovação vale até o fim desta execução para a mesma ação (${e.payload.tool})`];
     case "secret_requested":
       return [
         `? O bot pede o segredo ${e.payload.name}${e.payload.reason === undefined ? "" : ` (${oneLine(e.payload.reason, 120)})`}`,
@@ -516,6 +522,8 @@ export function summarizeEvent(event: RawEvent): string {
     case "approval_stale":
       return `${e.payload.callId} esperou ${formatDuration(e.payload.waitedMs)} (limite ${formatDuration(e.payload.thresholdMs)})`;
     case "approval_grant_used":
+      return `${e.payload.callId} ${e.payload.tool} (aprovação ${e.payload.approvalId.slice(0, 8)})`;
+    case "approval_session_grant":
       return `${e.payload.callId} ${e.payload.tool} (aprovação ${e.payload.approvalId.slice(0, 8)})`;
     case "secret_requested":
       return `${e.payload.callId} ${e.payload.name}`;

@@ -661,6 +661,12 @@ export const runEventSchema = z.discriminatedUnion("type", [
       reason: z.exactOptional(z.string()),
       /** The written rule behind that reason, when there is one. */
       writtenRuleId: z.exactOptional(z.string()),
+      /**
+       * Set only when approving this card may leave a grant for the rest of the run: the key the
+       * tool declared for the call (`Tool.grantKey`). The reviewer's verdict that backs it is the
+       * `approval_review` of the same call.
+       */
+      grantKey: z.exactOptional(z.string()),
     }),
   }),
   z.object({
@@ -701,6 +707,23 @@ export const runEventSchema = z.discriminatedUnion("type", [
       approvalId: z.string(),
       callId: z.string(),
       tool: z.string(),
+      /** `session`: the grant of an approved card for the run, not the one-time grant of a late approval. */
+      kind: z.exactOptional(z.enum(["late", "session"])),
+    }),
+  }),
+  z.object({
+    /**
+     * The user approved a card whose call the reviewer judged reversible: the same action
+     * (`key`, by the tool's own declaration) needs no new card until the run ends. Written right
+     * after the `approval_decided`. Never for a secret, a message to another person, a network
+     * request or a connector installation.
+     */
+    type: z.literal("approval_session_grant"),
+    payload: z.object({
+      approvalId: z.string(),
+      callId: z.string(),
+      tool: z.string(),
+      key: z.string(),
     }),
   }),
   z.object({

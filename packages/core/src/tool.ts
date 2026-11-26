@@ -338,6 +338,14 @@ export interface Tool<I = unknown> {
    * (the machine, whether the address was seen), never by looking at the arguments' text.
    */
   judged?(input: I, env: ClassifyEnv): JudgedKind | undefined;
+  /**
+   * What "the same action" means for a grant that lasts until the run ends: after the user
+   * approves a card of this tool, a later call with the same key needs no new card (if the
+   * reviewer again says it can be undone). Declared per tool from the call's structure, compared
+   * for exact equality (a shell command, the host of an address, a connector tool); never read as
+   * text. Absent: the tool never leaves a grant.
+   */
+  grantKey?(input: I, env: ClassifyEnv): string | undefined;
   /** One line for the approval card: what exactly this call does. Default: the tool and its arguments. */
   describe?(input: I, env: ClassifyEnv): string;
   /**

@@ -210,6 +210,14 @@ const samples: RunEventData[] = [
   },
   { type: "approval_grant_used", payload: { approvalId: "a1", callId: "2", tool: "send" } },
   {
+    type: "approval_grant_used",
+    payload: { approvalId: "a1", callId: "3", tool: "send", kind: "session" },
+  },
+  {
+    type: "approval_session_grant",
+    payload: { approvalId: "a1", callId: "1", tool: "send", key: "ana" },
+  },
+  {
     type: "user_message",
     payload: { text: "mande por e-mail", inboxId: "i1", linkedApprovalId: "a1" },
   },

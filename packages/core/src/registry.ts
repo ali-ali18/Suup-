@@ -82,6 +82,8 @@ export interface ToolAssessment {
   outbound?: OutboundMessage;
   /** Set when the model reviewer may settle this irreversible call (see `Tool.judged`). */
   judged?: JudgedKind;
+  /** The key of "the same action" for the run's grant (see `Tool.grantKey`); never with secrets or a message to another person. */
+  grantKey?: string;
 }
 
 export interface AssessOptions {
@@ -211,9 +213,18 @@ export class ToolRegistry {
         judged = undefined;
       }
     }
+    let grantKey: string | undefined;
+    if (secrets.length === 0 && tool.outbound === undefined) {
+      try {
+        grantKey = tool.grantKey?.(parsed.data, env);
+      } catch {
+        grantKey = undefined;
+      }
+    }
     return {
       level,
       ...(judged === undefined ? {} : { judged }),
+      ...(grantKey === undefined ? {} : { grantKey }),
       args: structuredClone(rawArgs) as JsonValue,
       summary: describeCall(tool, parsed.data, rawArgs, env),
       toolDescription: tool.description,

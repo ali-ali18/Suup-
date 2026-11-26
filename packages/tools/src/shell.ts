@@ -47,6 +47,8 @@ export const shellTool = defineTool({
   // On the user's own computer the model reviewer judges the command (it runs without a card only
   // if it is read-only or reversible and stays inside the bot's folder); the code never reads it.
   judged: (_input, { executor }) => (executor.isolated === true ? undefined : "local_shell"),
+  // The same command, in the same folder (exact comparison, only the ends trimmed).
+  grantKey: ({ command, cwd }) => JSON.stringify([cwd ?? "", command.trim()]),
   describe: ({ command, cwd }) =>
     `Shell${cwd === undefined ? "" : ` in ${cwd}`}: ${command.length > 500 ? `${command.slice(0, 500)}…` : command}`,
   // What a command prints may have come from the network, but labelling every output would change

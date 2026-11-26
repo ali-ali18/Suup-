@@ -190,7 +190,7 @@ describe.skipIf(!DATABASE_URL)(
         decision: "run",
         outcome: "allow",
         model: "model-x",
-        promptVersion: "auto-review-v4",
+        promptVersion: "auto-review-v5",
         usage,
       });
       expect(events.find((e) => e.type === "tool_result")?.payload).toMatchObject({
