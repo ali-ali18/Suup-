@@ -195,10 +195,11 @@ test.describe("connect and chat", () => {
     await card.getByRole("button", { name: "Enviar" }).click();
     const reply =
       "1. Qual banco de dados? → (pulou)\n2. Quais extras você quer? → Cache; Fila\n3. Posso começar agora? → Sim";
-    await expect(userBubbles(page).last()).toHaveText(reply);
     await expect(
       page.getByTestId("message-bot").filter({ hasText: "Anotei todas as respostas." }),
     ).toBeVisible();
+    // The answer stays only on the card (KOD-15): the last bubble of the user is still the request.
+    await expect(userBubbles(page).last()).toHaveText("CASE-QUIZ pergunte");
     // The card is dimmed and shows what was chosen in each question.
     await expect(card).toHaveAttribute("data-state", "answered");
     await expect(card.getByTestId("question-block")).toHaveCount(3);
