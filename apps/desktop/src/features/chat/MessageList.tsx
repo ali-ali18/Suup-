@@ -94,6 +94,7 @@ export function MessageList({
   const { platform } = useServices();
   const favicons = useSettings((s) => s.settings.favicons === "on");
   const ref = useRef<HTMLDivElement>(null);
+  const logRef = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const loading = useRef(false);
   const anchor = useRef<{ height: number; top: number } | null>(null);
@@ -128,6 +129,19 @@ export function MessageList({
     if (stick.current) el.scrollTop = el.scrollHeight;
   }, [items, expanded, phrase, activity, firstKey]);
 
+  // The text being written grows inside its bubble, with no new item: follow it to the end while
+  // the person is at the end (KOD-34).
+  useEffect(() => {
+    const el = ref.current;
+    const log = logRef.current;
+    if (el === null || log === null || typeof ResizeObserver === "undefined") return;
+    const watcher = new ResizeObserver(() => {
+      if (stick.current) el.scrollTop = el.scrollHeight;
+    });
+    watcher.observe(log);
+    return () => watcher.disconnect();
+  }, []);
+
   // The first fill may not reach the top of a tall window: ask for more until it does.
   useEffect(() => {
     const el = ref.current;
@@ -161,6 +175,7 @@ export function MessageList({
         data-testid="message-scroll"
       >
         <div
+          ref={logRef}
           className="mx-auto flex w-full max-w-content flex-col gap-(--chat-gap)"
           data-testid="chat-log"
           role="log"
@@ -243,6 +258,7 @@ export function MessageList({
                     position={positions.get(item.key)}
                     openUrl={platform.openUrl}
                     favicons={favicons}
+                    typing={item.live === true}
                   />
                 );
               case "files":

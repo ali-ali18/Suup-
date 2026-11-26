@@ -1,4 +1,6 @@
 import {
+  createSummaryStream,
+  FINISH_TOOL_NAME,
   type GenerateRequest,
   type JsonValue,
   type Message,
@@ -7,6 +9,7 @@ import {
   ProviderError,
   type ProviderEvent,
   type StopReason,
+  type SummaryStream,
   validateConversation,
 } from "@suup/core";
 import {
@@ -311,7 +314,15 @@ export function mapAnthropicStopReason(reason: string | undefined): StopReason {
 
 type BlockState =
   | { kind: "text" }
-  | { kind: "tool"; id: string; name: string; startInput: unknown; json: string }
+  | {
+      kind: "tool";
+      id: string;
+      name: string;
+      startInput: unknown;
+      json: string;
+      /** Only for the call that ends the run: reads its `summary` as it is written (live text). */
+      summary?: SummaryStream;
+    }
   | { kind: "thinking"; thinking: string; signature: string }
   | { kind: "redacted"; block: Wire }
   /** A server tool call (the API's tool search) or its result: echoed back unchanged. */
@@ -384,7 +395,16 @@ export async function* parseAnthropicStream(
                 retryable: false,
               });
             }
-            blocks.set(index, { kind: "tool", id, name, startInput: block.input, json: "" });
+            const finishing = name === FINISH_TOOL_NAME;
+            blocks.set(index, {
+              kind: "tool",
+              id,
+              name,
+              startInput: block.input,
+              json: "",
+              ...(finishing ? { summary: createSummaryStream() } : {}),
+            });
+            if (finishing) yield { type: "finish_start" };
             break;
           }
           case "thinking":
@@ -414,7 +434,10 @@ export async function* parseAnthropicStream(
           const text = asString(delta.text);
           if (text !== undefined && text !== "") yield { type: "text_delta", text };
         } else if (delta.type === "input_json_delta" && state?.kind === "tool") {
-          state.json += asString(delta.partial_json) ?? "";
+          const piece = asString(delta.partial_json) ?? "";
+          state.json += piece;
+          const typed = state.summary?.feed(piece) ?? "";
+          if (typed !== "") yield { type: "summary_delta", text: typed };
         } else if (delta.type === "input_json_delta" && state?.kind === "server") {
           state.json += asString(delta.partial_json) ?? "";
         } else if (delta.type === "thinking_delta" && state?.kind === "thinking") {

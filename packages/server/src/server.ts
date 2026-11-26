@@ -168,6 +168,8 @@ export function createServer(runtime: Runtime, options: ServerOptions): SuupServ
   const hub = new StreamHub({
     source: createDbSource(database, (value) => runtime.redactJson(value)),
     notifier: createPgNotifier(database),
+    // The second barrier of the live text: the vault's current values (see `StreamHub.pushLive`).
+    redactLive: (value) => runtime.redactor.redactJson(value),
     maxStreams: options.maxStreams ?? DEFAULT_SERVER.maxStreams,
     onError: (error, context) => log.error(`stream: ${context}`, error),
     onDrop: (reason) => log.warn(`stream: um cliente foi desconectado (${reason})`),
@@ -175,6 +177,7 @@ export function createServer(runtime: Runtime, options: ServerOptions): SuupServ
   });
 
   let closing = false;
+  let unsubscribeLive: (() => void) | undefined;
   let listening: string | undefined;
   let pruneTimer: ReturnType<typeof setInterval> | undefined;
   const sockets = new Set<Socket>();
@@ -496,6 +499,10 @@ export function createServer(runtime: Runtime, options: ServerOptions): SuupServ
       }
     }
     await hub.start();
+    // The answers being typed: from this process's worker and, when the config says so, from the
+    // workers of other processes (a NOTIFY channel of its own).
+    unsubscribeLive = runtime.live.subscribe((frame) => hub.pushLive(frame));
+    await runtime.live.listen();
     const prune = () =>
       void pruneChangeLog(database, { olderThanMs: retentionMs, keepLast: KEEP_CHANGES }).catch(
         (error: unknown) => log.error("não foi possível podar o diário de mudanças", error),
@@ -530,6 +537,7 @@ export function createServer(runtime: Runtime, options: ServerOptions): SuupServ
         if (!server.listening) resolve();
         else server.close(() => resolve());
       });
+      unsubscribeLive?.();
       await hub.stop(); // ends the open streams
       server.closeIdleConnections();
       const grace = new Promise<void>((resolve) => setTimeout(resolve, graceMs).unref());

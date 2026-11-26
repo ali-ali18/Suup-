@@ -20,6 +20,17 @@ export {
 } from "./control-tools.js";
 export { historyMessages } from "./history.js";
 export {
+  CONVERSATION_ORIGINS,
+  LIVE_BATCH_MS,
+  LIVE_MAX_BLOCK_CHARS,
+  LIVE_OUTCOMES,
+  type LiveFeed,
+  type LiveFrame,
+  type LiveOutcome,
+  LiveText,
+  liveAllowed,
+} from "./live.js";
+export {
   type BotConfig,
   computeCost,
   INTERRUPTED_RESULT,
@@ -69,6 +80,7 @@ export {
   type StoredEvent,
   type UsageDelta,
 } from "./store.js";
+export { createSummaryStream, type SummaryStream } from "./summary-stream.js";
 export {
   buildIndex,
   DEFAULT_TOOL_SEARCH,

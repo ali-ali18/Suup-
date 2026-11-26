@@ -56,6 +56,64 @@ const writeCall = (path: string, content: string) => ({
 });
 const finish = (summary: string) => ({ name: "finish", args: { summary, evidence: [] } });
 
+/**
+ * The answers typed on screen as they are written (KOD-34): the text arrives in pieces with a pause
+ * between them, like a real stream. Each case is chosen by a word of the message.
+ */
+const typed = { chunkSize: 9, chunkDelayMs: 140 };
+export const LIVE_TEXTS = {
+  simples: "Claro! Posso te ajudar com isso agora mesmo, é só me dizer o que você precisa.",
+  parte: "Vou conferir a agenda do mês para ver quais dias estão livres.",
+  fim: "Pronto, deixei tudo organizado e conferi cada item da lista com você.",
+  resumo: "Criei o arquivo, conferi o conteúdo e deixei tudo certo para você usar hoje.",
+  rascunho: "Rascunho que não deve ficar na conversa nem depois que eu terminar.",
+  recusado: "Terminei cedo demais, esta versão do resumo vai ser recusada pelo sistema.",
+  reenvio: "Parei no meio do caminho, mas ainda falta um passo para concluir tudo.",
+};
+const LIVE_CASES = [
+  {
+    // A plain answer: the text is typed and becomes the end message.
+    whenObjectiveContains: "CASE-VIVO-SIMPLES",
+    agent: [s({ text: LIVE_TEXTS.simples, ...typed })],
+  },
+  {
+    // A part (words and a tool in one turn), then the final text, each typed in its own bubble.
+    whenObjectiveContains: "CASE-VIVO-PARTE",
+    agent: [
+      s({ text: LIVE_TEXTS.parte, calls: [shell("echo agenda > agenda.txt")], ...typed }),
+      s({ text: LIVE_TEXTS.fim, ...typed }),
+    ],
+  },
+  {
+    // The summary of `finish`, typed.
+    whenObjectiveContains: "CASE-VIVO-RESUMO",
+    agent: [s({ calls: [finish(LIVE_TEXTS.resumo)], ...typed })],
+  },
+  {
+    // Words and `finish` in one turn: the words are dropped, the summary is typed instead.
+    whenObjectiveContains: "CASE-VIVO-MISTO",
+    agent: [s({ text: LIVE_TEXTS.rascunho, calls: [finish(LIVE_TEXTS.resumo)], ...typed })],
+  },
+  {
+    // A plain text turn with an open plan is sent back: what was typed never becomes a message.
+    whenObjectiveContains: "CASE-VIVO-REENVIO",
+    agent: [
+      s({ calls: [plan(["s1", "Fazer tudo", "in_progress"])], delayMs: 200 }),
+      s({ text: LIVE_TEXTS.reenvio, ...typed }),
+      s({ calls: [plan(["s1", "Fazer tudo", "done"])], delayMs: 200 }),
+      s({ calls: [finish(LIVE_TEXTS.resumo)], ...typed }),
+    ],
+  },
+  {
+    // A `finish` sent with another call is refused; its summary was typed and is thrown away.
+    whenObjectiveContains: "CASE-VIVO-RECUSA",
+    agent: [
+      s({ calls: [shell("echo oi > oi.txt"), finish(LIVE_TEXTS.recusado)], ...typed }),
+      s({ calls: [finish(LIVE_TEXTS.resumo)], ...typed }),
+    ],
+  },
+];
+
 /** The scripts of the scripted provider: each case is chosen by a word in the message. */
 export const SCRIPTS = {
   roteiro: {
@@ -165,6 +223,7 @@ export const SCRIPTS = {
           s({ text: "Combinado." }),
         ],
       },
+      ...LIVE_CASES,
       {
         // Text, then a request for a secret, then what the bot says once it has it.
         whenObjectiveContains: "CASE-PARTS-SECRET",

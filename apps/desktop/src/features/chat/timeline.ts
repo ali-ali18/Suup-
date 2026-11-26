@@ -3,6 +3,7 @@ import { callSeqKey } from "../../data/call-seq.js";
 import type { ConnectCardItem } from "../../data/connect-cards.js";
 import { isApprovedProposal } from "../../data/connect-cards.js";
 import { failureLine } from "../../data/derive.js";
+import type { LiveView } from "../../data/live.js";
 import type { SecretRequestItem } from "../../data/secret-requests.js";
 import type { LocalMessage } from "../../data/state.js";
 import type { BubblePosition, UserMessageState } from "../../ui/message.js";
@@ -14,6 +15,8 @@ export type TimelineItem =
       kind: "bot";
       key: string;
       text: string;
+      /** The answer is still being written (KOD-34): the live text, not yet a recorded message. */
+      live?: true;
       /** Present when the message is a question: what was asked, and whether it is still waiting. */
       ask?: {
         questions: readonly Question[];
@@ -103,6 +106,11 @@ export function buildTimeline(
      * words of its turn. The cards of connect and secret carry their own `seq`.
      */
     callSeqs?: Readonly<Record<string, number>>;
+    /**
+     * The answers being typed (`liveView`): bubbles placed where the recorded text will be, and the
+     * key a recorded message keeps from the bubble it replaced (the same element stays).
+     */
+    live?: LiveView;
   } = {},
 ): TimelineItem[] {
   const items: TimelineItem[] = [];
@@ -175,21 +183,24 @@ export function buildTimeline(
       const ready = opened.has(next.runId) || message === undefined;
       if (!ready || (message !== undefined && !cardComesBefore(next, message))) break;
       waiting.shift();
-      if (next.kind === "approval")
-        items.push({
-          kind: "approval",
-          key: `approval-${next.approval.id}`,
-          approval: next.approval,
-        });
-      else if (next.kind === "connect")
-        items.push({ kind: "connect", key: `connect-${next.card.callId}`, card: next.card });
-      else
-        items.push({
-          kind: "secret",
-          key: `secret-${next.request.callId}`,
-          request: next.request,
-        });
+      pushCard(next);
     }
+  };
+  const pushCard = (next: Placed) => {
+    if (next.kind === "approval")
+      items.push({
+        kind: "approval",
+        key: `approval-${next.approval.id}`,
+        approval: next.approval,
+      });
+    else if (next.kind === "connect")
+      items.push({ kind: "connect", key: `connect-${next.card.callId}`, card: next.card });
+    else
+      items.push({
+        kind: "secret",
+        key: `secret-${next.request.callId}`,
+        request: next.request,
+      });
   };
 
   messages.forEach((message, index) => {
@@ -237,7 +248,12 @@ export function buildTimeline(
         team: message.team,
       });
     } else if (message.question === undefined) {
-      items.push({ kind: "bot", key: message.id, text: message.text });
+      // A message that took the place of a typed bubble keeps the bubble's key: the same element.
+      items.push({
+        kind: "bot",
+        key: extras.live?.keyOf[message.id] ?? message.id,
+        text: message.text,
+      });
     } else {
       // The reply is the next message of the user, even one still being sent: the card answers at once.
       const reply = messages.slice(index + 1).find((m) => m.authorKind === "user");
@@ -264,6 +280,18 @@ export function buildTimeline(
       items.push({ kind: "files", key: `${message.id}-files`, files: message.attachments });
     }
   });
+  // The answers being typed come after everything recorded, but before the cards that the same
+  // run asked LATER (by `seq`): where the recorded words will be when they replace the bubble.
+  for (const bubble of extras.live?.typing ?? []) {
+    while (waiting.length > 0) {
+      const next = waiting[0] as Placed;
+      const later = next.runId === bubble.runId && next.seq !== undefined && next.seq > bubble.call;
+      if (later || !opened.has(next.runId)) break;
+      waiting.shift();
+      pushCard(next);
+    }
+    items.push({ kind: "bot", key: bubble.key, text: bubble.text, live: true });
+  }
   // Whatever is left (the run is still working, or no message opened it).
   flush();
 

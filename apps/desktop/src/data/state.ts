@@ -41,6 +41,8 @@ export interface MessagesSlice {
   loaded: boolean;
 }
 
+import type { LiveBlock } from "./live.js";
+
 export interface EventsSlice {
   bySeq: Record<number, RunEvent>;
   loaded: boolean;
@@ -79,6 +81,11 @@ export interface DataState {
   connectorsLoaded: boolean;
   /** What each bot's machine may reach (the server's answer to the last read or write), by bot id. */
   networks: Record<string, BotNetwork>;
+  /**
+   * The answers being typed (KOD-34), by `runId:call:block`. NOT messages and never saved: they are
+   * the stream's live frames (`data/live.ts`), replaced by the recorded message when it arrives.
+   */
+  live: Record<string, LiveBlock>;
 }
 
 export const emptyData = (): DataState => ({
@@ -103,6 +110,7 @@ export const emptyData = (): DataState => ({
   connectors: {},
   connectorsLoaded: false,
   networks: {},
+  live: {},
 });
 
 export const emptyMessages = (): MessagesSlice => ({ byId: {}, hasOlder: false, loaded: false });

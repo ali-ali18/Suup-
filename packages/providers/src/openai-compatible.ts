@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
+  createSummaryStream,
+  FINISH_TOOL_NAME,
   type GenerateRequest,
   type JsonValue,
   type Message,
@@ -8,6 +10,7 @@ import {
   ProviderError,
   type ProviderEvent,
   type StopReason,
+  type SummaryStream,
   validateConversation,
 } from "@suup/core";
 import {
@@ -280,6 +283,8 @@ interface ToolSlot {
   id: string | undefined;
   name: string;
   args: string;
+  /** Only for the call that ends the run: reads its `summary` as it is written (live text). */
+  summary?: SummaryStream;
 }
 
 export async function* parseChatStream(
@@ -401,7 +406,18 @@ export async function* parseChatStream(
       const fn = asRecord(fragment.function);
       const name = asString(fn?.name);
       if (slot.name === "" && name !== undefined) slot.name = name;
-      slot.args += asString(fn?.arguments) ?? "";
+      const piece = asString(fn?.arguments) ?? "";
+      slot.args += piece;
+      // The name comes in the first chunk; the characters of the summary follow it.
+      if (slot.summary === undefined && slot.name === FINISH_TOOL_NAME) {
+        slot.summary = createSummaryStream();
+        yield { type: "finish_start" };
+        const typed = slot.summary.feed(slot.args);
+        if (typed !== "") yield { type: "summary_delta", text: typed };
+      } else if (slot.summary !== undefined) {
+        const typed = slot.summary.feed(piece);
+        if (typed !== "") yield { type: "summary_delta", text: typed };
+      }
     }
 
     const reason = asString(choice.finish_reason);

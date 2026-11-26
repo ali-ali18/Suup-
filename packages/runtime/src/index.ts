@@ -120,6 +120,13 @@ export {
 } from "./diagnostics.js";
 export { ConfigError, RuntimeError, type RuntimeErrorCode } from "./errors.js";
 export {
+  createLiveChannel,
+  LIVE_NOTIFY_MAX_BYTES,
+  LIVE_QUEUE_MAX,
+  type LiveChannel,
+  splitFrame,
+} from "./live-channel.js";
+export {
   CONSOLIDATION_LEASE_MS,
   type ConsolidationDeps,
   type ConsolidationOutcome,

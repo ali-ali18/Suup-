@@ -14,6 +14,7 @@ import {
   DEFAULT_TOOL_SEARCH,
   type Executor,
   type LoopDeps,
+  liveAllowed,
   type NativeToolSearch,
   type OutgoingFile,
   type ProgressJudge,
@@ -102,6 +103,7 @@ import {
   createConnectorService,
 } from "./connectors/service.js";
 import { ConfigError, RuntimeError } from "./errors.js";
+import { createLiveChannel, type LiveChannel } from "./live-channel.js";
 import {
   type ConsolidationOutcome,
   requestPreCompactionConsolidation,
@@ -266,6 +268,8 @@ export interface Runtime {
   redactJson<T>(value: T): Promise<T>;
   /** The redactor itself (values as of the last reload), for code that cannot wait. */
   readonly redactor: Redactor;
+  /** The live text of the runs' answers (KOD-34): the worker publishes, the server relays. */
+  readonly live: LiveChannel;
   /** Provider by id. Never throws for a missing API key: see `getProvider`. */
   getProvider(id: string): Provider;
   keyStatus(providerId: string): ProviderKeyStatus;
@@ -562,6 +566,10 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     });
   };
   const REDACTION_MAX_AGE_MS = 5_000;
+  const live = createLiveChannel({
+    db: () => runtime.db,
+    crossProcess: config.live?.crossProcess ?? true,
+  });
 
   let db: Db | undefined;
   const providers = new Map<string, Provider>();
@@ -1089,6 +1097,11 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
       // The bot may come back by itself (`schedule_return`) in a conversation run; an evaluation
       // runs alone and without a chat, so it has no return.
       ...(guarded ? { allowReturns: true } : {}),
+      // The text of the answer, typed while the model writes it: only a conversation run that
+      // answers the user, never an evaluation, a routine or a delegated run.
+      ...(liveAllowed({ conversationId: run.conversationId, origin: run.origin, isolated })
+        ? { live: { publish: (frame) => live.publish(frame) } }
+        : {}),
       ...(vaultOn ? { secrets: vault.accessFor(bot.id) } : {}),
       // Uma execução isolada não carrega memória: nada do que o usuário contou chega a ela.
       ...(!guarded
@@ -1309,6 +1322,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
       return sandbox.kind === "docker" ? startEgress() : null;
     },
     redactor: vault.redactor,
+    live,
     async redactJson(value) {
       await vault.refresh(REDACTION_MAX_AGE_MS);
       return vault.redactor.redactJson(value);
@@ -1557,6 +1571,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     webSearchProviders: () => web.searchProviders(),
     restrictWebForEvaluation: () => web.restrictForEvaluation(),
     async close() {
+      await live.close();
       await web.close();
       await connectors.close();
       await containerLauncher?.closeAll();

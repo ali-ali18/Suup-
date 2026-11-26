@@ -174,6 +174,7 @@ Uma conexão por instância do app (Server-Sent Events; o cliente `api.subscribe
 | `conversation.updated` | Mudou a lista de conversas: mensagem nova, lida, arquivada (com `unreadCount` e `activeRun`) |
 | `memory.changed` | Uma memória foi criada, editada, esquecida, restaurada, confirmada ou recusada. Com `change: "pending"` e `memory.status: "pending"`, **um bot ou a consolidação propôs** uma regra, um fato sobre o usuário ou uma nota que espera confirmação: o app **não** mostra cartão no chat nem em Pendências (o dono não quer gerenciar memória); a tela Memória lista as pendentes que sobraram (`memory.review`, quando vem, diz por que o revisor segurou) |
 | `bot.updated` | Um bot foi criado, editado, arquivado ou tornado principal |
+| `live.text` / `live.end` | A resposta do bot **sendo escrita** (KOD-34): o balão cresce e, quando a mensagem gravada chega, ela toma o lugar do balão (o mesmo elemento, sem piscar e sem repetir). **Não é mensagem**: nunca entra em `messages` nem no histórico, só em `data.live` (`data/live.ts`). Sem `id`. Veja API.md, "O texto ao vivo" |
 | `ready` / `resync` | Da conexão: `resync` diz que o app deve **recarregar** o que mostra (veja API.md, "Retomada") |
 
 Cada evento tem um id que só cresce; reconectar com o último id visto retoma **sem perder nada** (dentro da janela de retenção, 6 horas por padrão; fora dela o servidor manda `resync`). Receber o estado por **REST depois de abrir o stream** é o jeito de abrir uma tela sem perder o que muda no intervalo.

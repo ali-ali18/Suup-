@@ -215,6 +215,16 @@ const workerSchema = z.strictObject({
   controlPollMs: z.exactOptional(z.number().positive()),
 });
 
+/**
+ * The text of the bot's answer shown while it is written (KOD-34). `crossProcess` (default true):
+ * the worker may run in another process than the server, so the live text also goes through the
+ * database (NOTIFY). Set it to `false` only where the server and the worker are one process (the
+ * desktop app's embedded server: `server --with-worker`); the text then goes in memory.
+ */
+const liveSchema = z.strictObject({
+  crossProcess: z.exactOptional(z.boolean()),
+});
+
 /** A browser origin: scheme, host and optional port, nothing else (no path, no trailing slash). */
 const ORIGIN = /^[a-z][a-z0-9+.-]*:\/\/[^/\s?#@]+$/i;
 const originSchema = z
@@ -609,6 +619,7 @@ export const configSchema = z
     reviewer: z.exactOptional(z.strictObject({ model: z.string().min(1) })),
     sandbox: sandboxSchema,
     worker: z.exactOptional(workerSchema),
+    live: z.exactOptional(liveSchema),
     server: z.exactOptional(serverSchema),
     defaults: z.exactOptional(defaultsSchema),
     /**

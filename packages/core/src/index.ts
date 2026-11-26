@@ -111,6 +111,7 @@ export {
 } from "./outbound.js";
 export {
   collect,
+  FINISH_TOOL_NAME,
   type GenerateRequest,
   type GenerateResult,
   generateAndCollect,

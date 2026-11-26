@@ -272,6 +272,23 @@
   }
 }
 
+/* The text of an answer being written (KOD-34): each letter revealed fades in, soft, ease-out, in
+   about 130 ms (text not yet revealed is not drawn at all); what is already there stays still. No mark, no blinking. Reduced motion (the system's or the
+   app's): no animation, the text is just there. */
+@utility ui-live-in {
+  @media (prefers-reduced-motion: no-preference) {
+    :root:not([data-motion="reduce"]) & {
+      animation: ui-live-in 130ms ease-out both;
+    }
+  }
+}
+
+@keyframes ui-live-in {
+  from {
+    opacity: 0;
+  }
+}
+
 /* Text with a moving light: a gradient of our own text colours clipped to the letters. Reduced
    motion (the system's or the app's) keeps the words still, in the muted colour: never transparent
    text that the global reduced-motion rule would leave invisible. */

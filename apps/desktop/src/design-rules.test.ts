@@ -2160,3 +2160,42 @@ describe("a fala do turno é uma mensagem na ordem do registro (dono, 25/11/2026
     }
   });
 });
+
+describe("o balão que está sendo escrito (docs/DESIGN.md §4, KOD-34, dono 25/11/2026)", () => {
+  it("o balão escreve com aria-busy e aria-live desligado; o texto novo esmaece, sem marca no fim", () => {
+    const message = read(join(SRC, "ui", "message.tsx"));
+    expect(message).toContain('"aria-busy": true');
+    expect(message).toContain('"aria-live": "off"');
+    expect(message).not.toContain("ui-typing");
+    const theme = read(join(SRC, "styles", "theme.css"));
+    expect(theme).not.toContain("ui-typing");
+    const util = theme.slice(
+      theme.indexOf("@utility ui-live-in"),
+      theme.indexOf("@utility ui-shimmer"),
+    );
+    // A animação só existe sem movimento reduzido (o do sistema e o do app).
+    expect(util).toContain("prefers-reduced-motion: no-preference");
+    expect(util).toContain(':root:not([data-motion="reduce"]) &');
+    expect(util).toContain("ease-out");
+    expect(util).toContain("130ms");
+    expect(util).not.toContain("infinite");
+    expect(util).not.toContain("::after");
+    // Letters appear progressively: an adaptive pace, only the revealed prefix is drawn, and the
+    // movement setting turns the gradual reveal off.
+    const fade = read(join(SRC, "lib", "live-fade.ts"));
+    expect(fade).toContain("requestAnimationFrame");
+    expect(fade).toContain("export const BASE_CPS");
+    expect(fade).toContain("export const CATCHUP_S");
+    expect(fade).toContain("readReducedMotion()");
+    expect(message).toContain("reveal.shown");
+  });
+
+  it("o texto ao vivo nunca entra nas mensagens: só em data.live, e a chave do balão passa à mensagem", () => {
+    const live = read(join(SRC, "data", "live.ts"));
+    expect(live).toContain("export const LIVE_SETTLE_MS = 3_000");
+    expect(live).not.toContain("upsertMessage");
+    expect(read(join(SRC, "features", "chat", "timeline.ts"))).toContain(
+      "extras.live?.keyOf[message.id]",
+    );
+  });
+});

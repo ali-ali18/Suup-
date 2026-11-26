@@ -16,8 +16,9 @@ import { runEventSchema, runSchema } from "./runs.js";
  * ```
  *
  * `id` increases with every change in the database and is the same on every server process, so
- * `Last-Event-ID` resumes from any of them. `ready` and `resync` have no `id` (they are about the
- * connection, not about a change).
+ * `Last-Event-ID` resumes from any of them. `ready`, `resync`, `live.text` and `live.end` have no `id`
+ * (the first two are about the connection, the others are the answer being typed: ephemeral, never
+ * stored, and a frame without `id` leaves the last event id as it was).
  */
 export const STREAM_EVENT_TYPES = [
   "ready",
@@ -30,6 +31,8 @@ export const STREAM_EVENT_TYPES = [
   "memory.changed",
   "bot.updated",
   "approval.changed",
+  "live.text",
+  "live.end",
 ] as const;
 
 /**
@@ -75,6 +78,28 @@ const frames = {
     change: z.enum(["created", "updated"]),
     approval: approvalSchema,
   }),
+  /**
+   * The bot's answer being written (KOD-34): ephemeral, never recorded, already scrubbed of known
+   * secret values. `call` is the `seq` of the call's `model_request` event; `block` the position of
+   * the text among the call's blocks that show; `offset` where `text` starts in the block (a frame
+   * with `offset` 0 replaces the block: it is also the snapshot a reconnecting client gets).
+   */
+  "live.text": z.object({
+    runId: uuid,
+    call: z.number().int().nonnegative(),
+    attempt: z.number().int().positive(),
+    block: z.number().int().nonnegative(),
+    offset: z.number().int().nonnegative(),
+    text: z.string(),
+  }),
+  /** The typed text ended: of one block (`block`, dropped) or of the whole call. */
+  "live.end": z.object({
+    runId: uuid,
+    call: z.number().int().nonnegative(),
+    attempt: z.number().int().positive(),
+    block: z.number().int().nonnegative().optional(),
+    outcome: z.enum(["recorded", "dropped", "aborted", "failed", "retry"]),
+  }),
 } as const;
 
 export const streamFrameSchemas = frames;
@@ -111,6 +136,12 @@ export const streamEventSchema = z.discriminatedUnion("type", [
     id: z.number().int(),
     data: frames["approval.changed"],
   }),
+  z.object({
+    type: z.literal("live.text"),
+    id: z.undefined().optional(),
+    data: frames["live.text"],
+  }),
+  z.object({ type: z.literal("live.end"), id: z.undefined().optional(), data: frames["live.end"] }),
 ]);
 export type StreamEvent = z.infer<typeof streamEventSchema>;
 export type StreamEventType = StreamEvent["type"];

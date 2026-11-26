@@ -2,7 +2,7 @@
 // NOTIFY, with a periodic poll as the safety net), turns each change into stream events, and
 // delivers them to the connected clients. It knows nothing of HTTP or Postgres: those are ports,
 // so everything here is testable with fakes and a fake clock.
-import type { RESYNC_REASONS, StreamEventType } from "@suup/api";
+import { type RESYNC_REASONS, type StreamEventType, streamFrameSchemas } from "@suup/api";
 
 /** A change as the log gives it: ids only, in the order the transactions became visible. */
 export interface ChangeRef {
@@ -88,6 +88,13 @@ export interface HubOptions<C extends ChangeRef> {
   batch?: number;
   /** A client that missed more changes than this is told to reload instead of replayed. Default 5000. */
   maxReplay?: number;
+  /**
+   * A second barrier for the live text: scrubs known secret values out of a frame before it is
+   * relayed. The worker already sends it scrubbed (with a hold-back for a value cut between two
+   * deltas); this catches whatever a bug there let through, but a value cut across frames only
+   * the worker can see. Default: nothing.
+   */
+  redactLive?: <T>(value: T) => T;
   /** `retry:` the server suggests to `EventSource`-like clients, in ms. Default 3000. */
   retryMs?: number;
   onError?(error: unknown, context: string): void;
@@ -113,6 +120,8 @@ interface Client {
   bufferBytes: number;
   /** The newest version sent per snapshot row (see `WireEvent.version`). */
   sent: Map<string, number>;
+  /** Live blocks this client missed a frame of: the next one for each goes out whole. */
+  liveBehind: Set<string>;
   closed: boolean;
 }
 
@@ -120,6 +129,28 @@ interface Client {
 export function frame(type: string, data: unknown, id?: number): string {
   return `${id === undefined ? "" : `id: ${id}\n`}event: ${type}\ndata: ${JSON.stringify(data)}\n\n`;
 }
+
+/** The longest text kept per live block on the server (the worker stops sending past it). */
+const LIVE_BLOCK_MAX = 64_000;
+/** A live block that was not touched for this long is forgotten (its call ended without a word). */
+const LIVE_BUFFER_TTL_MS = 10 * 60_000;
+/** A live frame is dropped, not queued, for a client with more than this waiting. */
+const LIVE_PENDING_MAX = 64 * 1024;
+
+interface LiveBlock {
+  runId: string;
+  call: number;
+  attempt: number;
+  block: number;
+  text: string;
+  touched: number;
+}
+
+const liveKey = (f: { runId: string; call: number; attempt: number; block: number }) =>
+  `${f.runId}:${f.call}:${f.attempt}:${f.block}`;
+
+/** A frame with no `id`: it must not move the client's `Last-Event-ID`. */
+const frame_ = (type: string, data: unknown): string => frame(type, data);
 
 export class StreamHub<C extends ChangeRef = ChangeRef> {
   readonly #source: ChangeSource<C>;
@@ -135,6 +166,9 @@ export class StreamHub<C extends ChangeRef = ChangeRef> {
   readonly #onError: (error: unknown, context: string) => void;
   readonly #onDrop: (reason: "slow_consumer" | "replay_failed") => void;
   readonly #clients = new Set<Client>();
+  readonly #redactLive: <T>(value: T) => T;
+  /** The text so far of each block being typed, for a client that connects in the middle. */
+  readonly #live = new Map<string, LiveBlock>();
 
   #cursor = 0;
   #started = false;
@@ -154,6 +188,7 @@ export class StreamHub<C extends ChangeRef = ChangeRef> {
     this.#batch = options.batch ?? 200;
     this.#maxReplay = options.maxReplay ?? 5_000;
     this.#retryMs = options.retryMs ?? 3_000;
+    this.#redactLive = options.redactLive ?? ((value) => value);
     this.#onError = options.onError ?? (() => {});
     this.#onDrop = options.onDrop ?? (() => {});
   }
@@ -285,12 +320,102 @@ export class StreamHub<C extends ChangeRef = ChangeRef> {
   }
 
   #keepAlive(): void {
+    const now = Date.now();
+    for (const [key, block] of this.#live) {
+      if (now - block.touched > LIVE_BUFFER_TTL_MS) this.#live.delete(key);
+    }
     for (const client of [...this.#clients]) {
       if (client.sink.pendingBytes > this.#maxPending) {
         this.#drop(client, "slow_consumer");
         continue;
       }
       client.sink.write(": ping\n\n");
+    }
+  }
+
+  /**
+   * A frame of the answer being typed (`live.text`, `live.end`), from the worker of this process or
+   * of another. Ephemeral: it has no id, is never replayed, and leaves nothing but a small buffer
+   * (the text so far, for a client that connects in the middle). A frame that does not match the
+   * contract is ignored. Never throws.
+   */
+  pushLive(raw: unknown): void {
+    if (this.#stopped) return;
+    try {
+      const type = (raw as { type?: unknown } | null)?.type;
+      if (type === "live.text") {
+        const parsed = streamFrameSchemas["live.text"].safeParse(raw);
+        if (parsed.success) this.#liveText(this.#redactLive(parsed.data));
+      } else if (type === "live.end") {
+        const parsed = streamFrameSchemas["live.end"].safeParse(raw);
+        if (parsed.success) this.#liveEnd(parsed.data);
+      }
+    } catch (error) {
+      this.#onError(error, "relaying live text");
+    }
+  }
+
+  #liveText(frame: {
+    runId: string;
+    call: number;
+    attempt: number;
+    block: number;
+    offset: number;
+    text: string;
+  }): void {
+    const key = liveKey(frame);
+    let block = this.#live.get(key);
+    if (frame.offset === 0) {
+      block = { ...frame, text: frame.text.slice(0, LIVE_BLOCK_MAX), touched: Date.now() };
+      this.#live.set(key, block);
+    } else if (block !== undefined && frame.offset === block.text.length) {
+      block.text = (block.text + frame.text).slice(0, LIVE_BLOCK_MAX);
+      block.touched = Date.now();
+    } else {
+      // A hole (the notification channel reconnected, or the server started mid-block): what we
+      // have is no longer the text, so the block is let go and the recorded message will do.
+      this.#live.delete(key);
+      this.#liveEnd({
+        runId: frame.runId,
+        call: frame.call,
+        attempt: frame.attempt,
+        block: frame.block,
+        outcome: "dropped",
+      });
+      return;
+    }
+    for (const client of this.#clients) {
+      if (client.closed || !client.runs.has(frame.runId) || client.buffer !== null) continue;
+      if (client.sink.pendingBytes > LIVE_PENDING_MAX) {
+        client.liveBehind.add(key);
+        continue;
+      }
+      if (client.liveBehind.delete(key)) {
+        // It missed frames: this one goes out as the whole text, which replaces its copy.
+        client.sink.write(frame_("live.text", { ...frame, offset: 0, text: block.text }));
+      } else {
+        client.sink.write(frame_("live.text", frame));
+      }
+    }
+  }
+
+  #liveEnd(frame: {
+    runId: string;
+    call: number;
+    attempt: number;
+    block?: number | undefined;
+    outcome: string;
+  }): void {
+    for (const [key, block] of this.#live) {
+      const same =
+        block.runId === frame.runId && block.call === frame.call && block.attempt === frame.attempt;
+      if (same && (frame.block === undefined || frame.block === block.block)) {
+        this.#live.delete(key);
+      }
+    }
+    for (const client of this.#clients) {
+      if (client.closed || !client.runs.has(frame.runId) || client.buffer !== null) continue;
+      client.sink.write(frame_("live.end", frame));
     }
   }
 
@@ -318,6 +443,7 @@ export class StreamHub<C extends ChangeRef = ChangeRef> {
       buffer: [],
       bufferBytes: 0,
       sent: new Map(),
+      liveBehind: new Set(),
       closed: false,
     };
     // Registered before anything is awaited: from now on a live change is buffered, not lost.
@@ -361,6 +487,20 @@ export class StreamHub<C extends ChangeRef = ChangeRef> {
       if (client.sink.pendingBytes + text.length > this.#maxPending)
         return this.#drop(client, "slow_consumer");
       client.sink.write(text);
+    }
+    // The answers being typed right now: the text so far, whole, then the frames that follow.
+    for (const block of this.#live.values()) {
+      if (client.closed || !client.runs.has(block.runId)) continue;
+      client.sink.write(
+        frame_("live.text", {
+          runId: block.runId,
+          call: block.call,
+          attempt: block.attempt,
+          block: block.block,
+          offset: 0,
+          text: block.text,
+        }),
+      );
     }
   }
 

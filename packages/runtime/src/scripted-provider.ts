@@ -18,7 +18,7 @@ import {
   TEAM_REVIEW_TOOL_NAME,
   usageSchema,
 } from "@suup/core";
-import { FakeProvider, type FakeStep } from "@suup/core/testing";
+import { FakeProvider, type FakeProviderOptions, type FakeStep } from "@suup/core/testing";
 import { z } from "zod";
 import { DRAFT_TOOL } from "./conversations.js";
 
@@ -42,6 +42,12 @@ const stepSchema = z.strictObject({
   modelVersion: z.exactOptional(z.string().min(1)),
   /** Wait this long before answering (honors an abort). Lets a demo be interrupted mid-turn. */
   delayMs: z.exactOptional(z.number().int().min(0)),
+  /**
+   * Write the text (and the summary of a `finish`) in pieces of this many characters, waiting
+   * `chunkDelayMs` between them: the answer is typed on screen as in a real stream (KOD-34).
+   */
+  chunkSize: z.exactOptional(z.number().int().min(1)),
+  chunkDelayMs: z.exactOptional(z.number().int().min(0)),
   /** Fail the call with this error instead of answering. */
   error: z.exactOptional(
     z.strictObject({
@@ -195,7 +201,8 @@ export function createScriptedProvider(options: ScriptedProviderOptions): Provid
     id: options.id,
     capabilities: { promptCache: false, parallelTools: true, vision: false },
     generate(req: GenerateRequest): AsyncIterable<ProviderEvent> {
-      const fake = (step: FakeStep) => new FakeProvider([step], fakeOptions).generate(req);
+      const fake = (step: FakeStep, extra: FakeProviderOptions = {}) =>
+        new FakeProvider([step], { ...fakeOptions, ...extra }).generate(req);
       let section: Section;
       let index: number;
       let step: ScriptStep | undefined;
@@ -258,7 +265,10 @@ export function createScriptedProvider(options: ScriptedProviderOptions): Provid
           ),
         );
       }
-      return fake(toFakeStep(step, `${section[0]}${index}`, req.signal));
+      return fake(toFakeStep(step, `${section[0]}${index}`, req.signal), {
+        ...(step.chunkSize === undefined ? {} : { textChunkSize: step.chunkSize }),
+        ...(step.chunkDelayMs === undefined ? {} : { chunkDelayMs: step.chunkDelayMs }),
+      });
     },
   };
 }

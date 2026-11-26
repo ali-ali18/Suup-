@@ -99,6 +99,14 @@ O que **não** vem, para a imagem continuar pequena: LaTeX, LibreOffice e `pando
 | `staleAfterMs` | 30000 | Uma posse não renovada por este tempo vence, e a execução volta para a fila (precisa ser maior que `leaseRenewMs`) |
 | `controlPollMs` | 2000 | De quanto em quanto tempo o worker olha se o servidor pediu para **pausar, interromper ou cancelar** uma execução dele (a verificação é o próprio batimento, que passa a bater no menor entre este valor e `leaseRenewMs`). É o tempo que um "interromper agora" leva para chegar a uma execução parada numa chamada longa ao modelo |
 
+### `live` (opcional)
+
+O texto da resposta do bot aparecendo enquanto é escrito (KOD-34; [API.md](API.md), "O texto ao vivo").
+
+| Campo | Padrão | Significado |
+|---|---|---|
+| `crossProcess` | `true` | O servidor e os workers podem ser processos separados (uma VPS): o texto ao vivo vai também pelo banco (`NOTIFY`). Ponha `false` **só** onde o servidor e o worker são o mesmo processo, como no app de desktop (`server --with-worker`; o sidecar já faz isso): o texto vai pela memória, sem passar pelo banco |
+
 ### `server` (opcional)
 
 O servidor da API e do tempo real (`suup server`; [API.md](API.md)). Todos os campos são opcionais.
