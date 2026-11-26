@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { createServer, request, type Server } from "node:http";
-import { connect } from "node:net";
+import { connect, createServer as createNetServer, type Socket } from "node:net";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   ControlClient,
@@ -60,7 +60,7 @@ async function boot(
 function worker(
   running: RunningEgressService,
   policy: EgressPolicy,
-  over: { token?: string; events?: EgressEvent[] } = {},
+  over: { token?: string; events?: EgressEvent[]; log?: (text: string) => void } = {},
 ): ControlClient {
   const client = new ControlClient({
     host: "127.0.0.1",
@@ -71,6 +71,7 @@ function worker(
     policy,
     onEvent: (e) => over.events?.push(e),
     retryMs: 20,
+    ...(over.log === undefined ? {} : { log: over.log }),
   });
   clients.push(client);
   return client;
@@ -241,32 +242,84 @@ describe("control channel: decisions stay with the worker", () => {
 describe("control channel: the worker restarts", () => {
   it("the proxy keeps running; the new worker takes over, the old one is dropped", async () => {
     const running = await boot();
-    const first = worker(running, allow("old.example.com"));
+    const firstLog: string[] = [];
+    const first = worker(running, allow("old.example.com"), { log: (t) => firstLog.push(t) });
     await first.start(2000);
     expect((await get(first, running.proxyPort, "http://old.example.com/")).status).toBe(200);
     // the new worker (same channel token) connects while the old one is still around
     const second = worker(running, allow("new.example.com"));
     await second.start(2000);
-    for (let i = 0; i < 50 && first.connected; i++) await new Promise((r) => setTimeout(r, 10));
+    // wait for the real event: the old worker was told it was replaced and stood down
+    for (let i = 0; i < 500 && !firstLog.some((t) => t.includes("assumiu")); i++) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    expect(firstLog.some((t) => t.includes("assumiu"))).toBe(true);
+    expect(first.connected).toBe(false);
     expect((await get(second, running.proxyPort, "http://new.example.com/")).status).toBe(200);
     expect((await get(second, running.proxyPort, "http://old.example.com/")).status).toBe(403);
   });
 
+  it("a worker that was replaced never takes the channel back, however long it waits", async () => {
+    // The old worker's reconnect timer (20 ms here) used to fire after the takeover and give the
+    // channel back to the old rules, so a request that the new worker refuses went through. The
+    // race was between that timer and the request; this holds the request back for several
+    // reconnect periods, so the old behaviour fails every time instead of under load only.
+    const running = await boot();
+    const connectedBefore = logs.filter((t) => t.includes("servidor conectado")).length;
+    const firstLog: string[] = [];
+    const first = worker(running, allow("old.example.com"), { log: (t) => firstLog.push(t) });
+    await first.start(2000);
+    const second = worker(running, allow("new.example.com"));
+    await second.start(2000);
+    for (let i = 0; i < 500 && !firstLog.some((t) => t.includes("assumiu")); i++) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    await new Promise((r) => setTimeout(r, 200)); // ten reconnect periods of the old worker
+    expect(first.connected).toBe(false);
+    expect(second.connected).toBe(true);
+    expect((await get(second, running.proxyPort, "http://old.example.com/")).status).toBe(403);
+    expect((await get(second, running.proxyPort, "http://new.example.com/")).status).toBe(200);
+    expect(logs.filter((t) => t.includes("servidor conectado"))).toHaveLength(connectedBefore + 2);
+  });
+
   it("a client reconnects by itself after the connection drops", async () => {
     const running = await boot();
-    const events: EgressEvent[] = [];
-    const client = worker(running, allow("allowed.example.com"), { events });
-    await client.start(2000);
-    // cut the channel from the proxy's side by letting a new client replace it, then stop that one
-    const intruder = worker(running, allow("allowed.example.com"));
-    await intruder.start(2000);
-    intruder.stop();
-    let status = 0;
-    for (let i = 0; i < 100 && status !== 200; i++) {
-      await new Promise((r) => setTimeout(r, 20));
-      status = (await get(client, running.proxyPort, "http://allowed.example.com/")).status;
+    // a relay the test can cut: the client talks to it, it talks to the proxy's control port
+    const relayed = new Set<Socket>();
+    const relay = createNetServer((inbound) => {
+      const outbound = connect({ host: "127.0.0.1", port: running.controlPort });
+      relayed.add(inbound).add(outbound);
+      inbound.pipe(outbound);
+      outbound.pipe(inbound);
+      inbound.on("error", () => outbound.destroy());
+      outbound.on("error", () => inbound.destroy());
+      inbound.on("close", () => outbound.destroy());
+      outbound.on("close", () => inbound.destroy());
+    });
+    await new Promise<void>((r) => relay.listen(0, "127.0.0.1", r));
+    const client = new ControlClient({
+      host: "127.0.0.1",
+      port: (relay.address() as { port: number }).port,
+      token: TOKEN,
+      secret: SECRET,
+      advertise: { host: "127.0.0.1", port: running.proxyPort },
+      policy: allow("allowed.example.com"),
+      retryMs: 20,
+    });
+    clients.push(client);
+    try {
+      await client.start(2000);
+      for (const socket of relayed) socket.destroy(); // the link drops; nobody replaced the worker
+      let status = 0;
+      for (let i = 0; i < 100 && status !== 200; i++) {
+        await new Promise((r) => setTimeout(r, 20));
+        status = (await get(client, running.proxyPort, "http://allowed.example.com/")).status;
+      }
+      expect(status).toBe(200);
+    } finally {
+      for (const socket of relayed) socket.destroy();
+      await new Promise<void>((r) => relay.close(() => r()));
     }
-    expect(status).toBe(200);
   });
 
   it("a question without an answer in time is a refusal, not a hang", async () => {

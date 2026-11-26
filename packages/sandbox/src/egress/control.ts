@@ -7,6 +7,7 @@
 // One TCP connection, one JSON object per line:
 //   worker -> proxy  {t:"hello", token}                the first line; wrong token: closed without a word
 //   proxy  -> worker {t:"ready"}                        the worker is now THE owner of the policy
+//   proxy  -> worker {t:"replaced"}                     another worker took over: do not reconnect
 //   proxy  -> worker {t:"hosts?", id, subject}          "which hosts may this subject reach?"
 //   worker -> proxy  {t:"hosts", id, hosts} | {t:"hosts", id, error}
 //   proxy  -> worker {t:"event", id, event}             every decision, with the time as text
@@ -36,6 +37,7 @@ interface WireEvent extends Omit<EgressEvent, "at"> {
 /** What the proxy sends the worker. */
 type ToWorker =
   | { t: "ready" }
+  | { t: "replaced" }
   | { t: "hosts?"; id: string; subject: EgressSubject }
   | { t: "event"; id: string; event: WireEvent };
 
@@ -177,7 +179,12 @@ export class ControlServer implements EgressPolicy {
         this.#worker = socket;
         if (old !== undefined && old !== socket) {
           this.#failPending(new Error("another worker took over"));
-          old.destroy();
+          // Say so before closing: a worker that is told it was replaced stands down for good.
+          // Without this it would reconnect, take the channel back and the proxy would apply the
+          // old worker's (stale) rules while the new one is the owner.
+          send(old, { t: "replaced" });
+          old.end();
+          setTimeout(() => old.destroy(), 1000).unref();
         }
         send(socket, { t: "ready" });
         this.#o.log?.("controle: servidor conectado");
@@ -346,6 +353,14 @@ export class ControlClient implements EgressService {
   async #onLine(socket: Socket, line: string): Promise<void> {
     const message = parse(line);
     if (message === undefined) return;
+    if (message.t === "replaced") {
+      // Another worker owns the policy now. Stand down: reconnecting would take the channel back
+      // from it and put this worker's rules in force again.
+      this.#helloDone = false;
+      this.stop();
+      this.#o.log?.("controle: outro servidor assumiu o proxy; este parou de reconectar");
+      return;
+    }
     if (message.t === "ready") {
       this.#helloDone = true;
       this.#attempt = 0;
