@@ -51,7 +51,7 @@ export function TaskLabel({
       </svg>
       <span
         data-testid="task-label-body"
-        className="flex min-w-0 items-center gap-1.5 rounded-row px-2 transition-colors group-hover:bg-hover group-focus-visible:bg-hover"
+        className="flex min-w-0 items-center gap-1.5 rounded-row px-1 transition-colors group-hover:bg-hover group-focus-visible:bg-hover"
       >
         <MessageCircle size={14} aria-hidden="true" className="flex-none" />
         <span className="flex min-w-0 items-baseline gap-1 whitespace-nowrap">
