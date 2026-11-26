@@ -2336,6 +2336,13 @@ describe("tarefas (docs/DESIGN.md, 4d)", () => {
     expect(read(join(SRC, "features/chat/timeline.ts"))).toContain(
       "export function tasksOfMessage",
     );
+    // The icon of the composer's round button (send, voice waves) is WHITE on every bot colour
+    // (owner, 26/11/2026): the same white as the user's bubble text, never the dark `onFill`.
+    for (const file of ["ui/composer.tsx", "ui/primitives.tsx"]) {
+      const source = read(join(SRC, file));
+      expect(source).toContain("bg-bot-fill text-bot-on-bubble");
+      expect(source).not.toContain("text-bot-on-fill");
+    }
     const face = read(join(SRC, "ui/task-avatar.tsx"));
     expect(face).toContain('data-testid="task-avatar"');
     expect(face).toContain("var(--bot-fill)");

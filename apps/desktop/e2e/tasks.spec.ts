@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { DATABASE_URL, SKIP_REASON, startWorld, type World } from "./harness.js";
-import { openWithBot, send } from "./helpers.js";
+import { freshBot, openApp, openWithBot, selectBot, send } from "./helpers.js";
 
 // Tasks of a bot (KOD-68, docs/TAREFAS.md), in the browser, against the real server and the scripted
 // provider: the bot opens a task for the long work, the chat stays free, a label above the bubble
@@ -612,6 +612,40 @@ test.describe("tasks of a bot", () => {
     // The label opens the list of tasks.
     await groupLabel.click();
     await expect(page.getByTestId("tasks-tab")).toBeVisible();
+  });
+
+  test("the icon of the composers' round button is white, on a light bot colour too", async ({
+    page,
+  }) => {
+    const white = "rgb(255, 255, 255)";
+    await freshBot(world, "Âmbar", { color: "amarelo" });
+    await openApp(page, world);
+    await selectBot(page, "Âmbar");
+    await send(page, "CASE-REVISAO revise o projeto inteiro, por favor");
+    await expect(label(page)).toHaveCount(1);
+    await label(page).click();
+    const panel = page.getByTestId("task-panel");
+    await expect(panel).toBeVisible();
+    const iconColour = (scope: Locator) =>
+      scope.getByTestId("ornament-call").evaluate((el) => getComputedStyle(el).color);
+    expect(await iconColour(page.getByTestId("chat-composer"))).toBe(white);
+    expect(await iconColour(panel.getByTestId("task-composer"))).toBe(white);
+    // With a text, the send button's arrow is white as well, in both boxes.
+    for (const scope of [page.getByTestId("chat-composer"), panel.getByTestId("task-composer")]) {
+      await scope.getByRole("textbox").fill("oi");
+      const send = scope.getByRole("button", { name: "Enviar mensagem" });
+      await expect(send).toBeVisible();
+      expect(await send.evaluate((el) => getComputedStyle(el).color)).toBe(white);
+      await scope.getByRole("textbox").fill("");
+    }
+    await page.waitForTimeout(600);
+    await page.screenshot({ path: shot("icone-branco") });
+    // A green bot, too.
+    await freshBot(world, "Folha", { color: "verde" });
+    await page.reload();
+    await selectBot(page, "Folha");
+    expect(await iconColour(page.getByTestId("chat-composer"))).toBe(white);
+    await page.screenshot({ path: shot("icone-branco-verde") });
   });
 
   test("Parar, in the overflow menu of the task panel, stops a working task", async ({ page }) => {
