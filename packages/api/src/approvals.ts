@@ -83,6 +83,13 @@ export const approvalSchema = z.object({
    * then; the bot was told and the approval is kept as a one-time grant for the identical call.
    */
   stale: z.boolean(),
+  /**
+   * How the user decided: `click` (the button or the API) or `chat` (a message that was a clear yes
+   * to this card; the app draws "Aprovado pelo chat"). `null` while pending or when it ended without the user.
+   */
+  decidedVia: z.enum(["click", "chat"]).nullable().optional(),
+  /** The user's message that approved, when `decidedVia` is `chat`. */
+  decidedMessageId: uuid.nullable().optional(),
 });
 export type Approval = z.infer<typeof approvalSchema>;
 

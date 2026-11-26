@@ -19,6 +19,7 @@ import {
   setDefaultBot,
 } from "@suup/db";
 import { z } from "zod";
+import { approveByChat, type ChatApprovalOutcome } from "./chat-approval.js";
 import { RuntimeError } from "./errors.js";
 import type { Runtime } from "./runtime.js";
 
@@ -49,6 +50,11 @@ export interface SendMessageResult {
   run: Run;
   /** Set when the message went to a run that was already active (`message.status` is `sent`). */
   queuedForRun?: true;
+  /**
+   * Set when the run was waiting for an approval and the message was looked at as a possible yes
+   * (see `approveByChat`). `approved` also names the card.
+   */
+  chatApproval?: ChatApprovalOutcome;
 }
 
 /**
@@ -140,10 +146,15 @@ export async function sendMessage(
       ...(input.routineRef === undefined ? {} : { routineRef: input.routineRef }),
       ...(input.questionRef === undefined ? {} : { questionRef: input.questionRef }),
     });
+    const chatApproval =
+      sent.run.status === "waiting_approval"
+        ? await approveByChat(runtime, sent.run, sent.message, text)
+        : undefined;
     return {
       message: sent.message,
       run: sent.run,
       ...(sent.queuedForRun ? { queuedForRun: true as const } : {}),
+      ...(chatApproval === undefined ? {} : { chatApproval }),
     };
   } catch (error) {
     if (error instanceof ConversationNotFoundError) {

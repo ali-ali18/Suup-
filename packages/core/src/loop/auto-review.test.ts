@@ -137,7 +137,7 @@ describe("auto-review in the loop", () => {
     expect(reviews[0]?.payload).toMatchObject({
       ruleId: "w-allow",
       model: "reviewer-model",
-      promptVersion: "auto-review-v3",
+      promptVersion: "auto-review-v5",
       usage: { inputTokens: 1000, outputTokens: 20 },
     });
     // each review comes right before the verdict it led to

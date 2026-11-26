@@ -50,7 +50,10 @@ export function decidedLabel(approval: {
   status: string;
   stale: boolean;
   waitedMs: number | null;
+  decidedVia?: "click" | "chat" | null | undefined;
 }): string {
+  if (approval.status === "approved" && !approval.stale && approval.decidedVia === "chat")
+    return "Aprovado pelo chat";
   if (approval.status === "approved" && approval.stale && approval.waitedMs !== null)
     return `Aprovado depois de ${waitedText(approval.waitedMs)}`;
   return STATUS_LABEL[approval.status] ?? approval.status;
@@ -61,7 +64,10 @@ export function decidedDetail(approval: {
   status: string;
   stale: boolean;
   waitedMs: number | null;
+  decidedVia?: "click" | "chat" | null | undefined;
 }): string {
+  if (approval.status === "approved" && !approval.stale && approval.decidedVia === "chat")
+    return "Você aprovou escrevendo no chat e a ação rodou exatamente com este conteúdo.";
   if (approval.status === "approved" && approval.stale && approval.waitedMs !== null)
     return `Você aprovou depois de ${waitedText(approval.waitedMs)}: a ação não rodou na hora. O bot foi avisado, conferiu se ainda fazia sentido e só então seguiu.`;
   return STATUS_DETAIL[approval.status] ?? "";

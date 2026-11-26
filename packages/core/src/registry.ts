@@ -12,7 +12,15 @@ import {
   SecretUnavailableError,
   substituteSecrets,
 } from "./secrets.js";
-import type { ClassifyEnv, Executor, Tool, ToolContext, ToolOutput, ToolSource } from "./tool.js";
+import type {
+  ClassifyEnv,
+  Executor,
+  JudgedKind,
+  Tool,
+  ToolContext,
+  ToolOutput,
+  ToolSource,
+} from "./tool.js";
 import { wrapUntrusted } from "./untrusted.js";
 import { WEB_URLS_PER_RESULT_MAX, type WebUrlSource } from "./web.js";
 
@@ -72,6 +80,10 @@ export interface ToolAssessment {
   secretHost?: string;
   /** Set only when the tool declares that the call is a message to another person. */
   outbound?: OutboundMessage;
+  /** Set when the model reviewer may settle this irreversible call (see `Tool.judged`). */
+  judged?: JudgedKind;
+  /** The key of "the same action" for the run's grant (see `Tool.grantKey`); never with secrets or a message to another person. */
+  grantKey?: string;
 }
 
 export interface AssessOptions {
@@ -193,8 +205,26 @@ export class ToolRegistry {
     if (secrets.length > 0) level = maxRisk(level, "external_irreversible");
     // A message to another person cannot be taken back: it is never a plain read.
     if (tool.outbound !== undefined) level = maxRisk(level, "external_irreversible");
+    let judged: JudgedKind | undefined;
+    if (level === "external_irreversible" && secrets.length === 0 && tool.outbound === undefined) {
+      try {
+        judged = tool.judged?.(parsed.data, env);
+      } catch {
+        judged = undefined;
+      }
+    }
+    let grantKey: string | undefined;
+    if (secrets.length === 0 && tool.outbound === undefined) {
+      try {
+        grantKey = tool.grantKey?.(parsed.data, env);
+      } catch {
+        grantKey = undefined;
+      }
+    }
     return {
       level,
+      ...(judged === undefined ? {} : { judged }),
+      ...(grantKey === undefined ? {} : { grantKey }),
       args: structuredClone(rawArgs) as JsonValue,
       summary: describeCall(tool, parsed.data, rawArgs, env),
       toolDescription: tool.description,

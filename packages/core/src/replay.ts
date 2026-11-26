@@ -744,6 +744,9 @@ class ReplayStore implements RunStore {
         decision: p.decision,
         ...(p.reason === undefined ? {} : { reason: p.reason }),
         ...(p.ruleId === undefined ? {} : { ruleId: p.ruleId }),
+        ...(p.via === undefined ? {} : { via: p.via }),
+        ...(p.messageId === undefined ? {} : { messageId: p.messageId }),
+        ...(p.chatReview === undefined ? {} : { chatReview: p.chatReview }),
       });
     }
     return items;

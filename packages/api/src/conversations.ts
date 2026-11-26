@@ -209,6 +209,25 @@ export const sendMessageResultSchema = z.object({
   run: runSchema,
   /** The message went to a run that was already active (`message.status` is `sent`). */
   queuedForRun: z.boolean(),
+  /**
+   * Present when the run was waiting for approval and the message was read as a possible yes:
+   * `approved` (it was: the card is decided, `approvalId`), or why not (`not_a_yes`, `click_only`,
+   * `several_cards`, `stopping`, `unavailable`, `already_decided`). The message is stored either way.
+   */
+  chatApproval: z
+    .object({
+      outcome: z.enum([
+        "approved",
+        "not_a_yes",
+        "click_only",
+        "several_cards",
+        "stopping",
+        "unavailable",
+        "already_decided",
+      ]),
+      approvalId: uuid.optional(),
+    })
+    .optional(),
 });
 export type SendMessageResult = z.infer<typeof sendMessageResultSchema>;
 

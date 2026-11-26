@@ -240,6 +240,8 @@ export function toApprovalDto(approval: ApprovalRow): Approval {
     createdAt: iso(approval.createdAt),
     waitedMs: approval.waitedMs,
     stale: approval.stale,
+    decidedVia: approval.decidedVia,
+    decidedMessageId: approval.decidedMessageId,
   };
 }
 

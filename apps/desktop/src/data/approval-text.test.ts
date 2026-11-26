@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   allowRecipientSentence,
   approvalTitle,
+  decidedDetail,
+  decidedLabel,
   expiryText,
   instructionLine,
   isConnectorTool,
@@ -225,5 +227,28 @@ describe("the card that asks for network access", () => {
     );
     expect(networkLede("Nova", undefined)).toContain("Nova");
     expect(NETWORK_SCOPE_NOTE).toContain("só para esta execução");
+  });
+});
+
+describe("decided card: approved through the chat", () => {
+  it("says so, from the server's field only", () => {
+    const base = { status: "approved", stale: false, waitedMs: 1000 };
+    expect(decidedLabel({ ...base, decidedVia: "chat" })).toBe("Aprovado pelo chat");
+    expect(decidedLabel({ ...base, decidedVia: "click" })).toBe("Aprovado");
+    expect(decidedLabel({ ...base, decidedVia: null })).toBe("Aprovado");
+    expect(decidedLabel({ ...base })).toBe("Aprovado");
+    expect(decidedDetail({ ...base, decidedVia: "chat" })).toContain("escrevendo no chat");
+    // late wins: the action did not run then
+    expect(
+      decidedLabel({
+        status: "approved",
+        stale: true,
+        waitedMs: 5 * 3_600_000,
+        decidedVia: "chat",
+      }),
+    ).toContain("depois de");
+    expect(decidedLabel({ status: "denied", stale: false, waitedMs: 1, decidedVia: "chat" })).toBe(
+      "Recusado",
+    );
   });
 });

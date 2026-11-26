@@ -1,4 +1,16 @@
 export {
+  buildChatApprovalMessage,
+  CHAT_ANSWERS,
+  CHAT_APPROVAL_PROMPT_VERSION,
+  CHAT_APPROVAL_SYSTEM_PROMPT,
+  CHAT_APPROVAL_TOOL_NAME,
+  type ChatAnswer,
+  type ChatApprovalCard,
+  type ChatApprovalJudge,
+  type ChatApprovalJudgement,
+  createChatApprovalJudge,
+} from "./chat-approval.js";
+export {
   type DecideInput,
   decidedBeforeReview,
   decidePolicy,

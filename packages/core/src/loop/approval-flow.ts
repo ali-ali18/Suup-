@@ -136,6 +136,7 @@ export async function askGate(
       : { trigger: { kind: "routine" as const, instruction: ctx.state.routineInstruction } }),
     webSeen: webUrlsSeen(ctx.state),
     routineNames: ctx.state.routineNames,
+    sessionGrants: ctx.state.sessionGrants,
     reviewBlocks: ctx.state.reviewBlocks,
     ...(ctx.state.reviews.has(call.id) ? { recordedReview: ctx.state.reviews.get(call.id) } : {}),
     signal: ctx.signal,
@@ -157,6 +158,21 @@ export async function askGate(
 
   switch (verdict.outcome) {
     case "allow":
+      if (verdict.sessionGrant !== undefined) {
+        // The user's approval of the same action earlier in this run stands in for the card.
+        if (grant?.consumed !== true) {
+          await record(ctx, {
+            type: "approval_grant_used",
+            payload: {
+              approvalId: verdict.sessionGrant.approvalId,
+              callId: call.id,
+              tool: call.name,
+              kind: "session",
+            },
+          });
+        }
+        return { kind: "run", args: call.args as JsonValue };
+      }
       // A plain read leaves no trace of its own (its call and result say it all).
       if (verdict.level !== "read" || verdict.source !== "default") {
         await recordPolicy(ctx, call, verdict, "allow");
@@ -187,6 +203,7 @@ export async function askGate(
           ...(verdict.expiresAt === undefined ? {} : { expiresAt: verdict.expiresAt }),
           ...(verdict.reason === undefined ? {} : { reason: verdict.reason }),
           ...(verdict.writtenRuleId === undefined ? {} : { writtenRuleId: verdict.writtenRuleId }),
+          ...(verdict.grantKey === undefined ? {} : { grantKey: verdict.grantKey }),
         },
       });
       return { kind: "wait" };
@@ -227,6 +244,15 @@ export async function deliverApprovalDecisions(ctx: LoopContext): Promise<boolea
   });
   const stale = decisions.filter((d) => !fresh.includes(d));
   for (const d of fresh) {
+    if (d.chatReview !== undefined) {
+      // What the reviewer cost is part of the run's cost, paid before anything runs on it.
+      await ctx.deps.store.addUsage(ctx.runId, {
+        turns: 0,
+        inputTokens: d.chatReview.usage.inputTokens,
+        outputTokens: d.chatReview.usage.outputTokens,
+        costUsd: d.chatReview.costUsd,
+      });
+    }
     await record(ctx, {
       type: "approval_decided",
       payload: {
@@ -235,15 +261,37 @@ export async function deliverApprovalDecisions(ctx: LoopContext): Promise<boolea
         decision: d.decision,
         ...(d.reason === undefined ? {} : { reason: d.reason }),
         ...(d.ruleId === undefined ? {} : { ruleId: d.ruleId }),
+        ...(d.via === undefined ? {} : { via: d.via }),
+        ...(d.messageId === undefined ? {} : { messageId: d.messageId }),
+        ...(d.chatReview === undefined ? {} : { chatReview: d.chatReview }),
       },
     });
     await recordStale(ctx, d);
+    await recordSessionGrant(ctx, d);
   }
   // A process that died between the decision and its stale note finishes the note now.
   for (const d of stale) await recordStale(ctx, d);
   const done = [...fresh, ...stale].map((d) => d.approvalId);
   if (done.length > 0) await store.ackApprovalDecisions(ctx.runId, done);
   return fresh.length > 0;
+}
+
+/**
+ * An approved card whose call the reviewer judged reversible leaves a grant for the rest of the
+ * run (once per card): the key and the review that backs it are already in the log. A card that was
+ * approved too late left no run behind it, so no grant.
+ */
+async function recordSessionGrant(ctx: LoopContext, d: ApprovalDecisionItem): Promise<void> {
+  if (d.decision !== "approved" || d.stale !== undefined) return;
+  if (ctx.state.sessionGrants.some((g) => g.approvalId === d.approvalId)) return;
+  const known = ctx.state.approvals.get(d.callId);
+  const key = known?.requested.grantKey;
+  if (known === undefined || key === undefined || known.decided?.approvalId !== d.approvalId)
+    return;
+  await record(ctx, {
+    type: "approval_session_grant",
+    payload: { approvalId: d.approvalId, callId: d.callId, tool: known.requested.tool, key },
+  });
 }
 
 /** Writes `approval_stale` for an approval that waited too long (once per card). */

@@ -3,6 +3,7 @@
 // give the same answer and the answer can be tested without a database or a model.
 import type { PolicySource } from "../events.js";
 import type { RiskLevel } from "../risk.js";
+import type { JudgedKind } from "../tool.js";
 import { levelVerdict, type ModelAnswer, type ReviewVerdict, stricter } from "./reviewer.js";
 import { type ApprovalRule, type RuleCall, ruleMatches } from "./rules.js";
 import type { ApprovalMode, WrittenRule } from "./written-rules.js";
@@ -53,10 +54,17 @@ export interface DecideInput {
  * call counts only if it names an `allow` rule. A rule id that does not exist is no rule. Anything
  * the checks refuse becomes `ask`: the user decides.
  */
+/** The scope the model has to give for a judged call to run without a card. */
+export const SCOPE_FOR_JUDGED: Record<JudgedKind, string> = {
+  local_shell: "inside_bot_folder_reversible",
+  unseen_web_page: "public_page_no_user_data",
+};
+
 export function resolveReview(
-  answer: Pick<ModelAnswer, "decision" | "ruleId" | "reason" | "failure">,
+  answer: Pick<ModelAnswer, "decision" | "ruleId" | "reason" | "failure" | "scope">,
   level: RiskLevel,
   rules: readonly WrittenRule[],
+  judged?: JudgedKind,
 ): ReviewResolution {
   const rule =
     answer.ruleId === null ? undefined : rules.find((candidate) => candidate.id === answer.ruleId);
@@ -81,7 +89,15 @@ export function resolveReview(
         return ask(`run names a rule of kind ${rule.kind}`);
       }
       if (level === "external_irreversible" && rule?.kind !== "allow") {
-        return ask("run on an irreversible call without a rule of kind allow");
+        // A judged call (declared by the tool) may also run on the model's word, but only if the
+        // model gave exactly the scope that kind of call needs. No scope, no run.
+        if (judged === undefined || answer.scope !== SCOPE_FOR_JUDGED[judged]) {
+          return ask(
+            judged === undefined
+              ? "run on an irreversible call without a rule of kind allow"
+              : `run on a judged call (${judged}) without the scope it needs`,
+          );
+        }
       }
       return { outcome: "allow", ...named, reason: answer.reason };
   }

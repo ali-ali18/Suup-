@@ -226,6 +226,11 @@ export interface RunState {
    * `approval_grant_used`; the grant never outlives the run.
    */
   grants: { approvalId: string; tool: string; args: JsonValue; used: boolean }[];
+  /**
+   * The grants approved cards left for the rest of the run (`approval_session_grant`): the same
+   * action, by the tool's own key, needs no new card. They are reusable and die with the run.
+   */
+  sessionGrants: { approvalId: string; tool: string; key: string }[];
   /** Calls that ran on a grant, by the new call id: the approval whose grant they consumed. */
   grantUses: Map<string, string>;
   /**
@@ -328,6 +333,7 @@ export function createRunState(): RunState {
     policies: new Map(),
     staleApprovals: new Map(),
     grants: [],
+    sessionGrants: [],
     grantUses: new Map(),
     denialLink: null,
     denied: null,
@@ -609,10 +615,19 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
 
     case "approval_grant_used": {
       state.grantUses.set(event.payload.callId, event.payload.approvalId);
+      if (event.payload.kind === "session") break;
       const grant = state.grants.find((g) => g.approvalId === event.payload.approvalId);
       if (grant !== undefined) grant.used = true;
       break;
     }
+
+    case "approval_session_grant":
+      state.sessionGrants.push({
+        approvalId: event.payload.approvalId,
+        tool: event.payload.tool,
+        key: event.payload.key,
+      });
+      break;
 
     case "secret_requested":
       state.waiting = {

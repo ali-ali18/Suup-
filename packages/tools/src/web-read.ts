@@ -39,6 +39,11 @@ export const webReadTool = defineTool({
   // result, a link of a page read), by exact equality of the normalized URLs. Any other is a card.
   risk: "read",
   classify: ({ url }, env) => (isKnown(url, env.webSeen) ? "read" : "external_irreversible"),
+  // An address the run has not seen is a way for data to leave inside the URL: the model reviewer
+  // sees the whole address and the user's messages and may let a public page through.
+  judged: ({ url }, env) => (isKnown(url, env.webSeen) ? undefined : "unseen_web_page"),
+  // No grantKey on purpose: a session grant would let any later address on the host through, and
+  // the address is a way out for the user's data. "Reversible" is always true for a read.
   describe: ({ url, render }, env) =>
     `${isKnown(url, env.webSeen) ? "Read" : "Read a new page:"} ${url}${render === true ? " (with a browser)" : ""}`,
   externalOutput: true,

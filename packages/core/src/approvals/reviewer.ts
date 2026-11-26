@@ -1,11 +1,12 @@
 // Owns filter 2 of section 4.8, the automatic reviewer: the interface a reviewer implements and
 // the deterministic default that only maps the level. No model is called here; a reviewer that
 // asks one is a later addition behind the same interface.
-import type { ReviewDecision } from "../events.js";
+import type { ReviewDecision, ReviewScope } from "../events.js";
 import type { JsonValue } from "../messages.js";
 import type { OutboundMessage } from "../outbound.js";
 import type { Usage } from "../provider.js";
 import type { RiskLevel } from "../risk.js";
+import type { JudgedKind } from "../tool.js";
 import type { WrittenRule } from "./written-rules.js";
 
 /** `safe` runs, `sensitive` waits for the user, `blocked` is refused. */
@@ -20,6 +21,10 @@ export interface ModelAnswer {
   ruleId: string | null;
   /** One short sentence for the user. */
   reason: string;
+  /** Judged calls only: where the call reaches, as the model said (checked by `resolveReview`). */
+  scope?: ReviewScope | undefined;
+  /** Judged calls only: whether the model said the call can be undone. */
+  reversible?: boolean | undefined;
   model: string;
   promptVersion: string;
   usage: Usage;
@@ -57,6 +62,8 @@ export interface ModelReviewContext {
   userMessages: readonly string[];
   /** Set when a routine, not the user typing now, started the run. */
   trigger?: ReviewTrigger | undefined;
+  /** Set when the harness lets the model settle this irreversible call (see `Tool.judged`). */
+  judged?: JudgedKind | undefined;
   /** The enabled written rules of this bot (its own and the ones for every bot). */
   rules: readonly WrittenRule[];
   signal?: AbortSignal | undefined;

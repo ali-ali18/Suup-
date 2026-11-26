@@ -18,9 +18,24 @@ const NEVER_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const BLOCK_TEXT = "rodar echo nao-rode";
 const ASK_REASON = "Não está claro se você quer rodar isto.";
 
+const yes = (answer: string, reason: string) =>
+  s({ calls: [{ name: "chat_verdict", args: { answer, reason } }] });
+
 const SCRIPTS = {
   roteiro: {
     cases: [
+      {
+        whenObjectiveContains: "CASE-CHATYES",
+        agent: [s({ calls: [shell("echo pelo-chat")] }), s({ text: "Rodei pelo chat." })],
+        autoReview: [verdict("ask", null, ASK_REASON)],
+        chatApproval: [yes("yes", "Um sim claro a este pedido.")],
+      },
+      {
+        whenObjectiveContains: "CASE-CHATNO",
+        agent: [s({ calls: [shell("echo sem-chat")] }), s({ text: "Rodei só com o clique." })],
+        autoReview: [verdict("ask", null, ASK_REASON)],
+        chatApproval: [yes("unclear", "É uma pergunta, não um sim.")],
+      },
       {
         whenObjectiveContains: "CASE-BLOCK",
         agent: [s({ calls: [shell("echo nao-rode")] }), s({ text: "Entendi, não vou rodar." })],
@@ -338,5 +353,42 @@ test.describe("Auto-review: the mode, the rules you write, and what the chat sho
     await expect(card(page)).toHaveCount(1);
     await expect(card(page)).toHaveAttribute("data-state", "done");
     await expect(card(page)).toContainText("Aprovado");
+  });
+
+  test("a clear yes written in the chat approves the one waiting card like a click, and the card says so", async ({
+    page,
+  }) => {
+    await openWithBot(page, world, "Conversador");
+    await send(page, "CASE-CHATYES rode o comando");
+    await expect(card(page)).toHaveAttribute("data-state", "needs-action");
+    await send(page, "CASE-CHATYES pode rodar");
+    await expect(botMessage(page, "Rodei pelo chat.")).toBeVisible();
+    const done = card(page);
+    await expect(done).toHaveAttribute("data-state", "done");
+    await expect(done).toContainText("Aprovado pelo chat");
+    const [served] = await world.api.approvals.list({
+      botId: await botId(world, "Conversador"),
+      status: "approved",
+    });
+    expect(served?.decidedVia).toBe("chat");
+    expect(served?.decidedMessageId).not.toBeNull();
+    await page.evaluate(() => document.fonts.ready);
+    await page.screenshot({ path: `${SHOTS}/25f-cartao-aprovado-pelo-chat.png` });
+  });
+
+  test("a message that is not a yes leaves the card where it is, and the click still works", async ({
+    page,
+  }) => {
+    await openWithBot(page, world, "Duvidoso");
+    await send(page, "CASE-CHATNO rode o comando");
+    const pending = card(page);
+    await expect(pending).toHaveAttribute("data-state", "needs-action");
+    await send(page, "CASE-CHATNO e se eu mudar de ideia?");
+    await expect(page.getByTestId("message-user")).toHaveCount(2);
+    await expect(pending).toHaveAttribute("data-state", "needs-action");
+    await pending.getByTestId("approval-approve").click();
+    await expect(botMessage(page, "Rodei só com o clique.")).toBeVisible();
+    await expect(card(page)).toContainText("Aprovado");
+    await expect(card(page)).not.toContainText("pelo chat");
   });
 });

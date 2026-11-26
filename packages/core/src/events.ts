@@ -119,6 +119,19 @@ export const REVIEW_DECISIONS = ["run", "ask", "block"] as const;
 export type ReviewDecision = (typeof REVIEW_DECISIONS)[number];
 
 /**
+ * What the model says about WHERE a judged call reaches (`JUDGED_KINDS`, `Tool.judged`):
+ * `inside_bot_folder_reversible` (a local command that stays in the bot's folder and can be
+ * undone), `public_page_no_user_data` (a public page whose address carries none of the user's
+ * data) or `other`. Only the first two, matching the kind of the call, let it run without a card.
+ */
+export const REVIEW_SCOPES = [
+  "inside_bot_folder_reversible",
+  "public_page_no_user_data",
+  "other",
+] as const;
+export type ReviewScope = (typeof REVIEW_SCOPES)[number];
+
+/**
  * Why the harness settled a review without the model's own answer: `error` the call failed, timed
  * out or answered nothing valid; `cap` too many blocks in the run, the user is asked from now on;
  * `too_large` the arguments do not fit the review.
@@ -140,6 +153,10 @@ export const approvalReviewSchema = z.object({
   outcome: z.enum(["allow", "ask", "deny"]),
   /** Set when the harness changed the model's answer (what it checked and why). */
   adjusted: z.exactOptional(z.string()),
+  /** Judged calls only: what the model said about where the call reaches. */
+  scope: z.exactOptional(z.enum(REVIEW_SCOPES)),
+  /** Judged calls only: whether the model said the call can be undone (the session grant rests on it). */
+  reversible: z.exactOptional(z.boolean()),
   /** Set when there was no valid answer from the model. */
   skipped: z.exactOptional(z.enum(REVIEW_SKIPS)),
   model: z.exactOptional(z.string()),
@@ -149,6 +166,23 @@ export const approvalReviewSchema = z.object({
   latencyMs: z.exactOptional(z.number().nonnegative()),
 });
 export type ApprovalReview = z.infer<typeof approvalReviewSchema>;
+
+/**
+ * What the reviewer said when the user wrote in the chat while ONE card waited (docs/APROVACOES.md,
+ * "Aprovar pelo chat"): only a clear yes to that exact card counts. Recorded with the decision so a
+ * replay serves it and never asks the model again.
+ */
+export const chatApprovalReviewSchema = z.object({
+  answer: z.literal("yes"),
+  /** One short sentence in Portuguese. */
+  reason: z.string(),
+  model: z.string(),
+  promptVersion: z.string(),
+  usage: usageSchema,
+  costUsd: z.number().nonnegative(),
+  latencyMs: z.number().nonnegative(),
+});
+export type ChatApprovalReview = z.infer<typeof chatApprovalReviewSchema>;
 
 /** How an approval ended: the user answered, the run was cancelled, or a configured limit expired it. */
 export const APPROVAL_DECISIONS = ["approved", "denied", "cancelled", "expired"] as const;
@@ -644,6 +678,12 @@ export const runEventSchema = z.discriminatedUnion("type", [
       reason: z.exactOptional(z.string()),
       /** The written rule behind that reason, when there is one. */
       writtenRuleId: z.exactOptional(z.string()),
+      /**
+       * Set only when approving this card may leave a grant for the rest of the run: the key the
+       * tool declared for the call (`Tool.grantKey`). The reviewer's verdict that backs it is the
+       * `approval_review` of the same call.
+       */
+      grantKey: z.exactOptional(z.string()),
     }),
   }),
   z.object({
@@ -656,6 +696,12 @@ export const runEventSchema = z.discriminatedUnion("type", [
       reason: z.exactOptional(z.string()),
       /** The rule an "approve and always allow" created. */
       ruleId: z.exactOptional(z.string()),
+      /** `chat`: the user approved by writing in the chat (absent: a click or the API). */
+      via: z.exactOptional(z.enum(["chat"])),
+      /** With `via: "chat"`: the id of the user's message that approved. */
+      messageId: z.exactOptional(z.string()),
+      /** With `via: "chat"`: what the reviewer judged, and what it cost. */
+      chatReview: z.exactOptional(chatApprovalReviewSchema),
     }),
   }),
   z.object({
@@ -684,6 +730,23 @@ export const runEventSchema = z.discriminatedUnion("type", [
       approvalId: z.string(),
       callId: z.string(),
       tool: z.string(),
+      /** `session`: the grant of an approved card for the run, not the one-time grant of a late approval. */
+      kind: z.exactOptional(z.enum(["late", "session"])),
+    }),
+  }),
+  z.object({
+    /**
+     * The user approved a card whose call the reviewer judged reversible: the same action
+     * (`key`, by the tool's own declaration) needs no new card until the run ends. Written right
+     * after the `approval_decided`. Never for a secret, a message to another person, a network
+     * request or a connector installation.
+     */
+    type: z.literal("approval_session_grant"),
+    payload: z.object({
+      approvalId: z.string(),
+      callId: z.string(),
+      tool: z.string(),
+      key: z.string(),
     }),
   }),
   z.object({
