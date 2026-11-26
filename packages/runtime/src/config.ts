@@ -373,8 +373,8 @@ const watchdogSchema = z
   });
 
 /**
- * How a chat may move its long work to a task (docs/TAREFAS.md, KOD-68). Both parts are off by
- * default: the bot decides from the task tool's description alone.
+ * How a chat may move its long work to a task (docs/TAREFAS.md, KOD-68). Both parts are on by
+ * default; `enabled: false` turns one off, and then the bot decides from the task tool's description.
  */
 const tasksSchema = z.strictObject({
   /**
@@ -383,6 +383,7 @@ const tasksSchema = z.strictObject({
    */
   handoff: z.exactOptional(
     z.strictObject({
+      /** Default true. */
       enabled: z.exactOptional(z.boolean()),
       /** Model calls in the chat before the brake. Default 5. */
       atTurns: z.exactOptional(z.number().int().min(2).max(50)),
@@ -396,6 +397,7 @@ const tasksSchema = z.strictObject({
    */
   askCheck: z.exactOptional(
     z.strictObject({
+      /** Default true (it runs only when a model resolves). */
       enabled: z.exactOptional(z.boolean()),
       /** A model of `models`. Default: the watchdog judge's model, else the auto-review model. */
       model: z.exactOptional(z.string().min(1)),

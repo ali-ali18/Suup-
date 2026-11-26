@@ -191,7 +191,7 @@ describe("configuration: readable errors in Portuguese", () => {
     ).toBeGreaterThan(0);
   });
 
-  it("takes the chat-task checks off by default and checks the model of the end-of-turn check", () => {
+  it("leaves the chat-task checks to the runtime defaults (on) and checks the end-of-turn model", () => {
     expect(
       issuesOf(
         rawConfig({

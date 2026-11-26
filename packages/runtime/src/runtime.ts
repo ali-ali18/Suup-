@@ -759,23 +759,24 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
   };
 
   /**
-   * How a chat run moves long work to a task (KOD-68): the early brake and the asks check, each
-   * only when `defaults.tasks` turns it on. Only a chat run of the user gets them.
+   * How a chat run moves long work to a task (KOD-68): the early brake and the asks check, both on
+   * unless `defaults.tasks` turns one off (`enabled: false`). Only a chat run of the user gets them,
+   * and the asks check only when some model resolves for it.
    */
   const taskHarness = (db: Db): { handoff?: HandoffDeps; askCheck?: AskCheckDeps } => {
     const settings = config.defaults?.tasks;
     const out: { handoff?: HandoffDeps; askCheck?: AskCheckDeps } = {};
-    if (settings?.handoff?.enabled === true) {
+    if (settings?.handoff?.enabled !== false) {
       out.handoff = {
-        atTurns: settings.handoff.atTurns ?? 5,
-        atMs: (settings.handoff.atSeconds ?? 60) * 1000,
+        atTurns: settings?.handoff?.atTurns ?? 5,
+        atMs: (settings?.handoff?.atSeconds ?? 60) * 1000,
         taskTool: START_TASK_TOOL,
         start: handoffStarter(db),
       };
     }
-    if (settings?.askCheck?.enabled === true) {
+    if (settings?.askCheck?.enabled !== false) {
       const modelId =
-        settings.askCheck.model ?? config.defaults?.watchdog?.judge?.model ?? autoReviewModelId;
+        settings?.askCheck?.model ?? config.defaults?.watchdog?.judge?.model ?? autoReviewModelId;
       const judge = modelId === undefined ? undefined : sideModel(modelId);
       if (judge !== undefined) out.askCheck = { judge, taskTool: START_TASK_TOOL };
     }

@@ -177,7 +177,8 @@ export const DEFAULT_CONFIG = {
   // Nor does the model reviewer of "Auto-review" take part: it has its own tests.
   approvals: { levels: { shell: "write_reversible" }, autoReview: { enabled: false } },
   worker: { concurrency: 2, leaseRenewMs: 1000, staleAfterMs: 5000 },
-  defaults: { maxTurns: 20 },
+  // The early brake and the asks check of chat runs (on by default) have their own tests.
+  defaults: { maxTurns: 20, tasks: { handoff: { enabled: false }, askCheck: { enabled: false } } },
 };
 
 /**

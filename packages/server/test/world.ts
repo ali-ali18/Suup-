@@ -132,7 +132,11 @@ export function useWorld(options: WorldOptions = {}): World {
       sandbox: { kind: "local", root: "workspace" },
       approvals: { levels: { shell: "write_reversible" } },
       worker: { concurrency: 4, leaseRenewMs: 1000, staleAfterMs: 8000, controlPollMs: 100 },
-      defaults: { maxTurns: 20 },
+      // The early brake and the asks check of chat runs (on by default) have their own tests.
+      defaults: {
+        maxTurns: 20,
+        tasks: { handoff: { enabled: false }, askCheck: { enabled: false } },
+      },
       ...options.config,
     });
     const runtimeOptions = { env, baseDir: world.dir };
