@@ -93,6 +93,8 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("tasks through the API"), { timeout: 
     const { api } = w.started;
     const { chatId } = await botWithChat("Ajudante");
     const followed = follow(api);
+    // The stream must be open before the message, or the task's "created" may pass before it.
+    await followed.waitFor((e) => e.type === "ready", "the stream to open");
     await api.conversations.send(chatId, "CASE-REVISAO: revise o projeto inteiro, por favor");
     const task = await until(
       async () => (await api.tasks.list({ conversationId: chatId }))[0],
