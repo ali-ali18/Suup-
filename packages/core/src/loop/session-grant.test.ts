@@ -11,6 +11,7 @@ import {
   type WrittenRule,
 } from "../approvals/index.js";
 import { replayRun } from "../replay.js";
+import { destinationHost } from "../secrets.js";
 import {
   call,
   createRig,
@@ -53,6 +54,17 @@ function setup(script: Parameters<typeof createRig>[0]["script"], mode?: "ask_al
         },
       }),
       defineTool({
+        name: "page",
+        description: "Reads a page.",
+        input: z.object({ url: z.string() }),
+        risk: "external_irreversible",
+        grantKey: ({ url }) => destinationHost(url),
+        execute: async ({ url }) => {
+          ran.push(`page:${url}`);
+          return { content: "page" };
+        },
+      }),
+      defineTool({
         name: "mail",
         description: "Sends a message.",
         input: z.object({ name: z.string() }),
@@ -65,7 +77,7 @@ function setup(script: Parameters<typeof createRig>[0]["script"], mode?: "ask_al
         },
       }),
     ],
-    bot: { allowedTools: ["echo", "act", "mail"] },
+    bot: { allowedTools: ["echo", "act", "mail", "page"] },
   });
   const reply = (req: { messages: { blocks: { type: string; text?: string }[] }[] }) => {
     const text = req.messages[0]?.blocks[0]?.text ?? "";
@@ -134,6 +146,27 @@ describe("the grant of an approved card", () => {
     expect(eventsOfType(events, "approval_grant_used").map((e) => e.payload)).toMatchObject([
       { callId: "c2", kind: "session" },
     ]);
+  });
+
+  it("approving one page grants the whole host: the other spelling and other paths need no card", async () => {
+    const s = setup([
+      use(call("c1", "page", { url: "https://pt.wikipedia.org/wiki/Fotossíntese" })),
+      use(call("c2", "page", { url: "https://pt.wikipedia.org/wiki/Fotoss%C3%ADntese" })),
+      use(call("c3", "page", { url: "https://PT.wikipedia.org/wiki/Clima?x=1" })),
+      use(call("c4", "page", { url: "https://www.wikipedia.org/" })),
+      say("fim"),
+    ]);
+    await loop(s);
+    await approveOpen(s);
+    expect(await loop(s)).toBe("waiting_approval");
+    const events = await s.rig.events();
+    // the card of c4 (another host) is the second and last one
+    expect(cards(events).map((c) => c.payload.callId)).toEqual(["c1", "c4"]);
+    expect(eventsOfType(events, "approval_grant_used").map((e) => e.payload.callId)).toEqual([
+      "c2",
+      "c3",
+    ]);
+    expect(s.ran).toHaveLength(3);
   });
 
   it("the grant stays for the whole run: a third identical call also runs", async () => {
