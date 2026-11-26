@@ -2237,6 +2237,13 @@ describe("tarefas (docs/DESIGN.md, 4d)", () => {
     expect(label).toContain('data-testid="task-label-stroke"');
     expect(label).toContain("text-ellipsis");
     expect(label).toContain("bg-transparent");
+    // No background at rest; a gray one only on hover and keyboard focus (the app's hover token).
+    expect(label).toContain("group-hover:bg-hover");
+    expect(label).toContain("group-focus-visible:bg-hover");
+    const className = label.slice(label.indexOf("className=", label.indexOf("<button")));
+    for (const word of className.split('"')[1]?.split(" ") ?? []) {
+      if (word.startsWith("bg-")) expect(word).toBe("bg-transparent");
+    }
     for (const box of ["rounded-full", "shadow", "border-border", "bg-surface"]) {
       expect(label).not.toContain(box);
     }

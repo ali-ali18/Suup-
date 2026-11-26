@@ -155,6 +155,20 @@ test.describe("tasks of a bot", () => {
       .evaluate((el) => parseFloat(getComputedStyle(el).borderLeftWidth));
     expect(strokeWidth).toBeGreaterThanOrEqual(2);
     await page.screenshot({ path: shot("rotulo-no-chat") });
+    // Hover: a gray background shows on the label's body (none at rest), with no layout shift.
+    const body = label(page).getByTestId("task-label-body");
+    const rest = await body.evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(rest).toBe("rgba(0, 0, 0, 0)");
+    await label(page).hover();
+    await expect
+      .poll(() => body.evaluate((el) => getComputedStyle(el).backgroundColor))
+      .not.toBe("rgba(0, 0, 0, 0)");
+    const hover = await label(page).boundingBox();
+    expect(hover?.x).toBe(lb?.x);
+    expect(hover?.width).toBe(lb?.width);
+    expect(hover?.height).toBe(lb?.height);
+    await page.screenshot({ path: shot("rotulo-hover") });
+    await page.mouse.move(5, 5);
 
     // The chat stays free while the task waits: a new message gets its own answer.
     await send(page, "CASE-OI tudo bem?");

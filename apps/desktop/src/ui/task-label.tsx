@@ -23,7 +23,7 @@ export function TaskLabel({
   return (
     <button
       type="button"
-      className="relative -mb-1.5 inline-flex max-w-full min-w-0 cursor-pointer items-center gap-1.5 self-start border-0 bg-transparent py-0 pr-1 pl-10 text-small text-text-muted transition-colors hover:text-text"
+      className="group relative -mb-1.5 inline-flex max-w-full min-w-0 cursor-pointer items-center self-start border-0 bg-transparent p-0 pl-8 text-small text-text-muted transition-colors outline-none hover:text-text focus-visible:text-text"
       data-testid="task-label"
       data-task={taskId}
       data-task-state={state}
@@ -36,15 +36,20 @@ export function TaskLabel({
         data-testid="task-label-stroke"
         className="absolute top-2 left-4 h-4 w-4 rounded-tl-row border-t-2 border-l-2 border-current opacity-60"
       />
-      <MessageCircle size={14} aria-hidden="true" className="flex-none" />
-      <span className="flex min-w-0 items-baseline whitespace-nowrap">
-        <span
-          data-testid="task-label-name"
-          className="max-w-40 min-w-0 overflow-hidden text-ellipsis"
-        >
-          {title}
+      <span
+        data-testid="task-label-body"
+        className="flex min-w-0 items-center gap-1.5 rounded-row px-2 transition-colors group-hover:bg-hover group-focus-visible:bg-hover"
+      >
+        <MessageCircle size={14} aria-hidden="true" className="flex-none" />
+        <span className="flex min-w-0 items-baseline whitespace-nowrap">
+          <span
+            data-testid="task-label-name"
+            className="max-w-40 min-w-0 overflow-hidden text-ellipsis"
+          >
+            {title}
+          </span>
+          <span className="flex-none whitespace-pre">{` · ${TASK_STATE_TEXT[state]}`}</span>
         </span>
-        <span className="flex-none whitespace-pre">{` · ${TASK_STATE_TEXT[state]}`}</span>
       </span>
     </button>
   );
