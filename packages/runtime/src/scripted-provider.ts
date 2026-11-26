@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import {
   type Block,
   blockSchema,
+  CHAT_APPROVAL_TOOL_NAME,
   CONSOLIDATION_TOOL_NAME,
   type GenerateRequest,
   MEMORY_REVIEW_TOOL_NAME,
@@ -67,6 +68,8 @@ const sectionsShape = {
   progress: z.exactOptional(z.array(stepSchema)),
   /** The answers of the model reviewer of "Auto-review" (the `review_call` tool), in order. */
   autoReview: z.exactOptional(z.array(stepSchema)),
+  /** The answers of the judge of an approval written in the chat (the `chat_verdict` tool), in order. */
+  chatApproval: z.exactOptional(z.array(stepSchema)),
   /** The answers of the background consolidation (the `propose_memories` tool), in order. */
   memory: z.exactOptional(z.array(stepSchema)),
   /** The answers of the review of a memory the bot wrote (the `review_memory_write` tool), in order. */
@@ -135,6 +138,7 @@ type Section =
   | "compaction"
   | "progress"
   | "autoReview"
+  | "chatApproval"
   | "memory"
   | "memoryReview"
   | "draft"
@@ -158,6 +162,7 @@ function sectionOf(req: GenerateRequest): Section {
   if (typeof choice === "object" && choice.name === "verdict") return "review";
   if (typeof choice === "object" && choice.name === PROGRESS_JUDGE_TOOL) return "progress";
   if (typeof choice === "object" && choice.name === REVIEW_TOOL_NAME) return "autoReview";
+  if (typeof choice === "object" && choice.name === CHAT_APPROVAL_TOOL_NAME) return "chatApproval";
   if (typeof choice === "object" && choice.name === CONSOLIDATION_TOOL_NAME) return "memory";
   if (typeof choice === "object" && choice.name === MEMORY_REVIEW_TOOL_NAME) return "memoryReview";
   if (typeof choice === "object" && choice.name === DRAFT_TOOL) return "draft";
@@ -217,6 +222,7 @@ export function createScriptedProvider(options: ScriptedProviderOptions): Provid
           | "compaction"
           | "progress"
           | "autoReview"
+          | "chatApproval"
           | "memory"
           | "memoryReview"
           | "draft"

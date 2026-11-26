@@ -6,8 +6,10 @@ import {
   type AutoReviewer,
   allowAllGate,
   type BotConfig,
+  type ChatApprovalJudge,
   CONTROL_TOOL_NAMES,
   controlToolSpecs,
+  createChatApprovalJudge,
   createMemoryWriteReviewer,
   createModelReviewer,
   createToolGate,
@@ -292,6 +294,11 @@ export interface Runtime {
    * (`reason` says why, in words for the person).
    */
   autoReviewStatus(): AutoReviewStatus;
+  /**
+   * The judge of an approval written in the chat (the same model as the auto-review), or
+   * `undefined` when there is no usable model: then the chat approves nothing.
+   */
+  chatApprovalJudge(): ChatApprovalJudge | undefined;
   /**
    * The cheap model that consolidates the conversations in the background and reviews what the bot
    * writes to memory after reading content from outside (docs/MEMORIA.md): the model of
@@ -775,6 +782,20 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     if (autoReviewModelId === undefined || !autoReviewStatus().available) return undefined;
     const { model } = resolveModel(autoReviewModelId);
     return createModelReviewer({
+      provider: getProvider(model.provider),
+      model: {
+        id: model.id,
+        maxOutputTokens: model.maxOutputTokens,
+        pricing: model.pricing,
+        supportsForcedToolChoice: model.supportsForcedToolChoice,
+      },
+    });
+  };
+
+  const chatApprovalJudge = (): ChatApprovalJudge | undefined => {
+    if (autoReviewModelId === undefined || !autoReviewStatus().available) return undefined;
+    const { model } = resolveModel(autoReviewModelId);
+    return createChatApprovalJudge({
       provider: getProvider(model.provider),
       model: {
         id: model.id,
@@ -1355,6 +1376,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     reviewerConfig,
     watchdogConfig,
     autoReviewStatus,
+    chatApprovalJudge,
     memoryReviewerStatus,
     async consolidateOnce(opts = {}) {
       const writer = memoryModel();

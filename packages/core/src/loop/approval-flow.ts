@@ -244,6 +244,15 @@ export async function deliverApprovalDecisions(ctx: LoopContext): Promise<boolea
   });
   const stale = decisions.filter((d) => !fresh.includes(d));
   for (const d of fresh) {
+    if (d.chatReview !== undefined) {
+      // What the reviewer cost is part of the run's cost, paid before anything runs on it.
+      await ctx.deps.store.addUsage(ctx.runId, {
+        turns: 0,
+        inputTokens: d.chatReview.usage.inputTokens,
+        outputTokens: d.chatReview.usage.outputTokens,
+        costUsd: d.chatReview.costUsd,
+      });
+    }
     await record(ctx, {
       type: "approval_decided",
       payload: {
@@ -252,6 +261,9 @@ export async function deliverApprovalDecisions(ctx: LoopContext): Promise<boolea
         decision: d.decision,
         ...(d.reason === undefined ? {} : { reason: d.reason }),
         ...(d.ruleId === undefined ? {} : { ruleId: d.ruleId }),
+        ...(d.via === undefined ? {} : { via: d.via }),
+        ...(d.messageId === undefined ? {} : { messageId: d.messageId }),
+        ...(d.chatReview === undefined ? {} : { chatReview: d.chatReview }),
       },
     });
     await recordStale(ctx, d);

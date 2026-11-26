@@ -1,5 +1,6 @@
 import type {
   ApprovalDecision,
+  ChatApprovalReview,
   FailureOrigin,
   PlanStep,
   RoutineRef,
@@ -28,6 +29,10 @@ export interface ApprovalDecisionItem {
    * `approval_stale`.
    */
   stale?: { waitedMs: number; thresholdMs: number } | undefined;
+  /** Only on an approval given by writing in the chat (see `approval_decided`). */
+  via?: "chat" | undefined;
+  messageId?: string | undefined;
+  chatReview?: ChatApprovalReview | undefined;
 }
 
 /** The run as the store knows it. The conversation is NOT here: it is rebuilt from events. */

@@ -6,6 +6,8 @@
 import {
   type ApprovalDecision,
   type ApprovalDecisionItem,
+  type ChatApprovalReview,
+  chatApprovalReviewSchema,
   type JsonValue,
   type OutboundMessage,
   type PolicySource,
@@ -52,6 +54,10 @@ export interface Approval {
   waitedMs: number | null;
   /** Approved after waiting longer than the staleness limit that held when the user decided. */
   stale: boolean;
+  /** How the user decided: the button (or the API) or by writing in the chat; `null` while pending or when it ended without the user. */
+  decidedVia: "click" | "chat" | null;
+  /** The user's message that approved, when it was the chat. */
+  decidedMessageId: string | null;
 }
 
 interface ApprovalRow {
@@ -78,6 +84,8 @@ interface ApprovalRow {
   created_at: Date;
   waited_ms: string | null;
   stale_after_ms: string | null;
+  decided_via: "click" | "chat" | null;
+  decided_message_id: string | null;
 }
 
 function mapApproval(row: ApprovalRow): Approval {
@@ -105,6 +113,8 @@ function mapApproval(row: ApprovalRow): Approval {
     createdAt: row.created_at,
     waitedMs: row.waited_ms === null ? null : Number(row.waited_ms),
     stale: isStale(row),
+    decidedVia: row.decided_via,
+    decidedMessageId: row.decided_message_id,
   };
 }
 
@@ -121,7 +131,7 @@ function isStale(row: Pick<ApprovalRow, "status" | "waited_ms" | "stale_after_ms
 const SELECT = (db: Db) => db.sql`
   select a.id, a.run_id, a.bot_id, r.conversation_id, a.call_id, a.tool, a.args, a.level,
          a.summary, a.secrets, a.secret_host, a.source, a.outbound, a.status, a.reason, a.rule_id, a.review_reason, a.written_rule_id, a.expires_at,
-         a.decided_at, a.created_at, a.waited_ms, a.stale_after_ms
+         a.decided_at, a.created_at, a.waited_ms, a.stale_after_ms, a.decided_via, a.decided_message_id
   from approvals a join runs r on r.id = a.run_id`;
 
 export type ApprovalErrorCode = "not_found" | "conflict";
@@ -209,12 +219,18 @@ export interface DecideApprovalInput {
    * create an allow rule for exactly this recipient, for this bot. Refused for any other call.
    */
   allowRecipient?: boolean | undefined;
+  /**
+   * Only with `approved`: the user approved by writing in the chat (the message and what the
+   * reviewer judged). The same decision as a click, recorded with how it was made.
+   */
+  viaChat?: { messageId: string; review: ChatApprovalReview } | undefined;
 }
 
 const decideSchema = z.object({
   decision: z.enum(["approved", "denied"]),
   reason: z.string().max(2000).optional(),
   allowRecipient: z.boolean().optional(),
+  viaChat: z.object({ messageId: z.uuid(), review: chatApprovalReviewSchema }).optional(),
 });
 
 /** Marks the run claimable again when it was waiting on this decision. */
@@ -254,6 +270,12 @@ export async function decideApproval(
   const body = decideSchema.parse(input);
   if (body.allowRecipient === true && body.decision !== "approved") {
     throw new ApprovalError("conflict", "Só se pode permitir o destinatário ao aprovar.");
+  }
+  if (
+    body.viaChat !== undefined &&
+    (body.decision !== "approved" || body.allowRecipient === true)
+  ) {
+    throw new ApprovalError("conflict", "O chat só aprova o cartão, e nunca cria regra.");
   }
   const result = await withTransaction(db, async (tx) => {
     const row = await lockPending(tx, z.uuid().parse(id));
@@ -302,6 +324,9 @@ export async function decideApproval(
     await tx.sql`
       update approvals set status = ${body.decision}, reason = ${body.reason ?? null},
         rule_id = ${ruleId}, decided_at = now(),
+        decided_via = ${body.viaChat === undefined ? "click" : "chat"},
+        decided_message_id = ${body.viaChat?.messageId ?? null},
+        chat_review = ${body.viaChat === undefined ? null : tx.sql.json(body.viaChat.review)},
         waited_ms = floor(extract(epoch from (now() - created_at)) * 1000),
         stale_after_ms = (select stale_after_minutes::bigint * 60000 from approval_settings limit 1)
       where id = ${row.id}`;
@@ -335,9 +360,13 @@ export async function peekApprovalDecisionRows(
       rule_id: string | null;
       waited_ms: string | null;
       stale_after_ms: string | null;
+      decided_via: "click" | "chat" | null;
+      decided_message_id: string | null;
+      chat_review: ChatApprovalReview | null;
     }[]
   >`
-    select id, call_id, status, reason, rule_id, waited_ms, stale_after_ms from approvals
+    select id, call_id, status, reason, rule_id, waited_ms, stale_after_ms, decided_via,
+           decided_message_id, chat_review from approvals
     where run_id = ${runId} and status <> 'pending' and delivered_at is null
     order by decided_at, id`;
   return rows.map((r) => ({
@@ -348,6 +377,9 @@ export async function peekApprovalDecisionRows(
     ...(r.rule_id === null ? {} : { ruleId: r.rule_id }),
     ...(isStale(r)
       ? { stale: { waitedMs: Number(r.waited_ms), thresholdMs: Number(r.stale_after_ms) } }
+      : {}),
+    ...(r.decided_via === "chat" && r.chat_review !== null && r.decided_message_id !== null
+      ? { via: "chat" as const, messageId: r.decided_message_id, chatReview: r.chat_review }
       : {}),
   }));
 }

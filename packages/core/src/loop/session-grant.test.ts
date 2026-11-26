@@ -220,6 +220,43 @@ describe("the grant of an approved card", () => {
     expect(cards(events)).toHaveLength(2);
   });
 
+  it("an approval written in the chat is the same decision, logged with its message and review, and leaves the same grant", async () => {
+    const s = setup([
+      use(call("c1", "act", { name: "a" })),
+      use(call("c2", "act", { name: "a" })),
+      say("fim"),
+    ]);
+    await loop(s);
+    const [card] = cards(await s.rig.events());
+    s.rig.store.decideApproval(s.rig.runId, card?.payload.approvalId as string, {
+      decision: "approved",
+      via: "chat",
+      messageId: "m-1",
+      chatReview: {
+        answer: "yes",
+        reason: "Sim claro.",
+        model: "judge",
+        promptVersion: "chat-approval-v1",
+        usage: { inputTokens: 300, outputTokens: 20 },
+        costUsd: 0.001,
+        latencyMs: 7,
+      },
+    });
+    s.rig.store.claimNext("worker-1");
+    expect(await loop(s)).toBe("done");
+    const events = await s.rig.events();
+    expect(eventsOfType(events, "approval_decided")[0]?.payload).toMatchObject({
+      decision: "approved",
+      via: "chat",
+      messageId: "m-1",
+      chatReview: { answer: "yes", costUsd: 0.001 },
+    });
+    expect(eventsOfType(events, "approval_session_grant")).toHaveLength(1);
+    expect(s.ran).toEqual(["a", "a"]);
+    const report = await replayRun(events, { bot: s.rig.bot });
+    expect(report.identical).toBe(true);
+  });
+
   it("a denied card leaves no grant", async () => {
     const s = setup([use(call("c1", "act", { name: "a" })), use(call("c2", "act", { name: "a" }))]);
     await loop(s);

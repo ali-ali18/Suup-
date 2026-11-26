@@ -164,6 +164,8 @@ export function makeApproval(over: Partial<Approval> = {}): Approval {
     createdAt: iso(),
     waitedMs: null,
     stale: false,
+    decidedVia: null,
+    decidedMessageId: null,
     ...over,
   };
 }

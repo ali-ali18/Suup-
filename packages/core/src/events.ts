@@ -167,6 +167,23 @@ export const approvalReviewSchema = z.object({
 });
 export type ApprovalReview = z.infer<typeof approvalReviewSchema>;
 
+/**
+ * What the reviewer said when the user wrote in the chat while ONE card waited (docs/APROVACOES.md,
+ * "Aprovar pelo chat"): only a clear yes to that exact card counts. Recorded with the decision so a
+ * replay serves it and never asks the model again.
+ */
+export const chatApprovalReviewSchema = z.object({
+  answer: z.literal("yes"),
+  /** One short sentence in Portuguese. */
+  reason: z.string(),
+  model: z.string(),
+  promptVersion: z.string(),
+  usage: usageSchema,
+  costUsd: z.number().nonnegative(),
+  latencyMs: z.number().nonnegative(),
+});
+export type ChatApprovalReview = z.infer<typeof chatApprovalReviewSchema>;
+
 /** How an approval ended: the user answered, the run was cancelled, or a configured limit expired it. */
 export const APPROVAL_DECISIONS = ["approved", "denied", "cancelled", "expired"] as const;
 export const approvalDecisionSchema = z.enum(APPROVAL_DECISIONS);
@@ -679,6 +696,12 @@ export const runEventSchema = z.discriminatedUnion("type", [
       reason: z.exactOptional(z.string()),
       /** The rule an "approve and always allow" created. */
       ruleId: z.exactOptional(z.string()),
+      /** `chat`: the user approved by writing in the chat (absent: a click or the API). */
+      via: z.exactOptional(z.enum(["chat"])),
+      /** With `via: "chat"`: the id of the user's message that approved. */
+      messageId: z.exactOptional(z.string()),
+      /** With `via: "chat"`: what the reviewer judged, and what it cost. */
+      chatReview: z.exactOptional(chatApprovalReviewSchema),
     }),
   }),
   z.object({

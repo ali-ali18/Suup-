@@ -93,6 +93,7 @@ export const conversationRoutes: Route[] = [
           message: toMessageDto(sent.message),
           run: toRunDto(sent.run),
           queuedForRun: sent.queuedForRun === true,
+          ...(sent.chatApproval === undefined ? {} : { chatApproval: sent.chatApproval }),
         },
       };
     },
