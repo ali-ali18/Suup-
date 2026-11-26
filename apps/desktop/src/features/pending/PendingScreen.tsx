@@ -147,7 +147,10 @@ export function PendingScreen() {
                       <QuestionCard
                         questions={ask.question.questions}
                         onSubmit={(text) =>
-                          run.conversationId !== null && void sync.send(run.conversationId, text)
+                          run.conversationId !== null &&
+                          void sync.send(run.conversationId, text, {
+                            questionRef: { id: ask.id },
+                          })
                         }
                       />
                     </div>

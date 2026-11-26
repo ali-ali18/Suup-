@@ -179,6 +179,77 @@ describe("buildTimeline", () => {
       expect(sending.ask).toMatchObject({ open: false, answer: "Verde" });
     });
 
+    it("an answer clicked on the card stays only on the card: no bubble of its own (KOD-15)", () => {
+      const question = ask("Qual cor?", colors);
+      const clicked = msg(2, { text: "Azul", runId: run.id, questionRef: { id: question.id } });
+      const after = msg(3, {
+        authorKind: "bot",
+        authorBotId: run.botId,
+        text: "Feito, azul.",
+        runId: run.id,
+      });
+      const items = buildTimeline(
+        [question, clicked, after],
+        { [run.id]: { ...run, status: "done" } },
+        NOW,
+      );
+      expect(kinds(items)).toEqual(["separator", "bot", "bot"]);
+      expect(botItem(items).ask).toMatchObject({ open: false, answer: "Azul" });
+      // While it is being sent, too: the card dims at once and no bubble appears.
+      const sending = buildTimeline(
+        [
+          question,
+          {
+            ...msg(2, { text: "Verde", questionRef: { id: question.id } }),
+            id: "local:x",
+            local: "sending",
+          },
+        ],
+        { [run.id]: run },
+        NOW,
+      );
+      expect(sending.some((i) => i.kind === "user")).toBe(false);
+      expect(botItem(sending).ask).toMatchObject({ open: false, answer: "Verde" });
+    });
+
+    it("an answer typed in the chat is still the user's bubble, and answers the card", () => {
+      const question = ask("Qual cor?", colors);
+      const items = buildTimeline(
+        [question, msg(2, { text: "Prefiro roxo", runId: run.id })],
+        { [run.id]: { ...run, status: "done" } },
+        NOW,
+      );
+      expect(kinds(items)).toEqual(["separator", "bot", "user"]);
+      expect(botItem(items).ask).toMatchObject({ answer: "Prefiro roxo" });
+    });
+
+    it("an answer clicked on another card never answers this one", () => {
+      const first = msg(1, {
+        id: "q1",
+        authorKind: "bot",
+        authorBotId: run.botId,
+        text: "Qual cor?",
+        runId: run.id,
+        question: { questions: colors, dismissed: true },
+      });
+      const second = msg(2, {
+        id: "q2",
+        authorKind: "bot",
+        authorBotId: run.botId,
+        text: "Qual tamanho?",
+        runId: run.id,
+        question: { questions: [{ question: "Qual tamanho?", options: [{ label: "P" }] }] },
+      });
+      const items = buildTimeline(
+        [first, second, msg(3, { text: "P", runId: run.id, questionRef: { id: "q2" } })],
+        { [run.id]: { ...run, status: "done" } },
+        NOW,
+      );
+      const asks = items.flatMap((i) => (i.kind === "bot" && i.ask !== undefined ? [i.ask] : []));
+      expect(asks.map((a) => a.answer)).toEqual([undefined, "P"]);
+      expect(items.some((i) => i.kind === "user")).toBe(false);
+    });
+
     it("it is derived from the run and the messages: after a reload, with the run done, it stays answered", () => {
       const done = { ...run, status: "done" as const };
       const reloaded = botItem(

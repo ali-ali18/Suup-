@@ -679,6 +679,23 @@ describe("chat cards share one chrome and one collapsed row", () => {
     expect(hint).not.toContain("tabIndex");
   });
 
+  it("an answer clicked on a question card stays only on the card, never as a bubble (KOD-15)", () => {
+    // The card's answer goes bound to its question (`questionRef`), in the chat and in Pendências.
+    const list = read(join(SRC, "features", "chat", "MessageList.tsx"));
+    expect(list).toContain("onSubmit={(text) => onAnswer(text, item.key)}");
+    const chat = read(join(SRC, "features", "chat", "ChatScreen.tsx"));
+    expect(chat).toContain("questionRef: { id: questionId }");
+    const pending = read(join(SRC, "features", "pending", "PendingScreen.tsx"));
+    expect(pending).toContain("questionRef: { id: ask.id }");
+    // The timeline draws no bubble for it: it reads the declared field, never the text.
+    const timeline = read(join(SRC, "features", "chat", "timeline.ts"));
+    expect(timeline).toContain(
+      'message.authorKind === "user" && message.questionRef !== undefined',
+    );
+    // The message being sent carries it too, so no bubble flashes before the server answers.
+    expect(read(join(SRC, "data", "reducers.ts"))).toContain("questionRef: input.questionRef");
+  });
+
   it("the expand chevron is hidden at rest and shown on hover and on keyboard focus", () => {
     const src = read(join(SRC, "ui", "action-card.tsx"));
     const chevron = src.slice(src.indexOf("const CHEVRON ="), src.indexOf("const CHEVRON =") + 220);

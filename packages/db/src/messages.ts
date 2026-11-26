@@ -92,6 +92,12 @@ export interface Message {
    * draft). Structured, never in `text`; the harness tells the model which routine it is.
    */
   routineRef: string | null;
+  /**
+   * User messages only, and only when the user answered by clicking a question card: the bot
+   * message that asked (KOD-15). The answer is still plain text in `text`; the app shows it only on
+   * the answered card, with no bubble of its own. Absent on a reply typed in the chat.
+   */
+  questionRef?: string;
   /** Bot or system messages only: the files the run sent with it (`send_file`), oldest first. */
   attachments?: MessageAttachment[];
   /**
@@ -122,6 +128,7 @@ export interface MessageRow {
   team: TeamProposal | null;
   routine_id: string | null;
   routine_ref: string | null;
+  question_ref?: string | null;
   attachments: MessageAttachment[] | null;
   dedupe_key?: string | null;
   event_seq?: number | null;
@@ -143,6 +150,9 @@ export function mapMessage(row: MessageRow): Message {
     ...(row.team === null || row.team === undefined ? {} : { team: row.team }),
     routineId: row.routine_id ?? null,
     routineRef: row.routine_ref ?? null,
+    ...(row.question_ref === null || row.question_ref === undefined
+      ? {}
+      : { questionRef: row.question_ref }),
     ...(row.attachments === null || row.attachments === undefined || row.attachments.length === 0
       ? {}
       : { attachments: row.attachments }),
@@ -168,6 +178,7 @@ const MESSAGE_COLUMNS = [
   "team",
   "routine_id",
   "routine_ref",
+  "question_ref",
   "attachments",
   "dedupe_key",
   "event_seq",
@@ -222,6 +233,7 @@ const appendSchema = z
     team: z.exactOptional(z.array(teamProposalItemSchema).min(1).max(5)),
     routineId: z.exactOptional(uuidSchema),
     routineRef: z.exactOptional(uuidSchema),
+    questionRef: z.exactOptional(uuidSchema),
     eventSeq: z.exactOptional(z.number().int().positive()),
     attachFiles: z.exactOptional(z.boolean()),
   })
@@ -231,6 +243,13 @@ const appendSchema = z
         code: "custom",
         path: ["routineRef"],
         message: "routineRef only applies to user messages",
+      });
+    }
+    if (m.questionRef !== undefined && m.authorKind !== "user") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["questionRef"],
+        message: "questionRef only applies to user messages",
       });
     }
     if ((m.authorKind === "bot") !== (m.authorBotId !== undefined)) {
@@ -286,6 +305,8 @@ export interface AppendMessageInput {
   routineId?: string;
   /** User messages only: the routine the message is about (see `Message.routineRef`). */
   routineRef?: string;
+  /** User messages only: the question card this message answers (see `Message.questionRef`). */
+  questionRef?: string;
   /** A part of a turn: see `Message.eventSeq`. */
   eventSeq?: number;
   /**
@@ -356,7 +377,7 @@ export async function appendMessageOnce(
       size: f.size,
     }));
     const [row] = await tx.sql<MessageRow[]>`
-      insert into messages (conversation_id, seq, author_kind, author_bot_id, text, run_id, status, dedupe_key, question, team, routine_id, routine_ref, attachments, event_seq, created_at)
+      insert into messages (conversation_id, seq, author_kind, author_bot_id, text, run_id, status, dedupe_key, question, team, routine_id, routine_ref, question_ref, attachments, event_seq, created_at)
       values (
         ${m.conversationId},
         (select coalesce(max(seq), 0) + 1 from messages where conversation_id = ${m.conversationId}),
@@ -370,6 +391,7 @@ export async function appendMessageOnce(
         ${m.team === undefined ? null : tx.sql.json({ items: m.team, status: "pending", created: [] })},
         ${m.routineId ?? null},
         ${m.routineRef ?? null},
+        ${m.questionRef ?? null},
         ${attachments.length === 0 ? null : tx.sql.json(attachments)},
         ${m.eventSeq ?? null},
         clock_timestamp()
