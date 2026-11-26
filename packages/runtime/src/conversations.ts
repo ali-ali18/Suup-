@@ -10,6 +10,7 @@ import {
   createDirectConversation,
   getBot,
   getConversation,
+  getMessage,
   getRoutine,
   listBots,
   type Message,
@@ -34,6 +35,12 @@ export interface SendMessageInput {
    * conversation's bot.
    */
   routineRef?: string;
+  /**
+   * The question card the message answers (the user clicked an option, KOD-15): stored on the
+   * message as data, so the app shows the answer only on the card, with no bubble of its own. The
+   * text is still the answer the bot receives. It must be a question of this conversation's bot.
+   */
+  questionRef?: string;
 }
 
 export interface SendMessageResult {
@@ -117,11 +124,27 @@ export async function sendMessage(
     }
   }
 
+  if (input.questionRef !== undefined) {
+    const asked = await getMessage(db, input.questionRef);
+    if (
+      asked === null ||
+      asked.conversationId !== conversation.id ||
+      asked.authorKind !== "bot" ||
+      asked.question === undefined
+    ) {
+      throw new RuntimeError(
+        "invalid_input",
+        "questionRef: essa pergunta não existe ou não é desta conversa.",
+      );
+    }
+  }
+
   try {
     const sent = await sendConversationMessage(db, {
       conversationId: conversation.id,
       text,
       ...(input.routineRef === undefined ? {} : { routineRef: input.routineRef }),
+      ...(input.questionRef === undefined ? {} : { questionRef: input.questionRef }),
     });
     const chatApproval =
       sent.run.status === "waiting_approval"

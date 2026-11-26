@@ -117,7 +117,9 @@ test.describe("connect and chat", () => {
     // The card is at the same left edge as the bot's other messages, and no wider than 700px.
     expect((await card.boundingBox())?.width ?? 999).toBeLessThanOrEqual(701);
     await card.getByTestId("question-option").filter({ hasText: "Verde" }).click();
-    await expect(userBubbles(page).last()).toContainText("Verde");
+    // The answer stays only on the card: no bubble of the user for it (KOD-15).
+    await expect(card).toHaveAttribute("data-state", "answered");
+    await expect(userBubbles(page).filter({ hasText: "Verde" })).toHaveCount(0);
     await expect(
       page.getByTestId("message-bot").filter({ hasText: "Anotei a sua escolha e terminei." }),
     ).toBeVisible();
@@ -139,6 +141,7 @@ test.describe("connect and chat", () => {
         .getByTestId("question-card")
         .locator('[data-testid="question-option"][aria-checked="true"]'),
     ).toHaveCount(1);
+    await expect(userBubbles(page).filter({ hasText: "Verde" })).toHaveCount(0);
   });
 
   test("an open question survives a reload and can be answered afterwards, with the keyboard", async ({
@@ -154,8 +157,8 @@ test.describe("connect and chat", () => {
     // The letters choose: B is the second option.
     await card.getByTestId("question-option").first().focus();
     await page.keyboard.press("b");
-    await expect(userBubbles(page).last()).toContainText("Verde");
     await expect(card).toHaveAttribute("data-state", "answered");
+    await expect(userBubbles(page).filter({ hasText: "Verde" })).toHaveCount(0);
   });
 
   test("a questionnaire: skip one question, pick several in another, and the answer is one plain line per question", async ({
@@ -192,10 +195,11 @@ test.describe("connect and chat", () => {
     await card.getByRole("button", { name: "Enviar" }).click();
     const reply =
       "1. Qual banco de dados? → (pulou)\n2. Quais extras você quer? → Cache; Fila\n3. Posso começar agora? → Sim";
-    await expect(userBubbles(page).last()).toHaveText(reply);
     await expect(
       page.getByTestId("message-bot").filter({ hasText: "Anotei todas as respostas." }),
     ).toBeVisible();
+    // The answer stays only on the card (KOD-15): the last bubble of the user is still the request.
+    await expect(userBubbles(page).last()).toHaveText("CASE-QUIZ pergunte");
     // The card is dimmed and shows what was chosen in each question.
     await expect(card).toHaveAttribute("data-state", "answered");
     await expect(card.getByTestId("question-block")).toHaveCount(3);

@@ -1,4 +1,4 @@
--- 0038_approval_via_chat: aprovar um cartão escrevendo no chat (KOD-33).
+-- 0039_approval_via_chat: aprovar um cartão escrevendo no chat (KOD-33).
 -- Cada arquivo roda dentro de uma transação aberta pelo runner: não use BEGIN/COMMIT aqui.
 --
 -- Com UM cartão esperando, se o usuário escreve no chat, o revisor lê o cartão e o texto e diz se é um

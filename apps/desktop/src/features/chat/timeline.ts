@@ -205,6 +205,16 @@ export function buildTimeline(
 
   messages.forEach((message, index) => {
     const at = new Date(message.createdAt);
+    // The user answered a question card by clicking it (`message.questionRef`, declared by the
+    // server, KOD-15): the answer shows only on that card, never as a bubble of its own. It still
+    // opens its run for the cards that wait on it; it draws nothing, not even a separator.
+    if (message.authorKind === "user" && message.questionRef !== undefined) {
+      if (message.local === undefined) {
+        flush(message);
+        if (message.runId !== null) opened.add(message.runId);
+      }
+      return;
+    }
     if (message.local === undefined) {
       flush(message);
       if (previous === undefined || dayStart(previous) !== dayStart(at)) {
@@ -255,8 +265,15 @@ export function buildTimeline(
         text: message.text,
       });
     } else {
-      // The reply is the next message of the user, even one still being sent: the card answers at once.
-      const reply = messages.slice(index + 1).find((m) => m.authorKind === "user");
+      // The reply is the next message of the user, even one still being sent: the card answers at
+      // once. An answer clicked on ANOTHER card (`questionRef`) is that card's, never this one's.
+      const reply = messages
+        .slice(index + 1)
+        .find(
+          (m) =>
+            m.authorKind === "user" &&
+            (m.questionRef === undefined || m.questionRef.id === message.id),
+        );
       items.push({
         kind: "bot",
         key: message.id,

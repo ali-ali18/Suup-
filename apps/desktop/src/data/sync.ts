@@ -512,22 +512,31 @@ export class Sync {
    * Sends a message: it appears at once and is confirmed (or taken back) when the server answers.
    * Returns the text to give back to the composer when the server refused.
    */
-  /** `options.routineRef`: the routine the message is about (the "Editar" of a routine): data, never text. */
+  /**
+   * `options.routineRef`: the routine the message is about (the "Editar" of a routine): data, never
+   * text. `options.questionRef`: the question card the message answers (an option was clicked): the
+   * answer then shows only on that card, from the first moment (the message being sent too).
+   */
   async send(
     conversationId: string,
     text: string,
-    options: { routineRef?: { id: string } } = {},
+    options: { routineRef?: { id: string }; questionRef?: { id: string } } = {},
   ): Promise<{ ok: true; run: Run; message: Message } | { ok: false; text: string }> {
     const tempId = crypto.randomUUID();
     update(this.store, (s) =>
-      addOptimisticMessage(s, { tempId, conversationId, text, now: new Date().toISOString() }),
-    );
-    try {
-      const result = await this.deps.api.conversations.send(
+      addOptimisticMessage(s, {
+        tempId,
         conversationId,
         text,
-        options.routineRef === undefined ? {} : { routineRef: options.routineRef },
-      );
+        now: new Date().toISOString(),
+        ...(options.questionRef === undefined ? {} : { questionRef: options.questionRef }),
+      }),
+    );
+    try {
+      const result = await this.deps.api.conversations.send(conversationId, text, {
+        ...(options.routineRef === undefined ? {} : { routineRef: options.routineRef }),
+        ...(options.questionRef === undefined ? {} : { questionRef: options.questionRef }),
+      });
       update(this.store, (s) =>
         mergeRun(resolveOptimisticMessage(s, tempId, result.message), result.run),
       );

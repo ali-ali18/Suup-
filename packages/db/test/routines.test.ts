@@ -534,7 +534,8 @@ describe.skipIf(!DATABASE_URL)(
         "0035_bot_color_palette.sql",
         "0036_secret_hosts.sql",
         "0037_message_event_seq.sql",
-        "0038_approval_via_chat.sql",
+        "0038_message_question_ref.sql",
+        "0039_approval_via_chat.sql",
       ]);
       for (const file of held) await rm(join(dir, file));
       await migrate(ctx.db, dir);
@@ -584,7 +585,8 @@ describe.skipIf(!DATABASE_URL)(
         "0035_bot_color_palette.sql",
         "0036_secret_hosts.sql",
         "0037_message_event_seq.sql",
-        "0038_approval_via_chat.sql",
+        "0038_message_question_ref.sql",
+        "0039_approval_via_chat.sql",
       ]);
       for (const file of held) await rm(join(dir, file));
       await migrate(ctx.db, dir);

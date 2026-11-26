@@ -63,10 +63,16 @@ Se você mudou um pacote que o app importa compilado (por exemplo `@suup/connect
 ### Git, PRs e custo
 21. **Nada de nome de modelo** em commits, títulos ou corpos de PR, nem no código. Só `docs/TESTES-REAIS.md`, o `CLAUDE.md` e `.claude/agents/` podem citar modelos.
 22. **Nunca fazer merge** de PR sem pedido explícito do dono. PRs são abertos como rascunho.
-23. **Orçamento de testes com modelo de verdade:** US$ 15 no total, dos quais cerca de US$ 9,1 já foram gastos. Avise antes de chegar perto e nunca rode avaliação cara sem perguntar.
+23. **Orçamento de testes com modelo de verdade:** US$ 15 no total, dos quais cerca de US$ 9,3 já foram gastos (26/11/2026). Avise antes de chegar perto e nunca rode avaliação cara sem perguntar.
 24. **Cota do dono.** Siga os papéis do ambiente descritos em [`CLAUDE.md`](CLAUDE.md). Use no máximo 3 subagentes ao mesmo tempo. O que é simples, a sessão principal faz direto. A sessão principal revisa o que for sensível, como segurança, segredos, banco, o loop do motor, permissões e aprovações.
 25. **Anote o que fizer.** Mantenha o status e os vínculos de entrega no card do Linear. Registre no Git as pesquisas, decisões e mudanças na documentação técnica e vincule o material ao card.
 26. **Seja honesto e avise:** diga o que está rodando e o que falhou, com a saída. Nunca diga "pronto" sem ter verificado. Na dúvida sobre uma decisão do dono, pergunte, em pt-BR, curto, sem jargão.
+
+### Verificação e entrega
+27. **Teste na prática antes de dizer que funciona.** Teste verde não basta. Rode com modelo de verdade, de forma barata e dentro do orçamento da regra 23, e mostre o resultado com captura ou vídeo. O PR #25 (KOD-12) passou em todos os testes e não funcionava na prática.
+28. **Nada de recurso que dependa de o bot "decidir" usar.** Prefira o que sai da estrutura: os balões vêm dos blocos da resposta do modelo (KOD-64), e não do bot declarar partes. Instrução no prompt ajuda, mas não garante.
+29. **Teste que falha às vezes tem uma causa: ache-a antes de seguir.** Rodar de novo uma vez é permitido, mas "instável" não é diagnóstico. O teste do proxy de saída que falhava às vezes escondia um furo de segurança real (KOD-67). Reproduza em laço e sob carga, corrija na origem e deixe o laço rodando na CI.
+30. **PR que depende de outro sai da branch dele e entra depois dele.** Exemplo: o #27 saiu da branch do #26. Depois do merge do primeiro, troque a base do segundo para a `main`.
 
 ## Decisões já tomadas (não reabrir)
 

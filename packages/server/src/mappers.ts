@@ -124,6 +124,7 @@ export function toMessageDto(message: MessageRow): Message {
     ...(message.team === undefined ? {} : { team: message.team }),
     ...(message.routineId === null ? {} : { routineId: message.routineId }),
     ...(message.routineRef === null ? {} : { routineRef: { id: message.routineRef } }),
+    ...(message.questionRef === undefined ? {} : { questionRef: { id: message.questionRef } }),
     ...(message.attachments === undefined
       ? {}
       : { attachments: message.attachments.map((a) => ({ ...a, kind: fileKindOf(a.mime) })) }),

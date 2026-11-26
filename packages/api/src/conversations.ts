@@ -107,6 +107,12 @@ export const messageSchema = z.object({
    * of the message, never part of `text`; the bot is told which routine it is.
    */
   routineRef: z.exactOptional(z.object({ id: uuid })),
+  /**
+   * Only on a message of yours that answers a question card by clicking it (KOD-15): the bot
+   * message that asked. `text` is still the answer (what the bot receives); the app shows it only
+   * on the answered card, with no bubble of its own. Absent on a reply typed in the chat.
+   */
+  questionRef: z.exactOptional(z.object({ id: uuid })),
   /** Only on a bot (or system) message whose run sent files: the files, oldest first. */
   attachments: z.exactOptional(z.array(messageAttachmentSchema)),
   /**
@@ -190,6 +196,11 @@ export const sendMessageBodySchema = z.object({
    * routine it is in a note of the harness and changes that one.
    */
   routineRef: z.exactOptional(z.object({ id: uuid })),
+  /**
+   * The question card the message answers (the user clicked an option): a bot message of this
+   * conversation that asks something. Stored with the message; the text is still the answer.
+   */
+  questionRef: z.exactOptional(z.object({ id: uuid })),
 });
 export type SendMessageBody = z.input<typeof sendMessageBodySchema>;
 export const sendMessageResultSchema = z.object({
