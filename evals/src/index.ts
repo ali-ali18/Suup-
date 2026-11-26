@@ -9,8 +9,16 @@ export {
   type CaseResult,
   type ClassSummary,
   formatBatteryReport,
+  JUDGED_BATTERY,
+  JUDGED_CLASSES,
+  type JudgedCase,
+  type JudgedClass,
+  type JudgedClassSummary,
+  type JudgedReport,
+  type JudgedResult,
   type RunBatteryOptions,
   runBattery,
+  runJudgedBattery,
 } from "./auto-review/index.js";
 export { abntPdf, documentTasks, reportPdf, salesXlsx } from "./documents/index.js";
 export { stamp } from "./fmt.js";

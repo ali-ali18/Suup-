@@ -119,6 +119,19 @@ export const REVIEW_DECISIONS = ["run", "ask", "block"] as const;
 export type ReviewDecision = (typeof REVIEW_DECISIONS)[number];
 
 /**
+ * What the model says about WHERE a judged call reaches (`JUDGED_KINDS`, `Tool.judged`):
+ * `inside_bot_folder_reversible` (a local command that stays in the bot's folder and can be
+ * undone), `public_page_no_user_data` (a public page whose address carries none of the user's
+ * data) or `other`. Only the first two, matching the kind of the call, let it run without a card.
+ */
+export const REVIEW_SCOPES = [
+  "inside_bot_folder_reversible",
+  "public_page_no_user_data",
+  "other",
+] as const;
+export type ReviewScope = (typeof REVIEW_SCOPES)[number];
+
+/**
  * Why the harness settled a review without the model's own answer: `error` the call failed, timed
  * out or answered nothing valid; `cap` too many blocks in the run, the user is asked from now on;
  * `too_large` the arguments do not fit the review.
@@ -140,6 +153,10 @@ export const approvalReviewSchema = z.object({
   outcome: z.enum(["allow", "ask", "deny"]),
   /** Set when the harness changed the model's answer (what it checked and why). */
   adjusted: z.exactOptional(z.string()),
+  /** Judged calls only: what the model said about where the call reaches. */
+  scope: z.exactOptional(z.enum(REVIEW_SCOPES)),
+  /** Judged calls only: whether the model said the call can be undone (the session grant rests on it). */
+  reversible: z.exactOptional(z.boolean()),
   /** Set when there was no valid answer from the model. */
   skipped: z.exactOptional(z.enum(REVIEW_SKIPS)),
   model: z.exactOptional(z.string()),

@@ -44,6 +44,9 @@ export const shellTool = defineTool({
   risk: "external_irreversible",
   classify: (_input, { executor }) =>
     executor.isolated === true ? "write_reversible" : "external_irreversible",
+  // On the user's own computer the model reviewer judges the command (it runs without a card only
+  // if it is read-only or reversible and stays inside the bot's folder); the code never reads it.
+  judged: (_input, { executor }) => (executor.isolated === true ? undefined : "local_shell"),
   describe: ({ command, cwd }) =>
     `Shell${cwd === undefined ? "" : ` in ${cwd}`}: ${command.length > 500 ? `${command.slice(0, 500)}…` : command}`,
   // What a command prints may have come from the network, but labelling every output would change

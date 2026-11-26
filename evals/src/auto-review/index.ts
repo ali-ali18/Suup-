@@ -7,6 +7,18 @@ export {
   type BatteryClass,
 } from "./battery.js";
 export {
+  JUDGED_BATTERY,
+  JUDGED_CLASSES,
+  type JudgedCase,
+  type JudgedClass,
+} from "./judged-battery.js";
+export {
+  type JudgedClassSummary,
+  type JudgedReport,
+  type JudgedResult,
+  runJudgedBattery,
+} from "./judged-run.js";
+export {
   type BatteryReport,
   type CaseResult,
   type ClassSummary,

@@ -6,7 +6,7 @@ import type { JsonValue } from "../messages.js";
 import type { OutboundMessage } from "../outbound.js";
 import type { AssessOptions, ToolAssessment } from "../registry.js";
 import type { RiskLevel } from "../risk.js";
-import type { Executor } from "../tool.js";
+import type { Executor, JudgedKind } from "../tool.js";
 import type { WebUrlSource } from "../web.js";
 import {
   decidedBeforeReview,
@@ -184,6 +184,8 @@ function reviewFrom(
     outcome: resolution.outcome,
     ...(resolution.adjusted === undefined ? {} : { adjusted: resolution.adjusted }),
     ...(answer?.failure === undefined ? {} : { skipped: "error" as const }),
+    ...(answer?.scope === undefined ? {} : { scope: answer.scope }),
+    ...(answer?.reversible === undefined ? {} : { reversible: answer.reversible }),
     ...(answer === undefined
       ? {}
       : {
@@ -217,6 +219,9 @@ export function createToolGate(options: ToolGateOptions): ToolGate {
       } catch {
         mode = "ask_all";
       }
+      // A level the user fixed for the tool is the user's word: the model does not settle it.
+      const judged =
+        options.levelOverrides?.[call.name] === undefined ? assessed.judged : undefined;
       const floor = hardFloor(call.name, level, assessed);
       const early = decidedBeforeReview({ call: ruleCall, level, rules, mode, floor });
       const goesToModel =
@@ -237,6 +242,7 @@ export function createToolGate(options: ToolGateOptions): ToolGate {
           toolDescription: assessed.toolDescription,
           args: assessed.args,
           ...(assessed.outbound === undefined ? {} : { outbound: assessed.outbound }),
+          ...(judged === undefined ? {} : { judged }),
         });
         resolved = taken.resolution;
         record = taken.record;
@@ -299,6 +305,7 @@ async function modelReview(
     toolDescription: string;
     args: JsonValue;
     outbound?: OutboundMessage;
+    judged?: JudgedKind;
   },
 ): Promise<{ resolution: ReviewResolution; record: ApprovalReview }> {
   const base = { callId: call.callId, tool: call.name, level: proposed.level } as const;
@@ -358,6 +365,7 @@ async function modelReview(
       context: {
         toolDescription: proposed.toolDescription,
         ...(proposed.outbound === undefined ? {} : { outbound: proposed.outbound }),
+        ...(proposed.judged === undefined ? {} : { judged: proposed.judged }),
         userMessages: call.userMessages ?? [],
         ...(call.trigger === undefined ? {} : { trigger: call.trigger }),
         rules,
@@ -371,7 +379,7 @@ async function modelReview(
   if (verdict === undefined || answer === undefined || !REVIEW_VERDICTS.includes(verdict.verdict)) {
     return skip("error", "A revisão automática não deu uma resposta válida.");
   }
-  const resolution = resolveReview(answer, proposed.level, rules);
+  const resolution = resolveReview(answer, proposed.level, rules, proposed.judged);
   return { resolution, record: reviewFrom(call, call.name, proposed.level, verdict, resolution) };
 }
 

@@ -285,6 +285,15 @@ export interface ToolSource {
   title?: string;
 }
 
+/**
+ * The calls the model reviewer may settle although they are `external_irreversible`:
+ * `local_shell` a command on the user's own computer (it may run only if it stays inside the bot's
+ * folder and can be undone) and `unseen_web_page` a page address the run has not seen (it may run
+ * only if it is a public page whose address carries none of the user's data).
+ */
+export const JUDGED_KINDS = ["local_shell", "unseen_web_page"] as const;
+export type JudgedKind = (typeof JUDGED_KINDS)[number];
+
 /** What `classify` may look at besides the arguments: the machine the call would run on, and the URLs the run has seen. */
 export interface ClassifyEnv {
   executor: Executor;
@@ -321,6 +330,14 @@ export interface Tool<I = unknown> {
    * throws, the call counts as `external_irreversible`.
    */
   classify?(input: I, env: ClassifyEnv): RiskLevel;
+  /**
+   * Declares that THIS call (which `classify` made `external_irreversible`) is one the model
+   * reviewer may let run without a card: it answers a question the harness fixes (see
+   * `JUDGED_KINDS`) and the code checks the answer's declared fields, never the text of the call.
+   * Absent or `undefined`: only a written `allow` rule lets the call run. Declared by structure
+   * (the machine, whether the address was seen), never by looking at the arguments' text.
+   */
+  judged?(input: I, env: ClassifyEnv): JudgedKind | undefined;
   /** One line for the approval card: what exactly this call does. Default: the tool and its arguments. */
   describe?(input: I, env: ClassifyEnv): string;
   /**

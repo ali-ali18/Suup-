@@ -204,6 +204,8 @@ export {
   type ExecResult,
   type Executor,
   type FileStat,
+  JUDGED_KINDS,
+  type JudgedKind,
   type MemoryLayerName,
   MemoryRuleError,
   type MemoryService,
