@@ -143,12 +143,13 @@ test.describe("tasks of a bot", () => {
     const sb = await label(page).getByTestId("task-label-stroke").boundingBox();
     const ib = await label(page).locator("svg").boundingBox();
     expect(sb && ib).toBeTruthy();
-    expect((sb?.x ?? 0) + (sb?.width ?? 0)).toBeLessThanOrEqual((ib?.x ?? 0) + 1);
+    // A visible horizontal gap (about 8 px) between the stroke's end and the icon.
+    expect((ib?.x ?? 0) - ((sb?.x ?? 0) + (sb?.width ?? 0))).toBeGreaterThanOrEqual(4);
     expect(Math.abs((sb?.x ?? 0) - (bb?.x ?? 0))).toBeLessThanOrEqual(40);
-    // It ends above the bubble with a small visible gap (4 to 10 px), never inside its box.
-    const gap = (bb?.y ?? 0) - ((sb?.y ?? 0) + (sb?.height ?? 0));
-    expect(gap).toBeGreaterThanOrEqual(4);
-    expect(gap).toBeLessThanOrEqual(10);
+    // It ends just above the bubble: never inside its box (bottom <= bubble top), and not far from it.
+    const strokeBottom = (sb?.y ?? 0) + (sb?.height ?? 0);
+    expect(strokeBottom).toBeLessThanOrEqual(bb?.y ?? 0);
+    expect(strokeBottom).toBeGreaterThanOrEqual((bb?.y ?? 0) - 6);
     const strokeWidth = await label(page)
       .getByTestId("task-label-stroke")
       .evaluate((el) => parseFloat(getComputedStyle(el).borderLeftWidth));

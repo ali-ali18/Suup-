@@ -23,7 +23,7 @@ export function TaskLabel({
   return (
     <button
       type="button"
-      className="relative -mb-0.5 inline-flex max-w-full min-w-0 cursor-pointer items-center gap-1.5 self-start border-0 bg-transparent py-0 pr-1 pl-8 text-small text-text-muted transition-colors hover:text-text"
+      className="relative -mb-1.5 inline-flex max-w-full min-w-0 cursor-pointer items-center gap-1.5 self-start border-0 bg-transparent py-0 pr-1 pl-10 text-small text-text-muted transition-colors hover:text-text"
       data-testid="task-label"
       data-task={taskId}
       data-task-state={state}
