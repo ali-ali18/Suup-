@@ -41,7 +41,7 @@ export async function getActiveConversationRun(
   const [row] = await db.sql<RunRow[]>`
     select * from runs
     where conversation_id = ${z.uuid().parse(conversationId)}
-      and origin in ('user', 'reception', 'delegation')
+      and origin in ('user', 'reception', 'delegation', 'task_result')
       and status = any(${ACTIVE_RUN_STATUSES as unknown as string[]}::text[])
     order by created_at, id
     limit 1`;
@@ -225,7 +225,7 @@ export async function listActiveConversationRuns(
   const rows = await db.sql<RunRow[]>`
     select * from runs
     where conversation_id = any(${ids}::uuid[])
-      and origin in ('user', 'reception', 'delegation')
+      and origin in ('user', 'reception', 'delegation', 'task_result')
       and status = any(${ACTIVE_RUN_STATUSES as unknown as string[]}::text[])`;
   return new Map(rows.map((row) => [row.conversation_id as string, mapRun(row)]));
 }

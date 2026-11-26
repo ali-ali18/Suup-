@@ -9,6 +9,7 @@ export const CHANGE_KINDS = [
   "conversation",
   "bot",
   "approval",
+  "task",
 ] as const;
 export type ChangeKind = (typeof CHANGE_KINDS)[number];
 

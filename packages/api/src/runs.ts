@@ -15,7 +15,15 @@ export const RUN_STATUSES = [
 export const runStatusSchema = z.enum(RUN_STATUSES);
 export type RunStatus = z.infer<typeof runStatusSchema>;
 
-export const RUN_ORIGINS = ["user", "routine", "delegation", "proactive", "reception"] as const;
+export const RUN_ORIGINS = [
+  "user",
+  "routine",
+  "delegation",
+  "proactive",
+  "reception",
+  "task",
+  "task_result",
+] as const;
 export const FAILURE_ORIGINS = [
   "provider",
   "model",

@@ -1,8 +1,9 @@
 import { z } from "zod";
 import { type Db, withTransaction } from "./client.js";
 
-export type ConversationKind = "direct" | "group";
-export const CONVERSATION_KINDS = ["direct", "group"] as const;
+/** `task` is the conversation of a task (docs/TAREFAS.md): never in the list, never written to by the chat. */
+export type ConversationKind = "direct" | "group" | "task";
+export const CONVERSATION_KINDS = ["direct", "group", "task"] as const;
 
 /**
  * Where the welcome of a conversation's bot is (docs/RECEPCAO.md): `pending` not started (a new
@@ -272,7 +273,8 @@ export async function listConversations(
   const limit = opts.limit === undefined ? null : z.number().int().positive().parse(opts.limit);
   const rows = await sql<ConversationRow[]>`
     select * from conversations
-    where ${opts.includeArchived ? sql`true` : sql`archived_at is null`}
+    where kind <> 'task'
+      and ${opts.includeArchived ? sql`true` : sql`archived_at is null`}
     order by last_message_at desc nulls last, created_at desc, id
     ${limit === null ? sql`` : sql`limit ${limit}`}`;
   return toViews(db, rows);

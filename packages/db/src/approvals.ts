@@ -23,7 +23,10 @@ export interface Approval {
   id: string;
   runId: string;
   botId: string;
-  /** The conversation of the run, when it has one. */
+  /**
+   * The conversation the card belongs to: the run's own, or, for a task, the chat where the task was
+   * asked (its cards are decided there; docs/TAREFAS.md).
+   */
   conversationId: string | null;
   callId: string;
   tool: string;
@@ -119,10 +122,11 @@ function isStale(row: Pick<ApprovalRow, "status" | "waited_ms" | "stale_after_ms
 }
 
 const SELECT = (db: Db) => db.sql`
-  select a.id, a.run_id, a.bot_id, r.conversation_id, a.call_id, a.tool, a.args, a.level,
+  select a.id, a.run_id, a.bot_id, coalesce(tk.conversation_id, r.conversation_id) as conversation_id, a.call_id, a.tool, a.args, a.level,
          a.summary, a.secrets, a.secret_host, a.source, a.outbound, a.status, a.reason, a.rule_id, a.review_reason, a.written_rule_id, a.expires_at,
          a.decided_at, a.created_at, a.waited_ms, a.stale_after_ms
-  from approvals a join runs r on r.id = a.run_id`;
+  from approvals a join runs r on r.id = a.run_id
+  left join tasks tk on tk.run_id = r.id`;
 
 export type ApprovalErrorCode = "not_found" | "conflict";
 
@@ -194,7 +198,7 @@ export async function listApprovals(db: Db, opts: ListApprovalsOptions): Promise
     ${SELECT(db)}
     where ${opts.status !== undefined ? sql`a.status = ${z.enum(APPROVAL_STATUSES).parse(opts.status)}` : sql`true`}
       and ${opts.botId !== undefined ? sql`a.bot_id = ${opts.botId}` : sql`true`}
-      and ${opts.conversationId !== undefined ? sql`r.conversation_id = ${opts.conversationId}` : sql`true`}
+      and ${opts.conversationId !== undefined ? sql`coalesce(tk.conversation_id, r.conversation_id) = ${opts.conversationId}` : sql`true`}
       and ${opts.runId !== undefined ? sql`a.run_id = ${opts.runId}` : sql`true`}
     order by a.created_at desc, a.id
     limit ${limit}`;

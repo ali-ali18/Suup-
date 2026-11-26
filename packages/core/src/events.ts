@@ -332,7 +332,15 @@ export type RunStatus = z.infer<typeof runStatusSchema>;
  * its own the first time the user opens its chat (docs/RECEPCAO.md); like `user`, it is the
  * foreground run of its conversation.
  */
-export const RUN_ORIGINS = ["user", "routine", "delegation", "proactive", "reception"] as const;
+export const RUN_ORIGINS = [
+  "user",
+  "routine",
+  "delegation",
+  "proactive",
+  "reception",
+  "task",
+  "task_result",
+] as const;
 export const runOriginSchema = z.enum(RUN_ORIGINS);
 export type RunOrigin = z.infer<typeof runOriginSchema>;
 

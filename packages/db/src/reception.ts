@@ -24,7 +24,7 @@ export async function listReceptionCandidates(
       cm.conversation_id is null
       or (c.archived_at is null and c.reception in ('pending', 'redo')
         and not exists (select 1 from runs r where r.conversation_id = c.id
-          and r.origin in ('user', 'reception', 'delegation')
+          and r.origin in ('user', 'reception', 'delegation', 'task_result')
           and r.status = any(${ACTIVE_RUN_STATUSES as unknown as string[]}::text[])))
     )
     order by case when ${afterId}::uuid is null or b.id > ${afterId}::uuid then 0 else 1 end, b.id
@@ -113,7 +113,7 @@ export async function resetReception(db: Db, botId: string): Promise<boolean> {
     const [active] = await tx.sql<{ n: number }[]>`
       select count(*)::int as n from runs
       where conversation_id = ${conv.id}
-        and origin in ('user', 'reception', 'delegation')
+        and origin in ('user', 'reception', 'delegation', 'task_result')
         and status = any(${ACTIVE_RUN_STATUSES as unknown as string[]}::text[])`;
     if ((active?.n ?? 0) > 0) return false;
     await tx.sql`update conversations set reception = 'redo' where id = ${conv.id}`;

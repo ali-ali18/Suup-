@@ -457,6 +457,27 @@ export {
   parseClockTime,
 } from "./supervisor-time.js";
 export {
+  type CreateTaskInput,
+  closeTaskWithoutResult,
+  createTask,
+  forwardToTask,
+  getTask,
+  getTaskByConversation,
+  getTaskByRun,
+  type ListTasksOptions,
+  listTasks,
+  MAX_OPEN_TASKS,
+  MAX_TASK_SOURCE_MESSAGES,
+  openTaskResult,
+  pendingTaskResults,
+  recentUserMessages,
+  replyToTask,
+  type Task,
+  TaskError,
+  type TaskErrorCode,
+  taskStartContext,
+} from "./tasks.js";
+export {
   decideTeamProposal,
   type TeamBotDefaults,
   type TeamPick,
