@@ -1,6 +1,5 @@
 import {
   defineTool,
-  destinationHost,
   normalizeWebUrl,
   type ToolContext,
   type ToolOutput,
@@ -43,8 +42,8 @@ export const webReadTool = defineTool({
   // An address the run has not seen is a way for data to leave inside the URL: the model reviewer
   // sees the whole address and the user's messages and may let a public page through.
   judged: ({ url }, env) => (isKnown(url, env.webSeen) ? undefined : "unseen_web_page"),
-  // The same site: the normalized host of the address.
-  grantKey: ({ url }) => destinationHost(url),
+  // No grantKey on purpose: a session grant would let any later address on the host through, and
+  // the address is a way out for the user's data. "Reversible" is always true for a read.
   describe: ({ url, render }, env) =>
     `${isKnown(url, env.webSeen) ? "Read" : "Read a new page:"} ${url}${render === true ? " (with a browser)" : ""}`,
   externalOutput: true,

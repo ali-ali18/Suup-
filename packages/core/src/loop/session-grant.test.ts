@@ -11,7 +11,6 @@ import {
   type WrittenRule,
 } from "../approvals/index.js";
 import { replayRun } from "../replay.js";
-import { destinationHost } from "../secrets.js";
 import {
   call,
   createRig,
@@ -58,7 +57,8 @@ function setup(script: Parameters<typeof createRig>[0]["script"], mode?: "ask_al
         description: "Reads a page.",
         input: z.object({ url: z.string() }),
         risk: "external_irreversible",
-        grantKey: ({ url }) => destinationHost(url),
+        // Like web_read: a page has no grantKey, so an approval never covers another address.
+        judged: () => "unseen_web_page",
         execute: async ({ url }) => {
           ran.push(`page:${url}`);
           return { content: "page" };
@@ -148,25 +148,21 @@ describe("the grant of an approved card", () => {
     ]);
   });
 
-  it("approving one page grants the whole host: the other spelling and other paths need no card", async () => {
+  it("approving one page grants nothing: another address on the same host goes to the reviewer and asks", async () => {
     const s = setup([
       use(call("c1", "page", { url: "https://pt.wikipedia.org/wiki/Fotossíntese" })),
-      use(call("c2", "page", { url: "https://pt.wikipedia.org/wiki/Fotoss%C3%ADntese" })),
-      use(call("c3", "page", { url: "https://PT.wikipedia.org/wiki/Clima?x=1" })),
-      use(call("c4", "page", { url: "https://www.wikipedia.org/" })),
+      use(call("c2", "page", { url: "https://pt.wikipedia.org/wiki/Clima?q=dado-do-usuario" })),
       say("fim"),
     ]);
     await loop(s);
     await approveOpen(s);
     expect(await loop(s)).toBe("waiting_approval");
     const events = await s.rig.events();
-    // the card of c4 (another host) is the second and last one
-    expect(cards(events).map((c) => c.payload.callId)).toEqual(["c1", "c4"]);
-    expect(eventsOfType(events, "approval_grant_used").map((e) => e.payload.callId)).toEqual([
-      "c2",
-      "c3",
-    ]);
-    expect(s.ran).toHaveLength(3);
+    // the reviewer said ask (reversible true) and no grant exists: c2 is a card of its own
+    expect(cards(events).map((c) => c.payload.callId)).toEqual(["c1", "c2"]);
+    expect(eventsOfType(events, "approval_session_grant")).toHaveLength(0);
+    expect(eventsOfType(events, "approval_grant_used")).toHaveLength(0);
+    expect(s.ran).toEqual(["page:https://pt.wikipedia.org/wiki/Fotossíntese"]);
   });
 
   it("the grant stays for the whole run: a third identical call also runs", async () => {

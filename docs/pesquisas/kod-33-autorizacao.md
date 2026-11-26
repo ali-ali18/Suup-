@@ -194,7 +194,7 @@ O `CLAUDE.md` do Suup proíbe classificar por regex ou glob no harness. Isso enc
 
 Unidade do grant: (ferramenta declarada, alvo normalizado, conversa/sessão).
 
-- Alvo normalizado: host, para rede; prefixo de comando com argumentos, para shell (como o Codex grava argv completo, e não só o programa); identificador do recurso, para escrita; nome da ferramenta, para MCP. Nunca "todos os comandos" (a Anthropic descarta `Bash(*)` no modo auto).
+- Alvo normalizado: host, para rede (**exceto a leitura de página, que não tem grant**: o endereço leva dado para fora e `reversible` de uma leitura é sempre verdadeiro; o revisor com `public_page_no_user_data` já poupa o cartão das páginas comuns); prefixo de comando com argumentos, para shell (como o Codex grava argv completo, e não só o programa); identificador do recurso, para escrita; nome da ferramenta, para MCP. Nunca "todos os comandos" (a Anthropic descarta `Bash(*)` no modo auto).
 - Duração: o padrão é a sessão (como edições no Claude Code e `ApprovedForSession` no Codex). Um prazo fixo, por exemplo 60 minutos, é uma escolha de produto que nenhuma das fontes lidas oferece; se o dono quiser, deve ser decidido e documentado como decisão própria, e não como "padrão da indústria". Revogação visível na interface (o Claude Code mostra "Recently blocked" em `/permissions`).
 - Precedência: negação sempre vence; o grant não cria exceção a uma negação (regra do Claude Code).
 - Grant não cobre ação irreversível: essas precisam de aprovação por ação, nomeando o alvo (a Anthropic: uma aprovação cobre a ação nomeada, e a aprovação genérica não basta).
