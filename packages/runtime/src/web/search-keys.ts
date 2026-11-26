@@ -40,7 +40,10 @@ export function createSearchKeys(options: {
       if (fromEnv !== undefined && fromEnv !== "") return fromEnv;
       if (!options.vault.status().ok) return undefined;
       try {
-        const found = (await options.vault.resolveForConnector([where.secret]))[where.secret];
+        // The engine's own code sends it to the engine's fixed address.
+        const found = (await options.vault.resolveForConnector([where.secret], { kind: "fixed" }))[
+          where.secret
+        ];
         return found === undefined || found.trim() === "" ? undefined : found;
       } catch {
         // The secret does not exist, or the vault cannot be read right now: there is no key.

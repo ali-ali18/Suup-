@@ -582,9 +582,13 @@ export function createGallery(deps: {
       const redirectUri = publicRedirect ?? `${(await openListener()).base}/callback`;
       let clientSecret: string | undefined;
       if (oauth.clientSecret !== undefined) {
-        clientSecret = (await vault.resolveForConnector([oauth.clientSecret.secret]))[
-          oauth.clientSecret.secret
-        ];
+        // It goes to the authorization server the connector's server names: not bound yet.
+        clientSecret = (
+          await vault.resolveForConnector([oauth.clientSecret.secret], {
+            kind: "unbound",
+            reason: "oauth_client_secret",
+          })
+        )[oauth.clientSecret.secret];
       }
       let pending: PendingLogin;
       try {

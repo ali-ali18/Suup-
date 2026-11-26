@@ -21,8 +21,11 @@ const CONNECTION_CLOSED = -32000;
 const REQUEST_TIMEOUT = -32001;
 
 export interface ManagerOptions {
-  /** The values of the vault secrets a connector's configuration refers to (by name). */
-  resolveSecrets(names: string[]): Promise<Record<string, string>>;
+  /**
+   * The values of the vault secrets a connector's configuration refers to (by name), for where
+   * they are going (see `ConnectionDeps.resolveSecrets`).
+   */
+  resolveSecrets: ConnectionDeps["resolveSecrets"];
   /** Scrubs known secret values out of text that may be shown or logged. Default: unchanged. */
   redact?(text: string): string;
   now?(): number;

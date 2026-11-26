@@ -4,11 +4,13 @@
 // every secret. Values never leave this module except into `SecretAccess.resolve`, which only the
 // registry's execution layer calls.
 import {
+  checkSecretHost,
   createRedactor,
   isSecretName,
   type MutableRedactor,
   type Redactor,
   type SecretAccess,
+  type SecretDestination,
   type SecretInfo,
   SecretUnavailableError,
 } from "@suup/core";
@@ -16,6 +18,7 @@ import {
   type Db,
   deleteSecret,
   getSecretHosts,
+  getSecretMeta,
   getSecretRowByName,
   getSecretRowForBot,
   grantSecret,
@@ -106,8 +109,15 @@ export interface Vault {
    * the user who configured the connector named these secrets (and the connector is granted to
    * bots, not the secrets). The values go into the child's environment or an HTTP header and
    * nowhere else; they are known to the redactor before they are handed over.
+   *
+   * `destination` says where they are going. With `host`, every user's secret must list that host
+   * (exact equality), checked for ALL the names before ANY value is read: otherwise it throws
+   * `SecretDestinationRefusedError` and nothing is decrypted (KOD-36).
    */
-  resolveForConnector(names: readonly string[]): Promise<Record<string, string>>;
+  resolveForConnector(
+    names: readonly string[],
+    destination: SecretDestination,
+  ): Promise<Record<string, string>>;
   /** Scrubs every known value. Call `refresh` first to be sure the set is current. */
   readonly redactor: Redactor;
   /** Reloads every value into the redactor, unless it was done less than `maxAgeMs` ago. */
@@ -278,17 +288,27 @@ export function createVault(db: () => Db, env: Env, settings: VaultSettings | un
         },
       };
     },
-    async resolveForConnector(names) {
+    async resolveForConnector(names, destination) {
       const { all } = keyRing();
+      const missing = (name: string) =>
+        new VaultError(
+          "value_invalid",
+          `o segredo ${name} não existe no cofre (cadastre com: suup vault set ${name})`,
+        );
+      // Where they go is decided first, for every name, before any value is read.
+      if (destination.kind === "host") {
+        for (const name of names) {
+          const meta = await getSecretMeta(db(), name);
+          if (meta === null) throw missing(name);
+          // A plugin's secret goes where the gallery says; it has no list of its own.
+          if (meta.managedBy !== null) continue;
+          checkSecretHost(name, meta.hosts, destination.host);
+        }
+      }
       const values: Record<string, string> = {};
       for (const name of names) {
         const row = await getSecretRowByName(db(), name);
-        if (row === null) {
-          throw new VaultError(
-            "value_invalid",
-            `o segredo ${name} não existe no cofre (cadastre com: suup vault set ${name})`,
-          );
-        }
+        if (row === null) throw missing(name);
         const value = decrypt(all, name, {
           nonce: row.nonce,
           ciphertext: row.ciphertext,

@@ -367,9 +367,9 @@ export function createConnectorService(options: {
   const db = options.db;
 
   const manager = new ConnectorManager({
-    resolveSecrets: async (names) => {
+    resolveSecrets: async (names, destination) => {
       await vault.refresh(5_000);
-      return vault.resolveForConnector(names);
+      return vault.resolveForConnector(names, destination);
     },
     redact: (text) => vault.redactor.redact(text),
     ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
@@ -380,9 +380,13 @@ export function createConnectorService(options: {
       let clientSecret: string | undefined;
       if (oauth?.clientSecret !== undefined) {
         await vault.refresh(5_000);
-        clientSecret = (await vault.resolveForConnector([oauth.clientSecret.secret]))[
-          oauth.clientSecret.secret
-        ];
+        // It goes to the authorization server the connector's server names: not bound yet.
+        clientSecret = (
+          await vault.resolveForConnector([oauth.clientSecret.secret], {
+            kind: "unbound",
+            reason: "oauth_client_secret",
+          })
+        )[oauth.clientSecret.secret];
       }
       return connectionOAuthProvider({
         store: vaultOAuthStore(db, vault, spec.name),

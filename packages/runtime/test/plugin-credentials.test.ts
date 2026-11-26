@@ -80,7 +80,12 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("plugin credentials"), { timeout: 60_
     expect(await rt.pluginCredentials.adoptAll()).toEqual([]);
 
     // Suup still reads the values, and the plugin's state sees the marked secret.
-    expect((await rt.vault.resolveForConnector(["GITHUB_TOKEN"])).GITHUB_TOKEN).toBe(GITHUB);
+    // A plugin's secret has no list of hosts: the gallery fixes where it goes (KOD-36).
+    const github = await rt.vault.resolveForConnector(["GITHUB_TOKEN"], {
+      kind: "host",
+      host: "api.githubcopilot.com",
+    });
+    expect(github.GITHUB_TOKEN).toBe(GITHUB);
     const item = (await rt.connectors.gallery.list()).find((i) => i.entry.id === "github");
     expect(item?.status).not.toBe("needs_secret");
     const providers = await rt.webSearchProviders();
