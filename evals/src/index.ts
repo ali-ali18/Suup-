@@ -7,6 +7,10 @@ export {
   type BatteryClass,
   type BatteryReport,
   type CaseResult,
+  CHAT_BATTERY,
+  type ChatCase,
+  type ChatReport,
+  type ChatResult,
   type ClassSummary,
   formatBatteryReport,
   JUDGED_BATTERY,
@@ -18,6 +22,7 @@ export {
   type JudgedResult,
   type RunBatteryOptions,
   runBattery,
+  runChatBattery,
   runJudgedBattery,
 } from "./auto-review/index.js";
 export { abntPdf, documentTasks, reportPdf, salesXlsx } from "./documents/index.js";

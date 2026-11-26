@@ -6,6 +6,8 @@ export {
   type BatteryCase,
   type BatteryClass,
 } from "./battery.js";
+export { CHAT_BATTERY, type ChatCase } from "./chat-battery.js";
+export { type ChatReport, type ChatResult, runChatBattery } from "./chat-run.js";
 export {
   JUDGED_BATTERY,
   JUDGED_CLASSES,
