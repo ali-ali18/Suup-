@@ -141,7 +141,7 @@ test.describe("tasks of a bot", () => {
     expect(look.size).toBeLessThan(msgSize);
     // The reply stroke is at the left, inside the label, and ends right above the bubble's top-left.
     const sb = await label(page).getByTestId("task-label-stroke").boundingBox();
-    const ib = await label(page).locator("svg").boundingBox();
+    const ib = await label(page).locator("svg").last().boundingBox();
     expect(sb && ib).toBeTruthy();
     // A visible horizontal gap (about 8 px) between the stroke's end and the icon.
     expect((ib?.x ?? 0) - ((sb?.x ?? 0) + (sb?.width ?? 0))).toBeGreaterThanOrEqual(4);
@@ -150,10 +150,18 @@ test.describe("tasks of a bot", () => {
     const strokeBottom = (sb?.y ?? 0) + (sb?.height ?? 0);
     expect(strokeBottom).toBeLessThanOrEqual(bb?.y ?? 0);
     expect(strokeBottom).toBeGreaterThanOrEqual((bb?.y ?? 0) - 6);
-    const strokeWidth = await label(page)
+    // Drawn as an SVG with round line caps and a stroke at least 2 px thick.
+    const strokeLook = await label(page)
       .getByTestId("task-label-stroke")
-      .evaluate((el) => parseFloat(getComputedStyle(el).borderLeftWidth));
-    expect(strokeWidth).toBeGreaterThanOrEqual(2);
+      .evaluate((el) => {
+        const c = getComputedStyle(el);
+        return { cap: c.strokeLinecap, width: parseFloat(c.strokeWidth) };
+      });
+    expect(strokeLook.cap).toBe("round");
+    expect(strokeLook.width).toBeGreaterThanOrEqual(2);
+    // A clear gap (about 8 px) between the stroke's right tip and the LEFT edge of the hover pill.
+    const pill = await label(page).getByTestId("task-label-body").boundingBox();
+    expect((pill?.x ?? 0) - ((sb?.x ?? 0) + (sb?.width ?? 0))).toBeGreaterThanOrEqual(6);
     await page.screenshot({ path: shot("rotulo-no-chat") });
     // Hover: a gray background shows on the label's body (none at rest), with no layout shift.
     const body = label(page).getByTestId("task-label-body");

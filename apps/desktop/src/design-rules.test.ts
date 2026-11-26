@@ -2235,6 +2235,7 @@ describe("tarefas (docs/DESIGN.md, 4d)", () => {
     // One line, no box: a reply stroke, an outline chat icon (lucide), name cut with an ellipsis.
     expect(label).toContain("MessageCircle");
     expect(label).toContain('data-testid="task-label-stroke"');
+    expect(label).toContain('strokeLinecap="round"');
     expect(label).toContain("text-ellipsis");
     expect(label).toContain("bg-transparent");
     // No background at rest; a gray one only on hover and keyboard focus (the app's hover token).
