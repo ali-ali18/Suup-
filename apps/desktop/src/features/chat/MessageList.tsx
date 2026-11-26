@@ -63,8 +63,11 @@ export function MessageList({
   botName: string;
   hasOlder: boolean;
   onLoadOlder(): Promise<boolean>;
-  /** The answer to a question (plain text): it is sent as the user's message. */
-  onAnswer(text: string): void;
+  /**
+   * The answer to a question card (plain text) and the question's message id: it is sent as the
+   * user's message bound to that question, and it shows only on the card (KOD-15).
+   */
+  onAnswer(text: string, questionId: string): void;
   /** The X of an open question (the message's id): the card locks, the composer takes the focus. */
   onDismissQuestion?(messageId: string): void;
   /** The user's decision on a team card. Resolves when the server has answered. */
@@ -234,7 +237,7 @@ export function MessageList({
                           answer={item.ask.answer ?? (item.ask.open ? undefined : "")}
                           dismissed={item.ask.dismissed}
                           autoFocus={item.ask.open}
-                          onSubmit={onAnswer}
+                          onSubmit={(text) => onAnswer(text, item.key)}
                           {...(item.ask.open && onDismissQuestion !== undefined
                             ? { onDismiss: () => onDismissQuestion(item.key) }
                             : {})}

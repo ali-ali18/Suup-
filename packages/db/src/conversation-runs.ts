@@ -75,17 +75,26 @@ export async function sendConversationMessage(
     text: string;
     /** The routine the message is about (stored on it, never in the text; docs/ROTINAS.md). */
     routineRef?: string;
+    /**
+     * The question card this message answers (the user clicked an option, KOD-15): stored on the
+     * message so the app shows the answer only on the card. The caller checks it is a question of
+     * this conversation.
+     */
+    questionRef?: string;
   },
 ): Promise<SendConversationMessageResult> {
   const conversationId = z.uuid().parse(input.conversationId);
-  const routineRef = input.routineRef === undefined ? undefined : z.uuid().parse(input.routineRef);
+  const refs = {
+    ...(input.routineRef === undefined ? {} : { routineRef: z.uuid().parse(input.routineRef) }),
+    ...(input.questionRef === undefined ? {} : { questionRef: z.uuid().parse(input.questionRef) }),
+  };
   const text = z
     .string()
     .refine((t) => t.trim().length > 0, "text must not be blank")
     .parse(input.text);
   for (let attempt = 1; ; attempt++) {
     try {
-      return await withTransaction(db, (tx) => sendOnce(tx, conversationId, text, routineRef));
+      return await withTransaction(db, (tx) => sendOnce(tx, conversationId, text, refs));
     } catch (error) {
       if (attempt < 3 && (error as { code?: string }).code === "23505") continue;
       throw error;
@@ -97,9 +106,8 @@ async function sendOnce(
   tx: Db,
   conversationId: string,
   text: string,
-  routineRef: string | undefined,
+  ref: { routineRef?: string; questionRef?: string },
 ): Promise<SendConversationMessageResult> {
-  const ref = routineRef === undefined ? {} : { routineRef };
   const [conv] = await tx.sql<{ kind: string; archived_at: Date | null; reception: string }[]>`
     select kind, archived_at, reception from conversations where id = ${conversationId} for no key update`;
   if (!conv) throw new ConversationNotFoundError(conversationId);

@@ -86,6 +86,7 @@ export const conversationRoutes: Route[] = [
         conversationId: id,
         text: body.text,
         ...(body.routineRef === undefined ? {} : { routineRef: body.routineRef.id }),
+        ...(body.questionRef === undefined ? {} : { questionRef: body.questionRef.id }),
       });
       return {
         status: 201,

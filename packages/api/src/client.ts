@@ -247,11 +247,14 @@ export interface SuupClient {
       id: string,
       query?: ListMessagesQuery,
     ): Promise<{ items: Message[]; hasMore: boolean }>;
-    /** `options.routineRef`: the routine the message is about (never part of the text). */
+    /**
+     * `options.routineRef`: the routine the message is about (never part of the text).
+     * `options.questionRef`: the question card the message answers (the user clicked an option).
+     */
     send(
       id: string,
       text: string,
-      options?: { routineRef?: { id: string } },
+      options?: { routineRef?: { id: string }; questionRef?: { id: string } },
     ): Promise<SendMessageResult>;
     markRead(id: string, body?: MarkReadBody): Promise<Conversation>;
     /** The user's decision on a team card (the message that carries it): create the ticked ones, or "Agora não". */
@@ -592,10 +595,15 @@ export function createClient(options: ClientOptions): SuupClient {
         }),
       send: (conversationId, text, options = {}) =>
         call("POST", `/v1/conversations/${id(conversationId)}/messages`, sendMessageResultSchema, {
-          body:
-            options.routineRef === undefined
-              ? { text }
-              : { text, routineRef: { id: options.routineRef.id } },
+          body: {
+            text,
+            ...(options.routineRef === undefined
+              ? {}
+              : { routineRef: { id: options.routineRef.id } }),
+            ...(options.questionRef === undefined
+              ? {}
+              : { questionRef: { id: options.questionRef.id } }),
+          },
         }),
       dismissQuestion: async (messageId) =>
         (

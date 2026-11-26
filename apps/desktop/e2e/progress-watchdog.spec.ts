@@ -109,7 +109,9 @@ test.describe("o vigia de progresso", () => {
     });
 
     await options.nth(0).click();
-    await expect(userBubbles(page).last()).toHaveText("Continuar");
+    // The answer stays only on the card (KOD-15): marked there, no bubble of its own.
+    await expect(card).toHaveAttribute("data-state", "answered");
+    await expect(userBubbles(page).filter({ hasText: "Continuar" })).toHaveCount(0);
     await expect(
       page.getByTestId("message-bot").filter({ hasText: "Mudei de abordagem e terminei." }),
     ).toBeVisible();
@@ -134,7 +136,8 @@ test.describe("o vigia de progresso", () => {
     await expect(card).toHaveAttribute("data-state", "open");
     await card.getByTestId("question-option").filter({ hasText: "Parar por aqui" }).click();
 
-    await expect(userBubbles(page).last()).toHaveText("Parar por aqui");
+    await expect(card).toHaveAttribute("data-state", "answered");
+    await expect(userBubbles(page).filter({ hasText: "Parar por aqui" })).toHaveCount(0);
     const closing = page
       .getByTestId("message-bot")
       .filter({ hasText: "Parei por aqui, como você pediu." });

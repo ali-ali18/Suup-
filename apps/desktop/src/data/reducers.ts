@@ -188,7 +188,14 @@ export const OPTIMISTIC_PREFIX = "local:";
 /** Shows a message at once, before the server confirms it. */
 export function addOptimisticMessage(
   state: DataState,
-  input: { tempId: string; conversationId: string; text: string; now: string },
+  input: {
+    tempId: string;
+    conversationId: string;
+    text: string;
+    now: string;
+    /** The question card the message answers (an option was clicked): see `Message.questionRef`. */
+    questionRef?: { id: string };
+  },
 ): DataState {
   const slice = sliceOf(state, input.conversationId);
   const message: LocalMessage = {
@@ -201,6 +208,7 @@ export function addOptimisticMessage(
     runId: null,
     status: null,
     createdAt: input.now,
+    ...(input.questionRef === undefined ? {} : { questionRef: input.questionRef }),
     local: "sending",
   };
   return withSlice(state, input.conversationId, {

@@ -721,12 +721,45 @@ describe.skipIf(!DATABASE_URL)(
       expect(
         page.items.filter((m) => m.authorKind === "user").every((m) => m.question === undefined),
       ).toBe(true);
-      // Choosing an option is sending its label.
-      await api.conversations.send(conversation.id, "Azul");
+      // Choosing an option is sending its label, bound to the card it answers (KOD-15): the answer
+      // is stored with `questionRef`, so the app shows it only on the card.
+      const mine = page.items.find((m) => m.authorKind === "user");
+      if (ask === undefined || mine === undefined) throw new Error("the question and the request");
+      const code = (promise: Promise<unknown>) =>
+        promise.then(
+          () => "no error",
+          (error: unknown) => (error instanceof ApiError ? error.code : String(error)),
+        );
+      // Only a bot's question of this conversation can be answered this way.
+      expect(
+        await code(
+          api.conversations.send(conversation.id, "Azul", { questionRef: { id: mine.id } }),
+        ),
+      ).toBe("invalid_request");
+      const elsewhere = await api.bots.openConversation((await newBot("Outra")).id);
+      expect(
+        await code(api.conversations.send(elsewhere.id, "Azul", { questionRef: { id: ask.id } })),
+      ).toBe("invalid_request");
+      const answer = await api.conversations.send(conversation.id, "Azul", {
+        questionRef: { id: ask.id },
+      });
+      expect(answer.message.questionRef).toEqual({ id: ask.id });
+      expect(answer.message.text).toBe("Azul");
       await until(
         async () => (await api.runs.get(first.run.id)).status === "done" || undefined,
         "the run to finish",
       );
+      const after = await api.conversations.messages(conversation.id, { limit: 200 });
+      expect(after.items.find((m) => m.id === answer.message.id)?.questionRef).toEqual({
+        id: ask.id,
+      });
+      // The bot got the answer as always: the plain text, as the result of its `escalate` call.
+      const events = (await api.runs.events(first.run.id, { limit: 1000 })).items;
+      const call = events.find((e) => e.type === "tool_call" && e.payload.name === "escalate");
+      const result = events.find(
+        (e) => e.type === "tool_result" && e.payload.callId === call?.payload.callId,
+      );
+      expect(result?.payload.content).toBe("Azul");
       f.close();
     });
 

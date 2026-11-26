@@ -264,6 +264,16 @@ function ChatForBot({ botId }: { botId: string }) {
     },
     [convId, sync],
   );
+  // A click on a question card: the answer goes with the question it answers (KOD-15), so it shows
+  // only on that card, never as a bubble of its own. Refused, it comes back to the composer.
+  const answer = useCallback(
+    async (text: string, questionId: string) => {
+      if (convId === null) return;
+      const result = await sync.send(convId, text, { questionRef: { id: questionId } });
+      if (!result.ok) setRestore((r) => ({ text: result.text, nonce: (r?.nonce ?? 0) + 1 }));
+    },
+    [convId, sync],
+  );
   const sendDraft = (text: string) => {
     const ref = routineRef;
     setRoutineRef(null);
@@ -372,7 +382,7 @@ function ChatForBot({ botId }: { botId: string }) {
             convId === null ? Promise.resolve(false) : sync.loadOlderMessages(convId)
           }
           runs={runs}
-          onAnswer={(text) => void send(text)}
+          onAnswer={(text, questionId) => void answer(text, questionId)}
           onDecideTeam={(messageId, body) => sync.decideTeam(messageId, body)}
           onInspect={openInspector}
           expanded={expanded}
