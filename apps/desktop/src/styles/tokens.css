@@ -61,6 +61,7 @@
   --color-star-glyph: #fcfcfc; /* the star on it */
   --color-status-working: #22c55e; /* the green corner dot: the bot is working */
   --color-status-unread: #2496e8; /* the blue corner dot: an unread message */
+  --color-status-waiting: #f5a524; /* amber: a task waits for you (the state line of a task) */
   --color-mask: #000; /* the opaque part of a mask (the notch around a corner mark): never seen */
   --color-picked-ring: rgba(
     255,
@@ -293,6 +294,7 @@
   --color-danger-text: #c62828;
   --color-danger-subtle: rgba(239, 68, 68, 0.12);
   --color-success-text: #1b7f3b;
+  --color-status-waiting: #b45309; /* amber on the light page */
   --color-success-subtle: rgba(34, 197, 94, 0.14);
   --color-focus: #161616;
   --color-scrim: rgba(0, 0, 0, 0.35);

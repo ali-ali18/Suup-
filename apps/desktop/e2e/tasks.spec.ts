@@ -87,6 +87,23 @@ const SCRIPTS = {
         ],
       },
       {
+        whenObjectiveContains: "TAREFA-CURTA",
+        agent: [s({ text: "Feito: o relatório está pronto." })],
+      },
+      {
+        whenObjectiveContains: "CASE-TRES",
+        agent: [
+          s({
+            calls: [
+              ...open("Compilar o relatório mensal", "TAREFA-LONGA").calls,
+              ...open("Revisar o projeto", "TAREFA-REVISAO").calls,
+              ...open("Resumir as notas", "TAREFA-CURTA").calls,
+            ],
+          }),
+          s({ text: "Abri três tarefas." }),
+        ],
+      },
+      {
         whenObjectiveContains: "CASE-REVISAO",
         agent: [
           open("Revisar o projeto", "TAREFA-REVISAO"),
@@ -264,14 +281,14 @@ test.describe("tasks of a bot", () => {
     // Header: only the name, the state and the close (the "Parar" is in the overflow menu).
     await expect(view.getByTestId("task-title")).toHaveText("Revisar o projeto");
     await expect(view.getByTestId("task-state")).toHaveText("Aguardando sua resposta");
-    await expect(view.getByTestId("task-close")).toBeVisible();
+    await expect(view.getByTestId("task-back")).toBeVisible();
     await expect(view.getByTestId("task-stop")).toHaveCount(0);
-    // One single bar: the pill is centred in the panel (like the bot's pill in the chat), the state
-    // is inside it, and the menu and the close are on the same line at the right.
+    // One single bar: the pill is truly centred in the panel (like the bot's pill in the chat), the
+    // state is inside it, the back arrow at the left and the menu at the right.
     const pillBox = await view.getByTestId("task-pill").boundingBox();
     const botPill = await page.getByTestId("bot-chip").boundingBox();
     const panelBox = await view.boundingBox();
-    const closeBox = await view.getByTestId("task-close").boundingBox();
+    const closeBox = await view.getByTestId("task-back").boundingBox();
     const menuBox = await view.getByRole("button", { name: "Mais opções da tarefa" }).boundingBox();
     const stateBox = await view.getByTestId("task-state").boundingBox();
     expect(
@@ -280,48 +297,44 @@ test.describe("tasks of a bot", () => {
           (pillBox?.width ?? 0) / 2 -
           ((panelBox?.x ?? 0) + (panelBox?.width ?? 0) / 2),
       ),
-    ).toBeLessThanOrEqual(80);
+    ).toBeLessThanOrEqual(2);
     expect(pillBox?.height).toBe(botPill?.height);
     expect(Math.abs((pillBox?.y ?? 0) - (botPill?.y ?? 0))).toBeLessThanOrEqual(2);
     expect((stateBox?.x ?? 0) >= (pillBox?.x ?? 0)).toBe(true);
     expect(
       (stateBox?.x ?? 0) + (stateBox?.width ?? 0) <= (pillBox?.x ?? 0) + (pillBox?.width ?? 0),
     ).toBe(true);
-    expect(
-      Math.abs(
-        (closeBox?.y ?? 0) +
-          (closeBox?.height ?? 0) / 2 -
-          ((menuBox?.y ?? 0) + (menuBox?.height ?? 0) / 2),
-      ),
-    ).toBeLessThanOrEqual(2);
-    expect(
-      Math.abs(
-        (closeBox?.y ?? 0) +
-          (closeBox?.height ?? 0) / 2 -
-          ((pillBox?.y ?? 0) + (pillBox?.height ?? 0) / 2),
-      ),
-    ).toBeLessThanOrEqual(2);
-    expect((menuBox?.x ?? 0) + (menuBox?.width ?? 0) <= (closeBox?.x ?? 0)).toBe(true);
+    // The back arrow is at the left of the pill and the menu at its right, on the pill's line.
+    const centreY = (b: { y: number; height: number } | null) => (b?.y ?? 0) + (b?.height ?? 0) / 2;
+    expect(Math.abs(centreY(closeBox) - centreY(pillBox))).toBeLessThanOrEqual(2);
+    expect(Math.abs(centreY(menuBox) - centreY(pillBox))).toBeLessThanOrEqual(2);
+    expect((closeBox?.x ?? 0) + (closeBox?.width ?? 0)).toBeLessThanOrEqual(pillBox?.x ?? 0);
+    expect((menuBox?.x ?? 0) >= (pillBox?.x ?? 0) + (pillBox?.width ?? 0)).toBe(true);
     await expect(page.getByText("Dados da tarefa")).toHaveCount(0);
     await expect(view.getByText("US$")).toHaveCount(0);
-    // The message that opened the task, first, quoted, with a way to it in the chat.
-    const quote = view.getByTestId("task-request");
-    await expect(quote).toContainText("CASE-REVISAO revise o projeto inteiro, por favor");
-    // The request is a quiet quote (thin rule at the left, smaller muted text), not a chat bubble.
-    const quoteLook = await quote.getByTestId("task-request-text").evaluate((el) => {
-      const c = getComputedStyle(el);
-      return { bg: c.backgroundColor, left: c.borderLeftWidth, size: parseFloat(c.fontSize) };
-    });
-    expect(quoteLook.bg).toBe("rgba(0, 0, 0, 0)");
-    expect(parseFloat(quoteLook.left)).toBeGreaterThanOrEqual(2);
-    const bubbleSize = await view
-      .getByTestId("message-bot")
-      .first()
-      .evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
-    expect(quoteLook.size).toBeLessThan(bubbleSize);
+    // The panel starts with what gave rise to the task, as ordinary chat bubbles: the user's message
+    // (right, accent) and the bot's words that opened it (left); no quote, no label between them.
+    await expect(view.getByTestId("task-request")).toHaveCount(0);
+    await expect(view.getByText("Ver na conversa")).toHaveCount(0);
+    await expect(view.getByTestId("task-label")).toHaveCount(0);
+    const originUser = view.getByTestId("message-user").first();
+    await expect(originUser).toContainText("CASE-REVISAO revise o projeto inteiro, por favor");
+    const originBot = view.getByTestId("message-bot").first();
+    await expect(originBot).toContainText("Abri uma tarefa para revisar o projeto");
     const hb = await view.getByTestId("task-head").boundingBox();
-    const qb0 = await quote.boundingBox();
-    expect((qb0?.y ?? 0) >= (hb?.y ?? 0) + (hb?.height ?? 0) - 1).toBe(true);
+    const ub = await originUser.getByTestId("bubble-user").boundingBox();
+    const ob = await originBot.getByTestId("bubble-bot").boundingBox();
+    expect((ub?.y ?? 0) >= (hb?.y ?? 0) + (hb?.height ?? 0) - 1).toBe(true);
+    expect((ob?.y ?? 0) > (ub?.y ?? 0)).toBe(true);
+    // The user's bubble hangs at the right and the bot's at the left, as in the chat.
+    expect((ub?.x ?? 0) + (ub?.width ?? 0) / 2).toBeGreaterThan(
+      (ob?.x ?? 0) + (ob?.width ?? 0) / 2,
+    );
+    const originOrder = await view
+      .getByTestId("message-bot")
+      .filter({ hasText: "Comecei a olhar o projeto." })
+      .boundingBox();
+    expect((originOrder?.y ?? 0) > (ob?.y ?? 0)).toBe(true);
     // The pending question is a normal question card of the log, and the avatar line is not drawn.
     await expect(view.getByTestId("working-wrap")).toHaveCount(0);
     await expect(
@@ -344,13 +357,6 @@ test.describe("tasks of a bot", () => {
     await page.waitForTimeout(500);
     await page.screenshot({ path: shot("painel-pergunta") });
 
-    // "Ver na conversa": the bubble of the request is flashed in the chat; the panel stays.
-    await quote.getByTestId("task-request-link").click();
-    await expect(
-      page.getByTestId("message-user").filter({ hasText: "CASE-REVISAO" }),
-    ).toHaveAttribute("data-flash", "true");
-    await expect(view).toBeVisible();
-
     // The reply goes straight to the task (no chat message), and the task finishes with it.
     await box.fill("Comece pela pasta src.");
     await box.press("Enter");
@@ -368,14 +374,14 @@ test.describe("tasks of a bot", () => {
     await expect(view.getByRole("textbox")).toHaveCount(0);
     // Nothing to stop any more: no overflow menu.
     await expect(view.getByRole("button", { name: "Mais opções da tarefa" })).toHaveCount(0);
-    await expect(page.locator("[data-flash]")).toHaveCount(0);
     await page.waitForTimeout(1500);
     await page.screenshot({ path: shot("painel-concluida") });
 
-    // The close brings the bot's panel back.
-    await view.getByTestId("task-close").click();
+    // The back arrow returns to the bot's list of tasks.
+    await view.getByTestId("task-back").click();
     await expect(view).toHaveCount(0);
     await expect(page.getByTestId("panel")).toBeVisible();
+    await expect(page.getByTestId("tasks-tab")).toBeVisible();
     const result = page
       .getByTestId("message-bot")
       .filter({ hasText: "A revisão terminou: três achados" });
@@ -394,7 +400,7 @@ test.describe("tasks of a bot", () => {
     await result.screenshot({ path: shot("link-na-mensagem") });
     await resultLink.click();
     await expect(page.getByTestId("task-panel")).toBeVisible();
-    await page.getByTestId("task-close").click();
+    await page.getByTestId("task-back").click();
     await expect(page.getByTestId("panel")).toBeVisible();
   });
 
@@ -458,35 +464,60 @@ test.describe("tasks of a bot", () => {
     await expect(page.getByTestId("task-panel")).toBeVisible();
   });
 
-  test("the sidebar lists the running or waiting tasks of a bot, hung from it by the curved stroke", async ({
+  test("the Tarefas tab of the bot's profile lists its tasks by day, the finished ones apart", async ({
     page,
   }) => {
     await openWithBot(page, world, "Dupla");
-    await send(page, "CASE-DUAS abra as duas tarefas");
-    const own = page.getByRole("list", { name: "Tarefas de Dupla" });
-    const rows = own.getByTestId("sidebar-task");
+    const tab = page.getByRole("tab", { name: "Tarefas" });
+    await tab.click();
+    // No task yet: the empty notice, in the style of "Nenhuma rotina".
+    await expect(page.getByTestId("tasks-empty")).toContainText("Nenhuma tarefa");
+    await expect(page.getByTestId("tasks-empty")).toContainText(
+      "Peça um trabalho longo no chat e ele vira uma tarefa.",
+    );
+    await send(page, "CASE-TRES abra as três tarefas");
+    const rows = page.getByTestId("task-row");
+    // One working and one waiting, by day; the finished one in the closed group "Resolvidas · 1".
     await expect(rows).toHaveCount(2);
-    await expect(own.getByTestId("sidebar-task-row")).toHaveCount(2);
-    await expect(rows.and(page.locator('[data-task-state="waiting_user"]'))).toHaveCount(1);
     await expect(rows.and(page.locator('[data-task-state="working"]'))).toHaveCount(1);
-    // Each row hangs from the bot by the same curved stroke (round caps, 2 px), under the bot's row.
-    const strokes = own.getByTestId("sidebar-task-stroke");
-    await expect(strokes).toHaveCount(2);
-    const strokeLook = await strokes.first().evaluate((el) => {
-      const c = getComputedStyle(el);
-      return {
-        cap: c.strokeLinecap,
-        width: parseFloat(c.strokeWidth),
-        arc: el.querySelector("path")?.getAttribute("d") ?? "",
-      };
-    });
-    expect(strokeLook.cap).toBe("round");
-    expect(strokeLook.width).toBeGreaterThanOrEqual(2);
-    expect(strokeLook.arc).toContain("A12 12 0 0 0 13 16");
-    const botBox = await page.getByTestId("bot-item").filter({ hasText: "Dupla" }).boundingBox();
-    const firstRow = await own.getByTestId("sidebar-task-row").first().boundingBox();
-    expect((firstRow?.y ?? 0) >= (botBox?.y ?? 0) + (botBox?.height ?? 0) - 1).toBe(true);
-    // The task's face: generated from its id, so it is the same after a reload, and the two differ.
+    await expect(rows.and(page.locator('[data-task-state="waiting_user"]'))).toHaveCount(1);
+    await expect(page.getByTestId("tasks-day")).toHaveCount(1);
+    await expect(page.getByTestId("tasks-day")).toHaveAttribute("data-day", "Hoje");
+    await expect(page.getByTestId("tasks-resolved-toggle")).toHaveText("Resolvidas · 1");
+    // No task rows in the sidebar.
+    await expect(page.getByTestId("sidebar-task")).toHaveCount(0);
+    // Each row: the generated face, the name, the state whole and coloured by a status token, and
+    // the time at the right.
+    await expect(rows.getByTestId("task-avatar")).toHaveCount(2);
+    const cut = await rows
+      .getByTestId("task-row-state")
+      .evaluateAll((els) => els.map((el) => el.scrollWidth > el.clientWidth));
+    expect(cut).toEqual([false, false]);
+    const working = rows.and(page.locator('[data-task-state="working"]'));
+    const waiting = rows.and(page.locator('[data-task-state="waiting_user"]'));
+    await expect(working.getByTestId("task-row-state")).toHaveText("Trabalhando…");
+    // The task asked something the person has not seen yet: "Novas respostas" (blue). Once seen
+    // (the read cursor), the state line is the amber "Aguardando sua resposta".
+    await expect(waiting.getByTestId("task-row-state")).toHaveText("Novas respostas");
+    await world.api.tasks.markRead((await waiting.getAttribute("data-task")) ?? "");
+    await expect(waiting.getByTestId("task-row-state")).toHaveText("Aguardando sua resposta");
+    const colourOf = (row: Locator) =>
+      row.getByTestId("task-row-state").evaluate((el) => getComputedStyle(el).color);
+    expect(await colourOf(waiting)).not.toBe(await colourOf(working));
+    await expect(working.getByTestId("task-row-time")).not.toHaveText("");
+    // Open the group: the finished task, with "Novas respostas" (its result is not read yet) in blue.
+    await page.getByTestId("tasks-resolved-toggle").click();
+    const done = rows.and(page.locator('[data-task-state="done"]'));
+    await expect(done).toHaveCount(1);
+    await expect(done.getByTestId("task-row-state")).toHaveText("Novas respostas");
+    expect(await colourOf(done)).toBe("rgb(36, 150, 232)");
+    // Read: the plain state, "Concluída", in the success green.
+    await world.api.tasks.markRead((await done.getAttribute("data-task")) ?? "");
+    await expect(done.getByTestId("task-row-state")).toHaveText("Concluída");
+    expect(await colourOf(done)).toBe("rgb(74, 222, 128)");
+    await expect(
+      page.getByTestId("message-bot").filter({ hasText: "o principal está no login" }),
+    ).toBeVisible();
     const faces = async () =>
       rows.evaluateAll((els) =>
         Object.fromEntries(
@@ -500,23 +531,26 @@ test.describe("tasks of a bot", () => {
         ),
       );
     const before = await faces();
-    expect(new Set(Object.values(before)).size).toBe(2);
-    await expect(
-      page.getByTestId("message-bot").filter({ hasText: "uma compila e outra revisa." }),
-    ).toBeVisible();
-    await page.waitForTimeout(600);
-    await page.screenshot({ path: shot("sidebar-tarefas") });
+    expect(new Set(Object.values(before)).size).toBe(3);
+    await page.waitForTimeout(800);
+    await page.screenshot({ path: shot("aba-tarefas") });
+    // The same task is the same face after a reload.
     await page.reload();
-    await expect(rows).toHaveCount(2);
+    await page.getByTestId("bot-item").filter({ hasText: "Dupla" }).click();
+    await page.getByRole("tab", { name: "Tarefas" }).click();
+    await page.getByTestId("tasks-resolved-toggle").click();
+    await expect(page.getByTestId("task-row")).toHaveCount(3);
     expect(await faces()).toEqual(before);
-    // Tapping a row opens the task in the panel on the right; the chat stays in the middle.
+    // A row opens the task in the third column; the back arrow returns to the list.
     await rows.filter({ hasText: "Revisar o projeto" }).click();
     const panel = page.getByTestId("task-panel");
     await expect(panel).toBeVisible();
     await expect(panel.getByTestId("task-title")).toHaveText("Revisar o projeto");
+    await expect(page.getByTestId("tasks-tab")).toHaveCount(0);
     await expect(page.getByTestId("chat-composer")).toBeVisible();
-    await page.waitForTimeout(600);
-    await page.screenshot({ path: shot("sidebar-painel") });
+    await panel.getByTestId("task-back").click();
+    await expect(panel).toHaveCount(0);
+    await expect(page.getByTestId("tasks-tab")).toBeVisible();
   });
 
   test("Parar, in the overflow menu of the task panel, stops a working task", async ({ page }) => {

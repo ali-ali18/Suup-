@@ -66,6 +66,7 @@
   --color-star-glyph: var(--color-star-glyph);
   --color-status-working: var(--color-status-working);
   --color-status-unread: var(--color-status-unread);
+  --color-status-waiting: var(--color-status-waiting);
   --color-mask: var(--color-mask);
   --color-text: var(--color-text);
   --color-text-muted: var(--color-text-muted);

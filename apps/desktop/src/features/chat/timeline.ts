@@ -102,20 +102,31 @@ const pad = (n: number) => String(n).padStart(2, "0");
 const timeOf = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 const dayStart = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 
-/** "Hoje", "Ontem" or the date, plus the time: the line that opens a day. */
-export function dayLabel(date: Date, now: Date): string {
+/** "Hoje", "Ontem" or the date: the name of a day. */
+export function dayName(date: Date, now: Date): string {
   const diff = Math.round((dayStart(now) - dayStart(date)) / 86_400_000);
-  const day =
-    diff === 0
-      ? "Hoje"
-      : diff === 1
-        ? "Ontem"
-        : date.toLocaleDateString("pt-BR", {
-            day: "numeric",
-            month: "short",
-            ...(date.getFullYear() === now.getFullYear() ? {} : { year: "numeric" }),
-          });
-  return `${day} · ${timeOf(date)}`;
+  return diff === 0
+    ? "Hoje"
+    : diff === 1
+      ? "Ontem"
+      : date.toLocaleDateString("pt-BR", {
+          day: "numeric",
+          month: "short",
+          ...(date.getFullYear() === now.getFullYear() ? {} : { year: "numeric" }),
+        });
+}
+
+/** The name of the day plus the time: the line that opens a day. */
+export function dayLabel(date: Date, now: Date): string {
+  return `${dayName(date, now)} · ${timeOf(date)}`;
+}
+
+/** How long ago, short: "agora", "3 min", the time of day today, else the day ("ontem", "12 de nov"). */
+export function agoText(date: Date, now: Date): string {
+  const minutes = Math.floor((now.getTime() - date.getTime()) / 60_000);
+  if (minutes < 1) return "agora";
+  if (minutes < 60) return `${minutes} min`;
+  return dayStart(date) === dayStart(now) ? timeOf(date) : dayName(date, now).toLowerCase();
 }
 
 /**

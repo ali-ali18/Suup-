@@ -10,7 +10,7 @@ import {
 import type { ToastItem } from "../ui/primitives.js";
 
 export type View = "chat" | "pending" | "memory" | "inspector" | "connectors";
-export type PanelTab = "activity" | "library";
+export type PanelTab = "activity" | "tasks" | "library";
 /**
  * Which plugin a page is about: an entry of the connector gallery (`catalog`, by its id), a web
  * search engine (`search`, by its id) or a connector the person added by hand (`manual`, by its

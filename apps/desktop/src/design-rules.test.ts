@@ -2268,9 +2268,7 @@ describe("tarefas (docs/DESIGN.md, 4d)", () => {
       "task-title",
       "task-finished",
       "task-state",
-      "task-close",
-      "task-request",
-      "task-request-link",
+      "task-back",
       "task-composer",
     ]) {
       expect(panel).toContain(`data-testid="${id}"`);
@@ -2284,19 +2282,52 @@ describe("tarefas (docs/DESIGN.md, 4d)", () => {
     for (const gone of ["Dados da tarefa", "costText", "A tarefa pergunta", "task-question"]) {
       expect(panel).not.toContain(gone);
     }
+    // The panel opens with the origin as ordinary bubbles (the user's source messages and the bot's
+    // opening message), never a quote or a "Ver na conversa".
+    expect(panel).toContain("taskOfMessage");
+    expect(panel).toContain("sourceMessages");
+    for (const gone of ["task-request", "Ver na conversa", "border-l-2", "focusMessage"]) {
+      expect(panel).not.toContain(gone);
+    }
+    // The pill is centred: side columns of equal width.
+    expect(panel).toContain("grid-cols-[minmax(2.5rem,1fr)_minmax(0,auto)_minmax(2.5rem,1fr)]");
     expect(panel).not.toContain("updatesText");
     expect(panel).not.toContain("Andamento");
     expect(existsSync(join(SRC, "features/chat/TaskView.tsx"))).toBe(false);
-    // The sidebar lists a bot's running or waiting tasks under it (owner, 26/11/2026, PREVIEW): the
-    // same curved stroke as the label, a face generated from the id (no raw colours), name and state.
-    const rows = read(join(SRC, "features/shell/SidebarTasks.tsx"));
-    expect(rows).toContain('testId="sidebar-task-stroke"');
-    for (const id of ["sidebar-tasks", "sidebar-task", "sidebar-task-name"]) {
-      expect(rows).toContain(`data-testid="${id}"`);
+    // The bot's profile has its own tab "Tarefas" (owner, 26/11/2026): by day, the finished ones in
+    // a closed group "Resolvidas · N", each row with the generated face, the name (cut), the state
+    // whole in a status colour and the time; files only when the API returned them; no tasks in the sidebar.
+    const tab = read(join(SRC, "features/panel/TasksTab.tsx"));
+    for (const id of [
+      "tasks-tab",
+      "tasks-day",
+      "tasks-resolved",
+      "tasks-resolved-toggle",
+      "task-row",
+      "task-row-name",
+      "task-row-state",
+      "task-row-time",
+      "task-file",
+      "tasks-empty",
+    ]) {
+      expect(tab).toContain(`data-testid="${id}"`);
     }
-    expect(rows).toContain("ReplyStroke");
-    expect(rows).toContain("SIDEBAR_TASKS_MAX = 3");
-    expect(read(join(SRC, "ui/task-label.tsx"))).toContain("export function ReplyStroke");
+    expect(tab).toContain('"Nenhuma tarefa"');
+    expect(tab).toContain("Resolvidas · ");
+    for (const token of ["text-status-waiting", "text-success-text", "text-status-unread"]) {
+      expect(tab).toContain(token);
+    }
+    const stateLine = tab.slice(
+      tab.indexOf('data-testid="task-row-state"') - 140,
+      tab.indexOf('data-testid="task-row-state"'),
+    );
+    expect(stateLine).not.toContain("truncate");
+    expect(read(join(SRC, "features/panel/Panel.tsx"))).toContain('label: "Tarefas"');
+    expect(read(join(SRC, "styles/tokens.css"))).toContain("--color-status-waiting");
+    // The task panel's back arrow (not an X) returns to that list.
+    expect(panel).toContain('data-testid="task-back"');
+    expect(panel).toContain('openPanel("tasks")');
+    expect(existsSync(join(SRC, "features/shell/SidebarTasks.tsx"))).toBe(false);
     const face = read(join(SRC, "ui/task-avatar.tsx"));
     expect(face).toContain('data-testid="task-avatar"');
     expect(face).toContain("var(--bot-fill)");

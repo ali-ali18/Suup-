@@ -1,5 +1,5 @@
 import type { Bot, Run, Task } from "@suup/api";
-import { CornerUpLeft, Ellipsis, Square, X } from "lucide-react";
+import { ArrowLeft, Ellipsis, Square } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useData, useServices } from "../../app/context.js";
 import { useUi } from "../../app/ui-store.js";
@@ -16,7 +16,7 @@ import { MenuButton } from "../../ui/menu.js";
 import { EventLine } from "../../ui/message.js";
 import { RoundButton } from "../../ui/primitives.js";
 import { MessageList } from "../chat/MessageList.js";
-import { buildTimeline } from "../chat/timeline.js";
+import { buildTimeline, taskOfMessage } from "../chat/timeline.js";
 
 /**
  * A task's own panel (KOD-68, docs/DESIGN.md 4d): the third column while a task is open, in the
@@ -29,11 +29,11 @@ export function TaskPanel({ task, bot }: { task: Task; bot: Bot }) {
   const { sync } = useServices();
   const runs = useData((s) => s.runs);
   const slice = useData((s) => s.messages[task.taskConversationId]);
+  const chatSlice = useData((s) => s.messages[task.conversationId]);
   const eventsByRun = useData((s) => s.events);
   const liveBlocks = useData((s) => s.live);
   const openTask = useUi((s) => s.openTask);
   const openPanel = useUi((s) => s.openPanel);
-  const focusMessage = useUi((s) => s.focusMessage);
   const [restore, setRestore] = useState<{ text: string; nonce: number } | undefined>(undefined);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
 
@@ -48,15 +48,29 @@ export function TaskPanel({ task, bot }: { task: Task; bot: Bot }) {
     if (task.unreadReplies > 0) void sync.markTaskRead(task.id);
   }, [sync, task.id, task.unreadReplies]);
 
-  const messages = useMemo(() => orderedMessages(slice), [slice]);
+  const taskMessages = useMemo(() => orderedMessages(slice), [slice]);
+  // What gave rise to the task, from the chat (as the server declares it, never by the text): the
+  // user's messages it was started from (`sourceMessages`) and the bot's words that opened it (its
+  // message in the run that opened it, `taskOfMessage`). They come first, as ordinary bubbles.
+  const origin = useMemo(() => {
+    const chat = orderedMessages(chatSlice);
+    const sourceIds = new Set(task.sourceMessages.map((m) => m.id));
+    const mine = chat.filter((m) => m.authorKind === "user" && sourceIds.has(m.id));
+    const opening = chat.find((m) => taskOfMessage(m, [task])?.id === task.id);
+    return opening === undefined ? mine : [...mine, opening];
+  }, [chatSlice, task]);
+  const messages = useMemo(() => [...origin, ...taskMessages], [origin, taskMessages]);
   const taskRuns = useMemo(
     () =>
       Object.fromEntries(
         Object.values(runs)
-          .filter((r) => r.conversationId === task.taskConversationId)
+          .filter(
+            (r) =>
+              r.conversationId === task.taskConversationId || origin.some((m) => m.runId === r.id),
+          )
           .map((r) => [r.id, r]),
       ) as Record<string, Run>,
-    [runs, task.taskConversationId],
+    [runs, task.taskConversationId, origin],
   );
   const run = runs[task.runId];
   const events = useMemo(() => orderedEvents(eventsByRun[task.runId]), [eventsByRun, task.runId]);
@@ -95,12 +109,12 @@ export function TaskPanel({ task, bot }: { task: Task; bot: Bot }) {
     },
     [sync, task],
   );
-  const close = () => {
+  // Back to the bot's list of tasks (its panel, "Tarefas" tab).
+  const back = () => {
     openTask(null);
-    openPanel();
+    openPanel("tasks");
   };
   const stateText = task.unreadReplies > 0 ? NEW_REPLIES_TEXT : TASK_STATE_TEXT[task.state];
-  const first = task.sourceMessages[0];
 
   return (
     <aside
@@ -113,13 +127,23 @@ export function TaskPanel({ task, bot }: { task: Task; bot: Bot }) {
       {/* One bar: the name in a pill like the bot's pill at the top of the chat, the state beside the
           name inside it, and the menu and the close at the right, on the same line. */}
       <header
-        className="grid flex-none grid-cols-[1fr_auto_1fr] items-center gap-2 px-4 pt-3 pb-3 framed:pr-head-end"
+        className="grid flex-none grid-cols-[minmax(2.5rem,1fr)_minmax(0,auto)_minmax(2.5rem,1fr)] items-center gap-2 px-4 pt-3 pb-3 framed:pr-head-end"
         data-testid="task-head"
         data-tauri-drag-region
       >
-        <span aria-hidden="true" />
+        <div className="flex items-center justify-start">
+          <RoundButton
+            label="Voltar para as tarefas"
+            tone="outline"
+            size="xs"
+            onClick={back}
+            data-testid="task-back"
+          >
+            <ArrowLeft size={14} aria-hidden="true" />
+          </RoundButton>
+        </div>
         <div
-          className="inline-flex h-11 max-w-bot-chip min-w-0 items-center gap-2 rounded-pill border border-border-strong bg-bg px-4 text-label"
+          className="inline-flex h-11 max-w-bot-chip min-w-0 items-center gap-2 overflow-hidden rounded-pill border border-border-strong bg-bg px-4 text-label"
           data-testid="task-pill"
         >
           <h2
@@ -157,42 +181,8 @@ export function TaskPanel({ task, bot }: { task: Task; bot: Bot }) {
               ]}
             />
           )}
-          <RoundButton
-            label="Fechar a tarefa"
-            tone="outline"
-            size="xs"
-            onClick={close}
-            data-testid="task-close"
-          >
-            <X size={14} aria-hidden="true" />
-          </RoundButton>
         </div>
       </header>
-      {first !== undefined && (
-        <div
-          className="flex flex-none flex-col items-start gap-2 px-5 pb-3"
-          data-testid="task-request"
-        >
-          {task.sourceMessages.map((m) => (
-            <blockquote
-              key={m.id}
-              className="m-0 line-clamp-3 max-w-full border-0 border-l-2 border-border-strong py-0.5 pl-3 text-small wrap-anywhere whitespace-pre-wrap text-text-muted"
-              data-testid="task-request-text"
-            >
-              {m.text}
-            </blockquote>
-          ))}
-          <button
-            type="button"
-            className="inline-flex cursor-pointer items-center gap-1.5 border-0 bg-transparent p-0 text-small text-text-muted hover:text-text hover:underline"
-            data-testid="task-request-link"
-            onClick={() => focusMessage(first.id)}
-          >
-            <CornerUpLeft size={14} aria-hidden="true" />
-            Ver na conversa
-          </button>
-        </div>
-      )}
       <MessageList
         items={items}
         botName={bot.name}
@@ -220,7 +210,7 @@ export function TaskPanel({ task, bot }: { task: Task; bot: Bot }) {
           />
         )}
         announce={
-          messages.length === 0 ? "" : `Tarefa ${task.title}: ${TASK_STATE_TEXT[task.state]}`
+          taskMessages.length === 0 ? "" : `Tarefa ${task.title}: ${TASK_STATE_TEXT[task.state]}`
         }
         empty={<EventLine testId="task-empty">A tarefa ainda não trouxe atualizações.</EventLine>}
       />

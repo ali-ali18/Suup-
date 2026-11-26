@@ -4,41 +4,22 @@ import { NEW_REPLIES_TEXT, TASK_STATE_TEXT } from "../data/task-text.js";
 import { cx } from "../lib/cx.js";
 
 /**
- * The thin curved stroke of a reply (KOD-68): one line with round caps that curves a quarter circle
- * (radius 12), 2 px thick, in the current colour. `up` (the label above a bubble) comes from below
- * and bends toward the bubble; `down` (a task under its bot in the sidebar) comes from above and bends
- * toward the row, and `trunk` goes on straight down to the next row.
+ * The thin curved stroke of a reply (KOD-68): one line with round caps that comes from below and
+ * curves a quarter circle (radius 12) toward a bubble, 2 px thick, in the current colour.
  */
-export function ReplyStroke({
-  testId,
-  className,
-  direction = "up",
-  trunk = false,
-}: {
-  testId?: string;
-  className?: string;
-  direction?: "up" | "down";
-  /** `down` only: the line also goes on to the bottom of the box, for the next sibling row. */
-  trunk?: boolean;
-}) {
+export function ReplyStroke({ testId, className }: { testId?: string; className?: string }) {
   return (
     <svg
       aria-hidden="true"
       data-testid={testId}
-      viewBox={direction === "up" ? "0 0 16 16" : "0 0 16 32"}
+      viewBox="0 0 16 16"
       className={className}
       fill="none"
       stroke="currentColor"
       strokeWidth="2"
       strokeLinecap="round"
     >
-      {direction === "up" ? (
-        <path d="M1 15 V13 A12 12 0 0 1 13 1 H15" />
-      ) : (
-        <path
-          d={trunk ? "M1 0 V4 A12 12 0 0 0 13 16 H15 M1 4 V32" : "M1 0 V4 A12 12 0 0 0 13 16 H15"}
-        />
-      )}
+      <path d="M1 15 V13 A12 12 0 0 1 13 1 H15" />
     </svg>
   );
 }
