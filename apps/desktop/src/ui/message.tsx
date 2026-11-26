@@ -136,7 +136,8 @@ export function BotMessage({
         : {})}
     >
       <div className="flex w-full max-w-reading min-w-0 flex-col gap-3">
-        {text !== undefined && (
+        {/* No bubble until the first letter is revealed: an empty one would be a bare pill. */}
+        {text !== undefined && !(writing && reveal.shown === "") && (
           <BotBubble className={linkCorners("bot", position)}>
             {/* Another element when it stops typing, so the final text is a new addition that the
                 log announces once; the bubble itself stays. */}

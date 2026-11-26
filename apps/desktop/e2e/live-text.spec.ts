@@ -16,6 +16,12 @@ interface Seen {
   emptyPieces: number;
   /** The most fading pieces at once in one bubble. */
   mostPieces: number;
+  /** The most px between the bubble's bottom edge and the bottom of its last text (padding included). */
+  maxGap: number;
+  /** The most characters at low opacity at one time (the pieces still at the start of their fade). */
+  mostFaint: number;
+  /** Samples with a bubble drawn and no text in it (a bare pill). */
+  emptyBubbles: number;
 }
 
 /** Starts watching the chat for bot bubbles (before the message is sent). */
@@ -23,7 +29,15 @@ async function watch(page: Page): Promise<void> {
   await page.evaluate(() => {
     const ids = new WeakMap<Element, number>();
     let next = 1;
-    const seen: Seen = { states: [], mostAtOnce: 0, emptyPieces: 0, mostPieces: 0 };
+    const seen: Seen = {
+      states: [],
+      mostAtOnce: 0,
+      emptyPieces: 0,
+      mostPieces: 0,
+      maxGap: 0,
+      mostFaint: 0,
+      emptyBubbles: 0,
+    };
     (window as unknown as { __seen: Seen }).__seen = seen;
     const look = () => {
       const bubbles = [...document.querySelectorAll('[data-testid="message-bot"]')];
@@ -34,6 +48,20 @@ async function watch(page: Page): Promise<void> {
         const pieces = [...(bubble?.querySelectorAll(".ui-live-in") ?? [])];
         seen.mostPieces = Math.max(seen.mostPieces, pieces.length);
         seen.emptyPieces += pieces.filter((p) => (p.textContent ?? "") === "").length;
+        if (bubble !== null && bubble !== undefined) {
+          const range = document.createRange();
+          range.selectNodeContents(bubble);
+          const rects = [...range.getClientRects()].filter((r) => r.width > 0);
+          if (rects.length === 0) seen.emptyBubbles += 1;
+          else {
+            const bottom = Math.max(...rects.map((r) => r.bottom));
+            seen.maxGap = Math.max(seen.maxGap, bubble.getBoundingClientRect().bottom - bottom);
+          }
+          const faint = pieces
+            .filter((p) => Number(getComputedStyle(p).opacity) < 0.6)
+            .reduce((n, p) => n + (p.textContent ?? "").length, 0);
+          seen.mostFaint = Math.max(seen.mostFaint, faint);
+        }
         const text = (bubble?.textContent ?? "").trim();
         if (text === "") continue;
         const state = {
@@ -133,6 +161,12 @@ test.describe("the answer is typed in its bubble", () => {
     // few pieces exist at a time: the rest went back to plain text.
     expect(seen.emptyPieces).toBe(0);
     expect(seen.mostPieces).toBeLessThan(40);
+    // The bubble's height follows only the revealed text: its bottom edge is the last text plus
+    // the padding (about 13 px), never lines of empty room for text not shown yet; and the text at
+    // low opacity (it takes room already) is never more than a word or two.
+    expect(seen.emptyBubbles).toBe(0);
+    expect(seen.maxGap).toBeLessThan(18);
+    expect(seen.mostFaint).toBeLessThanOrEqual(16);
     expect(seen.mostAtOnce).toBe(1); // never drawn twice
     // It ends equal to what the server recorded, and that is one message.
     const messages = await recorded(world, "Falante");

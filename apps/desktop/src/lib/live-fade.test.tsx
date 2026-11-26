@@ -1,6 +1,13 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { advanceReveal, BASE_CPS, CATCHUP_S, FadeSink, revealRate } from "./live-fade.js";
+import {
+  advanceReveal,
+  BASE_CPS,
+  CATCHUP_S,
+  FadeSink,
+  MAX_CHUNK,
+  revealRate,
+} from "./live-fade.js";
 import { Markdown } from "./markdown.js";
 
 describe("o texto ao vivo esmaece", () => {
@@ -36,11 +43,13 @@ describe("o ritmo da revelação do texto ao vivo", () => {
     let carry = 0;
     let t = 0;
     while (count < text.length && t < 30) {
-      carry += (revealRate(text.length - count) * (1000 / 60)) / 1000;
+      carry = Math.min(MAX_CHUNK, carry + (revealRate(text.length - count) * (1000 / 60)) / 1000);
       const whole = Math.floor(carry);
       if (whole >= 1) {
         carry -= whole;
-        count = advanceReveal(text, count, whole);
+        const next = advanceReveal(text, count, whole);
+        expect(next - count).toBeLessThanOrEqual(MAX_CHUNK + 8); // a grapheme may run a little over
+        count = next;
       }
       t += 1 / 60;
     }
@@ -55,8 +64,8 @@ describe("o ritmo da revelação do texto ao vivo", () => {
   it("uma fila grande é alcançada em poucas vezes o alvo, bem abaixo do ritmo base", () => {
     const text = "a".repeat(600);
     const seconds = secondsToCatchUp(text);
-    expect(seconds).toBeLessThan(CATCHUP_S * 6);
-    expect(seconds).toBeLessThan(text.length / BASE_CPS / 3);
+    expect(seconds).toBeLessThan(3); // 600 characters, at most MAX_CHUNK a frame
+    expect(seconds).toBeLessThan(text.length / BASE_CPS / 2);
   });
 
   it("nunca corta um par substituto nem um grafema no meio", () => {

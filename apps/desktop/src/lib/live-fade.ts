@@ -25,6 +25,16 @@ export const BASE_CPS = 80;
  */
 export const CATCHUP_S = 0.3;
 
+/**
+ * The most characters one frame may reveal. A piece is invisible when its fade starts, yet it
+ * already takes its place: a big piece wraps to a new line and opens a line of empty room in the
+ * bubble before its letters show (seen in the recorded video: bubble two lines taller than the text,
+ * with 8 or more characters a frame). Four characters at 60 frames a second is 240 per second, three
+ * times the base speed, so a backlog is still cleared quickly (600 characters in about 2.5 s) and the
+ * room that is taken ahead of the letters is never more than a short word, for a few milliseconds.
+ */
+export const MAX_CHUNK = 4;
+
 /** The longest step of time counted in one frame (a hidden tab pauses the frames). */
 const MAX_DT_MS = 100;
 
@@ -174,7 +184,8 @@ export function useLiveReveal(text: string, typing: boolean): LiveReveal {
       m.last = t;
       const target = m.target;
       if (m.count < target.length) {
-        m.carry += (revealRate(target.length - m.count) * dt) / 1000;
+        // The carry never holds more than one chunk: a stalled frame does not turn into a burst.
+        m.carry = Math.min(MAX_CHUNK, m.carry + (revealRate(target.length - m.count) * dt) / 1000);
         const whole = Math.floor(m.carry);
         if (whole >= 1) {
           m.carry -= whole;
