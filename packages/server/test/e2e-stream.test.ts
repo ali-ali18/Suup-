@@ -7,6 +7,7 @@ import {
   createBot,
   createDirectConversation,
   createRun,
+  createTask,
   listChanges,
   pruneChangeLog,
   setRunStatus,
@@ -175,6 +176,39 @@ describe.skipIf(!DATABASE_URL)(
       const apart = (await Promise.all(changes.map((c) => all([c])))).flat();
       expect(apart).toEqual(changes.map((c) => c.id));
       expect(together).toEqual([changes[changes.length - 1]?.id]);
+    });
+
+    it("a task created and changed in one batch still reaches the client as created", async () => {
+      const bot = await createBot(w.db, {
+        name: "Lote tarefa",
+        modelProvider: "roteiro",
+        modelId: "model-x",
+      });
+      const conversation = await createDirectConversation(w.db, bot.id);
+      const chat = await createRun(w.db, {
+        botId: bot.id,
+        conversationId: conversation.id,
+        origin: "user",
+        objective: "x",
+      });
+      await setRunStatus(w.db, chat.id, { from: "queued", to: "running" });
+      const head =
+        (await w.db.sql<{ n: string }[]>`select max(id) as n from change_log`)[0]?.n ?? "0";
+      const { task, run } = await createTask(w.db, {
+        fromRunId: chat.id,
+        title: "Revisar",
+        brief: "Revise o projeto.",
+        sourceMessageIds: [],
+      });
+      await setRunStatus(w.db, run.id, { from: "queued", to: "running" });
+      const changes = (await listChanges(w.db, Number(head), 100)).filter(
+        (c) => c.kind === "task" && c.ref === task.id,
+      );
+      expect(changes.map((c) => c.op)).toEqual(expect.arrayContaining(["created", "updated"]));
+      const resolved = await createDbSource(w.db).resolve(changes, () => false);
+      const events = resolved.flatMap((r) => r.events);
+      expect(events).toHaveLength(1);
+      expect(events[0]?.data).toMatchObject({ change: "created", task: { id: task.id } });
     });
 
     it("starting a server settles runs that ended without their effects and creates no bot", async () => {
