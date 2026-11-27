@@ -134,7 +134,7 @@ export function Composer({
             <Mic size={16} />
           </span>
           <span
-            className="inline-flex size-8 flex-none items-center justify-center rounded-pill bg-bot-fill text-bot-on-fill opacity-60 bubble-neutral:bg-bg-inverse bubble-neutral:text-text-inverse"
+            className="inline-flex size-8 flex-none items-center justify-center rounded-pill bg-bot-fill text-bot-on-bubble opacity-60 bubble-neutral:bg-bg-inverse bubble-neutral:text-text-inverse"
             aria-hidden="true"
             data-testid="ornament-call"
           >

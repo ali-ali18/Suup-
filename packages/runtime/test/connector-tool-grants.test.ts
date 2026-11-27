@@ -230,19 +230,20 @@ describe.skipIf(!DATABASE_URL)(
       // (`schedule_return` is one more control tool than before: 82 became 83; the four routine
       // tools of a conversation run, docs/ROTINAS.md, make it 87; `propose_connector`, the gallery
       // proposal of docs/CONECTORES.md, 88; `create_reminder`, the one-time reminder that is not a
-      // routine, 89; `send_file`, the bot handing a file it made to the chat, 90; `create_document`, the bot building a PDF, Word or Excel file, 91; `show_connect_card`, the card with the button to connect, authorize or give access, 92; the six always-on tools, memory (four) and the web (search, read), 98.)
-      expect(loaded.request.toolStats.definitions).toBe(98);
-      expect(searched.request.toolStats.definitions).toBe(23);
+      // routine, 89; `send_file`, the bot handing a file it made to the chat, 90; `create_document`, the bot building a PDF, Word or Excel file, 91; `show_connect_card`, the card with the button to connect, authorize or give access, 92; the six always-on tools, memory (four) and the web (search, read), 98; `start_task` and `send_to_task`, the tasks of docs/TAREFAS.md, 100.)
+      expect(loaded.request.toolStats.definitions).toBe(100);
+      expect(searched.request.toolStats.definitions).toBe(25);
       // The bounds follow the estimate of 2.65 characters per token (it was 4: about 10 400 and
       // 2 600 then, 1.5 times more now). The four routine tools add about 1 700 to both;
       // `create_reminder` and the reminder guidance in the routine and return tools, about 450;
       // `send_file`, about 250 (its check and `force`, about 150 more); `create_document`, about 1 000; `show_connect_card`, about 400; `request_secret` asking for `hosts` and saying that a secret goes only to the sites the user declares (KOD-30), about 150.
       // The six always-on tools (memory and the web search and read) add about 6 000 to the loaded request.
       // Measured after merging KOD-28 and KOD-30: 25 162 loaded, 13 464 searched (the bounds keep a small margin over them).
+      // `start_task` and `send_to_task` (KOD-68) add about 1 500 to both: 26 644 loaded, 14 930 searched.
       expect(loaded.request.toolStats.estimatedTokens).toBeGreaterThan(21_000);
-      expect(loaded.request.toolStats.estimatedTokens).toBeLessThan(26_000);
+      expect(loaded.request.toolStats.estimatedTokens).toBeLessThan(28_000);
       expect(searched.request.toolStats.estimatedTokens).toBeGreaterThan(4_700);
-      expect(searched.request.toolStats.estimatedTokens).toBeLessThan(14_000);
+      expect(searched.request.toolStats.estimatedTokens).toBeLessThan(16_000);
       expect(loaded.catalog.mode).toBe("direct");
       expect(searched.catalog.mode).toBe("meta");
       expect(searched.catalog.connectorTools).toBeGreaterThanOrEqual(60);

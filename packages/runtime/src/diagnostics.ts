@@ -46,6 +46,7 @@ import {
 import type { Runtime } from "./runtime.js";
 import { loadScript } from "./scripted-provider.js";
 import { withSendFileTool } from "./send-file.js";
+import { sendToTaskTool, startTaskTool, TASK_TOOL_NAMES } from "./tasks.js";
 import { checkVaultAndApprovals } from "./vault/doctor.js";
 import { checkWeb } from "./web/doctor.js";
 
@@ -274,13 +275,20 @@ export async function replayRecordedRun(runtime: Runtime, runId: string): Promis
         ),
       );
       tools.register(showConnectCardTool(() => runtime.connectors.gallery));
+      tools.register(startTaskTool(db));
+      tools.register(sendToTaskTool(db));
     }
     botCfg = {
       ...botCfg,
       allowedTools: [
         ...botCfg.allowedTools,
         ...(run.origin === "user"
-          ? [...ROUTINE_TOOL_NAMES, PROPOSE_CONNECTOR_TOOL, SHOW_CONNECT_CARD_TOOL]
+          ? [
+              ...ROUTINE_TOOL_NAMES,
+              PROPOSE_CONNECTOR_TOOL,
+              SHOW_CONNECT_CARD_TOOL,
+              ...TASK_TOOL_NAMES,
+            ]
           : ROUTINE_RUN_TOOL_NAMES),
       ],
     };

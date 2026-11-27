@@ -273,6 +273,15 @@ export interface RunState {
   routineNames: Map<string, string>;
   /** The share of the context window past which the run compacts (recorded in `context_loaded`). */
   compactionThreshold: number | null;
+  /** The early brake already looked at this chat run and acted (`handed_off`): never again. */
+  handoff: RunEventPayload<"handed_off"> | null;
+  /** The end-of-turn check of the user's asks already ran in this run (`asks_checked`). */
+  asksChecked: boolean;
+  /**
+   * The run stopped once for the person (a card or a question). From then on the early brake no
+   * longer counts time: the clock ran while they decided, which is not work.
+   */
+  waitedForUser: boolean;
 }
 
 export function createRunState(): RunState {
@@ -292,6 +301,9 @@ export function createRunState(): RunState {
     webSeen: new Map(),
     routineNames: new Map(),
     compactionThreshold: null,
+    handoff: null,
+    asksChecked: false,
+    waitedForUser: false,
     lastSeq: 0,
     responses: 0,
     pending: null,
@@ -394,6 +406,16 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
         ...(event.payload.ownRoutines === undefined
           ? {}
           : { ownRoutines: structuredClone(event.payload.ownRoutines) }),
+        ...(event.payload.task === undefined ? {} : { task: structuredClone(event.payload.task) }),
+        ...(event.payload.taskResult === undefined
+          ? {}
+          : { taskResult: structuredClone(event.payload.taskResult) }),
+        ...(event.payload.recentUserMessages === undefined
+          ? {}
+          : { recentUserMessages: structuredClone(event.payload.recentUserMessages) }),
+        ...(event.payload.openTasks === undefined
+          ? {}
+          : { openTasks: structuredClone(event.payload.openTasks) }),
       };
       state.compactionThreshold = event.payload.compactionThreshold ?? null;
       // The user's earlier messages come before the objective (the history is text only).
@@ -826,6 +848,16 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
       state.noProgressStreak = 0;
       break;
 
+    case "handed_off":
+      state.handoff = structuredClone(event.payload);
+      break;
+
+    case "asks_checked":
+      // The checker's answer (a side response) is used up.
+      state.sideResponse = null;
+      state.asksChecked = true;
+      break;
+
     case "wait_cancelled":
       endWait(state, event.createdAt);
       // The user wrote: a person is in the loop again, so the count of returns starts over.
@@ -834,6 +866,9 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
 
     case "status_changed":
       for (const id of event.payload.inboxIds ?? []) state.deliveredInbox.add(id);
+      if (event.payload.to === "waiting_approval" || event.payload.to === "waiting_user") {
+        state.waitedForUser = true;
+      }
       if (event.payload.to === "waiting_timer") {
         state.parkedAt = event.createdAt;
         if (state.wait !== null) state.wait.parked = true;

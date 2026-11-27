@@ -2216,3 +2216,136 @@ describe("o balão que está sendo escrito (docs/DESIGN.md §4, KOD-34, dono 25/
     );
   });
 });
+
+describe("tarefas (docs/DESIGN.md, 4d)", () => {
+  it("the state of a task is said in the owner's words, and the label is a button above the bubble", () => {
+    const text = read(join(SRC, "data/task-text.ts"));
+    for (const word of [
+      "Trabalhando…",
+      "Aguardando sua resposta",
+      "Aguardando sua aprovação",
+      "Concluída",
+      "Parada",
+    ]) {
+      expect(text).toContain(word);
+    }
+    const label = read(join(SRC, "ui/task-label.tsx"));
+    expect(label).toContain('data-testid="task-label"');
+    expect(label).toContain("<button");
+    // One line, no box: a reply stroke, an outline chat icon (lucide), name cut with an ellipsis.
+    expect(label).toContain("MessageCircle");
+    expect(label).toContain('testId="task-label-stroke"');
+    expect(label).toContain('strokeLinecap="round"');
+    expect(label).toContain("text-ellipsis");
+    expect(label).toContain("bg-transparent");
+    // No background at rest; a gray one only on hover and keyboard focus (the app's hover token).
+    expect(label).toContain("group-hover:bg-hover");
+    expect(label).toContain("group-focus-visible:bg-hover");
+    const className = label.slice(label.indexOf("className=", label.indexOf("<button")));
+    for (const word of className.split('"')[1]?.split(" ") ?? []) {
+      if (word.startsWith("bg-")) expect(word).toBe("bg-transparent");
+    }
+    for (const box of ["rounded-full", "shadow", "border-border", "bg-surface"]) {
+      expect(label).not.toContain(box);
+    }
+    // "Novas respostas" in the unread token, and the task link in the bubble: text colour, underlined.
+    expect(label).toContain("text-status-unread");
+    expect(read(join(SRC, "data/task-text.ts"))).toContain('"Novas respostas"');
+    const link = read(join(SRC, "ui/task-link.tsx"));
+    expect(link).toContain('data-testid="task-link"');
+    expect(link).toContain("MessageCircle");
+    expect(link).toContain("underline");
+    expect(link).toContain("text-inherit");
+    expect(link).not.toContain("text-link");
+    // The task opens in the right panel (owner, 26/11/2026): header with the name, the state and the
+    // close, "Parar" in the overflow menu, the quoted request, and the box that writes to the task.
+    const panel = read(join(SRC, "features/panel/TaskPanel.tsx"));
+    expect(panel).toContain("markTaskRead");
+    for (const id of [
+      "task-panel",
+      "task-head",
+      "task-pill",
+      "task-title",
+      "task-finished",
+      "task-state",
+      "task-back",
+      "task-composer",
+    ]) {
+      expect(panel).toContain(`data-testid="${id}"`);
+    }
+    expect(panel).toContain('"Adicione uma resposta"');
+    expect(panel).toContain("MenuButton");
+    expect(panel).toContain("rounded-pill border border-border-strong bg-bg");
+    expect(panel).not.toContain("rounded-bubble");
+    expect(panel).toContain('testId: "task-stop"');
+    // No page version: no data panel, no cost, no own question block, no steps, no updates count.
+    for (const gone of ["Dados da tarefa", "costText", "A tarefa pergunta", "task-question"]) {
+      expect(panel).not.toContain(gone);
+    }
+    // The panel opens with the origin as ordinary bubbles (the user's source messages and the bot's
+    // opening message), never a quote or a "Ver na conversa".
+    expect(panel).toContain("taskOfMessage");
+    expect(panel).toContain("sourceMessages");
+    for (const gone of ["task-request", "Ver na conversa", "border-l-2", "focusMessage"]) {
+      expect(panel).not.toContain(gone);
+    }
+    // The pill is centred: side columns of equal width.
+    expect(panel).toContain("grid-cols-[minmax(2.5rem,1fr)_minmax(0,auto)_minmax(2.5rem,1fr)]");
+    expect(panel).not.toContain("updatesText");
+    expect(panel).not.toContain("Andamento");
+    expect(existsSync(join(SRC, "features/chat/TaskView.tsx"))).toBe(false);
+    // The bot's profile has its own tab "Tarefas" (owner, 26/11/2026): by day, the finished ones in
+    // a closed group "Resolvidas · N", each row with the generated face, the name (cut), the state
+    // whole in a status colour and the time; files only when the API returned them; no tasks in the sidebar.
+    const tab = read(join(SRC, "features/panel/TasksTab.tsx"));
+    for (const id of [
+      "tasks-tab",
+      "tasks-day",
+      "tasks-resolved",
+      "tasks-resolved-toggle",
+      "task-row",
+      "task-row-name",
+      "task-row-state",
+      "task-row-time",
+      "task-file",
+      "tasks-empty",
+    ]) {
+      expect(tab).toContain(`data-testid="${id}"`);
+    }
+    expect(tab).toContain('"Nenhuma tarefa"');
+    expect(tab).toContain("Resolvidas · ");
+    for (const token of ["text-status-waiting", "text-success-text", "text-status-unread"]) {
+      expect(tab).toContain(token);
+    }
+    const stateLine = tab.slice(
+      tab.indexOf('data-testid="task-row-state"') - 140,
+      tab.indexOf('data-testid="task-row-state"'),
+    );
+    expect(stateLine).not.toContain("truncate");
+    expect(read(join(SRC, "features/panel/Panel.tsx"))).toContain('label: "Tarefas"');
+    expect(read(join(SRC, "styles/tokens.css"))).toContain("--color-status-waiting");
+    // The task panel's back arrow (not an X) returns to that list.
+    expect(panel).toContain('data-testid="task-back"');
+    expect(panel).toContain('openPanel("tasks")');
+    expect(existsSync(join(SRC, "features/shell/SidebarTasks.tsx"))).toBe(false);
+    // A message that opened several tasks: one link per task and a label with the count only.
+    const list = read(join(SRC, "features/chat/MessageList.tsx"));
+    expect(list).toContain("taskLinks");
+    expect(list).toContain("TasksLabel");
+    expect(read(join(SRC, "ui/task-label.tsx"))).toContain("export function TasksLabel");
+    expect(read(join(SRC, "features/chat/timeline.ts"))).toContain(
+      "export function tasksOfMessage",
+    );
+    // The icon of the composer's round button (send, voice waves) is WHITE on every bot colour
+    // (owner, 26/11/2026): the same white as the user's bubble text, never the dark `onFill`.
+    for (const file of ["ui/composer.tsx", "ui/primitives.tsx"]) {
+      const source = read(join(SRC, file));
+      expect(source).toContain("bg-bot-fill text-bot-on-bubble");
+      expect(source).not.toContain("text-bot-on-fill");
+    }
+    const face = read(join(SRC, "ui/task-avatar.tsx"));
+    expect(face).toContain('data-testid="task-avatar"');
+    expect(face).toContain("var(--bot-fill)");
+    expect(face).not.toContain('="#');
+  });
+});

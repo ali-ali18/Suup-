@@ -185,6 +185,10 @@ Ainda não existem: novo cartão de aprovação (fase 3), notificação do siste
 
 O app só desenha o que o backend oferece: a **estrela** no avatar do bot com `isDefault` (barra lateral, cabeçalho do chat, painel, paleta); em Configurações > Memória, "Principal" (`/v1/supervisor/settings`) e "Revisões da equipe" (`/v1/supervisor/reviews`); a mensagem da manhã e o resumo de uma delegação são mensagens comuns do bot no chat dele; a delegação e `team_recall` são linhas de ação da categoria "Equipe"; as chamadas `remember` e `forget` **não** viram linha nem indicador (decisão do dono). Detalhes visuais em [DESIGN.md](DESIGN.md) §5 e §3c; regras do comportamento em [SUPERVISOR.md](SUPERVISOR.md).
 
+## 7c. Tarefas (KOD-68)
+
+O app só desenha o que a API de tarefas oferece ([TAREFAS.md](TAREFAS.md), [API.md](API.md)): no chat, o rótulo "↳ nome · estado" acima do balão que vem de uma tarefa (as palavras do bot depois de abri-la e o turno que entrega o resultado, ligados por `fromRunId`/`closingRunId`, nunca pelo texto) e acima do cartão de aprovação dela (`approval.runId` = `task.runId`); com `unreadReplies > 0` o estado do rótulo vira "Novas respostas" no azul de não lida até o painel da tarefa ser aberto (`POST /v1/tasks/{id}/read`); no fim do balão da mensagem que abriu a tarefa e da que entrega o resultado há o link da tarefa (mesma estrutura); tocar no rótulo ou no link abre a tarefa **na coluna da direita**, no lugar do painel do bot, como o painel de uma conversa de resposta (o chat segue no meio): nome, estado e fechar no cabeçalho, "Parar" no menu ⋯ (`POST /v1/tasks/{id}/stop`), a mensagem que a abriu (`Task.sourceMessages`), as mensagens da conversa dela e a caixa "Adicione uma resposta" que escreve em `POST /v1/tasks/{id}/messages`. O estado vem de `Task.state`, mantido por `task.changed`. Sem página de Tarefas (KOD-66).
+
 ## 8. O que entra depois
 
 ### Fase 2: conversas e memória (existe)

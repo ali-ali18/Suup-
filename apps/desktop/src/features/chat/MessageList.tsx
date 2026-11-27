@@ -24,11 +24,13 @@ import { BotMessage, EventLine, UserMessage } from "../../ui/message.js";
 import { Pill, RoundButton } from "../../ui/primitives.js";
 import { QuestionCard } from "../../ui/question-card.js";
 import { ScrollFade } from "../../ui/scroll-fade.js";
+import { TaskLabel, TasksLabel } from "../../ui/task-label.js";
+import { TaskLink } from "../../ui/task-link.js";
 import { TeamCard } from "../../ui/team-card.js";
 import { ApprovalRow, SecretRequestRow } from "./ApprovalRows.js";
 import { ConnectCard } from "./ConnectCard.js";
 import { FileRows } from "./FileRows.js";
-import { bubblePositions, isChoiceCard, type TimelineItem } from "./timeline.js";
+import { bubblePositions, isChoiceCard, type TaskRef, type TimelineItem } from "./timeline.js";
 
 const NEAR_BOTTOM = 80;
 const FAR_FROM_BOTTOM = 240;
@@ -49,6 +51,8 @@ export function MessageList({
   onDismissQuestion,
   onDecideTeam,
   onInspect,
+  onOpenTask,
+  onOpenTasks,
   expanded,
   onToggle,
   phrase,
@@ -57,6 +61,7 @@ export function MessageList({
   announce,
   empty,
   head,
+  hideIndicator = false,
 }: {
   items: readonly TimelineItem[];
   runs: Record<string, Run>;
@@ -76,6 +81,10 @@ export function MessageList({
     body: DecideTeamBody,
   ): Promise<{ ok: true } | { ok: false; message: string }>;
   onInspect(runId: string): void;
+  /** Tapping the label of a task opens its own view (KOD-68). Without it, no label is drawn. */
+  onOpenTask?(taskId: string): void;
+  /** The label of a message that opened several tasks opens the bot's list of tasks. */
+  onOpenTasks?(): void;
   /** Keys (call ids, fold ids, message ids) of what is expanded. */
   expanded: ReadonlySet<string>;
   onToggle(key: string): void;
@@ -93,6 +102,8 @@ export function MessageList({
    */
   head?: ReactNode;
   empty?: ReactNode;
+  /** No working indicator (the task view says what it waits for in its own block). */
+  hideIndicator?: boolean;
 }) {
   const { platform } = useServices();
   const favicons = useSettings((s) => s.settings.favicons === "on");
@@ -211,6 +222,7 @@ export function MessageList({
                   <UserMessage
                     key={item.key}
                     text={item.text}
+                    messageId={item.key}
                     position={positions.get(item.key)}
                     {...(item.state === undefined ? {} : { state: item.state })}
                   />
@@ -262,6 +274,16 @@ export function MessageList({
                     openUrl={platform.openUrl}
                     favicons={favicons}
                     typing={item.live === true}
+                    label={
+                      item.tasks === undefined
+                        ? taskLabel(item.task, onOpenTask)
+                        : tasksLabel(item.tasks, onOpenTasks)
+                    }
+                    link={
+                      item.tasks === undefined
+                        ? taskLink(item.task, onOpenTask)
+                        : taskLinks(item.tasks, onOpenTask)
+                    }
                   />
                 );
               case "files":
@@ -285,7 +307,7 @@ export function MessageList({
                 );
               case "approval":
                 return (
-                  <BotMessage key={item.key}>
+                  <BotMessage key={item.key} label={taskLabel(item.task, onOpenTask)}>
                     <ActionList>
                       <ApprovalRow
                         approval={item.approval}
@@ -345,7 +367,7 @@ export function MessageList({
                 return null;
             }
           })}
-          {live.shown !== null && (
+          {live.shown !== null && !hideIndicator && (
             // One element for the whole life of the run (keyed by it), so the face keeps its
             // motion when the run ends and the "done" expression plays while the row leaves.
             <WorkingIndicator
@@ -386,6 +408,53 @@ export function MessageList({
       )}
     </div>
   );
+}
+
+/** The label of the task something comes from, when the screen can open the task (KOD-68). */
+function taskLabel(task: TaskRef | undefined, onOpen: ((taskId: string) => void) | undefined) {
+  if (task === undefined || onOpen === undefined) return undefined;
+  return (
+    <TaskLabel
+      taskId={task.id}
+      title={task.title}
+      state={task.state}
+      unread={task.unread}
+      onOpen={onOpen}
+    />
+  );
+}
+
+/** The label of a message that opened several tasks: how many, and their state when it is one. */
+function tasksLabel(tasks: readonly TaskRef[], onOpen: (() => void) | undefined) {
+  if (onOpen === undefined) return undefined;
+  const first = tasks[0];
+  const same = first !== undefined && tasks.every((t) => t.state === first.state);
+  return (
+    <TasksLabel
+      count={tasks.length}
+      {...(same ? { state: first.state } : {})}
+      unread={tasks.some((t) => t.unread)}
+      onOpen={onOpen}
+    />
+  );
+}
+
+/** One link per task, stacked, inside the bubble of the message that opened them. */
+function taskLinks(tasks: readonly TaskRef[], onOpen: ((taskId: string) => void) | undefined) {
+  if (onOpen === undefined) return undefined;
+  return (
+    <div className="flex min-w-0 flex-col gap-1.5" data-testid="task-links">
+      {tasks.map((t) => (
+        <TaskLink key={t.id} taskId={t.id} title={t.title} onOpen={onOpen} />
+      ))}
+    </div>
+  );
+}
+
+/** The link to the task inside the bubble of the message that opened it or brought its result. */
+function taskLink(task: TaskRef | undefined, onOpen: ((taskId: string) => void) | undefined) {
+  if (task === undefined || onOpen === undefined) return undefined;
+  return <TaskLink taskId={task.id} title={task.title} onOpen={onOpen} />;
 }
 
 /** How long the leaving row waits for its transition before going anyway (a safety net). */

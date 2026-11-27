@@ -2,6 +2,7 @@
 // question, nudges for truncation, empty output or stopping with open steps, and the no-progress
 // guard), and handing tool calls over to execution.
 
+import { askCheck } from "./handoff.js";
 import {
   EMPTY_RESPONSE_NUDGE,
   FINISH_REQUIRED_NUDGE,
@@ -53,7 +54,9 @@ async function handleTextOnly(
     reason = "finish_required";
     nudgeText = FINISH_REQUIRED_NUDGE;
   } else if (!state.hasPlan) {
-    // A simple question (or criteria already asked for once): the text is the answer.
+    // A simple question (or criteria already asked for once): the text is the answer, once the
+    // asks of the user's message were all handled (a chat run that offers tasks).
+    if ((await askCheck(ctx, text)) === "nudged") return undefined;
     return end(ctx, "done", { result: { summary: text } });
   } else {
     reason = "stopped_without_finish";

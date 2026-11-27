@@ -9,9 +9,11 @@ import { RoundButton, Tabs } from "../../ui/primitives.js";
 import { ResizeHandle } from "../../ui/resize-handle.js";
 import { ActivityTab } from "./ActivityTab.js";
 import { RoutineDetail } from "./RoutineDetail.js";
+import { TasksTab } from "./TasksTab.js";
 
 const TABS = [
   { id: "activity", label: "Atividade" },
+  { id: "tasks", label: "Tarefas" },
   { id: "library", label: "Biblioteca" },
 ] as const;
 
@@ -22,7 +24,7 @@ const TABS = [
 export const PANEL_CLOSE =
   "absolute top-3 right-3 framed:top-0.5 framed:right-window-controls framed:mr-2";
 
-/** The bot's panel on the right: who it is, and two tabs, Atividade and Biblioteca. */
+/** The bot's panel on the right: who it is, and three tabs, Atividade, Tarefas and Biblioteca. */
 export function Panel({ botId }: { botId: string }) {
   const bot = useData((s) => s.bots[botId]);
   const tab = useUi((s) => s.panelTab);
@@ -86,7 +88,7 @@ export function Panel({ botId }: { botId: string }) {
         <Tabs
           tabs={TABS}
           value={tab}
-          onChange={(id) => setTab(id as "activity" | "library")}
+          onChange={(id) => setTab(id as "activity" | "tasks" | "library")}
           label="Seções do painel"
           idPrefix="panel"
         />
@@ -97,7 +99,13 @@ export function Panel({ botId }: { botId: string }) {
         id={`panel-panel-${tab}`}
         aria-labelledby={`panel-${tab}`}
       >
-        {tab === "activity" ? <ActivityTab botId={botId} /> : <LibraryList items={[]} now={now} />}
+        {tab === "activity" ? (
+          <ActivityTab botId={botId} />
+        ) : tab === "tasks" ? (
+          <TasksTab botId={botId} />
+        ) : (
+          <LibraryList items={[]} now={now} />
+        )}
       </div>
       {resize}
     </aside>

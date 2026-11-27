@@ -808,7 +808,11 @@ export async function startWorld(
     // which would defer them, has its own tests (docs/CONECTORES.md).
     toolSearch: options.toolSearch ?? { minTools: 1000, minDefinitionTokens: 10_000_000 },
     worker: { concurrency: 4, leaseRenewMs: 1000, staleAfterMs: 8000, controlPollMs: 100 },
-    defaults: { maxTurns: 30 },
+    // The early brake and the asks check of chat runs (on by default) have their own tests.
+    defaults: {
+      maxTurns: 30,
+      tasks: { handoff: { enabled: false }, askCheck: { enabled: false } },
+    },
   });
   const runtimeOptions: RuntimeOptions = {
     env,

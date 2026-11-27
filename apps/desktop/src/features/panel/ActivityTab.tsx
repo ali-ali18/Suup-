@@ -44,7 +44,7 @@ function PanelSection({
 }
 
 /** One row of a panel box: an optional icon, a title with a line under it, an optional thumbnail. */
-function PanelRow({
+export function PanelRow({
   icon,
   title,
   text,

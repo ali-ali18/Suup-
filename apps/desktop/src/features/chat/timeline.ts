@@ -1,4 +1,4 @@
-import type { Approval, MessageAttachment, Question, Run, TeamProposal } from "@suup/api";
+import type { Approval, MessageAttachment, Question, Run, Task, TeamProposal } from "@suup/api";
 import { callSeqKey } from "../../data/call-seq.js";
 import type { ConnectCardItem } from "../../data/connect-cards.js";
 import { isApprovedProposal } from "../../data/connect-cards.js";
@@ -8,6 +8,53 @@ import type { SecretRequestItem } from "../../data/secret-requests.js";
 import type { LocalMessage } from "../../data/state.js";
 import type { BubblePosition, UserMessageState } from "../../ui/message.js";
 
+/** A task a bubble or a card comes from (KOD-68): what its label above says. */
+export type TaskRef = Pick<Task, "id" | "title" | "state"> & {
+  /** The task brought replies the person has not seen: its label says "Novas respostas". */
+  unread: boolean;
+};
+
+const refOf = (task: Task): TaskRef => ({
+  id: task.id,
+  title: task.title,
+  state: task.state,
+  unread: task.unreadReplies > 0,
+});
+
+/**
+ * The task a bot message comes from, by the structure the server declares and never by its text:
+ * the message of the turn that delivered the task's result (`closingRunId`), or one of the run that
+ * opened the task, written after it opened (the bot's words about it: the newest task of that run).
+ */
+export function taskOfMessage(
+  message: Pick<LocalMessage, "runId" | "createdAt" | "authorKind">,
+  tasks: readonly Task[],
+): TaskRef | undefined {
+  if (message.authorKind !== "bot" || message.runId === null) return undefined;
+  const closing = tasks.find((t) => t.closingRunId === message.runId);
+  if (closing !== undefined) return refOf(closing);
+  const opened = tasks
+    .filter((t) => t.fromRunId === message.runId && t.createdAt <= message.createdAt)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  return opened === undefined ? undefined : refOf(opened);
+}
+
+/**
+ * Every task the bot's message opened (the run that opened them is the message's, they existed when
+ * it was written), oldest first: a message may open several at once. `[]` for any other message.
+ */
+export function tasksOfMessage(
+  message: Pick<LocalMessage, "runId" | "createdAt" | "authorKind">,
+  tasks: readonly Task[],
+): TaskRef[] {
+  if (message.authorKind !== "bot" || message.runId === null) return [];
+  if (tasks.some((t) => t.closingRunId === message.runId)) return [];
+  return tasks
+    .filter((t) => t.fromRunId === message.runId && t.createdAt <= message.createdAt)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    .map(refOf);
+}
+
 export type TimelineItem =
   | { kind: "separator"; key: string; text: string }
   | { kind: "user"; key: string; text: string; state: UserMessageState }
@@ -15,6 +62,10 @@ export type TimelineItem =
       kind: "bot";
       key: string;
       text: string;
+      /** The task this message comes from: the bubble gets its label above (KOD-68). */
+      task?: TaskRef;
+      /** The message opened several tasks: all of them (one link each, a label with the count). */
+      tasks?: readonly TaskRef[];
       /** The answer is still being written (KOD-34): the live text, not yet a recorded message. */
       live?: true;
       /** Present when the message is a question: what was asked, and whether it is still waiting. */
@@ -39,7 +90,7 @@ export type TimelineItem =
   /** The main bot's proposal of a team of bots: the card where the user ticks which to create. */
   | { kind: "team"; key: string; messageId: string; text: string; team: TeamProposal }
   /** An approval: the decision card while it waits for the user; decided, its one line. */
-  | { kind: "approval"; key: string; approval: Approval }
+  | { kind: "approval"; key: string; approval: Approval; task?: TaskRef }
   /** What the bot handed over to connect something: the card with the one button that fits. */
   | { kind: "connect"; key: string; card: ConnectCardItem }
   /** The bot asked for a credential: the secure form (or, once answered, one line). */
@@ -69,20 +120,31 @@ const pad = (n: number) => String(n).padStart(2, "0");
 const timeOf = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 const dayStart = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 
-/** "Hoje", "Ontem" or the date, plus the time: the line that opens a day. */
-export function dayLabel(date: Date, now: Date): string {
+/** "Hoje", "Ontem" or the date: the name of a day. */
+export function dayName(date: Date, now: Date): string {
   const diff = Math.round((dayStart(now) - dayStart(date)) / 86_400_000);
-  const day =
-    diff === 0
-      ? "Hoje"
-      : diff === 1
-        ? "Ontem"
-        : date.toLocaleDateString("pt-BR", {
-            day: "numeric",
-            month: "short",
-            ...(date.getFullYear() === now.getFullYear() ? {} : { year: "numeric" }),
-          });
-  return `${day} · ${timeOf(date)}`;
+  return diff === 0
+    ? "Hoje"
+    : diff === 1
+      ? "Ontem"
+      : date.toLocaleDateString("pt-BR", {
+          day: "numeric",
+          month: "short",
+          ...(date.getFullYear() === now.getFullYear() ? {} : { year: "numeric" }),
+        });
+}
+
+/** The name of the day plus the time: the line that opens a day. */
+export function dayLabel(date: Date, now: Date): string {
+  return `${dayName(date, now)} · ${timeOf(date)}`;
+}
+
+/** How long ago, short: "agora", "3 min", the time of day today, else the day ("ontem", "12 de nov"). */
+export function agoText(date: Date, now: Date): string {
+  const minutes = Math.floor((now.getTime() - date.getTime()) / 60_000);
+  if (minutes < 1) return "agora";
+  if (minutes < 60) return `${minutes} min`;
+  return dayStart(date) === dayStart(now) ? timeOf(date) : dayName(date, now).toLowerCase();
 }
 
 /**
@@ -111,10 +173,14 @@ export function buildTimeline(
      * key a recorded message keeps from the bubble it replaced (the same element stays).
      */
     live?: LiveView;
+    /** The tasks asked in this chat: labels above what comes from them, and where their cards go. */
+    tasks?: readonly Task[];
   } = {},
 ): TimelineItem[] {
   const items: TimelineItem[] = [];
-  const opened = new Set<string>();
+  const tasks = extras.tasks ?? [];
+  // The run of a task never has a message of its own in this chat: its cards are placed by time.
+  const opened = new Set<string>(tasks.map((t) => t.runId));
   // The cards that need (or needed) you, in the order they were asked.
   type Placed = { at: string; runId: string; seq?: number } & (
     | { kind: "approval"; approval: Approval }
@@ -187,13 +253,15 @@ export function buildTimeline(
     }
   };
   const pushCard = (next: Placed) => {
-    if (next.kind === "approval")
+    if (next.kind === "approval") {
+      const task = tasks.find((t) => t.runId === next.approval.runId);
       items.push({
         kind: "approval",
         key: `approval-${next.approval.id}`,
         approval: next.approval,
+        ...(task === undefined ? {} : { task: refOf(task) }),
       });
-    else if (next.kind === "connect")
+    } else if (next.kind === "connect")
       items.push({ kind: "connect", key: `connect-${next.card.callId}`, card: next.card });
     else
       items.push({
@@ -259,10 +327,14 @@ export function buildTimeline(
       });
     } else if (message.question === undefined) {
       // A message that took the place of a typed bubble keeps the bubble's key: the same element.
+      const task = taskOfMessage(message, tasks);
+      const opened = tasksOfMessage(message, tasks);
       items.push({
         kind: "bot",
         key: extras.live?.keyOf[message.id] ?? message.id,
         text: message.text,
+        ...(task === undefined ? {} : { task }),
+        ...(opened.length > 1 ? { tasks: opened } : {}),
       });
     } else {
       // The reply is the next message of the user, even one still being sent: the card answers at
@@ -307,7 +379,14 @@ export function buildTimeline(
       waiting.shift();
       pushCard(next);
     }
-    items.push({ kind: "bot", key: bubble.key, text: bubble.text, live: true });
+    const closing = tasks.find((t) => t.closingRunId === bubble.runId);
+    items.push({
+      kind: "bot",
+      key: bubble.key,
+      text: bubble.text,
+      live: true,
+      ...(closing === undefined ? {} : { task: refOf(closing) }),
+    });
   }
   // Whatever is left (the run is still working, or no message opened it).
   flush();
@@ -357,7 +436,8 @@ export function bubblePositions(items: readonly TimelineItem[]): Map<string, Bub
   };
   for (const item of items) {
     const who = bubbleSender(item);
-    if (who === null || who !== sender) close();
+    // A bubble with the label of a task above it starts a group of its own (KOD-68).
+    if (who === null || who !== sender || (item.kind === "bot" && item.task !== undefined)) close();
     sender = who;
     if (who !== null) run.push(item.key);
     // The card goes right under the bubble of the bot's words: it ends the group.

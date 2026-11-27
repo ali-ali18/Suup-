@@ -13,6 +13,7 @@ export type {
   SecretMeta,
   StoredRule,
   StoredWrittenRule,
+  Task,
 } from "@suup/db";
 
 /** A finished run's `result` as the wire carries it, or `null` when it has none (or an old shape). */

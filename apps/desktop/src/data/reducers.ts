@@ -13,6 +13,7 @@ import type {
   RunStatus,
   Secret,
   StreamEvent,
+  Task,
   VaultStatus,
   WrittenRule,
 } from "@suup/api";
@@ -59,6 +60,28 @@ export function mergeRun(state: DataState, run: Run): DataState {
 
 export function mergeRuns(state: DataState, runs: readonly Run[]): DataState {
   return runs.reduce(mergeRun, state);
+}
+
+/**
+ * A task: the newest version wins (`updatedAt` is the run's, so a REST answer read before a later
+ * stream frame changes nothing). The same version twice is the same task.
+ */
+export function mergeTask(state: DataState, task: Task): DataState {
+  const current = state.tasks[task.id];
+  if (current !== undefined && current.updatedAt > task.updatedAt) return state;
+  if (current !== undefined && sameJson(current, task)) return state;
+  return { ...state, tasks: { ...state.tasks, [task.id]: task } };
+}
+
+export function mergeTasks(state: DataState, items: readonly Task[]): DataState {
+  return items.reduce(mergeTask, state);
+}
+
+/** The tasks asked in a chat, oldest first. */
+export function tasksOfConversation(state: Pick<DataState, "tasks">, chatId: string): Task[] {
+  return Object.values(state.tasks)
+    .filter((t) => t.conversationId === chatId)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
 }
 
 export function mergeBot(state: DataState, bot: Bot): DataState {
@@ -566,6 +589,8 @@ function applyRecorded(state: DataState, event: StreamEvent): DataState {
       return mergeBot(state, event.data.bot);
     case "approval.changed":
       return mergeApproval(state, event.data.approval);
+    case "task.changed":
+      return mergeTask(state, event.data.task);
     case "ready":
     case "resync":
     case "live.text":

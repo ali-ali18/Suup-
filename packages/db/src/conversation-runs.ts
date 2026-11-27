@@ -41,7 +41,7 @@ export async function getActiveConversationRun(
   const [row] = await db.sql<RunRow[]>`
     select * from runs
     where conversation_id = ${z.uuid().parse(conversationId)}
-      and origin in ('user', 'reception', 'delegation')
+      and origin in ('user', 'reception', 'delegation', 'task_result')
       and status = any(${ACTIVE_RUN_STATUSES as unknown as string[]}::text[])
     order by created_at, id
     limit 1`;
@@ -185,7 +185,11 @@ export async function rolloverUnreadMessages(db: Db, runId: string): Promise<Run
     if (!["done", "failed", "cancelled"].includes(run.status)) return null;
     // The same lock `sendConversationMessage` takes: a message that is still being posted to this
     // run commits before we look, and one that comes later finds no active run.
-    await tx.sql`select 1 from conversations where id = ${run.conversation_id} for no key update`;
+    const [conversation] = await tx.sql<{ kind: string }[]>`
+      select kind from conversations where id = ${run.conversation_id} for no key update`;
+    // A task's own conversation never gets a chat run: a reply that came while its run was ending
+    // stays in the task's conversation unanswered (the task is over; nothing reads it again).
+    if (conversation?.kind === "task") return null;
     const items = await tx.sql<{ id: string; text: string; message_id: string | null }[]>`
       select id, text, message_id from run_inbox
       where run_id = ${id} and kind = 'user_message' and consumed_at is null
@@ -225,7 +229,7 @@ export async function listActiveConversationRuns(
   const rows = await db.sql<RunRow[]>`
     select * from runs
     where conversation_id = any(${ids}::uuid[])
-      and origin in ('user', 'reception', 'delegation')
+      and origin in ('user', 'reception', 'delegation', 'task_result')
       and status = any(${ACTIVE_RUN_STATUSES as unknown as string[]}::text[])`;
   return new Map(rows.map((row) => [row.conversation_id as string, mapRun(row)]));
 }

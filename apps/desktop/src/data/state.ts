@@ -10,6 +10,7 @@ import type {
   Run,
   RunEvent,
   Secret,
+  Task,
   VaultStatus,
   WrittenRule,
 } from "@suup/api";
@@ -59,6 +60,8 @@ export interface DataState {
   conversations: Record<string, Conversation>;
   messages: Record<string, MessagesSlice>;
   runs: Record<string, Run>;
+  /** The tasks of the bots (KOD-68), by id: the chat labels them and opens their view. */
+  tasks: Record<string, Task>;
   events: Record<string, EventsSlice>;
   memories: Record<string, Memory>;
   memoriesLoaded: boolean;
@@ -95,6 +98,7 @@ export const emptyData = (): DataState => ({
   conversations: {},
   messages: {},
   runs: {},
+  tasks: {},
   events: {},
   memories: {},
   memoriesLoaded: false,

@@ -191,6 +191,29 @@ describe("configuration: readable errors in Portuguese", () => {
     ).toBeGreaterThan(0);
   });
 
+  it("leaves the chat-task checks to the runtime defaults (on) and checks the end-of-turn model", () => {
+    expect(
+      issuesOf(
+        rawConfig({
+          defaults: {
+            tasks: {
+              handoff: { enabled: true, atTurns: 5, atSeconds: 60 },
+              askCheck: { enabled: true, model: "model-x" },
+            },
+          },
+        }),
+      ),
+    ).toEqual([]);
+    expect(parseConfig(rawConfig({}), "suup.config.json").defaults?.tasks).toBeUndefined();
+    const missing = issuesOf(
+      rawConfig({ defaults: { tasks: { askCheck: { enabled: true, model: "ghost" } } } }),
+    ).join("\n");
+    expect(missing).toContain("ghost");
+    expect(
+      issuesOf(rawConfig({ defaults: { tasks: { handoff: { atTurns: 1 } } } })).length,
+    ).toBeGreaterThan(0);
+  });
+
   it("rejects duplicate ids", () => {
     const text = issuesOf(
       rawConfig({

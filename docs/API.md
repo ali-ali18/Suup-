@@ -165,7 +165,7 @@ No cliente: `api.files.download(id)` devolve os bytes (`Uint8Array`) e `api.file
 
 ## Execuções
 
-`Run`: `id`, `botId`, `parentRunId`, `conversationId`, `origin` (`user`, `routine`, `delegation`, `proactive`), `objective`, `acceptanceCriteria`, `plan` (`[{ id, title, status, note? }]`), `status`, `paused`, `failureOrigin`, `failureDetail`, `result` (`{ summary, evidence? }` ou `null`), `turns`, `inputTokens`, `outputTokens`, `costUsd`, `traceId`, `createdAt`, `updatedAt`, `startedAt`, `finishedAt`. Os estados e as origens de falha são os de [FRONTEND.md](FRONTEND.md), seções 3 e 4.
+`Run`: `id`, `botId`, `parentRunId`, `conversationId`, `origin` (`user`, `routine`, `delegation`, `proactive`, `reception`, `task`, `task_result`), `objective`, `acceptanceCriteria`, `plan` (`[{ id, title, status, note? }]`), `status`, `paused`, `failureOrigin`, `failureDetail`, `result` (`{ summary, evidence? }` ou `null`), `turns`, `inputTokens`, `outputTokens`, `costUsd`, `traceId`, `createdAt`, `updatedAt`, `startedAt`, `finishedAt`. Os estados e as origens de falha são os de [FRONTEND.md](FRONTEND.md), seções 3 e 4.
 
 **`paused`** é o que o estado não diz: `true` quando você pausou a execução. Com `status: "queued"`, ela está **parada, esperando `resume`** (nenhum worker a pega); com `"running"`, está a caminho de parar. Fica `false` de novo ao retomar e sempre que a execução termina ou passa a esperar você.
 
@@ -178,6 +178,20 @@ No cliente: `api.files.download(id)` devolve os bytes (`Uint8Array`) e `api.file
 | `POST /v1/runs/{id}/interrupt` | `200 Run`: pausa **dura** |
 | `POST /v1/runs/{id}/cancel` | `200 Run`: cancela |
 | `POST /v1/runs/{id}/resume` | `200 Run`: retoma uma execução pausada |
+
+## Tarefas (KOD-68)
+
+Uma tarefa é uma execução do mesmo bot, em segundo plano, numa conversa própria ([TAREFAS.md](TAREFAS.md)). `Task`: `id`, `botId`, `conversationId` (o chat que pediu), `taskConversationId` (as mensagens dela: `GET /v1/conversations/{id}/messages`; a conversa tem `kind: "task"` e não aparece em `GET /v1/conversations`), `runId`, `fromRunId`, `closingRunId`, `title`, `state` (`working`, `waiting_user`, `waiting_approval`, `done`, `failed`, `stopped`; vem da execução), `createdAt`, `updatedAt`, `finishedAt`.
+
+| Método e caminho | Resposta |
+|---|---|
+| `GET /v1/tasks?conversationId=&botId=&limit=` | `200 { items: [Task] }`, as mais antigas primeiro |
+| `GET /v1/tasks/{id}` | `200 Task`; `404`. `Task.sourceMessages`: as mensagens do usuário em que a tarefa se baseia (as que o bot citou, ou, se não citou nenhuma, a mensagem do turno do chat que a abriu), `[{ id, text }]`, o "pedido" que a tela da tarefa cita. `Task.unreadReplies`: quantas mensagens do bot na conversa da tarefa vieram depois do cursor de leitura (0: nada novo) |
+| `POST /v1/tasks/{id}/messages` `{ text }` | `201 { message, task }`: vai direto para a caixa da execução da tarefa; `409` se ela já terminou |
+| `POST /v1/tasks/{id}/read` | `200 Task`: a tela da tarefa foi aberta, as respostas dela contam como lidas (o cursor de leitura da conversa da própria tarefa, o mesmo de um chat); `404`. Idempotente; o stream avisa as telas abertas |
+| `POST /v1/tasks/{id}/stop` | `200 Task`: cancela a execução; `409` se já terminou |
+
+Escrever na conversa de uma tarefa por `POST /v1/conversations/{id}/messages` dá `409`. Quem abre a tarefa é o bot, pela ferramenta `start_task`; não há `POST /v1/tasks`.
 
 ### Eventos
 
@@ -481,6 +495,7 @@ data: {"runId":"...","event":{"seq":7,"type":"tool_call","createdAt":"...","payl
 | `memory.changed` | `{ change, memory }` | `change`: `created`, **`pending`** (só para linhas de antes: o fluxo normal grava ativo e emite `created`/`updated`; um bot ou a consolidação nunca pede confirmação), `updated` (inclui confirmar e recusar: veja `memory.status`), `archived`, `restored`. Usar uma memória (o `recall` renovar `lastUsedAt`) **não** gera quadro |
 | `bot.updated` | `{ bot }` | Bot criado, editado, arquivado ou tornado principal |
 | `approval.changed` | `{ change, approval }` | Um cartão de aprovação apareceu (`created`) ou mudou de situação (`updated`: aprovado, negado, cancelado, expirado). Vai o `Approval` inteiro |
+| `task.changed` | `{ change, task }` | Uma tarefa nasceu (`created`) ou mudou (`updated`: a situação da execução, ou o resultado entregue ao chat). Vai a `Task` inteira. Também sai quando a conversa da tarefa recebe mensagem ou tem a leitura movida (`unreadReplies`) |
 | `live.text` | `{ runId, call, attempt, block, offset, text }` | **A resposta do bot sendo escrita** (KOD-34). Efêmero: **sem `id`** (não mexe no `Last-Event-ID`), nunca gravado, nunca reenviado pelo log, e já sem os valores conhecidos do cofre. `call` é o `seq` do `model_request` da chamada; `block`, qual texto da chamada (o que se mostra, na ordem); `offset`, onde `text` começa dentro do texto do bloco. `offset: 0` **substitui** o bloco (é também o retrato que uma conexão nova recebe do que está sendo escrito). Um `offset` que não bate com o que se tem é um buraco: espere o próximo retrato |
 | `live.end` | `{ runId, call, attempt, block?, outcome }` | Acabou o texto: de um bloco (`block`, `outcome: "dropped"`: some) ou da chamada (`recorded`: a resposta foi gravada, a mensagem gravada toma o lugar do texto; `aborted`, `failed`, `retry`: o texto some e nada fica). Em `retry`, a nova tentativa vem com `attempt` maior |
 

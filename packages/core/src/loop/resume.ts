@@ -260,6 +260,14 @@ async function ensureContext(ctx: LoopContext): Promise<void> {
         ? {}
         : { routineRefs: snapshot.routineRefs }),
       ...(snapshot.ownRoutines === undefined ? {} : { ownRoutines: snapshot.ownRoutines }),
+      ...(snapshot.task === undefined ? {} : { task: snapshot.task }),
+      ...(snapshot.taskResult === undefined ? {} : { taskResult: snapshot.taskResult }),
+      ...(snapshot.recentUserMessages === undefined || snapshot.recentUserMessages.length === 0
+        ? {}
+        : { recentUserMessages: snapshot.recentUserMessages }),
+      ...(snapshot.openTasks === undefined || snapshot.openTasks.length === 0
+        ? {}
+        : { openTasks: snapshot.openTasks }),
       ...(snapshot.compactionThreshold === undefined
         ? {}
         : { compactionThreshold: snapshot.compactionThreshold }),

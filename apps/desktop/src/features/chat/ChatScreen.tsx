@@ -12,6 +12,7 @@ import {
   isTerminal,
   orderedEvents,
   orderedMessages,
+  tasksOfConversation,
 } from "../../data/reducers.js";
 import { secretRequestsOf } from "../../data/secret-requests.js";
 import { activityPhrase, chatActivityOf } from "../../lib/chat-activity.js";
@@ -23,6 +24,7 @@ import { DraftReference } from "../../ui/draft-reference.js";
 import { type MenuItem, type MenuSection, PopupMenu, popupKey } from "../../ui/menu.js";
 import { EmptyState } from "../../ui/primitives.js";
 import { Panel } from "../panel/Panel.js";
+import { TaskPanel } from "../panel/TaskPanel.js";
 import { MessageList } from "./MessageList.js";
 import { buildTimeline } from "./timeline.js";
 
@@ -88,8 +90,14 @@ function ChatForBot({ botId }: { botId: string }) {
   const eventsByRun = useData((s) => s.events);
   const liveBlocks = useData((s) => s.live);
   const approvals = useData((s) => s.approvals);
+  const allTasks = useData((s) => s.tasks);
+  const openTaskId = useUi((s) => s.openTaskId);
+  const openTask = useUi((s) => s.openTask);
+  const focusMessageId = useUi((s) => s.focusMessageId);
+  const focusMessage = useUi((s) => s.focusMessage);
   const panelOpen = useUi((s) => s.panelOpen);
   const togglePanel = useUi((s) => s.togglePanel);
+  const openPanel = useUi((s) => s.openPanel);
   const openInspector = useUi((s) => s.openInspector);
   const openEditBot = useUi((s) => s.openEditBot);
   const [convId, setConvId] = useState<string | null>(bot?.conversationId ?? null);
@@ -141,11 +149,35 @@ function ChatForBot({ botId }: { botId: string }) {
   const latest: Run | undefined = conversationRuns[conversationRuns.length - 1];
   const active = [...conversationRuns].reverse().find((r) => ACTIVE.has(r.status));
 
-  // The stream carries the events of the run that is on screen.
+  // The tasks asked in this chat (KOD-68): the labels above what comes from them, and the one whose
+  // own panel is open (the third column; the chat stays in the middle).
+  const tasks = useMemo(
+    () => (convId === null ? [] : tasksOfConversation({ tasks: allTasks }, convId)),
+    [allTasks, convId],
+  );
+  const shownTask = openTaskId === null ? undefined : allTasks[openTaskId];
+  const taskOnScreen = shownTask !== undefined && shownTask.botId === botId ? shownTask : undefined;
+
+  // "Ver na conversa" in a task's request: back in the chat, scroll to that bubble and flash it.
   useEffect(() => {
-    sync.follow(latest === undefined ? [] : [latest.id]);
+    if (focusMessageId === null) return;
+    const target = document.querySelector<HTMLElement>(`[data-message="${focusMessageId}"]`);
+    focusMessage(null);
+    if (target === null) return;
+    target.scrollIntoView({ block: "center" });
+    target.dataset.flash = "true";
+    // Not cleared on cleanup: taking the request (`focusMessage(null)`) re-runs this effect at once.
+    setTimeout(() => delete target.dataset.flash, 1600);
+  }, [focusMessageId, focusMessage]);
+
+  // The stream carries the events of the run that is on screen (and of the task that is open).
+  useEffect(() => {
+    sync.follow([
+      ...(latest === undefined ? [] : [latest.id]),
+      ...(taskOnScreen === undefined ? [] : [taskOnScreen.runId]),
+    ]);
     return () => sync.follow([]);
-  }, [latest?.id, sync]);
+  }, [latest?.id, taskOnScreen?.runId, sync]);
 
   const events = useMemo(
     () => orderedEvents(latest === undefined ? undefined : eventsByRun[latest.id]),
@@ -211,8 +243,9 @@ function ChatForBot({ botId }: { botId: string }) {
         connectCards,
         callSeqs,
         live,
+        tasks,
       }),
-    [messages, runs, cards, secretRequests, connectCards, callSeqs, live],
+    [messages, runs, cards, secretRequests, connectCards, callSeqs, live, tasks],
   );
   // What the user opened, in THIS conversation: another chat starts with every row collapsed.
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
@@ -385,6 +418,11 @@ function ChatForBot({ botId }: { botId: string }) {
           onAnswer={(text, questionId) => void answer(text, questionId)}
           onDecideTeam={(messageId, body) => sync.decideTeam(messageId, body)}
           onInspect={openInspector}
+          onOpenTask={openTask}
+          onOpenTasks={() => {
+            openTask(null);
+            openPanel("tasks");
+          }}
           expanded={expanded}
           onToggle={toggle}
           phrase={phrase}
@@ -441,7 +479,11 @@ function ChatForBot({ botId }: { botId: string }) {
           />
         </div>
       </section>
-      {panelOpen && <Panel botId={bot.id} />}
+      {taskOnScreen !== undefined ? (
+        <TaskPanel task={taskOnScreen} bot={bot} />
+      ) : (
+        panelOpen && <Panel botId={bot.id} />
+      )}
       {menu !== null && (
         <PopupMenu
           key={menu.key}

@@ -143,6 +143,29 @@ const samples: RunEventData[] = [
     payload: { choice: "continue", grant: 25, text: "Continuar", inboxIds: ["i1"] },
   },
   {
+    type: "handed_off",
+    payload: {
+      trigger: "turns",
+      turns: 5,
+      elapsedMs: 42_000,
+      outcome: "started",
+      taskId: "t1",
+      title: "Auditar os CSV",
+    },
+  },
+  {
+    type: "handed_off",
+    payload: { trigger: "time", turns: 3, elapsedMs: 61_000, outcome: "declined", reason: "limit" },
+  },
+  {
+    type: "asks_checked",
+    payload: {
+      asks: ["15% de 800", "auditar os CSV"],
+      unhandled: ["auditar os CSV"],
+      judged: true,
+    },
+  },
+  {
     type: "escalated",
     payload: {
       question: "Quer que eu continue?",

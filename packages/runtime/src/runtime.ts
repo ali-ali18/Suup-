@@ -3,6 +3,7 @@ import { hostname } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import type { CatalogEntry, StdioLauncher } from "@suup/connectors";
 import {
+  type AskCheckDeps,
   type AutoReviewer,
   allowAllGate,
   type BotConfig,
@@ -13,6 +14,7 @@ import {
   createToolGate,
   DEFAULT_TOOL_SEARCH,
   type Executor,
+  type HandoffDeps,
   type LoopDeps,
   liveAllowed,
   type NativeToolSearch,
@@ -139,6 +141,13 @@ import {
   SUPERVISOR_TOOL_NAMES,
   teamRecallTool,
 } from "./supervisor.js";
+import {
+  handoffStarter,
+  START_TASK_TOOL,
+  sendToTaskTool,
+  startTaskTool,
+  TASK_TOOL_NAMES,
+} from "./tasks.js";
 import { createVault, DEFAULT_VAULT_KEY_ENV, type Vault } from "./vault/service.js";
 import { dbSearchCache } from "./web/search-cache.js";
 import { createSearchKeys } from "./web/search-keys.js";
@@ -721,30 +730,57 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     };
   };
 
+  /** A cheap side model (the progress judge, the asks check); none without a key. */
+  const sideModel = (modelId: string): ProgressJudge | undefined => {
+    const { model } = resolveModel(modelId);
+    if (!keyStatus(model.provider).ok) return undefined;
+    return {
+      provider: getProvider(model.provider),
+      model: {
+        id: model.id,
+        maxOutputTokens: Math.min(model.maxOutputTokens, 1024),
+        ...(model.pricing === undefined ? {} : { pricing: model.pricing }),
+        ...(model.supportsForcedToolChoice === undefined
+          ? {}
+          : { supportsForcedToolChoice: model.supportsForcedToolChoice }),
+      },
+    };
+  };
+
   const watchdogConfig = (options: { isolated?: boolean } = {}): Partial<WatchdogConfig> => {
     const settings = config.defaults?.watchdog;
     if (options.isolated === true) return { enabled: false };
     const { judge, ...rest } = settings ?? {};
     const judgeId = judge?.model ?? autoReviewModelId;
-    let judged: ProgressJudge | undefined;
-    if (judge?.enabled !== false && judgeId !== undefined) {
-      const { model } = resolveModel(judgeId);
-      // Without a key the judge is simply not there: the structural signals decide alone.
-      if (keyStatus(model.provider).ok) {
-        judged = {
-          provider: getProvider(model.provider),
-          model: {
-            id: model.id,
-            maxOutputTokens: Math.min(model.maxOutputTokens, 1024),
-            ...(model.pricing === undefined ? {} : { pricing: model.pricing }),
-            ...(model.supportsForcedToolChoice === undefined
-              ? {}
-              : { supportsForcedToolChoice: model.supportsForcedToolChoice }),
-          },
-        };
-      }
-    }
+    // Without a key the judge is simply not there: the structural signals decide alone.
+    const judged =
+      judge?.enabled !== false && judgeId !== undefined ? sideModel(judgeId) : undefined;
     return { ...rest, ...(judged === undefined ? {} : { judge: judged }) };
+  };
+
+  /**
+   * How a chat run moves long work to a task (KOD-68): the early brake and the asks check, both on
+   * unless `defaults.tasks` turns one off (`enabled: false`). Only a chat run of the user gets them,
+   * and the asks check only when some model resolves for it.
+   */
+  const taskHarness = (db: Db): { handoff?: HandoffDeps; askCheck?: AskCheckDeps } => {
+    const settings = config.defaults?.tasks;
+    const out: { handoff?: HandoffDeps; askCheck?: AskCheckDeps } = {};
+    if (settings?.handoff?.enabled !== false) {
+      out.handoff = {
+        atTurns: settings?.handoff?.atTurns ?? 5,
+        atMs: (settings?.handoff?.atSeconds ?? 60) * 1000,
+        taskTool: START_TASK_TOOL,
+        start: handoffStarter(db),
+      };
+    }
+    if (settings?.askCheck?.enabled !== false) {
+      const modelId =
+        settings?.askCheck?.model ?? config.defaults?.watchdog?.judge?.model ?? autoReviewModelId;
+      const judge = modelId === undefined ? undefined : sideModel(modelId);
+      if (judge !== undefined) out.askCheck = { judge, taskTool: START_TASK_TOOL };
+    }
+    return out;
   };
 
   /** The model "Auto-review" asks: `approvals.autoReview.model`, else the model of `reviewer`. */
@@ -1018,7 +1054,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
             (await getDefaultBot(handle)) === null
             ? undefined
             : "member"
-          : run.origin === "delegation"
+          : run.origin === "delegation" || run.origin === "task" || run.origin === "task_result"
             ? undefined
             : "principal";
     if (supervisor === "principal") {
@@ -1029,6 +1065,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
     }
     // Routines (docs/ROTINAS.md): a bot in the user's conversation sets them up by talking; a
     // routine's own run reads them, keeps its note and may stop one, never creates or widens one.
+    let chatTasks: { handoff?: HandoffDeps; askCheck?: AskCheckDeps } = {};
     if (guarded && run.origin === "user") {
       if (runTools === tools) runTools = copyOfBase();
       routineToolsFor(handle)(runTools);
@@ -1039,6 +1076,11 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
         ),
       );
       runTools.register(showConnectCardTool(() => connectors.gallery));
+      // Long work goes to a task of the bot itself (KOD-68): only a chat run is offered the tools
+      // (a task never opens a task, and the turn that reports one only answers).
+      runTools.register(startTaskTool(handle));
+      runTools.register(sendToTaskTool(handle));
+      chatTasks = taskHarness(handle);
       botCfg = {
         ...botCfg,
         allowedTools: [
@@ -1046,6 +1088,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
           ...ROUTINE_TOOL_NAMES,
           PROPOSE_CONNECTOR_TOOL,
           SHOW_CONNECT_CARD_TOOL,
+          ...TASK_TOOL_NAMES,
         ],
       };
     } else if (guarded && run.origin === "delegation") {
@@ -1089,6 +1132,7 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
       bot: botCfg,
       ...(reviewer === undefined ? {} : { reviewer }),
       watchdog: watchdogConfig({ isolated }),
+      ...chatTasks,
       // Uma execução isolada (uma avaliação) roda sem ninguém para responder e numa máquina
       // descartável: nenhum cartão poderia ser respondido, então ela sai da política pelo nome. Toda
       // outra execução passa pelo portão.
@@ -1271,12 +1315,15 @@ export function createRuntime(config: RuntimeConfig, options: RuntimeOptions = {
         ),
       );
       reg.register(showConnectCardTool(() => connectors.gallery));
+      reg.register(startTaskTool(runtime.db));
+      reg.register(sendToTaskTool(runtime.db));
       const control = new Set<string>(CONTROL_TOOL_NAMES);
       const specs = reg.specs([
         ...cfg.allowedTools,
         ...ROUTINE_TOOL_NAMES,
         PROPOSE_CONNECTOR_TOOL,
         SHOW_CONNECT_CARD_TOOL,
+        ...TASK_TOOL_NAMES,
         ...connectorNames,
       ]);
       const builtin = specs.filter((s) => !connectorNames.has(s.name) && !control.has(s.name));

@@ -92,7 +92,7 @@ const ROUND_TONE = {
   raised: "border-border bg-raised text-text enabled:hover:bg-hover",
   primary: "border-transparent bg-bg-inverse text-text-inverse",
   /** The send button of the composer: the bot's colour (the neutral bubble setting turns it off). */
-  bot: "border-transparent bg-bot-fill text-bot-on-fill bubble-neutral:bg-bg-inverse bubble-neutral:text-text-inverse",
+  bot: "border-transparent bg-bot-fill text-bot-on-bubble bubble-neutral:bg-bg-inverse bubble-neutral:text-text-inverse",
   ghost: "border-transparent bg-transparent text-text enabled:hover:bg-hover",
   /** The project's outline button: a thin ring, no fill (the panel's close, as in the Grok Bot). */
   outline: "border-border-strong bg-transparent text-text enabled:hover:bg-hover",

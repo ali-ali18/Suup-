@@ -2,6 +2,7 @@
 // turn skeleton. Every responsibility it sequences lives in its own module; this file also keeps
 // the public surface of the loop (types, constants and helpers) re-exported from one place.
 import { compactIfNeeded } from "./compaction.js";
+import { handoffCheck } from "./handoff.js";
 import { deliverInbox } from "./inbox.js";
 import { modelTurn } from "./model-turn.js";
 import { fail } from "./recording.js";
@@ -18,11 +19,17 @@ import { rebuildState } from "./state.js";
 import { LeaseLostError, type RunStatus } from "./store.js";
 import { watchdog } from "./watchdog.js";
 
+export { ASK_CHECK_TOOL, handedOffText, unhandledAsksNudge } from "./handoff.js";
 export { computeCost, MAX_MODEL_RETRIES } from "./model-call.js";
 export { INTERRUPTED_RESULT } from "./recording.js";
 export type { ModelPricing, ReviewerConfig } from "./reviewer.js";
 export type {
+  AskCheckDeps,
   BotConfig,
+  HandoffDeps,
+  HandoffOutcome,
+  HandoffRequest,
+  HandoffTrailEntry,
   LoopDeps,
   RunContextSnapshot,
   RunLoopOptions,
@@ -98,6 +105,10 @@ async function loop(ctx: LoopContext): Promise<RunStatus> {
     ctx.run = await store.getRun(ctx.runId);
     const limit = hardLimit(ctx);
     if (limit !== undefined) return fail(ctx, "limit", limit.detail);
+
+    // A chat run past the steps or the time of a quick answer: the work moves to a task.
+    const handed = await handoffCheck(ctx);
+    if (handed !== undefined) return handed;
 
     // The step limit and the loops: extend, nudge, or ask the owner (never a failure by itself).
     const watched = await watchdog(ctx);

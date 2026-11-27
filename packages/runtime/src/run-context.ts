@@ -3,14 +3,21 @@ import {
   type Message as ChatMessage,
   type Db,
   getRun,
+  getTaskByClosingRun,
   listMessages,
   MEMORY_PROMPT_CEILING_CHARS,
   memoryContextFor,
+  recentUserMessages,
   routineRefsOf,
+  taskStartContext,
 } from "@suup/db";
+import { openTasksOf } from "./tasks.js";
 
 /** Characters of conversation history a run gets when the configuration does not say. */
 export const DEFAULT_HISTORY_CHARS = 12_000;
+
+/** How many of the user's latest messages a chat run is shown with their ids (for `start_task`). */
+const RECENT_USER_MESSAGES = 8;
 
 const PAGE = 100;
 
@@ -68,6 +75,27 @@ export async function loadRunContext(
     return { rules, profile, history: [], ...extra };
   }
 
+  // A task (KOD-68) starts from its brief (the run's objective) and the user's own words that the
+  // brief cites, copied from the database by id. It has no conversation history: its conversation is
+  // its own, and the chat that asked for it is not told to it.
+  if (run.origin === "task") {
+    const start = await taskStartContext(db, runId);
+    return {
+      rules,
+      profile,
+      history: [],
+      ...(start === null
+        ? {}
+        : {
+            task: { title: start.task.title, userMessages: start.userMessages.map((m) => m.text) },
+          }),
+      ...extra,
+    };
+  }
+  // The chat turn that receives a task's report: the usual history of the chat, and what ended.
+  const closing = run.origin === "task_result" ? await getTaskByClosingRun(db, runId) : null;
+  const closingTaskRun = closing === null ? null : await getRun(db, closing.runId);
+
   // Everything before the message that opened this run.
   const [opening] = await db.sql<{ seq: string }[]>`
     select seq from messages
@@ -122,12 +150,30 @@ export async function loadRunContext(
   const note = omitted
     ? `The conversation has earlier messages that are not shown here (${hidden > 0 ? `${hidden} older than the ones above` : "all of them"}). Use search_conversations to look them up if you need them.`
     : undefined;
+  // A chat run that may open a task cites the user's messages by id: it is shown the latest ones.
+  const recent =
+    run.origin === "user"
+      ? await recentUserMessages(db, run.conversationId, RECENT_USER_MESSAGES)
+      : [];
   return {
     rules,
     profile,
     history,
     ...(note === undefined ? {} : { historyNote: note }),
     ...(routineRefs.length === 0 ? {} : { routineRefs }),
+    ...(run.origin === "user" ? { recentUserMessages: recent } : {}),
+    ...(run.origin === "user" ? { openTasks: await openTasksOf(db, run.conversationId) } : {}),
+    ...(closing === null || closingTaskRun === null
+      ? {}
+      : {
+          taskResult: {
+            title: closing.title,
+            outcome:
+              closingTaskRun.status === "done" || closingTaskRun.status === "failed"
+                ? closingTaskRun.status
+                : "cancelled",
+          },
+        }),
     ...extra,
   };
 }

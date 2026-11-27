@@ -372,6 +372,39 @@ const watchdogSchema = z
     }
   });
 
+/**
+ * How a chat may move its long work to a task (docs/TAREFAS.md, KOD-68). Both parts are on by
+ * default; `enabled: false` turns one off, and then the bot decides from the task tool's description.
+ */
+const tasksSchema = z.strictObject({
+  /**
+   * The early brake: a chat run that keeps working past `atTurns` model calls or `atSeconds`
+   * without opening a task moves the work to a task by itself, with what was already done.
+   */
+  handoff: z.exactOptional(
+    z.strictObject({
+      /** Default true. */
+      enabled: z.exactOptional(z.boolean()),
+      /** Model calls in the chat before the brake. Default 5. */
+      atTurns: z.exactOptional(z.number().int().min(2).max(50)),
+      /** Seconds of work in the chat before the brake (waits for the user do not count). Default 60. */
+      atSeconds: z.exactOptional(z.number().int().min(10).max(3600)),
+    }),
+  ),
+  /**
+   * The end-of-turn check: before a chat answer goes out, a cheap model lists the asks of the
+   * message and the bot is told once about any it left out.
+   */
+  askCheck: z.exactOptional(
+    z.strictObject({
+      /** Default true (it runs only when a model resolves). */
+      enabled: z.exactOptional(z.boolean()),
+      /** A model of `models`. Default: the watchdog judge's model, else the auto-review model. */
+      model: z.exactOptional(z.string().min(1)),
+    }),
+  ),
+});
+
 const defaultsSchema = z.strictObject({
   maxTurns: z.exactOptional(positiveInt),
   maxCostUsd: z.exactOptional(z.number().positive()),
@@ -383,6 +416,8 @@ const defaultsSchema = z.strictObject({
   maxReturns: z.exactOptional(z.number().int().nonnegative()),
   /** What a run does at its step limit and when it loops: asks you, instead of failing. */
   watchdog: z.exactOptional(watchdogSchema),
+  /** How a chat moves long work to a task: the early brake and the end-of-turn check. */
+  tasks: z.exactOptional(tasksSchema),
   /**
    * How many characters of the earlier messages of a conversation a run gets as history (whole
    * messages, newest first). Older ones are found with `search_conversations`.
@@ -695,6 +730,14 @@ export const configSchema = z
         code: "custom",
         path: ["defaults", "watchdog", "judge", "model"],
         message: `modelo "${judgeModel}" não existe em "models" (existentes: ${[...modelIds].join(", ")})`,
+      });
+    }
+    const askCheckModel = config.defaults?.tasks?.askCheck?.model;
+    if (askCheckModel !== undefined && !modelIds.has(askCheckModel)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["defaults", "tasks", "askCheck", "model"],
+        message: `modelo "${askCheckModel}" não existe em "models" (existentes: ${[...modelIds].join(", ")})`,
       });
     }
     const consolidationModel = config.memory?.consolidation?.model;

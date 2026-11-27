@@ -356,7 +356,13 @@ describe.skipIf(!DATABASE_URL)(dbSuiteName("suup chat and memory, end to end"), 
       expect(loaded?.payload.historyNote).toBeUndefined();
 
       // A budget of 40 characters keeps the newest two messages (14 + 23) and drops the rest.
-      await p.config({ defaults: { maxTurns: 20, historyChars: 40 } });
+      await p.config({
+        defaults: {
+          maxTurns: 20,
+          historyChars: 40,
+          tasks: { handoff: { enabled: false }, askCheck: { enabled: false } },
+        },
+      });
       const three = await chat("hist", "TURNO-TRES por fim");
       expect(three.code, three.stdout + three.stderr).toBe(0);
       const thirdRun = (await runsOf("hist"))[2] as string;

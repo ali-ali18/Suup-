@@ -9,6 +9,7 @@ import {
   getMemory,
   getMessage,
   getRun,
+  getTask,
   latestMemoryReviews,
   listActiveConversationRuns,
   listChanges,
@@ -22,11 +23,13 @@ import {
   toMessageDto,
   toRunDto,
   toRunEventDto,
+  type toTaskDto,
 } from "../mappers.js";
+import { taskDtoOf } from "../task-dto.js";
 import type { ChangeSource, Notifier, Resolved, WireEvent } from "./hub.js";
 
 /** Kinds whose events are snapshots of the row: several changes in a batch need only the last. */
-const COALESCE = new Set<Change["kind"]>(["run", "conversation", "bot", "approval"]);
+const COALESCE = new Set<Change["kind"]>(["run", "conversation", "bot", "approval", "task"]);
 
 /**
  * The hub's view of the database: the change log as the source, and the rows it points at read
@@ -43,17 +46,25 @@ export function createDbSource(
     bounds: () => changeLogBounds(db),
     read: (afterId, limit) => listChanges(db, afterId, limit),
     async resolve(changes, wantRun) {
-      // Only the last change of each coalescable row counts.
+      // Only the last change of each coalescable row counts. A row created in this batch is still
+      // reported as created (with its current state), even when it changed again right after: the
+      // client must not miss that it exists.
       const lastOf = new Map<string, number>();
+      const created = new Set<string>();
       changes.forEach((c, i) => {
-        if (COALESCE.has(c.kind)) lastOf.set(`${c.kind}:${c.ref}`, i);
+        if (!COALESCE.has(c.kind)) return;
+        lastOf.set(`${c.kind}:${c.ref}`, i);
+        if (c.op === "created") created.add(`${c.kind}:${c.ref}`);
       });
       const out: Resolved[] = [];
       for (const [index, change] of changes.entries()) {
-        if (COALESCE.has(change.kind) && lastOf.get(`${change.kind}:${change.ref}`) !== index) {
-          continue;
-        }
-        const events = await redact(await eventsOf(db, change, wantRun));
+        const key = `${change.kind}:${change.ref}`;
+        if (COALESCE.has(change.kind) && lastOf.get(key) !== index) continue;
+        const seen =
+          change.kind === "task" && change.op === "updated" && created.has(key)
+            ? { ...change, op: "created" }
+            : change;
+        const events = await redact(await eventsOf(db, seen, wantRun));
         if (events.length > 0) out.push({ id: change.id, events });
       }
       return out;
@@ -159,6 +170,19 @@ async function eventsOf(
             },
           ];
     }
+    case "task": {
+      const task = await getTask(db, change.ref);
+      const run = task === null ? null : await getRun(db, task.runId);
+      if (task === null || run === null) return [];
+      return [
+        taskEvent(
+          task,
+          run,
+          change.op === "created" ? "created" : "updated",
+          await taskDtoOf(db, task, run),
+        ),
+      ];
+    }
     case "bot": {
       const summary = await getBotSummary(db, change.ref);
       return summary === null
@@ -198,5 +222,19 @@ export function createPgNotifier(db: Db): Notifier {
       subscription = undefined;
       await current?.unlisten();
     },
+  };
+}
+
+function taskEvent(
+  task: Parameters<typeof toTaskDto>[0],
+  run: Parameters<typeof toTaskDto>[1],
+  change: "created" | "updated",
+  dto: ReturnType<typeof toTaskDto>,
+): WireEvent {
+  return {
+    type: "task.changed",
+    key: `task:${task.id}`,
+    version: run.updatedAt.getTime(),
+    data: { change, task: dto },
   };
 }

@@ -151,6 +151,14 @@ import {
   type UpdateSupervisorSettingsBody,
 } from "./supervisor.js";
 import {
+  type ListTasksQuery,
+  type ReplyToTaskResult,
+  replyToTaskResultSchema,
+  type Task,
+  taskListSchema,
+  taskSchema,
+} from "./tasks.js";
+import {
   type AnswerSecretRequestBody,
   type AnswerSecretRequestResult,
   answerSecretRequestResultSchema,
@@ -261,6 +269,18 @@ export interface SuupClient {
     decideTeam(messageId: string, body: DecideTeamBody): Promise<DecideTeamResult>;
     /** The X of a question card: no option will be chosen; the run is told and goes on. */
     dismissQuestion(messageId: string): Promise<Message>;
+  };
+  /** The tasks of the bots (KOD-68, docs/TAREFAS.md): background runs started from a chat. */
+  tasks: {
+    /** Oldest first; `conversationId` is the chat where they were asked. */
+    list(query?: ListTasksQuery): Promise<Task[]>;
+    get(id: string): Promise<Task>;
+    /** What you wrote in the task's own view: goes straight to the task's run. */
+    reply(id: string, text: string): Promise<ReplyToTaskResult>;
+    /** Stops the task (the same cancellation as any run). */
+    stop(id: string): Promise<Task>;
+    /** The task's own view was opened: its replies count as read (the label stops saying "Novas respostas"). */
+    markRead(id: string): Promise<Task>;
   };
   runs: {
     list(query?: ListRunsQuery): Promise<{ items: Run[]; hasMore: boolean }>;
@@ -678,6 +698,21 @@ export function createClient(options: ClientOptions): SuupClient {
             query: query as Query | undefined,
           })
         ).items,
+    },
+    tasks: {
+      list: async (query) =>
+        (
+          await call("GET", "/v1/tasks", taskListSchema, {
+            query: query as Query | undefined,
+          })
+        ).items,
+      get: (taskId) => call("GET", `/v1/tasks/${id(taskId)}`, taskSchema),
+      reply: (taskId, text) =>
+        call("POST", `/v1/tasks/${id(taskId)}/messages`, replyToTaskResultSchema, {
+          body: { text },
+        }),
+      stop: (taskId) => call("POST", `/v1/tasks/${id(taskId)}/stop`, taskSchema, noBody),
+      markRead: (taskId) => call("POST", `/v1/tasks/${id(taskId)}/read`, taskSchema, noBody),
     },
     supervisor: {
       settings: {

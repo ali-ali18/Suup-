@@ -68,17 +68,24 @@ export function UserMessage({
   text,
   state,
   position,
+  messageId,
 }: {
   text: string;
   state?: UserMessageState;
+  /** The id of the message: a task's request links back to this bubble (KOD-68). */
+  messageId?: string;
   position?: BubblePosition | undefined;
 }) {
   // The delivery state is data, not text: a message not confirmed yet is a little dimmer.
   const pending = state === "sending" || state === "sent";
   return (
     <div
-      className={cx("flex min-w-0 flex-col items-end gap-1", linked(position))}
+      className={cx(
+        "flex min-w-0 flex-col items-end gap-1 data-[flash=true]:bg-hover",
+        linked(position),
+      )}
       data-testid="message-user"
+      data-message={messageId}
       data-state={state ?? ""}
       data-bubble={position}
     >
@@ -109,8 +116,14 @@ export function BotMessage({
   favicons,
   position,
   typing = false,
+  label,
+  link,
 }: {
   position?: BubblePosition | undefined;
+  /** At the end of the bubble: the link to the task the message opened or closed (KOD-68). */
+  link?: ReactNode;
+  /** What goes above the bubble or the card: the label of the task it comes from (KOD-68). */
+  label?: ReactNode;
   /**
    * The answer is still being written (KOD-34): the screen reader is not told of every piece
    * (`aria-busy`, `aria-live="off"`) and what arrives in each frame fades in (no mark at the end,
@@ -136,6 +149,7 @@ export function BotMessage({
         : {})}
     >
       <div className="flex w-full max-w-reading min-w-0 flex-col gap-3">
+        {label}
         {/* No bubble until the first letter is revealed: an empty one would be a bare pill. */}
         {text !== undefined && !(writing && reveal.shown === "") && (
           <BotBubble className={linkCorners("bot", position)}>
@@ -149,6 +163,7 @@ export function BotMessage({
                 {...(favicons === undefined ? {} : { favicons })}
               />
             </div>
+            {link !== undefined && <div className="mt-2 flex min-w-0">{link}</div>}
           </BotBubble>
         )}
         {children}

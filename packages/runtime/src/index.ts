@@ -229,6 +229,20 @@ export {
   teamRecallTool,
 } from "./supervisor.js";
 export {
+  composeBrief,
+  deliverPendingTaskResults,
+  deliverTaskResult,
+  ENDED_TASK_WINDOW_MS,
+  MAX_ENDED_TASKS_LISTED,
+  openTasksOf,
+  SEND_TO_TASK_TOOL,
+  START_TASK_TOOL,
+  sendToTaskTool,
+  startTaskTool,
+  TASK_TOOL_NAMES,
+  taskResultObjective,
+} from "./tasks.js";
+export {
   decrypt,
   encrypt,
   fingerprint,

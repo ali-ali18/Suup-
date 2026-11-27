@@ -42,7 +42,12 @@ describe.skipIf(!DATABASE_URL)(
   () => {
     const w = useWorld({
       scripts: SCRIPTS,
-      config: { defaults: { timeZone: "America/Sao_Paulo" } },
+      config: {
+        defaults: {
+          timeZone: "America/Sao_Paulo",
+          tasks: { handoff: { enabled: false }, askCheck: { enabled: false } },
+        },
+      },
       supervisorEveryMs: 100,
     });
 

@@ -37,5 +37,6 @@ export {
   type Timers,
 } from "./subscribe.js";
 export * from "./supervisor.js";
+export * from "./tasks.js";
 export * from "./vault.js";
 export * from "./web-search.js";

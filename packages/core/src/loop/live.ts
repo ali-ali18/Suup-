@@ -7,7 +7,12 @@ import { FINISH_TOOL_NAME } from "../provider.js";
 import type { Redactor } from "../secrets.js";
 
 /** The run origins whose answers the user reads in the chat: only those get parts and live text. */
-export const CONVERSATION_ORIGINS: ReadonlySet<string> = new Set(["user", "reception"]);
+export const CONVERSATION_ORIGINS: ReadonlySet<string> = new Set([
+  "user",
+  "reception",
+  "task",
+  "task_result",
+]);
 
 /** What a run needs to be shown live: a conversation, an origin that answers, not an evaluation. */
 export function liveAllowed(run: {

@@ -268,6 +268,54 @@ export const routineRefSchema = z.object({
 export type RoutineRef = z.infer<typeof routineRefSchema>;
 
 /**
+ * What a task run starts from (KOD-68, docs/TAREFAS.md), recorded once in `context_loaded`: the name
+ * the user sees, and the messages of the user that ground the request, as the user wrote them (copied
+ * from the database by id, never reworded by the model). A task has no conversation history.
+ */
+export const taskRunFactsSchema = z.object({
+  title: z.string(),
+  userMessages: z.array(z.string()),
+});
+export type TaskRunFacts = z.infer<typeof taskRunFactsSchema>;
+
+/**
+ * The chat turn that receives the report of a finished task (the run's objective carries the report,
+ * wrapped as data): which task, and how it ended. Recorded once in `context_loaded`.
+ */
+export const taskResultFactsSchema = z.object({
+  title: z.string(),
+  outcome: z.enum(["done", "failed", "cancelled"]),
+});
+export type TaskResultFacts = z.infer<typeof taskResultFactsSchema>;
+
+/**
+ * The latest messages of the user in a chat that may start a task (id and text, newest last), so the
+ * bot can cite the ones that ground a task (`start_task`, `send_to_task`) by id. Recorded once.
+ */
+export const recentUserMessageSchema = z.object({ id: z.string(), text: z.string() });
+export type RecentUserMessage = z.infer<typeof recentUserMessageSchema>;
+
+/**
+ * The tasks of the chat a chat run is in, as the run starts (KOD-68): the ones still open and the
+ * ones that ended recently (marked by `state`), so the bot can pass something on to a running task
+ * by id (`send_to_task`) and never opens a duplicate. Read from the database and recorded once.
+ */
+export const OPEN_TASK_STATES = [
+  "working",
+  "waiting_user",
+  "waiting_approval",
+  "done",
+  "failed",
+  "stopped",
+] as const;
+export const openTaskFactSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  state: z.enum(OPEN_TASK_STATES),
+});
+export type OpenTaskFact = z.infer<typeof openTaskFactSchema>;
+
+/**
  * The bot's own routines as the run starts (docs/ROTINAS.md): name, schedule in words, time zone
  * and state, plus the id for the model. Told to the model in "Your routines", so a new run knows
  * what an earlier run already set up (the history carries text only, not the tool calls behind it).
@@ -332,7 +380,15 @@ export type RunStatus = z.infer<typeof runStatusSchema>;
  * its own the first time the user opens its chat (docs/RECEPCAO.md); like `user`, it is the
  * foreground run of its conversation.
  */
-export const RUN_ORIGINS = ["user", "routine", "delegation", "proactive", "reception"] as const;
+export const RUN_ORIGINS = [
+  "user",
+  "routine",
+  "delegation",
+  "proactive",
+  "reception",
+  "task",
+  "task_result",
+] as const;
 export const runOriginSchema = z.enum(RUN_ORIGINS);
 export type RunOrigin = z.infer<typeof runOriginSchema>;
 
@@ -472,6 +528,14 @@ export const runEventSchema = z.discriminatedUnion("type", [
        * Absent in a run recorded before it existed.
        */
       ownRoutines: z.exactOptional(ownRoutinesSchema),
+      /** Set when the run is a task (KOD-68): its name and the user's own words that ground it. */
+      task: z.exactOptional(taskRunFactsSchema),
+      /** Set when the run is the chat turn that receives the report of a finished task. */
+      taskResult: z.exactOptional(taskResultFactsSchema),
+      /** The last messages of the user in a chat that may start a task, by id. */
+      recentUserMessages: z.exactOptional(z.array(recentUserMessageSchema)),
+      /** The tasks of this chat, open and recently ended (a chat run of the user). */
+      openTasks: z.exactOptional(z.array(openTaskFactSchema)),
       /**
        * The share of the context window past which this run compacts its history (the user's
        * setting at the start of the run). Recorded so that a replay compacts at the same point.
@@ -993,6 +1057,38 @@ export const runEventSchema = z.discriminatedUnion("type", [
     /** The pending return will not fire: why. */
     type: z.literal("wait_cancelled"),
     payload: z.object({ reason: z.enum(WAIT_CANCEL_REASONS) }),
+  }),
+  z.object({
+    /**
+     * The early brake of a chat run (docs/TAREFAS.md): the run kept working past the count of steps
+     * or the time of a quick answer, so the harness moved the work to a task of the same bot.
+     * `started`: the task exists and the chat run ends; `declined`: no task could be opened (the
+     * limit of open tasks) and the run goes on in the chat. Written once per run.
+     */
+    type: z.literal("handed_off"),
+    payload: z.object({
+      trigger: z.enum(["turns", "time"]),
+      turns: z.number().int().nonnegative(),
+      elapsedMs: z.number().int().nonnegative(),
+      outcome: z.enum(["started", "declined"]),
+      taskId: z.exactOptional(z.string()),
+      title: z.exactOptional(z.string()),
+      reason: z.exactOptional(z.string()),
+    }),
+  }),
+  z.object({
+    /**
+     * The check at the end of a chat run that offers tasks: a cheap model listed the user's asks
+     * and said which were neither answered nor handed to a task. With some left, the model was told
+     * once (a `nudge` follows). Written at most once per run.
+     */
+    type: z.literal("asks_checked"),
+    payload: z.object({
+      asks: z.array(z.string()),
+      unhandled: z.array(z.string()),
+      /** The checker answered in its format (false: it failed, and nothing was asked of the model). */
+      judged: z.boolean(),
+    }),
   }),
   z.object({
     type: z.literal("compacted"),
