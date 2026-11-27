@@ -124,6 +124,26 @@ describe("the early brake of a chat run", () => {
     expect(rig.provider.calls).toBe(6);
   });
 
+  it("leaves the reply to the asks check's note alone, so the written answer is kept", async () => {
+    const rig = rigWith([
+      say("15% de 800 é 120."),
+      use(call("t", TASK_TOOL, { title: "Auditar os CSV" })),
+      say("15% de 800 é 120, e abri a tarefa da auditoria."),
+    ]);
+    const { judge } = judgeOf([
+      asksAnswer([
+        { ask: "15% de 800", handled: "answered" },
+        { ask: "auditar os CSV", handled: "not_handled" },
+      ]),
+    ]);
+    // One call already reaches the brake's count: only the check's note decides what comes next.
+    const { deps, requests } = brake({ atTurns: 1 });
+    const askCheck = { judge, taskTool: TASK_TOOL };
+    expect(await run(rig, { handoff: deps, askCheck })).toBe("done");
+    expect(requests).toHaveLength(0);
+    expect(rig.provider.calls).toBe(3);
+  });
+
   it("never brakes a run that is itself a task", async () => {
     const rig = rigWith([...reads(5), say("done")], "task");
     const { deps, requests } = brake();

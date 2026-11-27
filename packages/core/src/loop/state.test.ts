@@ -313,3 +313,16 @@ describe("rebuildState: tool log for the reviewer", () => {
     expect(state.toolLog[0]?.tail).toBe("b".repeat(1000));
   });
 });
+
+describe("rebuildState: waits for the person", () => {
+  it("marks a run that stopped for a card or a question, and only those", () => {
+    const status = (to: "waiting_approval" | "waiting_user" | "waiting_timer"): RunEventData => ({
+      type: "status_changed",
+      payload: { from: "running", to },
+    });
+    expect(rebuildState(log(started)).waitedForUser).toBe(false);
+    expect(rebuildState(log(started, status("waiting_timer"))).waitedForUser).toBe(false);
+    expect(rebuildState(log(started, status("waiting_approval"))).waitedForUser).toBe(true);
+    expect(rebuildState(log(started, status("waiting_user"))).waitedForUser).toBe(true);
+  });
+});

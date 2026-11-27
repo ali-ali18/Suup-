@@ -36,13 +36,18 @@ export async function handoffCheck(ctx: LoopContext): Promise<RunStatus | undefi
   if (deps === undefined || run.origin !== "user" || state.handoff !== null) return undefined;
   // The bot opened a task by itself in this run: it decided, and what is left is its answer.
   if (state.toolsUsed.includes(deps.taskTool)) return undefined;
+  // The answer is written and was checked: what is left is the bot's reply to the check's note,
+  // which must not throw the answer away.
+  if (state.asksChecked) return undefined;
   const turns = run.turns;
   const elapsedMs = Math.max(
     0,
     ctx.deps.now().getTime() - run.startedAt.getTime() - state.waitedMs,
   );
   const byTurns = deps.atTurns !== undefined && turns >= deps.atTurns;
-  const byTime = deps.atMs !== undefined && turns > 0 && elapsedMs >= deps.atMs;
+  // After a card or a question the clock also ran while the person decided: only the calls count.
+  const byTime =
+    deps.atMs !== undefined && !state.waitedForUser && turns > 0 && elapsedMs >= deps.atMs;
   if (!byTurns && !byTime) return undefined;
   const trigger = byTurns ? "turns" : "time";
 

@@ -277,6 +277,11 @@ export interface RunState {
   handoff: RunEventPayload<"handed_off"> | null;
   /** The end-of-turn check of the user's asks already ran in this run (`asks_checked`). */
   asksChecked: boolean;
+  /**
+   * The run stopped once for the person (a card or a question). From then on the early brake no
+   * longer counts time: the clock ran while they decided, which is not work.
+   */
+  waitedForUser: boolean;
 }
 
 export function createRunState(): RunState {
@@ -298,6 +303,7 @@ export function createRunState(): RunState {
     compactionThreshold: null,
     handoff: null,
     asksChecked: false,
+    waitedForUser: false,
     lastSeq: 0,
     responses: 0,
     pending: null,
@@ -860,6 +866,9 @@ export function applyEvent(state: RunState, event: StoredEvent): void {
 
     case "status_changed":
       for (const id of event.payload.inboxIds ?? []) state.deliveredInbox.add(id);
+      if (event.payload.to === "waiting_approval" || event.payload.to === "waiting_user") {
+        state.waitedForUser = true;
+      }
       if (event.payload.to === "waiting_timer") {
         state.parkedAt = event.createdAt;
         if (state.wait !== null) state.wait.parked = true;
