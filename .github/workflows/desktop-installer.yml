@@ -8,7 +8,7 @@ name: Instalador do app
 on:
   workflow_dispatch:
   push:
-    branches: ["feat/**"]
+    branches: ["main", "feat/**"]
     paths:
       - "apps/desktop/**"
       - "apps/sidecar/**"
